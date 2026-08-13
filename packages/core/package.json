@@ -6,11 +6,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@june/ai": "workspace:*",
-    "@june/schema": "workspace:*"
+    "@june/schema": "workspace:*",
+    "diff": "^9.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
