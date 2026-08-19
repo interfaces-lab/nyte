@@ -4,3 +4,6 @@ dist/
 .turbo/
 
 .DS_Store
+.vercel
+.env*
+.claude-scratch/
