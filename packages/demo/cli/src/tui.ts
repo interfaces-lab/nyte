@@ -2,437 +2,368 @@ import process from "node:process";
 import {
   BoxRenderable,
   createCliRenderer,
-  InputRenderable,
-  InputRenderableEvents,
   ScrollBoxRenderable,
   SelectRenderable,
   SelectRenderableEvents,
+  TextareaRenderable,
   TextRenderable,
 } from "@opentui/core";
-import type { CliRenderer } from "@opentui/core";
-import { defaultProviders, FileCredentialStore, getProvider } from "@june/ai";
-import type { AuthInteraction, AuthPrompt } from "@june/ai";
-import { toolResultText } from "@june/core";
-import type { AgentHarness, Entry, SqliteSessionRepo } from "@june/core";
-import type { RunFlags } from "./run.ts";
-import { openHarness, resolveRuntime } from "./run.ts";
-import type { ResolvedRuntime } from "./run.ts";
+import type {
+  CliRenderer,
+  KeyEvent,
+  SelectOption,
+  TextareaRenderable as Input,
+} from "@opentui/core";
+import type { Api, Model } from "@uji-ai/ai";
+import type { AgentMessage, HarnessEvent } from "@uji-ai/core";
+import type { Host } from "./host.ts";
 
-const COLORS = {
-  dim: "#8b949e",
-  user: "#7aa2f7",
-  tool: "#e0af68",
+/**
+ * GrokNight — neutral gray base, TokyoNight accents.
+ * From https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/groknight.rs
+ */
+const COLOR = {
+  terminal: "#0a0a0a",
+  background: "#141414",
+  foreground: "#e1e1e1",
+  user: "#c8c8c8",
+  assistant: "#bb9af7",
+  tool: "#787878",
   error: "#f7768e",
-  ok: "#9ece6a",
-};
+  promptBorder: "#323237",
+  promptBorderFocused: "#505058",
+} as const;
+
+const HINT = "ctrl+p model · esc stop · ctrl+c quit";
 
 interface Ui {
   renderer: CliRenderer;
-  header: TextRenderable;
-  transcript: ScrollBoxRenderable;
+  root: BoxRenderable;
+  scroll: ScrollBoxRenderable;
   inputBox: BoxRenderable;
-  input: InputRenderable;
-  hints: TextRenderable;
-  nextId: () => string;
+  input: Input;
+  status: TextRenderable;
+}
+
+function messageText(message: AgentMessage): string {
+  if (message.role !== "user" && message.role !== "assistant") return "";
+  const { content } = message;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+}
+
+function addLine(ui: Ui, text: string, color: string): TextRenderable {
+  const node = new TextRenderable(ui.renderer, {
+    content: text,
+    fg: color,
+    wrapMode: "word",
+    width: "auto",
+    marginTop: 1,
+  });
+  ui.scroll.add(node);
+  return node;
 }
 
 function buildUi(renderer: CliRenderer): Ui {
-  let counter = 0;
-  const nextId = (): string => `n${String(counter++)}`;
-
   const root = new BoxRenderable(renderer, {
     id: "app",
     width: "100%",
     height: "100%",
     flexDirection: "column",
+    backgroundColor: COLOR.background,
   });
-
-  const header = new TextRenderable(renderer, {
-    id: "header",
-    content: " june",
-    fg: COLORS.dim,
-  });
-
-  const transcript = new ScrollBoxRenderable(renderer, {
+  const scroll = new ScrollBoxRenderable(renderer, {
     id: "transcript",
     flexGrow: 1,
+    minHeight: 0,
     stickyScroll: true,
+    stickyStart: "bottom",
+    scrollX: false,
+    scrollY: true,
+    paddingLeft: 1,
+    paddingRight: 1,
+    paddingBottom: 1,
+  });
+  const inputBox = new BoxRenderable(renderer, {
+    id: "input-box",
+    flexDirection: "row",
+    height: 3,
+    flexShrink: 0,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: COLOR.promptBorder,
+    focusedBorderColor: COLOR.promptBorderFocused,
+    focusable: true,
     paddingLeft: 1,
     paddingRight: 1,
   });
-
-  const inputBox = new BoxRenderable(renderer, {
-    id: "input-box",
-    border: true,
-    borderStyle: "single",
-    height: 3,
+  const prompt = new TextRenderable(renderer, {
+    id: "input-prompt",
+    content: "❯ ",
+    fg: COLOR.user,
+    height: 1,
   });
-  const input = new InputRenderable(renderer, {
+  const input = new TextareaRenderable(renderer, {
     id: "input",
-    placeholder: "type a message…",
+    flexGrow: 1,
+    height: 1,
+    wrapMode: "word",
+    placeholder: "",
+    backgroundColor: "transparent",
+    focusedBackgroundColor: "transparent",
+    textColor: COLOR.foreground,
+    focusedTextColor: COLOR.foreground,
+    cursorColor: COLOR.user,
+    keyBindings: [
+      { name: "return", action: "submit" },
+      { name: "kpenter", action: "submit" },
+    ],
   });
+  const status = new TextRenderable(renderer, {
+    id: "status",
+    content: "",
+    fg: COLOR.tool,
+    height: 1,
+    flexShrink: 0,
+    paddingLeft: 1,
+    paddingRight: 1,
+  });
+  inputBox.add(prompt);
   inputBox.add(input);
-
-  const hints = new TextRenderable(renderer, {
-    id: "hints",
-    content: " enter send · esc abort · /tree · /search · ctrl+c quit",
-    fg: COLORS.dim,
-  });
-
-  root.add(header);
-  root.add(transcript);
+  root.add(scroll);
   root.add(inputBox);
-  root.add(hints);
+  root.add(status);
   renderer.root.add(root);
   input.focus();
-
-  return { renderer, header, transcript, inputBox, input, hints, nextId };
+  return { renderer, root, scroll, inputBox, input, status };
 }
 
-function appendText(ui: Ui, content: string, fg?: string): void {
-  ui.transcript.add(new TextRenderable(ui.renderer, { id: ui.nextId(), content, fg }));
+function modelLabel(model: Model<Api>): string {
+  return `${model.name} · ${model.provider}`;
 }
 
-function createTuiInteraction(ui: Ui, signal: AbortSignal): AuthInteraction {
+function showStatus(ui: Ui, host: Host): void {
+  ui.status.content = `${modelLabel(host.harness.state.model)}  ${HINT}`;
+}
+
+interface Picker {
+  readonly isOpen: boolean;
+  open: () => Promise<void>;
+  close: () => void;
+}
+
+/** Ctrl+P overlay listing every model the stored credentials can reach. */
+function createPicker(ui: Ui, host: Host, onPick: (model: Model<Api>) => void): Picker {
+  const box = new BoxRenderable(ui.renderer, {
+    id: "model-picker",
+    flexDirection: "column",
+    flexShrink: 0,
+    height: 3,
+    border: true,
+    borderStyle: "rounded",
+    borderColor: COLOR.promptBorder,
+    title: "model",
+    titleColor: COLOR.tool,
+    paddingLeft: 1,
+    paddingRight: 1,
+  });
+  const select = new SelectRenderable(ui.renderer, {
+    id: "model-select",
+    flexGrow: 1,
+    options: [],
+    showDescription: false,
+    wrapSelection: true,
+    showScrollIndicator: true,
+    backgroundColor: "transparent",
+    focusedBackgroundColor: "transparent",
+    textColor: COLOR.foreground,
+    focusedTextColor: COLOR.foreground,
+    selectedBackgroundColor: "transparent",
+    selectedTextColor: COLOR.assistant,
+  });
+  box.add(select);
+
+  let models: readonly Model<Api>[] = [];
+  let isOpen = false;
+
+  const close = (): void => {
+    if (!isOpen) return;
+    isOpen = false;
+    ui.root.remove(box);
+    ui.input.focus();
+  };
+
+  select.on(SelectRenderableEvents.ITEM_SELECTED, (index: number) => {
+    const model = models[index];
+    close();
+    if (model !== undefined) onPick(model);
+  });
+
   return {
-    signal,
-    prompt(prompt: AuthPrompt): Promise<string> {
-      const promptSignal =
-        prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
-      if (prompt.type === "select") {
-        return new Promise<string>((resolve, reject) => {
-          appendText(ui, prompt.message);
-          const select = new SelectRenderable(ui.renderer, {
-            id: ui.nextId(),
-            height: Math.min(prompt.options.length * 2, 8),
-            options: prompt.options.map((option) => ({
-              name: option.label,
-              description: option.description ?? "",
-              value: option.id,
-            })),
-          });
-          const cleanup = (): void => {
-            ui.transcript.remove(select);
-            ui.input.focus();
-          };
-          promptSignal.addEventListener(
-            "abort",
-            () => {
-              cleanup();
-              reject(new Error("Login cancelled"));
-            },
-            { once: true },
-          );
-          select.on(SelectRenderableEvents.ITEM_SELECTED, (...args: unknown[]) => {
-            const option = args[1] as { value?: unknown } | undefined;
-            const index = typeof args[0] === "number" ? args[0] : 0;
-            const value =
-              typeof option?.value === "string" ? option.value : prompt.options[index]?.id;
-            cleanup();
-            if (value === undefined) reject(new Error("Invalid selection"));
-            else {
-              appendText(ui, `  → ${value}`, COLORS.dim);
-              resolve(value);
-            }
-          });
-          ui.transcript.add(select);
-          select.focus();
-        });
-      }
-      return new Promise<string>((resolve, reject) => {
-        appendText(ui, prompt.message);
-        ui.input.placeholder = prompt.placeholder ?? "";
-        const previousTitle = ui.inputBox.title;
-        ui.inputBox.title = prompt.type === "secret" ? "secret" : "login";
-        const finish = (): void => {
-          ui.input.placeholder = "type a message…";
-          ui.inputBox.title = previousTitle;
-          ui.input.off(InputRenderableEvents.ENTER, onEnter);
-        };
-        const onEnter = (): void => {
-          const value = ui.input.value;
-          ui.input.value = "";
-          finish();
-          appendText(ui, prompt.type === "secret" ? "  → ●●●" : `  → ${value}`, COLORS.dim);
-          resolve(value);
-        };
-        promptSignal.addEventListener(
-          "abort",
-          () => {
-            finish();
-            reject(new Error("Login cancelled"));
-          },
-          { once: true },
-        );
-        ui.input.on(InputRenderableEvents.ENTER, onEnter);
-        ui.input.focus();
-      });
+    get isOpen() {
+      return isOpen;
     },
-    notify(event) {
-      switch (event.type) {
-        case "auth_url":
-          appendText(ui, event.instructions ?? "Open this URL to continue:");
-          appendText(ui, `  ${event.url}`, COLORS.user);
-          break;
-        case "device_code":
-          appendText(ui, `Visit ${event.verificationUri}`, COLORS.user);
-          appendText(ui, `Enter code: ${event.userCode}`, COLORS.ok);
-          break;
-        case "info":
-        case "progress":
-          appendText(ui, event.message, COLORS.dim);
-          break;
-      }
-    },
-  };
-}
-
-async function loginViaTui(ui: Ui, flags: RunFlags): Promise<ResolvedRuntime | undefined> {
-  const providers = defaultProviders();
-  const store = new FileCredentialStore();
-  const provider = getProvider(providers, flags.provider ?? "openai-codex");
-  const controller = new AbortController();
-  const interaction = createTuiInteraction(ui, controller.signal);
-  appendText(ui, `No credentials for ${provider.name} — let's log in.`, COLORS.tool);
-  const { oauth, apiKey } = provider.auth;
-  let mode: "oauth" | "api_key" = oauth !== undefined ? "oauth" : "api_key";
-  if (oauth !== undefined && apiKey?.login !== undefined) {
-    const picked = await interaction.prompt({
-      type: "select",
-      message: `Select ${provider.name} login mode:`,
-      options: [
-        { id: "oauth", label: oauth.name },
-        { id: "api_key", label: apiKey.name },
-      ],
-    });
-    mode = picked as "oauth" | "api_key";
-  }
-  const normalized = { ...interaction, signal: controller.signal };
-  const credential =
-    mode === "oauth" && oauth !== undefined
-      ? await oauth.login(normalized)
-      : await apiKey?.login?.(normalized);
-  if (credential === undefined) return undefined;
-  await store.modify(provider.id, () => Promise.resolve(credential));
-  appendText(ui, `Logged in to ${provider.name}.`, COLORS.ok);
-  return resolveRuntime(flags);
-}
-
-function entryLabel(entry: Entry): string {
-  if (entry.type !== "message") return entry.type;
-  const { message } = entry;
-  const role = message.role ?? message.type ?? "item";
-  const partsText = (parts: { type: string; text?: string }[]): string =>
-    parts.map((part) => part.text ?? (part.type === "image" ? "[image]" : "")).join("");
-  const content = message.content ?? message.output;
-  const text =
-    typeof content === "string" ? content : Array.isArray(content) ? partsText(content) : "";
-  const line = String(text).replaceAll("\n", " ").trim();
-  return `${role}: ${line.length > 56 ? `${line.slice(0, 56)}…` : line}`;
-}
-
-function renderTree(ui: Ui, entries: Entry[], leafId: string | null): void {
-  if (entries.length === 0) {
-    appendText(ui, "  (no entries yet)", COLORS.dim);
-    return;
-  }
-  const children = new Map<string | null, Entry[]>();
-  for (const entry of entries) {
-    const siblings = children.get(entry.parentId) ?? [];
-    siblings.push(entry);
-    children.set(entry.parentId, siblings);
-  }
-  const walk = (parentId: string | null, depth: number): void => {
-    for (const entry of children.get(parentId) ?? []) {
-      const onBranch = entry.id === leafId;
-      appendText(
-        ui,
-        `${"  ".repeat(depth + 1)}${onBranch ? "●" : "○"} ${entry.id}  ${entryLabel(entry)}`,
-        onBranch ? COLORS.ok : COLORS.dim,
+    open: async () => {
+      if (isOpen) return;
+      if (models.length === 0) models = await host.listModels().catch(() => []);
+      if (models.length === 0) return;
+      const current = host.harness.state.model;
+      const options: SelectOption[] = models.map((model) => ({
+        name:
+          model.id === current.id && model.provider === current.provider
+            ? `${modelLabel(model)}  (current)`
+            : modelLabel(model),
+        description: "",
+      }));
+      select.options = options;
+      const index = models.findIndex(
+        (model) => model.id === current.id && model.provider === current.provider,
       );
-      walk(entry.id, depth + 1);
-    }
+      select.setSelectedIndex(index === -1 ? 0 : index);
+      box.height = Math.min(models.length, 8) + 2;
+      ui.root.insertBefore(box, ui.inputBox);
+      isOpen = true;
+      select.focus();
+    },
+    close,
   };
-  walk(null, 0);
 }
 
-async function runCommand(
-  ui: Ui,
-  harness: AgentHarness,
-  repo: SqliteSessionRepo,
-  text: string,
-): Promise<void> {
-  const [command = "", ...rest] = text.slice(1).split(/\s+/);
-  const argument = rest.join(" ");
-  const session = harness.session;
+function replay(ui: Ui, host: Host): Promise<void> {
+  return host.harness.session.getBranch("main").then((branch) => {
+    for (const entry of branch) {
+      if (entry.type !== "message") continue;
+      const { message } = entry;
+      if (message.role === "user") {
+        const text = messageText(message);
+        if (text !== "") addLine(ui, text, COLOR.user);
+        continue;
+      }
+      if (message.role !== "assistant") continue;
+      const text = messageText(message);
+      if (text !== "") addLine(ui, text, COLOR.assistant);
+      for (const part of message.content) {
+        if (part.type === "toolCall") addLine(ui, part.name, COLOR.tool);
+      }
+    }
+  });
+}
 
-  if (command === "tree") {
-    if (argument === "") {
-      renderTree(ui, await session.findEntries(), await session.getLeafId("main"));
-      appendText(ui, "  /tree <entry-id> to fork there · /tree root to start over", COLORS.dim);
+function bindTranscript(ui: Ui, host: Host): () => void {
+  let live: { node: TextRenderable; text: string } | undefined;
+  return host.harness.subscribe((event: HarnessEvent) => {
+    if (event.type === "message_start" && event.message.role === "user") {
+      live = undefined;
+      const text = messageText(event.message);
+      if (text !== "") addLine(ui, text, COLOR.user);
       return;
     }
-    const target = argument === "root" ? null : argument;
-    await session.moveLane("main", target);
-    appendText(ui, `moved to ${target ?? "root"}; the next message starts a branch`, COLORS.ok);
-    return;
-  }
-
-  if (command === "search") {
-    const hits = await repo.searchEntries(argument, { limit: 10 });
-    if (hits.length === 0) appendText(ui, "  no matches", COLORS.dim);
-    for (const hit of hits) {
-      appendText(ui, `  ${hit.entryId}  ${hit.snippet.replaceAll("\n", " ")}`, COLORS.dim);
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+      if (live === undefined) live = { node: addLine(ui, "", COLOR.assistant), text: "" };
+      live.text += event.assistantMessageEvent.delta;
+      live.node.content = live.text;
+      return;
     }
-    return;
-  }
-
-  appendText(ui, `unknown command: /${command} (try /tree or /search)`, COLORS.error);
-}
-
-function wireHarness(ui: Ui, harness: AgentHarness, providerLabel: string): void {
-  let streamingText: TextRenderable | undefined;
-  let reasoningLine: TextRenderable | undefined;
-  let streamingBuffer = "";
-
-  const setHeader = (state: string): void => {
-    ui.header.content = ` june · ${providerLabel} · ${state}`;
-  };
-  setHeader("idle");
-
-  harness.subscribe((event) => {
-    switch (event.type) {
-      case "agent_start":
-        setHeader("working…");
-        break;
-      case "turn_start":
-        streamingText = undefined;
-        reasoningLine = undefined;
-        streamingBuffer = "";
-        break;
-      case "message_update":
-        if (event.delta.kind === "reasoning") {
-          if (reasoningLine === undefined) {
-            reasoningLine = new TextRenderable(ui.renderer, {
-              id: ui.nextId(),
-              content: "· thinking…",
-              fg: COLORS.dim,
-            });
-            ui.transcript.add(reasoningLine);
-          }
-        } else {
-          if (streamingText === undefined) {
-            streamingText = new TextRenderable(ui.renderer, { id: ui.nextId(), content: "" });
-            ui.transcript.add(streamingText);
-          }
-          streamingBuffer += event.delta.text;
-          streamingText.content = streamingBuffer;
-        }
-        break;
-      case "message_end": {
-        const item = event.message;
-        if (item.type === "message" && streamingText !== undefined) {
-          streamingText = undefined;
-          streamingBuffer = "";
-        }
-        break;
-      }
-      case "tool_execution_start": {
-        const args = event.args as { command?: string } | undefined;
-        const line =
-          event.toolName === "bash" && typeof args?.command === "string"
-            ? `$ ${args.command}`
-            : `⚒ ${event.toolName} ${JSON.stringify(event.args ?? {})}`;
-        appendText(ui, line, COLORS.tool);
-        setHeader(`running ${event.toolName}…`);
-        break;
-      }
-      case "tool_execution_end": {
-        const lines = toolResultText(event.result.content).split("\n");
-        const preview = lines.slice(0, 4).join("\n");
-        const rest = lines.length > 4 ? `\n… (${String(lines.length - 4)} more lines)` : "";
-        appendText(ui, preview + rest, event.isError ? COLORS.error : COLORS.dim);
-        setHeader("working…");
-        break;
-      }
-      case "turn_end":
-        if (event.message.errorMessage !== undefined) {
-          appendText(ui, `error: ${event.message.errorMessage}`, COLORS.error);
-        }
-        break;
-      case "agent_end":
-        setHeader("idle");
-        break;
+    if (event.type === "message_end") {
+      live = undefined;
+      return;
+    }
+    if (event.type === "tool_execution_start") {
+      live = undefined;
+      addLine(ui, event.toolName, COLOR.tool);
+      return;
+    }
+    if (event.type === "turn_end" && event.message.role === "assistant") {
+      const error = event.message.errorMessage;
+      if (error !== undefined) addLine(ui, error, COLOR.error);
     }
   });
 }
 
-export async function runTui(flags: RunFlags): Promise<void> {
-  const renderer = await createCliRenderer({ exitOnCtrlC: false });
-  const ui = buildUi(renderer);
-
-  let runtime = await resolveRuntime(flags);
-  if (runtime === undefined) {
-    runtime = await loginViaTui(ui, flags);
-  }
-  if (runtime === undefined) {
-    renderer.destroy();
-    throw new Error("login failed");
-  }
-
-  const { harness, suspended, sessionId, repo } = await openHarness(runtime, flags);
-  const model = harness.state.model ?? runtime.provider.defaultModel;
-  wireHarness(ui, harness, `${runtime.provider.id}/${model}`);
-  appendText(ui, `session ${sessionId} · ${runtime.provider.id}/${model}`, COLORS.dim);
-  if (suspended.length > 0) {
-    appendText(ui, "resuming suspended run…", COLORS.tool);
-    void harness.resume();
-  }
-
-  ui.input.on(InputRenderableEvents.ENTER, () => {
-    const text = ui.input.value.trim();
-    if (text === "") return;
-    ui.input.value = "";
-    appendText(ui, `> ${text}`, COLORS.user);
-    if (text.startsWith("/")) {
-      void runCommand(ui, harness, repo, text).catch((error: unknown) => {
-        appendText(
-          ui,
-          `error: ${error instanceof Error ? error.message : String(error)}`,
-          COLORS.error,
-        );
-      });
-    } else if (harness.state.isStreaming) {
-      void harness.steer({ role: "user", content: text });
-      appendText(ui, "(queued as steering message)", COLORS.dim);
-    } else {
-      void harness.prompt(text);
-    }
+export async function runTui(command: { resume: boolean }): Promise<void> {
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: false,
+    backgroundColor: COLOR.terminal,
+    clearOnShutdown: true,
   });
-
-  let lastCtrlC = 0;
-  renderer.keyInput.on("keypress", (key: { name: string; ctrl: boolean }) => {
-    if (key.name === "escape") {
-      void harness.abort();
-    } else if (key.ctrl && key.name === "c") {
-      const now = Date.now();
-      if (harness.state.isStreaming && now - lastCtrlC > 1500) {
-        lastCtrlC = now;
-        void harness.abort();
-        appendText(ui, "(aborted — ctrl+c again to quit)", COLORS.dim);
-        return;
-      }
-      void harness
-        .close()
-        .then(() => repo.close())
-        .finally(() => {
-          renderer.destroy();
-          process.exit(0);
-        });
-    }
-  });
-
-  await new Promise<void>((resolve) => {
+  const destroyed = new Promise<void>((resolve) => {
     renderer.on("destroy", () => resolve());
   });
+  const ui = buildUi(renderer);
+
+  const { openHost } = await import("./host.ts");
+  const host = await openHost({ resume: command.resume }).catch(async (error: unknown) => {
+    renderer.destroy();
+    await destroyed;
+    throw error;
+  });
+
+  const unsubscribe = bindTranscript(ui, host);
+  await replay(ui, host);
+  showStatus(ui, host);
+  const picker = createPicker(ui, host, (model) => {
+    host.harness.setModel(model);
+    showStatus(ui, host);
+    addLine(ui, `model → ${modelLabel(model)}`, COLOR.tool);
+  });
+  let submitting = false;
+  ui.input.onSubmit = () => {
+    const text = ui.input.plainText.trim();
+    if (text === "" || submitting) return;
+    if (text === "/model") {
+      ui.input.clear();
+      void picker.open();
+      return;
+    }
+    submitting = true;
+    ui.input.clear();
+    void host.harness
+      .submit(text)
+      .then((result) => {
+        if (!result.ok) addLine(ui, result.error.message, COLOR.error);
+      })
+      .finally(() => {
+        submitting = false;
+      });
+  };
+  renderer.keyInput.on("keypress", (key: KeyEvent) => {
+    if (key.ctrl && key.name === "p") {
+      key.preventDefault();
+      if (picker.isOpen) picker.close();
+      else void picker.open();
+      return;
+    }
+    if (key.name === "escape") {
+      key.preventDefault();
+      if (picker.isOpen) {
+        picker.close();
+        return;
+      }
+      void host.harness.abort();
+      return;
+    }
+    if (key.ctrl && key.name === "c") {
+      key.preventDefault();
+      picker.close();
+      renderer.destroy();
+    }
+  });
+
+  const onSignal = () => {
+    renderer.destroy();
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  try {
+    await destroyed;
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    unsubscribe();
+    await host.close();
+  }
 }
