@@ -1,6 +1,6 @@
 /**
  * File-backed `CredentialStore` (auth.json, one credential per provider id).
- * June-owned persistent store; the queueing and cancellation semantics follow
+ * Uji-owned persistent store; the queueing and cancellation semantics follow
  * pi's InMemoryCredentialStore so `resolveProviderAuth` behaves identically
  * against either.
  *
@@ -8,15 +8,13 @@
  * Synced with pi 7ebf9087e.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import process from "node:process";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
+import { defaultUjiHome } from "../utils/uji-home.ts";
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "./types.ts";
 
 export function defaultAuthPath(): string {
-  const home = process.env["JUNE_HOME"] ?? join(homedir(), ".june");
-  return join(home, "auth.json");
+  return join(defaultUjiHome(), "auth.json");
 }
 
 /**

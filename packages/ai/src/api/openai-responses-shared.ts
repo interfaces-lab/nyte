@@ -144,6 +144,28 @@ export function convertResponsesMessages<TApi extends Api>(
   options?: ConvertResponsesMessagesOptions,
 ): ResponseInput {
   const messages: ResponseInput = [];
+  const checkpoint = context.checkpoint;
+  if (checkpoint !== undefined) {
+    if (
+      checkpoint.provider !== model.provider ||
+      checkpoint.api !== model.api ||
+      checkpoint.model !== model.id ||
+      !Array.isArray(checkpoint.data) ||
+      checkpoint.data.some(
+        (item) =>
+          typeof item !== "object" ||
+          item === null ||
+          Array.isArray(item) ||
+          typeof item.type !== "string",
+      )
+    ) {
+      throw new Error(`Checkpoint material does not match ${model.provider}/${model.id}`);
+    }
+    // SAFETY: this is the matching provider boundary, after validating the
+    // endpoint's array-of-response-items envelope. The OpenAI SDK omits the
+    // native compaction item from its public ResponseInput union.
+    messages.push(...(checkpoint.data as unknown as ResponseInput));
+  }
   const loadedToolNames = new Set<string>();
 
   const normalizeIdPart = (part: string): string => {
@@ -422,6 +444,20 @@ type StreamingToolCall = ToolCall & {
     jsonBuffer: GrammarToolInputJsonBuffer;
   };
 };
+
+/**
+ * Strips the streaming scratch fields that accumulate on tool-call blocks while
+ * arguments are still arriving. They are parsing state, never conversation
+ * content, so adapters call this before persisting or emitting a failed message.
+ */
+export function stripStreamingScratchState(content: AssistantMessage["content"]): void {
+  for (const block of content) {
+    // SAFETY: only streaming tool-call blocks are ever assigned these scratch fields; deleting them off every block is harmless.
+    const scratch = block as StreamingToolCall;
+    delete scratch.partialJson;
+    delete scratch.customInput;
+  }
+}
 
 function getCustomToolCallInput(block: StreamingToolCall): string {
   const property = block.customInput?.property;

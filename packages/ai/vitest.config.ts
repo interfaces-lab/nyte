@@ -1,13 +1,12 @@
 import { defineConfig } from "vitest/config";
 
-// Upstream pi-ai tests copied verbatim run under vitest; June's own tests use node:test.
-// The excluded files import pi's deprecated global registry (src/compat.ts), which June does not carry.
+// Upstream pi-ai tests copied verbatim run under vitest; Uji's own tests use node:test.
+// The excluded files import pi's deprecated global registry (src/compat.ts), which Uji does not carry.
 export default defineConfig({
   test: {
     include: ["test/upstream/**/*.test.ts"],
     exclude: [
       "test/upstream/model-catalog-types.test.ts", // imports other providers' catalogs
-      "test/upstream/generate-models-strict.test.ts", // runs the full generator, needs every provider catalog
 
       "test/upstream/anthropic-adaptive-thinking-models.test.ts",
       "test/upstream/anthropic-cache-write-1h-cost.test.ts",

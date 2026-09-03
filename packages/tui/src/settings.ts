@@ -13,6 +13,10 @@ import type { Transport } from "@uji-ai/ai";
 import { DEFAULT_COMPACTION_SETTINGS } from "@uji-ai/core";
 import type { CompactionSettings, ThinkingLevel } from "@uji-ai/core";
 import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
+import { RUN_NOTIFICATION_MODES } from "./notifications.ts";
+import type { RunNotificationMode } from "./notifications.ts";
+import { TOOL_CALL_DISPLAY_MODES } from "./constants.ts";
+import type { ToolCallDisplay } from "./constants.ts";
 
 export const TRANSPORTS = [
   "sse",
@@ -21,7 +25,7 @@ export const TRANSPORTS = [
   "auto",
 ] satisfies readonly Transport[];
 
-export interface CompactionSettingsFile {
+interface CompactionSettingsFile {
   enabled?: boolean;
   reserveTokens?: number;
   keepRecentTokens?: number;
@@ -32,19 +36,28 @@ interface OptionalSettingsFile {
   transport?: Transport;
   externalEditor?: string;
   compaction?: CompactionSettingsFile;
+  /** Install a newer release when the TUI starts, instead of only saying one exists. */
+  autoUpdate?: boolean;
+  /** Alert when an agent run stops, with an optional terminal bell. */
+  runNotifications?: RunNotificationMode;
+  /** How the transcript draws consecutive tool calls. */
+  toolCalls?: ToolCallDisplay;
 }
 
 type DefaultModelSettings =
   | { defaultProvider?: never; defaultModel?: never }
   | { defaultProvider: string; defaultModel?: string };
 
-export type SettingsFile = OptionalSettingsFile & DefaultModelSettings;
+type SettingsFile = OptionalSettingsFile & DefaultModelSettings;
 
 interface ResolvedOptionalSettings {
   defaultThinkingLevel?: ThinkingLevel;
   transport: Transport;
   externalEditor?: string;
   compaction: CompactionSettings;
+  autoUpdate: boolean;
+  runNotifications: RunNotificationMode;
+  toolCalls: ToolCallDisplay;
 }
 
 export type ResolvedSettings = ResolvedOptionalSettings & DefaultModelSettings;
@@ -53,7 +66,7 @@ type DefaultModelPatch =
   | { defaultProvider?: never; defaultModel?: never }
   | { defaultProvider: string; defaultModel?: string };
 
-export type SettingsPatch = Partial<OptionalSettingsFile> & DefaultModelPatch;
+type SettingsPatch = Partial<OptionalSettingsFile> & DefaultModelPatch;
 
 interface UnparsedCompactionSettings {
   enabled?: unknown;
@@ -68,14 +81,17 @@ interface UnparsedSettings {
   transport?: unknown;
   externalEditor?: unknown;
   compaction?: unknown;
+  autoUpdate?: unknown;
+  runNotifications?: unknown;
+  toolCalls?: unknown;
 }
 
-export function defaultSettingsPath(): string {
+function defaultSettingsPath(): string {
   const home = process.env["UJI_HOME"] ?? join(homedir(), ".uji");
   return join(home, "settings.json");
 }
 
-export function projectSettingsPath(cwd: string): string {
+function projectSettingsPath(cwd: string): string {
   return join(cwd, ".uji", "settings.json");
 }
 
@@ -119,7 +135,7 @@ function optionalTokenCount(
   return field;
 }
 
-export function parseSettingsFile(value: unknown, path = "settings"): SettingsFile {
+function parseSettingsFile(value: unknown, path = "settings"): SettingsFile {
   const object = requireSettingsObject(value, path);
   const allowed = new Set([
     "defaultProvider",
@@ -128,6 +144,12 @@ export function parseSettingsFile(value: unknown, path = "settings"): SettingsFi
     "transport",
     "externalEditor",
     "compaction",
+    "autoUpdate",
+    "runNotifications",
+    "toolCalls",
+    // Read and dropped: fast mode is session state the plugin owns. Files
+    // written by an older build lose the key on their next write.
+    "fastMode",
   ]);
   const unknown = Object.keys(object).find((key) => !allowed.has(key));
   if (unknown !== undefined) throw new Error(`${path} has unknown property "${unknown}"`);
@@ -149,6 +171,25 @@ export function parseSettingsFile(value: unknown, path = "settings"): SettingsFi
   const transport = TRANSPORTS.find((candidate) => candidate === transportValue);
   if (transportValue !== undefined && transport === undefined) {
     throw new Error(`${path}.transport must be ${TRANSPORTS.join(", ")}`);
+  }
+
+  const autoUpdate = object.autoUpdate;
+  if (autoUpdate !== undefined && typeof autoUpdate !== "boolean") {
+    throw new Error(`${path}.autoUpdate must be a boolean`);
+  }
+
+  const notificationValue = object.runNotifications;
+  const runNotifications = RUN_NOTIFICATION_MODES.find(
+    (candidate) => candidate === notificationValue,
+  );
+  if (notificationValue !== undefined && runNotifications === undefined) {
+    throw new Error(`${path}.runNotifications must be ${RUN_NOTIFICATION_MODES.join(", ")}`);
+  }
+
+  const toolCallsValue = object.toolCalls;
+  const toolCalls = TOOL_CALL_DISPLAY_MODES.find((candidate) => candidate === toolCallsValue);
+  if (toolCallsValue !== undefined && toolCalls === undefined) {
+    throw new Error(`${path}.toolCalls must be ${TOOL_CALL_DISPLAY_MODES.join(", ")}`);
   }
 
   let compaction: CompactionSettingsFile | undefined;
@@ -179,6 +220,9 @@ export function parseSettingsFile(value: unknown, path = "settings"): SettingsFi
     ...(transport === undefined ? {} : { transport }),
     ...(externalEditor === undefined ? {} : { externalEditor }),
     ...(compaction === undefined ? {} : { compaction }),
+    ...(autoUpdate === undefined ? {} : { autoUpdate }),
+    ...(runNotifications === undefined ? {} : { runNotifications }),
+    ...(toolCalls === undefined ? {} : { toolCalls }),
   };
   if (defaultProvider === undefined) return optional;
   return {
@@ -232,6 +276,9 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
       ...global.compaction,
       ...project.compaction,
     },
+    autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
+    runNotifications: project.runNotifications ?? global.runNotifications ?? "alert",
+    toolCalls: project.toolCalls ?? global.toolCalls ?? "auto",
   };
 }
 
@@ -250,11 +297,17 @@ function applySettingsPatch(current: SettingsFile, patch: SettingsPatch): Settin
     patch.compaction === undefined
       ? current.compaction
       : { ...current.compaction, ...patch.compaction };
+  const autoUpdate = patch.autoUpdate ?? current.autoUpdate;
+  const runNotifications = patch.runNotifications ?? current.runNotifications;
+  const toolCalls = patch.toolCalls ?? current.toolCalls;
   const optional: OptionalSettingsFile = {
     ...(defaultThinkingLevel === undefined ? {} : { defaultThinkingLevel }),
     ...(transport === undefined ? {} : { transport }),
     ...(externalEditor === undefined ? {} : { externalEditor }),
     ...(compaction === undefined ? {} : { compaction }),
+    ...(autoUpdate === undefined ? {} : { autoUpdate }),
+    ...(runNotifications === undefined ? {} : { runNotifications }),
+    ...(toolCalls === undefined ? {} : { toolCalls }),
   };
   if (model.defaultProvider === undefined) return optional;
   return {

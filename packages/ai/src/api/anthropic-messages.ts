@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { MessageCreateParamsStreaming as BetaMessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type {
   CacheControlEphemeral,
   ContentBlockParam,
@@ -8,8 +9,10 @@ import type {
   RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { calculateCost } from "../models.ts";
+import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   AnthropicMessagesCompat,
+  AccountLimits,
   Api,
   AssistantMessage,
   CacheRetention,
@@ -28,13 +31,14 @@ import type {
   Tool,
   ToolCall,
   ToolResultMessage,
+  Usage,
 } from "../types.ts";
+import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
-import { getJuneUserAgent } from "../utils/june-user-agent.ts";
-import { getProviderEnvValue } from "../utils/provider-env.ts";
+import { getUjiUserAgent } from "../utils/uji-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 
@@ -49,20 +53,6 @@ import {
   clampMaxTokensToContext,
 } from "./simple-options.ts";
 import { transformMessages } from "./transform-messages.ts";
-
-/**
- * Resolve cache retention preference.
- * Defaults to "short" and uses PI_CACHE_RETENTION for backward compatibility.
- */
-function resolveCacheRetention(cacheRetention?: CacheRetention, env?: ProviderEnv): CacheRetention {
-  if (cacheRetention) {
-    return cacheRetention;
-  }
-  if (getProviderEnvValue("PI_CACHE_RETENTION", env) === "long") {
-    return "long";
-  }
-  return "short";
-}
 
 function getCacheControl(
   model: Model<"anthropic-messages">,
@@ -84,7 +74,7 @@ function getCacheControl(
 // Stealth mode: Mimic Claude Code's tool naming exactly
 const claudeCodeVersion = "2.1.75";
 
-// Claude Code 2.x tool names (canonical casing)
+// Claude Code 2.x tool names (PascalCase as Claude Code sends them)
 // Source: https://cchistory.mariozechner.at/data/prompts-2.1.11.md
 // To update: https://github.com/badlogic/cchistory
 const claudeCodeTools = [
@@ -109,7 +99,7 @@ const claudeCodeTools = [
 
 const ccToolLookup = new Map(claudeCodeTools.map((t) => [t.toLowerCase(), t]));
 
-// Convert tool name to CC canonical casing if it matches (case-insensitive)
+// Convert tool name to Claude Code casing if it matches (case-insensitive)
 const toClaudeCodeName = (name: string) => ccToolLookup.get(name.toLowerCase()) ?? name;
 const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
   if (tools && tools.length > 0) {
@@ -176,13 +166,35 @@ export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type AnthropicThinkingDisplay = "summarized" | "omitted";
 
-type MessageCreateParamsStreamingWithFallbacks = MessageCreateParamsStreaming & {
-  fallbacks?: readonly { model: string }[];
-};
+type MessageCreateParamsStreamingWithFallbacks = MessageCreateParamsStreaming &
+  Pick<BetaMessageCreateParamsStreaming, "speed"> & {
+    fallbacks?: readonly { model: string }[];
+  };
 
 const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14";
+const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
 const SERVER_SIDE_FALLBACK_BETA = "server-side-fallback-2026-07-01";
+const ANTHROPIC_FAST_MODE_COST_MULTIPLIER = 2;
+
+function supportsAnthropicFastMode(model: Model<"anthropic-messages">): boolean {
+  return model.provider === "anthropic" && model.modes?.includes("fast") === true;
+}
+
+function usedAnthropicFastMode(usage: unknown): boolean {
+  if (typeof usage !== "object" || usage === null || !("speed" in usage)) return false;
+  return usage.speed === "fast";
+}
+
+function applyAnthropicFastModePricing(usage: Usage, fast: boolean): void {
+  if (!fast) return;
+  usage.cost.input *= ANTHROPIC_FAST_MODE_COST_MULTIPLIER;
+  usage.cost.output *= ANTHROPIC_FAST_MODE_COST_MULTIPLIER;
+  usage.cost.cacheRead *= ANTHROPIC_FAST_MODE_COST_MULTIPLIER;
+  usage.cost.cacheWrite *= ANTHROPIC_FAST_MODE_COST_MULTIPLIER;
+  usage.cost.total =
+    usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+}
 
 function shouldUseServerSideFallbackBeta(model: Model<"anthropic-messages">): boolean {
   return (model.compat?.allowedFallbackModels?.length ?? 0) > 0;
@@ -219,6 +231,11 @@ function defaultSupportsToolReferences(model: Model<"anthropic-messages">): bool
 }
 
 export interface AnthropicOptions extends StreamOptions {
+  /**
+   * Anthropic inference speed. Fast mode is available only for first-party
+   * Claude Opus 5 and Claude Opus 4.8 requests.
+   */
+  speed?: NonNullable<BetaMessageCreateParamsStreaming["speed"]>;
   /**
    * Enable extended thinking.
    * For adaptive thinking models: the model decides when/how much to think.
@@ -290,8 +307,25 @@ function mergeHeaders(...headerSources: (ProviderHeaders | undefined)[]): Provid
   return merged;
 }
 
+function appendAnthropicBeta(headers: ProviderHeaders, beta: string | undefined): ProviderHeaders {
+  if (!beta) return headers;
+  const values: string[] = [];
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLowerCase() !== "anthropic-beta") continue;
+    delete headers[name];
+    if (value === null) continue;
+    for (const entry of value.split(",")) {
+      const normalized = entry.trim();
+      if (normalized && !values.includes(normalized)) values.push(normalized);
+    }
+  }
+  if (!values.includes(beta)) values.push(beta);
+  headers["anthropic-beta"] = values.join(",");
+  return headers;
+}
+
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-  return mergeHeaders({ "User-Agent": getJuneUserAgent() }, ...headerSources);
+  return mergeHeaders({ "User-Agent": getUjiUserAgent() }, ...headerSources);
 }
 
 function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {
@@ -470,9 +504,137 @@ async function* iterateSseMessages(
   }
 }
 
+function normalizeAccountReset(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+  if (typeof value !== "string") return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function decodeClaudeAccountLimits(value: unknown, providerId: string): AccountLimits | undefined {
+  if (!isUnknownRecord(value)) return undefined;
+  const eventType = value["type"];
+  if (eventType !== undefined && eventType !== "rate_limit_event") return undefined;
+  const info = value["rate_limit_info"];
+  if (!isUnknownRecord(info)) return undefined;
+  const rateLimitType = info["rateLimitType"] ?? info["rate_limit_type"];
+  const utilization = info["utilization"];
+  if (typeof rateLimitType !== "string" || typeof utilization !== "number") return undefined;
+  const usedPercent = utilization <= 1 ? utilization * 100 : utilization;
+  const resetsAt = normalizeAccountReset(info["resetsAt"] ?? info["resets_at"]);
+  return {
+    providerId,
+    windows: [
+      {
+        id: rateLimitType,
+        usedPercent: Math.max(0, Math.min(100, usedPercent)),
+        ...(resetsAt === undefined ? {} : { resetsAt }),
+      },
+    ],
+    observedAt: Date.now(),
+  };
+}
+
+const CLAUDE_USAGE_WINDOWS: readonly { id: string; windowMinutes: number }[] = [
+  { id: "five_hour", windowMinutes: 5 * 60 },
+  { id: "seven_day", windowMinutes: 7 * 24 * 60 },
+  { id: "seven_day_sonnet", windowMinutes: 7 * 24 * 60 },
+  { id: "seven_day_opus", windowMinutes: 7 * 24 * 60 },
+];
+
+function decodeClaudeUsageWindow(
+  root: Record<string, unknown>,
+  definition: { id: string; windowMinutes: number },
+): AccountLimits["windows"][number] | undefined {
+  const value = root[definition.id];
+  if (!isUnknownRecord(value)) return undefined;
+  const utilization = value["utilization"];
+  if (typeof utilization !== "number" || !Number.isFinite(utilization)) return undefined;
+  const resetsAt = normalizeAccountReset(value["resets_at"]);
+  return {
+    id: definition.id,
+    usedPercent: Math.max(0, Math.min(100, utilization)),
+    windowMinutes: definition.windowMinutes,
+    ...(resetsAt === undefined ? {} : { resetsAt }),
+  };
+}
+
+/** Fetch Claude Code subscription windows from Anthropic's OAuth usage endpoint. */
+export async function fetchAnthropicAccountLimits(
+  model: Model<"anthropic-messages">,
+  options?: AnthropicOptions,
+): Promise<AccountLimits> {
+  const apiKey = options?.apiKey;
+  if (!apiKey || !isOAuthToken(apiKey)) {
+    throw new Error("Claude usage requires Anthropic OAuth");
+  }
+
+  const headers = new Headers({
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+    "User-Agent": `claude-cli/${claudeCodeVersion}`,
+    "anthropic-beta": "oauth-2025-04-20",
+  });
+  for (const source of [model.headers, options?.headers]) {
+    for (const [name, value] of Object.entries(source ?? {})) {
+      if (value === null) headers.delete(name);
+      else headers.set(name, value);
+    }
+  }
+
+  const timeoutSignal =
+    options?.timeoutMs !== undefined && options.timeoutMs > 0
+      ? AbortSignal.timeout(options.timeoutMs)
+      : undefined;
+  const combinedSignal = combineAbortSignals([options?.signal, timeoutSignal]);
+  const baseUrl = (model.baseUrl?.trim() || "https://api.anthropic.com")
+    .replace(/\/+$/, "")
+    .replace(/\/v1$/, "");
+  let response: Response;
+  try {
+    response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/api/oauth/usage`, {
+      method: "GET",
+      headers,
+      signal: combinedSignal.signal,
+    });
+  } finally {
+    combinedSignal.cleanup();
+  }
+  await options?.onResponse?.(
+    { status: response.status, headers: headersToRecord(response.headers) },
+    model,
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Claude usage request failed (${String(response.status)}): ${text || response.statusText}`,
+    );
+  }
+
+  const decoded: unknown = await response.json();
+  if (!isUnknownRecord(decoded)) throw new Error("Claude usage response was not an object");
+  return {
+    providerId: model.provider,
+    windows: CLAUDE_USAGE_WINDOWS.map((definition) =>
+      decodeClaudeUsageWindow(decoded, definition),
+    ).filter((window) => window !== undefined),
+    observedAt: Date.now(),
+  };
+}
+
 async function* iterateAnthropicEvents(
   response: Response,
   signal?: AbortSignal,
+  accountLimits?: {
+    providerId: string;
+    observe(limits: AccountLimits): void | Promise<void>;
+  },
 ): AsyncGenerator<RawMessageStreamEvent> {
   if (!response.body) {
     throw new Error("Attempted to iterate over an Anthropic response with no body");
@@ -487,6 +649,14 @@ async function* iterateAnthropicEvents(
     }
 
     if (!ANTHROPIC_MESSAGE_EVENTS.has(sse.event ?? "")) {
+      if (accountLimits !== undefined) {
+        try {
+          const limits = decodeClaudeAccountLimits(JSON.parse(sse.data), accountLimits.providerId);
+          if (limits !== undefined) await accountLimits.observe(limits);
+        } catch {
+          // Account telemetry must never fail the assistant stream.
+        }
+      }
       continue;
     }
 
@@ -538,9 +708,13 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
     };
 
     try {
+      if (options?.speed === "fast" && !supportsAnthropicFastMode(model)) {
+        throw new Error(`Anthropic fast mode is not available for ${model.provider}/${model.id}`);
+      }
       let client: Anthropic;
       let isOAuth: boolean;
       let usageModel = model;
+      let usedFastMode = false;
 
       if (options?.client) {
         client = options.client;
@@ -567,6 +741,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           options?.interleavedThinking ?? true,
           shouldUseFineGrainedToolStreamingBeta(model, context),
           shouldUseServerSideFallbackBeta(model),
+          options?.speed === "fast",
           options?.headers,
           options?.fetch,
           copilotDynamicHeaders,
@@ -583,6 +758,14 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       const requestOptions = {
         ...(options?.signal ? { signal: options.signal } : {}),
         ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+        ...(options?.client && options.speed === "fast"
+          ? {
+              headers: appendAnthropicBeta(
+                mergeHeaders(model.headers, options.headers),
+                FAST_MODE_BETA,
+              ),
+            }
+          : {}),
         maxRetries: 0,
       };
       const response = await retryProviderRequest(
@@ -604,7 +787,16 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       };
       const blocks = output.content as Block[];
 
-      for await (const event of iterateAnthropicEvents(response, options?.signal)) {
+      for await (const event of iterateAnthropicEvents(
+        response,
+        options?.signal,
+        options?.onAccountLimits === undefined
+          ? undefined
+          : {
+              providerId: model.provider,
+              observe: (limits) => options.onAccountLimits?.(limits, model),
+            },
+      )) {
         if (event.type === "message_start") {
           output.responseId = event.message.id;
           output.model = event.message.model;
@@ -616,6 +808,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
                     fallback.provider === model.provider && fallback.model === output.model,
                 )?.cost;
           usageModel = fallbackCost ? { ...model, id: output.model, cost: fallbackCost } : model;
+          usedFastMode = usedAnthropicFastMode(event.message.usage);
           // Capture initial token usage from message_start event
           // This ensures we have input token counts even if the stream is aborted early
           output.usage.input = event.message.usage.input_tokens || 0;
@@ -631,6 +824,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             output.usage.cacheRead +
             output.usage.cacheWrite;
           calculateCost(usageModel, output.usage);
+          applyAnthropicFastModePricing(output.usage, usedFastMode);
         } else if (event.type === "content_block_start") {
           if (event.content_block.type === "text") {
             const block: Block = {
@@ -811,6 +1005,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             output.usage.cacheRead +
             output.usage.cacheWrite;
           calculateCost(usageModel, output.usage);
+          applyAnthropicFastModePricing(output.usage, usedFastMode);
         }
       }
 
@@ -878,6 +1073,7 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
   const base = {
     ...buildBaseOptions(model, context, options, options?.apiKey),
     toolChoice: options?.toolChoice,
+    ...(options?.fast === true ? { speed: "fast" as const } : {}),
   } satisfies AnthropicOptions;
   if (!options?.reasoning) {
     return stream(model, context, {
@@ -926,6 +1122,7 @@ function createClient(
   interleavedThinking: boolean,
   useFineGrainedToolStreamingBeta: boolean,
   useServerSideFallbackBeta: boolean,
+  useFastModeBeta: boolean,
   optionsHeaders?: ProviderHeaders,
   fetch?: typeof globalThis.fetch,
   dynamicHeaders?: Record<string, string>,
@@ -952,15 +1149,18 @@ function createClient(
       baseURL: model.baseUrl,
       dangerouslyAllowBrowser: true,
       fetch,
-      defaultHeaders: mergeClientHeaders(
-        {
-          accept: "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-          ...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
-        },
-        model.headers,
-        dynamicHeaders,
-        optionsHeaders,
+      defaultHeaders: appendAnthropicBeta(
+        mergeClientHeaders(
+          {
+            accept: "application/json",
+            "anthropic-dangerous-direct-browser-access": "true",
+            ...(betaFeatures.length > 0 ? { "anthropic-beta": betaFeatures.join(",") } : {}),
+          },
+          model.headers,
+          dynamicHeaders,
+          optionsHeaders,
+        ),
+        useFastModeBeta ? FAST_MODE_BETA : undefined,
       ),
     });
 
@@ -975,16 +1175,21 @@ function createClient(
       baseURL: model.baseUrl,
       dangerouslyAllowBrowser: true,
       fetch,
-      defaultHeaders: mergeClientHeaders(
-        {
-          accept: "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "anthropic-beta": ["claude-code-20250219", "oauth-2025-04-20", ...betaFeatures].join(","),
-          "user-agent": `claude-cli/${claudeCodeVersion}`,
-          "x-app": "cli",
-        },
-        model.headers,
-        optionsHeaders,
+      defaultHeaders: appendAnthropicBeta(
+        mergeClientHeaders(
+          {
+            accept: "application/json",
+            "anthropic-dangerous-direct-browser-access": "true",
+            "anthropic-beta": ["claude-code-20250219", "oauth-2025-04-20", ...betaFeatures].join(
+              ",",
+            ),
+            "user-agent": `claude-cli/${claudeCodeVersion}`,
+            "x-app": "cli",
+          },
+          model.headers,
+          optionsHeaders,
+        ),
+        useFastModeBeta ? FAST_MODE_BETA : undefined,
       ),
     });
 
@@ -1006,6 +1211,7 @@ function createClient(
     model.headers,
     optionsHeaders,
   );
+  if (useFastModeBeta) appendAnthropicBeta(defaultHeaders, FAST_MODE_BETA);
   const client = new Anthropic({
     apiKey: apiKey ?? null,
     authToken: null,
@@ -1053,6 +1259,10 @@ function buildParams(
     max_tokens: options?.maxTokens ?? model.maxTokens,
     stream: true,
   };
+
+  if (options?.speed !== undefined) {
+    params.speed = options.speed;
+  }
 
   // For OAuth tokens, we MUST include Claude Code identity
   if (isOAuthToken) {
@@ -1120,13 +1330,7 @@ function buildParams(
         // Adaptive thinking: Claude decides when and how much to think.
         params.thinking = { type: "adaptive", display };
         if (options.effort) {
-          // The Anthropic SDK types can lag newly supported effort values such as "xhigh".
-          params.output_config =
-            options.effort === "xhigh"
-              ? ({ effort: options.effort } as unknown as NonNullable<
-                  MessageCreateParamsStreaming["output_config"]
-                >)
-              : { effort: options.effort };
+          params.output_config = { effort: options.effort };
         }
       } else {
         // Budget-based thinking for older models

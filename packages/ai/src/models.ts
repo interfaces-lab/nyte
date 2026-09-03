@@ -1,4 +1,5 @@
 import { lazyStream } from "./api/lazy.ts";
+import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
 import { type AuthResolutionOverrides, ModelsError, resolveProviderAuth } from "./auth/resolve.ts";
@@ -26,6 +27,7 @@ import type {
   Model,
   ModelCostRates,
   ModelThinkingLevel,
+  PromptCachePolicy,
   ProviderHeaders,
   ProviderRequestOptions,
   ProviderStreams,
@@ -101,6 +103,8 @@ export interface Provider<TApi extends Api = Api> {
 
   readonly baseUrl?: string;
   readonly headers?: ProviderHeaders;
+  /** Prompt-cache behavior published for hosts that present cache state. */
+  readonly promptCache?: PromptCachePolicy;
 
   /**
    * Required: at least one of `apiKey`/`oauth`. Every provider has auth
@@ -843,6 +847,7 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
   name?: string;
   baseUrl?: string;
   headers?: ProviderHeaders;
+  promptCache?: PromptCachePolicy;
   /** Required — every provider has auth semantics, even ambient/keyless ones. */
   auth: ProviderAuth;
   /** Static baseline model list (empty for purely dynamic providers). */
@@ -856,6 +861,9 @@ export interface CreateProviderOptions<TApi extends Api = Api> {
   /** Single implementation, or map keyed by `model.api` for mixed-API providers. */
   api: ProviderStreams | Partial<Record<TApi, ProviderStreams>>;
 }
+
+/** Skip the network catalog fetch when the stored one is this fresh, unless forced. */
+const CATALOG_FRESHNESS_WINDOW_MS = 4 * 60 * 60 * 1000;
 
 /**
  * Builds a provider from parts. Built-in provider factories and models.json
@@ -907,6 +915,7 @@ export function createProvider<TApi extends Api = Api>(
     name: input.name ?? input.id,
     baseUrl: input.baseUrl,
     headers: input.headers,
+    promptCache: input.promptCache,
     auth: input.auth,
     getModels: currentModels,
     refreshModels: fetchModels
@@ -926,6 +935,15 @@ export function createProvider<TApi extends Api = Api>(
             }
           }
           if (!context.allowNetwork || context.signal.aborted) return;
+          // A background freshen within the window is a no-op, so repeated
+          // boots do not re-download an unchanged catalog.
+          if (
+            context.force !== true &&
+            context.stored?.checkedAt !== undefined &&
+            Date.now() - context.stored.checkedAt < CATALOG_FRESHNESS_WINDOW_MS
+          ) {
+            return;
+          }
           const refreshed = await fetchModels(context);
           if (context.signal.aborted) return;
           await context.publish({
@@ -1012,22 +1030,12 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
   return usage.cost;
 }
 
-const EXTENDED_THINKING_LEVELS: ModelThinkingLevel[] = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
-
 export function getSupportedThinkingLevels<TApi extends Api>(
   model: Model<TApi>,
 ): ModelThinkingLevel[] {
   if (!model.reasoning) return ["off"];
 
-  return EXTENDED_THINKING_LEVELS.filter((level) => {
+  return MODEL_THINKING_LEVELS.filter((level) => {
     const mapped = model.thinkingLevelMap?.[level];
     if (mapped === null) return false;
     if (level === "xhigh" || level === "max") return mapped !== undefined;
@@ -1042,15 +1050,15 @@ export function clampThinkingLevel<TApi extends Api>(
   const availableLevels = getSupportedThinkingLevels(model);
   if (availableLevels.includes(level)) return level;
 
-  const requestedIndex = EXTENDED_THINKING_LEVELS.indexOf(level);
+  const requestedIndex = MODEL_THINKING_LEVELS.indexOf(level);
   if (requestedIndex === -1) return availableLevels[0] ?? "off";
 
-  for (let i = requestedIndex; i < EXTENDED_THINKING_LEVELS.length; i++) {
-    const candidate = EXTENDED_THINKING_LEVELS[i];
+  for (let i = requestedIndex; i < MODEL_THINKING_LEVELS.length; i++) {
+    const candidate = MODEL_THINKING_LEVELS[i];
     if (availableLevels.includes(candidate)) return candidate;
   }
   for (let i = requestedIndex - 1; i >= 0; i--) {
-    const candidate = EXTENDED_THINKING_LEVELS[i];
+    const candidate = MODEL_THINKING_LEVELS[i];
     if (availableLevels.includes(candidate)) return candidate;
   }
   return availableLevels[0] ?? "off";

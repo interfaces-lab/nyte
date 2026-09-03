@@ -1,7 +1,7 @@
 /**
- * Bash tool ported from pi's harness bash tool, adapted to June's AgentTool
+ * Bash tool ported from pi's harness bash tool, adapted to Uji's AgentTool
  * contract. The BashOperations seam stands in for pi's ExecutionEnv shell
- * boundary (env.executeShell) until June grows an execution-env abstraction,
+ * boundary (env.executeShell) until Uji grows an execution-env abstraction,
  * so command execution can be delegated to remote systems (for example SSH).
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/bash.ts
@@ -218,8 +218,8 @@ export function createBashTool(
   const spawnHook = options?.spawnHook;
   return {
     name: "bash",
-    label: "bash",
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
+    promptSnippet: "Execute bash commands (ls, grep, find, etc.)",
     parameters: bashParameters,
     prepareArguments: parseBashToolInput,
     async execute(
@@ -230,7 +230,7 @@ export function createBashTool(
     ): Promise<AgentToolResult<BashToolDetails | undefined>> {
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
-      const output = new OutputAccumulator({ tempFilePrefix: "june-bash" });
+      const output = new OutputAccumulator({ tempFilePrefix: "uji-bash" });
       let acceptingOutput = true;
       let updateTimer: NodeJS.Timeout | undefined;
       let updateDirty = false;
@@ -243,6 +243,7 @@ export function createBashTool(
         const snapshot = output.snapshot({ persistIfTruncated: true });
         onUpdate({
           content: toolResultContent(sanitizeBinaryOutput(snapshot.content) || ""),
+          title: command,
           details: {
             truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
             fullOutputPath: snapshot.fullOutputPath,
@@ -273,7 +274,7 @@ export function createBashTool(
       };
 
       if (onUpdate) {
-        onUpdate({ content: [], details: undefined });
+        onUpdate({ content: [], details: undefined, title: command });
       }
 
       const handleData = (data: Buffer) => {
@@ -346,7 +347,7 @@ export function createBashTool(
         if (exitCode !== 0 && exitCode !== null) {
           throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
         }
-        return { content: toolResultContent(outputText), details };
+        return { content: toolResultContent(outputText), details, title: command };
       } finally {
         clearUpdateTimer();
       }

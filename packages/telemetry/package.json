@@ -1,15 +1,16 @@
 {
-  "name": "@june/telemetry",
+  "name": "@uji-ai/telemetry",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
+    "clean": "rm -rf node_modules .turbo",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "typescript": "^7.0.2"
   }
 }

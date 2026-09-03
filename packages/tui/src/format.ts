@@ -2,8 +2,8 @@
  * Pure formatting and parsing helpers shared by the TUI and print mode.
  * Nothing here touches a renderer, so every function is unit-testable.
  */
-import { toJsonValue, type Entry, type ThinkingLevel } from "@uji-ai/core";
-import type { JsonValue, Message, UserMessage } from "@uji-ai/schema";
+import type { ThinkingLevel } from "@uji-ai/core";
+import type { Message } from "@uji-ai/schema";
 import { parsePatch, type StructuredPatch } from "diff";
 import { GLYPHS, SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
@@ -13,7 +13,7 @@ export interface ParsedSlashCommand {
   argument: string;
 }
 
-export type ComposerSubmission =
+type ComposerSubmission =
   | { kind: "empty" }
   | { kind: "command"; command: ParsedSlashCommand }
   | { kind: "prompt"; text: string };
@@ -30,7 +30,7 @@ function isSlashCommandNameCharacter(character: string): boolean {
 }
 
 /** Parse one slash command while preserving spaces inside its argument. */
-export function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
+function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   const value = input.trim();
   const first = value[1];
   if (
@@ -65,140 +65,18 @@ export function parseComposerSubmission(input: string): ComposerSubmission {
   return command === undefined ? { kind: "prompt", text } : { kind: "command", command };
 }
 
-/**
- * `AgentEvent.tool_execution_start.args` is the raw JSON string the model
- * produced. Decode it once here; a malformed string is returned as-is so the
- * UI can still show what the model sent.
- */
-export function parseToolArgs(args: unknown): JsonValue | undefined {
-  if (args === undefined) return undefined;
-  if (typeof args !== "string") return toJsonValue(args);
+/** One heading per tool call: the tool's own title after its name, else the name alone. */
+export function toolHeading(toolName: string, title: string | undefined): string {
+  return title === undefined ? toolName : `${toolName} ${title}`;
+}
+
+/** The file a unified patch names, so its diff can be syntax highlighted. */
+export function patchPath(patch: string): string | undefined {
   try {
-    return toJsonValue(JSON.parse(args));
+    return parsePatch(patch)[0]?.newFileName;
   } catch {
-    return args;
+    return undefined;
   }
-}
-
-interface JsonObject {
-  readonly [key: string]: JsonValue;
-}
-
-function isRecord(value: unknown): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function clip(text: string, max: number): string {
-  const line = text.replaceAll("\n", "⏎");
-  return truncateDisplay(line, max, GLYPHS.ellipsis);
-}
-
-/** A path inside the working directory reads better without the prefix. */
-export function relativePath(path: string, cwd: string): string {
-  if (!path.startsWith(`${cwd}/`)) return path;
-  return path.slice(cwd.length + 1);
-}
-
-/** `key=value` pairs, strings unquoted, one line, for non-bash tool titles. */
-export function compactArgs(args: unknown, max = 96): string {
-  if (!isRecord(args)) {
-    if (args === undefined) return "";
-    if (typeof args === "string") return clip(args, max);
-    if (typeof args === "symbol") {
-      return clip(args.description === undefined ? "Symbol()" : `Symbol(${args.description})`, max);
-    }
-    if (typeof args === "bigint") return clip(`${args.toString()}n`, max);
-    if (typeof args === "function") return clip(`[function ${args.name || "anonymous"}]`, max);
-    return clip(JSON.stringify(args), max);
-  }
-  const pairs = Object.entries(args).map(([key, value]) => {
-    const shown = typeof value === "string" ? value : JSON.stringify(value);
-    return `${key}=${clip(shown ?? "", 40)}`;
-  });
-  return clip(pairs.join(" "), max);
-}
-
-export interface ToolCallSummary {
-  /** The action, capitalised: `Read`, `Run`, `Search`. */
-  verb: string;
-  /** What the action acts on: a path, a command, a pattern. */
-  operand: string;
-  /** Which colour the operand gets. */
-  operandKind: "path" | "command" | "pattern" | "plain";
-  /** Trailing arguments that qualify the call, shown dim. */
-  qualifier?: string;
-  /** One line, unstyled, for print mode. */
-  title: string;
-  /** Full multi-line argument text worth showing under the heading, if any. */
-  body?: string;
-  /** Source path, when the call names one, for syntax highlighting. */
-  path?: string;
-}
-
-/**
- * A verb per tool, so every heading reads the same way: verb, operand, qualifier.
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/scrollback/blocks/tool
- */
-const VERBS: Readonly<Record<string, string>> = {
-  read: "Read",
-  write: "Write",
-  edit: "Edit",
-  bash: "Run",
-  grep: "Search",
-  find: "Find",
-  ls: "List",
-};
-
-/** The argument that best identifies a call: grep/find's pattern, else the path. */
-const PRIMARY_KEYS = ["pattern", "path"] as const;
-
-/**
- * A heading qualifier only carries scalars. Structured arguments — an `edits`
- * array, a nested options object — say nothing at a glance and push the operand
- * off the row.
- */
-function isHeadingValue(value: unknown): boolean {
-  if (value === undefined || value === null || value === "") return false;
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-}
-
-function summary(parts: Omit<ToolCallSummary, "title">): ToolCallSummary {
-  const title = [parts.verb, parts.operand, parts.qualifier]
-    .filter((part) => part !== undefined && part !== "")
-    .join(" ");
-  return { ...parts, title };
-}
-
-export function describeToolCall(toolName: string, rawArgs: unknown): ToolCallSummary {
-  const args = parseToolArgs(rawArgs);
-  const verb = VERBS[toolName] ?? toolName;
-  if (toolName === "bash") {
-    const command = isRecord(args) && typeof args["command"] === "string" ? args["command"] : "";
-    return summary({
-      verb,
-      operand: command === "" ? compactArgs(args) : clip(command, 120),
-      operandKind: "command",
-    });
-  }
-  if (!isRecord(args)) {
-    return summary({ verb, operand: compactArgs(args), operandKind: "plain" });
-  }
-  const primaryKey = PRIMARY_KEYS.find((key) => typeof args[key] === "string");
-  const primary = primaryKey === undefined ? "" : String(args[primaryKey]);
-  const rest = Object.fromEntries(
-    Object.entries(args).filter(
-      ([key, value]) => key !== primaryKey && key !== "content" && isHeadingValue(value),
-    ),
-  );
-  const path = typeof args["path"] === "string" ? args["path"] : undefined;
-  return summary({
-    verb,
-    operand: primary,
-    operandKind: primaryKey === "pattern" ? "pattern" : "path",
-    qualifier: compactArgs(rest),
-    body: toolName === "write" && typeof args["content"] === "string" ? args["content"] : undefined,
-    ...(path === undefined ? {} : { path }),
-  });
 }
 
 /** How long an operation took, read as a duration rather than a clock. */
@@ -225,7 +103,7 @@ export function resultSummary(text: string): string | undefined {
   return lines === 1 ? undefined : `${String(lines)} lines`;
 }
 
-export interface Preview {
+interface Preview {
   text: string;
   omitted: number;
 }
@@ -255,6 +133,47 @@ export function omittedLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} more lines`;
 }
 
+/** Calls a collapsed tool group scrolled out of its tail window. */
+export function earlierCallsLabel(hidden: number): string {
+  return hidden === 1
+    ? `${GLYPHS.ellipsis} 1 earlier call`
+    : `${GLYPHS.ellipsis} ${String(hidden)} earlier calls`;
+}
+
+/** Verbs for the lead of a tool group heading. Unlisted tools read as "used <name>". */
+const TOOL_CALL_VERBS: Readonly<Record<string, string>> = {
+  read: "read",
+  ls: "listed",
+  bash: "ran",
+  websearch: "searched",
+  edit: "edited",
+  write: "wrote",
+};
+
+/** Lead of a tool group heading: verbs in first-call order, capped at three. */
+export function toolCallVerbs(toolNames: readonly string[]): string {
+  const verbs: string[] = [];
+  for (const name of toolNames) {
+    const verb = TOOL_CALL_VERBS[name] ?? `used ${name}`;
+    if (!verbs.includes(verb)) verbs.push(verb);
+  }
+  const lead = verbs.slice(0, 3).join(", ");
+  return lead.charAt(0).toUpperCase() + lead.slice(1);
+}
+
+/** Dim tail of a tool group heading: per-tool call counts in first-call order. */
+export function toolCallCounts(toolNames: readonly string[]): string {
+  const counts = new Map<string, number>();
+  for (const name of toolNames) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return [...counts].map(([name, count]) => `${String(count)} ${name}`).join(" · ");
+}
+
+export function unchangedLinesLabel(omitted: number): string {
+  return omitted === 1
+    ? `${GLYPHS.ellipsis} 1 unchanged line`
+    : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
+}
+
 /** `+added -removed` line counts from a unified patch, for a tool heading. */
 export function diffStat(patch: string): { added: number; removed: number } {
   let added = 0;
@@ -267,20 +186,64 @@ export function diffStat(patch: string): { added: number; removed: number } {
   return { added, removed };
 }
 
-/**
- * Unified patch from an `edit` result. The tool also ships `details.diff`, but
- * that is a display string with line numbers baked in (`+12 text`), which no
- * unified-diff parser accepts; `details.patch` is the real patch.
- */
-export function diffFromDetails(details: unknown): string | undefined {
-  if (!isRecord(details)) return undefined;
-  const patch = details["patch"];
-  if (typeof patch === "string" && patch !== "") return patch;
-  const diff = details["diff"];
-  return typeof diff === "string" && diff.startsWith("---") ? diff : undefined;
+interface DiffSection {
+  readonly patch: string;
+  readonly omittedBefore: number;
+  readonly rows: number;
 }
 
-export interface OutputDiffFile {
+interface HunkStart {
+  readonly index: number;
+  readonly newStart: number;
+  readonly newLines: number;
+}
+
+function hunkRows(hunk: string): number {
+  const [, ...lines] = hunk.replace(/\n$/u, "").split("\n");
+  return lines.filter((line) => !line.startsWith("\\")).length;
+}
+
+/**
+ * Split a patch into independently sized hunks and count the unchanged lines
+ * before each one. The transcript can then use one scroller for the whole
+ * conversation instead of clipping a tall diff into a nested viewport.
+ *
+ * Based on OpenCode's patch-hunk presentation:
+ * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/util/diff.ts
+ */
+export function diffSections(patch: string): DiffSection[] {
+  const starts: HunkStart[] = [
+    ...patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@.*$/gmu),
+  ].flatMap((match) => {
+    const index = match.index;
+    const newStart = match[1];
+    if (index === undefined || newStart === undefined) return [];
+    return [
+      {
+        index,
+        newStart: Number(newStart),
+        newLines: Number(match[2] ?? "1"),
+      },
+    ];
+  });
+  if (starts.length === 0) return [{ patch, omittedBefore: 0, rows: 0 }];
+
+  const prefix = patch.slice(0, starts[0]?.index);
+  let previousEnd = 1;
+  return starts.map((start, index) => {
+    const end = starts[index + 1]?.index ?? patch.length;
+    const hunk = patch.slice(start.index, end);
+    const omittedBefore = Math.max(0, start.newStart - previousEnd);
+    previousEnd = start.newStart + start.newLines;
+    return {
+      patch: prefix + hunk,
+      omittedBefore,
+      rows: hunkRows(hunk),
+    };
+  });
+}
+
+interface OutputDiffFile {
   patch: string;
   path?: string;
 }
@@ -327,15 +290,12 @@ function outputDiffFiles(patch: string, parsed: readonly StructuredPatch[]): Out
   );
   if (starts.length !== parsed.length || starts.length === 0) {
     const path = parsed.length === 1 && parsed[0] !== undefined ? diffPath(parsed[0]) : undefined;
-    return [{ patch, ...(path === undefined ? {} : { path }) }];
+    return [{ patch, path }];
   }
   return starts.map((start, index) => {
     const end = starts[index + 1] ?? patch.length;
     const path = parsed[index] === undefined ? undefined : diffPath(parsed[index]);
-    return {
-      patch: patch.slice(start, end).replace(/\n+$/, ""),
-      ...(path === undefined ? {} : { path }),
-    };
+    return { patch: patch.slice(start, end).replace(/\n+$/, ""), path };
   });
 }
 
@@ -364,11 +324,10 @@ export function diffFromOutput(text: string): OutputDiff | undefined {
     }
     if (parsed.length === 0 || !parsed.some(substantivePatch)) continue;
     const after = trimSection(lines.slice(end).join("\n"));
-    return {
-      files: outputDiffFiles(patch, parsed),
-      ...(before === undefined ? {} : { before }),
-      ...(after === undefined ? {} : { after }),
-    };
+    const diff: OutputDiff = { files: outputDiffFiles(patch, parsed) };
+    if (before !== undefined) diff.before = before;
+    if (after !== undefined) diff.after = after;
+    return diff;
   }
   return undefined;
 }
@@ -392,205 +351,32 @@ export function oneLine(text: string): string {
   return text.replaceAll("\r", "").replaceAll("\n", "⏎").trim();
 }
 
-export interface TranscriptUserPart {
-  kind: "user";
-  entryId: string;
-  parentId: string | null;
-  content: UserMessage["content"];
-}
-
-export type TranscriptTurnPart =
-  | TranscriptUserPart
-  | { kind: "assistant"; text: string }
-  | { kind: "thinking"; text: string }
-  | {
-      kind: "tool";
-      callId: string;
-      toolName: string;
-      args: unknown;
-      output?: string;
-      details?: unknown;
-      isError?: boolean;
-    }
-  | { kind: "note"; text: string }
-  | { kind: "compaction"; summary: string; tokensBefore: number };
-
-export type TranscriptTurnOutcome = "completed" | "aborted" | "failed";
-
-/** One durable visual owner per conversation turn. */
-export type TranscriptItem =
-  | {
-      kind: "turn";
-      id: string;
-      entryIds: string[];
-      parts: TranscriptTurnPart[];
-      outcome: TranscriptTurnOutcome;
-    }
-  | { kind: "note"; entryIds: string[]; text: string }
-  | {
-      kind: "compaction";
-      entryIds: string[];
-      summary: string;
-      tokensBefore: number;
-    };
+const MAX_RETRY_CAUSE_CHARS = 80;
 
 /**
- * Turn a stored branch (oldest first) into transcript items. Tool calls and
- * their outputs are paired by tool-call id so a restored tool renders as one card.
+ * A provider error trimmed to fit one transcript line and punctuated, so the retry
+ * clause that follows it reads as a second sentence rather than a run-on.
  */
-export function transcriptFromEntries(entries: readonly Entry[]): TranscriptItem[] {
-  const items: TranscriptItem[] = [];
-  const tools = new Map<string, Extract<TranscriptTurnPart, { kind: "tool" }>>();
-  let turn: Extract<TranscriptItem, { kind: "turn" }> | undefined;
-
-  const ensureTurn = (id: string): Extract<TranscriptItem, { kind: "turn" }> => {
-    if (turn !== undefined) return turn;
-    turn = { kind: "turn", id, entryIds: [], parts: [], outcome: "completed" };
-    items.push(turn);
-    return turn;
-  };
-
-  const addEntry = (owner: Extract<TranscriptItem, { kind: "turn" }>, id: string): void => {
-    if (!owner.entryIds.includes(id)) owner.entryIds.push(id);
-  };
-
-  for (const entry of entries) {
-    if (entry.type === "model_change" || entry.type === "thinking_level_change") {
-      continue;
-    }
-    if (entry.type === "compaction") {
-      const preview = previewLines(entry.summary, 40);
-      const checkpoint = {
-        kind: "compaction",
-        summary:
-          preview.omitted === 0
-            ? preview.text
-            : `${preview.text}\n${omittedLabel(preview.omitted)}`,
-        tokensBefore: entry.tokensBefore,
-      } as const;
-      if (turn === undefined) items.push({ ...checkpoint, entryIds: [entry.id] });
-      else {
-        addEntry(turn, entry.id);
-        turn.parts.push(checkpoint);
-      }
-      continue;
-    }
-    if (entry.type === "custom") {
-      const data = isRecord(entry.data) ? entry.data : undefined;
-      const providerId = data?.["providerId"];
-      const cwd = data?.["cwd"];
-      if (entry.customType === "provider_change" && typeof providerId === "string") {
-        items.push({ kind: "note", entryIds: [entry.id], text: `Provider → ${providerId}` });
-        turn = undefined;
-        tools.clear();
-      } else if (entry.customType === "cwd_change" && typeof cwd === "string") {
-        items.push({ kind: "note", entryIds: [entry.id], text: `Directory → ${cwd}` });
-        turn = undefined;
-        tools.clear();
-      }
-      continue;
-    }
-    if (entry.type !== "message") continue;
-    const message = entry.message;
-    if (message.role === "user") {
-      turn = {
-        kind: "turn",
-        id: entry.id,
-        entryIds: [entry.id],
-        outcome: "completed",
-        parts: [
-          {
-            kind: "user",
-            entryId: entry.id,
-            parentId: entry.parentId,
-            content: message.content,
-          },
-        ],
-      };
-      items.push(turn);
-      tools.clear();
-    } else if (message.role === "assistant") {
-      const outcome: TranscriptTurnOutcome =
-        message.stopReason === "aborted"
-          ? "aborted"
-          : message.stopReason === "error" || message.errorMessage !== undefined
-            ? "failed"
-            : "completed";
-      const hasVisibleContent = message.content.some(
-        (part) =>
-          part.type === "toolCall" ||
-          (part.type === "text" && part.text !== "") ||
-          (part.type === "thinking" && part.thinking !== ""),
-      );
-      if (!hasVisibleContent && outcome === "completed") {
-        continue;
-      }
-      const owner = ensureTurn(entry.id);
-      addEntry(owner, entry.id);
-      owner.outcome = outcome;
-      for (const part of message.content) {
-        if (part.type === "text") {
-          if (part.text !== "") {
-            owner.parts.push({ kind: "assistant", text: part.text });
-          }
-        } else if (part.type === "thinking") {
-          if (part.thinking !== "") {
-            owner.parts.push({ kind: "thinking", text: part.thinking });
-          }
-        } else {
-          const tool = {
-            kind: "tool" as const,
-            callId: part.id,
-            toolName: part.name,
-            args: part.arguments,
-          };
-          tools.set(part.id, tool);
-          owner.parts.push(tool);
-        }
-      }
-      if (message.stopReason !== "aborted" && message.errorMessage !== undefined) {
-        owner.parts.push({ kind: "note", text: `Error: ${message.errorMessage}` });
-      }
-    } else {
-      const owner = ensureTurn(entry.id);
-      addEntry(owner, entry.id);
-      const output = partsText(message.content);
-      const tool = tools.get(message.toolCallId);
-      if (tool === undefined) {
-        owner.parts.push({
-          kind: "tool",
-          callId: message.toolCallId,
-          toolName: message.toolName,
-          args: undefined,
-          output,
-          details: message.details,
-          isError: message.isError,
-        });
-      } else {
-        tool.output = output;
-        tool.details = message.details;
-        tool.isError = message.isError;
-      }
-    }
-  }
-  return items;
+export function retryCause(errorMessage: string): string {
+  const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
+  if (collapsed === "") return "Request failed.";
+  const bounded =
+    collapsed.length <= MAX_RETRY_CAUSE_CHARS
+      ? collapsed
+      : `${collapsed.slice(0, MAX_RETRY_CAUSE_CHARS - 1).trimEnd()}…`;
+  return /[.!?…]$/u.test(bounded) ? bounded : `${bounded}.`;
 }
 
-/** Locate the top-level visual owner for a durable entry. */
-export function transcriptItemIndex(items: readonly TranscriptItem[], entryId: string): number {
-  return items.findIndex((item) => item.entryIds.includes(entryId));
-}
-
-/** Composer metadata. Run state is retained for shell behavior, not rendered. */
+/** Composer metadata. */
 export interface PowerlineState {
-  runState: "idle" | "working" | "running tool" | "compacting" | "resuming";
   workspace: string;
   branch?: string;
   dirty: boolean;
+  provider: string;
   model: string;
   effort?: ThinkingLevel;
-  /** Priority processing is on. */
-  fast: boolean;
+  /** Status badges from plugin settings (e.g. "fast"), rendered beside the thinking level. */
+  statuses: readonly string[];
   queued: number;
   /** Tokens reported by the last settled assistant turn. */
   tokens?: number;
@@ -603,6 +389,24 @@ export interface PowerlineSegment {
   tone: "workspace" | "model" | "effort" | "queue" | "usage";
 }
 
+/** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
+export function clockDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  if (seconds < 60) return `${String(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const restSeconds = seconds % 60;
+  if (minutes < 60) {
+    return restSeconds === 0
+      ? `${String(minutes)}m`
+      : `${String(minutes)}m${String(restSeconds).padStart(2, "0")}s`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes === 0
+    ? `${String(hours)}h`
+    : `${String(hours)}h${String(restMinutes).padStart(2, "0")}m`;
+}
+
 export function shortId(id: string): string {
   const durableSuffix = /-(s_[a-zA-Z0-9]+)$/.exec(id)?.[1];
   if (durableSuffix !== undefined) return durableSuffix;
@@ -610,7 +414,7 @@ export function shortId(id: string): string {
 }
 
 /** `12340` → `12.3k`; whole counts below a thousand stay bare. */
-function formatTokens(tokens: number): string {
+export function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens);
   if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k`;
   return `${(tokens / 1_000_000).toFixed(1)}m`;
@@ -618,10 +422,9 @@ function formatTokens(tokens: number): string {
 
 export function powerlineSegments(state: PowerlineState): PowerlineSegment[] {
   const branch = state.branch === undefined ? "" : ` ${state.branch}${state.dirty ? "*" : ""}`;
+  const badges = [...(state.effort === undefined ? [] : [state.effort]), ...state.statuses];
   const effort: PowerlineSegment[] =
-    state.effort === undefined
-      ? []
-      : [{ text: `${state.effort}${state.fast ? " fast" : ""}`, tone: "effort" }];
+    badges.length === 0 ? [] : [{ text: badges.join(" "), tone: "effort" }];
   const usage: PowerlineSegment[] = [];
   if (state.tokens !== undefined && state.tokens > 0) {
     usage.push({
@@ -659,15 +462,7 @@ export function fitPowerlineSegments(
   return kept;
 }
 
-/** Plain-text status rendering. Semantic color is added by the TUI renderer. */
-export function powerlineText(state: PowerlineState, maxWidth?: number): string {
-  const segments = powerlineSegments(state);
-  if (maxWidth === undefined) return joinSegments(segments);
-  const text = joinSegments(fitPowerlineSegments(segments, maxWidth));
-  return truncateDisplay(text, Math.max(0, maxWidth));
-}
-
-export interface HintGroup {
+interface HintGroup {
   key: string;
   label: string;
 }
@@ -691,4 +486,25 @@ export function hintGroups(text: string): HintGroup[] {
     else groups.push({ key: trimmed.slice(0, space), label: trimmed.slice(space + 1) });
   }
   return groups;
+}
+
+/** What the terminal title says before a chat has a name. */
+export const TERMINAL_TITLE_BASE = "uji";
+
+/** Long titles are dropped or scrolled by the terminal; cut before it does. */
+export const TERMINAL_TITLE_MAX_CHARS = 72;
+
+/** C0 and C1, which is where the OSC terminator and the bell live. */
+const CONTROL_CHARACTERS = /\p{Cc}/gu;
+
+/**
+ * `uji` until the chat has a name, then `uji - <name>`. A name reaches this
+ * through a model and through the composer, so it is untrusted text on the
+ * way to an OSC sequence: the escape that ends the sequence is stripped here.
+ */
+export function terminalTitle(name: string | undefined): string {
+  const clean = (name ?? "").replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
+  if (clean === "") return TERMINAL_TITLE_BASE;
+  const room = TERMINAL_TITLE_MAX_CHARS - TERMINAL_TITLE_BASE.length - " - ".length;
+  return `${TERMINAL_TITLE_BASE} - ${truncateDisplay(clean, room, "…")}`;
 }

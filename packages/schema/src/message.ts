@@ -162,6 +162,8 @@ export interface ToolResultMessage<TDetails = any> {
   toolName: string;
   content: (TextContent | ImageContent)[];
   details?: TDetails;
+  /** Heading the tool chose for this call. Clients fall back to the tool name. */
+  title?: string;
   /** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
   usage?: Usage;
   /**
@@ -183,7 +185,10 @@ export type Message = UserMessage | AssistantMessage | ToolResultMessage;
  * Streams emit `start` before partial updates, then terminate with either
  * `done` carrying the final successful AssistantMessage, or `error` carrying
  * the final AssistantMessage with stopReason "error" or "aborted" and an
- * errorMessage. `partial` is one mutable AssistantMessage shared by every event.
+ * errorMessage. A `*_delta.delta` is incremental and must be appended once;
+ * `*_end.content` is authoritative and replaces the accumulated preview.
+ * `partial` is one mutable AssistantMessage shared by every event, so clients
+ * must not diff successive `partial` references to recover deltas.
  */
 export type AssistantMessageEvent =
   | { type: "start"; partial: AssistantMessage }

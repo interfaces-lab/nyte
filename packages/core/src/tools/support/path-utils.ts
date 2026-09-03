@@ -3,7 +3,7 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/utils/paths.ts
  * and https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/path-utils.ts
- * (June resolves read-path variants locally where pi asks its ExecutionEnv).
+ * (Uji resolves read-path variants locally where pi asks its ExecutionEnv).
  */
 import { constants } from "node:fs";
 import { access } from "node:fs/promises";
@@ -38,7 +38,7 @@ function normalizeWindowsShellPath(filePath: string): string {
   return `${match[1].toUpperCase()}:\\${suffix ?? ""}`;
 }
 
-export function normalizePath(input: string, options: PathInputOptions = {}): string {
+function normalizePath(input: string, options: PathInputOptions = {}): string {
   let normalized = options.trim ? input.trim() : input;
   if (options.normalizeUnicodeSpaces) {
     normalized = normalized.replace(UNICODE_SPACES, " ");
@@ -68,7 +68,7 @@ export function normalizePath(input: string, options: PathInputOptions = {}): st
   return normalized;
 }
 
-export function resolvePath(
+function resolvePath(
   input: string,
   baseDir: string = process.cwd(),
   options: PathInputOptions = {},

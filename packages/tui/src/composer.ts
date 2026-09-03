@@ -1,11 +1,13 @@
+import { statSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { imageInfo } from "@opentui/core";
 import type { ImageContent, UserMessage } from "@uji-ai/schema";
 import fuzzysort from "fuzzysort";
+import { completionTrigger } from "./completion-trigger.ts";
 
-const MAX_HISTORY = 100;
 const MAX_MENTION_FILES = 5_000;
 const MAX_MENTION_RESULTS = 10;
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
@@ -40,7 +42,7 @@ export type ComposerPart =
       text: string;
     };
 
-export type ComposerPaste =
+type ComposerPaste =
   | { kind: "text"; text: string }
   | { kind: "file"; path: string }
   | { kind: "image"; image: ImageContent };
@@ -51,12 +53,12 @@ export interface MentionFile {
   label: string;
 }
 
-export interface FileMention {
+interface FileMention {
   source: string;
   path: string;
 }
 
-export interface PreparedComposerPrompt {
+interface PreparedComposerPrompt {
   displayText: string;
   message: UserMessage;
   parts: readonly ComposerPart[];
@@ -139,7 +141,21 @@ export async function resolveComposerPaste(value: string, cwd: string): Promise<
   };
 }
 
-/** Files offered by `@` completion. Common generated trees are skipped at the walk boundary. */
+/**
+ * A mentioned folder is a real thing the user can hand the model, so paths
+ * that name directories carry a trailing separator everywhere: in the walked
+ * list, in composer parts, and in the `@file://…/` mention the model sees.
+ * That one convention is what lets pure code tell folders from files without
+ * touching the disk.
+ */
+function isFolderPath(path: string): boolean {
+  return path.endsWith(sep) || path.endsWith("/");
+}
+
+/**
+ * Files and folders offered by `@` completion. Common generated trees are
+ * skipped at the walk boundary.
+ */
 export async function discoverMentionFiles(cwd: string): Promise<MentionFile[]> {
   const files: MentionFile[] = [];
   const pending = [cwd];
@@ -150,46 +166,119 @@ export async function discoverMentionFiles(cwd: string): Promise<MentionFile[]> 
     for (const entry of entries) {
       if (files.length >= MAX_MENTION_FILES) break;
       const path = join(directory, entry.name);
+      const displayPath = relative(cwd, path).split("\\").join("/");
       if (entry.isDirectory()) {
-        if (!SKIPPED_DIRECTORIES.has(entry.name)) pending.push(path);
+        if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
+        pending.push(path);
+        files.push({
+          path: path + sep,
+          displayPath: `${displayPath}/`,
+          label: `${entry.name}/`,
+        });
         continue;
       }
       if (!entry.isFile()) continue;
-      const displayPath = relative(cwd, path).split("\\").join("/");
       files.push({ path, displayPath, label: basename(path) });
     }
   }
   return files.toSorted((left, right) => left.displayPath.localeCompare(right.displayPath));
 }
 
-export interface FileMentionQuery {
+interface FileMentionQuery {
+  /** The `@token` a completed mention replaces. */
   start: number;
+  end: number;
+  /** What the cursor has typed into it so far, which is what filters. */
   query: string;
 }
 
-/** The trailing `@query` at the buffer end. Mid-buffer completion remains regular text. */
-export function fileMentionQuery(value: string): FileMentionQuery | undefined {
-  const match = /(^|\s)@([^\s]*)$/.exec(value);
-  if (match === null) return undefined;
-  const prefix = match[1] ?? "";
-  return { start: match.index + prefix.length, query: match[2] ?? "" };
+/** The `@query` the cursor sits in, wherever in the buffer that is. */
+function fileMentionQuery(
+  value: string,
+  cursor = value.length,
+): FileMentionQuery | undefined {
+  const trigger = completionTrigger(value, cursor);
+  if (trigger?.kind !== "@") return undefined;
+  return { start: trigger.start, end: trigger.end, query: trigger.query };
+}
+
+/**
+ * The walked list stops at cwd, so `@../core.md` or `@~/notes.md` never fuzzy
+ * matches anything. A query that is spelled as a path gets resolved directly
+ * and, when it names a real file or folder, offered first.
+ */
+function explicitMentionFile(query: string, cwd: string): MentionFile | undefined {
+  if (query === "" || !/^(\.{1,2}[/\\]|~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(query)) {
+    return undefined;
+  }
+  const expanded = query.startsWith("~") ? join(homedir(), query.slice(2)) : query;
+  const path = resolve(cwd, expanded);
+  let info;
+  try {
+    info = statSync(path);
+  } catch {
+    return undefined;
+  }
+  const rel = relative(cwd, path).split("\\").join("/");
+  if (info.isDirectory()) {
+    // `relative` is empty when the query names cwd itself; "./" is that folder.
+    return {
+      path: path + sep,
+      displayPath: rel === "" ? "./" : `${rel}/`,
+      label: `${basename(path)}/`,
+    };
+  }
+  if (!info.isFile()) return undefined;
+  return { path, displayPath: rel, label: basename(path) };
+}
+
+/**
+ * Paths the query is a prefix of, in walk order. Typing the first letters of a
+ * name is the most common way to reach it, so those land above anything the
+ * fuzzy pass scores highly for matching scattered letters deep in a path.
+ */
+function prefixedMentionFiles(query: string, files: readonly MentionFile[]): MentionFile[] {
+  const matches: MentionFile[] = [];
+  for (const file of files) {
+    if (matches.length >= MAX_MENTION_RESULTS) break;
+    if (
+      file.label.toLowerCase().startsWith(query) ||
+      file.displayPath.toLowerCase().startsWith(query)
+    ) {
+      matches.push(file);
+    }
+  }
+  return matches;
 }
 
 export function fileMentionSuggestions(
   value: string,
   files: readonly MentionFile[],
+  cwd?: string,
+  cursor = value.length,
 ): { query: FileMentionQuery; files: MentionFile[] } | undefined {
-  const query = fileMentionQuery(value);
+  const query = fileMentionQuery(value, cursor);
   if (query === undefined) return undefined;
-  const matches =
-    query.query === ""
-      ? files.slice(0, MAX_MENTION_RESULTS)
-      : fuzzysort
-          .go(query.query, files, {
-            keys: ["displayPath", "label"],
-            limit: MAX_MENTION_RESULTS,
-          })
-          .map((result) => result.obj);
+  let matches: MentionFile[];
+  if (query.query === "") {
+    matches = files.slice(0, MAX_MENTION_RESULTS);
+  } else {
+    const prefixed = prefixedMentionFiles(query.query.toLowerCase(), files);
+    const seen = new Set(prefixed.map((file) => file.path));
+    matches = [
+      ...prefixed,
+      ...fuzzysort
+        .go(query.query, files, {
+          keys: ["displayPath", "label"],
+          limit: MAX_MENTION_RESULTS,
+        })
+        .flatMap((result) => (seen.has(result.obj.path) ? [] : [result.obj])),
+    ].slice(0, MAX_MENTION_RESULTS);
+  }
+  const explicit = cwd === undefined ? undefined : explicitMentionFile(query.query, cwd);
+  if (explicit !== undefined && !matches.some((file) => file.path === explicit.path)) {
+    matches.unshift(explicit);
+  }
   return { query, files: matches };
 }
 
@@ -219,7 +308,7 @@ const ATTACHMENT_CLOSING_TAG = "</file>";
 /** Big enough for real source files, small enough to never blow a context window by accident. */
 const MAX_ATTACHMENT_BYTES = 256_000;
 
-export interface FileAttachment {
+interface FileAttachment {
   source: string;
   path: string;
   text: string;
@@ -242,7 +331,7 @@ export function extractFileAttachments(text: string): FileAttachment[] {
 }
 
 /**
- * Only text bodies inline. Binaries would be mojibake, oversized files would
+ * Only text bodies inline. Folders have no body, binaries would be mojibake, oversized files would
  * quietly eat the context window, and a body carrying the closing tag would
  * break the wrapper for every reader downstream. Each of those falls back to
  * the plain mention, which is what the composer sent before bodies existed.
@@ -258,24 +347,8 @@ async function readAttachmentText(path: string): Promise<string | undefined> {
   return text.includes(ATTACHMENT_CLOSING_TAG) ? undefined : text;
 }
 
-export function fileMarker(path: string): string {
-  return `[File ${basename(path)}]`;
-}
-
-/**
- * A sent message written the way the composer writes it: inlined bodies and
- * bare mentions both fold back to their file tag. Pure, so pickers can label
- * hundreds of messages without touching the disk.
- */
-export function foldAttachments(text: string): string {
-  let folded = text;
-  for (const attachment of extractFileAttachments(folded)) {
-    folded = folded.replace(attachment.source, fileMarker(attachment.path));
-  }
-  for (const mention of extractFileMentions(folded)) {
-    folded = folded.replace(mention.source, fileMarker(mention.path));
-  }
-  return folded;
+function fileMarker(path: string): string {
+  return isFolderPath(path) ? `[Folder ${basename(path)}]` : `[File ${basename(path)}]`;
 }
 
 /** Highest number already used by a marker of this kind, plus one. */
@@ -283,6 +356,28 @@ function nextMarkerNumber(parts: readonly ComposerPart[], kind: ComposerPart["ki
   return parts
     .filter((part) => part.kind === kind)
     .reduce((max, part) => Math.max(max, Number(/\d+/.exec(part.marker)?.[0] ?? 0) + 1), 1);
+}
+
+interface ComposerDraft {
+  readonly text: string;
+  readonly parts: readonly ComposerPart[];
+}
+
+/** Unsent composer state, scoped to this TUI process and keyed by chat. */
+export class SessionDrafts {
+  private readonly drafts = new Map<string, ComposerDraft>();
+
+  save(sessionId: string, text: string, parts: readonly ComposerPart[]): void {
+    if (text === "" && parts.length === 0) {
+      this.drafts.delete(sessionId);
+      return;
+    }
+    this.drafts.set(sessionId, { text, parts: [...parts] });
+  }
+
+  read(sessionId: string): ComposerDraft | undefined {
+    return this.drafts.get(sessionId);
+  }
 }
 
 /**
@@ -357,12 +452,16 @@ export class ComposerParts {
   }
 
   restore(parts: readonly ComposerPart[]): void {
+    this.clear();
     this.parts = [...parts];
     this.nextImage = nextMarkerNumber(this.parts, "image");
     this.nextPaste = nextMarkerNumber(this.parts, "paste");
     for (const part of this.parts) {
-      if (part.kind === "file" && part.text !== undefined) {
-        this.bodies.set(part.path, Promise.resolve(part.text));
+      if (part.kind === "file") {
+        this.bodies.set(
+          part.path,
+          part.text === undefined ? readAttachmentText(part.path) : Promise.resolve(part.text),
+        );
       }
     }
   }
@@ -398,8 +497,16 @@ export class ComposerParts {
   /**
    * Async, but the draft is snapshotted before the first await, so the caller
    * may clear the composer the moment this is called without losing parts.
+   *
+   * `expandText` rewrites what the user typed on its way to the model — skill
+   * invocations, today. It runs before markers expand, so it only ever sees
+   * typed text and never the body of a file the draft attached.
    */
-  async prepare(value: string, timestamp = Date.now()): Promise<PreparedComposerPrompt> {
+  async prepare(
+    value: string,
+    timestamp = Date.now(),
+    expandText: (text: string) => string = (text) => text,
+  ): Promise<PreparedComposerPrompt> {
     const rawDisplayText = value.trim();
     const snapshot = this.parts
       .filter((part) => rawDisplayText.includes(part.marker))
@@ -424,7 +531,7 @@ export class ComposerParts {
       (marker) => imageMarkers.get(marker) ?? marker,
     );
     const expandFiles = (text: string): string => {
-      let expanded = text;
+      let expanded = expandText(text);
       for (const part of parts) {
         if (part.kind === "file") {
           expanded = expanded.replaceAll(
@@ -476,62 +583,5 @@ export class ComposerParts {
       suffix += 1;
     }
     return `${base.slice(0, -1)} ${String(suffix)}]`;
-  }
-}
-
-/**
- * Small, session-scoped prompt history, shell-style: up walks back through
- * earlier prompts, stashing whatever was being typed; down walks forward and
- * hands the stashed draft back after the newest entry.
- */
-export class PromptHistory {
-  private entries: string[] = [];
-  private index: number | undefined;
-  private draft = "";
-
-  replace(entries: readonly string[]): void {
-    this.entries = entries.filter((entry) => entry.trim() !== "").slice(-MAX_HISTORY);
-    this.index = undefined;
-  }
-
-  record(entry: string): void {
-    if (entry.trim() === "") return;
-    if (this.entries.at(-1) !== entry) this.entries.push(entry);
-    if (this.entries.length > MAX_HISTORY) this.entries.shift();
-    this.index = undefined;
-  }
-
-  previous(current: string): string | undefined {
-    if (this.entries.length === 0) return undefined;
-    if (this.index === undefined) {
-      this.draft = current;
-      this.index = this.entries.length - 1;
-    } else if (this.index === 0) {
-      return undefined;
-    } else {
-      this.index -= 1;
-    }
-    return this.entries[this.index];
-  }
-
-  next(): string | undefined {
-    if (this.index === undefined) return undefined;
-    if (this.index === this.entries.length - 1) {
-      this.index = undefined;
-      const draft = this.draft;
-      this.draft = "";
-      return draft;
-    }
-    this.index += 1;
-    return this.entries[this.index];
-  }
-
-  resetBrowse(): void {
-    this.index = undefined;
-    this.draft = "";
-  }
-
-  get browsing(): boolean {
-    return this.index !== undefined;
   }
 }
