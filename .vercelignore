@@ -4,9 +4,7 @@
 /dist
 /install.sh
 /scripts
-/vendor
 /.nyte
-/.uji
 
 /packages/ai
 /packages/cli
@@ -22,7 +20,6 @@
 **/.next
 **/.turbo
 **/.nyte
-**/.uji
 **/dist
 **/out
 **/*.tsbuildinfo

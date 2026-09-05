@@ -7,7 +7,7 @@
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/edit-diff.ts
  */
 
-import * as Diff from "diff";
+import { createTwoFilesPatch, diffLines, FILE_HEADERS_ONLY } from "diff";
 
 export function detectLineEnding(content: string): "\r\n" | "\n" {
   const crlfIdx = content.indexOf("\r\n");
@@ -400,9 +400,9 @@ function generateUnifiedPatch(
   newContent: string,
   contextLines = 4,
 ): string {
-  return Diff.createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
+  return createTwoFilesPatch(path, path, oldContent, newContent, undefined, undefined, {
     context: contextLines,
-    headerOptions: Diff.FILE_HEADERS_ONLY,
+    headerOptions: FILE_HEADERS_ONLY,
   });
 }
 
@@ -411,7 +411,7 @@ function generateUnifiedPatch(
  * Returns both the diff string and the first changed line number (in the new file).
  */
 function generateDiffString(oldContent: string, newContent: string, contextLines = 4) {
-  const parts = Diff.diffLines(oldContent, newContent);
+  const parts = diffLines(oldContent, newContent);
   const output: string[] = [];
 
   const oldLines = oldContent.split("\n");

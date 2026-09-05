@@ -43,7 +43,7 @@ export async function fetchAccountLimits(
       const model = models
         .getModels("anthropic")
         .find((candidate) => hasApi(candidate, "anthropic-messages"));
-      if (model === undefined || !hasApi(model, "anthropic-messages")) return undefined;
+      if (model === undefined) return undefined;
       const auth = await models.getAuth(model, { signal });
       if (auth?.auth.apiKey === undefined || !auth.auth.apiKey.includes("sk-ant-oat")) {
         return undefined;
@@ -61,7 +61,7 @@ export async function fetchAccountLimits(
       const model = models
         .getModels("openai-codex")
         .find((candidate) => hasApi(candidate, "openai-codex-responses"));
-      if (model === undefined || !hasApi(model, "openai-codex-responses")) return undefined;
+      if (model === undefined) return undefined;
       const auth = await models.getAuth(model, { signal });
       if (auth?.auth.apiKey === undefined) return undefined;
       const requestModel: Model<"openai-codex-responses"> =

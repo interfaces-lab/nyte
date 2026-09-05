@@ -1,0 +1,60 @@
+Scope: 3 of 16 workspace projects
+packages/core typecheck$ tsc --noEmit
+packages/desktop typecheck$ tsc --noEmit
+packages/tui typecheck$ tsc --noEmit
+packages/core typecheck: Done
+packages/tui typecheck: src/usage-panel.ts(203,22): error TS2339: Property 'state' does not exist on type 'RunCardRow'.
+packages/tui typecheck: src/usage-panel.ts(293,57): error TS2339: Property 'summary' does not exist on type '{ readonly kind: "checking"; readonly name: string; } | { readonly kind: "unavailable"; readonly name: string; } | { readonly kind: "known"; readonly name: string; readonly meta: string; readonly stale: boolean; readonly windows: readonly [...]; }'.
+packages/tui typecheck:   Property 'summary' does not exist on type '{ readonly kind: "checking"; readonly name: string; }'.
+packages/tui typecheck: src/usage-panel.ts(295,43): error TS2339: Property 'rows' does not exist on type '{ readonly kind: "checking"; readonly name: string; } | { readonly kind: "unavailable"; readonly name: string; } | { readonly kind: "known"; readonly name: string; readonly meta: string; readonly stale: boolean; readonly windows: readonly [...]; }'.
+packages/tui typecheck:   Property 'rows' does not exist on type '{ readonly kind: "checking"; readonly name: string; }'.
+packages/tui typecheck: test/offline-boot.test.ts(13,8): error TS2307: Cannot find module '@uji-ai/ai' or its corresponding type declarations.
+packages/tui typecheck: test/offline-boot.test.ts(14,48): error TS2307: Cannot find module '@uji-ai/ai' or its corresponding type declarations.
+packages/tui typecheck: test/offline-boot.test.ts(15,10): error TS2305: Module '"../src/catalog.ts"' has no exported member 'createCliModels'.
+packages/tui typecheck: test/offline-boot.test.ts(29,28): error TS2552: Cannot find name 'RequestInfo'. Did you mean 'RequestInit'?
+packages/tui typecheck: test/offline-boot.test.ts(36,11): error TS7006: Parameter 'input' implicitly has an 'any' type.
+packages/tui typecheck: test/offline-boot.test.ts(36,18): error TS7006: Parameter 'init' implicitly has an 'any' type.
+packages/tui typecheck: test/usage.test.ts(6,41): error TS2307: Cannot find module '@uji-ai/core' or its corresponding type declarations.
+packages/tui typecheck: test/usage.test.ts(7,36): error TS2307: Cannot find module '@uji-ai/ai' or its corresponding type declarations.
+packages/tui typecheck: test/usage.test.ts(8,28): error TS2307: Cannot find module '@uji-ai/schema' or its corresponding type declarations.
+packages/tui typecheck: test/usage.test.ts(10,3): error TS2305: Module '"../src/usage.ts"' has no exported member 'collectWorkspaceUsage'.
+packages/tui typecheck: test/usage.test.ts(11,3): error TS2305: Module '"../src/usage.ts"' has no exported member 'projectHeadroom'.
+packages/tui typecheck: test/usage.test.ts(13,8): error TS2724: '"../src/usage.ts"' has no exported member named 'WorkspaceUsage'. Did you mean 'WorkspaceUsageCard'?
+packages/tui typecheck: test/usage.test.ts(15,56): error TS2307: Cannot find module '@uji-ai/core/store' or its corresponding type declarations.
+packages/tui typecheck: test/usage.test.ts(157,26): error TS7006: Parameter 'run' implicitly has an 'any' type.
+packages/tui typecheck: test/usage.test.ts(161,42): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(184,17): error TS7006: Parameter 'row' implicitly has an 'any' type.
+packages/tui typecheck: test/usage.test.ts(206,7): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(209,32): error TS2339: Property 'summary' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(210,43): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(227,56): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(232,55): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(237,15): error TS2367: This comparison appears to be unintentional because the types '"checking" | "known" | "none" | "unavailable"' and '"providers"' have no overlap.
+packages/tui typecheck: test/usage.test.ts(237,55): error TS2367: This comparison appears to be unintentional because the types '"checking" | "known" | "none" | "unavailable"' and '"providers"' have no overlap.
+packages/tui typecheck: test/usage.test.ts(238,34): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(239,33): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(240,31): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(241,30): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(242,34): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(243,38): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(243,62): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(245,53): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(250,15): error TS2367: This comparison appears to be unintentional because the types '"checking" | "known" | "none" | "unavailable"' and '"providers"' have no overlap.
+packages/tui typecheck: test/usage.test.ts(251,39): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(257,59): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(262,15): error TS2367: This comparison appears to be unintentional because the types '"checking" | "known" | "none" | "unavailable"' and '"providers"' have no overlap.
+packages/tui typecheck: test/usage.test.ts(263,45): error TS2339: Property 'rows' does not exist on type 'never'.
+packages/tui typecheck: test/usage.test.ts(271,50): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(302,7): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(338,7): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: test/usage.test.ts(366,7): error TS2554: Expected 2 arguments, but got 3.
+packages/tui typecheck: Failed
+packages/desktop typecheck: Done
+[ERR_PNPM_RECURSIVE_FAIL] 
+
+
+Summary: 1 fails, 2 passes
+
+/Users/workgyver/Developer/nyte/packages/tui:
+[ERROR] @nyte-ai/tui@0.0.2 typecheck: `tsc --noEmit`
+Exit status 1

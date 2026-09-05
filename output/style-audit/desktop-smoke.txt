@@ -1,0 +1,5 @@
+Production Electron build; isolated NYTE_HOME and appData.
+Seeded two empty sessions through production preload.
+Cmd+K search for Shared: first -> second -> first, correct workspace results each time.
+Escape closed palette; resized to 640x600 and back to 1200x800.
+No renderer errors; no provider requests.

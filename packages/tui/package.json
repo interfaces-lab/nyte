@@ -8,8 +8,10 @@
     "clean": "rm -rf node_modules .turbo ../../bin",
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "test": "vitest --run",
-    "typecheck": "tsc --noEmit"
+    "test": "bun --bun vitest --run",
+    "typecheck": "tsc --noEmit",
+    "test:tui": "node test/qa/launch.mjs",
+    "test:tui:show": "node test/qa/launch.mjs --show"
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
@@ -18,13 +20,16 @@
     "@nyte-ai/schema": "workspace:*",
     "@opentui/core": "^0.5.10",
     "@opentui/keymap": "^0.5.10",
+    "beautiful-mermaid": "1.1.3",
     "diff": "9.0.0",
     "fuzzysort": "3.1.0",
     "open": "^11.0.2",
     "semver": "7.8.5",
-    "string-width": "7.2.0"
+    "string-width": "7.2.0",
+    "typebox": "1.3.7"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.0",
     "@types/node": "^26.4.1",
     "@types/semver": "7.7.1",
     "typescript": "^7.0.2",

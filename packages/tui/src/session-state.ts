@@ -14,7 +14,7 @@
  * applied locally: a commit whose parent is not the tip, or a head that moved
  * somewhere the commits that followed did not reach.
  */
-import { appendTranscriptCommit } from "@nyte-ai/core";
+import { appendTranscriptCommit, mergeQueuedLanes } from "@nyte-ai/core";
 import type {
   ContextStatus,
   HeadName,
@@ -31,6 +31,7 @@ import type {
   TranscriptState,
 } from "@nyte-ai/core";
 import type { JsonValue } from "@nyte-ai/schema";
+import { isJsonString } from "./json.ts";
 
 export type LivePart =
   | {
@@ -83,6 +84,7 @@ export interface SessionState {
   /** The newest event applied; the snapshot's seq before any arrives. */
   readonly seq: Seq;
   readonly info: SessionInfo;
+  readonly config: SessionSnapshot["config"];
   readonly transcript: TranscriptState;
   /** Oldest first, as `messages.pending` orders them. */
   readonly pending: readonly PendingItem[];
@@ -112,6 +114,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     head: snapshot.head,
     seq: snapshot.seq,
     info: snapshot.session,
+    config: snapshot.config,
     transcript: { items: snapshot.transcript, tip: snapshot.tip },
     pending: snapshot.pending,
     run: snapshot.run,
@@ -125,35 +128,12 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
   };
 }
 
-/** Whether the head is being advanced right now. */
-export function isRunning(run: RunInfo | undefined): boolean {
-  return run !== undefined && !isTerminalPhase(run);
-}
-
-export function isTerminalPhase(run: RunInfo): boolean {
-  switch (run.phase.kind) {
-    case "done":
-    case "aborted":
-    case "failed":
-      return true;
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return false;
-    default: {
-      const _exhaustive: never = run.phase;
-      return _exhaustive;
-    }
-  }
-}
-
 /** The tip the transcript is waiting to reach, if it is not there. */
 export function tipMismatch(state: SessionState): boolean {
   return state.expectedTip !== undefined && state.expectedTip !== state.transcript.tip;
 }
 
-/** The store's own order: submission time, then oid, so a fold and a snapshot agree. */
+/** Arrival time chooses between lanes; each lane preserves its delivery order. */
 function comparePending(left: PendingItem, right: PendingItem): number {
   const byTime = left.at - right.at;
   if (byTime !== 0) return byTime;
@@ -162,7 +142,10 @@ function comparePending(left: PendingItem, right: PendingItem): number {
 
 function upsertPending(items: readonly PendingItem[], item: PendingItem): PendingItem[] {
   const rest = items.filter((existing) => existing.change !== item.change);
-  return [...rest, item].toSorted(comparePending);
+  return mergeQueuedLanes([...rest, item], {
+    lane: (entry) => entry.lane,
+    compare: comparePending,
+  });
 }
 
 function appendText(
@@ -217,14 +200,6 @@ function settleOverlay(
   }
 }
 
-function withName(info: SessionInfo, value: JsonValue | undefined): SessionInfo {
-  return isString(value) ? { ...info, name: value } : info;
-}
-
-function isString(value: JsonValue | undefined): value is string {
-  return typeof value === "string";
-}
-
 /**
  * Apply one event. Events for other heads only touch what is head-neutral
  * (facts, deletion). The seq advances with every event so a follower resuming
@@ -259,7 +234,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       };
     case "run": {
       if (event.head !== state.head) return { kind: "state", state: base };
-      const terminal = isTerminalPhase(event.run);
+      const terminal = ["done", "aborted", "failed"].includes(event.run.phase.kind);
       const retrying = event.run.phase.kind === "retry";
       const overlay =
         terminal || retrying ? dropRun(state.overlay, event.run.runId) : state.overlay;
@@ -277,12 +252,24 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       if (event.head !== state.head) return { kind: "state", state: base };
       return {
         kind: "state",
-        state: { ...base, pending: state.pending.filter((item) => item.change !== event.change) },
+        state: {
+          ...base,
+          pending: mergeQueuedLanes(
+            state.pending.filter((item) => item.change !== event.change),
+            { lane: (entry) => entry.lane, compare: comparePending },
+          ),
+        },
       };
     case "queue_cancelled":
       return {
         kind: "state",
-        state: { ...base, pending: state.pending.filter((item) => item.change !== event.change) },
+        state: {
+          ...base,
+          pending: mergeQueuedLanes(
+            state.pending.filter((item) => item.change !== event.change),
+            { lane: (entry) => entry.lane, compare: comparePending },
+          ),
+        },
       };
     case "effect": {
       switch (event.state) {
@@ -360,7 +347,13 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       };
     case "fact":
       if (event.key !== "name") return { kind: "state", state: base };
-      return { kind: "state", state: { ...base, info: withName(state.info, event.value) } };
+      return {
+        kind: "state",
+        state: {
+          ...base,
+          info: isJsonString(event.value) ? { ...state.info, name: event.value } : state.info,
+        },
+      };
     case "stack":
     case "deleted":
     case "synced":

@@ -8,21 +8,7 @@ export default defineConfig({
   options: {
     typeAware: true,
   },
-  ignorePatterns: [
-    ".agent/**",
-    ".agents/**",
-    ".claude/**",
-    ".codex/**",
-    ".continue/**",
-    ".cursor/**",
-    ".gemini/**",
-    ".opencode/**",
-    ".pi/**",
-    ".roo/**",
-    ".windsurf/**",
-    "**/.otui-probe/**",
-    "tools/oxlint/anti-slop/**",
-  ],
+  ignorePatterns: ["tools/oxlint/anti-slop/**"],
   // Vendored from https://github.com/dmmulroy/anti-slop (src/); ours to maintain.
   jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
   rules: {
@@ -33,8 +19,7 @@ export default defineConfig({
     "anti-slop/no-object-parameters": "error",
     "anti-slop/no-reflect-apply": "error",
     "anti-slop/no-reflect-get": "error",
-    // typeof inside a named type guard is the boundary parse itself.
-    "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
+    "anti-slop/no-runtime-typeof": "error",
     "anti-slop/no-shape-in-symbol-names": "error",
     "anti-slop/no-unknown-parameters": "error",
     "anti-slop/no-unknown-returns": "error",

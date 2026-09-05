@@ -4,7 +4,7 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import { useMatch, useRouter } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/core";
 import { PanelToggleIcon } from "../components/icons.tsx";
@@ -28,9 +28,7 @@ import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { terminalActions, useTerminals } from "../workbench/terminal-store.ts";
 import { shellActions, useShellState } from "./shell-state.ts";
 
-const WorkbenchTabStrip = lazy(() =>
-  import("../workbench/tab-strip.tsx").then((module) => ({ default: module.WorkbenchTabStrip })),
-);
+import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 
 const styles = stylex.create({
   bar: {
@@ -47,12 +45,16 @@ const styles = stylex.create({
   contentFill: {
     position: "absolute",
     insetBlock: 0,
-    insetInlineStart: sidebar.width,
+    insetInlineStart: `calc(${sidebar.width} - 1px)`,
     insetInlineEnd: 0,
+    borderInlineStartWidth: 1,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: t.strokeQuaternary,
+    backgroundClip: "padding-box",
     backgroundColor: t.bgBase,
     pointerEvents: "none",
   },
-  contentFillSidebarHidden: { insetInlineStart: 0 },
+  contentFillSidebarHidden: { insetInlineStart: 0, borderInlineStartWidth: 0 },
   workbenchTrack: {
     position: "absolute",
     zIndex: 3,
@@ -314,15 +316,13 @@ export function Titlebar(): ReactElement {
       >
         {workbenchOpen && (
           <>
-            <Suspense fallback={<span {...stylex.props(styles.spacer)} />}>
-              <WorkbenchTabStrip
-                key={viewKey}
-                viewKey={viewKey}
-                view={view}
-                scope={scope}
-                workspacePath={terminalWorkspacePath}
-              />
-            </Suspense>
+            <WorkbenchTabStrip
+              key={viewKey}
+              viewKey={viewKey}
+              view={view}
+              scope={scope}
+              workspacePath={terminalWorkspacePath}
+            />
             <HintToggleIconButton
               icon={view.maximized ? "minimize" : "expand"}
               label={view.maximized ? "Restore workbench width" : "Expand workbench"}

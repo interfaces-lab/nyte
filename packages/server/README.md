@@ -84,7 +84,8 @@ proxy's idle timeout does not cut it. Set 0 to send none.
 
 Authentication is required at composition and fails closed. `token` compares
 a bearer token in constant time. `custom` calls your function with the raw
-request; if it throws, the reply is `internal`, not access.
+request. The server checks its result against the `AuthDecision` schema.
+A malformed result gets `forbidden`; a thrown error gets `internal`.
 
 There is no wildcard CORS. A request with no `Origin` header, or an `Origin`
 equal to the request URL's own origin, is served. Any other origin must be

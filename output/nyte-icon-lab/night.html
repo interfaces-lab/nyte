@@ -1,42 +1,661 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#10131f"><title>nyte — Open interval</title>
-<style>
-:root{color-scheme:dark;--bg:#10131f;--panel:#181c2c;--ink:#eff1ff;--muted:#a1a9bf;--blue:#b6c8fa;--line:#ffffff17}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,a{font:inherit}button,a{color:inherit}button{cursor:pointer}a{text-decoration:none}button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #d6dfff;outline-offset:5px}button{border:0}header,main,footer{max-width:1360px;margin:auto}header{height:100px;display:flex;align-items:center;justify-content:space-between;padding:0 54px;border-bottom:1px solid var(--line)}.brand{font-size:35px;font-weight:680;letter-spacing:-2px}.back{font-size:12px;color:var(--muted);padding:12px 0}.back:hover{color:var(--ink)}.edition{font:10px ui-monospace,monospace;color:var(--muted);letter-spacing:.13em;text-transform:uppercase}main{padding:64px 54px 48px}.intro{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:35px}.intro p{margin:0;max-width:260px;color:var(--muted);font-size:13px}.intro .edition{display:flex;align-items:center;gap:12px}.pin{width:6px;height:6px;border-radius:50%;background:#e5ba9e;box-shadow:0 0 12px #e5ba9e44}.hero{display:grid;grid-template-columns:7fr 4fr;min-height:460px;border:1px solid var(--line);border-radius:26px;overflow:hidden;background:#171b2a}.statement{position:relative;overflow:hidden;padding:55px 45px;background:radial-gradient(ellipse at 15% 110%,#454f854d,transparent 60%)}.statement::after{content:"";position:absolute;bottom:-195px;right:-80px;width:580px;height:320px;border-radius:50%;border:1px solid #b6c8fa22;transform:rotate(-22deg);pointer-events:none}h1{font-weight:480;letter-spacing:-3.5px;line-height:1.02;font-size:clamp(48px,5.8vw,78px);margin:0 0 30px;position:relative;z-index:1}h1 em{font-family:Georgia,serif;font-weight:400;letter-spacing:-3px;color:#bccafa}p{margin:0}.statement>p{max-width:300px;color:#aab3cb;font-size:14px;line-height:1.65}.signature{display:flex;align-items:center;gap:10px;position:absolute;bottom:37px;left:45px;font-size:11px;color:#9da8c2}.signature span{width:27px;height:1px;background:#a9bbee}.object{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px;border-left:1px solid var(--line);background:radial-gradient(ellipse at 50% 42%,#687da733,transparent 67%);padding:28px;min-width:0}.object #hero-icon{width:min(100%,270px);filter:drop-shadow(0 24px 18px #04071155)}svg{display:block;width:100%;height:auto}.object-label{display:flex;gap:10px;align-items:center;color:#acb7d3;font:10px ui-monospace,monospace;letter-spacing:.08em}.object-label b{color:#edf0ff;font-weight:400}.section-head{display:flex;justify-content:space-between;align-items:baseline;margin:43px 0 18px;gap:20px}.section-head h2{font-size:16px;font-weight:500;margin:0;letter-spacing:-.3px}.section-head p{font-size:12px;color:var(--muted)}.directions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.direction{background:#171b2a;text-align:left;padding:22px;border:1px solid var(--line);border-radius:16px;position:relative;min-width:0}.direction[aria-pressed=true]{border-color:#b6c8fa88;background:#1e2438}.direction:hover{background:#22283b}.direction-top{display:flex;align-items:center;justify-content:space-between;font:10px ui-monospace,monospace;color:#9faac6}.selected-dot{width:6px;height:6px;border-radius:50%;background:transparent}.direction[aria-pressed=true] .selected-dot{background:#b6c8fa}.thumb{width:112px;margin:20px auto 24px}.direction strong{display:block;font-size:15px;font-weight:500;margin-bottom:5px}.direction small{display:block;color:#a4aec8;line-height:1.55;font-size:12px;min-height:38px}.lab{display:grid;grid-template-columns:7fr 4fr;border:1px solid var(--line);border-radius:19px;margin-top:22px;overflow:hidden;background:#151a28}.scale-stage{padding:30px;display:flex;align-items:end;justify-content:space-around;gap:16px;min-height:204px}.scale-stage.light{background:#e3e6ee}.scale-item{display:flex;flex-direction:column;align-items:center;gap:14px;font:10px ui-monospace,monospace;color:#a7b0c7}.scale-stage.light .scale-item{color:#51596c}.scale-item>div{max-width:100%}.tuning{padding:27px;border-left:1px solid var(--line)}.row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px}.row label{font-size:12px}.row output{font:11px ui-monospace,monospace;color:#abb9dd}input[type=range]{width:100%;height:24px;accent-color:#b6c8fa;margin:0 0 22px;cursor:pointer}.surfaces{display:flex;gap:6px}.surfaces button{background:transparent;min-height:35px;border:1px solid #ffffff22;border-radius:7px;padding:5px 13px;font-size:11px;color:#a8b3cb}.surfaces button[aria-pressed=true]{background:#cad7fa;color:#1c243a;border-color:#cad7fa}.actions{display:flex;gap:16px;justify-content:space-between;align-items:center;margin-top:28px}.actions p{font-size:12px;color:var(--muted);max-width:570px}.download{display:inline-flex;align-items:center;justify-content:center;gap:16px;background:#c8d6ff;color:#1b243c;min-height:46px;padding:10px 20px;border-radius:10px;white-space:nowrap;font-size:12px}.download:hover{background:#dfE7ff}footer{padding:25px 54px 35px;display:flex;justify-content:space-between;color:#828ca5;font-size:11px;border-top:1px solid var(--line)}#status{min-height:20px;margin-top:13px;font-size:12px;color:#bbcaf0}.hero,.direction,.lab{-webkit-tap-highlight-color:transparent}@media(max-width:1000px){header{padding:0 28px;height:84px}main{padding:38px 28px}.hero{min-height:410px}.statement{padding:38px 30px}.signature{left:30px;bottom:27px}.object{padding:20px}h1{font-size:58px}.statement>p{max-width:260px}.scale-stage{padding:22px 12px}.tuning{padding:23px 20px}footer{padding:24px 28px}}@media(max-width:650px){header .edition{display:none}main{padding:28px 18px}.intro p{max-width:180px;font-size:11px}.intro{gap:16px;margin-bottom:23px}.hero{grid-template-columns:1fr}.statement{padding:34px 27px 85px}h1{font-size:55px}.object{border-left:0;border-top:1px solid var(--line);padding:27px;gap:18px}.object #hero-icon{width:205px}.directions{gap:7px}.direction{padding:13px 10px}.thumb{width:80px;margin:17px auto}.direction strong{font-size:12px}.direction small{font-size:10px}.lab{grid-template-columns:1fr}.tuning{border-left:0;border-top:1px solid var(--line)}.section-head{align-items:start}.section-head p{max-width:145px;text-align:right}.actions{align-items:start;flex-direction:column}.download{width:100%}.scale-stage{min-height:195px}footer{padding:20px;gap:20px}.back{font-size:11px}}
-</style>
-</head>
-<body>
-<header><a class="brand" href="./#print" aria-label="Nyte icon studio">nyte</a><span class="edition">An identity for the quiet hours</span><a class="back" href="./#composition">All studies ↗</a></header>
-<main>
-<div class="intro"><span class="edition"><i class="pin"></i> Open interval / direction 01</span><p>A curved edge. An opening. Just enough light to see what comes next.</p></div>
-<section class="hero" aria-label="Nyte identity direction"><div class="statement"><h1>Make room<br>for a <em>thought.</em></h1><p>Darkness gives the light its shape.<br>A softer identity for Nyte, built from the space between two curves.</p><div class="signature"><span></span> Navy, periwinkle, and a little air.</div></div><div class="object"><div id="hero-icon"></div><div class="object-label"><b id="hero-number">01</b><span id="hero-name">Open interval</span></div></div></section>
-<div class="section-head"><h2>Three ways to let the light in.</h2><p>Choose a mark to see it at every size.</p></div>
-<div class="directions" id="directions" aria-label="Mark directions"></div>
-<div class="section-head"><h2>In the details.</h2><p>Adjust the light. Check the silhouette.</p></div>
-<section class="lab" aria-label="Icon preview controls"><div class="scale-stage" id="sizes"></div><div class="tuning"><div class="row"><label for="light">Light through the opening</label><output id="light-value" for="light">64%</output></div><input id="light" type="range" min="0" max="100" value="64"><div class="row"><span>Preview surface</span></div><div class="surfaces" aria-label="Preview surface"><button type="button" data-surface="dark" aria-pressed="true">Night</button><button type="button" data-surface="light" aria-pressed="false">Day</button></div></div></section>
-<div class="actions"><p id="description"></p><button class="download" type="button" id="download">Download this SVG <span aria-hidden="true">↓</span></button></div><p id="status" role="status" aria-live="polite"></p>
-</main><footer><span>nyte / Open interval</span><span>Vector studies · September 2026</span></footer>
-<script type="module">
-import {marks, renderMark} from './night.mjs';
-const $=id=>document.getElementById(id);
-let selected=0, light=64;
-function draw(){
- $('hero-icon').innerHTML=renderMark(selected,light,'hero');
- $('hero-number').textContent=String(selected+1).padStart(2,'0');
- $('hero-name').textContent=marks[selected].name;
- $('description').textContent=marks[selected].description;
- $('light-value').textContent=light+'%';
- $('sizes').innerHTML=[96,64,32,16].map(n=>`<div class="scale-item"><div style="width:${n}px">${renderMark(selected,light,'size-'+n,n)}</div><span>${n} px</span></div>`).join('');
- document.querySelectorAll('.direction').forEach((b,i)=>{b.setAttribute('aria-pressed',String(selected===i));b.querySelector('.thumb').innerHTML=renderMark(i,light,'thumb-'+i);});
- $('status').textContent='';
-}
-marks.forEach((mark,i)=>{const b=document.createElement('button');b.type='button';b.className='direction';b.setAttribute('aria-label',mark.name);b.innerHTML=`<div class="direction-top"><span>0${i+1}</span><span class="selected-dot"></span></div><div class="thumb"></div><strong>${mark.name}</strong><small>${mark.note}</small>`;b.addEventListener('click',()=>{selected=i;draw();});$('directions').append(b);});
-$('light').addEventListener('input',e=>{light=Number(e.target.value);draw();});
-document.querySelectorAll('[data-surface]').forEach(b=>b.addEventListener('click',()=>{$('sizes').classList.toggle('light',b.dataset.surface==='light');document.querySelectorAll('[data-surface]').forEach(other=>other.setAttribute('aria-pressed',String(other===b)));}));
-$('download').addEventListener('click',()=>{const blob=new Blob([renderMark(selected,light,'nyte',1024)],{type:'image/svg+xml'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='nyte-'+marks[selected].slug+'.svg';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);$('status').textContent=marks[selected].name+' exported with your light setting.';});
-draw();
-</script>
-</body></html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#10131f" />
+    <title>nyte — Open interval</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #10131f;
+        --panel: #181c2c;
+        --ink: #eff1ff;
+        --muted: #a1a9bf;
+        --blue: #b6c8fa;
+        --line: #ffffff17;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      button,
+      input,
+      a {
+        font: inherit;
+      }
+      button,
+      a {
+        color: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      a {
+        text-decoration: none;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible {
+        outline: 2px solid #d6dfff;
+        outline-offset: 5px;
+      }
+      button {
+        border: 0;
+      }
+      header,
+      main,
+      footer {
+        max-width: 1360px;
+        margin: auto;
+      }
+      header {
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 54px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        font-size: 35px;
+        font-weight: 680;
+        letter-spacing: -2px;
+      }
+      .back {
+        font-size: 12px;
+        color: var(--muted);
+        padding: 12px 0;
+      }
+      .back:hover {
+        color: var(--ink);
+      }
+      .edition {
+        font:
+          10px ui-monospace,
+          monospace;
+        color: var(--muted);
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+      main {
+        padding: 64px 54px 48px;
+      }
+      .intro {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 35px;
+      }
+      .intro p {
+        margin: 0;
+        max-width: 260px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .intro .edition {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .pin {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #e5ba9e;
+        box-shadow: 0 0 12px #e5ba9e44;
+      }
+      .hero {
+        display: grid;
+        grid-template-columns: 7fr 4fr;
+        min-height: 460px;
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        overflow: hidden;
+        background: #171b2a;
+      }
+      .statement {
+        position: relative;
+        overflow: hidden;
+        padding: 55px 45px;
+        background: radial-gradient(ellipse at 15% 110%, #454f854d, transparent 60%);
+      }
+      .statement::after {
+        content: "";
+        position: absolute;
+        bottom: -195px;
+        right: -80px;
+        width: 580px;
+        height: 320px;
+        border-radius: 50%;
+        border: 1px solid #b6c8fa22;
+        transform: rotate(-22deg);
+        pointer-events: none;
+      }
+      h1 {
+        font-weight: 480;
+        letter-spacing: -3.5px;
+        line-height: 1.02;
+        font-size: clamp(48px, 5.8vw, 78px);
+        margin: 0 0 30px;
+        position: relative;
+        z-index: 1;
+      }
+      h1 em {
+        font-family: Georgia, serif;
+        font-weight: 400;
+        letter-spacing: -3px;
+        color: #bccafa;
+      }
+      p {
+        margin: 0;
+      }
+      .statement > p {
+        max-width: 300px;
+        color: #aab3cb;
+        font-size: 14px;
+        line-height: 1.65;
+      }
+      .signature {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        position: absolute;
+        bottom: 37px;
+        left: 45px;
+        font-size: 11px;
+        color: #9da8c2;
+      }
+      .signature span {
+        width: 27px;
+        height: 1px;
+        background: #a9bbee;
+      }
+      .object {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 30px;
+        border-left: 1px solid var(--line);
+        background: radial-gradient(ellipse at 50% 42%, #687da733, transparent 67%);
+        padding: 28px;
+        min-width: 0;
+      }
+      .object #hero-icon {
+        width: min(100%, 270px);
+        filter: drop-shadow(0 24px 18px #04071155);
+      }
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .object-label {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        color: #acb7d3;
+        font:
+          10px ui-monospace,
+          monospace;
+        letter-spacing: 0.08em;
+      }
+      .object-label b {
+        color: #edf0ff;
+        font-weight: 400;
+      }
+      .section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin: 43px 0 18px;
+        gap: 20px;
+      }
+      .section-head h2 {
+        font-size: 16px;
+        font-weight: 500;
+        margin: 0;
+        letter-spacing: -0.3px;
+      }
+      .section-head p {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .directions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+      .direction {
+        background: #171b2a;
+        text-align: left;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        position: relative;
+        min-width: 0;
+      }
+      .direction[aria-pressed="true"] {
+        border-color: #b6c8fa88;
+        background: #1e2438;
+      }
+      .direction:hover {
+        background: #22283b;
+      }
+      .direction-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font:
+          10px ui-monospace,
+          monospace;
+        color: #9faac6;
+      }
+      .selected-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: transparent;
+      }
+      .direction[aria-pressed="true"] .selected-dot {
+        background: #b6c8fa;
+      }
+      .thumb {
+        width: 112px;
+        margin: 20px auto 24px;
+      }
+      .direction strong {
+        display: block;
+        font-size: 15px;
+        font-weight: 500;
+        margin-bottom: 5px;
+      }
+      .direction small {
+        display: block;
+        color: #a4aec8;
+        line-height: 1.55;
+        font-size: 12px;
+        min-height: 38px;
+      }
+      .lab {
+        display: grid;
+        grid-template-columns: 7fr 4fr;
+        border: 1px solid var(--line);
+        border-radius: 19px;
+        margin-top: 22px;
+        overflow: hidden;
+        background: #151a28;
+      }
+      .scale-stage {
+        padding: 30px;
+        display: flex;
+        align-items: end;
+        justify-content: space-around;
+        gap: 16px;
+        min-height: 204px;
+      }
+      .scale-stage.light {
+        background: #e3e6ee;
+      }
+      .scale-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        font:
+          10px ui-monospace,
+          monospace;
+        color: #a7b0c7;
+      }
+      .scale-stage.light .scale-item {
+        color: #51596c;
+      }
+      .scale-item > div {
+        max-width: 100%;
+      }
+      .tuning {
+        padding: 27px;
+        border-left: 1px solid var(--line);
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        gap: 12px;
+      }
+      .row label {
+        font-size: 12px;
+      }
+      .row output {
+        font:
+          11px ui-monospace,
+          monospace;
+        color: #abb9dd;
+      }
+      input[type="range"] {
+        width: 100%;
+        height: 24px;
+        accent-color: #b6c8fa;
+        margin: 0 0 22px;
+        cursor: pointer;
+      }
+      .surfaces {
+        display: flex;
+        gap: 6px;
+      }
+      .surfaces button {
+        background: transparent;
+        min-height: 35px;
+        border: 1px solid #ffffff22;
+        border-radius: 7px;
+        padding: 5px 13px;
+        font-size: 11px;
+        color: #a8b3cb;
+      }
+      .surfaces button[aria-pressed="true"] {
+        background: #cad7fa;
+        color: #1c243a;
+        border-color: #cad7fa;
+      }
+      .actions {
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 28px;
+      }
+      .actions p {
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 570px;
+      }
+      .download {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #c8d6ff;
+        color: #1b243c;
+        min-height: 46px;
+        padding: 10px 20px;
+        border-radius: 10px;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+      .download:hover {
+        background: #dfe7ff;
+      }
+      footer {
+        padding: 25px 54px 35px;
+        display: flex;
+        justify-content: space-between;
+        color: #828ca5;
+        font-size: 11px;
+        border-top: 1px solid var(--line);
+      }
+      #status {
+        min-height: 20px;
+        margin-top: 13px;
+        font-size: 12px;
+        color: #bbcaf0;
+      }
+      .hero,
+      .direction,
+      .lab {
+        -webkit-tap-highlight-color: transparent;
+      }
+      @media (max-width: 1000px) {
+        header {
+          padding: 0 28px;
+          height: 84px;
+        }
+        main {
+          padding: 38px 28px;
+        }
+        .hero {
+          min-height: 410px;
+        }
+        .statement {
+          padding: 38px 30px;
+        }
+        .signature {
+          left: 30px;
+          bottom: 27px;
+        }
+        .object {
+          padding: 20px;
+        }
+        h1 {
+          font-size: 58px;
+        }
+        .statement > p {
+          max-width: 260px;
+        }
+        .scale-stage {
+          padding: 22px 12px;
+        }
+        .tuning {
+          padding: 23px 20px;
+        }
+        footer {
+          padding: 24px 28px;
+        }
+      }
+      @media (max-width: 650px) {
+        header .edition {
+          display: none;
+        }
+        main {
+          padding: 28px 18px;
+        }
+        .intro p {
+          max-width: 180px;
+          font-size: 11px;
+        }
+        .intro {
+          gap: 16px;
+          margin-bottom: 23px;
+        }
+        .hero {
+          grid-template-columns: 1fr;
+        }
+        .statement {
+          padding: 34px 27px 85px;
+        }
+        h1 {
+          font-size: 55px;
+        }
+        .object {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+          padding: 27px;
+          gap: 18px;
+        }
+        .object #hero-icon {
+          width: 205px;
+        }
+        .directions {
+          gap: 7px;
+        }
+        .direction {
+          padding: 13px 10px;
+        }
+        .thumb {
+          width: 80px;
+          margin: 17px auto;
+        }
+        .direction strong {
+          font-size: 12px;
+        }
+        .direction small {
+          font-size: 10px;
+        }
+        .lab {
+          grid-template-columns: 1fr;
+        }
+        .tuning {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+        .section-head {
+          align-items: start;
+        }
+        .section-head p {
+          max-width: 145px;
+          text-align: right;
+        }
+        .actions {
+          align-items: start;
+          flex-direction: column;
+        }
+        .download {
+          width: 100%;
+        }
+        .scale-stage {
+          min-height: 195px;
+        }
+        footer {
+          padding: 20px;
+          gap: 20px;
+        }
+        .back {
+          font-size: 11px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./#print" aria-label="Nyte icon studio">nyte</a
+      ><span class="edition">An identity for the quiet hours</span
+      ><a class="back" href="./#composition">All studies ↗</a>
+    </header>
+    <main>
+      <div class="intro">
+        <span class="edition"><i class="pin"></i> Open interval / direction 01</span>
+        <p>A curved edge. An opening. Just enough light to see what comes next.</p>
+      </div>
+      <section class="hero" aria-label="Nyte identity direction">
+        <div class="statement">
+          <h1>Make room<br />for a <em>thought.</em></h1>
+          <p>
+            Darkness gives the light its shape.<br />A softer identity for Nyte, built from the
+            space between two curves.
+          </p>
+          <div class="signature"><span></span> Navy, periwinkle, and a little air.</div>
+        </div>
+        <div class="object">
+          <div id="hero-icon"></div>
+          <div class="object-label">
+            <b id="hero-number">01</b><span id="hero-name">Open interval</span>
+          </div>
+        </div>
+      </section>
+      <div class="section-head">
+        <h2>Three ways to let the light in.</h2>
+        <p>Choose a mark to see it at every size.</p>
+      </div>
+      <div class="directions" id="directions" aria-label="Mark directions"></div>
+      <div class="section-head">
+        <h2>In the details.</h2>
+        <p>Adjust the light. Check the silhouette.</p>
+      </div>
+      <section class="lab" aria-label="Icon preview controls">
+        <div class="scale-stage" id="sizes"></div>
+        <div class="tuning">
+          <div class="row">
+            <label for="light">Light through the opening</label
+            ><output id="light-value" for="light">64%</output>
+          </div>
+          <input id="light" type="range" min="0" max="100" value="64" />
+          <div class="row"><span>Preview surface</span></div>
+          <div class="surfaces" aria-label="Preview surface">
+            <button type="button" data-surface="dark" aria-pressed="true">Night</button
+            ><button type="button" data-surface="light" aria-pressed="false">Day</button>
+          </div>
+        </div>
+      </section>
+      <div class="actions">
+        <p id="description"></p>
+        <button class="download" type="button" id="download">
+          Download this SVG <span aria-hidden="true">↓</span>
+        </button>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </main>
+    <footer><span>nyte / Open interval</span><span>Vector studies · September 2026</span></footer>
+    <script type="module">
+      import { marks, renderMark } from "./night.mjs";
+      const $ = (id) => document.getElementById(id);
+      let selected = 0,
+        light = 64;
+      function draw() {
+        $("hero-icon").innerHTML = renderMark(selected, light, "hero");
+        $("hero-number").textContent = String(selected + 1).padStart(2, "0");
+        $("hero-name").textContent = marks[selected].name;
+        $("description").textContent = marks[selected].description;
+        $("light-value").textContent = light + "%";
+        $("sizes").innerHTML = [96, 64, 32, 16]
+          .map(
+            (n) =>
+              `<div class="scale-item"><div style="width:${n}px">${renderMark(selected, light, "size-" + n, n)}</div><span>${n} px</span></div>`,
+          )
+          .join("");
+        document.querySelectorAll(".direction").forEach((b, i) => {
+          b.setAttribute("aria-pressed", String(selected === i));
+          b.querySelector(".thumb").innerHTML = renderMark(i, light, "thumb-" + i);
+        });
+        $("status").textContent = "";
+      }
+      marks.forEach((mark, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "direction";
+        b.setAttribute("aria-label", mark.name);
+        b.innerHTML = `<div class="direction-top"><span>0${i + 1}</span><span class="selected-dot"></span></div><div class="thumb"></div><strong>${mark.name}</strong><small>${mark.note}</small>`;
+        b.addEventListener("click", () => {
+          selected = i;
+          draw();
+        });
+        $("directions").append(b);
+      });
+      $("light").addEventListener("input", (e) => {
+        light = Number(e.target.value);
+        draw();
+      });
+      document.querySelectorAll("[data-surface]").forEach((b) =>
+        b.addEventListener("click", () => {
+          $("sizes").classList.toggle("light", b.dataset.surface === "light");
+          document
+            .querySelectorAll("[data-surface]")
+            .forEach((other) => other.setAttribute("aria-pressed", String(other === b)));
+        }),
+      );
+      $("download").addEventListener("click", () => {
+        const blob = new Blob([renderMark(selected, light, "nyte", 1024)], {
+          type: "image/svg+xml",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "nyte-" + marks[selected].slug + ".svg";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        $("status").textContent = marks[selected].name + " exported with your light setting.";
+      });
+      draw();
+    </script>
+  </body>
+</html>

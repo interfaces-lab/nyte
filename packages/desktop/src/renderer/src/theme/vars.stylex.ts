@@ -37,6 +37,8 @@ export const t = stylex.defineConsts({
   bgScrim: "var(--sand-bg-scrim)",
   bgChrome: "var(--nyte-bg-chrome)",
   bgEditor: "var(--nyte-bg-editor)",
+  // Image transparency must not pick up the workspace tint.
+  imageBg: "var(--nyte-editor-base)",
   bgCard: "var(--nyte-bg-card)",
   bgHover: "var(--nyte-bg-tertiary)",
   bgActive: "var(--nyte-bg-secondary)",

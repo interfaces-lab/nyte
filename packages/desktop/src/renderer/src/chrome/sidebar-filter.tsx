@@ -126,6 +126,8 @@ function statusIcon(status: SessionStatus): IconName | undefined {
 interface WorkspaceControlsProps {
   readonly value: SessionViewSettings;
   readonly filterDisabled: boolean;
+  readonly homeVisible: boolean;
+  readonly onHomeVisibleChange: (visible: boolean) => void;
   readonly onChange: (value: SessionViewSettings) => void;
   readonly onOpenFolder: () => void;
   readonly onCollapseAll: () => void;
@@ -134,6 +136,8 @@ interface WorkspaceControlsProps {
 export function WorkspaceControls({
   value,
   filterDisabled,
+  homeVisible,
+  onHomeVisibleChange,
   onChange,
   onOpenFolder,
   onCollapseAll,
@@ -203,6 +207,10 @@ export function WorkspaceControls({
           </MenuRadioGroup>
         </MenuSubmenu>
         <MenuSubmenu label="Show" icon="eye" popupStyle={styles.popup}>
+          <MenuCheckboxItem checked={homeVisible} onCheckedChange={onHomeVisibleChange}>
+            Home
+          </MenuCheckboxItem>
+          <MenuSeparator />
           {SHOW_FIELDS.map((field) => (
             <MenuCheckboxItem
               key={field}

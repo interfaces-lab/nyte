@@ -79,14 +79,25 @@ test("withdrawing a sending message stops its retries and reports it withdrawn",
   // Let the first attempt fail and park in the backoff.
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(outbox.entries.length, 1);
-  assert.equal(outbox.withdraw("k2"), true);
+  assert.deepEqual(await outbox.withdraw("k2"), { kind: "withdrawn", key: "k2" });
   const outcome = await pending;
   assert.deepEqual(outcome, { kind: "withdrawn", key: "k2" });
   assert.equal(script.attempts.length, 1);
-  assert.equal(outbox.withdraw("k2"), false);
+  assert.equal(outbox.withdraw("k2"), undefined);
   release?.();
 });
 
 test("backoff doubles from a quarter second and stops at ten", () => {
   assert.deepEqual([1, 2, 3, 4, 10].map(retryDelay), [250, 500, 1000, 2000, 10_000]);
+});
+
+test("withdraw reports a receipt that wins the in-flight race", async () => {
+  const receipt = Promise.withResolvers<SendReceipt>();
+  const outbox = new Outbox({ send: () => receipt.promise, mintKey: () => "racing" });
+  const sending = outbox.submit({ content: "once", lane: "queue" });
+  const withdrawal = outbox.withdraw("racing");
+  receipt.resolve({ kind: "queued", change: "accepted" });
+  assert.deepEqual(await withdrawal, { kind: "durable", change: "accepted", key: "racing" });
+  assert.deepEqual(await sending, await withdrawal);
+  assert.equal(outbox.entries.length, 0);
 });

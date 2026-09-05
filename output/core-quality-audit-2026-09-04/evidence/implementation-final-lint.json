@@ -1,7 +1,7 @@
-{ "diagnostics": [],
-              "number_of_files": 52,
-              "number_of_rules": 182,
-              "threads_count": 12,
-              "start_time": 1.354875
-            }
-            
+{
+  "diagnostics": [],
+  "number_of_files": 52,
+  "number_of_rules": 182,
+  "threads_count": 12,
+  "start_time": 1.354875
+}

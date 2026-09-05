@@ -1,0 +1,36 @@
+{
+  "id": 1,
+  "result": {
+    "result": {
+      "type": "object",
+      "value": {
+        "frames": [
+          {
+            "ms": 6.5,
+            "a": "true",
+            "b": "false",
+            "rows": 12,
+            "loading": false
+          },
+          {
+            "ms": 23,
+            "a": "true",
+            "b": "true",
+            "rows": 24,
+            "loading": false
+          }
+        ],
+        "final": {
+          "ms": 50,
+          "a": "true",
+          "b": "true",
+          "rows": 24,
+          "loading": false
+        },
+        "host": {
+          "platform": "darwin"
+        }
+      }
+    }
+  }
+}

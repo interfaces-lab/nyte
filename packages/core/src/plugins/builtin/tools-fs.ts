@@ -3,6 +3,7 @@
  * implementations; this is the only place that puts them in front of the model.
  */
 import { createAllTools } from "../../tools/index.ts";
+import type { AgentTool } from "../../types.ts";
 import { definePlugin } from "../types.ts";
 
 /** Tools that can re-run safely after a crash. Everything else settles as an error on resume. */
@@ -12,9 +13,9 @@ export function toolsFsPlugin() {
   return definePlugin({
     id: "tools-fs",
     session(api) {
-      const tools = createAllTools(api.env.cwd).map((tool) => ({
+      const tools = createAllTools(api.env.cwd).map<AgentTool>((tool) => ({
         ...tool,
-        replay: SAFE_REPLAY.has(tool.name) ? ("safe" as const) : ("never" as const),
+        replay: SAFE_REPLAY.has(tool.name) ? "safe" : "never",
       }));
       api.tools.add((draft) => {
         for (const tool of tools) draft.set(tool.name, tool);

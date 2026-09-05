@@ -4,7 +4,7 @@ The Nyte SDK namespaces over `fetch`, typed against `@nyte-ai/protocol`.
 Every verb is one `POST /v1/call/{verb}`; `watch` reads `GET /v1/watch` as
 server-sent events and yields an `AsyncIterable<SessionEvent>`.
 
-Dependencies: `@nyte-ai/protocol` only. No core, no Node. It runs wherever
+Dependencies: `@nyte-ai/protocol` and `typebox`. No core, no Node. It runs wherever
 `fetch`, `Headers`, `ReadableStream`, and `TextDecoder` exist, and it never
 compiles code, so a browser page under a strict content security policy can
 use it.
@@ -63,8 +63,10 @@ throws `NyteWireError`, whose `code` is the stable protocol code and whose
 `status` is the HTTP status that carried it.
 
 A watch event is decoded against the `SessionEvent` schema before it is
-yielded. A frame that outgrows `maxFrameChars` (counted in UTF-16 code units
-of the decoded text, default 4 194 304) ends the watch with `bad_body`. An `error` frame throws `NyteWireError` (with `status` undefined:
+yielded. A frame that outgrows `maxFrameChars` ends the watch with `bad_body`
+and cancels the body. The limit counts UTF-16 code units of decoded text,
+including field names and line endings, and defaults to 4 194 304. It does
+not depend on chunk boundaries. An `error` frame throws `NyteWireError` (with `status` undefined:
 the stream was already open). End of stream without an `ended` frame throws
 `NyteTransportError` with `failure.kind === "disconnected"`; a finished
 watch is only one the server finished.

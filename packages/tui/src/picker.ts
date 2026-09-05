@@ -9,7 +9,10 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { CliRenderer, KeyEvent } from "@opentui/core";
-import { GLYPHS } from "./constants.ts";
+import { CHAT_KEYBINDS, GLYPHS, keycap } from "./constants.ts";
+import type { ChatCommand } from "./constants.ts";
+import type { createChatKeymap } from "./keymap.ts";
+import { commandBindings } from "@opentui/keymap/extras";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
 import type { CliTheme } from "./theme.ts";
@@ -25,11 +28,10 @@ export class PickerCancelled extends Error {
 
 /** An extra key bound to the highlighted row. It acts on that row and closes the menu. */
 export interface ChoiceAction {
-  /** Key name as OpenTUI reports it, e.g. `"e"` or `"delete"`. */
-  readonly key: string;
-  readonly ctrl: boolean;
+  readonly command: ChatCommand;
   readonly label: string;
-  readonly run: (id: string) => void;
+  readonly keepOpen?: boolean;
+  readonly run: (id: string) => void | Promise<void>;
 }
 
 /**
@@ -62,6 +64,7 @@ export interface MenuScreen {
 
 export interface InlineMenuOptions {
   readonly renderer: CliRenderer;
+  readonly keymap: ReturnType<typeof createChatKeymap>;
   readonly theme: CliTheme;
   readonly nextId: (prefix?: string) => string;
   readonly onError: (cause: unknown) => void;
@@ -75,10 +78,6 @@ function consume(key: KeyEvent): void {
 }
 
 const FILTER_PLACEHOLDER = "type to filter";
-
-function actionKeyLabel(action: ChoiceAction): string {
-  return action.ctrl ? `ctrl+${action.key}` : action.key;
-}
 
 function filterChoices(choices: readonly Choice[], value: string): readonly Choice[] {
   const query = value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
@@ -124,8 +123,11 @@ export class InlineMenu {
   private filtering = true;
   private busy = false;
   private destroyed = false;
+  private readonly options: InlineMenuOptions;
+  private unregisterActions: (() => void) | undefined;
 
   constructor(options: InlineMenuOptions, screen: MenuScreen) {
+    this.options = options;
     this.renderer = options.renderer;
     this.theme = options.theme;
     this.onError = options.onError;
@@ -214,6 +216,7 @@ export class InlineMenu {
     this.applyWidth(options.renderer.width);
     this.repaintStatus();
     this.startLoad();
+    this.registerActions();
   }
 
   /** Rows the panel needs right now: declared, never measured. */
@@ -228,7 +231,7 @@ export class InlineMenu {
   get hints(): string {
     return [
       `enter ${this.screen.selectLabel ?? "select"}`,
-      ...(this.screen.actions ?? []).map((action) => `${actionKeyLabel(action)} ${action.label}`),
+      ...(this.screen.actions ?? []).map((action) => `${keycap(action.command)} ${action.label}`),
       "↑↓ move",
       `esc ${this.screen.cancelLabel ?? "close"}`,
     ].join(" · ");
@@ -246,12 +249,13 @@ export class InlineMenu {
     this.list.setItems(this.matches, this.indexOf(screen.selectedId));
     this.repaintStatus();
     this.startLoad();
+    this.registerActions();
   }
 
   /** Refresh a live list without throwing away its filter or highlighted item. */
-  setChoices(choices: readonly Choice[]): void {
+  setChoices(choices: readonly Choice[], selectedId?: string): void {
     if (this.destroyed) return;
-    const selected = this.list.selectedItem?.id;
+    const selected = selectedId ?? this.list.selectedItem?.id;
     this.choices = choices;
     this.matches = filterChoices(choices, this.queryInput.value);
     this.list.setItems(this.matches, this.indexOf(selected));
@@ -269,6 +273,7 @@ export class InlineMenu {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.unregisterActions?.();
     this.renderer.keyInput.off("keypress", this.onKeyPress);
     this.renderer.off(CliRenderEvents.RESIZE, this.onResize);
     this.queryInput.off(InputRenderableEvents.INPUT, this.onInput);
@@ -299,6 +304,31 @@ export class InlineMenu {
         this.repaintStatus();
         this.renderer.requestRender();
       });
+  }
+
+  private registerActions(): void {
+    this.unregisterActions?.();
+    const actions = this.screen.actions ?? [];
+    this.unregisterActions = this.options.keymap.registerLayer({
+      priority: 2,
+      enabled: () => !this.destroyed && this.container.visible && !this.busy,
+      commands: actions.map((action) => ({
+        name: action.command,
+        title: action.label,
+        run: () => {
+          const selected = this.list.selectedItem;
+          if (selected === undefined) return false;
+          if (!action.keepOpen) this.screen.onCancel();
+          this.run(() => action.run(selected.id));
+          return true;
+        },
+      })),
+      bindings: commandBindings(
+        Object.fromEntries(
+          actions.map((action) => [action.command, CHAT_KEYBINDS[action.command]]),
+        ),
+      ),
+    });
   }
 
   private titleText(title: string): StyledText {
@@ -407,19 +437,6 @@ export class InlineMenu {
       return;
     }
     if (this.matches.length === 0) return;
-    const highlighted = this.list.selectedItem;
-    const action =
-      highlighted === undefined || key.meta || key.shift
-        ? undefined
-        : (this.screen.actions ?? []).find(
-            (candidate) => candidate.key === key.name && candidate.ctrl === key.ctrl,
-          );
-    if (action !== undefined && highlighted !== undefined) {
-      consume(key);
-      this.screen.onCancel();
-      action.run(highlighted.id);
-      return;
-    }
     if (key.name === "return") {
       consume(key);
       this.list.selectCurrent();

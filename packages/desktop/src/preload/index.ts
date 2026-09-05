@@ -143,6 +143,7 @@ const bridge = {
   host: {
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
     state: () => call("host.state", undefined),
+    sessionDirectory: () => call("host.sessionDirectory", undefined),
     fonts: () => call("host.fonts", undefined),
     openWorkspace: verb("host.openWorkspace"),
     pickWorkspace: () => call("host.pickWorkspace", undefined),

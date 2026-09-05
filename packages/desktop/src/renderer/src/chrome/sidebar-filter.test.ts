@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { HeadName, SessionInfo } from "@nyte-ai/core";
-import { asSessionId } from "../../../shared/ipc.ts";
+import { sessionId } from "@nyte-ai/protocol";
 import {
   DEFAULT_SESSION_VIEW,
   sessionsForView,
@@ -53,7 +53,7 @@ function session({
   const heads: SessionInfo["heads"] =
     run === undefined ? [{ head: MAIN_HEAD, tip: null }] : [{ head: MAIN_HEAD, tip: null, run }];
   const info: SessionInfo = {
-    sessionId: asSessionId(id),
+    sessionId: sessionId(id),
     createdAt: updatedAt,
     lastActivityAt: updatedAt,
     pinned,

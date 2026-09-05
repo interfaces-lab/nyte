@@ -2,6 +2,7 @@ import stylex from "@stylexjs/unplugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import { resolve } from "node:path";
+import packageMetadata from "./package.json" with { type: "json" };
 
 const esbuild = { tsconfigRaw: { compilerOptions: { target: "ES2024" } } };
 const rendererInput = resolve("src/renderer/index.html");
@@ -11,7 +12,9 @@ export default defineConfig(({ command }) => ({
     esbuild,
     build: {
       externalizeDeps: {
-        exclude: ["@nyte-ai/ai", "@nyte-ai/core", "@nyte-ai/plugin", "@nyte-ai/schema"],
+        exclude: Object.keys(packageMetadata.dependencies).filter((name) =>
+          name.startsWith("@nyte-ai/"),
+        ),
       },
       minify: true,
       reportCompressedSize: false,
@@ -25,7 +28,7 @@ export default defineConfig(({ command }) => ({
   preload: {
     esbuild,
     build: {
-      externalizeDeps: { exclude: ["@nyte-ai/core"] },
+      externalizeDeps: { exclude: ["@nyte-ai/core", "@nyte-ai/protocol"] },
       minify: true,
       reportCompressedSize: false,
       target: "node24",
@@ -40,7 +43,7 @@ export default defineConfig(({ command }) => ({
     esbuild,
     plugins: [
       stylex.vite({
-        // Lazy renderer chunks must install their rules before React mounts them.
+        // Development installs component rules before React mounts them.
         // Production still extracts one layered stylesheet.
         devMode: command === "serve" ? "css-only" : "off",
         runtimeInjection: command === "serve",

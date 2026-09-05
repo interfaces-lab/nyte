@@ -2,16 +2,11 @@ node_modules/
 dist/
 /bin/
 .nyte/
-.uji/
 .turbo/
-.otui-probe/
-
-packages/tui/addons.html
 
 .DS_Store
 .vercel
 .env*
-.claude-scratch/
 
 __pycache__/
 *.pyc

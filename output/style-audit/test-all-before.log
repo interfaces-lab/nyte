@@ -1,0 +1,593 @@
+Scope: 3 of 16 workspace projects
+packages/core test$ vitest --run
+packages/tui test$ vitest --run
+packages/desktop test$ vitest --run
+packages/desktop test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/desktop
+packages/core test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/core
+packages/tui test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/tui
+packages/tui test:  ❯ test/offline-boot.test.ts (0 test)
+packages/tui test:  ❯ test/print.test.ts (0 test)
+packages/core test:  ❯ test/workspace-registry.test.ts (0 test)
+packages/core test:  ❯ test/sdk.test.ts (0 test)
+packages/core test:  ❯ test/tool-result.test.ts (0 test)
+packages/core test:  ❯ test/tree-navigation.test.ts (0 test)
+packages/core test:  ❯ test/harness-retry.test.ts (0 test)
+packages/tui test:  ❯ test/render-clipping.test.ts (7 tests | 7 failed) 18ms
+packages/tui test:    × clips rectangle -2,-1,4,3 to the buffer 7ms
+packages/tui test:    × clips rectangle 3,2,4,3 to the buffer 1ms
+packages/tui test:    × clips rectangle -10,-10,20,20 to the buffer 1ms
+packages/tui test:    × clips rectangle -2,-1,2,1 to the buffer 2ms
+packages/tui test:    × clips rectangle 5,4,2,1 to the buffer 4ms
+packages/tui test:    × clips rectangle 1,1,0,2 to the buffer 1ms
+packages/tui test:    × offscreen fills still respect the enclosing viewport 0ms
+packages/tui test: ▶ resolveTheme
+packages/tui test:   ✖ reads dark and light, with the night and day aliases (1.177041ms)
+packages/tui test:   ✖ prefers the canonical name, then the SSH alias, then COLORFGBG (0.590042ms)
+packages/tui test:   ✖ falls through an unset or unrecognized name (4.794833ms)
+packages/tui test:   ✖ reads the COLORFGBG background from the last field (0.223916ms)
+packages/tui test:   ✖ defaults to dark, including when COLORFGBG states no background (0.25175ms)
+packages/tui test: ✖ resolveTheme (10.177791ms)
+packages/tui test:  ❯ test/appearance.test.ts (0 test)
+packages/tui test: ▶ run notifications
+packages/tui test:   ✔ asks OpenTUI to notify when the run stops (4.868291ms)
+packages/tui test:   ✔ adds a terminal bell only in sound mode (0.241375ms)
+packages/tui test:   ✔ stays quiet when disabled and contains renderer failures (0.211167ms)
+packages/tui test:   ✔ does not write a bell when stdout is not a terminal (0.103042ms)
+packages/tui test:   ✔ a failed run never reads as a clean finish (0.212708ms)
+packages/tui test:   ✔ an abort is reported as stopped, not finished (0.120042ms)
+packages/tui test: ✔ run notifications (6.832709ms)
+packages/tui test: ▶ run end message
+packages/tui test:   ✔ collapses whitespace and bounds long provider errors (0.200333ms)
+packages/tui test:   ✔ falls back when the provider supplies no text (0.119625ms)
+packages/tui test: ✔ run end message (0.494583ms)
+packages/tui test:  ❯ test/notifications.test.ts (0 test)
+packages/tui test: ℹ tests 8
+packages/tui test: ℹ suites 2
+packages/tui test: ℹ pass 8
+packages/tui test: ℹ fail 0
+packages/tui test: ℹ cancelled 0
+packages/tui test: ℹ skipped 0
+packages/tui test: ℹ todo 0
+packages/tui test: ℹ duration_ms 151.865875
+packages/tui test:  ❯ test/presenters.test.ts (0 test)
+packages/tui test: ✖ qa demo progress reserves space above the production app and reaches a full bar (0.899ms)
+packages/tui test: ✖ /Users/workgyver/Developer/nyte/packages/tui/test/qa-progress.test.ts (0.189125ms)
+packages/tui test:  ❯ test/qa-progress.test.ts (0 test)
+packages/tui test: ▶ prompt history over a wrapped draft
+packages/tui test:   ✖ up climbs the wrapped rows of a paragraph before it recalls anything
+packages/tui test:   ✖ down descends the rows, reaches the end, and only then leaves the draft
+packages/tui test:   ✖ down walks forward through history and hands the stashed draft back
+packages/tui test:   ✖ newline-delimited lines still walk one at a time
+packages/tui test:   ✖ an empty composer recalls at once and comes back empty
+packages/tui test:   ✖ the end of a wide-character entry is found in cells, not characters
+packages/tui test: ✖ prompt history over a wrapped draft (4.666417ms)
+packages/tui test:  ❯ test/prompt-history.test.ts (0 test)
+packages/tui test:  ❯ test/session-title.test.ts (0 test)
+packages/tui test: ℹ tests 6
+packages/tui test: ℹ suites 1
+packages/tui test: ℹ pass 0
+packages/tui test: ℹ fail 0
+packages/tui test: ℹ cancelled 6
+packages/tui test: ℹ skipped 0
+packages/tui test: ℹ todo 0
+packages/tui test: ℹ duration_ms 28.272
+packages/tui test: ✖ failing tests:
+packages/tui test: test at test/prompt-history.test.ts:90:37
+packages/tui test: ✖ up climbs the wrapped rows of a paragraph before it recalls anything
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:113:37
+packages/tui test: ✖ down descends the rows, reaches the end, and only then leaves the draft
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:131:37
+packages/tui test: ✖ down walks forward through history and hands the stashed draft back
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:149:37
+packages/tui test: ✖ newline-delimited lines still walk one at a time
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:160:37
+packages/tui test: ✖ an empty composer recalls at once and comes back empty
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:169:37
+packages/tui test: ✖ the end of a wide-character entry is found in cells, not characters
+packages/tui test:   'test did not finish before its parent and was cancelled'
+packages/tui test: test at test/prompt-history.test.ts:22:40
+packages/tui test: ✖ prompt history over a wrapped draft (4.666417ms)
+packages/tui test:   Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:       at resolveRenderLib (file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:17662:13)
+packages/tui test:       at new CliRenderer (file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:7313:17)
+packages/tui test:       at setupTestRenderer (file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/testing.js:716:10)
+packages/tui test:       at createTestRenderer (file:///Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/testing.js:585:26)
+packages/tui test:       at SuiteContext.<anonymous> (/Users/workgyver/Developer/nyte/packages/tui/test/prompt-history.test.ts:43:19)
+packages/tui test:       at TestHook.runInAsyncScope (node:async_hooks:226:14)
+packages/tui test:       at TestHook.run (node:internal/test_runner/test:1397:25)
+packages/tui test:       at TestHook.run (node:internal/test_runner/test:1741:18)
+packages/tui test:       at TestHook.run (node:internal/util:581:20)
+packages/tui test:       at Suite.runHook (node:internal/test_runner/test:1284:20)
+packages/core test: ▶ modern MCP tools
+packages/core test:   ✖ builds stable provider-safe tool names (0.900208ms)
+packages/core test:   ✖ discovers once, registers a stable tool, and calls without a legacy handshake (2.280042ms)
+packages/core test:   ✖ turns remote tool failures into structured ToolError values (0.200542ms)
+packages/core test:   ✖ rejects a legacy server without initialize, GET, or transport fallback (0.167958ms)
+packages/core test:   ✖ rejects conflicting names from one server instead of using order-based suffixes (0.138625ms)
+packages/core test: ✖ modern MCP tools (4.676042ms)
+packages/core test:  ❯ test/mcp.test.ts (0 test)
+packages/tui test:  ❯ test/terminal-title.test.ts (0 test)
+packages/tui test:  ❯ test/usage.test.ts (0 test)
+packages/core test: ⎯⎯⎯⎯⎯⎯ Failed Suites 6 ⎯⎯⎯⎯⎯⎯⎯
+packages/core test:  FAIL  test/harness-retry.test.ts [ test/harness-retry.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/harness-retry.test.ts
+packages/core test:  ❯ test/harness-retry.test.ts:12:1
+packages/core test:      10| import { afterEach, describe, test } from "node:test";
+packages/core test:      11| import type { AssistantMessage, AssistantMessageEvent, Message, Model,…
+packages/core test:      12| import { EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      13| import type { StreamFn } from "../src/types.ts";
+packages/core test:      14| import { AgentHarness, type RetryEvent } from "../src/harness/agent-ha…
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+packages/core test:  FAIL  test/mcp.test.ts [ test/mcp.test.ts ]
+packages/core test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/core/test/mcp.test.ts
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+packages/core test:  FAIL  test/sdk.test.ts [ test/sdk.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/sdk.test.ts
+packages/core test:  ❯ test/sdk.test.ts:12:1
+packages/core test:      10| import { afterEach, describe, test } from "node:test";
+packages/core test:      11| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+packages/core test:      12| import { contentText, EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      13| import {
+packages/core test:      14|   createUji,
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+packages/core test:  FAIL  test/tool-result.test.ts [ test/tool-result.test.ts ]
+packages/core test: Error: Cannot find module '../harness/session/types.ts' imported from /Users/workgyver/Developer/nyte/packages/core/src/sdk/events.ts
+packages/core test:  ❯ src/sdk/events.ts:14:1
+packages/core test:      12|  */
+packages/core test:      13| import type { HarnessEvent } from "../harness/agent-harness.ts";
+packages/core test:      14| import { toJsonValue } from "../harness/session/types.ts";
+packages/core test:        | ^
+packages/core test:      15| import type { Entry, JsonValue, LogItem } from "../harness/session/typ…
+packages/core test:      16| import { transcriptFromEntries } from "../views/transcript.ts";
+packages/core test:  ❯ test/tool-result.test.ts:9:1
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+packages/core test:  FAIL  test/tree-navigation.test.ts [ test/tree-navigation.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/tree-navigation.test.ts
+packages/core test:  ❯ test/tree-navigation.test.ts:8:1
+packages/core test:       6| import { afterEach, describe, test } from "node:test";
+packages/core test:       7| import type { Context as AiContext } from "@uji-ai/ai/types";
+packages/core test:       8| import {
+packages/core test:        | ^
+packages/core test:       9|   createAssistantMessageEventStream,
+packages/core test:      10|   type AssistantMessage,
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+packages/core test:  FAIL  test/workspace-registry.test.ts [ test/workspace-registry.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/workspace-registry.test.ts
+packages/core test:  ❯ test/workspace-registry.test.ts:14:1
+packages/core test:      12| import { afterEach, describe, test } from "node:test";
+packages/core test:      13| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+packages/core test:      14| import { EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      15| import { createUji, WorkspaceRegistry } from "../src/index.ts";
+packages/core test:      16| import { SqliteSessionRepo } from "../src/store.ts";
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+packages/core test:  Test Files  6 failed | 26 passed (32)
+packages/core test:       Tests  194 passed (194)
+packages/core test:    Start at  23:28:17
+packages/core test:    Duration  5.89s (transform 46%, import 31%, tests 22%)
+packages/core test:   Transform  transforming modules took 21.63s · 46% of tracked time, re-done on every run
+packages/core test:              persist transforms across runs with fsModuleCache: true
+packages/core test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/core test: Failed
+packages/desktop test:  Test Files  19 passed (19)
+packages/desktop test:       Tests  102 passed (102)
+packages/desktop test:    Start at  23:28:17
+packages/desktop test:    Duration  6.33s (transform 52%, import 34%, tests 13%, worker 1%)
+packages/desktop test:   Transform  transforming modules took 9.95s · 52% of tracked time, re-done on every run
+packages/desktop test:              persist transforms across runs with fsModuleCache: true
+packages/desktop test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/desktop test: Done
+packages/tui test:  ❯ test/usage-panel.test.ts (0 test)
+packages/tui test:  ❯ test/transcript-view.test.ts (8 tests | 8 failed) 17ms
+packages/tui test:    ❯ the transcript view (8)
+packages/tui test:      × a request no run has answered shows neither Worked nor a spinner 10ms
+packages/tui test:      × a branch snapshot restores an earlier step within the same turn 1ms
+packages/tui test:      × the spinner appears once the run starts, and Worked once it ends 1ms
+packages/tui test:      × a running task restores its agent and prompt from durable call arguments 1ms
+packages/tui test:      × the latest text and the status row stay in view while a long answer streams 1ms
+packages/tui test:      × a notice under the composer keeps the newest text and the status row in view 0ms
+packages/tui test:      × scrolling up unpins the view, and it follows the stream again from the bottom 0ms
+packages/tui test:      × consecutive config commits collapse into one line with the latest values 3ms
+packages/tui test:  ❯ test/shell-interaction.test.ts (5 tests | 5 failed) 12ms
+packages/tui test:    ❯ shell input ownership (5)
+packages/tui test:      × clicking the composer border leaves typing in its textarea 8ms
+packages/tui test:      × a menu keeps input ownership across composer clicks and terminal focus 1ms
+packages/tui test:      × a read-only panel does not edit the draft behind it 1ms
+packages/tui test:      × menu mouse selection follows the visible row after scrolling and resizing 1ms
+packages/tui test:      × Escape dismisses a menu while its selected action is pending 1ms
+packages/tui test:  ❯ test/model-picker.test.ts (8 tests | 8 failed) 17ms
+packages/tui test:    ❯ model picker (8)
+packages/tui test:      × edits effort and fast mode in one row, then confirms them together 9ms
+packages/tui test:      × keeps row drafts while navigating and only commits the chosen model 2ms
+packages/tui test:      × Escape discards edits even with search text and restores composer input 2ms
+packages/tui test:      × searches by model and provider, and prevents selection with no matches 1ms
+packages/tui test:      × bounds effort, skips unsupported levels, and keeps Tab on the row 1ms
+packages/tui test:      × scrolls the current model into view and keeps it selectable after resizing 1ms
+packages/tui test:      × selects the current model when the catalog loads 0ms
+packages/tui test:      × keeps cached choices usable on refresh failure and ignores a late load after close 0ms
+packages/tui test: ✔ prefix steers still win over the coding session (2.416042ms)
+packages/tui test: ✔ a health-route inspect reads src/server.ts (2.452875ms)
+packages/tui test: ✔ GET only edits the health branch (0.19525ms)
+packages/tui test: ✔ asking whether the file parses runs node --check (0.129792ms)
+packages/tui test: ✔ after-tool follow-ups name the result instead of Done (0.416083ms)
+packages/tui test: ✔ unscripted tools still answer Done so prefix QA stays stable (0.137625ms)
+packages/tui test:  ❯ test/sandbox/provider.test.ts (0 test)
+packages/tui test: ℹ tests 6
+packages/tui test: ℹ suites 0
+packages/tui test: ℹ pass 6
+packages/tui test: ℹ fail 0
+packages/tui test: ℹ cancelled 0
+packages/tui test:  ❯ test/tasks.test.ts (4 tests | 1 failed) 221ms
+packages/tui test:    × inspection preserves the draft and filter through updates, resize, and Escape 16ms
+packages/tui test:  ❯ test/qa/resume.test.ts (0 test)
+packages/tui test:  ❯ test/qa/slash.test.ts (0 test)
+packages/tui test:  ❯ test/qa/show.test.ts (0 test)
+packages/tui test:  ❯ test/qa/chat.test.ts (0 test)
+packages/tui test:  ❯ test/qa/mention.test.ts (0 test)
+packages/tui test:  ❯ test/interactive-compaction.test.ts (2 tests | 2 failed) 131ms
+packages/tui test:    × Escape cancels /compact immediately and a late native result cannot publish 89ms
+packages/tui test:    × one Escape stops a streaming reply through the real chat interface 41ms
+packages/tui test:  ❯ test/qa/tree-navigation.test.ts (0 test)
+packages/tui test: ⎯⎯⎯⎯⎯⎯ Failed Suites 18 ⎯⎯⎯⎯⎯⎯
+packages/tui test:  FAIL  test/appearance.test.ts [ test/appearance.test.ts ]
+packages/tui test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/tui/test/appearance.test.ts
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/70]⎯
+packages/tui test:  FAIL  test/notifications.test.ts [ test/notifications.test.ts ]
+packages/tui test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/tui/test/notifications.test.ts
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/70]⎯
+packages/tui test:  FAIL  test/offline-boot.test.ts [ test/offline-boot.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/tui/test/offline-boot.test.ts
+packages/tui test:  ❯ test/offline-boot.test.ts:7:1
+packages/tui test:       5| import { describe, test } from "node:test";
+packages/tui test:       6| import { setTimeout as delay } from "node:timers/promises";
+packages/tui test:       7| import {
+packages/tui test:        | ^
+packages/tui test:       8|   createModels,
+packages/tui test:       9|   defaultProviderAuthContext,
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/70]⎯
+packages/tui test:  FAIL  test/presenters.test.ts [ test/presenters.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/core' imported from /Users/workgyver/Developer/nyte/packages/tui/src/presenters.ts
+packages/tui test:  ❯ src/presenters.ts:1:1
+packages/tui test:       1| import { createPresenter } from "@uji-ai/core";
+packages/tui test:        | ^
+packages/tui test:       2| import type { CustomRefiner, ToolRefiner } from "@uji-ai/core";
+packages/tui test:       3|
+packages/tui test:  ❯ test/presenters.test.ts:8:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/70]⎯
+packages/tui test:  FAIL  test/print.test.ts [ test/print.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/core' imported from /Users/workgyver/Developer/nyte/packages/tui/test/print.test.ts
+packages/tui test:  ❯ test/print.test.ts:17:1
+packages/tui test:      15| import { describe, test } from "node:test";
+packages/tui test:      16| import type { Model } from "@uji-ai/ai";
+packages/tui test:      17| import { createUji } from "@uji-ai/core";
+packages/tui test:        | ^
+packages/tui test:      18| import type { Uji } from "@uji-ai/core";
+packages/tui test:      19| import { parseFlags } from "../src/flags.ts";
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/70]⎯
+packages/tui test:  FAIL  test/prompt-history.test.ts [ test/prompt-history.test.ts ]
+packages/tui test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/tui/test/prompt-history.test.ts
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/70]⎯
+packages/tui test:  FAIL  test/qa-progress.test.ts [ test/qa-progress.test.ts ]
+packages/tui test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/tui/test/qa-progress.test.ts
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/70]⎯
+packages/tui test:  FAIL  test/session-title.test.ts [ test/session-title.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/tui/src/session-title.ts
+packages/tui test:  ❯ src/session-title.ts:8:1
+packages/tui test:       6|  * https://github.com/anomalyco/opencode/blob/e70d667a9fe3e84cc071a559…
+packages/tui test:       7|  */
+packages/tui test:       8| import { contentText } from "@uji-ai/ai";
+packages/tui test:        | ^
+packages/tui test:       9| import type { Api, Model, Models, ThinkingLevel } from "@uji-ai/ai";
+packages/tui test:      10| import type { JsonValue, Message } from "@uji-ai/schema";
+packages/tui test:  ❯ test/session-title.test.ts:16:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/70]⎯
+packages/tui test:  FAIL  test/terminal-title.test.ts [ test/terminal-title.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/core/store' imported from /Users/workgyver/Developer/nyte/packages/tui/test/terminal-title.test.ts
+packages/tui test:  ❯ test/terminal-title.test.ts:16:1
+packages/tui test:      14|   watchTerminalTitle,
+packages/tui test:      15| } from "../src/terminal-title.ts";
+packages/tui test:      16| import { SqliteSessionRepo } from "@uji-ai/core/store";
+packages/tui test:        | ^
+packages/tui test:      17|
+packages/tui test:      18| const directories: string[] = [];
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/70]⎯
+packages/tui test:  FAIL  test/usage-panel.test.ts [ test/usage-panel.test.ts ]
+packages/tui test: Error: Cannot find module '../src/tui.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/usage-panel.test.ts
+packages/tui test:  ❯ test/usage-panel.test.ts:7:1
+packages/tui test:       5| import { appendUser } from "../src/transcript.ts";
+packages/tui test:       6| import { GROKNIGHT } from "../src/theme.ts";
+packages/tui test:       7| import { buildUi, openUsageCard, selectChoice } from "../src/tui.ts";
+packages/tui test:        | ^
+packages/tui test:       8| import type { Ui } from "../src/tui.ts";
+packages/tui test:       9| import type { UsageCard } from "../src/usage.ts";
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/70]⎯
+packages/tui test:  FAIL  test/usage.test.ts [ test/usage.test.ts ]
+packages/tui test: Error: Cannot find package '@uji-ai/core' imported from /Users/workgyver/Developer/nyte/packages/tui/test/usage.test.ts
+packages/tui test:  ❯ test/usage.test.ts:6:1
+packages/tui test:       4| import { join } from "node:path";
+packages/tui test:       5| import { afterEach, describe, test } from "node:test";
+packages/tui test:       6| import { emptyUsageSummary, MAIN } from "@uji-ai/core";
+packages/tui test:        | ^
+packages/tui test:       7| import type { AccountLimits } from "@uji-ai/ai";
+packages/tui test:       8| import type { Usage } from "@uji-ai/schema";
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/70]⎯
+packages/tui test:  FAIL  test/qa/chat.test.ts [ test/qa/chat.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/chat.test.ts:4:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/70]⎯
+packages/tui test:  FAIL  test/qa/mention.test.ts [ test/qa/mention.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/mention.test.ts:4:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/70]⎯
+packages/tui test:  FAIL  test/qa/resume.test.ts [ test/qa/resume.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/resume.test.ts:4:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/70]⎯
+packages/tui test:  FAIL  test/qa/show.test.ts [ test/qa/show.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/show.test.ts:3:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/70]⎯
+packages/tui test:  FAIL  test/qa/slash.test.ts [ test/qa/slash.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/slash.test.ts:4:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/70]⎯
+packages/tui test:  FAIL  test/qa/tree-navigation.test.ts [ test/qa/tree-navigation.test.ts ]
+packages/tui test: Error: Cannot find module '../../src/lifecycle.ts' imported from /Users/workgyver/Developer/nyte/packages/tui/test/qa/driver.ts
+packages/tui test:  ❯ test/qa/driver.ts:23:1
+packages/tui test:      21| import { BUSY_COMPOSER_PLACEHOLDER, COMPOSER_PLACEHOLDER } from "../..…
+packages/tui test:      22| import { createTuiRenderer, runTui } from "../../src/interactive.ts";
+packages/tui test:      23| import { DOUBLE_ESCAPE_MS } from "../../src/lifecycle.ts";
+packages/tui test:        | ^
+packages/tui test:      24| import type { TuiExit } from "../../src/interactive.ts";
+packages/tui test:      25| import { startMockProvider } from "../sandbox/provider.ts";
+packages/tui test:  ❯ test/qa/tree-navigation.test.ts:5:1
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/70]⎯
+packages/tui test:  FAIL  test/sandbox/provider.test.ts [ test/sandbox/provider.test.ts ]
+packages/tui test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/tui/test/sandbox/provider.test.ts
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/70]⎯
+packages/tui test: ⎯⎯⎯⎯⎯⎯ Failed Tests 31 ⎯⎯⎯⎯⎯⎯⎯
+packages/tui test:  FAIL  test/interactive-compaction.test.ts > Escape cancels /compact immediately and a late native result cannot publish
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ startInteractive test/interactive-compaction.test.ts:19:23
+packages/tui test:      17| async function startInteractive(host: Host, sessionId: SessionId) {
+packages/tui test:      18|   vi.stubEnv("NYTE_SKIP_VERSION_CHECK", "1");
+packages/tui test:      19|   const setup = await createTestRenderer({
+packages/tui test:        |                       ^
+packages/tui test:      20|     width: 80,
+packages/tui test:      21|     height: 24,
+packages/tui test:  ❯ test/interactive-compaction.test.ts:107:29
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/70]⎯
+packages/tui test:  FAIL  test/interactive-compaction.test.ts > one Escape stops a streaming reply through the real chat interface
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ startInteractive test/interactive-compaction.test.ts:19:23
+packages/tui test:      17| async function startInteractive(host: Host, sessionId: SessionId) {
+packages/tui test:      18|   vi.stubEnv("NYTE_SKIP_VERSION_CHECK", "1");
+packages/tui test:      19|   const setup = await createTestRenderer({
+packages/tui test:        |                       ^
+packages/tui test:      20|     width: 80,
+packages/tui test:      21|     height: 24,
+packages/tui test:  ❯ test/interactive-compaction.test.ts:138:29
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/70]⎯
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > edits effort and fast mode in one row, then confirms them together
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > keeps row drafts while navigating and only commits the chosen model
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > Escape discards edits even with search text and restores composer input
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > searches by model and provider, and prevents selection with no matches
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > bounds effort, skips unsupported levels, and keeps Tab on the row
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > scrolls the current model into view and keeps it selectable after resizing
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > selects the current model when the catalog loads
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > keeps cached choices usable on refresh failure and ignores a late load after close
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ test/model-picker.test.ts:42:19
+packages/tui test:      40|
+packages/tui test:      41|   beforeEach(async () => {
+packages/tui test:      42|     setup = await createTestRenderer({
+packages/tui test:        |                   ^
+packages/tui test:      43|       width: 100,
+packages/tui test:      44|       height: 30,
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/70]⎯
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > edits effort and fast mode in one row, then confirms them together
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > keeps row drafts while navigating and only commits the chosen model
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > Escape discards edits even with search text and restores composer input
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > searches by model and provider, and prevents selection with no matches
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > bounds effort, skips unsupported levels, and keeps Tab on the row
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > scrolls the current model into view and keeps it selectable after resizing
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > selects the current model when the catalog loads
+packages/tui test:  FAIL  test/model-picker.test.ts > model picker > keeps cached choices usable on refresh failure and ignores a late load after close
+packages/tui test: TypeError: Cannot read properties of undefined (reading 'renderer')
+packages/tui test:  ❯ test/model-picker.test.ts:55:25
+packages/tui test:      53|     await setup.waitForVisualIdle();
+packages/tui test:      54|   });
+packages/tui test:      55|   afterEach(() => setup.renderer.destroy());
+packages/tui test:        |                         ^
+packages/tui test:      56|
+packages/tui test:      57|   function open(
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/70]⎯
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle -2,-1,4,3 to the buffer
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle 3,2,4,3 to the buffer
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle -10,-10,20,20 to the buffer
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle -2,-1,2,1 to the buffer
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle 5,4,2,1 to the buffer
+packages/tui test:  FAIL  test/render-clipping.test.ts > clips rectangle 1,1,0,2 to the buffer
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ OptimizedBuffer.create ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/buffer.ts:134:17
+packages/tui test:  ❯ createBuffer test/render-clipping.test.ts:7:34
+packages/tui test:       5| const fill = RGBA.fromHex("#ff0000");
+packages/tui test:       6| function createBuffer(): OptimizedBuffer {
+packages/tui test:       7|   const buffer = OptimizedBuffer.create(5, 4, "unicode");
+packages/tui test:        |                                  ^
+packages/tui test:       8|   onTestFinished(() => buffer.destroy());
+packages/tui test:       9|   buffer.clear(background);
+packages/tui test:  ❯ test/render-clipping.test.ts:33:18
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/70]⎯
+packages/tui test:  FAIL  test/render-clipping.test.ts > offscreen fills still respect the enclosing viewport
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ OptimizedBuffer.create ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/buffer.ts:134:17
+packages/tui test:  ❯ createBuffer test/render-clipping.test.ts:7:34
+packages/tui test:       5| const fill = RGBA.fromHex("#ff0000");
+packages/tui test:       6| function createBuffer(): OptimizedBuffer {
+packages/tui test:       7|   const buffer = OptimizedBuffer.create(5, 4, "unicode");
+packages/tui test:        |                                  ^
+packages/tui test:       8|   onTestFinished(() => buffer.destroy());
+packages/tui test:       9|   buffer.clear(background);
+packages/tui test:  ❯ test/render-clipping.test.ts:39:18
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/70]⎯
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > clicking the composer border leaves typing in its textarea
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > a menu keeps input ownership across composer clicks and terminal focus
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > a read-only panel does not edit the draft behind it
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > menu mouse selection follows the visible row after scrolling and resizing
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > Escape dismisses a menu while its selected action is pending
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ test/shell-interaction.test.ts:15:19
+packages/tui test:      13|
+packages/tui test:      14|   beforeEach(async () => {
+packages/tui test:      15|     setup = await createTestRenderer({
+packages/tui test:        |                   ^
+packages/tui test:      16|       width: 60,
+packages/tui test:      17|       height: 20,
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/70]⎯
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > clicking the composer border leaves typing in its textarea
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > a menu keeps input ownership across composer clicks and terminal focus
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > a read-only panel does not edit the draft behind it
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > menu mouse selection follows the visible row after scrolling and resizing
+packages/tui test:  FAIL  test/shell-interaction.test.ts > shell input ownership > Escape dismisses a menu while its selected action is pending
+packages/tui test: TypeError: Cannot read properties of undefined (reading 'renderer')
+packages/tui test:  ❯ test/shell-interaction.test.ts:27:25
+packages/tui test:      25|   });
+packages/tui test:      26|
+packages/tui test:      27|   afterEach(() => setup.renderer.destroy());
+packages/tui test:        |                         ^
+packages/tui test:      28|
+packages/tui test:      29|   test("clicking the composer border leaves typing in its textarea", a…
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/70]⎯
+packages/tui test:  FAIL  test/tasks.test.ts > inspection preserves the draft and filter through updates, resize, and Escape
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ test/tasks.test.ts:96:23
+packages/tui test:      94| test("inspection preserves the draft and filter through updates, resiz…
+packages/tui test:      95|   const { host, snapshot } = await fixture();
+packages/tui test:      96|   const setup = await createTestRenderer({
+packages/tui test:        |                       ^
+packages/tui test:      97|     width: 90,
+packages/tui test:      98|     height: 28,
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/70]⎯
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a request no run has answered shows neither Worked nor a spinner
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a branch snapshot restores an earlier step within the same turn
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > the spinner appears once the run starts, and Worked once it ends
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a running task restores its agent and prompt from durable call arguments
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > the latest text and the status row stay in view while a long answer streams
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a notice under the composer keeps the newest text and the status row in view
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > scrolling up unpins the view, and it follows the stream again from the bottom
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > consecutive config commits collapse into one line with the latest values
+packages/tui test: Error: Failed to initialize OpenTUI render library: OpenTUI native FFI is not available for this runtime yet
+packages/tui test:  ❯ resolveRenderLib ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/zig.ts:6844:10
+packages/tui test:  ❯ new CliRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/renderer.ts:1069:17
+packages/tui test:  ❯ setupTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:371:10
+packages/tui test:  ❯ createTestRenderer ../../node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/src/testing/test-renderer.ts:202:26
+packages/tui test:  ❯ test/transcript-view.test.ts:128:19
+packages/tui test:     126|
+packages/tui test:     127|   beforeEach(async () => {
+packages/tui test:     128|     setup = await createTestRenderer({
+packages/tui test:        |                   ^
+packages/tui test:     129|       width: 60,
+packages/tui test:     130|       height: 20,
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/70]⎯
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a request no run has answered shows neither Worked nor a spinner
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a branch snapshot restores an earlier step within the same turn
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > the spinner appears once the run starts, and Worked once it ends
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a running task restores its agent and prompt from durable call arguments
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > the latest text and the status row stay in view while a long answer streams
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > a notice under the composer keeps the newest text and the status row in view
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > scrolling up unpins the view, and it follows the stream again from the bottom
+packages/tui test:  FAIL  test/transcript-view.test.ts > the transcript view > consecutive config commits collapse into one line with the latest values
+packages/tui test: TypeError: Cannot read properties of undefined (reading 'renderer')
+packages/tui test:  ❯ test/transcript-view.test.ts:141:11
+packages/tui test:     139|
+packages/tui test:     140|   afterEach(() => {
+packages/tui test:     141|     setup.renderer.destroy();
+packages/tui test:        |           ^
+packages/tui test:     142|   });
+packages/tui test:     143|
+packages/tui test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/70]⎯
+packages/tui test:  Test Files  24 failed | 8 passed (32)
+packages/tui test:       Tests  31 failed | 39 passed (70)
+packages/tui test:    Start at  23:28:17
+packages/tui test:    Duration  8.75s (transform 76%, import 21%, tests 2%, worker 1%)
+packages/tui test:   Transform  transforming modules took 31.08s · 76% of tracked time, re-done on every run
+packages/tui test:              persist transforms across runs with fsModuleCache: true
+packages/tui test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/tui test: Failed
+[ERR_PNPM_RECURSIVE_FAIL] 
+
+
+Summary: 2 fails, 1 passes
+
+/Users/workgyver/Developer/nyte/packages/core:
+[ERROR] @nyte-ai/core@ test: `vitest --run`
+Exit status 1
+
+/Users/workgyver/Developer/nyte/packages/tui:
+[ERROR] @nyte-ai/tui@0.0.2 test: `vitest --run`
+Exit status 1

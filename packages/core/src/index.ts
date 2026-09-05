@@ -7,6 +7,7 @@
  * projection-only route. None of those routes is folded into one barrel.
  */
 export { createNyte } from "./kernel/sdk/nyte.ts";
+export { mergeQueuedLanes } from "./kernel/queue.ts";
 export * from "./kernel/sdk/types.ts";
 /** Thrown by `watch` when a cursor is older than the event floor: take a snapshot and resume from its seq. */
 export { CursorExpired } from "./kernel/model.ts";

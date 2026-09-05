@@ -1,0 +1,7 @@
+Scope: 3 of 16 workspace projects
+packages/core typecheck$ tsc --noEmit
+packages/core typecheck: Done
+packages/tui typecheck$ tsc --noEmit
+packages/desktop typecheck$ tsc --noEmit
+packages/tui typecheck: Done
+packages/desktop typecheck: Done

@@ -116,7 +116,7 @@ export function ToolCallView({
         </Collapsible.Panel>
       )}
       {presentation.body.kind === "diff" && (
-        <Collapsible.Panel>
+        <Collapsible.Panel keepMounted>
           <DiffView path={presentation.body.path} diff={presentation.body.diff} variant="inline" />
         </Collapsible.Panel>
       )}

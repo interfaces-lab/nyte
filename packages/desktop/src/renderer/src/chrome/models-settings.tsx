@@ -52,7 +52,9 @@ function DefaultsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement
 
   return (
     <section {...stylex.props(settingsPatterns.section)}>
-      <h2 {...stylex.props(settingsPatterns.sectionTitle)}>New chats</h2>
+      <div {...stylex.props(settingsPatterns.sectionHeader)}>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>New chats</h2>
+      </div>
       <div {...stylex.props(settingsPatterns.group)}>
         <SettingsRow
           title="Model"
@@ -274,16 +276,18 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
 
   return (
     <section {...stylex.props(settingsPatterns.section)}>
-      <h2 {...stylex.props(settingsPatterns.sectionTitle)}>In the picker</h2>
-      <p {...stylex.props(settingsPatterns.sectionDescription)}>
-        Hide the models you never use. Hidden models stay here to turn back on.
-      </p>
+      <div {...stylex.props(settingsPatterns.sectionHeader)}>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>In the picker</h2>
+        <p {...stylex.props(settingsPatterns.sectionDescription)}>
+          Hide the models you never use. Hidden models stay here to turn back on.
+        </p>
+      </div>
       {enabled.length > 0 && (
         <label {...stylex.props(styles.search)}>
           <Icon name="search" size={13} />
           <Input
             unstyled
-            type="search"
+            type="text"
             aria-label="Search models"
             autoComplete="off"
             spellCheck={false}
@@ -321,7 +325,8 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             />
             <span {...stylex.props(styles.groupTitle)}>{provider.name}</span>
             <span {...stylex.props(styles.groupMeta)}>
-              {shown} of {all.length} shown
+              <span {...stylex.props(settingsPatterns.numeral)}>{shown}</span> of{" "}
+              <span {...stylex.props(settingsPatterns.numeral)}>{all.length}</span> shown
               {provider.connection.kind === "disconnected" && " · Not connected"}
             </span>
           </>
@@ -417,10 +422,12 @@ export function ModelsSettings(): ReactElement | null {
     <>
       <DefaultsSection catalog={catalog.data} />
       <section {...stylex.props(settingsPatterns.section)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Providers</h2>
-        <p {...stylex.props(settingsPatterns.sectionDescription)}>
-          The picker shows models from providers that are on and connected.
-        </p>
+        <div {...stylex.props(settingsPatterns.sectionHeader)}>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Providers</h2>
+          <p {...stylex.props(settingsPatterns.sectionDescription)}>
+            The picker shows models from providers that are on and connected.
+          </p>
+        </div>
         <ConnectionList>
           {catalog.data.providers.map((provider) => (
             <ProviderRow key={provider.id} provider={provider} />

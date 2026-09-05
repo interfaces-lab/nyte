@@ -216,9 +216,10 @@ export function SessionDndProvider({ children }: { readonly children: ReactNode 
   );
 }
 
-export function useSessionDraggable(sessionId: SessionId, title: string) {
+export function useSessionDraggable(sessionId: SessionId, title: string, disabled = false) {
   return useDraggable({
     id: `session:${sessionId}`,
+    disabled,
     data: { kind: "session", sessionId, title } satisfies SessionDragData,
   });
 }

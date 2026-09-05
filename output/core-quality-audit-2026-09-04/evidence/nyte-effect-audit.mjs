@@ -1,17 +1,102 @@
-import { bindTurn } from '/Users/workgyver/Developer/nyte/packages/core/src/kernel/turn.ts';
-import { SqliteStore } from '/Users/workgyver/Developer/nyte/packages/core/src/kernel/sqlite.ts';
-import { ToolWait } from '/Users/workgyver/Developer/nyte/packages/core/src/types.ts';
-import { signalEffect, readEffect } from '/Users/workgyver/Developer/nyte/packages/core/src/kernel/effects.ts';
-const store=new SqliteStore(':memory:'); const session=await store.create({id:'audit'}); const lease=(await session.leases.acquire('refs/heads/main',30000)).lease;
-const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}};
-const model={id:'test-model',name:'Test',api:'openai-responses',provider:'openai',baseUrl:'https://example.invalid',reasoning:false,input:['text'],cost:usage.cost,contextWindow:10000,maxTokens:100};
-let afterCalls=0;
-const result=text=>({content:[{type:'text',text}],details:{}});
-const baseTool={description:'test',parameters:{type:'object',properties:{}}};
-const turn=bindTurn({model,systemPrompt:'',streamFn:()=>{throw new Error('unused');},tools:[{...baseTool,name:'read_secret',execute:async()=>result('UNREDACTED')},{...baseTool,name:'question',execute:async()=>{throw new ToolWait();},wake:async()=>({kind:'settle',result:result('answered')})}],loop:{afterToolCall:async ({toolCall})=>{if(toolCall.name!=='read_secret')return; afterCalls++;return {content:[{type:'text',text:'REDACTED'}]};}}});
-const input={session,lease,run:{kind:'run',id:'run',head:'main',phase:{kind:'tools'},startedAt:1,attempts:1,config:{}},attempt:1,commits:[],signal:new AbortController().signal,emit:()=>{},assistant:{role:'assistant',content:[{type:'toolCall',id:'read',name:'read_secret',arguments:{}},{type:'toolCall',id:'ask',name:'question',arguments:{}}],api:model.api,provider:model.provider,model:model.id,usage,stopReason:'toolUse',timestamp:1}};
-const first=await turn.tools(input); const persisted=(await readEffect(session,{runId:'run',callId:'read'})).effect;
-await signalEffect(session,{runId:'run',callId:'ask',signal:'ok'});
-const second=await turn.tools(input);
-console.log(JSON.stringify({first:first.kind,persisted:persisted.result.content,second:second.kind,resumed:second.messages?.find(m=>m.toolCallId==='read')?.content,afterCalls}));
+import { bindTurn } from "/Users/workgyver/Developer/nyte/packages/core/src/kernel/turn.ts";
+import { SqliteStore } from "/Users/workgyver/Developer/nyte/packages/core/src/kernel/sqlite.ts";
+import { ToolWait } from "/Users/workgyver/Developer/nyte/packages/core/src/types.ts";
+import {
+  signalEffect,
+  readEffect,
+} from "/Users/workgyver/Developer/nyte/packages/core/src/kernel/effects.ts";
+const store = new SqliteStore(":memory:");
+const session = await store.create({ id: "audit" });
+const lease = (await session.leases.acquire("refs/heads/main", 30000)).lease;
+const usage = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+const model = {
+  id: "test-model",
+  name: "Test",
+  api: "openai-responses",
+  provider: "openai",
+  baseUrl: "https://example.invalid",
+  reasoning: false,
+  input: ["text"],
+  cost: usage.cost,
+  contextWindow: 10000,
+  maxTokens: 100,
+};
+let afterCalls = 0;
+const result = (text) => ({ content: [{ type: "text", text }], details: {} });
+const baseTool = { description: "test", parameters: { type: "object", properties: {} } };
+const turn = bindTurn({
+  model,
+  systemPrompt: "",
+  streamFn: () => {
+    throw new Error("unused");
+  },
+  tools: [
+    { ...baseTool, name: "read_secret", execute: async () => result("UNREDACTED") },
+    {
+      ...baseTool,
+      name: "question",
+      execute: async () => {
+        throw new ToolWait();
+      },
+      wake: async () => ({ kind: "settle", result: result("answered") }),
+    },
+  ],
+  loop: {
+    afterToolCall: async ({ toolCall }) => {
+      if (toolCall.name !== "read_secret") return;
+      afterCalls++;
+      return { content: [{ type: "text", text: "REDACTED" }] };
+    },
+  },
+});
+const input = {
+  session,
+  lease,
+  run: {
+    kind: "run",
+    id: "run",
+    head: "main",
+    phase: { kind: "tools" },
+    startedAt: 1,
+    attempts: 1,
+    config: {},
+  },
+  attempt: 1,
+  commits: [],
+  signal: new AbortController().signal,
+  emit: () => {},
+  assistant: {
+    role: "assistant",
+    content: [
+      { type: "toolCall", id: "read", name: "read_secret", arguments: {} },
+      { type: "toolCall", id: "ask", name: "question", arguments: {} },
+    ],
+    api: model.api,
+    provider: model.provider,
+    model: model.id,
+    usage,
+    stopReason: "toolUse",
+    timestamp: 1,
+  },
+};
+const first = await turn.tools(input);
+const persisted = (await readEffect(session, { runId: "run", callId: "read" })).effect;
+await signalEffect(session, { runId: "run", callId: "ask", signal: "ok" });
+const second = await turn.tools(input);
+console.log(
+  JSON.stringify({
+    first: first.kind,
+    persisted: persisted.result.content,
+    second: second.kind,
+    resumed: second.messages?.find((m) => m.toolCallId === "read")?.content,
+    afterCalls,
+  }),
+);
 await store.close();

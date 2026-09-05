@@ -27,7 +27,7 @@ function pair(outlined: Glyph, filled: Glyph): GlyphPair {
  */
 const GLYPHS = {
   apps: pair(Outlined.IconApps, Filled.IconApps),
-  archive: pair(Outlined.IconArchive, Filled.IconArchive),
+  archive: pair(Outlined.IconArchive1, Filled.IconArchive1),
   "arrow-left": pair(Outlined.IconArrowLeft, Filled.IconArrowLeft),
   "arrow-right": pair(Outlined.IconArrowRight, Filled.IconArrowRight),
   "arrow-up": pair(Outlined.IconArrowUp, Filled.IconArrowUp),

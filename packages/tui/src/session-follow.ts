@@ -114,8 +114,28 @@ export class SessionFollower {
             break;
           }
           this.current = outcome.state;
-          cursor = outcome.state.seq;
-          this.options.onUpdate({ state: outcome.state, event });
+          // Core resolves active inputs and idle declarations differently. Read
+          // that projection when inputs change without clearing live text.
+          if (
+            (event.kind === "run" && event.head === state.head) ||
+            (event.kind === "commit" &&
+              event.head === state.head &&
+              (event.item.commit.body.kind === "config" ||
+                (event.item.commit.body.kind === "message" &&
+                  event.item.commit.body.message.role === "assistant")))
+          ) {
+            const snapshot = await this.nyte.sessions.snapshot({
+              sessionId: this.options.sessionId,
+              head: state.head,
+            });
+            if (!live()) return;
+            if (snapshot === undefined) {
+              throw new Error(`Session not found: ${this.options.sessionId}`);
+            }
+            this.current = { ...outcome.state, config: snapshot.config };
+          }
+          cursor = this.current.seq;
+          this.options.onUpdate({ state: this.current, event });
           this.scheduleSettle(loop);
         }
         if (!resnapshot) {

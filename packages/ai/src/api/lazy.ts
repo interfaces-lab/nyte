@@ -1,48 +1,5 @@
-import type {
-  Api,
-  AssistantMessage,
-  AssistantMessageEvent,
-  Model,
-  ProviderStreams,
-} from "../types.ts";
+import type { Api, AssistantMessage, Model, ProviderStreams } from "../types.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
-
-function createSetupErrorMessage(model: Model<Api>, error: unknown): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [],
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "error",
-    errorMessage: error instanceof Error ? error.message : String(error),
-    timestamp: Date.now(),
-  };
-}
-
-function hasResult(
-  source: AsyncIterable<AssistantMessageEvent>,
-): source is AsyncIterable<AssistantMessageEvent> & { result(): Promise<AssistantMessage> } {
-  return typeof (source as { result?: unknown }).result === "function";
-}
-
-async function forwardStream(
-  target: AssistantMessageEventStream,
-  source: AsyncIterable<AssistantMessageEvent>,
-): Promise<void> {
-  for await (const event of source) {
-    target.push(event);
-  }
-  target.end(hasResult(source) ? await source.result() : undefined);
-}
 
 /**
  * Returns a stream synchronously while running async setup (auth resolution,
@@ -51,14 +8,34 @@ async function forwardStream(
  */
 export function lazyStream(
   model: Model<Api>,
-  setup: () => Promise<AsyncIterable<AssistantMessageEvent>>,
+  setup: () => Promise<AssistantMessageEventStream>,
 ): AssistantMessageEventStream {
   const outer = new AssistantMessageEventStream();
 
   setup()
-    .then((inner) => forwardStream(outer, inner))
-    .catch((error) => {
-      const message = createSetupErrorMessage(model, error);
+    .then(async (inner) => {
+      for await (const event of inner) outer.push(event);
+      outer.end(await inner.result());
+    })
+    .catch((cause) => {
+      const message: AssistantMessage = {
+        role: "assistant",
+        content: [],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: "error",
+        errorMessage: cause instanceof Error ? cause.message : String(cause),
+        timestamp: Date.now(),
+      };
       outer.push({ type: "error", reason: "error", error: message });
       outer.end(message);
     });

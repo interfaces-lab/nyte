@@ -13,13 +13,13 @@
   },
   "dependencies": {
     "@nyte-ai/core": "workspace:*",
-    "@nyte-ai/protocol": "workspace:*"
+    "@nyte-ai/protocol": "workspace:*",
+    "typebox": "1.3.7"
   },
   "devDependencies": {
     "@nyte-ai/client": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@types/node": "^26.4.1",
-    "typebox": "1.3.7",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }

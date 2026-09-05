@@ -1,28 +1,31 @@
 /**
  * Cursor's transcript treats intermediate narration, reasoning, and tool
- * calls as one work episode. The episode stays quiet until a reader opens it;
- * the final assistant response remains outside this component.
+ * calls as one work episode. Compact keeps the episode in a clipped window
+ * that follows new output; opening the group reveals the full list. The
+ * final assistant response remains outside this component.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/primitives";
-import { useState } from "react";
-import type { ReactElement } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { ToolTurnPart } from "@nyte-ai/core";
 import { turnPartId } from "@nyte-ai/core/views";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
+import { Spinner } from "../components/spinner.tsx";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
-import { activityStyles, toolGroupStyles } from "./styles.stylex.ts";
+import { toolGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
 import { presentTool } from "./tool-detail.ts";
 import type { ToolPresentation } from "./tool-detail.ts";
 import { formatRunDuration } from "./transcript-presentation.ts";
 import type { WorkTurnPart } from "./transcript-presentation.ts";
+import { isAtScrollBottom, workGroupBody, type WorkGroupReveal } from "./work-group-body.ts";
 
 interface PresentedTool {
   readonly part: ToolTurnPart;
@@ -104,6 +107,122 @@ function summarizeWork(
     : { verb: "Worked", detail: quantity(tools.length, "action"), added, removed };
 }
 
+function WorkEntries({
+  parts,
+  live,
+  liveTools,
+  cwd,
+  density,
+  dim,
+}: {
+  parts: readonly WorkTurnPart[];
+  live: LiveSnapshot | undefined;
+  liveTools: ReadonlyMap<string, LiveToolProgress>;
+  cwd: string | undefined;
+  density: ToolCallDensity;
+  dim: boolean;
+}): ReactElement {
+  return (
+    <>
+      {parts.map((part) => {
+        switch (part.kind) {
+          case "assistant":
+            return (
+              <div
+                key={turnPartId(part)}
+                {...stylex.props(toolGroupStyles.commentary, dim && toolGroupStyles.commentaryDim)}
+              >
+                <Prose markdown={part.text} />
+              </div>
+            );
+          case "thinking":
+            return (
+              <div key={turnPartId(part)} {...stylex.props(toolGroupStyles.thinking)}>
+                <span {...stylex.props(srOnly)}>Reasoning</span>
+                <Prose markdown={part.text} />
+              </div>
+            );
+          case "tool":
+            return (
+              <ToolCallView
+                key={part.callId}
+                part={part}
+                progress={liveTools.get(part.callId)?.progress}
+                cwd={cwd}
+                density={density}
+              />
+            );
+          default: {
+            const _exhaustive: never = part;
+            return _exhaustive;
+          }
+        }
+      })}
+      {live?.order.map((ref) => {
+        if (ref.kind !== "thinking") return null;
+        const key = livePartKey(ref.runId, ref.attempt, ref.index);
+        const text = live.thinking.get(key) ?? "";
+        return text === "" ? null : (
+          <div key={`live-thinking:${key}`} {...stylex.props(toolGroupStyles.thinking)}>
+            <span {...stylex.props(srOnly)}>Reasoning</span>
+            <Prose markdown={text} streaming />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function WorkPreview({
+  children,
+  onExpand,
+}: {
+  children: ReactNode;
+  onExpand: () => void;
+}): ReactElement {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const paused = useRef(false);
+  const [overflow, setOverflow] = useState(false);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) return undefined;
+
+    const sync = (): void => {
+      setOverflow(viewport.scrollHeight > viewport.clientHeight);
+      if (!paused.current) viewport.scrollTop = viewport.scrollHeight;
+    };
+    const onScroll = (): void => {
+      paused.current = !isAtScrollBottom({
+        scrollTop: viewport.scrollTop,
+        scrollHeight: viewport.scrollHeight,
+        clientHeight: viewport.clientHeight,
+      });
+    };
+
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    for (const child of viewport.children) observer.observe(child);
+    viewport.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      viewport.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={viewportRef}
+      data-nyte-scrollport
+      onClick={onExpand}
+      {...stylex.props(toolGroupStyles.preview, overflow && toolGroupStyles.previewFade)}
+    >
+      <div {...stylex.props(toolGroupStyles.calls, toolGroupStyles.previewCalls)}>{children}</div>
+    </div>
+  );
+}
+
 export function WorkGroupView({
   parts,
   live,
@@ -127,28 +246,41 @@ export function WorkGroupView({
     part,
     presentation: presentTool(part, liveTools.get(part.callId)?.progress, cwd),
   }));
-  const active =
-    running ||
-    live?.runState === "working" ||
-    presented.some(({ presentation }) => presentation.state === "running");
-  const [open, setOpen] = useState<boolean | undefined>();
-  const expanded = open ?? (active || density === "detailed");
+  const active = running || presented.some(({ presentation }) => presentation.state === "running");
+  const [reveal, setReveal] = useState<WorkGroupReveal>("default");
+  const hasContent =
+    parts.length > 0 ||
+    (live !== undefined &&
+      live.order.some((ref) => {
+        if (ref.kind !== "thinking") return false;
+        return (live.thinking.get(livePartKey(ref.runId, ref.attempt, ref.index)) ?? "") !== "";
+      }));
+  const body = workGroupBody({ density, active, reveal, hasContent });
   const failed = presented.some(({ presentation }) => presentation.state === "failed");
   const summary = summarizeWork(presented, duration, active, failed);
+  const entries = (
+    <WorkEntries
+      parts={parts}
+      live={live}
+      liveTools={liveTools}
+      cwd={cwd}
+      density={density}
+      dim={body === "preview"}
+    />
+  );
 
   return (
     <Collapsible.Root
-      open={expanded}
-      onOpenChange={setOpen}
+      open={body === "list"}
+      onOpenChange={(open) => setReveal(open ? "open" : "closed")}
       aria-busy={active || undefined}
       {...stylex.props(toolGroupStyles.root)}
     >
       <Collapsible.Trigger
         {...stylex.props(toolGroupStyles.toggle, focus.ring, failed && toolGroupStyles.failed)}
       >
-        <span {...stylex.props(toolGroupStyles.verb, active && activityStyles.shimmer)}>
-          {summary.verb}
-        </span>
+        {active && <Spinner />}
+        <span {...stylex.props(toolGroupStyles.verb)}>{summary.verb}</span>
         {summary.detail !== undefined && (
           <span {...stylex.props(toolGroupStyles.summary)}>{summary.detail}</span>
         )}
@@ -162,54 +294,18 @@ export function WorkGroupView({
             )}
           </span>
         )}
-        <span {...stylex.props(toolGroupStyles.chevron, expanded && toolGroupStyles.chevronOpen)}>
+        <span
+          {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
+        >
           <Icon name="chevron-right" size={11} />
         </span>
       </Collapsible.Trigger>
-      <Collapsible.Panel {...stylex.props(toolGroupStyles.calls)}>
-        {parts.map((part) => {
-          switch (part.kind) {
-            case "assistant":
-              return (
-                <div key={turnPartId(part)} {...stylex.props(toolGroupStyles.commentary)}>
-                  <Prose markdown={part.text} />
-                </div>
-              );
-            case "thinking":
-              return (
-                <div key={turnPartId(part)} {...stylex.props(toolGroupStyles.thinking)}>
-                  <span {...stylex.props(srOnly)}>Reasoning</span>
-                  <Prose markdown={part.text} />
-                </div>
-              );
-            case "tool":
-              return (
-                <ToolCallView
-                  key={part.callId}
-                  part={part}
-                  progress={liveTools.get(part.callId)?.progress}
-                  cwd={cwd}
-                  density={density}
-                />
-              );
-            default: {
-              const _exhaustive: never = part;
-              return _exhaustive;
-            }
-          }
-        })}
-        {live?.order.map((ref) => {
-          if (ref.kind !== "thinking") return null;
-          const key = livePartKey(ref.runId, ref.attempt, ref.index);
-          const text = live.thinking.get(key) ?? "";
-          return text === "" ? null : (
-            <div key={`live-thinking:${key}`} {...stylex.props(toolGroupStyles.thinking)}>
-              <span {...stylex.props(srOnly)}>Reasoning</span>
-              <Prose markdown={text} streaming />
-            </div>
-          );
-        })}
-      </Collapsible.Panel>
+      {body === "preview" && (
+        <WorkPreview onExpand={() => setReveal("open")}>{entries}</WorkPreview>
+      )}
+      {body === "list" && (
+        <Collapsible.Panel {...stylex.props(toolGroupStyles.calls)}>{entries}</Collapsible.Panel>
+      )}
     </Collapsible.Root>
   );
 }

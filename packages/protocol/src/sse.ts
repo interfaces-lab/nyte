@@ -51,11 +51,12 @@ export function encodeSseComment(text: string): string {
 
 export interface SseParserOptions {
   /**
-   * The most one frame may hold, counted in UTF-16 code units of the decoded
-   * text (a JavaScript string's `length`, not bytes): the unterminated line
-   * still being received plus the fields already gathered for the frame.
-   * Past it, `overflow` is set, frames completed before the offending one
-   * are still returned, and nothing is parsed after. Default 4 194 304.
+   * Maximum decoded UTF-16 code units per frame, including field names,
+   * comments, line endings, and the terminating blank line. This is string
+   * length, not bytes. Counting raw text makes the limit independent of
+   * chunk boundaries and bounds persistent ids as well as data fields.
+   * Past it, `overflow` is set, retained state is released, frames completed
+   * before the offending one are returned, and parsing stops. Default 4 194 304.
    */
   readonly maxFrameChars?: number;
 }
@@ -96,9 +97,20 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
   let hasData = false;
   let eventType = "";
   let lastId: string | undefined;
-  /** Code units gathered for the frame in progress, before the line in `buffer`. */
-  let gathered = 0;
+  /** Decoded code units consumed since the last blank line, including delimiters. */
+  let frameChars = 0;
   let overflow: SseFrameTooLarge | undefined;
+
+  const overflowFrame = (): void => {
+    overflow = new SseFrameTooLarge(limit);
+    buffer = "";
+    scanned = 0;
+    data = "";
+    hasData = false;
+    eventType = "";
+    lastId = undefined;
+    frameChars = 0;
+  };
 
   const dispatch = (): SseFrame | undefined => {
     const frame = hasData
@@ -111,7 +123,7 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
     data = "";
     hasData = false;
     eventType = "";
-    gathered = 0;
+    frameChars = 0;
     return frame;
   };
 
@@ -123,11 +135,9 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
     if (value.startsWith(" ")) value = value.slice(1);
     switch (name) {
       case "event":
-        gathered += value.length - eventType.length;
         eventType = value;
         return;
       case "data":
-        gathered += value.length + 1;
         data += `${value}\n`;
         hasData = true;
         return;
@@ -161,6 +171,11 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
         }
       }
       if (end === -1) break;
+      frameChars += next - start;
+      if (frameChars > limit) {
+        overflowFrame();
+        return frames;
+      }
       const line = buffer.slice(start, end);
       start = next;
       if (line === "") {
@@ -168,19 +183,12 @@ export function createSseParser(options: SseParserOptions = {}): SseParser {
         if (frame !== undefined) frames.push(frame);
       } else {
         field(line);
-        if (gathered > limit) {
-          overflow = new SseFrameTooLarge(limit);
-          break;
-        }
       }
     }
-    buffer = overflow === undefined ? buffer.slice(start) : "";
+    buffer = buffer.slice(start);
     // Everything up to the last character was searched; the last one may be a CR awaiting its LF.
     scanned = Math.max(0, buffer.length - 1);
-    if (gathered + buffer.length > limit) {
-      overflow = new SseFrameTooLarge(limit);
-      buffer = "";
-    }
+    if (frameChars + buffer.length > limit) overflowFrame();
     return frames;
   };
 

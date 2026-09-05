@@ -187,3 +187,86 @@ test("moving a change between lanes is one atomic update that keeps it pending",
   assert.deepEqual(await listLanes(session, "main"), ["later", "now", "urgent"]);
   await assert.rejects(submit(session, { head: "main", lane: "a/b", body: say("x") }), TypeError);
 });
+
+test("editing a queued message preserves its position and the untouched prefix", async () => {
+  const path = storePath();
+  const session = await openStore(path).create({ id: "edit" });
+  const observer = await openStore(path).open("edit");
+  const first = await submit(session, { head: "main", lane: "later", body: say("first") });
+  const middle = await submit(session, { head: "main", lane: "later", body: say("middle") });
+  await submit(session, { head: "main", lane: "later", body: say("last") });
+  const outcome = await redeliver(session, {
+    head: "main",
+    lane: "later",
+    change: middle.change,
+    content: "edited middle",
+  });
+  assert.equal(outcome.kind, "redelivered");
+  const items = await pending(observer, "main");
+  assert.deepEqual(items.map(messageText), ["first", "edited middle", "last"]);
+  assert.equal(items[0]?.oid, first.change);
+  assert.equal((await nextToLand(observer, { head: "main", lanes: ["later"] }))?.oid, first.change);
+  await cancel(observer, { head: "main", change: first.change });
+  assert.equal(
+    messageText(await nextToLand(observer, { head: "main", lanes: ["later"] })),
+    "edited middle",
+  );
+});
+
+test("reordering uses queue order even when the moved message is newer", async () => {
+  const session = await openSession();
+  const first = await submit(session, { head: "main", lane: "later", body: say("first") });
+  await submit(session, { head: "main", lane: "later", body: say("second") });
+  const last = await submit(session, { head: "main", lane: "later", body: say("last") });
+  const moved = await redeliver(session, {
+    head: "main",
+    lane: "later",
+    change: last.change,
+    before: first.change,
+  });
+  assert.equal(moved.kind, "redelivered");
+  assert.deepEqual((await pending(session, "main")).map(messageText), ["last", "first", "second"]);
+  assert.equal(messageText(await nextToLand(session, { head: "main", lanes: ["later"] })), "last");
+  if (moved.kind !== "redelivered") assert.fail("Expected redelivery");
+  await redeliver(session, { head: "main", lane: "later", change: moved.change, before: null });
+  assert.deepEqual((await pending(session, "main")).map(messageText), ["first", "second", "last"]);
+});
+
+test("an edit racing cancellation cannot restore the cancelled original or duplicate it", async () => {
+  const path = storePath();
+  const session = await openStore(path).create({ id: "race" });
+  const observer = await openStore(path).open("race");
+  const submitted = await submit(session, { head: "main", lane: "later", body: say("original") });
+  const [edited] = await Promise.all([
+    redeliver(session, {
+      head: "main",
+      lane: "later",
+      change: submitted.change,
+      content: "edited",
+    }),
+    cancel(observer, { head: "main", change: submitted.change }),
+  ]);
+  const contents = (await pending(observer, "main")).map(messageText);
+  assert.deepEqual(contents, edited.kind === "redelivered" ? ["edited"] : []);
+});
+
+test("editing a landed message does not admit a new one", async () => {
+  const session = await openSession();
+  const submitted = await submit(session, { head: "main", lane: "later", body: say("original") });
+  await session.refs.update(
+    [{ name: queueBaseRef("main", "later"), from: null, to: submitted.change }],
+    { reason: "land" },
+  );
+  const before = await session.events.last();
+  assert.deepEqual(
+    await redeliver(session, {
+      head: "main",
+      lane: "later",
+      change: submitted.change,
+      content: "too late",
+    }),
+    { kind: "landed" },
+  );
+  assert.deepEqual(await pending(session, "main"), []);
+  assert.equal(await session.events.last(), before);
+});

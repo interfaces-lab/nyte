@@ -14,7 +14,7 @@ import { buildShell } from "../src/shell.ts";
 import { DARK_THEME } from "../src/theme.ts";
 import { echo, gate, model, openHost, within } from "./helpers.ts";
 
-async function startInteractive(host: Host, sessionId: SessionId) {
+async function startInteractive(host: Host, sessionId: SessionId, fallback = model) {
   vi.stubEnv("NYTE_SKIP_VERSION_CHECK", "1");
   const setup = await createTestRenderer({
     width: 80,
@@ -30,7 +30,7 @@ async function startInteractive(host: Host, sessionId: SessionId) {
   const provider = createProvider({
     id: model.provider,
     auth: { apiKey: { name: "Test", resolve: async () => undefined } },
-    models: [model],
+    models: [model, fallback],
     api: {
       stream: () => {
         throw new Error("Requests use the host's scripted provider");
@@ -52,7 +52,7 @@ async function startInteractive(host: Host, sessionId: SessionId) {
     settings: await settingsStore.read(host.cwd),
     settingsStore,
     workspace,
-    fallback: { model, thinkingLevel: "off" },
+    fallback: { model: fallback, thinkingLevel: "off" },
     themeMode: "dark",
     onSettings: () => {},
     requestShutdown: () => {},
@@ -71,6 +71,24 @@ async function startInteractive(host: Host, sessionId: SessionId) {
 }
 
 afterEach(() => vi.unstubAllEnvs());
+
+test("a resumed chat displays core's recorded model instead of the reader's fallback", async () => {
+  const host = await openHost();
+  const { sessionId } = await host.nyte.sessions.create();
+  const detach = host.attach();
+  await host.nyte.messages.send({ sessionId, content: "remember this" });
+  await within(host.nyte.runs.wait({ sessionId }));
+  const snapshot = await host.nyte.sessions.snapshot({ sessionId });
+  assert.deepEqual(snapshot?.session.config, {});
+  const interactive = await startInteractive(host, sessionId, { ...model, id: "reader-fallback" });
+  try {
+    assert.match(interactive.setup.captureCharFrame(), /echo-model/);
+    assert.doesNotMatch(interactive.setup.captureCharFrame(), /reader-fallback/);
+  } finally {
+    interactive.dispose();
+    detach();
+  }
+});
 
 test("Escape cancels /compact immediately and a late native result cannot publish", async () => {
   const entered = Promise.withResolvers<AbortSignal>();

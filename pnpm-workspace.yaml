@@ -43,3 +43,5 @@ minimumReleaseAgeExclude:
   - "@vitest/mocker@5.0.0"
   - "@vitest/spy@5.0.0"
   - vitest@5.0.0
+patchedDependencies:
+  "@opentui/core@0.5.10": patches/@opentui__core@0.5.10.patch

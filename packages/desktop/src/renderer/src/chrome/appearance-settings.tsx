@@ -20,7 +20,9 @@ function GeneralSettings(): ReactElement {
 
   return (
     <section {...stylex.props(settingsPatterns.section)}>
-      <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Startup</h2>
+      <div {...stylex.props(settingsPatterns.sectionHeader)}>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Startup</h2>
+      </div>
       <div {...stylex.props(settingsPatterns.group)}>
         <SettingsRow title="Window restoration" description="Choose what opens when Nyte starts">
           <SettingsSelect<StartupDestination>

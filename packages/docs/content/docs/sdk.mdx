@@ -19,7 +19,8 @@ already stored.
 | `@nyte-ai/core/store` | `SqliteStore` and the `Store` contract a backend implements. Hosts name their storage here; clients never import it.            |
 | `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                       |
 
-Plugin authoring is `@nyte-ai/core/plugins`; `@nyte-ai/plugin` re-exports it verbatim. `SqliteStore`
+Plugin authoring is `@nyte-ai/core/plugins`; `@nyte-ai/plugin` re-exports it and adds `define`
+for local TUI plugins. `SqliteStore`
 takes one file path; the session file lives at `<workspace>/.nyte/sessions.db`.
 
 ```ts title="host.ts"
@@ -160,8 +161,12 @@ A lane is a name the sender chooses; the host's `landing` says which lanes exist
 | `queue` | Only when the head is idle; one message at a time (`drain: "one"`) |
 
 `messages.send` without a `lane` goes to the first lane of the policy. A lane the policy does not list is
-refused with a `TypeError`, since no runner would land it. Enter in the TUI steers; `ctrl+enter` queues.
-`messages.redeliver` moves a still-pending item between lanes; `messages.cancel` withdraws one. A cancel
+refused with a `TypeError`, since no runner would land it. Enter in the TUI steers and `ctrl+enter` queues
+by default; `/follow-up queue` swaps those roles while a run is active.
+`messages.redeliver` moves a still-pending item between lanes. It also accepts `content` to edit the
+message and `before` to reorder it within the target lane. Omit `before` to preserve its position;
+use `null` to move it to the end. The changed suffix receives new change IDs in one atomic update;
+an untouched prefix keeps its IDs. The event stream includes every replacement. `messages.cancel` withdraws one. A cancel
 racing a landing settles as `cancelled` or `landed`, never both.
 
 ## Runs

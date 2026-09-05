@@ -13,7 +13,6 @@ declare global {
 
 export const nyte: NyteBridge = window.nyte;
 
-export { asSessionId } from "../../shared/ipc.ts";
 export type {
   DesktopCatalog,
   DesktopModelOption,

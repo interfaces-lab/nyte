@@ -210,10 +210,13 @@ async function projectQueueRef(
 ): Promise<readonly SessionEvent[]> {
   switch (parts.position) {
     case "tip": {
-      if (event.to === null) return [];
-      const change = await readChange(read, event.to);
-      const item = pendingItem(event.to, change, parts.lane);
-      return item === undefined ? [] : [{ seq: event.seq, kind: "queued", head: parts.head, item }];
+      const changes = await changesBetween(read, event.from, event.to);
+      return (changes ?? []).flatMap(({ oid, change }): SessionEvent[] => {
+        const item = pendingItem(oid, change, parts.lane);
+        return item === undefined
+          ? []
+          : [{ seq: event.seq, kind: "queued", head: parts.head, item }];
+      });
     }
     case "base": {
       const changes = await changesBetween(read, event.from, event.to);

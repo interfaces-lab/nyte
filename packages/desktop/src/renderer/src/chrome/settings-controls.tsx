@@ -90,12 +90,7 @@ export function SettingsSelect<T extends string>({
           focus.ring,
         )}
       >
-        <Select.Value
-          style={
-            selected?.fontFamily === undefined ? undefined : { fontFamily: selected.fontFamily }
-          }
-          {...stylex.props(styles.selectValue)}
-        >
+        <Select.Value {...stylex.props(styles.selectValue)}>
           {selected?.label ?? value}
         </Select.Value>
         <Select.Icon {...stylex.props(styles.selectIcon)}>

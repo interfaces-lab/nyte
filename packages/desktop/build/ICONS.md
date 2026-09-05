@@ -1,7 +1,7 @@
 # Desktop icon assets
 
-- `icon-settings.json` preserves the selected Blue edition settings.
-- `icon.svg` is the original artwork exported from the icon lab.
+- `icon-settings.json` preserves the selected D1 sleepy cloud settings.
+- `icon.svg` is the D1 SVG artwork with a rounded macOS tile.
 - `icon-macos.svg` adds transparent padding around that artwork. Its solid tile spans 412 of 512 units, matching the inset measured in OpenCode's macOS icon.
 - `icon.png` is the 1024px render of `icon-macos.svg`.
 - `icon.icns` contains the macOS icon sizes, generated from that padded render.

@@ -8,16 +8,11 @@
  * Modeled on opencode v2 `Plugin.activate` (packages/core/src/plugin.ts).
  */
 import type { Skill } from "@nyte-ai/schema";
-import { Result, type Result as ResultValue } from "../kernel/result.ts";
+import { Result } from "../kernel/result.ts";
 import type { AgentTool } from "../types.ts";
 import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
-import {
-  ContributionRegistry,
-  MapDraft,
-  ToolMapDraft,
-  type ToolMapDraft as ToolDraftImpl,
-} from "./registry.ts";
+import { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";
 import { PluginScope } from "./scope.ts";
 import type {
   Agent,
@@ -35,7 +30,7 @@ import type {
 
 export interface PluginRegistries {
   readonly agents: ContributionRegistry<Agent, MapDraft<Agent>>;
-  readonly tools: ContributionRegistry<AgentTool, ToolDraftImpl>;
+  readonly tools: ContributionRegistry<AgentTool, ToolMapDraft>;
   readonly commands: ContributionRegistry<Command, MapDraft<Command>>;
   readonly prompt: ContributionRegistry<PromptSection, MapDraft<PromptSection>>;
   readonly resources: ContributionRegistry<Skill, MapDraft<Skill>>;
@@ -156,10 +151,7 @@ export class PluginHost {
     return info;
   }
 
-  private async load(
-    plugin: LoadedPlugin,
-    order: number,
-  ): Promise<ResultValue<ActivePlugin, string>> {
+  private async load(plugin: LoadedPlugin, order: number): Promise<Result<ActivePlugin, string>> {
     const scope = new PluginScope(plugin.id, (error) => {
       void this.target.emit({
         kind: "diagnostic",

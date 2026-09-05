@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
 import {
@@ -11,16 +11,23 @@ import {
   WATCH_STOP_CHANNEL,
 } from "../shared/ipc.ts";
 import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
-import type { ThemePreference } from "../shared/ipc.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
 import { errorMessage } from "../shared/errors.ts";
 import { localFonts } from "./fonts.ts";
-import type { DesktopHost, DesktopHostDependencies } from "./host.ts";
+import { DesktopHost, type DesktopHostDependencies } from "./host.ts";
+import { registerUpdates } from "./updates.ts";
+
+import {
+  decodeBrowserBounds,
+  decodeCallRequest,
+  decodeWatchStart,
+  decodeWatchStop,
+  themePreference,
+} from "./ipc-inputs.ts";
 
 let mainWindow: BrowserWindow | undefined;
-let hostPromise: Promise<DesktopHost> | undefined;
-let ipcInputsPromise: Promise<typeof import("./ipc-inputs.ts")> | undefined;
+let desktopHost: DesktopHost | undefined;
 
 registerBunOAuthFlows();
 
@@ -44,12 +51,12 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
 
 function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
-    return nativeTheme.shouldUseDarkColors ? "#111111" : "#f4f4f5";
+    return nativeTheme.shouldUseDarkColors ? "#111111" : "#f5f5f6";
   }
   return "#00000000";
 }
 
-app.setName("Nyte");
+app.setName(app.isPackaged ? "Nyte" : "Nyte (Dev)");
 app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? "Nyte" : "Nyte Dev"));
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
@@ -87,14 +94,9 @@ const hostDependencies = {
   },
 } satisfies DesktopHostDependencies;
 
-function getHost(): Promise<DesktopHost> {
-  hostPromise ??= import("./host.ts").then(({ DesktopHost: Host }) => new Host(hostDependencies));
-  return hostPromise;
-}
-
-function getIpcInputs(): Promise<typeof import("./ipc-inputs.ts")> {
-  ipcInputsPromise ??= import("./ipc-inputs.ts");
-  return ipcInputsPromise;
+function getHost(): DesktopHost {
+  desktopHost ??= new DesktopHost(hostDependencies);
+  return desktopHost;
 }
 
 function assertMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
@@ -108,27 +110,21 @@ function assertMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEv
   }
 }
 
-function isThemePreference(value: unknown): value is ThemePreference {
-  return value === "system" || value === "light" || value === "dark";
-}
-
 function registerIpc(): void {
   ipcMain.on(THEME_PREFERENCE_CHANNEL, (event, value) => {
     assertMainFrame(event);
-    if (!isThemePreference(value)) return;
+    if (!themePreference.Check(value)) return;
     nativeTheme.themeSource = value;
   });
 
   ipcMain.on(BROWSER_BOUNDS_CHANNEL, (event, message) => {
     assertMainFrame(event);
-    void getIpcInputs().then(({ decodeBrowserBounds }) => {
-      browserSurfaces.setBounds(decodeBrowserBounds(message));
-    });
+    browserSurfaces.setBounds(decodeBrowserBounds(message));
   });
 
   ipcMain.handle(CALL_CHANNEL, async (event, request) => {
     assertMainFrame(event);
-    const [{ decodeCallRequest }, host] = await Promise.all([getIpcInputs(), getHost()]);
+    const host = getHost();
     const decoded = decodeCallRequest(request);
     try {
       const value = await host.call(decoded.path, decoded.input);
@@ -144,13 +140,13 @@ function registerIpc(): void {
 
   ipcMain.handle(WATCH_START_CHANNEL, async (event, input) => {
     assertMainFrame(event);
-    const [{ decodeWatchStart }, host] = await Promise.all([getIpcInputs(), getHost()]);
+    const host = getHost();
     host.watchStart(decodeWatchStart(input));
   });
 
   ipcMain.handle(WATCH_STOP_CHANNEL, async (event, input) => {
     assertMainFrame(event);
-    const [{ decodeWatchStop }, host] = await Promise.all([getIpcInputs(), getHost()]);
+    const host = getHost();
     host.watchStop(decodeWatchStop(input));
   });
 }
@@ -175,7 +171,7 @@ function createWindow(): void {
   const created = new BrowserWindow(options);
   mainWindow = created;
   const closeTerminals = (): void => {
-    void hostPromise?.then((host) => host.closeTerminals()).catch(() => undefined);
+    void desktopHost?.closeTerminals().catch(() => undefined);
   };
   created.webContents.on("render-process-gone", closeTerminals);
   created.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
@@ -201,6 +197,19 @@ function createWindow(): void {
       // Invalid renderer URLs stay closed.
     }
     return { action: "deny" };
+  });
+  created.webContents.on("context-menu", (_event, params) => {
+    if (!params.isEditable) return;
+    Menu.buildFromTemplate([
+      { role: "undo", enabled: params.editFlags.canUndo },
+      { role: "redo", enabled: params.editFlags.canRedo },
+      { type: "separator" },
+      { role: "cut", enabled: params.editFlags.canCut },
+      { role: "copy", enabled: params.editFlags.canCopy },
+      { role: "paste", enabled: params.editFlags.canPaste },
+      { type: "separator" },
+      { role: "selectAll", enabled: params.editFlags.canSelectAll },
+    ]).popup({ window: created, frame: params.frame ?? undefined });
   });
   created.webContents.on("will-attach-webview", (event) => event.preventDefault());
   created.webContents.on("will-navigate", (event, url) => {
@@ -238,13 +247,14 @@ if (!hasSingleInstanceLock) {
       app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
     }
     createWindow();
+    void getHost()
+      .prepare()
+      .catch(() => undefined);
+    registerUpdates();
   });
 
   app.on("before-quit", () => {
-    void hostPromise?.then(
-      (host) => host.close(),
-      () => undefined,
-    );
+    void desktopHost?.close();
   });
 
   app.on("window-all-closed", () => {

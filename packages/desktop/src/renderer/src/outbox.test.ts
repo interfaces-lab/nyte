@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { SendInput, SendReceipt, SessionId } from "@nyte-ai/core";
-import { asSessionId } from "../../shared/ipc.ts";
+import { sessionId } from "@nyte-ai/protocol";
 import { createOutbox, retryDelayMs } from "./outbox.ts";
 import type { Outbox, OutboxRow } from "./outbox.ts";
 
-const SESSION: SessionId = asSessionId("session-1");
-const OTHER: SessionId = asSessionId("session-2");
+const SESSION: SessionId = sessionId("session-1");
+const OTHER: SessionId = sessionId("session-2");
 
 interface Deferred {
   readonly input: SendInput;

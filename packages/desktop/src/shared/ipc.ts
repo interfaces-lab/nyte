@@ -14,6 +14,7 @@ import type {
   Seq,
   SessionEvent,
   SessionId,
+  SessionInfo,
   ThinkingLevel,
   WorkspaceInfo,
   VcsStatus,
@@ -66,6 +67,7 @@ export type SdkVerbPath = (typeof SDK_VERB_PATHS)[number];
 /** Host verbs beside the SDK: workspace lifecycle and provider auth. */
 export const HOST_VERB_PATHS = [
   "host.state",
+  "host.sessionDirectory",
   "host.fonts",
   "host.openWorkspace",
   "host.pickWorkspace",
@@ -114,6 +116,11 @@ export type WatchEnvelope =
 // ---------------------------------------------------------------------------
 // host types
 // ---------------------------------------------------------------------------
+
+export interface WorkspaceSessionDirectory {
+  readonly workspacePath: string | null;
+  readonly sessions: readonly SessionInfo[];
+}
 
 export interface HostState {
   /** Absent is Cursor's id-only Home target, not the operating-system home folder. */
@@ -323,13 +330,6 @@ export type HostEvent =
 // the renderer-facing bridge, the SDK interfaces verbatim
 // ---------------------------------------------------------------------------
 
-/** Brand an id that crossed the wire. The renderer's route params take this path. */
-export function asSessionId(value: string): SessionId {
-  if (value === "") throw new Error("Invalid session id: empty");
-  // SAFETY: the non-empty check establishes the core SessionId brand invariant.
-  return value as SessionId;
-}
-
 export type SessionsBridge = Pick<
   Nyte["sessions"],
   | "create"
@@ -372,6 +372,7 @@ export interface HostBridge {
   /** Keep Electron's native material and controls in the renderer's appearance mode. */
   setThemePreference(preference: ThemePreference): void;
   state(): Promise<HostState>;
+  sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]>;
   /** Installed UI and fixed-pitch families, discovered without renderer font permissions. */
   fonts(): Promise<LocalFontCatalog>;
   /** Select local history by path, even when the folder is unavailable. */
@@ -484,6 +485,7 @@ export interface CallMethodByPath {
   readonly "plugins.settings.apply": NyteBridge["plugins"]["settings"]["apply"];
   readonly "plugins.resources.list": NyteBridge["plugins"]["resources"]["list"];
   readonly "host.state": NyteBridge["host"]["state"];
+  readonly "host.sessionDirectory": NyteBridge["host"]["sessionDirectory"];
   readonly "host.fonts": NyteBridge["host"]["fonts"];
   readonly "host.openWorkspace": NyteBridge["host"]["openWorkspace"];
   readonly "host.pickWorkspace": NyteBridge["host"]["pickWorkspace"];

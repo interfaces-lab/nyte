@@ -1,12 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Value } from "typebox/value";
 import type { MessageCreateParamsStreaming as BetaMessageCreateParamsStreaming } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import type {
   CacheControlEphemeral,
   ContentBlockParam,
   MessageCreateParamsStreaming,
   MessageParam,
-  RawMessageStreamEvent,
-  RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { calculateCost } from "../models.ts";
 import { ANTHROPIC_FAST_MODE_COST_MULTIPLIER } from "../model-pricing.ts";
@@ -14,7 +13,6 @@ import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   AnthropicMessagesCompat,
   AccountLimits,
-  Api,
   AssistantMessage,
   CacheRetention,
   Context,
@@ -38,11 +36,17 @@ import { combineAbortSignals } from "../utils/abort-signals.ts";
 import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
+import { repairJson, parseStreamingJson } from "../utils/json-parse.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 
+import {
+  AnthropicEventSchema,
+  AnthropicEventTypeSchema,
+  IgnoredAnthropicEventSchema,
+  type AnthropicEvent,
+} from "./anthropic-events.ts";
 import {
   getJsonSchemaToolParameters,
   resolveJsonSchemaStrictSampling,
@@ -179,11 +183,6 @@ const SERVER_SIDE_FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 function supportsAnthropicFastMode(model: Model<"anthropic-messages">): boolean {
   return model.provider === "anthropic" && model.modes?.includes("fast") === true;
-}
-
-function usedAnthropicFastMode(usage: unknown): boolean {
-  if (typeof usage !== "object" || usage === null || !("speed" in usage)) return false;
-  return usage.speed === "fast";
 }
 
 function applyAnthropicFastModePricing(usage: Usage, fast: boolean): void {
@@ -365,15 +364,6 @@ interface SseDecoderState {
   raw: string[];
 }
 
-const ANTHROPIC_MESSAGE_EVENTS: ReadonlySet<string> = new Set([
-  "message_start",
-  "message_delta",
-  "message_stop",
-  "content_block_start",
-  "content_block_delta",
-  "content_block_stop",
-]);
-
 function flushSseEvent(state: SseDecoderState): ServerSentEvent | null {
   if (!state.event && state.data.length === 0) {
     return null;
@@ -428,13 +418,15 @@ function nextLineBreakIndex(text: string): number {
   return Math.min(carriageReturnIndex, newlineIndex);
 }
 
-function consumeLine(text: string): { line: string; rest: string } | null {
+function consumeLine(text: string, final = false): { line: string; rest: string } | null {
   const lineBreakIndex = nextLineBreakIndex(text);
   if (lineBreakIndex === -1) {
     return null;
   }
 
   let nextIndex = lineBreakIndex + 1;
+  // A trailing CR may be the first byte of CRLF in the next chunk.
+  if (!final && text[lineBreakIndex] === "\r" && nextIndex === text.length) return null;
   if (text[lineBreakIndex] === "\r" && text[nextIndex] === "\n") {
     nextIndex += 1;
   }
@@ -450,6 +442,11 @@ async function* iterateSseMessages(
   signal?: AbortSignal,
 ): AsyncGenerator<ServerSentEvent> {
   const reader = body.getReader();
+  const cancel = () =>
+    reader.cancel().catch(() => {
+      // An aborted transport may already have errored.
+    });
+  signal?.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   const state: SseDecoderState = { event: null, data: [], raw: [] };
   let buffer = "";
@@ -478,14 +475,14 @@ async function* iterateSseMessages(
     }
 
     buffer += decoder.decode();
-    let consumed = consumeLine(buffer);
+    let consumed = consumeLine(buffer, true);
     while (consumed) {
       buffer = consumed.rest;
       const event = decodeSseLine(consumed.line, state);
       if (event) {
         yield event;
       }
-      consumed = consumeLine(buffer);
+      consumed = consumeLine(buffer, true);
     }
 
     if (buffer.length > 0) {
@@ -500,6 +497,8 @@ async function* iterateSseMessages(
       yield trailingEvent;
     }
   } finally {
+    signal?.removeEventListener("abort", cancel);
+    await cancel();
     reader.releaseLock();
   }
 }
@@ -635,7 +634,7 @@ async function* iterateAnthropicEvents(
     providerId: string;
     observe(limits: AccountLimits): void | Promise<void>;
   },
-): AsyncGenerator<RawMessageStreamEvent> {
+): AsyncGenerator<AnthropicEvent> {
   if (!response.body) {
     throw new Error("Attempted to iterate over an Anthropic response with no body");
   }
@@ -648,7 +647,7 @@ async function* iterateAnthropicEvents(
       throw new Error(sse.data);
     }
 
-    if (!ANTHROPIC_MESSAGE_EVENTS.has(sse.event ?? "")) {
+    if (!Value.Check(AnthropicEventTypeSchema, sse.event)) {
       if (accountLimits !== undefined) {
         try {
           const limits = decodeClaudeAccountLimits(JSON.parse(sse.data), accountLimits.providerId);
@@ -661,7 +660,19 @@ async function* iterateAnthropicEvents(
     }
 
     try {
-      const event = parseJsonWithRepair<RawMessageStreamEvent>(sse.data);
+      let event: unknown;
+      try {
+        event = JSON.parse(sse.data);
+      } catch {
+        event = JSON.parse(repairJson(sse.data));
+      }
+      if (Value.Check(IgnoredAnthropicEventSchema, event) && event.type === sse.event) continue;
+      if (!Value.Check(AnthropicEventSchema, event)) {
+        throw new Error("Invalid Anthropic event body");
+      }
+      if (event.type !== sse.event) {
+        throw new Error(`Event type ${event.type} does not match ${sse.event}`);
+      }
       if (event.type === "message_start") {
         sawMessageStart = true;
       } else if (event.type === "message_stop") {
@@ -692,7 +703,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
     const output: AssistantMessage = {
       role: "assistant",
       content: [],
-      api: model.api as Api,
+      api: model.api,
       provider: model.provider,
       model: model.id,
       usage: {
@@ -755,19 +766,17 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       if (nextParams !== undefined) {
         params = nextParams as MessageCreateParamsStreaming;
       }
-      const requestOptions = {
-        ...(options?.signal ? { signal: options.signal } : {}),
-        ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
-        ...(options?.client && options.speed === "fast"
-          ? {
-              headers: appendAnthropicBeta(
-                mergeHeaders(model.headers, options.headers),
-                FAST_MODE_BETA,
-              ),
-            }
-          : {}),
+      const requestOptions: Anthropic.RequestOptions = {
+        signal: options?.signal,
         maxRetries: 0,
       };
+      if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
+      if (options?.client && options.speed === "fast") {
+        requestOptions.headers = appendAnthropicBeta(
+          mergeHeaders(model.headers, options.headers),
+          FAST_MODE_BETA,
+        );
+      }
       const response = await retryProviderRequest(
         () => client.messages.create({ ...params, stream: true }, requestOptions).asResponse(),
         {
@@ -782,10 +791,10 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       );
       stream.push({ type: "start", partial: output });
 
-      type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & {
-        index: number;
-      };
-      const blocks = output.content as Block[];
+      type BlockSlot =
+        | { kind: "content"; contentIndex: number; block: TextContent | ThinkingContent }
+        | { kind: "toolCall"; contentIndex: number; block: ToolCall; json: string };
+      const blocks = new Map<number, BlockSlot>();
 
       for await (const event of iterateAnthropicEvents(
         response,
@@ -808,7 +817,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
                     fallback.provider === model.provider && fallback.model === output.model,
                 )?.cost;
           usageModel = fallbackCost ? { ...model, id: output.model, cost: fallbackCost } : model;
-          usedFastMode = usedAnthropicFastMode(event.message.usage);
+          usedFastMode = event.message.usage.speed === "fast";
           // Capture initial token usage from message_start event
           // This ensures we have input token counts even if the stream is aborted early
           output.usage.input = event.message.usage.input_tokens || 0;
@@ -826,148 +835,103 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
           calculateCost(usageModel, output.usage);
           applyAnthropicFastModePricing(output.usage, usedFastMode);
         } else if (event.type === "content_block_start") {
-          if (event.content_block.type === "text") {
-            const block: Block = {
-              type: "text",
-              text: event.content_block.text ?? "",
-              index: event.index,
-            };
-            output.content.push(block);
+          const content = event.content_block;
+          let block: TextContent | ThinkingContent | ToolCall;
+          switch (content.type) {
+            case "text":
+              block = { type: "text", text: content.text ?? "" };
+              break;
+            case "thinking":
+              block = {
+                type: "thinking",
+                thinking: content.thinking ?? "",
+                thinkingSignature: content.signature ?? "",
+              };
+              break;
+            case "redacted_thinking":
+              block = {
+                type: "thinking",
+                thinking: "[Reasoning redacted]",
+                thinkingSignature: content.data,
+                redacted: true,
+              };
+              break;
+            case "tool_use":
+              block = {
+                type: "toolCall",
+                id: content.id,
+                name: isOAuth ? fromClaudeCodeName(content.name, context.tools) : content.name,
+                arguments: content.input ?? {},
+              };
+              break;
+          }
+          const contentIndex = output.content.push(block) - 1;
+          if (block.type === "toolCall") {
+            blocks.set(event.index, { kind: "toolCall", contentIndex, block, json: "" });
+            stream.push({ type: "toolcall_start", contentIndex, partial: output });
+          } else {
+            blocks.set(event.index, { kind: "content", contentIndex, block });
             stream.push({
-              type: "text_start",
-              contentIndex: output.content.length - 1,
-              partial: output,
-            });
-          } else if (event.content_block.type === "thinking") {
-            const block: Block = {
-              type: "thinking",
-              thinking: event.content_block.thinking ?? "",
-              thinkingSignature: event.content_block.signature ?? "",
-              index: event.index,
-            };
-            output.content.push(block);
-            stream.push({
-              type: "thinking_start",
-              contentIndex: output.content.length - 1,
-              partial: output,
-            });
-          } else if (event.content_block.type === "redacted_thinking") {
-            const block: Block = {
-              type: "thinking",
-              thinking: "[Reasoning redacted]",
-              thinkingSignature: event.content_block.data,
-              redacted: true,
-              index: event.index,
-            };
-            output.content.push(block);
-            stream.push({
-              type: "thinking_start",
-              contentIndex: output.content.length - 1,
-              partial: output,
-            });
-          } else if (event.content_block.type === "tool_use") {
-            const block: Block = {
-              type: "toolCall",
-              id: event.content_block.id,
-              name: isOAuth
-                ? fromClaudeCodeName(event.content_block.name, context.tools)
-                : event.content_block.name,
-              arguments: (event.content_block.input as Record<string, any>) ?? {},
-              partialJson: "",
-              index: event.index,
-            };
-            output.content.push(block);
-            stream.push({
-              type: "toolcall_start",
-              contentIndex: output.content.length - 1,
+              type: block.type === "text" ? "text_start" : "thinking_start",
+              contentIndex,
               partial: output,
             });
           }
         } else if (event.type === "content_block_delta") {
-          if (event.delta.type === "text_delta") {
-            const index = blocks.findIndex((b) => b.index === event.index);
-            const block = blocks[index];
-            if (block && block.type === "text") {
-              block.text += event.delta.text;
-              stream.push({
-                type: "text_delta",
-                contentIndex: index,
-                delta: event.delta.text,
-                partial: output,
-              });
-            }
-          } else if (event.delta.type === "thinking_delta") {
-            const index = blocks.findIndex((b) => b.index === event.index);
-            const block = blocks[index];
-            if (block && block.type === "thinking") {
-              block.thinking += event.delta.thinking;
-              stream.push({
-                type: "thinking_delta",
-                contentIndex: index,
-                delta: event.delta.thinking,
-                partial: output,
-              });
-            }
-          } else if (event.delta.type === "input_json_delta") {
-            const index = blocks.findIndex((b) => b.index === event.index);
-            const block = blocks[index];
-            if (block && block.type === "toolCall") {
-              block.partialJson += event.delta.partial_json;
-              block.arguments = parseStreamingJson(block.partialJson);
-              stream.push({
-                type: "toolcall_delta",
-                contentIndex: index,
-                delta: event.delta.partial_json,
-                partial: output,
-              });
-            }
-          } else if (event.delta.type === "signature_delta") {
-            const index = blocks.findIndex((b) => b.index === event.index);
-            const block = blocks[index];
-            if (block && block.type === "thinking") {
-              block.thinkingSignature = block.thinkingSignature || "";
-              block.thinkingSignature += event.delta.signature;
-            }
+          const slot = blocks.get(event.index);
+          if (!slot) continue;
+          const { block, contentIndex } = slot;
+          const delta = event.delta;
+          if (delta.type === "text_delta" && block.type === "text") {
+            block.text += delta.text;
+            stream.push({ type: "text_delta", contentIndex, delta: delta.text, partial: output });
+          } else if (delta.type === "thinking_delta" && block.type === "thinking") {
+            block.thinking += delta.thinking;
+            stream.push({
+              type: "thinking_delta",
+              contentIndex,
+              delta: delta.thinking,
+              partial: output,
+            });
+          } else if (delta.type === "input_json_delta" && slot.kind === "toolCall") {
+            slot.json += delta.partial_json;
+            slot.block.arguments = parseStreamingJson(slot.json);
+            stream.push({
+              type: "toolcall_delta",
+              contentIndex,
+              delta: delta.partial_json,
+              partial: output,
+            });
+          } else if (delta.type === "signature_delta" && block.type === "thinking") {
+            block.thinkingSignature = (block.thinkingSignature ?? "") + delta.signature;
           }
         } else if (event.type === "content_block_stop") {
-          const index = blocks.findIndex((b) => b.index === event.index);
-          const block = blocks[index];
-          if (block) {
-            delete (block as any).index;
-            if (block.type === "text") {
-              stream.push({
-                type: "text_end",
-                contentIndex: index,
-                content: block.text,
-                partial: output,
-              });
-            } else if (block.type === "thinking") {
-              stream.push({
-                type: "thinking_end",
-                contentIndex: index,
-                content: block.thinking,
-                partial: output,
-              });
-            } else if (block.type === "toolCall") {
-              block.arguments = parseStreamingJson(block.partialJson);
-              // Finalize in-place and strip the scratch buffer so replay only
-              // carries parsed arguments.
-              delete (block as { partialJson?: string }).partialJson;
-              stream.push({
-                type: "toolcall_end",
-                contentIndex: index,
-                toolCall: block,
-                partial: output,
-              });
-            }
+          const slot = blocks.get(event.index);
+          if (!slot) continue;
+          blocks.delete(event.index);
+          const { block, contentIndex } = slot;
+          if (slot.kind === "toolCall") {
+            if (slot.json.length > 0) slot.block.arguments = parseStreamingJson(slot.json);
+            stream.push({
+              type: "toolcall_end",
+              contentIndex,
+              toolCall: slot.block,
+              partial: output,
+            });
+          } else if (block.type === "text") {
+            stream.push({ type: "text_end", contentIndex, content: block.text, partial: output });
+          } else if (block.type === "thinking") {
+            stream.push({
+              type: "thinking_end",
+              contentIndex,
+              content: block.thinking,
+              partial: output,
+            });
           }
         } else if (event.type === "message_delta") {
           if (event.delta.stop_reason) {
             output.rawStopReason = event.delta.stop_reason;
-            const stopReasonResult = mapStopReason(
-              event.delta.stop_reason,
-              event.delta.stop_details,
-            );
+            const stopReasonResult = mapStopReason(event.delta);
             output.stopReason = stopReasonResult.stopReason;
             if (stopReasonResult.errorMessage) {
               output.errorMessage = stopReasonResult.errorMessage;
@@ -988,12 +952,7 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
             if (event.usage.cache_creation_input_tokens != null) {
               output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
             }
-            // Anthropic reports reasoning tokens in `output_tokens_details.thinking_tokens` on the
-            // final message_delta usage (a subset of output_tokens). SDK 0.91.1 omits the field from
-            // its Usage type, so read it through a narrow cast. Verified against the live API.
-            const thinkingTokens = (
-              event.usage as { output_tokens_details?: { thinking_tokens?: number } }
-            ).output_tokens_details?.thinking_tokens;
+            const thinkingTokens = event.usage.output_tokens_details?.thinking_tokens;
             if (thinkingTokens != null) {
               output.usage.reasoning = thinkingTokens;
             }
@@ -1023,11 +982,6 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
-      for (const block of output.content) {
-        delete (block as { index?: number }).index;
-        // partialJson is only a streaming scratch buffer; never persist it.
-        delete (block as { partialJson?: string }).partialJson;
-      }
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
       stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -1627,10 +1581,11 @@ function convertTools(
   });
 }
 
-function mapStopReason(
-  reason: Anthropic.Messages.StopReason | string,
-  stopDetails?: RefusalStopDetails | null,
-): { stopReason: StopReason; errorMessage?: string } {
+function mapStopReason(delta: Extract<AnthropicEvent, { type: "message_delta" }>["delta"]): {
+  stopReason: StopReason;
+  errorMessage?: string;
+} {
+  const reason = delta.stop_reason;
   switch (reason) {
     case "end_turn":
       return { stopReason: "stop" };
@@ -1641,7 +1596,8 @@ function mapStopReason(
     case "refusal":
       return {
         stopReason: "error",
-        errorMessage: stopDetails?.explanation || `The model refused to complete the request`,
+        errorMessage:
+          delta.stop_details?.explanation || `The model refused to complete the request`,
       };
     case "pause_turn": // Stop is good enough -> resubmit
       return { stopReason: "stop" };

@@ -4,7 +4,6 @@
  * output the caller supplies, so a test drives it with a scripted provider.
  */
 import type { Nyte, RunInfo, SessionId } from "@nyte-ai/core";
-import { isRunning } from "./session-state.ts";
 
 export type PrintJsonEvent =
   | { readonly type: "text"; readonly text: string }
@@ -20,6 +19,10 @@ export interface PrintOutput {
 export interface PrintOptions {
   readonly nyte: Pick<Nyte, "messages" | "runs" | "sessions" | "watch">;
   readonly sessionId: SessionId;
+  readonly configure?: Pick<
+    Parameters<Nyte["sessions"]["configure"]>[0],
+    "model" | "thinkingLevel"
+  >;
   readonly content: string;
   readonly json: boolean;
   /** Skip tool lines; the answer alone is what a pipe wants. */
@@ -60,13 +63,6 @@ function outcomeOf(run: RunInfo | undefined): PrintOutcome {
   }
 }
 
-function waitInput(
-  sessionId: SessionId,
-  signal: AbortSignal | undefined,
-): { readonly sessionId: SessionId; readonly signal?: AbortSignal } {
-  return signal === undefined ? { sessionId } : { sessionId, signal };
-}
-
 /** Wait through background tools; report only a call that needs stdin. */
 async function waitForRun(
   nyte: PrintOptions["nyte"],
@@ -75,15 +71,18 @@ async function waitForRun(
 ): Promise<"idle" | "question" | "cancelled"> {
   for (;;) {
     if (signal.aborted) return "cancelled";
-    const waiting = await nyte.runs.wait(waitInput(sessionId, signal));
+    const waiting = await nyte.runs.wait({ sessionId, signal });
     if (signal.aborted) return "cancelled";
     if (waiting.kind === "idle") return "idle";
 
     const snapshot = await nyte.sessions.snapshot({ sessionId });
-    if (snapshot === undefined || !isRunning(snapshot.run)) return "idle";
+    if (
+      snapshot?.run === undefined ||
+      ["done", "aborted", "failed"].includes(snapshot.run.phase.kind)
+    )
+      return "idle";
     if (snapshot.parked?.some((call) => call.tool === "question") === true) return "question";
-    const afterSeq = snapshot?.seq ?? 0;
-    for await (const event of nyte.watch({ sessionId, afterSeq, signal })) {
+    for await (const event of nyte.watch({ sessionId, afterSeq: snapshot.seq, signal })) {
       const effectChanged = event.kind === "effect" && event.runId === waiting.runId;
       const runChanged = event.kind === "run" && event.run.runId === waiting.runId;
       if (effectChanged || runChanged) break;
@@ -128,6 +127,10 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
 
   try {
     if (options.signal?.aborted === true) return { kind: "cancelled" };
+    if (options.configure !== undefined) {
+      await nyte.sessions.configure({ sessionId, ...options.configure });
+      if (signal.aborted) return { kind: "cancelled" };
+    }
     await nyte.messages.send({ sessionId, content: options.content, key: crypto.randomUUID() });
     const waited = await waitForRun(nyte, sessionId, signal);
     if (waited === "cancelled") return { kind: "cancelled" };
@@ -135,8 +138,7 @@ export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
       await nyte.runs.abort({ sessionId });
       await nyte.runs.wait({ sessionId });
     }
-    const run = await nyte.runs.current({ sessionId });
-    return isRunning(run) ? { kind: "failed", message: "run did not complete" } : outcomeOf(run);
+    return outcomeOf(await nyte.runs.current({ sessionId }));
   } finally {
     stop.abort();
     await streaming;

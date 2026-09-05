@@ -1,0 +1,95 @@
+Scope: 3 of 16 workspace projects
+packages/core test$ vitest --run
+packages/core test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/core
+packages/core test:  ❯ test/harness-retry.test.ts (0 test)
+packages/core test:  ❯ test/sdk.test.ts (0 test)
+packages/core test:  ❯ test/tree-navigation.test.ts (0 test)
+packages/core test:  ❯ test/workspace-registry.test.ts (0 test)
+packages/core test:  ❯ test/tool-result.test.ts (0 test)
+packages/core test: ▶ modern MCP tools
+packages/core test:   ✖ builds stable provider-safe tool names (0.814833ms)
+packages/core test:   ✖ discovers once, registers a stable tool, and calls without a legacy handshake (2.568709ms)
+packages/core test:   ✖ turns remote tool failures into structured ToolError values (0.210875ms)
+packages/core test:   ✖ rejects a legacy server without initialize, GET, or transport fallback (0.154041ms)
+packages/core test:   ✖ rejects conflicting names from one server instead of using order-based suffixes (0.124208ms)
+packages/core test: ✖ modern MCP tools (4.80125ms)
+packages/core test:  ❯ test/mcp.test.ts (0 test)
+packages/core test: ℹ tests 5
+packages/core test: ℹ suites 1
+packages/core test: ℹ pass 0
+packages/core test: ℹ fail 5
+packages/core test: ℹ cancelled 0
+packages/core test: ℹ skipped 0
+packages/core test: ℹ todo 0
+packages/core test: ℹ duration_ms 18.034917
+packages/core test: ⎯⎯⎯⎯⎯⎯ Failed Suites 6 ⎯⎯⎯⎯⎯⎯⎯
+packages/core test:  FAIL  test/harness-retry.test.ts [ test/harness-retry.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/harness-retry.test.ts
+packages/core test:  ❯ test/harness-retry.test.ts:12:1
+packages/core test:      10| import { afterEach, describe, test } from "node:test";
+packages/core test:      11| import type { AssistantMessage, AssistantMessageEvent, Message, Model,…
+packages/core test:      12| import { EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      13| import type { StreamFn } from "../src/types.ts";
+packages/core test:      14| import { AgentHarness, type RetryEvent } from "../src/harness/agent-ha…
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+packages/core test:  FAIL  test/mcp.test.ts [ test/mcp.test.ts ]
+packages/core test: Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/core/test/mcp.test.ts
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+packages/core test:  FAIL  test/sdk.test.ts [ test/sdk.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/sdk.test.ts
+packages/core test:  ❯ test/sdk.test.ts:12:1
+packages/core test:      10| import { afterEach, describe, test } from "node:test";
+packages/core test:      11| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+packages/core test:      12| import { contentText, EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      13| import {
+packages/core test:      14|   createUji,
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+packages/core test:  FAIL  test/tool-result.test.ts [ test/tool-result.test.ts ]
+packages/core test: Error: Cannot find module '../harness/session/types.ts' imported from /Users/workgyver/Developer/nyte/packages/core/src/sdk/events.ts
+packages/core test:  ❯ src/sdk/events.ts:14:1
+packages/core test:      12|  */
+packages/core test:      13| import type { HarnessEvent } from "../harness/agent-harness.ts";
+packages/core test:      14| import { toJsonValue } from "../harness/session/types.ts";
+packages/core test:        | ^
+packages/core test:      15| import type { Entry, JsonValue, LogItem } from "../harness/session/typ…
+packages/core test:      16| import { transcriptFromEntries } from "../views/transcript.ts";
+packages/core test:  ❯ test/tool-result.test.ts:9:1
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+packages/core test:  FAIL  test/tree-navigation.test.ts [ test/tree-navigation.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/tree-navigation.test.ts
+packages/core test:  ❯ test/tree-navigation.test.ts:8:1
+packages/core test:       6| import { afterEach, describe, test } from "node:test";
+packages/core test:       7| import type { Context as AiContext } from "@uji-ai/ai/types";
+packages/core test:       8| import {
+packages/core test:        | ^
+packages/core test:       9|   createAssistantMessageEventStream,
+packages/core test:      10|   type AssistantMessage,
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+packages/core test:  FAIL  test/workspace-registry.test.ts [ test/workspace-registry.test.ts ]
+packages/core test: Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/workspace-registry.test.ts
+packages/core test:  ❯ test/workspace-registry.test.ts:14:1
+packages/core test:      12| import { afterEach, describe, test } from "node:test";
+packages/core test:      13| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+packages/core test:      14| import { EventStream } from "@uji-ai/ai";
+packages/core test:        | ^
+packages/core test:      15| import { createUji, WorkspaceRegistry } from "../src/index.ts";
+packages/core test:      16| import { SqliteSessionRepo } from "../src/store.ts";
+packages/core test: ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+packages/core test:  Test Files  6 failed | 26 passed (32)
+packages/core test:       Tests  194 passed (194)
+packages/core test:    Start at  23:27:45
+packages/core test:    Duration  3.03s (transform 37%, import 33%, tests 30%, worker 1%)
+packages/core test:   Transform  transforming modules took 8.69s · 37% of tracked time, re-done on every run
+packages/core test:              persist transforms across runs with fsModuleCache: true
+packages/core test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/core test: Failed
+[ERR_PNPM_RECURSIVE_FAIL] 
+
+
+Summary: 1 fails, 0 passes
+
+/Users/workgyver/Developer/nyte/packages/core:
+[ERROR] @nyte-ai/core@ test: `vitest --run`
+Exit status 1

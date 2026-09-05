@@ -17,7 +17,7 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { CliRenderer, KeyEvent } from "@opentui/core";
-import type { EphemeralPanel } from "./ephemeral.ts";
+import type { EphemeralPanel } from "./shell.ts";
 import { GLYPHS } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { padDisplay, truncateDisplay } from "./width.ts";

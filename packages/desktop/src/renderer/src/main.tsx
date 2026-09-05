@@ -10,9 +10,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app.tsx";
 
-if (import.meta.env.DEV) {
-  void import("react-grab");
-}
+import { loadLocalResources } from "./queries.ts";
+import { router } from "./router.tsx";
 
 function render(): void {
   const root = document.getElementById("root");
@@ -25,4 +24,21 @@ function render(): void {
   );
 }
 
-render();
+performance.mark("nyte:startup");
+void loadLocalResources()
+  .then(() => router.load())
+  .then(() => {
+    performance.mark("nyte:resources-ready");
+    render();
+  })
+  .catch(() => {
+    const startup = document.getElementById("startup");
+    if (startup !== null) startup.dataset["state"] = "error";
+    const title = document.getElementById("startup-title");
+    if (title !== null) title.textContent = "Nyte couldn’t open your workspace.";
+    const status = document.getElementById("startup-status");
+    if (status !== null) status.textContent = "Reload to try again.";
+    document
+      .getElementById("startup-retry")
+      ?.addEventListener("click", () => window.location.reload(), { once: true });
+  });

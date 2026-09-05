@@ -43,6 +43,48 @@ In the TUI, `/tasks` opens the live subagent and shell-call picker. Press Enter 
 inspect output, Escape to return, or Down from an empty composer to open the picker.
 The inspector is read-only; stopping a shell call stops its owning run.
 
+Text and table columns are selectable. `Ctrl+C` copies the selection; `/copy-on-select on`
+copies when you release the mouse. `Ctrl+V` reads text or an image from the clipboard.
+Click a collapsed paste to expand it, or press `Ctrl+Space` at an attachment to expand or
+preview it. Repeating a paste beside its marker expands the existing text. Image tags
+in the transcript open an inline preview. Mermaid fences render as terminal diagrams;
+click their heading to switch between the diagram and its source.
+
+`Ctrl+Q` opens the queue. `Ctrl+E` edits a message, `Ctrl+D` removes it, and `Ctrl+Up` or
+`Ctrl+Down` changes its position. You can also drag a row's leading glyph. Saving or
+cancelling an edit restores your earlier composer draft and attachments. Enter saves
+the edit; `Ctrl+Enter` sends it now. `/follow-up queue` makes Enter queue new follow-ups
+while the agent works, with `Ctrl+Enter` steering instead. `/follow-up steer` restores
+the default.
+
+Local TUI plugins live in `~/.nyte/plugins/tui` or `<project>/.nyte/plugins/tui`.
+Save a `.ts` file or a folder with `index.ts`; the running TUI reloads it and its local
+imports. Broken imports or setup keep the previous plugin running. For example:
+
+```ts
+import { define } from "@nyte-ai/plugin";
+import { TextRenderable } from "@opentui/core";
+
+export default define({
+  id: "workspace-note",
+  setup(context) {
+    context.ui.slot("session.composer.top", () =>
+      new TextRenderable(context.renderer, {
+        content: "Check the tests before shipping",
+        fg: context.theme.fg,
+        height: 1,
+      }),
+    );
+  },
+});
+```
+
+Return a cleanup function from `setup` for timers or other resources. Slots and
+`context.data.listen` subscriptions clean up automatically. `context.storage.memory(key,
+{ initial })` returns a reader and writer for JSON state that survives reloads. `/plugins`
+lists active TUI plugins, and `/reload` also checks their sources. This reload support
+uses Bun, the TUI's runtime.
+
 Installed copies update themselves with `nyte update`. One prompt without the full screen:
 
 ```sh

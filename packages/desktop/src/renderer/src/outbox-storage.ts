@@ -3,7 +3,7 @@ import { Value } from "typebox/value";
 import { userContent } from "../../shared/schemas.ts";
 import type { OutboxSubmission, WorkspacePartition } from "./outbox.ts";
 import { workspacePartitionFromStorage } from "./outbox.ts";
-import { asSessionId } from "./nyte.ts";
+import { sessionId } from "@nyte-ai/protocol";
 
 const DATABASE_NAME = "nyte-renderer";
 const DATABASE_VERSION = 1;
@@ -87,7 +87,7 @@ function decodeRecord(value: unknown): PersistedOutboxRecordV1 | undefined {
       key: value.key,
       input: {
         ...value.input,
-        sessionId: asSessionId(value.input.sessionId),
+        sessionId: sessionId(value.input.sessionId),
       },
       createdAt: value.createdAt,
       failures: value.failures,

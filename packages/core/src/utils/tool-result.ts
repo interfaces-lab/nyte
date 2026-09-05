@@ -37,34 +37,14 @@ export function toolErrorResult(
 ): AgentToolResult<unknown> {
   if (cause instanceof ToolError) return cause.result;
   const result: AgentToolResult<unknown> = {
-    content: toolResultContent(cause instanceof Error ? cause.message : String(cause)),
-    details: {},
+    content: [
+      ...toolResultContent(cause instanceof Error ? cause.message : String(cause)),
+      ...(lastPartial?.content ?? []),
+    ],
+    details: lastPartial?.details === undefined ? {} : lastPartial.details,
   };
-  return lastPartial === undefined ? result : withPartial(result, lastPartial);
-}
-
-function withPartial(
-  result: AgentToolResult<unknown>,
-  partial: AgentToolResult<unknown>,
-): AgentToolResult<unknown> {
-  const settled: AgentToolResult<unknown> = {
-    ...result,
-    content: [...result.content, ...partial.content],
-    details:
-      emptyDetails(result.details) && partial.details !== undefined
-        ? partial.details
-        : result.details,
-  };
-  if (result.title === undefined && partial.title !== undefined) {
-    settled.title = partial.title;
+  if (lastPartial?.title !== undefined) {
+    result.title = lastPartial.title;
   }
-  return settled;
-}
-
-/** True for absent details and for an empty object, the default a failure settles with. */
-function emptyDetails(details: unknown): details is undefined | object {
-  return (
-    details === undefined ||
-    (typeof details === "object" && details !== null && Object.keys(details).length === 0)
-  );
+  return result;
 }

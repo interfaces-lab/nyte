@@ -148,8 +148,9 @@ SOFTWARE.
 
 - Repository: https://github.com/modelcontextprotocol/typescript-sdk
 - Package: `@modelcontextprotocol/client` 2.0.0
-- What: the modern stateless HTTP MCP integration in `packages/core/src/mcp.ts`
-  uses this client. No source is ported into Nyte.
+- What: Nyte's retired core MCP integration used this client. Current search
+  requests use `packages/plugin/examples/web-search/mcp.ts` without the SDK.
+  No SDK source was ported into Nyte.
 
 License: the package declares MIT in `package.json`. Its distributed `LICENSE`
 records the MCP project's transition to Apache License 2.0, with contributions
@@ -176,8 +177,8 @@ no `NOTICE` file, so no additional attribution text is carried.
   (`packages/tui/src/prompt-history.ts`), and patch-hunk splitting in
   `packages/tui/src/format.ts` are ported from OpenCode. The SDK admission
   vocabulary (`steer`/`queue`, `wait`, opaque cursors) follows OpenCode's v2
-  design, as does re-delivery: `AgentHarness.redeliverQueued`
-  (`packages/core/src/harness/agent-harness.ts`) is OpenCode v2's inbox
+  design, as does re-delivery: `messages.redeliver`
+  (`packages/core/src/kernel/queue.ts`) follows OpenCode v2's inbox
   `steer`/`queue`/`cancel` trio, and enter on an empty composer sending the
   front of the queue (`packages/tui/src/pending-gutter.ts`,
   `packages/tui/src/interactive.ts`) is its `onEmptySubmit`. The rename
@@ -187,6 +188,12 @@ no `NOTICE` file, so no additional attribution text is carried.
   Parallel, and Tavily adapters, its stateless MCP `tools/call` transport and
   response bounds, its result and error vocabulary, and its arrangement of one
   plugin per provider from OpenCode v2.
+- The TUI selection handlers, clipboard adapter, pasted-text expansion, Mermaid
+  renderer integration, queued-message editing, and local plugin reloads also
+  adapt merged V2 PRs #45758, #41603, #39920, #41113, #44683, #39776, and #47388.
+  Source functions retain upstream names; the source comments pin the merge commits.
+- The desktop working indicator (`packages/desktop/src/renderer/src/components/spinner.tsx`)
+  adapts OpenCode v2's pixel-grid spinner and opacity animations to React and StyleX.
 
 License: MIT, with the following notice:
 
@@ -194,6 +201,39 @@ License: MIT, with the following notice:
 MIT License
 
 Copyright (c) 2025 opencode
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Beautiful Mermaid (`lukilabs/beautiful-mermaid`)
+
+- Repository: https://github.com/lukilabs/beautiful-mermaid
+- Package: `beautiful-mermaid` 1.1.3
+- What: terminal Mermaid diagrams use its Unicode renderer. The docs also use
+  its SVG renderer.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2026 Craft Docs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -1,4 +1,4 @@
-import { setTimeout as sleep } from "node:timers/promises";
+import { setTimeout } from "node:timers/promises";
 import type { Lease } from "./model.ts";
 import type { Session } from "./store.ts";
 
@@ -26,7 +26,9 @@ export async function withLeaseRenewal<T>(
   const renewal = (async () => {
     while (!stop.signal.aborted) {
       try {
-        await sleep(Math.max(1, Math.floor(input.ttlMs / 3)), undefined, { signal: stop.signal });
+        await setTimeout(Math.max(1, Math.floor(input.ttlMs / 3)), undefined, {
+          signal: stop.signal,
+        });
       } catch (cause) {
         if (stop.signal.aborted) return;
         throw cause;

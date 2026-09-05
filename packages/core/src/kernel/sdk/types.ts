@@ -171,6 +171,9 @@ export interface Messages {
     readonly head?: HeadName;
     readonly change: Oid;
     readonly lane: Lane;
+    readonly content?: SendInput["content"];
+    /** Keep position when omitted; move before this pending item, or to the end with null. */
+    readonly before?: Oid | null;
   }): Promise<RedeliverOutcome>;
   list(input: {
     readonly sessionId: SessionId;

@@ -33,6 +33,7 @@ import {
 import { fitPowerlineSegments, hintGroups, powerlineSegments } from "./format.ts";
 import type { PowerlineState, PowerlineTone } from "./format.ts";
 import { LabelSyntax } from "./label-syntax.ts";
+import { createChatKeymap } from "./keymap.ts";
 import type { LaneRoles } from "./lanes.ts";
 import { PendingGutter } from "./pending-gutter.ts";
 import { InlineMenu, PickerCancelled } from "./picker.ts";
@@ -241,6 +242,7 @@ export class Ephemeral {
 
 export interface Shell {
   readonly renderer: CliRenderer;
+  readonly keymap: ReturnType<typeof createChatKeymap>;
   readonly root: BoxRenderable;
   readonly theme: ActiveCliTheme;
   readonly transcript: Transcript;
@@ -251,6 +253,8 @@ export interface Shell {
   readonly prompt: TextRenderable;
   readonly input: TextareaRenderable;
   readonly powerline: TextRenderable;
+  readonly status: ComposerStatus;
+  readonly loading: TextRenderable;
   readonly hints: TextRenderable;
   readonly pendingGutter: PendingGutter;
   readonly taskStatus: TextRenderable;
@@ -305,7 +309,7 @@ function powerlineColor(theme: CliTheme, tone: PowerlineTone): string {
 
 /** The lower prompt rule with each status segment colored by its role. */
 export function framedPowerline(
-  state: PowerlineState | undefined,
+  state: Partial<PowerlineState> | undefined,
   width: number,
   theme: CliTheme,
   borderColor: string = theme.promptBorder,
@@ -313,7 +317,7 @@ export function framedPowerline(
   const frameWidth = Math.max(0, Math.floor(width));
   if (frameWidth === 0) return new StyledText([]);
   if (frameWidth === 1) return new StyledText([fg(borderColor)(GLYPHS.rule)]);
-  if (state === undefined || frameWidth < 6) {
+  if (frameWidth < 6) {
     return new StyledText([
       fg(borderColor)(
         `${GLYPHS.frameBottomLeft}${GLYPHS.rule.repeat(Math.max(0, frameWidth - 2))}${GLYPHS.frameBottomRight}`,
@@ -321,7 +325,7 @@ export function framedPowerline(
     ]);
   }
   const captionWidth = frameWidth - 5;
-  const segments = fitPowerlineSegments(powerlineSegments(state), captionWidth);
+  const segments = fitPowerlineSegments(powerlineSegments(state ?? {}), captionWidth);
   const chunks = [fg(borderColor)(`${GLYPHS.frameBottomLeft}${GLYPHS.rule}`)];
   let captionLength = 0;
   for (const [index, segment] of segments.entries()) {
@@ -482,6 +486,16 @@ export function buildShell(
     backgroundColor: theme.background,
   });
 
+  const loading = new TextRenderable(renderer, {
+    id: "session-loading",
+    content: "Loading session…",
+    fg: theme.dim,
+    height: 1,
+    flexShrink: 0,
+    marginLeft: 3,
+    visible: false,
+  });
+  root.add(loading);
   root.add(scroll);
   live.add(pendingGutter.container);
   live.add(taskStatus);
@@ -494,6 +508,10 @@ export function buildShell(
   renderer.root.add(root);
 
   const focus = new FocusController(input);
+  const status = new ComposerStatus({ renderer, powerline, theme }, () => input.focused, {});
+  for (const event of [RenderableEvents.FOCUSED, RenderableEvents.BLURRED]) {
+    input.on(event, status.repaint);
+  }
   const resize = (_width: number, height: number): void => {
     input.maxHeight = composerRowsForHeight(height);
     for (const block of userBlocks) block.width = userBlockWidth();
@@ -506,6 +524,7 @@ export function buildShell(
   renderer.on(CliRenderEvents.BLUR, blur);
   renderer.on(CliRenderEvents.FOCUS, restore);
   root.once(RenderableEvents.DESTROYED, () => {
+    status.dispose();
     renderer.off(CliRenderEvents.RESIZE, resize);
     renderer.off(CliRenderEvents.BLUR, blur);
     renderer.off(CliRenderEvents.FOCUS, restore);
@@ -527,6 +546,7 @@ export function buildShell(
   };
   return {
     renderer,
+    keymap: createChatKeymap(renderer),
     root,
     theme,
     transcript,
@@ -537,6 +557,8 @@ export function buildShell(
     prompt,
     input,
     powerline,
+    status,
+    loading,
     hints,
     pendingGutter,
     taskStatus,
@@ -565,6 +587,8 @@ export function applyShellTheme(shell: Shell, next: CliTheme): void {
   shell.inputBox.focusedBorderColor = theme.promptBorderFocused;
   shell.inputBox.titleColor = theme.dim;
   shell.prompt.fg = theme.user;
+  shell.loading.fg = theme.dim;
+  shell.status.repaint();
   shell.input.placeholderColor = theme.dim;
   shell.input.textColor = theme.foreground;
   shell.input.focusedTextColor = theme.foreground;
@@ -624,6 +648,7 @@ export function openInlineMenu(
     new InlineMenu(
       {
         renderer: shell.renderer,
+        keymap: shell.keymap,
         theme: shell.theme,
         nextId: shell.nextId,
         onRows: (rows) => shell.ephemeral.setRows(rows),
@@ -714,10 +739,14 @@ export class ComposerStatus {
   private readonly line: TextRenderable;
   private readonly theme: CliTheme;
   private readonly isFocused: () => boolean;
-  private state: PowerlineState;
+  private state: Partial<PowerlineState>;
   private disposed = false;
 
-  constructor(shell: Shell, isFocused: () => boolean, initial: PowerlineState) {
+  constructor(
+    shell: Pick<Shell, "renderer" | "powerline" | "theme">,
+    isFocused: () => boolean,
+    initial: Partial<PowerlineState>,
+  ) {
     this.renderer = shell.renderer;
     this.line = shell.powerline;
     this.theme = shell.theme;

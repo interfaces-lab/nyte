@@ -25,7 +25,8 @@ function browserStorage(): Storage | undefined {
   }
 }
 
-function controllerForWorkspace(workspaceKey: string): PaneController {
+export function paneControllerForWorkspace(workspacePath: string | undefined): PaneController {
+  const workspaceKey = workspacePath ?? "no-workspace";
   const existing = controllerCache.get(workspaceKey);
   if (existing !== undefined) return existing;
   const controller = new PaneController({
@@ -43,10 +44,7 @@ export function PaneControllerProvider({
   workspaceKey: string | undefined;
   children: ReactNode;
 }): ReactElement {
-  const controller = useMemo(
-    () => controllerForWorkspace(workspaceKey ?? "no-workspace"),
-    [workspaceKey],
-  );
+  const controller = useMemo(() => paneControllerForWorkspace(workspaceKey), [workspaceKey]);
   return (
     <PaneControllerContext.Provider value={controller}>{children}</PaneControllerContext.Provider>
   );

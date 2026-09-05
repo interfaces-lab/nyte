@@ -1,0 +1,6 @@
+Production Electron; isolated NYTE_HOME and appData.
+Real core SQLite objects/refs/events in a temporary workspace; fixture holds execution lease, no provider calls.
+Respond: working indicator and auto-expanded work group.
+Tools: persisted tool call and progress visible, group stays expanded.
+Done: final answer visible, aria-busy cleared, group auto-collapses; manual expand/collapse works.
+Resized to 640x600 and 1200x800; no horizontal overflow, no renderer errors.

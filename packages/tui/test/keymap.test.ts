@@ -15,7 +15,7 @@ import {
 } from "../src/keymap.ts";
 
 /** One spec per chat command, so the layer registers the whole table. */
-function commandsThatDecline(decline: ReadonlySet<ChatCommand>): ChatCommands {
+function commandsThatDecline(decline: ReadonlySet<ChatCommand>): Partial<ChatCommands> {
   const spec = (name: ChatCommand): ChatCommandSpec => ({
     title: name,
     run: () => !decline.has(name),
@@ -30,6 +30,8 @@ function commandsThatDecline(decline: ReadonlySet<ChatCommand>): ChatCommands {
     "chat.model.next": spec("chat.model.next"),
     "chat.model.previous": spec("chat.model.previous"),
     "chat.editor.open": spec("chat.editor.open"),
+    "chat.attachment.open": spec("chat.attachment.open"),
+    "chat.clipboard.paste": spec("chat.clipboard.paste"),
     "chat.queue.open": spec("chat.queue.open"),
     "chat.queue.submit": spec("chat.queue.submit"),
     "chat.tools.toggle": spec("chat.tools.toggle"),

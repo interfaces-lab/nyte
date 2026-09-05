@@ -1,0 +1,1 @@
+Isolated production TUI under Bun in a real PTY. Fresh NYTE_HOME and workspace. Accepted trust only for the temporary workspace. Exercised model cycling, /usage, command-menu keyboard navigation, Escape, resizing 90x24 to 44x16 to 110x32, /quit. Exit status 0. No provider request was submitted. Temporary workspace and stores removed.

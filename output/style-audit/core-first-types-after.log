@@ -1,0 +1,32 @@
+Scope: 3 of 16 workspace projects
+packages/core typecheck$ tsc --noEmit
+packages/core typecheck: Done
+packages/tui typecheck$ tsc --noEmit
+packages/desktop typecheck$ tsc --noEmit
+packages/tui typecheck: test/qa/fixture.ts(48,33): error TS2339: Property 'flatMap' does not exist on type 'string | (ImageContent | TextContent)[]'.
+packages/tui typecheck:   Property 'flatMap' does not exist on type 'string'.
+packages/tui typecheck: test/qa/fixture.ts(48,42): error TS7006: Parameter 'part' implicitly has an 'any' type.
+packages/tui typecheck: test/qa/fixture.ts(68,59): error TS2769: No overload matches this call.
+packages/tui typecheck:   The last overload gave the following error.
+packages/tui typecheck:     Argument of type '(value: void | PromiseLike<void>) => void' is not assignable to parameter of type 'EventListener | EventListenerObject'.
+packages/tui typecheck:       Type '(value: void | PromiseLike<void>) => void' is not assignable to type 'EventListener'.
+packages/tui typecheck:         Types of parameters 'value' and 'evt' are incompatible.
+packages/tui typecheck:           Type 'Event' is not assignable to type 'void | PromiseLike<void>'.
+packages/tui typecheck: test/qa/fixture.ts(91,12): error TS2322: Type 'StreamFn' is not assignable to type 'ProviderStreams | ((model: Model<Api>, context: Context, options?: StreamOptions | undefined) => AssistantMessageEventStream) | undefined'.
+packages/tui typecheck:   Type 'StreamFn' is not assignable to type '(model: Model<Api>, context: Context, options?: StreamOptions | undefined) => AssistantMessageEventStream'.
+packages/tui typecheck:     Type 'AssistantMessageEventStream | Promise<AssistantMessageEventStream>' is not assignable to type 'AssistantMessageEventStream'.
+packages/tui typecheck:       Type 'Promise<AssistantMessageEventStream>' is missing the following properties from type 'AssistantMessageEventStream': queue, waiting, done, finalResult, and 6 more.
+packages/tui typecheck: test/qa/fixture.ts(91,20): error TS2322: Type 'StreamFn' is not assignable to type 'ProviderStreams | ((model: Model<Api>, context: Context, options?: SimpleStreamOptions | undefined) => AssistantMessageEventStream) | undefined'.
+packages/tui typecheck:   Type 'StreamFn' is not assignable to type '(model: Model<Api>, context: Context, options?: SimpleStreamOptions | undefined) => AssistantMessageEventStream'.
+packages/tui typecheck:     Type 'AssistantMessageEventStream | Promise<AssistantMessageEventStream>' is not assignable to type 'AssistantMessageEventStream'.
+packages/tui typecheck:       Type 'Promise<AssistantMessageEventStream>' is missing the following properties from type 'AssistantMessageEventStream': queue, waiting, done, finalResult, and 6 more.
+packages/tui typecheck: Failed
+packages/desktop typecheck: Done
+[ERR_PNPM_RECURSIVE_FAIL] 
+
+
+Summary: 1 fails, 2 passes
+
+/Users/workgyver/Developer/nyte/packages/tui:
+[ERROR] @nyte-ai/tui@0.0.2 typecheck: `tsc --noEmit`
+Exit status 1

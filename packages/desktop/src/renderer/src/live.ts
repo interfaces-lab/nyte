@@ -7,7 +7,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Seq, SessionEvent, SessionId, SessionSnapshot } from "@nyte-ai/core";
 import { foldEvent, IDLE, resumeFrom } from "./live-fold.ts";
 import type { LiveSnapshot } from "./live-fold.ts";
-import { loadThread, refreshThread } from "./queries.ts";
+import { keys, loadThread, queryClient, refreshThread } from "./queries.ts";
 import { nyte } from "./nyte.ts";
 
 export { livePartKey } from "./live-fold.ts";
@@ -44,6 +44,9 @@ function fold(store: LiveStore, sessionId: SessionId, event: SessionEvent): void
   const result = foldEvent(store.snapshot, event);
   if (result.snapshot !== store.snapshot) store.update(result.snapshot);
   if (result.refreshAt !== undefined) refreshThread(sessionId, result.refreshAt);
+  if (event.kind === "commit" || event.kind === "effect" || event.kind === "tool_progress") {
+    void queryClient.invalidateQueries({ queryKey: keys.children(sessionId), exact: true });
+  }
 }
 
 /**

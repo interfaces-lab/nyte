@@ -1,4 +1,4 @@
-import { setTimeout as sleep } from "node:timers/promises";
+import { setTimeout } from "node:timers/promises";
 import { branchConfig, contextMessages } from "./context.ts";
 import { listEffects } from "./effects.ts";
 import { branch, contextCommits } from "./graph.ts";
@@ -738,8 +738,8 @@ async function waitUntil(
   if (delay <= 0) return true;
   if (signalAborted(signal)) return false;
   try {
-    if (signal === undefined) await sleep(delay);
-    else await sleep(delay, undefined, { signal });
+    if (signal === undefined) await setTimeout(delay);
+    else await setTimeout(delay, undefined, { signal });
     return true;
   } catch (error) {
     if (signalAborted(signal)) return false;

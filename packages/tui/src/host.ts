@@ -14,7 +14,7 @@ import {
   emptyUsageSummary,
   mergeUsageSummaries,
   projectUsage,
-  sessionId as parseSessionId,
+  sessionId,
 } from "@nyte-ai/core";
 import type {
   Actor,
@@ -109,10 +109,6 @@ function runUsage(commits: readonly StoredCommit[], runId: string): Usage {
     .total;
 }
 
-function isTerminal(run: RunInfo): boolean {
-  return run.phase.kind === "done" || run.phase.kind === "aborted" || run.phase.kind === "failed";
-}
-
 export class Host {
   readonly nyte: Nyte;
   readonly store: SqliteStore;
@@ -153,8 +149,8 @@ export class Host {
    * picker needs the abandoned branches a head no longer names, which no
    * branch verb returns.
    */
-  async sessionCommits(sessionId: SessionId): Promise<StoredCommit[]> {
-    const session = await this.store.open(sessionId);
+  async sessionCommits(id: SessionId): Promise<StoredCommit[]> {
+    const session = await this.store.open(id);
     try {
       return await readCommits(session);
     } finally {
@@ -169,7 +165,7 @@ export class Host {
     const runs: LiveRunUsage[] = [];
     let chats = 0;
     for (const { id } of await this.store.list()) {
-      const info = await this.nyte.sessions.get({ sessionId: parseSessionId(id) });
+      const info = await this.nyte.sessions.get({ sessionId: sessionId(id) });
       if (info === undefined) continue;
       const session = await this.store.open(id);
       let commits: StoredCommit[];
@@ -180,7 +176,7 @@ export class Host {
       }
       const summary = projectUsage(commits.map((item) => item.commit));
       const run = await this.nyte.runs.current({ sessionId: info.sessionId, head: MAIN });
-      if (run !== undefined && !isTerminal(run)) {
+      if (run !== undefined && !["done", "aborted", "failed"].includes(run.phase.kind)) {
         runs.push({
           sessionId: info.sessionId,
           label: info.name ?? info.sessionId,

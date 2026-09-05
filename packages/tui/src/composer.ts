@@ -9,11 +9,31 @@ import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { imageInfo } from "@opentui/core";
+import {
+  BoxRenderable,
+  CodeRenderable,
+  ImageRenderable,
+  ScrollBoxRenderable,
+  TextRenderable,
+  createClipboard,
+  createHostClipboard,
+  createRendererClipboardAdapter,
+  decodePasteBytes,
+  imageInfo,
+} from "@opentui/core";
+import type {
+  ClipboardService,
+  CliRenderer,
+  RendererClipboardBoundary,
+  SyntaxStyle,
+  TextareaRenderable,
+} from "@opentui/core";
+import type { CliTheme } from "./theme.ts";
 import { completionTrigger, discoverMentionFiles } from "@nyte-ai/core";
 import type { MentionFile } from "@nyte-ai/core";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import fuzzysort from "fuzzysort";
+import { cellIndex, cellOffset } from "./width.ts";
 
 export { discoverMentionFiles };
 export type { MentionFile };
@@ -36,6 +56,62 @@ export type ComposerPaste =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "image"; readonly image: ImageContent };
+
+type ClipboardContent = { readonly mime: "image/png" | "text/plain"; readonly data: string };
+
+/** Based on https://github.com/anomalyco/opencode/blob/283258e95b0a534edac3efeb9762e65134b4634c/packages/tui/src/clipboard.ts */
+export function createTuiClipboard(renderer: RendererClipboardBoundary) {
+  return createClipboardAdapter(
+    createClipboard({
+      host: createHostClipboard(),
+      terminal: createRendererClipboardAdapter(renderer),
+    }),
+  );
+}
+
+export function createClipboardAdapter(clipboard: ClipboardService) {
+  return {
+    async read(): Promise<ClipboardContent | undefined> {
+      const result = await clipboard.read({
+        preferredTypes: ["image/png", "text/plain"],
+        selection: "clipboard",
+      });
+      if (result.status !== "read") {
+        if (result.status === "failed") throw result.error;
+        if (result.status === "timed-out") throw new Error("Clipboard read timed out");
+        if (result.status === "limit-exceeded")
+          throw new RangeError("Clipboard content exceeded the read or image conversion limit");
+        return undefined;
+      }
+      if (result.representation.mimeType === "image/png") {
+        return {
+          data: Buffer.from(result.representation.bytes).toString("base64"),
+          mime: result.representation.mimeType,
+        };
+      }
+      if (result.representation.mimeType === "text/plain") {
+        if (result.representation.bytes.length === 0) return undefined;
+        return {
+          data: decodePasteBytes(result.representation.bytes),
+          mime: result.representation.mimeType,
+        };
+      }
+      throw new Error(`Unexpected clipboard MIME type: ${result.representation.mimeType}`);
+    },
+    async write(text: string): Promise<void> {
+      const result = await clipboard.writeText(text, {
+        destination: "all-available",
+        selection: "clipboard",
+      });
+      if (result.host.status === "written" || result.terminal.status === "attempted") return;
+      if (result.host.status === "failed") throw result.host.error;
+      throw new Error(
+        `Clipboard write failed (host: ${result.host.status}, terminal: ${result.terminal.status})`,
+      );
+    },
+    dispose: () => clipboard.dispose(),
+  };
+}
 
 export interface FileMention {
   readonly source: string;
@@ -306,13 +382,16 @@ export class SessionDrafts {
 
 export class ComposerParts {
   private parts: ComposerPart[] = [];
+  private value: string | undefined;
   private nextImage = 1;
   private nextPaste = 1;
   /** Reads start when the tag is inserted and are awaited at submission. */
   private readonly bodies = new Map<string, Promise<string | undefined>>();
 
   get current(): readonly ComposerPart[] {
-    return [...this.parts];
+    return this.parts.filter(
+      (part) => this.value === undefined || this.value.includes(part.marker),
+    );
   }
 
   addFile(path: string): string {
@@ -325,6 +404,13 @@ export class ComposerParts {
   }
 
   addImage(image: ImageContent): string {
+    const existing = this.parts.find(
+      (part) =>
+        part.kind === "image" &&
+        part.image.mimeType === image.mimeType &&
+        part.image.data === image.data,
+    );
+    if (existing !== undefined) return existing.marker;
     const marker = `[Image ${String(this.nextImage++)}]`;
     this.parts.push({ kind: "image", marker, image });
     return marker;
@@ -337,20 +423,67 @@ export class ComposerParts {
     return marker;
   }
 
-  /** Drop the parts whose marker the draft no longer contains. */
+  /** Keep removed bytes until the draft is cleared: undo can bring a marker back. */
   retain(value: string): void {
-    const retained = this.parts.filter((part) => value.includes(part.marker));
-    const retainedFiles = new Set(
-      retained.flatMap((part) => (part.kind === "file" ? [part.path] : [])),
-    );
-    for (const path of this.bodies.keys()) {
-      if (!retainedFiles.has(path)) this.bodies.delete(path);
+    this.value = value;
+  }
+
+  /** Markers move, select, delete, and undo as one item in OpenTUI's editor. */
+  sync(input: TextareaRenderable, styleId: number): void {
+    const typeId = input.extmarks.registerType("composer-part");
+    for (const mark of input.extmarks.getAllForTypeId(typeId)) input.extmarks.delete(mark.id);
+    const text = input.plainText;
+    this.retain(text);
+    for (const part of this.current) {
+      let index = text.indexOf(part.marker);
+      while (index !== -1) {
+        input.extmarks.create({
+          start: cellOffset(text, index),
+          end: cellOffset(text, index + part.marker.length),
+          virtual: true,
+          styleId,
+          typeId,
+        });
+        index = text.indexOf(part.marker, index + part.marker.length);
+      }
     }
-    this.parts = retained;
+  }
+
+  atCursor(input: TextareaRenderable): ComposerPart | undefined {
+    this.retain(input.plainText);
+    const index = cellIndex(input.plainText, input.cursorOffset);
+    return this.current.find((part) => {
+      const start = input.plainText.lastIndexOf(part.marker, index);
+      return start !== -1 && index <= start + part.marker.length;
+    });
+  }
+
+  async preview(part: ComposerPart): Promise<ComposerPart> {
+    if (part.kind !== "file" || part.text !== undefined) return part;
+    const text = await this.bodies.get(part.path);
+    return text === undefined ? part : { ...part, text };
+  }
+
+  /** Based on https://github.com/anomalyco/opencode/blob/3bfce3fd2d07588ffd1e3d6fa301626632627cf9/packages/tui/src/component/prompt/index.tsx */
+  expandPastedText(input: TextareaRenderable, extmarkId: number): boolean {
+    const extmark = input.extmarks.get(extmarkId);
+    if (extmark === null) return false;
+    const marker = input.getTextRange(extmark.start, extmark.end);
+    const part = this.parts.find((candidate) => candidate.marker === marker);
+    if (part?.kind !== "paste") return false;
+
+    // OpenTUI records delete/insert separately; replace keeps expansion one undo step.
+    const text = input.plainText;
+    const start = cellIndex(text, extmark.start);
+    const end = cellIndex(text, extmark.end);
+    input.replaceText(text.slice(0, start) + part.text + text.slice(end));
+    input.cursorOffset = cellOffset(input.plainText, start + part.text.length);
+    return true;
   }
 
   clear(): void {
     this.parts = [];
+    this.value = undefined;
     this.nextImage = 1;
     this.nextPaste = 1;
     this.bodies.clear();
@@ -472,5 +605,92 @@ export class ComposerParts {
       suffix += 1;
     }
     return `${base.slice(0, -1)} ${String(suffix)}]`;
+  }
+}
+
+/** Based on https://github.com/anomalyco/opencode/blob/283258e95b0a534edac3efeb9762e65134b4634c/packages/tui/src/component/dialog-image-preview.tsx */
+export class DialogImagePreview {
+  readonly container: BoxRenderable;
+  private readonly renderer: CliRenderer;
+  private readonly theme: CliTheme;
+  private marker: string | undefined;
+
+  constructor(renderer: CliRenderer, theme: CliTheme) {
+    this.renderer = renderer;
+    this.theme = theme;
+    this.container = new BoxRenderable(renderer, {
+      id: "attachment-preview",
+      flexDirection: "column",
+      flexShrink: 0,
+      width: "100%",
+      paddingLeft: 3,
+      paddingRight: 2,
+      visible: false,
+    });
+  }
+
+  retain(parts: readonly ComposerPart[]): void {
+    if (!parts.some((part) => part.marker === this.marker)) this.close();
+  }
+
+  toggle(part: ComposerPart, syntaxStyle: SyntaxStyle): void {
+    const closing = this.marker === part.marker;
+    this.close();
+    if (closing) return;
+    this.marker = part.marker;
+    this.container.visible = true;
+    const title = new TextRenderable(this.renderer, {
+      content: `${part.marker} · click to close`,
+      fg: this.theme.dim,
+      height: 1,
+      selectable: false,
+    });
+    title.onMouseUp = (event) => {
+      if (event.button !== 0) return;
+      this.close();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    this.container.add(title);
+    const height = Math.max(1, Math.min(10, Math.floor(this.renderer.height / 3)));
+    if (part.kind === "image") {
+      // A scroll box sizes its content to the children, which collapses the
+      // image's percentage width; a plain box gives it the full row to fit into.
+      this.container.add(
+        new ImageRenderable(this.renderer, {
+          source: Buffer.from(part.image.data, "base64"),
+          width: "100%",
+          height,
+          fit: "fit",
+        }),
+      );
+      return;
+    }
+    const viewport = new ScrollBoxRenderable(this.renderer, {
+      width: "100%",
+      height,
+      scrollX: true,
+      scrollY: true,
+    });
+    viewport.add(
+      new CodeRenderable(this.renderer, {
+        content: part.kind === "paste" ? part.text : (part.text ?? part.path),
+        syntaxStyle,
+        fg: this.theme.foreground,
+        wrapMode: "word",
+        selectionBg: this.theme.selectionBackground,
+        selectionFg: this.theme.selectionForeground,
+      }),
+    );
+    this.container.add(viewport);
+  }
+
+  close(): void {
+    this.marker = undefined;
+    this.container.visible = false;
+    for (const child of this.container.getChildren()) {
+      this.container.remove(child);
+      child.destroyRecursively();
+    }
   }
 }

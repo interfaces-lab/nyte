@@ -1,16 +1,34 @@
-import { readFile, stat } from "node:fs/promises";
+import { glob, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const KIB = 1_024;
 // The renderer entry carries React, the router, StyleX output, and Base UI's
-// menu and dialog machinery; everything heavier (diffs, highlighting) is lazy.
+// menu and dialog machinery, plus all desktop components. Syntax grammars stay in the worker.
+// Component navigation never fetches a JavaScript chunk.
 const budgets = {
-  main: 32 * KIB,
+  main: 900 * KIB,
   preload: 16 * KIB,
-  rendererEntry: 1_300 * KIB,
+  rendererEntry: 4_100 * KIB,
 };
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Keep desktop-owned code static even when a new component is added later.
+for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
+  const source = await readFile(join(desktopRoot, path), "utf8");
+  if (/(?:^|[^\w.])(?:import|lazy|lazyRouteComponent)\s*\(/m.test(source)) {
+    throw new Error(`${path} contains a deferred module import; use a static import`);
+  }
+}
+
+// Workspace packages export TypeScript source. Node cannot strip types inside
+// packaged node_modules, so none may remain external in the main bundle.
+for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
+  const source = await readFile(join(desktopRoot, path), "utf8");
+  if (/(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u.test(source)) {
+    throw new Error(`${path} imports unbundled workspace TypeScript; bundle all @nyte-ai packages`);
+  }
+}
+
 const rendererRoot = join(desktopRoot, "out", "renderer");
 const html = await readFile(join(rendererRoot, "index.html"), "utf8");
 const preloadPath = join(desktopRoot, "out", "preload", "index.js");

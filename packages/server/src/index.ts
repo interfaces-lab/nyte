@@ -24,35 +24,43 @@ import {
   EVENT_STREAM_MEDIA_TYPE,
   JSON_MEDIA_TYPE,
   VERBS,
-  VERB_NAME_PATTERN,
   WATCH_QUERY,
   WATCH_ROUTE,
-  decode,
   describeIssues,
   encodeSseComment,
   encodeSseFrame,
-  isVerb,
+  parseVerb,
   schemas,
-  sessionId,
   statusFor,
+  validationIssues,
   type CallReply,
+  type CallRequest,
   type Issue,
   type Seq,
+  type SessionId,
   type Verb,
   type VerbInput,
   type VerbOutput,
   type WatchFrame,
   type WireError,
 } from "@nyte-ai/protocol";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
 
-export type AuthDecision =
-  | { readonly kind: "allow" }
-  /** `unauthorized` (401) when no credential was presented; `forbidden` (403) when one was refused. */
-  | { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" };
+const AuthDecisionSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("allow") }),
+  Type.Object({
+    kind: Type.Literal("deny"),
+    reason: Type.Enum(["unauthorized", "forbidden"]),
+  }),
+]);
+
+/** No credential is unauthorized (401); a refused credential is forbidden (403). */
+export type AuthDecision = Readonly<Static<typeof AuthDecisionSchema>>;
 
 export type ServerAuth =
   /** `Authorization: Bearer <token>`, compared in constant time. At least 16 characters. */
@@ -143,7 +151,7 @@ const DISPATCH: Dispatch = {
 };
 
 type VerbResult =
-  | { readonly kind: "value"; readonly value: unknown }
+  | { readonly kind: "value"; readonly value: VerbOutput<Verb> }
   | { readonly kind: "error"; readonly error: WireError; readonly cause?: unknown };
 
 function invalid(message: string, issues: readonly Issue[] = []): WireError {
@@ -155,7 +163,9 @@ function invalid(message: string, issues: readonly Issue[] = []): WireError {
  * error is reported as `internal`. The server knows the policy, so it names
  * the mistake first, with a fixed message.
  */
-function laneIssue(sdk: Nyte, lane: string | undefined): WireError | undefined {
+function laneIssue(sdk: Nyte, input: VerbInput<Verb>): WireError | undefined {
+  if (input === undefined || !("lane" in input)) return undefined;
+  const { lane } = input;
   if (lane === undefined || sdk.landing.lanes.some((policy) => policy.lane === lane)) {
     return undefined;
   }
@@ -164,20 +174,24 @@ function laneIssue(sdk: Nyte, lane: string | undefined): WireError | undefined {
   ]);
 }
 
-/** Generic in the verb so the input decoded by the verb's schema is the input its method takes. */
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- `raw` is the JSON body; this is its boundary parse
-async function runVerb<V extends Verb>(sdk: Nyte, verb: V, raw: unknown): Promise<VerbResult> {
-  const input = decode<(typeof VERBS)[V]["input"]>(VERBS[verb].input, raw);
-  if (!input.ok) {
-    return { kind: "error", error: invalid("Input did not match the verb", input.issues) };
+/** Keep the parsed input tied to the selected verb through dispatch. */
+async function runVerb<V extends Verb>(
+  sdk: Nyte,
+  verb: V,
+  request: CallRequest,
+): Promise<VerbResult> {
+  const schema: (typeof VERBS)[V]["input"] = VERBS[verb].input;
+  const input = Object.hasOwn(request, "input") ? request.input : undefined;
+  if (!Value.Check(schema, input)) {
+    return {
+      kind: "error",
+      error: invalid("Input did not match the verb", validationIssues(Value.Errors(schema, input))),
+    };
   }
-  if (verb === "messages.send" || verb === "messages.redeliver") {
-    const lane = decode(schemas.LaneInput, input.value);
-    const issue = lane.ok ? laneIssue(sdk, lane.value.lane) : undefined;
-    if (issue !== undefined) return { kind: "error", error: issue };
-  }
+  const issue = laneIssue(sdk, input);
+  if (issue !== undefined) return { kind: "error", error: issue };
   try {
-    return { kind: "value", value: await DISPATCH[verb](sdk, input.value) };
+    return { kind: "value", value: await DISPATCH[verb](sdk, input) };
   } catch (cause) {
     return { kind: "error", error: wireErrorFor(cause), cause };
   }
@@ -246,22 +260,6 @@ function bearerToken(request: Request): string | undefined {
   return header.slice(space + 1).trim();
 }
 
-/** A host callback is JavaScript; only an explicit allow opens the door. */
-function isAllow(decision: AuthDecision): decision is { readonly kind: "allow" } {
-  return typeof decision === "object" && decision !== null && decision.kind === "allow";
-}
-
-function isDenyReason(
-  decision: AuthDecision,
-): decision is { readonly kind: "deny"; readonly reason: "unauthorized" | "forbidden" } {
-  return (
-    typeof decision === "object" &&
-    decision !== null &&
-    decision.kind === "deny" &&
-    (decision.reason === "unauthorized" || decision.reason === "forbidden")
-  );
-}
-
 function mediaType(header: string | null): string | undefined {
   if (header === null) return undefined;
   const semicolon = header.indexOf(";");
@@ -312,7 +310,7 @@ type WatchTarget =
   | { readonly kind: "live" };
 
 type WatchQueryParse =
-  | { readonly kind: "ok"; readonly sessionId: string; readonly target: WatchTarget }
+  | { readonly kind: "ok"; readonly sessionId: SessionId; readonly target: WatchTarget }
   | { readonly kind: "invalid"; readonly message: string };
 
 function parseWatchQuery(params: URLSearchParams): WatchQueryParse {
@@ -325,7 +323,9 @@ function parseWatchQuery(params: URLSearchParams): WatchQueryParse {
   const id = params.get(WATCH_QUERY.sessionId);
   const after = params.get(WATCH_QUERY.after);
   const live = params.get(WATCH_QUERY.live);
-  if (id === null || id === "") return { kind: "invalid", message: "sessionId is required" };
+  if (!Value.Check(schemas.SessionId, id)) {
+    return { kind: "invalid", message: "sessionId is required" };
+  }
   if (after !== null && live !== null) {
     return { kind: "invalid", message: "after and live are mutually exclusive" };
   }
@@ -370,18 +370,20 @@ function frameBytes(frame: WatchFrame): Uint8Array {
  * with heartbeats does not pile handlers onto the pending promise.
  */
 class PendingNext {
-  private settled: IteratorResult<SessionEvent> | undefined;
-  private failure: { readonly cause: unknown } | undefined;
+  private outcome:
+    | { readonly kind: "value"; readonly result: IteratorResult<SessionEvent> }
+    | { readonly kind: "error"; readonly cause: unknown }
+    | undefined;
   private wake: (() => void) | undefined;
 
   constructor(promise: Promise<IteratorResult<SessionEvent>>) {
     promise.then(
       (result) => {
-        this.settled = result;
+        this.outcome = { kind: "value", result };
         this.wake?.();
       },
       (cause: unknown) => {
-        this.failure = { cause };
+        this.outcome = { kind: "error", cause };
         this.wake?.();
       },
     );
@@ -389,7 +391,7 @@ class PendingNext {
 
   /** The result once it exists, else undefined after `waitMs` (forever when 0). Throws what `next()` threw. */
   async wait(waitMs: number): Promise<IteratorResult<SessionEvent> | undefined> {
-    if (this.settled === undefined && this.failure === undefined) {
+    if (this.outcome === undefined) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       await new Promise<void>((resolve) => {
         this.wake = () => {
@@ -400,8 +402,8 @@ class PendingNext {
         if (waitMs > 0) timer = setTimeout(() => this.wake?.(), waitMs);
       });
     }
-    if (this.failure !== undefined) throw this.failure.cause;
-    return this.settled;
+    if (this.outcome?.kind === "error") throw this.outcome.cause;
+    return this.outcome?.result;
   }
 }
 
@@ -469,8 +471,9 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       }
       case "custom": {
         const decision = await auth.authorize(request);
-        if (isAllow(decision)) return decision;
-        return { kind: "deny", reason: isDenyReason(decision) ? decision.reason : "forbidden" };
+        return Value.Check(AuthDecisionSchema, decision)
+          ? decision
+          : { kind: "deny", reason: "forbidden" };
       }
       default: {
         const _exhaustive: never = auth;
@@ -516,15 +519,14 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     } catch {
       return refuse(invalid("Body is not valid JSON"), cors);
     }
-    const envelope = decode(CallRequestSchema, parsed);
-    if (!envelope.ok) {
+    if (!Value.Check(CallRequestSchema, parsed)) {
+      const issues = validationIssues(Value.Errors(CallRequestSchema, parsed));
       return refuse(
-        invalid(`Body must be {"input": ...}: ${describeIssues(envelope.issues)}`, envelope.issues),
+        invalid(`Body must be {"input": ...}: ${describeIssues(issues)}`, issues),
         cors,
       );
     }
-    const input = Object.hasOwn(envelope.value, "input") ? envelope.value.input : undefined;
-    const result = await runVerb(sdk, verb, input);
+    const result = await runVerb(sdk, verb, parsed);
     switch (result.kind) {
       case "value": {
         const reply: CallReply =
@@ -552,8 +554,6 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
   const watch = async (request: Request, url: URL, cors: Headers): Promise<Response> => {
     const query = parseWatchQuery(url.searchParams);
     if (query.kind === "invalid") return refuse(invalid(query.message), cors);
-    const id = decode(schemas.SessionId, query.sessionId);
-    if (!id.ok) return refuse(invalid("Invalid session id", id.issues), cors);
     if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
     if (request.signal.aborted) return refuse(invalid("The request was already aborted"), cors);
 
@@ -563,7 +563,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       release: () => undefined,
     };
     const { signal } = open.controller;
-    const base = { sessionId: sessionId(id.value), signal };
+    const base = { sessionId: query.sessionId, signal };
     const source =
       query.target.kind === "live"
         ? sdk.watch({ ...base, live: true })
@@ -661,7 +661,6 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
           return;
         }
         pending = undefined;
-        if (ended) return;
         if (result.done) {
           end(controller, open.closing ? closedFrame : { kind: "ended" });
           return;
@@ -713,10 +712,11 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         return refuse({ code: "method_not_allowed", message: "Calls are POST" }, cors);
       }
       const name = url.pathname.slice(CALL_ROUTE_PREFIX.length);
-      if (!VERB_NAME_PATTERN.test(name) || !isVerb(name)) {
+      const verb = parseVerb(name);
+      if (verb === undefined) {
         return refuse({ code: "unknown_verb", message: `Unknown verb: ${name}` }, cors);
       }
-      return call(request, name, cors);
+      return call(request, verb, cors);
     }
     return refuse({ code: "not_found", message: "No such route" }, cors);
   };

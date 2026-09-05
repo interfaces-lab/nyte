@@ -6,7 +6,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { clampThinkingLevel, createNyteModels } from "@nyte-ai/ai";
 import type { Api, Model, Models, MutableModels, Provider } from "@nyte-ai/ai";
-import { isThinkingLevel, sessionId as parseSessionId } from "@nyte-ai/core";
+import { isThinkingLevel, sessionId } from "@nyte-ai/core";
 import type { Nyte, SessionInfo, ThinkingLevel, TrustedWorkspace } from "@nyte-ai/core";
 import {
   DEFAULT_PROVIDER_ID,
@@ -169,7 +169,7 @@ export async function targetSession(nyte: Nyte, target: ResumeTarget): Promise<S
       return used ?? nyte.sessions.create();
     }
     case "session": {
-      const info = await nyte.sessions.get({ sessionId: parseSessionId(target.id) });
+      const info = await nyte.sessions.get({ sessionId: sessionId(target.id) });
       if (info === undefined) throw new Error(`Session not found: ${target.id}`);
       return info;
     }

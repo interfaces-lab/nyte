@@ -1,6 +1,3 @@
-// The expensive syntax path is deliberately isolated from the thread route.
-// Code paints as escaped plain text first; this module is loaded during an
-// idle period and upgrades supported fences without delaying navigation.
 import { createHighlighterCoreSync } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import bash from "shiki/langs/bash.mjs";
@@ -33,42 +30,47 @@ import yaml from "shiki/langs/yaml.mjs";
 import githubDark from "shiki/themes/github-dark.mjs";
 import githubLight from "shiki/themes/github-light.mjs";
 
-const highlighter = createHighlighterCoreSync({
-  themes: [githubLight, githubDark],
-  langs: [
-    bash,
-    c,
-    cpp,
-    csharp,
-    css,
-    diff,
-    docker,
-    go,
-    html,
-    java,
-    javascript,
-    json,
-    jsonc,
-    jsx,
-    markdown,
-    mdx,
-    php,
-    powershell,
-    python,
-    ruby,
-    rust,
-    sql,
-    toml,
-    tsx,
-    typescript,
-    xml,
-    yaml,
-  ],
-  engine: createJavaScriptRegexEngine(),
-});
+function createHighlighter() {
+  return createHighlighterCoreSync({
+    themes: [githubLight, githubDark],
+    langs: [
+      bash,
+      c,
+      cpp,
+      csharp,
+      css,
+      diff,
+      docker,
+      go,
+      html,
+      java,
+      javascript,
+      json,
+      jsonc,
+      jsx,
+      markdown,
+      mdx,
+      php,
+      powershell,
+      python,
+      ruby,
+      rust,
+      sql,
+      toml,
+      tsx,
+      typescript,
+      xml,
+      yaml,
+    ],
+    engine: createJavaScriptRegexEngine(),
+  });
+}
+
+let highlighter: ReturnType<typeof createHighlighter> | undefined;
 
 /** Shiki escapes code content before returning this HTML. */
 export function highlightCode(code: string, language: string): string | undefined {
+  highlighter ??= createHighlighter();
   if (!highlighter.getLoadedLanguages().includes(language)) return undefined;
   try {
     return highlighter.codeToHtml(code, {

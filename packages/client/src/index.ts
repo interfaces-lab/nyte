@@ -8,7 +8,7 @@
  * the server's `ended` frame throws. The caller decides what to do next,
  * usually `sessions.snapshot` followed by a watch from the snapshot's `seq`.
  *
- * Depends on `@nyte-ai/protocol` only: no core, no Node. Runs wherever
+ * Depends on `@nyte-ai/protocol` and `typebox`: no core, no Node. Runs wherever
  * `fetch`, `Headers`, `ReadableStream`, and `TextDecoder` exist.
  */
 import {
@@ -20,12 +20,13 @@ import {
   WATCH_QUERY,
   WATCH_ROUTE,
   WatchEndedSchema,
+  WatchFrameKindSchema,
   WireErrorSchema,
   createSseParser,
-  decode,
   describeIssues,
-  isWatchFrameKind,
   schemas,
+  validationIssues,
+  type CallReply,
   type Issue,
   type RemoteNyte,
   type RemoteWatchInput,
@@ -35,6 +36,7 @@ import {
   type VerbOutput,
   type WireError,
 } from "@nyte-ai/protocol";
+import { Value } from "typebox/value";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -118,8 +120,8 @@ export interface NyteClientOptions {
   /** Defaults to the global `fetch`. A test can pass a server handler here. */
   readonly fetch?: typeof fetch;
   /**
-   * The most one watch frame may hold, in UTF-16 code units of the decoded
-   * text. A larger frame ends the watch with a `bad_body` transport failure.
+   * Maximum decoded UTF-16 code units per watch frame, including field names,
+   * comments and line endings. A larger frame ends the watch with `bad_body`.
    * Default 4 194 304.
    */
   readonly maxFrameChars?: number;
@@ -152,12 +154,11 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     }
   };
 
-  /** Read a JSON error envelope from a refused response, or explain why there was none. */
-  const refusal = async (response: Response): Promise<NyteWireError | NyteTransportError> => {
+  const readReply = async (response: Response): Promise<CallReply> => {
     const type = mediaType(response.headers.get("content-type"));
     if (type !== JSON_MEDIA_TYPE) {
       void response.body?.cancel().catch(() => undefined);
-      return new NyteTransportError({
+      throw new NyteTransportError({
         kind: "bad_content_type",
         status: response.status,
         contentType: type,
@@ -167,22 +168,21 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     try {
       parsed = await response.json();
     } catch {
-      return new NyteTransportError({
+      throw new NyteTransportError({
         kind: "bad_body",
         detail: "Reply is not valid JSON",
         issues: [],
       });
     }
-    const reply = decode(CallReplySchema, parsed);
-    if (!reply.ok) {
-      return new NyteTransportError({
+    if (!Value.Check(CallReplySchema, parsed)) {
+      const issues = validationIssues(Value.Errors(CallReplySchema, parsed));
+      throw new NyteTransportError({
         kind: "bad_body",
-        detail: `Reply is not a call envelope: ${describeIssues(reply.issues)}`,
-        issues: reply.issues,
+        detail: `Reply is not a call envelope: ${describeIssues(issues)}`,
+        issues,
       });
     }
-    if (!reply.value.ok) return new NyteWireError(reply.value.error, response.status);
-    return new NyteTransportError({ kind: "bad_status", status: response.status });
+    return parsed;
   };
 
   /** `input` is optional here for verbs that take none; `RemoteNyte` requires it where the verb does. */
@@ -197,39 +197,28 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       headers,
       body: JSON.stringify(input === undefined ? {} : { input }),
     });
-    if (!response.ok || mediaType(response.headers.get("content-type")) !== JSON_MEDIA_TYPE) {
-      throw await refusal(response);
-    }
-    let parsed: unknown;
-    try {
-      parsed = await response.json();
-    } catch {
+    const reply = await readReply(response);
+    if (!reply.ok) throw new NyteWireError(reply.error, response.status);
+    if (!response.ok) throw new NyteTransportError({ kind: "bad_status", status: response.status });
+    const value = reply.defined ? reply.value : undefined;
+    const schema: (typeof VERBS)[V]["output"] = VERBS[verb].output;
+    if (!Value.Check(schema, value)) {
+      const issues = validationIssues(Value.Errors(schema, value));
       throw new NyteTransportError({
         kind: "bad_body",
-        detail: "Reply is not valid JSON",
-        issues: [],
+        detail: `Reply to ${verb} did not match its schema: ${describeIssues(issues)}`,
+        issues,
       });
     }
-    const reply = decode(CallReplySchema, parsed);
-    if (!reply.ok) {
-      throw new NyteTransportError({
-        kind: "bad_body",
-        detail: `Reply is not a call envelope: ${describeIssues(reply.issues)}`,
-        issues: reply.issues,
-      });
-    }
-    if (!reply.value.ok) throw new NyteWireError(reply.value.error, response.status);
-    const value = reply.value.defined ? reply.value.value : undefined;
-    const output = decode<(typeof VERBS)[V]["output"]>(VERBS[verb].output, value);
-    if (!output.ok) {
-      throw new NyteTransportError({
-        kind: "bad_body",
-        detail: `Reply to ${verb} did not match its schema: ${describeIssues(output.issues)}`,
-        issues: output.issues,
-      });
-    }
-    return output.value;
+    return value;
   }
+
+  /** A refused watch carries a JSON error, never a successful call reply. */
+  const refusal = async (response: Response): Promise<never> => {
+    const reply = await readReply(response);
+    if (!reply.ok) throw new NyteWireError(reply.error, response.status);
+    throw new NyteTransportError({ kind: "bad_status", status: response.status });
+  };
 
   const verb =
     <V extends Verb>(name: V) =>
@@ -316,7 +305,7 @@ interface WatchIteratorDependencies {
   readonly maxFrameChars: number | undefined;
   readonly open: () => { readonly url: string; readonly headers: Headers };
   readonly send: (url: string, init: RequestInit) => Promise<Response>;
-  readonly refusal: (response: Response) => Promise<NyteWireError | NyteTransportError>;
+  readonly refusal: (response: Response) => Promise<never>;
 }
 
 type Outcome =
@@ -344,17 +333,12 @@ const DONE: IteratorResult<SessionEvent> = { done: true, value: undefined };
  */
 function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIterator<SessionEvent> {
   const controller = new AbortController();
-  const parser = createSseParser(
-    dependencies.maxFrameChars === undefined ? {} : { maxFrameChars: dependencies.maxFrameChars },
-  );
+  const parser = createSseParser({ maxFrameChars: dependencies.maxFrameChars });
   let queue: SessionEvent[] = [];
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let outcome: Outcome | undefined;
-  /** The caller stopped the watch; nothing after that is a failure. */
-  let cancelled = false;
   /** Resources are released; no more reads happen. */
   let finished = false;
-  let reported = false;
   let opened = false;
   let busy: Promise<IteratorResult<SessionEvent>> = Promise.resolve(DONE);
   const { signal } = dependencies.input;
@@ -371,7 +355,7 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
   };
 
   function cancel(): void {
-    cancelled = true;
+    outcome = { kind: "ended" };
     finish();
   }
 
@@ -383,7 +367,7 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
   };
 
   const settle = (frameKind: string, data: string): void => {
-    if (!isWatchFrameKind(frameKind)) {
+    if (!Value.Check(WatchFrameKindSchema, frameKind)) {
       fail(badFrame(`Unknown watch frame: ${frameKind}`));
       return;
     }
@@ -396,34 +380,27 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     }
     switch (frameKind) {
       case "event": {
-        const event = decode(schemas.SessionEvent, parsed);
-        if (event.ok) queue.push(event.value);
+        if (Value.Check(schemas.SessionEvent, parsed)) queue.push(parsed);
         else {
-          fail(
-            badFrame(
-              `Watch event did not match its schema: ${describeIssues(event.issues)}`,
-              event.issues,
-            ),
-          );
+          const issues = validationIssues(Value.Errors(schemas.SessionEvent, parsed));
+          fail(badFrame(`Watch event did not match its schema: ${describeIssues(issues)}`, issues));
         }
         return;
       }
       case "ended": {
-        const ended = decode(WatchEndedSchema, parsed);
-        if (ended.ok) outcome = { kind: "ended" };
-        else fail(badFrame(`Watch ended frame is malformed: ${describeIssues(ended.issues)}`));
+        if (Value.Check(WatchEndedSchema, parsed)) outcome = { kind: "ended" };
+        else {
+          const issues = validationIssues(Value.Errors(WatchEndedSchema, parsed));
+          fail(badFrame(`Watch ended frame is malformed: ${describeIssues(issues)}`));
+        }
         return;
       }
       case "error": {
-        const error = decode(WireErrorSchema, parsed);
-        fail(
-          error.ok
-            ? new NyteWireError(error.value)
-            : badFrame(
-                `Watch error frame is malformed: ${describeIssues(error.issues)}`,
-                error.issues,
-              ),
-        );
+        if (Value.Check(WireErrorSchema, parsed)) fail(new NyteWireError(parsed));
+        else {
+          const issues = validationIssues(Value.Errors(WireErrorSchema, parsed));
+          fail(badFrame(`Watch error frame is malformed: ${describeIssues(issues)}`, issues));
+        }
         return;
       }
       default: {
@@ -448,7 +425,7 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     }
     const type = mediaType(response.headers.get("content-type"));
     if (response.status !== 200 || type !== EVENT_STREAM_MEDIA_TYPE) {
-      throw await dependencies.refusal(response);
+      return dependencies.refusal(response);
     }
     if (response.body === null) throw new NyteTransportError({ kind: "disconnected" });
     reader = response.body.getReader();
@@ -471,10 +448,9 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
 
   const terminal = (): IteratorResult<SessionEvent> => {
     finish();
-    if (!cancelled && outcome?.kind === "failed" && !reported) {
-      reported = true;
-      throw outcome.error;
-    }
+    const result = outcome;
+    outcome = { kind: "ended" };
+    if (result?.kind === "failed") throw result.error;
     return DONE;
   };
 

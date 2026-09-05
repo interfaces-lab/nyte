@@ -1,0 +1,31 @@
+Scope: 3 of 16 workspace projects
+packages/core test$ vitest --run
+packages/core test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/core
+packages/core test:  Test Files  29 passed (29)
+packages/core test:       Tests  210 passed (210)
+packages/core test:    Start at  23:48:53
+packages/core test:    Duration  6.16s (transform 39%, import 35%, tests 26%, worker 1%)
+packages/core test:   Transform  transforming modules took 21.70s · 39% of tracked time, re-done on every run
+packages/core test:              persist transforms across runs with fsModuleCache: true
+packages/core test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/core test: Done
+packages/tui test$ bun --bun vitest --run
+packages/desktop test$ vitest --run
+packages/tui test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/tui
+packages/desktop test:  RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/desktop
+packages/desktop test:  Test Files  20 passed (20)
+packages/desktop test:       Tests  103 passed (103)
+packages/desktop test:    Start at  23:49:01
+packages/desktop test:    Duration  6.09s (transform 49%, import 40%, tests 9%, worker 2%)
+packages/desktop test:   Transform  transforming modules took 13.52s · 49% of tracked time, re-done on every run
+packages/desktop test:              persist transforms across runs with fsModuleCache: true
+packages/desktop test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/desktop test: Done
+packages/tui test:  Test Files  17 passed (17)
+packages/tui test:       Tests  81 passed (81)
+packages/tui test:    Start at  23:49:00
+packages/tui test:    Duration  11.57s (transform 62%, import 20%, tests 17%, worker 1%)
+packages/tui test:   Transform  transforming modules took 39.20s · 62% of tracked time, re-done on every run
+packages/tui test:              persist transforms across runs with fsModuleCache: true
+packages/tui test:              learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+packages/tui test: Done

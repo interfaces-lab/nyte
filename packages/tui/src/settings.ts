@@ -45,6 +45,8 @@ interface SettingsFile {
   readonly autoUpdate?: boolean;
   /** A pinned mode, or `auto` to follow the terminal. */
   readonly theme?: ThemeChoice;
+  readonly copyOnSelect?: boolean;
+  readonly followUp?: "steer" | "queue";
 }
 
 export interface ResolvedSettings {
@@ -56,6 +58,8 @@ export interface ResolvedSettings {
   readonly compaction: CompactionSettings;
   readonly autoUpdate: boolean;
   readonly theme: ThemeChoice;
+  readonly copyOnSelect: boolean;
+  readonly followUp: "steer" | "queue";
 }
 
 export type SettingsPatch = SettingsFile;
@@ -69,6 +73,8 @@ const SETTINGS_KEYS = new Set([
   "compaction",
   "autoUpdate",
   "theme",
+  "copyOnSelect",
+  "followUp",
 ]);
 const COMPACTION_KEYS = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
 
@@ -174,6 +180,14 @@ export function parseSettingsFile(value: JsonValue, path = "settings"): Settings
 
   const autoUpdate = optionalBoolean(value, "autoUpdate", path);
   if (autoUpdate !== undefined) settings = { ...settings, autoUpdate };
+  const copyOnSelect = optionalBoolean(value, "copyOnSelect", path);
+  if (copyOnSelect !== undefined) settings = { ...settings, copyOnSelect };
+  const followUp = value.followUp;
+  if (followUp !== undefined) {
+    if (followUp !== "steer" && followUp !== "queue")
+      throw new Error(`${path}.followUp must be steer or queue`);
+    settings = { ...settings, followUp };
+  }
 
   const theme = value["theme"];
   if (theme !== undefined) {
@@ -216,6 +230,8 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
     },
     autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
     theme: project.theme ?? global.theme ?? "auto",
+    copyOnSelect: project.copyOnSelect ?? global.copyOnSelect ?? false,
+    followUp: project.followUp ?? global.followUp ?? "steer",
   };
   if (model.provider !== undefined) resolved = { ...resolved, defaultProvider: model.provider };
   if (model.model !== undefined) resolved = { ...resolved, defaultModel: model.model };

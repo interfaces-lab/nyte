@@ -9,7 +9,7 @@
  * cancel and "send now" (`redeliver`), and Esc requests a durable abort.
  */
 import * as stylex from "@stylexjs/stylex";
-import { Button, Textarea } from "@nyte-ai/ui";
+import { Button } from "@nyte-ai/ui";
 import { Popover, PreviewCard } from "@nyte-ai/ui/primitives";
 import {
   Fragment,
@@ -44,13 +44,15 @@ import {
   useSessionSnapshot,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import type { OutboxRowState } from "../outbox.ts";
-import { outbox, useOutboxRows } from "../use-outbox.ts";
+import type { OutboxRow, OutboxRowState } from "../outbox.ts";
+import { outbox } from "../use-outbox.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import { formatContextWindow } from "./model-picker-state.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
 import { parsePluginCommand } from "./plugin-command.ts";
-import { composerStyles, inlineTextStyles } from "./styles.stylex.ts";
+import { ImagePreview } from "./image-preview.tsx";
+import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
+import { composerStyles } from "./styles.stylex.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 const DROP_PLACEHOLDER = "Drop here to attach…";
@@ -129,9 +131,10 @@ type ComposerSuggestion =
   | FileSuggestion;
 
 /** Suggestions that become chips; the rest rewrite the token in place. */
-type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion | FileSuggestion>;
+type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion>;
 
 export type ComposerChip =
+  | (Pick<FileSuggestion, "kind" | "id" | "label" | "file"> & { readonly tokenId: string })
   | (Pick<CommandSuggestion, "kind" | "id" | "label" | "instruction"> & {
       readonly tokenId: string;
     })
@@ -529,6 +532,7 @@ function chipInstruction(chip: ComposerChip): string | undefined {
     case "skill":
       return `Use the ${chip.skill.name} skill.`;
     case "mention":
+    case "file":
       return undefined;
     default: {
       const _exhaustive: never = chip;
@@ -580,50 +584,6 @@ export async function readComposerImageAttachments(files: readonly File[]): Prom
         ? "Nyte accepts PNG, JPEG, WebP, and GIF images."
         : undefined;
   return { attachments, error };
-}
-
-function ComposerChipView({
-  chip,
-  onRemove,
-}: {
-  readonly chip: ComposerChip;
-  readonly onRemove: () => void;
-}): ReactElement {
-  if (chip.kind !== "mention") {
-    return (
-      <span
-        data-composer-chip={chip.kind}
-        title={`Remove ${chip.label} with Backspace`}
-        {...stylex.props(inlineTextStyles.skill)}
-      >
-        {chip.kind === "skill" ? `/${chip.label}` : chip.label}
-      </span>
-    );
-  }
-
-  return (
-    <span
-      data-composer-chip="mention"
-      data-has-remove-button="true"
-      {...stylex.props(composerStyles.mentionChip)}
-    >
-      <span aria-hidden="true" {...stylex.props(composerStyles.mentionChipLeading)}>
-        <Icon name="more" size={12} />
-      </span>
-      <Button
-        unstyled
-        type="button"
-        aria-label={`Remove ${chip.label}`}
-        title={`Remove ${chip.label}`}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={onRemove}
-        {...stylex.props(composerStyles.mentionChipRemove, focus.ring)}
-      >
-        <Icon name="x" size={11} />
-      </Button>
-      <span>{chip.label}</span>
-    </span>
-  );
 }
 
 /**
@@ -729,7 +689,7 @@ export interface ComposerFrameProps {
   onAbort?: () => void;
   /** The model chip slot, left side of the controls row. */
   model?: ReactNode;
-  inputRef?: (element: HTMLTextAreaElement | null) => void;
+  inputRef?: (element: HTMLDivElement | null) => void;
   selectionStart?: number;
   selectionEnd?: number;
   onSelectionChange?: (start: number, end: number) => void;
@@ -775,7 +735,7 @@ export function ComposerFrame({
   onAttachmentRemove,
 }: ComposerFrameProps): ReactElement {
   const frameRef = useRef<HTMLFormElement>(null);
-  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const areaRef = useRef<ComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const suggestionListRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -863,17 +823,17 @@ export function ComposerFrame({
   }, [selectionEnd, selectionStart, value]);
 
   const resize = useCallback(
-    (area: HTMLTextAreaElement): void => {
+    (area: HTMLDivElement): void => {
       area.style.height = "auto";
       area.style.height = `${String(Math.min(area.scrollHeight, 180))}px`;
       if (surface === "new-chat") return;
-      if (area.value.length === 0) {
+      if (area.textContent?.length === 0) {
         setEditorNeedsExpansion(false);
         return;
       }
       if (externallyExpanded && !editorNeedsExpansion) return;
       if (
-        area.value.includes("\n") ||
+        area.innerText.includes("\n") ||
         area.scrollWidth > area.clientWidth ||
         area.scrollHeight > 24
       ) {
@@ -884,14 +844,14 @@ export function ComposerFrame({
   );
 
   useLayoutEffect(() => {
-    const area = areaRef.current;
-    if (area === null) return;
+    const area = areaRef.current?.element;
+    if (area === null || area === undefined) return;
     resize(area);
   }, [resize, value]);
 
   useLayoutEffect(() => {
-    const area = areaRef.current;
-    if (area === null) return undefined;
+    const area = areaRef.current?.element;
+    if (area === null || area === undefined) return undefined;
     const observer = new ResizeObserver(() => resize(area));
     observer.observe(area);
     return () => observer.disconnect();
@@ -903,106 +863,91 @@ export function ComposerFrame({
       if (area === null) return;
       area.focus();
       area.setSelectionRange(caret, caret);
-      resize(area);
+      if (area.element !== null) resize(area.element);
     });
   };
 
-  const removeSuggestionToken = (): number | undefined => {
-    if (suggestionMenu === undefined) return undefined;
-    let { start, end } = suggestionMenu;
-    if (/^[ \t]$/.test(value[end] ?? "")) end += 1;
-    else if (/^[ \t]$/.test(value[start - 1] ?? "")) start -= 1;
-    const next = value.slice(0, start) + value.slice(end);
-    const caret = start;
-    onChange(next);
-    onSelectionChange?.(caret, caret);
-    showSuggestions(undefined);
-    focusAt(caret);
-    return caret;
-  };
-
-  const addSuggestionChip = (suggestion: ChipSuggestion): void => {
+  const addSuggestionChip = (suggestion: ChipSuggestion, start?: number, end?: number): void => {
     const tokenId = crypto.randomUUID();
+    if (
+      suggestion.kind !== "file" &&
+      chips.some((chip) => chip.kind === suggestion.kind && chip.id === suggestion.id)
+    ) {
+      if (start !== undefined) areaRef.current?.replaceText(start, end ?? start, "");
+      return;
+    }
     switch (suggestion.kind) {
       case "command":
-        setChips((current) =>
-          current.some((chip) => chip.kind === "command" && chip.id === suggestion.id)
-            ? current
-            : [
-                ...current,
-                {
-                  kind: suggestion.kind,
-                  id: suggestion.id,
-                  label: suggestion.label,
-                  instruction: suggestion.instruction,
-                  tokenId,
-                },
-              ],
+        areaRef.current?.insertChip(
+          {
+            kind: "command",
+            id: suggestion.id,
+            label: suggestion.label,
+            instruction: suggestion.instruction,
+            tokenId,
+          },
+          start,
+          end,
         );
         return;
       case "skill":
-        setChips((current) =>
-          current.some((chip) => chip.kind === "skill" && chip.id === suggestion.id)
-            ? current
-            : [
-                ...current,
-                {
-                  kind: suggestion.kind,
-                  id: suggestion.id,
-                  label: suggestion.label,
-                  skill: suggestion.skill,
-                  tokenId,
-                },
-              ],
+        areaRef.current?.insertChip(
+          {
+            kind: "skill",
+            id: suggestion.id,
+            label: suggestion.label,
+            skill: suggestion.skill,
+            tokenId,
+          },
+          start,
+          end,
         );
         return;
       case "mention":
-        setChips((current) =>
-          current.some((chip) => chip.kind === "mention" && chip.id === suggestion.id)
-            ? current
-            : [
-                ...current,
-                {
-                  kind: suggestion.kind,
-                  id: suggestion.id,
-                  label: suggestion.label,
-                  tokenId,
-                },
-              ],
+        areaRef.current?.insertChip(
+          { kind: "mention", id: suggestion.id, label: suggestion.label, tokenId },
+          start,
+          end,
+        );
+        return;
+      case "file":
+        areaRef.current?.insertChip(
+          {
+            kind: "file",
+            id: suggestion.id,
+            label: suggestion.label,
+            file: suggestion.file,
+            tokenId,
+          },
+          start,
+          end,
         );
         return;
       default: {
-        const _exhaustive: never = suggestion;
-        return _exhaustive;
+        const exhaustive: never = suggestion;
+        return exhaustive;
       }
     }
   };
 
   const selectSuggestion = (suggestion: ComposerSuggestion): void => {
-    if (suggestion.kind === "plugin-command" || suggestion.kind === "file") {
-      if (suggestionMenu === undefined) return;
-      const insertion = `${
-        suggestion.kind === "file"
-          ? fileMentionText(suggestion.file)
-          : `/${suggestion.command.name}`
-      } `;
-      const next =
-        value.slice(0, suggestionMenu.start) + insertion + value.slice(suggestionMenu.end);
-      const caret = suggestionMenu.start + insertion.length;
-      onChange(next);
-      onSelectionChange?.(caret, caret);
-      showSuggestions(undefined);
-      focusAt(caret);
-      return;
+    if (suggestionMenu === undefined) return;
+    if (suggestion.kind === "plugin-command") {
+      areaRef.current?.replaceText(
+        suggestionMenu.start,
+        suggestionMenu.end,
+        `/${suggestion.command.name} `,
+      );
+    } else {
+      addSuggestionChip(suggestion, suggestionMenu.start, suggestionMenu.end);
     }
-    const caret = removeSuggestionToken();
-    if (caret === undefined) return;
-    addSuggestionChip(suggestion);
+    showSuggestions(undefined);
+    areaRef.current?.focus();
   };
 
   const selectQuickSuggestion = (suggestion: CommandSuggestion): void => {
     addSuggestionChip(suggestion);
-    focusAt(areaRef.current?.selectionStart ?? value.length);
+    areaRef.current?.focus();
   };
 
   const insertTrigger = (trigger: "@" | "/"): void => {
@@ -1011,10 +956,8 @@ export function ComposerFrame({
     const end = area?.selectionEnd ?? start;
     const leadingSpace = start > 0 && !/\s/.test(value[start - 1] ?? "") ? " " : "";
     const insertion = `${leadingSpace}${trigger}`;
-    const next = value.slice(0, start) + insertion + value.slice(end);
     const caret = start + insertion.length;
-    onChange(next);
-    onSelectionChange?.(caret, caret);
+    areaRef.current?.replaceText(start, end, insertion);
     showSuggestions({
       kind: trigger === "@" ? "mention" : "slash",
       start: caret - 1,
@@ -1030,8 +973,7 @@ export function ComposerFrame({
     try {
       if (!(await onSubmit(chips))) return;
       setChips([]);
-      const area = areaRef.current;
-      if (area !== null) area.style.height = "auto";
+      areaRef.current?.clear();
       setEditorNeedsExpansion(false);
     } finally {
       setSubmitting(false);
@@ -1107,14 +1049,7 @@ export function ComposerFrame({
           >
             {attachments.map((attachment) => (
               <li key={attachment.id} {...stylex.props(composerStyles.attachment)}>
-                <img
-                  src={attachment.previewUrl}
-                  alt=""
-                  {...stylex.props(composerStyles.attachmentPreview)}
-                />
-                <span title={attachment.name} {...stylex.props(composerStyles.attachmentName)}>
-                  {attachment.name}
-                </span>
+                <ImagePreview src={attachment.previewUrl} name={attachment.name} compact />
                 {onAttachmentRemove !== undefined && (
                   <Button
                     unstyled
@@ -1156,63 +1091,38 @@ export function ComposerFrame({
               followUpExpanded && composerStyles.editorExpanded,
             )}
           >
-            {chips.map((chip) => (
-              <ComposerChipView
-                key={chip.tokenId}
-                chip={chip}
-                onRemove={() => {
-                  setChips((current) => current.filter((item) => item.tokenId !== chip.tokenId));
-                  focusAt(areaRef.current?.selectionStart ?? value.length);
-                }}
-              />
-            ))}
-            <Textarea
-              unstyled
-              ref={(element) => {
-                areaRef.current = element;
-                inputRef?.(element);
-              }}
-              aria-label="Message"
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={suggestionMenu !== undefined}
-              aria-controls={suggestionMenu === undefined ? undefined : suggestionPopupId}
-              aria-activedescendant={
+            <ComposerEditor
+              ref={areaRef}
+              inputRef={inputRef}
+              className={
+                stylex.props(
+                  composerStyles.input,
+                  geometry === "new-chat" && composerStyles.inputNewChat,
+                  compact && composerStyles.inputCompact,
+                ).className
+              }
+              files={files}
+              expanded={suggestionMenu !== undefined}
+              popupId={suggestionMenu === undefined ? undefined : suggestionPopupId}
+              activeOption={
                 suggestionMenu === undefined || suggestions.length === 0
                   ? undefined
                   : `${suggestionPopupId}-${String(activeSuggestionIndex)}`
               }
-              {...stylex.props(
-                composerStyles.input,
-                geometry === "new-chat" && composerStyles.inputNewChat,
-                compact && composerStyles.inputCompact,
-              )}
-              rows={1}
               placeholder={dragging ? DROP_PLACEHOLDER : placeholder}
               value={value}
               autoFocus={autoFocus && !disabled}
               disabled={disabled}
-              onChange={(event) => {
-                const next = event.target.value;
-                const { selectionStart: start, selectionEnd: end } = event.target;
+              onChange={(next, start, end, nextChips) => {
                 onChange(next);
-                // Report the caret with the text. The selection effect below
-                // restores whatever the owner holds, so a stale caret there
-                // would drag typing back to the previous position.
+                setChips(nextChips);
                 onSelectionChange?.(start, end);
-                resize(event.target);
-                showSuggestions(suggestionAt(next, start));
+                const area = areaRef.current?.element;
+                if (area !== null && area !== undefined) resize(area);
+                showSuggestions(start === end ? suggestionAt(next, start) : undefined);
               }}
-              onSelect={(event) => {
-                const start = event.currentTarget.selectionStart;
-                const end = event.currentTarget.selectionEnd;
-                onSelectionChange?.(start, end);
-                showSuggestions(
-                  start === end ? suggestionAt(event.currentTarget.value, start) : undefined,
-                );
-              }}
-              onFocus={() => onFocusChange?.(true)}
-              onBlur={() => onFocusChange?.(false)}
+              onFilesSelected={onFilesSelected}
+              onFocusChange={onFocusChange}
               onKeyDown={(event) => {
                 if (suggestionMenu !== undefined) {
                   if (event.key === "Escape") {
@@ -1270,7 +1180,7 @@ export function ComposerFrame({
                       !event.altKey) ||
                     (event.key === "Tab" && !event.shiftKey) ||
                     usesModeShortcut;
-                  if (activatesSuggestion && !event.nativeEvent.isComposing) {
+                  if (activatesSuggestion && !event.isComposing) {
                     if (activeSuggestion !== undefined) {
                       event.preventDefault();
                       selectSuggestion(activeSuggestion);
@@ -1289,20 +1199,10 @@ export function ComposerFrame({
                   return;
                 }
                 if (
-                  event.key === "Backspace" &&
-                  event.currentTarget.selectionStart === 0 &&
-                  event.currentTarget.selectionEnd === 0 &&
-                  chips.length > 0
-                ) {
-                  event.preventDefault();
-                  setChips((current) => current.slice(0, -1));
-                  return;
-                }
-                if (
                   event.key === "Enter" &&
                   suggestionMenu === undefined &&
                   !event.shiftKey &&
-                  !event.nativeEvent.isComposing
+                  !event.isComposing
                 ) {
                   event.preventDefault();
                   void submit();
@@ -1667,6 +1567,7 @@ export function Composer({
   sessionId,
   working,
   pending,
+  unsent,
   disabled = false,
   viewState,
   onViewStateChange,
@@ -1675,11 +1576,14 @@ export function Composer({
 }: {
   sessionId: SessionId;
   working: boolean;
+  /** Durable queue items waiting behind a live run. */
   pending: readonly PendingItem[];
+  /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
+  unsent: readonly OutboxRow[];
   disabled?: boolean;
   viewState?: ComposerViewState;
   onViewStateChange?: (update: (current: ComposerViewState) => ComposerViewState) => void;
-  inputRef?: (element: HTMLTextAreaElement | null) => void;
+  inputRef?: (element: HTMLDivElement | null) => void;
   autoFocus?: boolean;
 }): ReactElement {
   const [localViewState, setLocalViewState] = useState<ComposerViewState>({
@@ -1698,7 +1602,6 @@ export function Composer({
   const workspaceFiles = useMentionFiles(true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
   const currentViewState = viewState ?? localViewState;
-  const unsent = useOutboxRows(sessionId);
 
   const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void => {
     if (viewState === undefined) setLocalViewState(update);
@@ -1726,7 +1629,7 @@ export function Composer({
       return false;
     }
     const command =
-      chips.length === 0 && sentAttachments.length === 0
+      chips.every((chip) => chip.kind === "file") && sentAttachments.length === 0
         ? parsePluginCommand(text, pluginCatalog.data?.commands ?? [])
         : undefined;
     if (command !== undefined) {

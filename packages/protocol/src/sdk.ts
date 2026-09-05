@@ -23,14 +23,11 @@ export type HeadName = string;
 /** A queue lane name. The host's landing policy says which lanes exist and when each lands. */
 export type Lane = string;
 
-function isSessionId(value: string): value is SessionId {
-  return value !== "";
-}
-
 /** Parse the untrusted string a CLI flag, route, or wire request supplied. */
 export function sessionId(value: string): SessionId {
-  if (!isSessionId(value)) throw new Error("Invalid session id: empty");
-  return value;
+  if (value === "") throw new Error("Invalid session id: empty");
+  // SAFETY: non-empty is the SessionId invariant, checked above at construction.
+  return value as SessionId;
 }
 
 /** The default head for every verb whose `head` is absent. The kernel has no such head; the SDK does. */

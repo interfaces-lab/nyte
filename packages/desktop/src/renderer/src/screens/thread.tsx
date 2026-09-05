@@ -5,8 +5,6 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -17,6 +15,7 @@ import {
 } from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import type { SessionId, ThinkingLevel, Turn, UserTurnPart } from "@nyte-ai/core";
+import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
 import {
   Composer,
@@ -57,7 +56,7 @@ import {
   loadThread,
   queryClient,
   useCatalog,
-  useDeleteSession,
+  useSessionActions,
   useHostState,
   useMentionFiles,
   usePluginCatalog,
@@ -68,28 +67,18 @@ import {
   useVcsSnapshot,
   useWorkspaces,
 } from "../queries.ts";
+import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
-import { sessionWorking } from "../run-state.ts";
-import { outbox } from "../use-outbox.ts";
+import { outbox, useOutboxRows } from "../use-outbox.ts";
 import { conversation, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../nyte.ts";
 
-const Prose = lazy(() =>
-  import("../conversation/prose.tsx").then((module) => ({ default: module.Prose })),
-);
-const TurnView = lazy(() =>
-  import("../conversation/turn-view.tsx").then((module) => ({ default: module.TurnView })),
-);
-const WorkGroupView = lazy(() =>
-  import("../conversation/tool-group.tsx").then((module) => ({ default: module.WorkGroupView })),
-);
-const ConfirmDialog = lazy(() =>
-  import("../components/confirm-dialog.tsx").then((module) => ({
-    default: module.ConfirmDialog,
-  })),
-);
+import { Prose } from "../conversation/prose.tsx";
+import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
+import { WorkGroupView } from "../conversation/tool-group.tsx";
+import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { WORKBENCH_STAGE_PANE_KEY } from "../workbench/controller.ts";
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
@@ -362,8 +351,7 @@ function LiveTurn({
     live.order.some((ref) => ref.kind === "thinking") ||
     live.tools.size > 0 ||
     (!hasText && working);
-  const busy = live.runState !== "idle" || working;
-  if (!hasText && !hasLiveWork && !busy) return null;
+  if (!hasText && !hasLiveWork && !working) return null;
 
   return (
     <div {...stylex.props(styles.liveTurn)}>
@@ -374,7 +362,7 @@ function LiveTurn({
           liveTools={live.tools}
           cwd={cwd}
           durationMs={0}
-          running={busy}
+          running={working}
           density={appearance.toolCalls}
         />
       )}
@@ -488,15 +476,15 @@ function SessionConversation({
 }: {
   paneId: PaneId;
   sessionId: SessionId;
-  inputRef: (element: HTMLTextAreaElement | null) => void;
+  inputRef: (element: HTMLDivElement | null) => void;
 }): ReactElement {
   const host = useHostState();
-  const panes = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
   const session = useSession(sessionId);
   const catalog = useCatalog();
   const renameSession = useRenameSession();
-  const deleteSession = useDeleteSession();
+  const sessionActions = useSessionActions();
+  const removeSession = useSessionRemoval();
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
@@ -506,10 +494,27 @@ function SessionConversation({
   const live = useSessionLive(sessionId, snapshot.data?.seq);
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useSessionViewBinding(sessionId, paneId);
-  const working =
-    navigating ||
-    live.runState !== "idle" ||
-    (snapshot.data !== undefined && sessionWorking(snapshot.data.session));
+  const settledRun =
+    snapshot.data !== undefined &&
+    snapshot.data.session.heads.some(
+      (head) =>
+        head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
+    );
+  // Whether a submitted message steers a live run or opens the next turn is
+  // read from the snapshot alone, so one coherent read moves each message from
+  // the outbox to `pending` to the transcript without a detour through the
+  // composer strip.
+  const unsent = useOutboxRows(sessionId);
+  const pending = snapshot.data?.pending ?? [];
+  const landing = settledRun
+    ? []
+    : [
+        ...pending.map((item) => ({ key: item.change, content: item.content })),
+        ...unsent
+          .filter((row) => row.state.kind !== "failed")
+          .map((row) => ({ key: row.key, content: row.content })),
+      ];
+  const working = navigating || live.runState !== "idle" || settledRun || landing.length > 0;
   const cwd = host.data?.workspace?.path;
   const scrollRef = useRef<HTMLDivElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -578,7 +583,6 @@ function SessionConversation({
   };
 
   const requestDelete = (): void => {
-    deleteSession.reset();
     setDeletion({ kind: "open", sessionId });
   };
 
@@ -597,13 +601,15 @@ function SessionConversation({
               throw new Error("The selected message is no longer editable.");
             }
             if (choice.model !== undefined) {
-              const configured = await nyte.sessions.configure({
+              const configuration = {
                 sessionId,
                 model: { provider: choice.model.provider, id: choice.model.id },
-                ...(choice.thinkingLevel === undefined
-                  ? {}
-                  : { thinkingLevel: choice.thinkingLevel }),
-              });
+              };
+              const configured = await nyte.sessions.configure(
+                choice.thinkingLevel === undefined
+                  ? configuration
+                  : { ...configuration, thinkingLevel: choice.thinkingLevel },
+              );
               if (configured.kind === "unknown_model") {
                 throw new Error("That model is no longer available.");
               }
@@ -706,14 +712,8 @@ function SessionConversation({
             }}
           >
             <div ref={transcriptRef} {...stylex.props(styles.transcript)}>
-              <Suspense
-                fallback={
-                  <div role="status" {...stylex.props(styles.loading)}>
-                    Loading chat…
-                  </div>
-                }
-              >
-                {snapshot.isLoading && turns.length === 0 && (
+              <>
+                {snapshot.isLoading && turns.length === 0 && landing.length === 0 && (
                   <div role="status" {...stylex.props(styles.loading)}>
                     Loading chat…
                   </div>
@@ -742,20 +742,26 @@ function SessionConversation({
                     running={working && index === turns.length - 1}
                   />
                 ))}
+                {landing.map((message) => (
+                  <div key={message.key} data-sticky-turn {...stylex.props(styles.liveTurn)}>
+                    <UserMessageView content={message.content} />
+                  </div>
+                ))}
                 {live.runState === "retrying" && live.retry !== undefined && (
                   <div role="status" title={live.retry.message} {...stylex.props(styles.banner)}>
                     Retrying…
                   </div>
                 )}
                 <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />
-              </Suspense>
+              </>
             </div>
           </div>
 
           <Composer
             sessionId={sessionId}
             working={working}
-            pending={snapshot.data?.pending ?? []}
+            pending={settledRun ? pending : []}
+            unsent={settledRun ? unsent : unsent.filter((row) => row.state.kind === "failed")}
             disabled={snapshot.data === undefined || snapshot.isError}
             viewState={viewState.composer}
             onViewStateChange={(updateComposer) =>
@@ -770,28 +776,22 @@ function SessionConversation({
         </div>
       </div>
       {deletion.kind === "open" && (
-        <Suspense fallback={null}>
-          <ConfirmDialog
-            open
-            pending={deleteSession.isPending}
-            error={deleteSession.isError ? "Couldn't delete this chat. Try again." : undefined}
-            returnFocusRef={paneMenuTrigger}
-            onOpenChange={(nextOpen) => {
-              if (nextOpen) return;
-              deleteSession.reset();
-              setDeletion({ kind: "closed" });
-            }}
-            onConfirm={() => {
-              const { sessionId: targetSessionId } = deletion;
-              deleteSession.mutate(targetSessionId, {
-                onSuccess: () => {
-                  setDeletion({ kind: "closed" });
-                  panes.removeSession(targetSessionId);
-                },
-              });
-            }}
-          />
-        </Suspense>
+        <ConfirmDialog
+          open
+          pending={false}
+          error={undefined}
+          description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
+          returnFocusRef={paneMenuTrigger}
+          onOpenChange={(nextOpen) => {
+            if (nextOpen) return;
+            setDeletion({ kind: "closed" });
+          }}
+          onConfirm={() => {
+            const { sessionId: targetSessionId } = deletion;
+            setDeletion({ kind: "closed" });
+            sessionActions.delete(targetSessionId, (id) => removeSession(cwd ?? null, id));
+          }}
+        />
       )}
     </div>
   );
@@ -802,7 +802,7 @@ function BlankConversation({
   inputRef,
 }: {
   paneId: PaneId;
-  inputRef: (element: HTMLTextAreaElement | null) => void;
+  inputRef: (element: HTMLDivElement | null) => void;
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
@@ -868,8 +868,14 @@ function BlankConversation({
     const content = composerMessageContent(text, attachments, chips);
     setSending(true);
     setStartFailure(undefined);
+    let session: { readonly sessionId: SessionId } | undefined;
     try {
-      const session = await nyte.sessions.create();
+      session = await nyte.sessions.create();
+      // The pane switches as soon as the chat exists; its configuration and
+      // first message finish behind the transcript instead of holding Home.
+      void queryClient.invalidateQueries({ queryKey: keys.sessions });
+      void loadThread(session.sessionId).catch(() => undefined);
+      actions.openSessionInPane(paneId, session.sessionId);
       // Configure what the chip showed, picked or not: the host composed its
       // default before any login or Settings change made since.
       if (current !== undefined) {
@@ -894,13 +900,16 @@ function BlankConversation({
       }));
       setAttachments([]);
       setAttachmentError(undefined);
-      void queryClient.invalidateQueries({ queryKey: keys.sessions });
-      void loadThread(session.sessionId).catch(() => undefined);
-      actions.openSessionInPane(paneId, session.sessionId);
       return true;
     } catch (cause: unknown) {
       setSending(false);
       setStartFailure(cause instanceof Error ? cause.message : String(cause));
+      // Past the pane switch this composer is gone; the draft stays on Home.
+      if (session !== undefined) {
+        toast.error("Couldn't send the first message. Your draft is still on Home.", {
+          id: "new-chat-start-error",
+        });
+      }
       return false;
     }
   };
@@ -1137,9 +1146,9 @@ function PaneHost({
 }): ReactElement {
   const actions = usePaneActions();
   const { focusRequest } = usePaneControllerSnapshot();
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<HTMLDivElement | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
-  const attachInput = useCallback((element: HTMLTextAreaElement | null) => {
+  const attachInput = useCallback((element: HTMLDivElement | null) => {
     inputRef.current = element;
   }, []);
 

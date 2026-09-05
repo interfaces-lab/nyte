@@ -1,16 +1,14 @@
 /**
  * Invariant 31: a settled tool result is self-contained. A failed or aborted
  * tool keeps the last partial its `onUpdate` reported, a `ToolError` stays the
- * tool's own decision, and the `tool_progress` overlay previews the same
- * `details` field the settlement writes.
+ * tool's own decision. Stream overlays are covered by kernel/sdk-events.test.ts.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import { ephemeralEvent } from "../src/sdk/events.ts";
+import { describe, test } from "vitest";
 import { ToolError, toolErrorResult } from "../src/utils/tool-result.ts";
 
-void describe("toolErrorResult with a last partial", () => {
-  void test("keeps partial content, details, and title the error left blank", () => {
+describe("toolErrorResult with a last partial", () => {
+  test("keeps partial content, details, and title the error left blank", () => {
     const result = toolErrorResult(new Error("aborted"), {
       content: [{ type: "text", text: "partial stdout" }],
       details: { patch: "--- a/view.md\n+++ b/view.md" },
@@ -27,67 +25,40 @@ void describe("toolErrorResult with a last partial", () => {
     });
   });
 
-  void test("never overrides details or title the error already settled", () => {
+  test("never overrides details or title the error already settled", () => {
     const structured = new ToolError({
       content: [{ type: "text", text: "exit 1" }],
       details: { code: 1 },
       title: "make",
     });
 
-    assert.deepEqual(toolErrorResult(structured, { details: { patch: "x" }, title: "other" }), {
-      content: [{ type: "text", text: "exit 1" }],
-      details: { code: 1 },
-      title: "make",
-    });
-  });
-
-  void test("drops partial shapes it cannot trust", () => {
-    assert.deepEqual(toolErrorResult(new Error("boom"), "not an object"), {
-      content: [{ type: "text", text: "boom" }],
-      details: {},
-    });
     assert.deepEqual(
-      toolErrorResult(new Error("boom"), { content: [{ type: "text" }, 42], title: 7 }),
-      { content: [{ type: "text", text: "boom" }], details: {} },
-    );
-  });
-});
-
-void describe("tool_progress overlay", () => {
-  const update = (partialResult: unknown) =>
-    ephemeralEvent({
-      type: "tool_execution_update",
-      toolCallId: "c1",
-      toolName: "websearch",
-      args: {},
-      partialResult,
-      entryId: "e1",
-    });
-
-  void test("passes the partial's details through beside text and title", () => {
-    assert.deepEqual(
-      update({
-        content: [{ type: "text", text: "searching" }],
-        title: "uji",
-        details: { provider: "exa", results: [] },
-      }),
+      toolErrorResult(structured, { content: [], details: { patch: "x" }, title: "other" }),
       {
-        kind: "tool_progress",
-        entryId: "e1",
-        callId: "c1",
-        progress: { text: "searching", title: "uji", details: { provider: "exa", results: [] } },
+        content: [{ type: "text", text: "exit 1" }],
+        details: { code: 1 },
+        title: "make",
       },
     );
   });
 
-  void test("drops details that do not round-trip through JSON", () => {
-    const circular: { self?: unknown } = {};
-    circular.self = circular;
-    assert.deepEqual(update({ content: [], details: circular }), {
-      kind: "tool_progress",
-      entryId: "e1",
-      callId: "c1",
-      progress: { text: "" },
+  test("normalizes a plain failure without a partial result", () => {
+    assert.deepEqual(toolErrorResult(new Error("boom")), {
+      content: [{ type: "text", text: "boom" }],
+      details: {},
     });
   });
+});
+
+test("partial details preserve valid falsy values and default only undefined", () => {
+  for (const details of [null, false, 0, "", [], { exitCode: 1 }, undefined]) {
+    const result = toolErrorResult(new Error("stopped"), { content: [], details });
+    assert.deepEqual(result.details, details === undefined ? {} : details);
+    assert.equal("title" in result, false);
+  }
+});
+
+test("a structured tool failure preserves the original result object", () => {
+  const result = { content: [], details: { exitCode: 1 } };
+  assert.equal(toolErrorResult(new ToolError(result), { content: [], details: null }), result);
 });

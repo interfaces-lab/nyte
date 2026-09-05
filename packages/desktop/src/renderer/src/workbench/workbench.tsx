@@ -7,7 +7,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { Button as BaseButton } from "@nyte-ai/ui";
 import { Toolbar } from "@nyte-ai/ui/primitives";
-import { lazy, Suspense, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/core";
 import { Icon, PanelToggleIcon } from "../components/icons";
@@ -41,15 +41,9 @@ import type {
 
 import { terminalActions, useTerminals } from "./terminal-store";
 
-const BrowserPanel = lazy(() =>
-  import("./browser-panel").then((module) => ({ default: module.BrowserPanel })),
-);
-const TerminalPanel = lazy(() =>
-  import("./terminal-panel").then((module) => ({ default: module.TerminalPanel })),
-);
-const ChangesPanel = lazy(() =>
-  import("./changes-panel").then((module) => ({ default: module.ChangesPanel })),
-);
+import { BrowserPanel } from "./browser-panel";
+import { TerminalPanel } from "./terminal-panel";
+import { ChangesPanel } from "./changes-panel";
 const styles = stylex.create({
   root: {
     position: "relative",
@@ -192,22 +186,6 @@ const styles = stylex.create({
     minHeight: 0,
   },
   panelSlotHidden: { display: "none" },
-  loading: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    flexDirection: "column",
-    backgroundColor: t.bgBase,
-  },
-  loadingBody: {
-    display: "flex",
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    color: t.textTertiary,
-    fontSize: t.fontSm,
-  },
   sash: {
     position: "absolute",
     zIndex: 2,
@@ -424,14 +402,6 @@ function ChangesToolbar({
   );
 }
 
-function PanelLoading({ label }: { readonly label: string }): ReactElement {
-  return (
-    <section role="status" aria-label={label} {...stylex.props(styles.loading)}>
-      <div {...stylex.props(styles.loadingBody)}>{label}</div>
-    </section>
-  );
-}
-
 interface PanelContentProps {
   readonly tab: WorkbenchTabId;
   readonly viewKey: WorkbenchViewKey;
@@ -464,44 +434,36 @@ function PanelContent({
       return (
         <>
           <ChangesToolbar sidebarVisible={sidebarVisible} onToggleSidebar={onToggleSidebar} />
-          <Suspense fallback={<PanelLoading label="Loading changes" />}>
-            <ChangesPanel
-              sessionId={sessionId}
-              selectedPath={view.selectedPath}
-              scrollTop={view.scrollTop.changes}
-              fileTreeVisible={sidebarVisible}
-              onSelectPath={onSelectPath}
-              onScrollTop={onChangesScroll}
-            />
-          </Suspense>
+          <ChangesPanel
+            sessionId={sessionId}
+            selectedPath={view.selectedPath}
+            scrollTop={view.scrollTop.changes}
+            fileTreeVisible={sidebarVisible}
+            onSelectPath={onSelectPath}
+            onScrollTop={onChangesScroll}
+          />
         </>
       );
     case "browser":
       return (
-        <Suspense fallback={<PanelLoading label="Loading browser" />}>
-          <BrowserPanel
-            surface={viewKey}
-            visible={visible}
-            historyVisible={sidebarVisible}
-            url={view.browserUrl}
-            onUrlChange={onBrowserUrl}
-            toolbarActions={
-              <ToggleIconButton
-                icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
-                label={sidebarVisible ? "Hide visit history" : "Show visit history"}
-                pressed={sidebarVisible}
-                onPressedChange={onToggleSidebar}
-              />
-            }
-          />
-        </Suspense>
+        <BrowserPanel
+          surface={viewKey}
+          visible={visible}
+          historyVisible={sidebarVisible}
+          url={view.browserUrl}
+          onUrlChange={onBrowserUrl}
+          toolbarActions={
+            <ToggleIconButton
+              icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
+              label={sidebarVisible ? "Hide visit history" : "Show visit history"}
+              pressed={sidebarVisible}
+              onPressedChange={onToggleSidebar}
+            />
+          }
+        />
       );
     case "terminal":
-      return (
-        <Suspense fallback={<PanelLoading label="Loading terminal" />}>
-          <TerminalPanel owner={viewKey} workspacePath={workspacePath} visible={visible} />
-        </Suspense>
-      );
+      return <TerminalPanel owner={viewKey} workspacePath={workspacePath} visible={visible} />;
     default: {
       const _exhaustive: never = tab;
       return _exhaustive;

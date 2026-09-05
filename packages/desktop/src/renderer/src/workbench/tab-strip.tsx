@@ -1,3 +1,4 @@
+import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { Tabs } from "@nyte-ai/ui/primitives";
@@ -247,9 +248,7 @@ export function WorkbenchTabStrip({
                 <ContextMenuItem
                   icon="copy"
                   onSelect={() => {
-                    void import("./terminal-runtime").then((runtime) =>
-                      runtime.copyTerminal(tab.terminal.id),
-                    );
+                    copyTerminal(tab.terminal.id);
                   }}
                 >
                   Copy Selection
@@ -257,9 +256,7 @@ export function WorkbenchTabStrip({
                 <ContextMenuItem
                   icon="refresh"
                   onSelect={() => {
-                    void import("./terminal-runtime").then((runtime) =>
-                      runtime.clearTerminal(tab.terminal.id),
-                    );
+                    clearTerminal(tab.terminal.id);
                   }}
                 >
                   Clear Terminal

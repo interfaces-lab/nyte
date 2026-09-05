@@ -1,0 +1,37 @@
+$ turbo run typecheck
+• turbo 2.10.12
+
+   • Packages in scope: @nyte-ai/ai, @nyte-ai/client, @nyte-ai/core, @nyte-ai/demo-website, @nyte-ai/desktop, @nyte-ai/plugin, @nyte-ai/protocol, @nyte-ai/schema, @nyte-ai/server, @nyte-ai/telemetry, @nyte-ai/tui, @nyte-ai/ui, demo, docs, nyte-ai
+   • Running typecheck in 15 packages
+   • Remote caching disabled
+
+@nyte-ai/ui:typecheck: cache hit, replaying logs 66efbcb011baf2e3
+@nyte-ai/telemetry:typecheck: cache hit, replaying logs ea4466d88541633a
+@nyte-ai/schema:typecheck: cache hit, replaying logs 791e7b02c63eec40
+@nyte-ai/ui:typecheck: $ pnpm check:tokens && tsc --noEmit
+@nyte-ai/ui:typecheck: $ node scripts/sync-platform-tokens.mjs --check
+@nyte-ai/schema:typecheck: $ tsc --noEmit
+@nyte-ai/telemetry:typecheck: $ tsc --noEmit
+@nyte-ai/demo-website:typecheck: cache hit, replaying logs 5b82870ed8890ede
+@nyte-ai/ai:typecheck: cache hit, replaying logs 36d81facdb930ecf
+@nyte-ai/ai:typecheck: $ tsc --noEmit
+@nyte-ai/protocol:typecheck: cache hit, replaying logs 6ec1d9dad4b00aea
+@nyte-ai/demo-website:typecheck: $ tsc --noEmit
+@nyte-ai/protocol:typecheck: $ tsc --noEmit
+@nyte-ai/core:typecheck: cache miss, executing ca85ecea04227a21
+@nyte-ai/client:typecheck: cache hit, replaying logs f7f1410400d1fff8
+@nyte-ai/client:typecheck: $ tsc --noEmit
+@nyte-ai/core:typecheck: $ tsc --noEmit
+@nyte-ai/server:typecheck: cache miss, executing 70160556fc96b815
+@nyte-ai/plugin:typecheck: cache miss, executing a738afb6f959290b
+@nyte-ai/server:typecheck: $ tsc --noEmit
+@nyte-ai/plugin:typecheck: $ tsc --noEmit
+@nyte-ai/desktop:typecheck: cache miss, executing 51324f0a6d274282
+@nyte-ai/tui:typecheck: cache miss, executing a7ae05fc0acfd4be
+@nyte-ai/desktop:typecheck: $ tsc --noEmit
+@nyte-ai/tui:typecheck: $ tsc --noEmit
+
+ Tasks:    12 successful, 12 total
+Cached:    7 cached, 12 total
+  Time:    9.78s 
+

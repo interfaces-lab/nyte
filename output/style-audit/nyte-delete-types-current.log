@@ -1,0 +1,18 @@
+Scope: 3 of 16 workspace projects
+packages/core typecheck$ tsc --noEmit
+packages/desktop typecheck$ tsc --noEmit
+packages/tui typecheck$ tsc --noEmit
+packages/core typecheck: Done
+packages/tui typecheck: test/shell-interaction.test.ts(45,25): error TS2304: Cannot find name 'closePanel'.
+packages/tui typecheck: test/shell-interaction.test.ts(80,25): error TS2304: Cannot find name 'closePanel'.
+packages/tui typecheck: test/shell-interaction.test.ts(105,25): error TS2304: Cannot find name 'closePanel'.
+packages/tui typecheck: Failed
+packages/desktop typecheck: Done
+[ERR_PNPM_RECURSIVE_FAIL] 
+
+
+Summary: 1 fails, 2 passes
+
+/Users/workgyver/Developer/nyte/packages/tui:
+[ERROR] @nyte-ai/tui@0.0.2 typecheck: `tsc --noEmit`
+Exit status 1

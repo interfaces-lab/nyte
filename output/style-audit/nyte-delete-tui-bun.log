@@ -1,0 +1,85 @@
+
+ RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/tui
+
+stderr | test/shell-interaction.test.ts > shell input ownership > a menu keeps input ownership across composer clicks and terminal focus
+[KeyHandler] Error in global keypress handler: ReferenceError: closePanel is not defined
+    at onCancel (/Users/workgyver/Developer/nyte/packages/tui/test/shell-interaction.test.ts:45:25)
+    at onKeyPress (/Users/workgyver/Developer/nyte/packages/tui/src/picker.ts:394:53)
+    at emitWithPriority (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:1561:10)
+    at processParsedKey (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:1525:15)
+    at handleStdinEvent (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9098:25)
+    at /Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9075:11
+    at drain (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:6749:6)
+    at drainStdinParser (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9074:21)
+    at /Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:8975:11
+    at emit (node:events:100:21)
+
+stderr | test/shell-interaction.test.ts > shell input ownership > Escape dismisses a menu while its selected action is pending
+[KeyHandler] Error in global keypress handler: ReferenceError: closePanel is not defined
+    at onCancel (/Users/workgyver/Developer/nyte/packages/tui/test/shell-interaction.test.ts:105:25)
+    at onKeyPress (/Users/workgyver/Developer/nyte/packages/tui/src/picker.ts:394:53)
+    at emitWithPriority (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:1561:10)
+    at processParsedKey (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:1525:15)
+    at handleStdinEvent (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9098:25)
+    at /Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9075:11
+    at drain (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-f647ts9q.js:6749:6)
+    at drainStdinParser (/Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:9074:21)
+    at /Users/workgyver/Developer/nyte/node_modules/.pnpm/@opentui+core@0.5.10_patch_hash=43ca1ed7b9b2cb05f50f6811acbd95990046bbfe389985b715c1c3a_eff373cec9764ff5b941257f9870261b/node_modules/@opentui/core/chunk-node-6bg8r2m7.js:8975:11
+    at emit (node:events:100:21)
+    at callAroundHooks (/Users/workgyver/Developer/nyte/node_modules/.pnpm/vitest@5.0.0_@types+node@26.4.1_vite@8.2.2_@types+node@26.4.1_esbuild@0.28.2_jiti@2.7.0_tsx@4.23.12_yaml@2.9.0_/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3612:8)
+    at callAroundEachHooks (/Users/workgyver/Developer/nyte/node_modules/.pnpm/vitest@5.0.0_@types+node@26.4.1_vite@8.2.2_@types+node@26.4.1_esbuild@0.28.2_jiti@2.7.0_tsx@4.23.12_yaml@2.9.0_/node_modules/vitest/dist/chunks/run.CQOUYP-x.js:3739:7)
+
+ ❯ test/shell-interaction.test.ts (4 tests | 2 failed) 592ms
+   ❯ shell input ownership (4)
+     × a menu keeps input ownership across composer clicks and terminal focus 222ms
+     × Escape dismisses a menu while its selected action is pending 74ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/shell-interaction.test.ts > shell input ownership > a menu keeps input ownership across composer clicks and terminal focus
+AssertionError: expected '' to be 'x' // Object.is equality
+
+- Expected
++ Received
+
+- x
+
+ ❯ test/shell-interaction.test.ts:63:35
+     61|     setup.mockInput.pressEscape();
+     62|     setup.mockInput.pressKey("x");
+     63|     expect(shell.input.plainText).toBe("x");
+       |                                   ^
+     64|   });
+     65|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/shell-interaction.test.ts > shell input ownership > Escape dismisses a menu while its selected action is pending
+AssertionError: expected '' to be 'x' // Object.is equality
+
+- Expected
++ Received
+
+- x
+
+ ❯ test/shell-interaction.test.ts:114:35
+    112|     setup.mockInput.pressEscape();
+    113|     setup.mockInput.pressKey("x");
+    114|     expect(shell.input.plainText).toBe("x");
+       |                                   ^
+    115|     await setup.renderOnce();
+    116|     expect(setup.captureCharFrame()).not.toContain("Slow action");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 16 passed (17)
+      Tests  2 failed | 79 passed (81)
+   Start at  23:42:08
+   Duration  7.52s (tests 45%, transform 33%, import 21%)
+
+  Transform  transforming modules took 7.30s · 33% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+error: "vitest" exited with code 1

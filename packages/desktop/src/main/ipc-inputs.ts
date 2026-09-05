@@ -65,6 +65,7 @@ export const CALL_INPUT_SCHEMAS = {
   "plugins.settings.apply": compile(VERBS["plugins.settings.apply"].input),
   "plugins.resources.list": compile(VERBS["plugins.resources.list"].input),
   "host.state": compile(noInput),
+  "host.sessionDirectory": compile(noInput),
   "host.fonts": compile(noInput),
   "host.openWorkspace": compile(strict({ path: Type.String() })),
   "host.pickWorkspace": compile(noInput),
@@ -202,3 +203,7 @@ export function sdkVerb<
     invoke: async (input, getSdk) => run(await getSdk(), schema.Parse(input)),
   };
 }
+
+export const themePreference = Compile(
+  Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
+);

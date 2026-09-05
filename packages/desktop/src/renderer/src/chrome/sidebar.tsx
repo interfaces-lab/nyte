@@ -1,7 +1,7 @@
 /**
  * The rail: new chat, search, and customize on top, then a persistent
- * workspace collection. The open workspace carries its sessions, recents
- * below it open on click, and the collection header owns folder opening.
+ * workspace collection. Every folder expands independently over its cached
+ * sessions, and the collection header owns folder opening.
  * Everything you switch between lives in this one column.
  *
  * Every row shares one geometry: a leading icon slot, the label, and one
@@ -10,8 +10,7 @@
  * footer.
  *
  * Row edit state lives at the rail root so a directory refetch cannot drop an
- * in-progress rename. A short hover intent warms local thread data and route
- * code independently; navigation itself never waits for either cache.
+ * in-progress rename. A short hover intent warms local thread data.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
@@ -32,28 +31,25 @@ import {
   MenuSeparator,
 } from "../components/menu.tsx";
 import { focus, formatTimeAgo, Hint, Kbd, StatusDot } from "../components/ui.tsx";
-import { usePaneActions, usePaneControllerSnapshot } from "../layout/pane-context.tsx";
+import {
+  paneControllerForWorkspace,
+  usePaneActions,
+  usePaneControllerSnapshot,
+} from "../layout/pane-context.tsx";
+import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { activePane } from "../layout/pane-layout.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { macPlatform } from "../platform.ts";
-import { sessionWorking } from "../run-state.ts";
 import {
   warmThread,
-  useArchiveAllSessions,
-  useDeleteSession,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
-  useSetSessionArchived,
-  useSetSessionPinned,
-  useSessionPreview,
+  useSessionActions,
+  useWorkspaceSessionDirectory,
+  loadLocalResources,
   useWorkspaces,
 } from "../queries.ts";
-import {
-  loadRemainingSessions,
-  sessionPreviewHasOverflow,
-  visibleSessions,
-} from "../session-directory.ts";
 import { nyte } from "../nyte.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useGitHubAccount, type GitHubAccountViewModel } from "./github-account.ts";
@@ -127,24 +123,6 @@ function SettingsFooterToggle({ mac }: { readonly mac: boolean }): ReactElement 
   );
 }
 
-interface WorkspaceDirectoryState {
-  readonly workspacePath: string | undefined;
-  readonly view: SessionViewSettings;
-  readonly expandedSessions: readonly SessionInfo[] | undefined;
-  readonly showAllSessions: boolean;
-  readonly loadingMoreSessions: boolean;
-}
-
-function emptyWorkspaceDirectory(workspacePath: string | undefined): WorkspaceDirectoryState {
-  return {
-    workspacePath,
-    view: DEFAULT_SESSION_VIEW,
-    expandedSessions: undefined,
-    showAllSessions: false,
-    loadingMoreSessions: false,
-  };
-}
-
 function sessionTitle(session: SessionInfo): string {
   return session.name ?? session.preview ?? "New chat";
 }
@@ -152,8 +130,18 @@ function sessionTitle(session: SessionInfo): string {
 /** One confirmation surface at a time: a chat deletion or a workspace-wide archive. */
 type SidebarConfirmation =
   | { readonly kind: "closed" }
-  | { readonly kind: "delete-session"; readonly sessionId: SessionId; readonly title: string }
-  | { readonly kind: "archive-all"; readonly workspaceName: string };
+  | {
+      readonly kind: "delete-session";
+      readonly workspacePath: string | null;
+      readonly sessionId: SessionId;
+      readonly title: string;
+    }
+  | {
+      readonly kind: "archive-all";
+      readonly workspaceName: string;
+      readonly workspacePath: string | null;
+      readonly sessionIds: readonly SessionId[];
+    };
 
 export function Sidebar(): ReactElement {
   const panes = usePaneActions();
@@ -161,12 +149,10 @@ export function Sidebar(): ReactElement {
   const open = host.data?.workspace;
   const workspacePath = open?.path;
   const workspaces = useWorkspaces();
-  const sessionPreview = useSessionPreview(host.data !== undefined);
-  const setSessionPinned = useSetSessionPinned();
-  const setSessionArchived = useSetSessionArchived();
+  const sessionDirectory = useWorkspaceSessionDirectory();
+  const sessionActions = useSessionActions();
+  const removeSession = useSessionRemoval();
   const renameSession = useRenameSession();
-  const deleteSession = useDeleteSession();
-  const archiveAll = useArchiveAllSessions();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
   const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
@@ -178,228 +164,157 @@ export function Sidebar(): ReactElement {
   // that loads or when the project has no GitHub remote.
   const account = useGitHubAccount(open !== undefined);
   const workspaceCollectionID = useId();
-  const { stage } = useShellState();
+  const { stage, homeVisible } = useShellState();
   const router = useRouter();
   const openSettings = (section: SettingsSection): void => {
     const replace = router.state.matches.some((match) => match.routeId === "/settings/$section");
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
   const [workspacesOpen, setWorkspacesOpen] = useState(true);
-  const [sessionsOpen, setSessionsOpen] = useState(true);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [storedDirectory, setStoredDirectory] = useState<WorkspaceDirectoryState>(() =>
-    emptyWorkspaceDirectory(workspacePath),
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string | null>>(
+    () => new Set(),
   );
-  const directory =
-    storedDirectory.workspacePath === workspacePath
-      ? storedDirectory
-      : emptyWorkspaceDirectory(workspacePath);
-  const { view, expandedSessions, showAllSessions, loadingMoreSessions } = directory;
-
-  const updateDirectory = (
-    update: (current: WorkspaceDirectoryState) => WorkspaceDirectoryState,
-  ): void => {
-    setStoredDirectory((current) =>
-      update(
-        current.workspacePath === workspacePath ? current : emptyWorkspaceDirectory(workspacePath),
-      ),
-    );
+  const setExpanded = (path: string | null, expanded: boolean): void => {
+    setCollapsedWorkspaces((current) => {
+      const next = new Set(current);
+      if (expanded) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   };
-  const setSessionView = (value: SessionViewSettings): void => {
-    updateDirectory((current) => ({ ...current, view: value }));
-  };
-  const setShowAllSessions = (value: boolean): void => {
-    updateDirectory((current) => ({ ...current, showAllSessions: value }));
-  };
-  const setLoadingMoreSessions = (value: boolean): void => {
-    updateDirectory((current) => ({ ...current, loadingMoreSessions: value }));
-  };
-
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const selection = activePane(layout).selection;
   const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const mac = macPlatform(host.data?.platform);
-  const displayedSessions =
-    sessionPreview.data === undefined
-      ? []
-      : visibleSessions(sessionPreview.data, expandedSessions, showAllSessions);
-  const sessionGroups = sessionsForView(displayedSessions, view);
-  const displayedSessionCount = sessionGroups.reduce(
-    (count, group) => count + group.sessions.length,
-    0,
-  );
   const completeDirectoryRequired = needsCompleteSessionDirectory(view);
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
-    { kind: "home" },
+    ...(homeVisible ? [{ kind: "home" } as const] : []),
     ...(workspaces.data ?? [])
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
-  const previewContext: SessionPreviewContext =
-    open === undefined
-      ? { kind: "home" }
-      : {
-          kind: "workspace",
-          path: open.path,
-          repository:
-            account.kind === "signed_in" || account.kind === "signed_out"
-              ? account.repository
-              : undefined,
-        };
-
-  const showCompleteSessionDirectory = (): void => {
-    if (loadingMoreSessions) return;
-    const preview = sessionPreview.data;
-    if (preview === undefined) return;
-    if (expandedSessions !== undefined || preview.next === undefined) {
-      setShowAllSessions(true);
-      return;
+  const activateWorkspace = async (path: string | null): Promise<boolean> => {
+    if (path === (workspacePath ?? null)) return true;
+    if (path === null) await nyte.host.closeWorkspace();
+    else {
+      const outcome = await nyte.host.openWorkspace({ path });
+      handleOpenOutcome(outcome);
+      if (outcome.kind !== "opened") return false;
     }
-    setLoadingMoreSessions(true);
-    const requestedWorkspacePath = workspacePath;
-    void loadRemainingSessions(preview, (input) => nyte.sessions.list(input))
-      .then((sessions) => {
-        setStoredDirectory((current) =>
-          current.workspacePath === requestedWorkspacePath
-            ? {
-                ...current,
-                expandedSessions: sessions,
-                showAllSessions: true,
-              }
-            : current,
-        );
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        setStoredDirectory((current) =>
-          current.workspacePath === requestedWorkspacePath
-            ? { ...current, loadingMoreSessions: false }
-            : current,
-        );
-      });
+    await loadLocalResources();
+    return true;
   };
 
-  const toggleRemainingSessions = (): void => {
-    if (showAllSessions) {
-      setShowAllSessions(false);
-      return;
-    }
-    showCompleteSessionDirectory();
+  const showSession = async (
+    path: string | null,
+    sessionId: SessionId,
+    beside = false,
+  ): Promise<void> => {
+    if (!(await activateWorkspace(path))) return;
+    const controller = paneControllerForWorkspace(path ?? undefined);
+    if (beside) controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
+    else controller.selectSession(sessionId);
+    shellActions.showWorkspace();
+    await router.navigate({ to: "/session/$sessionId", params: { sessionId } });
   };
 
-  const openWorkspace = async (path: string, createChat: boolean): Promise<void> => {
-    const outcome = await nyte.host.openWorkspace({ path });
-    handleOpenOutcome(outcome);
-    if (outcome.kind === "opened" && createChat) panes.newChat();
-  };
-
-  const openHome = async (createChat: boolean): Promise<void> => {
-    await nyte.host.closeWorkspace();
-    if (createChat) panes.newChat();
+  const newWorkspaceChat = async (path: string | null): Promise<void> => {
+    if (!(await activateWorkspace(path))) return;
+    setExpanded(path, true);
+    paneControllerForWorkspace(path ?? undefined).selectBlank();
+    shellActions.showWorkspace();
+    await router.navigate({ to: "/" });
   };
 
   const closeConfirmation = (): void => {
-    deleteSession.reset();
-    archiveAll.reset();
     setConfirmation({ kind: "closed" });
   };
 
-  const sessionPanel = (
-    <>
-      {sessionPreview.isPending && (
-        <div aria-busy="true" {...stylex.props(styles.quiet, styles.sessionQuiet)}>
-          Loading chats…
-        </div>
-      )}
-      {sessionPreview.data !== undefined &&
-        displayedSessionCount === 0 &&
-        (completeDirectoryRequired ? (
-          <>
-            <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>
-              No chats match these filters
-            </div>
-            <button
-              type="button"
-              {...stylex.props(styles.showMore, focus.ringInset)}
-              onClick={() => setSessionView(clearSessionFilters(view))}
-            >
-              Clear filters
-            </button>
-          </>
-        ) : (
-          <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
-        ))}
-      {sessionGroups.map((group) => (
-        <div key={group.key} {...stylex.props(styles.section)}>
-          {group.label !== undefined && (
-            <div {...stylex.props(styles.sessionGroupLabel)}>{group.label}</div>
-          )}
-          {group.sessions.map((session) => (
-            <SessionRow
-              key={session.sessionId}
-              session={session}
-              previewContext={previewContext}
-              selected={session.sessionId === activeSessionId}
-              showUpdated={view.show.includes("updated")}
-              actionsDisabled={setSessionPinned.isPending || setSessionArchived.isPending}
-              onOpen={() => panes.openSession(session.sessionId)}
-              onOpenBeside={() => panes.drop(session.sessionId, activePane(layout).id, "right")}
-              onHover={() => warmThread(session.sessionId)}
-              onRename={(name) => renameSession.mutate({ sessionId: session.sessionId, name })}
-              onDelete={() =>
-                setConfirmation({
-                  kind: "delete-session",
-                  sessionId: session.sessionId,
-                  title: sessionTitle(session),
-                })
-              }
-              onPin={() => {
-                setSessionPinned.mutate({
-                  sessionId: session.sessionId,
-                  pinned: !session.pinned,
-                });
-              }}
-              onArchive={() => {
-                setSessionArchived.mutate(
-                  {
-                    sessionId: session.sessionId,
-                    archived: !session.archived,
-                  },
-                  {
-                    onSuccess: () => {
-                      if (!session.archived && session.sessionId === activeSessionId) {
-                        panes.removeSession(session.sessionId);
-                      }
-                    },
-                  },
-                );
-              }}
-            />
+  const sessionPanel = (path: string | null): ReactElement | null => {
+    const sessions = sessionDirectory.data?.find((entry) => entry.workspacePath === path)?.sessions;
+    if (sessions === undefined) return null;
+    const sessionGroups = sessionsForView(sessions, view);
+    const displayedSessionCount = sessionGroups.reduce(
+      (count, group) => count + group.sessions.length,
+      0,
+    );
+    const previewContext: SessionPreviewContext =
+      path === null
+        ? { kind: "home" }
+        : {
+            kind: "workspace",
+            path,
+            repository:
+              path === workspacePath &&
+              (account.kind === "signed_in" || account.kind === "signed_out")
+                ? account.repository
+                : undefined,
+          };
+    return (
+      <>
+        {displayedSessionCount === 0 &&
+          (completeDirectoryRequired ? (
+            <>
+              <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>
+                No chats match these filters
+              </div>
+              <button
+                type="button"
+                {...stylex.props(styles.showMore, focus.ringInset)}
+                onClick={() => setSessionView(clearSessionFilters(view))}
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
-        </div>
-      ))}
-      {completeDirectoryRequired && loadingMoreSessions && (
-        <div aria-busy="true" {...stylex.props(styles.quiet)}>
-          Loading remaining chats…
-        </div>
-      )}
-      {!completeDirectoryRequired &&
-        sessionPreview.data !== undefined &&
-        sessionPreviewHasOverflow(sessionPreview.data) && (
-          <button
-            type="button"
-            aria-expanded={showAllSessions}
-            aria-busy={loadingMoreSessions}
-            disabled={loadingMoreSessions}
-            {...stylex.props(styles.showMore, focus.ringInset)}
-            onClick={toggleRemainingSessions}
-          >
-            {showAllSessions ? "Show less" : "Show more"}
-          </button>
-        )}
-    </>
-  );
+        {sessionGroups.map((group) => (
+          <div key={group.key} {...stylex.props(styles.section)}>
+            {group.label !== undefined && (
+              <div {...stylex.props(styles.sessionGroupLabel)}>{group.label}</div>
+            )}
+            {group.sessions.map((session) => (
+              <SessionRow
+                key={session.sessionId}
+                session={session}
+                draggable={path === (workspacePath ?? null)}
+                previewContext={previewContext}
+                selected={session.sessionId === activeSessionId}
+                showUpdated={view.show.includes("updated")}
+                onOpen={() => void showSession(path, session.sessionId)}
+                onOpenBeside={() => void showSession(path, session.sessionId, true)}
+                onHover={() => warmThread(session.sessionId)}
+                onRename={(name) => renameSession.mutate({ sessionId: session.sessionId, name })}
+                onDelete={() =>
+                  setConfirmation({
+                    kind: "delete-session",
+                    workspacePath: path,
+                    sessionId: session.sessionId,
+                    title: sessionTitle(session),
+                  })
+                }
+                onPin={() => {
+                  sessionActions.pin({
+                    sessionId: session.sessionId,
+                    pinned: !session.pinned,
+                  });
+                }}
+                onArchive={() => {
+                  sessionActions.archive([session.sessionId], !session.archived, (id) =>
+                    removeSession(path, id),
+                  );
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </>
+    );
+  };
 
   const newChatActive = stage.kind === "workspace" && selection.kind === "blank" && !paletteOpen;
 
@@ -509,13 +424,18 @@ export function Sidebar(): ReactElement {
                   </Collapsible.Trigger>
                   <WorkspaceControls
                     value={view}
-                    filterDisabled={host.data === undefined || sessionPreview.data === undefined}
-                    onChange={(nextView) => {
-                      setSessionView(nextView);
-                      if (needsCompleteSessionDirectory(nextView)) showCompleteSessionDirectory();
-                    }}
+                    homeVisible={homeVisible}
+                    onHomeVisibleChange={shellActions.setHomeVisible}
+                    filterDisabled={sessionDirectory.data === undefined}
+                    onChange={setSessionView}
                     onOpenFolder={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
-                    onCollapseAll={() => setSessionsOpen(false)}
+                    onCollapseAll={() =>
+                      setCollapsedWorkspaces(
+                        new Set(
+                          entries.map((entry) => (entry.kind === "home" ? null : entry.path)),
+                        ),
+                      )
+                    }
                   />
                 </div>
 
@@ -532,12 +452,10 @@ export function Sidebar(): ReactElement {
                     entries.map((entry) => {
                       const active =
                         entry.kind === "home" ? open === undefined : open?.path === entry.path;
-                      const select = (createChat: boolean): void => {
-                        setSessionsOpen(true);
-                        void (entry.kind === "home"
-                          ? openHome(createChat)
-                          : openWorkspace(entry.path, createChat));
-                      };
+                      const path = entry.kind === "home" ? null : entry.path;
+                      const sessions = sessionDirectory.data?.find(
+                        (directory) => directory.workspacePath === path,
+                      )?.sessions;
                       return (
                         <WorkspaceRow
                           key={entry.kind === "home" ? "home" : entry.path}
@@ -545,34 +463,29 @@ export function Sidebar(): ReactElement {
                           path={entry.kind === "home" ? "Home" : entry.path}
                           available={entry.kind === "home" || entry.available !== false}
                           active={active}
-                          expanded={active && sessionsOpen}
-                          onExpandedChange={(next) => {
-                            if (active) setSessionsOpen(next);
-                            else select(false);
-                          }}
-                          onNewChat={() => {
-                            shellActions.showWorkspace();
-                            if (active) panes.newChat();
-                            else select(true);
-                          }}
+                          expanded={!collapsedWorkspaces.has(path)}
+                          onExpandedChange={(next) => setExpanded(path, next)}
+                          onNewChat={() => void newWorkspaceChat(path)}
                           onArchiveAll={
-                            // Sessions load only for the open workspace, so the
-                            // directory this walks is the one on screen.
-                            active && sessionPreview.data !== undefined
-                              ? () =>
+                            sessions === undefined
+                              ? undefined
+                              : () =>
                                   setConfirmation({
                                     kind: "archive-all",
                                     workspaceName: entry.kind === "home" ? "Home" : entry.name,
+                                    workspacePath: path,
+                                    sessionIds: sessions
+                                      .filter((session) => !session.archived)
+                                      .map((session) => session.sessionId),
                                   })
-                              : undefined
                           }
                           onRemove={
                             entry.kind === "home"
-                              ? undefined
+                              ? () => shellActions.setHomeVisible(false)
                               : () => forgetWorkspace.mutate(entry.path)
                           }
                         >
-                          {active && sessionPanel}
+                          {sessionPanel(path)}
                         </WorkspaceRow>
                       );
                     })}
@@ -596,28 +509,25 @@ export function Sidebar(): ReactElement {
       {confirmation.kind === "delete-session" && (
         <ConfirmDialog
           open
-          pending={deleteSession.isPending}
-          error={deleteSession.isError ? "Couldn't delete this chat. Try again." : undefined}
+          pending={false}
+          error={undefined}
+          description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
           returnFocusRef={confirmationReturnRef}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) closeConfirmation();
           }}
           onConfirm={() => {
-            const { sessionId } = confirmation;
-            deleteSession.mutate(sessionId, {
-              onSuccess: () => {
-                closeConfirmation();
-                panes.removeSession(sessionId);
-              },
-            });
+            const { sessionId, workspacePath: deletedWorkspacePath } = confirmation;
+            closeConfirmation();
+            sessionActions.delete(sessionId, (id) => removeSession(deletedWorkspacePath, id));
           }}
         />
       )}
       {confirmation.kind === "archive-all" && (
         <ConfirmDialog
           open
-          pending={archiveAll.isPending}
-          error={archiveAll.isError ? "Couldn't archive every chat. Try again." : undefined}
+          pending={false}
+          error={undefined}
           returnFocusRef={confirmationReturnRef}
           title={`Archive all chats in ${confirmation.workspaceName}?`}
           description="Open chats move to the archive. You can restore any of them later."
@@ -627,12 +537,10 @@ export function Sidebar(): ReactElement {
             if (!nextOpen) closeConfirmation();
           }}
           onConfirm={() => {
-            archiveAll.mutate(undefined, {
-              onSuccess: () => {
-                closeConfirmation();
-                if (activeSessionId !== undefined) panes.removeSession(activeSessionId);
-              },
-            });
+            closeConfirmation();
+            sessionActions.archive(confirmation.sessionIds, true, (id) =>
+              removeSession(confirmation.workspacePath, id),
+            );
           }}
         />
       )}
@@ -736,9 +644,8 @@ function AccountFooterMenu({
 }
 
 /**
- * Every workspace is the same collapsible row, so a click never swaps the
- * tree. Only the active row's panel has content: expanding an inactive row
- * asks the host to open it, and its sessions grow in place once it does.
+ * Every folder expands independently over its cached directory. Expansion
+ * does not select a workspace or make an IPC request.
  */
 function WorkspaceRow({
   name,
@@ -761,8 +668,7 @@ function WorkspaceRow({
   readonly onNewChat: () => void;
   /** Absent when this workspace's chats are not loaded, so the item does not render. */
   readonly onArchiveAll: (() => void) | undefined;
-  /** Absent for Home, which is not a registry entry. */
-  readonly onRemove: (() => void) | undefined;
+  readonly onRemove: () => void;
   readonly children: ReactNode;
 }): ReactElement {
   const trigger = (
@@ -805,14 +711,10 @@ function WorkspaceRow({
               </ContextMenuItem>
             </>
           )}
-          {onRemove !== undefined && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem icon="trash" danger onSelect={onRemove}>
-                Remove from sidebar
-              </ContextMenuItem>
-            </>
-          )}
+          <ContextMenuSeparator />
+          <ContextMenuItem icon="trash" danger onSelect={onRemove}>
+            Remove from sidebar
+          </ContextMenuItem>
         </ContextMenu>
         <button
           type="button"
@@ -831,10 +733,10 @@ function WorkspaceRow({
 
 interface SessionRowProps {
   session: SessionInfo;
+  draggable: boolean;
   previewContext: SessionPreviewContext;
   selected: boolean;
   showUpdated: boolean;
-  actionsDisabled: boolean;
   onOpen: () => void;
   onOpenBeside: () => void;
   onHover: () => void;
@@ -846,10 +748,10 @@ interface SessionRowProps {
 
 function SessionRow({
   session,
+  draggable,
   previewContext,
   selected,
   showUpdated,
-  actionsDisabled,
   onOpen,
   onOpenBeside,
   onHover,
@@ -859,10 +761,17 @@ function SessionRow({
   onDelete,
 }: SessionRowProps): ReactElement {
   const warmTimer = useRef<number | undefined>(undefined);
-  const working = sessionWorking(session);
+  const working = session.heads.some(
+    (head) =>
+      head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
+  );
   const title = sessionTitle(session);
   const [draftName, setDraftName] = useState<string | undefined>();
-  const { isDragging, listeners, setNodeRef } = useSessionDraggable(session.sessionId, title);
+  const { isDragging, listeners, setNodeRef } = useSessionDraggable(
+    session.sessionId,
+    title,
+    !draggable,
+  );
 
   const commitRename = (): void => {
     if (draftName === undefined) return;
@@ -961,7 +870,6 @@ function SessionRow({
       >
         <button
           type="button"
-          disabled={actionsDisabled}
           aria-label={session.pinned ? "Unpin" : "Pin"}
           title={session.pinned ? "Unpin" : "Pin"}
           {...stylex.props(styles.action, focus.ringInset)}
@@ -971,7 +879,6 @@ function SessionRow({
         </button>
         <button
           type="button"
-          disabled={actionsDisabled}
           aria-label={session.archived ? "Restore" : "Archive"}
           title={session.archived ? "Restore" : "Archive"}
           {...stylex.props(styles.action, focus.ringInset)}
@@ -990,11 +897,7 @@ function SessionRow({
       trigger={row}
       contextMenu={
         <>
-          <ContextMenuItem
-            icon={session.pinned ? "unpin" : "pin"}
-            disabled={actionsDisabled}
-            onSelect={onPin}
-          >
+          <ContextMenuItem icon={session.pinned ? "unpin" : "pin"} onSelect={onPin}>
             {session.pinned ? "Unpin" : "Pin"}
           </ContextMenuItem>
           <ContextMenuItem icon="pencil" onSelect={() => setDraftName(title)}>
@@ -1008,7 +911,7 @@ function SessionRow({
             Copy title
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem icon="archive" disabled={actionsDisabled} onSelect={onArchive}>
+          <ContextMenuItem icon="archive" onSelect={onArchive}>
             {session.archived ? "Restore" : "Archive"}
           </ContextMenuItem>
           <ContextMenuItem icon="trash" danger onSelect={onDelete}>

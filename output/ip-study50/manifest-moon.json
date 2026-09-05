@@ -1,0 +1,90 @@
+[
+  {
+    "label": "C1",
+    "corner": "lower-left",
+    "palette": {
+      "background": "#191d30",
+      "body": "#d2ddff",
+      "cheek": "#6277b4"
+    },
+    "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 \u00d7 1536.\nBackground: fill the entire square with solid #191d30. Keep #191d30 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing moon-cheek cloud IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. A broad soft cloud with rounded lobes and a broad crescent-shaped cheek integrated within its silhouette, with visibly blunt rounded crescent tips. The moon is only an internal cheek shape, never a separate object. Widely spaced tiny calm eyes sit above its cheek.\nComplexity: use only 4\u20137 large basic shapes and at most two broad internal color regions. Use two simple tiny eyes, no mouth. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 \u00d7 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. The cloud body is #d2ddff; its one broad continuous crescent cheek region and two tiny eyes are #6277b4. Organize both into broad purposeful masses. Keep the IP, facial marks, and background clearly separated.\nComposition: keep the character upright and emerging from the assigned lower-left, filling about 85\u201395% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+    "source": "/Users/workgyver/.codex/generated_images/01a06ee7-9ead-77b0-adc4-7cece039a020/exec-39f5d050-0faa-4315-99b0-620e97429e39.png",
+    "path": "/Users/workgyver/Developer/nyte/output/ip-study50/C1.png",
+    "direction": "Moon-cheek cloud",
+    "rationale": "Nyte nighttime identity through a crescent cheek.",
+    "dimensions": {
+      "width": 1254,
+      "height": 1254
+    },
+    "provider": "Built-in image_gen",
+    "model": "undisclosed",
+    "constraintMode": "main-prompt constraints",
+    "constraints": "Constraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation."
+  },
+  {
+    "label": "C2",
+    "corner": "lower-right",
+    "palette": {
+      "background": "#191d30",
+      "body": "#d2ddff",
+      "cheek": "#6277b4"
+    },
+    "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 \u00d7 1536.\nBackground: fill the entire square with solid #191d30. Keep #191d30 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing moon-cheek cloud IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. A compact softly tall cloud with three large rounded lobes and a broad crescent-shaped cheek integrated within its silhouette, with visibly blunt rounded crescent tips. The moon is only an internal cheek shape, never a separate object. Widely spaced tiny curious eyes sit above its cheek.\nComplexity: use only 4\u20137 large basic shapes and at most two broad internal color regions. Use two simple tiny eyes, no mouth. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 \u00d7 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. The cloud body is #d2ddff; its one broad continuous crescent cheek region and two tiny eyes are #6277b4. Organize both into broad purposeful masses. Keep the IP, facial marks, and background clearly separated.\nComposition: keep the character upright and emerging from the assigned lower-right, filling about 85\u201395% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+    "source": "/Users/workgyver/.codex/generated_images/01a06ee7-9ead-77b0-adc4-7cece039a020/exec-e97d3af1-7901-464c-8e8c-437b0dd65378.png",
+    "path": "/Users/workgyver/Developer/nyte/output/ip-study50/C2.png",
+    "direction": "Moon-cheek cloud",
+    "rationale": "Nyte nighttime identity through a crescent cheek.",
+    "dimensions": {
+      "width": 1254,
+      "height": 1254
+    },
+    "provider": "Built-in image_gen",
+    "model": "undisclosed",
+    "constraintMode": "main-prompt constraints",
+    "constraints": "Constraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation."
+  },
+  {
+    "label": "F1",
+    "corner": "lower-left",
+    "palette": {
+      "background": "#242a42",
+      "body": "#b6c8fa",
+      "cheek": "#526bac"
+    },
+    "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 \u00d7 1536.\nBackground: fill the entire square with solid #242a42. Keep #242a42 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing moon-cheek cloud IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. A broad asymmetric cloud with three soft lobes in a small\u2013medium\u2013large rhythm, merging into one weighty shape. Its one large sweeping crescent-shaped cheek is integrated within the cloud, with both ends visibly blunt and rounded. The largest lobe is nearest the unoccupied upper space. Two widely spaced calm eyes. No separate moon.\nComplexity: use only 4\u20137 large basic shapes and at most two broad internal color regions. Use two simple tiny eyes, no mouth. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 \u00d7 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. The cloud body is #b6c8fa; its one broad continuous crescent cheek region and two tiny eyes are #526bac. Organize both into broad purposeful masses. Keep the IP, facial marks, and background clearly separated.\nComposition: keep the character upright and emerging from the assigned lower-left, filling about 85\u201395% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+    "source": "/Users/workgyver/.codex/generated_images/01a06ee7-9ead-77b0-adc4-7cece039a020/exec-cac19dc7-23e6-4768-ad7f-8f80f671f1e0.png",
+    "path": "/Users/workgyver/Developer/nyte/output/ip-study50/F1.png",
+    "direction": "Seeded moon-cheek cloud",
+    "rationale": "Paired letters and 2/4/8 inspire three-lobe rhythm and a sweeping crescent cheek.",
+    "dimensions": {
+      "width": 1254,
+      "height": 1254
+    },
+    "provider": "Built-in image_gen",
+    "model": "undisclosed",
+    "constraintMode": "main-prompt constraints",
+    "constraints": "Constraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation."
+  },
+  {
+    "label": "F2",
+    "corner": "lower-right",
+    "palette": {
+      "background": "#242a42",
+      "body": "#b6c8fa",
+      "cheek": "#526bac"
+    },
+    "prompt": "Create one complete full-bleed 1:1 square image, approximately 1536 \u00d7 1536.\nBackground: fill the entire square with solid #242a42. Keep #242a42 visible in every open area and in the corners not occupied by the character; the assigned emergence corner must be occupied by the character.\nSubject: place one extremely simplified, cute, endearing moon-cheek cloud IP character on the background, reduced to one soft rounded continuous silhouette and one defining feature. A broad asymmetric cloud with three soft lobes in a large\u2013small\u2013medium rhythm, merging into one weighty shape. Its one large sweeping crescent-shaped cheek is integrated within the cloud, with both ends visibly blunt and rounded. The largest lobe rises near the emergence side. Two widely spaced curious eyes. No separate moon.\nComplexity: use only 4\u20137 large basic shapes and at most two broad internal color regions. Use two simple tiny eyes, no mouth. Remove every nonessential line, outline, anatomical detail, texture, and decoration. Keep the character readable at 32 \u00d7 32.\nColor behavior: use exactly three semantic colors in the complete image: exactly two IP base colors plus the background color. The cloud body is #b6c8fa; its one broad continuous crescent cheek region and two tiny eyes are #526bac. Organize both into broad purposeful masses. Keep the IP, facial marks, and background clearly separated.\nComposition: keep the character upright and emerging from the assigned lower-right, filling about 85\u201395% of the square so it remains visually dominant. Cropping at the bottom or assigned side is welcome when it strengthens the corner emergence. Preserve both paired identifying features. Never center or bottom-center the character.\nStyle: make simplification, cuteness, and lovable baby-like appeal the strongest qualities. Use large soft forms, compact proportions, thick rounded contours, and an ultra-clean graphic treatment. Prefer one clear shape over several explanatory details. Add an extremely, extremely subtle, almost imperceptible sense of depth through a barely-there neo-skeuomorphic treatment.\nFinish: show only the character on the full-canvas background, with clean surfaces and normal square outer corners.\nConstraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation.",
+    "source": "/Users/workgyver/.codex/generated_images/01a06ee7-9ead-77b0-adc4-7cece039a020/exec-75715666-bafa-40f9-b7be-c3710c7df125.png",
+    "path": "/Users/workgyver/Developer/nyte/output/ip-study50/F2.png",
+    "direction": "Seeded moon-cheek cloud",
+    "rationale": "Paired letters and 2/4/8 inspire three-lobe rhythm and a sweeping crescent cheek.",
+    "dimensions": {
+      "width": 1254,
+      "height": 1254
+    },
+    "provider": "Built-in image_gen",
+    "model": "undisclosed",
+    "constraintMode": "main-prompt constraints",
+    "constraints": "Constraints: Use no text or watermark. Add no borders, frames, cards, or presentation masks. Include one character only, with no extra subjects or scenery. Use no fragile lines, sharp tips, unnecessary outlines, tiny details, or decorative marks. Add no photorealistic material, dramatic bevel, glossy hotspot, deep occlusion, extrusion, strong three-dimensional rendering, or external cast shadow. Keep the background solid and uniform, with no texture, vignette, or lighting variation."
+  }
+]
