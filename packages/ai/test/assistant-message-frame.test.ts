@@ -2,13 +2,13 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/assistant-message-frame.test.ts
  * Synced with pi 7ebf9087e.
  *
- * Uji divergence: the OpenAI Responses round-trip case (`processResponsesStream`)
+ * Nyte divergence: the OpenAI Responses round-trip case (`processResponsesStream`)
  * is omitted here; it exercises `api/openai-responses-shared.ts` and belongs with
  * the adapter tests.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import type { AssistantMessage, AssistantMessageEvent } from "@uji-ai/schema";
+import { describe, test } from "vitest";
+import type { AssistantMessage, AssistantMessageEvent } from "@nyte-ai/schema";
 import {
   type AssistantMessageFrame,
   assistantMessageEventToFrame,
@@ -50,8 +50,8 @@ function hasPath(value: unknown, path: string): boolean {
   return true;
 }
 
-void describe("assistant message frames", () => {
-  void test("uses authoritative text end content and signature", () => {
+describe("assistant message frames", () => {
+  test("uses authoritative text end content and signature", () => {
     const partial = seed();
     const frames: AssistantMessageFrame[] = [frame({ type: "start", partial })];
     partial.content.push({ type: "text", text: "Hello " });
@@ -73,7 +73,7 @@ void describe("assistant message frames", () => {
     ]);
   });
 
-  void test("preserves initial and final thinking metadata, including redaction", () => {
+  test("preserves initial and final thinking metadata, including redaction", () => {
     const partial = seed();
     const frames: AssistantMessageFrame[] = [frame({ type: "start", partial })];
     partial.content.push({
@@ -106,7 +106,7 @@ void describe("assistant message frames", () => {
     });
   });
 
-  void test("parses unfinished tool JSON once and uses authoritative completed arguments", () => {
+  test("parses unfinished tool JSON once and uses authoritative completed arguments", () => {
     const initialFrames: AssistantMessageFrame[] = [
       { type: "start", partial: seed() },
       {
@@ -146,7 +146,7 @@ void describe("assistant message frames", () => {
     });
   });
 
-  void test("treats end signature metadata, including absence, as authoritative", () => {
+  test("treats end signature metadata, including absence, as authoritative", () => {
     const frames: AssistantMessageFrame[] = [
       { type: "start", partial: seed() },
       {
@@ -194,7 +194,7 @@ void describe("assistant message frames", () => {
     ]);
   });
 
-  void test("stores authoritative final arguments in toolcall_end frames", () => {
+  test("stores authoritative final arguments in toolcall_end frames", () => {
     const partial = seed();
     const toolCall = {
       type: "toolCall" as const,
@@ -218,7 +218,7 @@ void describe("assistant message frames", () => {
     });
   });
 
-  void test("whitelists public block fields from provider-shaped partials", () => {
+  test("whitelists public block fields from provider-shaped partials", () => {
     const partial = seed();
     const text = { type: "text" as const, text: "visible", textSignature: "text-sig", index: 4 };
     const thinking = {
@@ -271,7 +271,7 @@ void describe("assistant message frames", () => {
     assert.equal(hasPath(toolStart, "toolCall.streamIndex"), false);
   });
 
-  void test("supports interleaved streams by contentIndex", () => {
+  test("supports interleaved streams by contentIndex", () => {
     const frames: AssistantMessageFrame[] = [
       { type: "start", partial: seed() },
       { type: "text_start", contentIndex: 0, content: { type: "text", text: "" } },
@@ -302,7 +302,7 @@ void describe("assistant message frames", () => {
     ]);
   });
 
-  void test("snapshots mutable event data and keeps reduction pure", () => {
+  test("snapshots mutable event data and keeps reduction pure", () => {
     const partial = seed();
     partial.diagnostics = [{ type: "test", timestamp: 2, details: { value: "original" } }];
     const start = frame({ type: "start", partial });
@@ -336,7 +336,7 @@ void describe("assistant message frames", () => {
     });
   });
 
-  void test("omits terminal events because settlement is separate", () => {
+  test("omits terminal events because settlement is separate", () => {
     const message = seed();
     message.stopReason = "stop";
     assert.equal(
@@ -351,7 +351,7 @@ void describe("assistant message frames", () => {
     );
   });
 
-  void test("returns undefined when there is no start frame", () => {
+  test("returns undefined when there is no start frame", () => {
     assert.equal(reduceAssistantMessageFrames([]), undefined);
     assert.equal(
       reduceAssistantMessageFrames([{ type: "text_delta", contentIndex: 0, delta: "x" }]),
@@ -359,7 +359,7 @@ void describe("assistant message frames", () => {
     );
   });
 
-  void test("rejects frames before start, wrong block kinds, duplicate ends, and index gaps", () => {
+  test("rejects frames before start, wrong block kinds, duplicate ends, and index gaps", () => {
     assert.throws(
       () =>
         reduceAssistantMessageFrames([
@@ -401,7 +401,7 @@ void describe("assistant message frames", () => {
     );
   });
 
-  void test("rejects conversion events whose contentIndex points to the wrong block kind", () => {
+  test("rejects conversion events whose contentIndex points to the wrong block kind", () => {
     const partial = seed();
     partial.content.push({ type: "thinking", thinking: "" });
     assert.throws(

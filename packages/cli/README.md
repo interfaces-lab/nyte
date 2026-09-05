@@ -1,24 +1,21 @@
-# uji-ai
+# nyte-ai
 
-`uji-ai` is the executable distribution for Uji, a client/server coding-agent platform with a headless host and terminal client. It installs the `uji` command.
+`nyte-ai` installs the `nyte` command, the terminal client for Nyte.
 
-## Status
-
-This release is a placeholder that reserves the npm package and `uji` command. It does not start an agent or server yet.
-
-The planned command shape is:
+Run it without installing:
 
 ```sh
-npx uji-ai        # open the terminal client
-npx uji-ai serve  # run the standalone headless server
+npx nyte-ai
 ```
 
-The installed command uses the same entry point:
+Or install it globally:
 
 ```sh
-npm install --global uji-ai
-uji
-uji serve
+npm install --global nyte-ai
+nyte
 ```
 
-The published `uji-ai` package will compose the private `@uji-ai/tui` client with the `@uji-ai/server` host. It will not carry a second implementation of either package.
+The npm package downloads the matching release from
+[`interfaces-lab/nyte`](https://github.com/interfaces-lab/nyte), verifies its SHA-256 checksum,
+and caches the native executable under `~/.nyte/bin`. Set `NYTE_BIN_DIR` to choose another cache
+directory.

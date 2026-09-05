@@ -1,20 +1,16 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import { UjiWordmark } from "@/components/brand/mark";
-import { docsRoute, gitConfig } from "./shared";
+import { DocsNavTitle } from "@/components/docs-nav-title";
 
-/** Shared by DocsLayout and HomeLayout. */
+/*
+ * Options for DocsLayout. The navbar itself is <SiteNav /> in the root
+ * layout, so the Fumadocs layout runs with its own off. The docs sidebar
+ * drops its title for the same reason: the wordmark is already on the page,
+ * one row up.
+ */
 export function baseOptions(): BaseLayoutProps {
   return {
-    nav: {
-      // Wordmark alone. The tagline used to sit beside it and wrapped to two
-      // lines in the sidebar, which pushed the search field down the page.
-      title: <UjiWordmark size={18} />,
-      url: "/",
-    },
-    links: [
-      { text: "Docs", url: `${docsRoute}/design`, type: "main" },
-      { text: "Brand", url: "/branding", type: "main" },
-    ],
-    githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
+    nav: { enabled: false },
+    themeSwitch: { enabled: false },
+    slots: { navTitle: DocsNavTitle },
   };
 }

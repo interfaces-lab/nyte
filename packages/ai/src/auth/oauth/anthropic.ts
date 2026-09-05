@@ -32,7 +32,7 @@ const decode = (s: string) => atob(s);
 const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
-const CALLBACK_HOST = getProviderEnvValue("UJI_OAUTH_CALLBACK_HOST") || "127.0.0.1";
+const CALLBACK_HOST = getProviderEnvValue("NYTE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 const CALLBACK_PORT = 53692;
 const CALLBACK_PATH = "/callback";
 const REDIRECT_URI = `http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}`;
@@ -125,7 +125,11 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
         const url = new URL(req.url || "", "http://localhost");
         if (url.pathname !== CALLBACK_PATH) {
           res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(oauthErrorHtml("Callback route not found."));
+          res.end(
+            oauthErrorHtml(
+              "Nyte is not listening on this path. Run the login command again to retry.",
+            ),
+          );
           return;
         }
 
@@ -135,24 +139,37 @@ async function startCallbackServer(expectedState: string): Promise<CallbackServe
 
         if (error) {
           res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(oauthErrorHtml("Anthropic authentication did not complete.", `Error: ${error}`));
+          res.end(
+            oauthErrorHtml(
+              "Anthropic sent back an error instead of a code. Run the login command again to retry.",
+              `Error: ${error}`,
+            ),
+          );
           return;
         }
 
         if (!code || !state) {
           res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(oauthErrorHtml("Missing code or state parameter."));
+          res.end(
+            oauthErrorHtml(
+              "The callback arrived without a code or state, so Nyte could not finish sign-in.",
+            ),
+          );
           return;
         }
 
         if (state !== expectedState) {
           res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-          res.end(oauthErrorHtml("State mismatch."));
+          res.end(
+            oauthErrorHtml(
+              "The callback's state did not match this login attempt, so Nyte ignored it.",
+            ),
+          );
           return;
         }
 
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(oauthSuccessHtml("Anthropic authentication completed. You can close this window."));
+        res.end(oauthSuccessHtml({ provider: "Anthropic" }));
         settleWait?.({ code, state });
       } catch {
         res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });

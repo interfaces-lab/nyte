@@ -9,58 +9,56 @@ import type {
 } from "@opentui/core";
 import { GLYPHS } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
-import { displayWidth as columns, padDisplay as padEnd, truncateDisplay } from "./width.ts";
+import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
 /** Row text is cut to the cells it has, with a marker that it was cut. */
 function truncate(text: string, width: number): string {
   return width <= 1 ? truncateDisplay(text, width) : truncateDisplay(text, width, GLYPHS.ellipsis);
 }
 
+export interface MenuStatus {
+  readonly text: string;
+  readonly tone: "dim" | "ok";
+}
+
 export interface MenuItem {
-  id: string;
-  label: string;
-  description?: string;
-  status?: { text: string; tone: "dim" | "ok" };
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly status?: MenuStatus;
 }
 
 interface MenuListOptions {
-  renderer: CliRenderer;
-  theme: CliTheme;
-  nextId: (prefix?: string) => string;
+  readonly renderer: CliRenderer;
+  readonly theme: CliTheme;
+  readonly nextId: (prefix?: string) => string;
   /** Row background when a row is neither selected nor hovered. */
-  background: string;
+  readonly background: string;
   /** Most rows shown at once; the list scrolls past this. */
-  maxVisible: number;
-  items?: readonly MenuItem[];
-  selectedIndex?: number;
-  onSelect: (item: MenuItem, index: number) => void;
+  readonly maxVisible: number;
+  readonly items?: readonly MenuItem[];
+  readonly selectedIndex?: number;
+  readonly onSelect: (item: MenuItem, index: number) => void;
   /** Fires when navigation moves the highlight, not when it is chosen. */
-  onHighlight?: (item: MenuItem, index: number) => void;
+  readonly onHighlight?: (item: MenuItem, index: number) => void;
 }
 
 /** Prefix (`❯ ` on the selected row) plus the gap between label and description. */
 const PREFIX_WIDTH = 2;
-/** Wide enough that the two columns read as columns, not as one sentence. */
 const LABEL_GAP = 4;
 /** Below this, a complete label is worth more than a clipped second column. */
 const DETAIL_MIN_WIDTH = 48;
 
 interface MenuRowsOptions extends RenderableOptions<MenuRows> {
-  theme: CliTheme;
-  background: string;
-  /** Fires whenever the selected index actually changes, however it moved. */
-  onSelectionChanged: (index: number) => void;
+  readonly theme: CliTheme;
+  readonly background: string;
+  readonly onSelectionChanged: (index: number) => void;
 }
 
 /**
  * The rows themselves: which item is current, what moving does to it, and how
- * a row looks. It draws straight onto the screen buffer — no framebuffer in
- * between — so a transparent row background really shows what is behind it.
- *
- * It is as tall as it has items, never taller, so the enclosing
- * `ScrollBoxRenderable` is the only thing that scrolls. That keeps a row's y
- * and its index the same number, which is what makes a click land on the row
- * under the pointer.
+ * a row looks. It draws straight onto the screen buffer, and it is as tall as
+ * it has items, so the enclosing scroll box is the only thing that scrolls.
  */
 class MenuRows extends Renderable {
   private items: readonly MenuItem[] = [];
@@ -120,14 +118,9 @@ class MenuRows extends Renderable {
   }
 
   /** Step with wrap-around, so down from the last row lands on the first. */
-  moveUp(steps: number): void {
+  moveBy(steps: number): void {
     const count = this.items.length;
-    if (count > 0) this.setSelectedIndex((((this.selected - steps) % count) + count) % count);
-  }
-
-  moveDown(steps: number): void {
-    const count = this.items.length;
-    if (count > 0) this.setSelectedIndex((this.selected + steps) % count);
+    if (count > 0) this.setSelectedIndex((((this.selected + steps) % count) + count) % count);
   }
 
   /** Local y is the item index, because this renderable never scrolls itself. */
@@ -142,9 +135,8 @@ class MenuRows extends Renderable {
     this.requestRender();
   }
 
-  protected override renderSelf(buffer: OptimizedBuffer, _deltaTime: number): void {
+  protected override renderSelf(buffer: OptimizedBuffer): void {
     if (!this.visible) return;
-    // Unbuffered, so every frame repaints and coordinates are absolute.
     const left = this.x;
     const top = this.y;
     buffer.fillRect(left, top, this.width, this.height, this.rowBackground);
@@ -156,7 +148,6 @@ class MenuRows extends Renderable {
         : index === this.hovered
           ? this.hoverBackground
           : this.rowBackground;
-      // The band spans the row, so a wide selection reads as one block.
       buffer.fillRect(left, top + index, this.width, 1, background);
       buffer.drawText(
         selected ? `${GLYPHS.prompt} ` : "  ",
@@ -166,7 +157,7 @@ class MenuRows extends Renderable {
         background,
       );
       buffer.drawText(
-        padEnd(truncate(item.label, labelColumn), labelColumn),
+        padDisplay(truncate(item.label, labelColumn), labelColumn),
         left + PREFIX_WIDTH,
         top + index,
         selected ? this.selectedForeground : this.foreground,
@@ -187,7 +178,7 @@ class MenuRows extends Renderable {
         background,
       );
       if (item.status?.tone === "ok") {
-        const statusOffset = columns(`${description}${separator}`);
+        const statusOffset = displayWidth(`${description}${separator}`);
         const statusWidth = width - statusOffset;
         if (statusWidth > 0) {
           buffer.drawText(
@@ -203,18 +194,15 @@ class MenuRows extends Renderable {
   }
 
   private labelColumnWidth(contentWidth: number): number {
-    const widest = Math.max(0, ...this.items.map((item) => columns(item.label)));
-    // Keep the full name whenever the row can hold it. Descriptions use the
-    // remaining columns and disappear before the command name is shortened.
+    const widest = Math.max(0, ...this.items.map((item) => displayWidth(item.label)));
     return Math.max(1, Math.min(widest, contentWidth));
   }
 }
 
 /**
  * Single-line menu rows: `❯ label  description`, labels in one aligned
- * column, the selected row drawn as a bold band. Mouse hover lifts a row one
- * shade; clicking one chooses it. Shared by the choice dialog and the slash
- * dropdown so both feel like one control.
+ * column, the selected row drawn as a bold band. Shared by the choice dialog
+ * and the slash dropdown so both feel like one control.
  *
  * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/views/slash_dropdown.rs
  */
@@ -225,7 +213,6 @@ export class MenuList {
   private readonly onSelect: (item: MenuItem, index: number) => void;
   private readonly onHighlight: ((item: MenuItem, index: number) => void) | undefined;
   private maxVisible: number;
-  /** The rows render from the base class's own options; the ids live here. */
   private items: readonly MenuItem[] = [];
 
   constructor(options: MenuListOptions) {
@@ -239,8 +226,6 @@ export class MenuList {
       scrollY: true,
       scrollX: false,
       verticalScrollbarOptions: { showArrows: false },
-      // Rows never overflow sideways, and the bar would otherwise take a row
-      // off the viewport before it works out it has nothing to scroll.
       horizontalScrollbarOptions: { visible: false },
       contentOptions: { flexDirection: "column" },
     });
@@ -260,6 +245,10 @@ export class MenuList {
       onMouseOut: () => this.rows.setHovered(undefined),
     });
     this.container.add(this.rows);
+    // Scrolling before Yoga sizes the content is clamped to zero. Restore
+    // the selected row after the scrollbox updates its actual bounds.
+    this.container.content.on("resize", () => this.scrollIntoView(this.selectedIndex));
+    this.container.viewport.on("resize", () => this.scrollIntoView(this.selectedIndex));
     this.setItems(options.items ?? [], options.selectedIndex ?? 0);
   }
 
@@ -271,17 +260,14 @@ export class MenuList {
     return this.items[this.selectedIndex];
   }
 
-  /** Rows currently on screen. */
   private get visibleCount(): number {
     return Math.min(this.items.length, this.maxVisible);
   }
 
-  /** Repaint a persistent list after the shared theme object changes. */
   retheme(theme: CliTheme, background: string): void {
     this.rows.retheme(theme, background);
   }
 
-  /** Change the viewport row budget without rebuilding the menu. */
   setMaxVisible(maxVisible: number): void {
     const next = Math.max(1, Math.floor(maxVisible));
     if (next === this.maxVisible) return;
@@ -297,24 +283,19 @@ export class MenuList {
     this.scrollIntoView(this.selectedIndex);
   }
 
-  /**
-   * Arrow, emacs and tab navigation plus paging. Enter is the caller's, and so
-   * are plain letters: the caller's query field is what has the keyboard, so
-   * the base class's `j`/`k` bindings would eat a word being typed.
-   */
+  /** Arrow, emacs and tab navigation plus paging. Enter and plain letters are the caller's. */
   handleNavigationKey(key: KeyEvent): boolean {
     if (this.items.length === 0) return false;
     const page = Math.max(1, this.maxVisible - 1);
     if (key.name === "up" || (key.name === "p" && key.ctrl) || (key.name === "tab" && key.shift)) {
-      this.rows.moveUp(1);
+      this.rows.moveBy(-1);
     } else if (
       key.name === "down" ||
       (key.name === "n" && key.ctrl) ||
       (key.name === "tab" && !key.shift)
     ) {
-      this.rows.moveDown(1);
+      this.rows.moveBy(1);
     } else if (key.name === "pageup") {
-      // Paging clamps where stepping wraps, so a page never jumps to the end.
       this.rows.setSelectedIndex(Math.max(0, this.selectedIndex - page));
     } else if (key.name === "pagedown") {
       this.rows.setSelectedIndex(Math.min(this.items.length - 1, this.selectedIndex + page));
@@ -345,8 +326,10 @@ export class MenuList {
   }
 
   private scrollIntoView(index: number): void {
+    const height = this.container.viewport.height;
+    if (height === 0) return;
     const top = this.container.scrollTop;
     if (index < top) this.container.scrollTo(index);
-    else if (index >= top + this.maxVisible) this.container.scrollTo(index - this.maxVisible + 1);
+    else if (index >= top + height) this.container.scrollTo(index - height + 1);
   }
 }

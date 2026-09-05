@@ -1,4 +1,4 @@
-import { isJsonObject, type Entry, type JsonValue } from "../harness/session/types.ts";
+import type { Entry } from "../harness/session/types.ts";
 import { diffStat, patchedPath, patchOf } from "./changes.ts";
 import type { ToolTurnPart } from "./transcript.ts";
 
@@ -33,14 +33,14 @@ export interface ToolLive {
 
 export interface ToolResultView {
   readonly output: string;
-  readonly details?: JsonValue;
+  readonly details?: unknown;
   readonly title?: string;
   readonly isError: boolean;
 }
 
 export interface ToolView {
   readonly toolName: string;
-  readonly args?: JsonValue;
+  readonly args?: unknown;
   readonly live?: ToolLive;
   readonly result?: ToolResultView;
 }
@@ -75,14 +75,18 @@ const DETAIL_ARGS: Readonly<Record<string, string>> = {
 
 const DETAIL_LIMIT = 80;
 
-function stringArg(args: JsonValue | undefined, key: string): string | undefined {
-  if (!isJsonObject(args)) return undefined;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringArg(args: unknown, key: string): string | undefined {
+  if (!isRecord(args)) return undefined;
   const value = args[key];
   return typeof value === "string" && value !== "" ? value : undefined;
 }
 
-function primitiveSummary(value: JsonValue | undefined): string | undefined {
-  if (!isJsonObject(value)) return undefined;
+function primitiveSummary(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
   const pairs: string[] = [];
   for (const [key, field] of Object.entries(value)) {
     if (typeof field === "string" || typeof field === "number" || typeof field === "boolean") {

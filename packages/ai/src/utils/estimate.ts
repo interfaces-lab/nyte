@@ -12,7 +12,7 @@ import type {
   TextContent,
   Tool,
   Usage,
-} from "@uji-ai/schema";
+} from "@nyte-ai/schema";
 
 export interface ContextUsageEstimate {
   /** Estimated total context tokens. */

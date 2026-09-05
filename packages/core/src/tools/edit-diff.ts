@@ -410,11 +410,7 @@ function generateUnifiedPatch(
  * Generate a display-oriented diff string with line numbers and context.
  * Returns both the diff string and the first changed line number (in the new file).
  */
-function generateDiffString(
-  oldContent: string,
-  newContent: string,
-  contextLines = 4,
-): { diff: string; firstChangedLine: number | undefined } {
+function generateDiffString(oldContent: string, newContent: string, contextLines = 4) {
   const parts = Diff.diffLines(oldContent, newContent);
   const output: string[] = [];
 

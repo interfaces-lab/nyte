@@ -1,16 +1,19 @@
-/** Fast mode is durable plugin policy, applied only to assistant requests. */
+/**
+ * Fast mode from a user's seat: a toggle that changes what the provider is
+ * asked for, survives a restart, and follows the provider it was set for.
+ */
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
-import { EventStream } from "@uji-ai/ai";
-import type { StreamFn } from "@uji-ai/core";
-import { definePlugin, inlinePlugin, systemPromptPlugin } from "@uji-ai/plugin";
-import type { AssistantMessage, AssistantMessageEvent, Model } from "@uji-ai/schema";
-import { FAST_MODE_PLUGIN_ID, fastModePlugin, readFastMode } from "../examples/fast-mode.ts";
-import { prompt, runCommand, settingOf, TestWorkspace } from "./host.ts";
+import { afterEach, describe, test } from "vitest";
+import type { Nyte, StreamFn } from "@nyte-ai/core";
+import { definePlugin, inlinePlugin, systemPromptPlugin } from "@nyte-ai/plugin";
+import type { Api, Model } from "@nyte-ai/schema";
+import { FAST_MODE_PLUGIN_ID, fastModePlugin, fastModeSettingId } from "../examples/fast-mode.ts";
+import type { FastModeModelCatalog } from "../examples/fast-mode.ts";
+import { prompt, respond, runCommand, settingOf, testModel, TestWorkspace } from "./host.ts";
 
 const workspaces: TestWorkspace[] = [];
 afterEach(async () => {
-  for (const workspace of workspaces.splice(0)) await workspace.close();
+  for (const opened of workspaces.splice(0)) await opened.close();
 });
 
 function workspace(prefix: string): TestWorkspace {
@@ -19,63 +22,61 @@ function workspace(prefix: string): TestWorkspace {
   return created;
 }
 
-const fastModel: Model<"openai-responses"> = {
+const fastModel: Model<Api> = {
+  ...testModel,
   id: "fast-model",
   name: "Fast model",
-  api: "openai-responses",
   provider: "openai",
-  baseUrl: "https://example.invalid",
-  reasoning: false,
   modes: ["fast"],
-  input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-  contextWindow: 100_000,
-  maxTokens: 1_000,
 };
 
-function stop(model: Model<"openai-responses">): ReturnType<StreamFn> {
-  const message: AssistantMessage = {
-    role: "assistant",
-    content: [{ type: "text", text: "done" }],
-    api: "openai-responses",
-    provider: "openai",
-    model: model.id,
-    usage: {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
+const normalModel: Model<Api> = {
+  ...testModel,
+  id: "normal-model",
+  name: "Normal model",
+  provider: "openai",
+};
+
+function fastPlugin(
+  defaultModel: Model<Api>,
+  catalogModels: readonly Model<Api>[] = [defaultModel],
+) {
+  const models: FastModeModelCatalog = {
+    getModels: () => catalogModels,
+    getModel: (providerId, id) =>
+      catalogModels.find((model) => model.provider === providerId && model.id === id),
   };
-  const events = new EventStream<AssistantMessageEvent, AssistantMessage>(
-    (event) => event.type === "done" || event.type === "error",
-    (event) => {
-      if (event.type === "done") return event.message;
-      if (event.type === "error") return event.error;
-      throw new Error("stream ended without a terminal event");
-    },
-  );
-  queueMicrotask(() => events.push({ type: "done", reason: "stop", message }));
-  return events;
+  return fastModePlugin({ models, defaultModel });
 }
 
-void describe("fast mode plugin", () => {
-  void test("persists its selection and leaves compaction on the normal tier", async () => {
-    const world = workspace("uji-fast-mode-");
-    const seen: (boolean | undefined)[] = [];
-    const streamFn: StreamFn = (model, _context, options) => {
-      seen.push(options?.fast);
-      return stop(model as Model<"openai-responses">);
-    };
-    const plugins = [
-      inlinePlugin(systemPromptPlugin("sys")),
-      inlinePlugin(fastModePlugin(fastModel)),
-    ];
-    const open = () =>
+interface ProviderRequest {
+  readonly model: string;
+  readonly fast: boolean | undefined;
+}
+
+interface ScriptedProvider {
+  readonly streamFn: StreamFn;
+  readonly requests: readonly ProviderRequest[];
+}
+
+/** A provider that answers "done" and records what each request asked for. */
+function provider(): ScriptedProvider {
+  const requests: ProviderRequest[] = [];
+  const streamFn: StreamFn = (model, _context, options) => {
+    requests.push({ model: model.id, fast: options?.fast });
+    return respond(model, [{ type: "text", text: "done" }]);
+  };
+  return { streamFn, requests };
+}
+
+const fastOf = (requests: readonly ProviderRequest[]) => requests.map((request) => request.fast);
+
+describe("fast mode plugin", () => {
+  test("a toggle reaches the provider, survives a restart, and leaves compaction on the normal tier", async () => {
+    const world = workspace("nyte-fast-mode-");
+    const { streamFn, requests } = provider();
+    const plugins = [inlinePlugin(systemPromptPlugin("sys")), inlinePlugin(fastPlugin(fastModel))];
+    const open = (): Promise<Nyte> =>
       world.open({
         streamFn,
         plugins,
@@ -85,46 +86,33 @@ void describe("fast mode plugin", () => {
 
     let sdk = await open();
     const { sessionId } = world;
-    const currentFast = () => settingOf(sdk, sessionId, "fast");
+    const settingId = fastModeSettingId(fastModel.provider);
 
-    assert.equal(await readFastMode(await world.facts(), fastModel), false);
-    assert.equal(await currentFast(), "off");
+    assert.equal(await settingOf(sdk, sessionId, settingId), "off");
     assert.equal(await runCommand(sdk, sessionId, "fast"), "Fast mode: on");
-    assert.equal(await currentFast(), "on");
+    assert.equal(await settingOf(sdk, sessionId, settingId), "on");
     await prompt(sdk, sessionId, "one");
     await prompt(sdk, sessionId, "two");
-    assert.deepEqual(seen, [true, true]);
+    assert.deepEqual(fastOf(requests), [true, true]);
 
-    const callsBeforeCompaction = seen.length;
+    const beforeCompaction = requests.length;
     const compacted = await sdk.runs.compact({ sessionId });
-    assert.equal(compacted.kind, "compacted");
-    const compactionCalls = seen.slice(callsBeforeCompaction);
-    assert.ok(compactionCalls.length > 0);
-    assert.equal(
-      compactionCalls.every((fast) => fast === undefined),
-      true,
+    assert.equal(compacted.kind, "compacted", JSON.stringify(compacted));
+    const compactionRequests = requests.slice(beforeCompaction);
+    assert.ok(compactionRequests.length > 0, "compaction asked the model for a summary");
+    assert.deepEqual(
+      fastOf(compactionRequests),
+      compactionRequests.map(() => undefined),
     );
     await sdk.close();
 
-    const normalModel = {
-      ...fastModel,
-      id: "normal-model",
-      name: "Normal model",
-      modes: undefined,
-    };
-    sdk = await world.open({
-      streamFn,
-      plugins: [inlinePlugin(systemPromptPlugin("sys")), inlinePlugin(fastModePlugin(normalModel))],
-      model: normalModel,
-    });
-    assert.equal(await readFastMode(await world.facts(), normalModel), false);
-    await sdk.close();
-
+    // A second host over the same store sees the selection without being told.
     sdk = await open();
-    assert.equal(await readFastMode(await world.facts(), fastModel), true);
+    assert.equal(await settingOf(sdk, sessionId, settingId), "on");
     await prompt(sdk, sessionId, "three");
-    assert.equal(seen.at(-1), true);
+    assert.equal(requests.at(-1)?.fast, true);
 
+    // Later plugins patch over earlier ones.
     await sdk.setPlugins([
       ...plugins,
       inlinePlugin(
@@ -137,85 +125,131 @@ void describe("fast mode plugin", () => {
       ),
     ]);
     await prompt(sdk, sessionId, "four");
-    assert.equal(seen.at(-1), false);
+    assert.equal(requests.at(-1)?.fast, false);
   });
 
-  void test("keeps a selection with the provider it was made for", async () => {
-    const world = workspace("uji-fast-mode-provider-");
+  test("keeps a selection with the provider it was made for", async () => {
+    const world = workspace("nyte-fast-mode-provider-");
     // Same session, same advertised mode, different price per token.
-    const otherModel = { ...fastModel, id: "other-fast-model", provider: "anthropic" };
-    const seen: (boolean | undefined)[] = [];
-    const open = (model: Model<"openai-responses">) =>
+    const otherModel: Model<Api> = { ...fastModel, id: "other-fast-model", provider: "anthropic" };
+    const catalog = [fastModel, otherModel];
+    const { streamFn, requests } = provider();
+    const open = (model: Model<Api>): Promise<Nyte> =>
       world.open({
-        streamFn: (requestedModel, _context, options) => {
-          seen.push(options?.fast);
-          return stop(requestedModel as Model<"openai-responses">);
-        },
-        plugins: [inlinePlugin(fastModePlugin(model))],
+        streamFn,
+        plugins: [inlinePlugin(fastPlugin(model, catalog))],
         model,
+        models: catalog,
       });
 
     let sdk = await open(fastModel);
     const { sessionId } = world;
     assert.equal(await runCommand(sdk, sessionId, "fast"), "Fast mode: on");
     await prompt(sdk, sessionId, "one");
-    assert.equal(seen.at(-1), true);
+    assert.deepEqual(requests.at(-1), { model: fastModel.id, fast: true });
     await sdk.close();
 
     sdk = await open(otherModel);
-    assert.equal(await readFastMode(await world.facts(), otherModel), false);
+    assert.equal(await settingOf(sdk, sessionId, fastModeSettingId("openai")), "on");
+    assert.equal(await settingOf(sdk, sessionId, fastModeSettingId("anthropic")), "off");
     await prompt(sdk, sessionId, "two");
-    assert.equal(seen.at(-1), undefined);
+    assert.deepEqual(requests.at(-1), { model: otherModel.id, fast: undefined });
     await sdk.close();
 
     sdk = await open(fastModel);
-    assert.equal(await readFastMode(await world.facts(), fastModel), true);
+    await prompt(sdk, sessionId, "three");
+    assert.deepEqual(requests.at(-1), { model: fastModel.id, fast: true });
   });
 
-  void test("applies a setting by writing the owning plugin's storage", async () => {
-    const world = workspace("uji-fast-mode-apply-");
+  test("checks the requested model instead of the host fallback", async () => {
+    const world = workspace("nyte-fast-mode-selected-model-");
+    const { streamFn, requests } = provider();
+    const catalog = [normalModel, fastModel];
     const sdk = await world.open({
-      streamFn: (requestedModel) => stop(requestedModel as Model<"openai-responses">),
-      plugins: [inlinePlugin(fastModePlugin(fastModel))],
+      streamFn,
+      plugins: [inlinePlugin(fastPlugin(normalModel, catalog))],
+      model: normalModel,
+      models: catalog,
+    });
+    const { sessionId } = world;
+
+    assert.deepEqual(
+      await sdk.plugins.settings.apply({
+        sessionId,
+        id: fastModeSettingId(fastModel.provider),
+        choiceId: "on",
+      }),
+      { kind: "applied" },
+    );
+    await prompt(sdk, sessionId, "normal");
+    assert.deepEqual(requests.at(-1), { model: normalModel.id, fast: undefined });
+
+    const configured = await sdk.sessions.configure({
+      sessionId,
+      model: { provider: fastModel.provider, id: fastModel.id },
+    });
+    assert.equal(configured.kind, "queued");
+    await prompt(sdk, sessionId, "fast");
+    assert.deepEqual(requests.at(-1), { model: fastModel.id, fast: true });
+  });
+
+  test("the setting and the command move the same switch", async () => {
+    const world = workspace("nyte-fast-mode-apply-");
+    const { streamFn, requests } = provider();
+    const sdk = await world.open({
+      streamFn,
+      plugins: [inlinePlugin(fastPlugin(fastModel))],
       model: fastModel,
     });
     const { sessionId } = world;
+    const settingId = fastModeSettingId(fastModel.provider);
 
     const listed = await sdk.plugins.settings.list({ sessionId });
     assert.deepEqual(
       listed.map(({ id, owner, current }) => ({ id, owner, current })),
-      [{ id: "fast", owner: FAST_MODE_PLUGIN_ID, current: "off" }],
+      [{ id: settingId, owner: FAST_MODE_PLUGIN_ID, current: "off" }],
+    );
+    assert.deepEqual(
+      listed[0]?.choices.map((choice) => [choice.id, choice.status]),
+      [
+        ["on", "fast"],
+        ["off", undefined],
+      ],
     );
 
     const apply = (id: string, choiceId: string) =>
       sdk.plugins.settings.apply({ sessionId, id, choiceId });
-    assert.deepEqual(await apply("fast", "on"), { kind: "applied" });
-    assert.equal(await readFastMode(await world.facts(), fastModel), true);
-    assert.equal(await settingOf(sdk, sessionId, "fast"), "on");
-    // The command reads the same fact the setting wrote.
-    assert.equal(await runCommand(sdk, sessionId, "fast"), "Fast mode: off");
+    assert.deepEqual(await apply(settingId, "on"), { kind: "applied" });
+    assert.equal(await settingOf(sdk, sessionId, settingId), "on");
+    await prompt(sdk, sessionId, "one");
+    assert.equal(requests.at(-1)?.fast, true);
 
-    assert.deepEqual(await apply("fast", "sideways"), { kind: "invalid_choice" });
+    // The command toggles what the setting wrote.
+    assert.equal(await runCommand(sdk, sessionId, "fast"), "Fast mode: off");
+    assert.equal(await settingOf(sdk, sessionId, settingId), "off");
+    await prompt(sdk, sessionId, "two");
+    assert.equal(requests.at(-1)?.fast, undefined);
+
+    assert.deepEqual(await apply(settingId, "sideways"), { kind: "invalid_choice" });
     assert.deepEqual(await apply("missing", "on"), { kind: "not_found" });
   });
 
-  void test("contributes nothing when the selected model does not advertise fast mode", async () => {
-    const world = workspace("uji-fast-mode-unavailable-");
-    const model = { ...fastModel, id: "normal-model", name: "Normal model", modes: undefined };
+  test("contributes nothing when the selected model does not advertise fast mode", async () => {
+    const world = workspace("nyte-fast-mode-unavailable-");
+    const { streamFn, requests } = provider();
     const sdk = await world.open({
-      streamFn: (requestedModel) => stop(requestedModel as Model<"openai-responses">),
-      plugins: [inlinePlugin(fastModePlugin(model))],
-      model,
+      streamFn,
+      plugins: [inlinePlugin(fastPlugin(normalModel))],
+      model: normalModel,
     });
     const { sessionId } = world;
 
-    const named = (list: readonly { name?: string; id?: string }[], key: string) =>
-      list.some((item) => item.name === key || item.id === key);
-    assert.equal(named(await sdk.plugins.commands.list({ sessionId }), "fast"), false);
-    assert.equal(named(await sdk.plugins.settings.list({ sessionId }), "fast"), false);
+    assert.deepEqual(await sdk.plugins.commands.list({ sessionId }), []);
+    assert.deepEqual(await sdk.plugins.settings.list({ sessionId }), []);
     assert.deepEqual(await sdk.plugins.commands.run({ sessionId, name: "fast" }), {
       kind: "not_found",
     });
-    assert.equal(await readFastMode(await world.facts(), model), false);
+    await prompt(sdk, sessionId, "one");
+    assert.deepEqual(requests, [{ model: normalModel.id, fast: undefined }]);
   });
 });

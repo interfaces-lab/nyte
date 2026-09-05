@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import {
   acquireSessionResources,
   registerSessionResourceCleanup,
 } from "../src/session-resources.ts";
 
-void describe("provider session resource leases", () => {
-  void test("cleans a session only after its last harness releases it", () => {
+describe("provider session resource leases", () => {
+  test("cleans a session only after its last harness releases it", () => {
     const cleaned: Array<string | undefined> = [];
     const unregister = registerSessionResourceCleanup((sessionId) => cleaned.push(sessionId));
     try {
@@ -23,7 +23,7 @@ void describe("provider session resource leases", () => {
     }
   });
 
-  void test("tracks different sessions independently", () => {
+  test("tracks different sessions independently", () => {
     const cleaned: Array<string | undefined> = [];
     const unregister = registerSessionResourceCleanup((sessionId) => cleaned.push(sessionId));
     try {

@@ -5,7 +5,7 @@
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/trust-manager.ts
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 
 const trustedWorkspace: unique symbol = Symbol("TrustedWorkspace");
@@ -36,9 +36,17 @@ export class WorkspaceTrustRequired extends Error {
 
 type TrustFile = Record<string, true>;
 
-function parseTrustFile(text: string): TrustFile {
+function isTrustObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isMissingFileError(cause: unknown): cause is { readonly code: "ENOENT" } {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+}
+
+function parseTrustFile(text: string) {
   const value: unknown = JSON.parse(text);
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (!isTrustObject(value)) {
     throw new Error("Workspace trust file must be an object");
   }
 
@@ -56,6 +64,18 @@ function trusted(cwd: string): TrustedWorkspace {
   return Object.freeze({ cwd, [trustedWorkspace]: true as const });
 }
 
+async function workspaceDirectory(cwd: string): Promise<string> {
+  const path = resolve(cwd);
+  const realPath = await realpath(path).catch((cause: unknown) => {
+    if (isMissingFileError(cause)) throw new Error(`Workspace folder not found: ${path}`);
+    throw cause;
+  });
+  if (!(await stat(realPath)).isDirectory()) {
+    throw new Error(`Workspace path is not a folder: ${path}`);
+  }
+  return realPath;
+}
+
 function trustedAncestor(cwd: string, decisions: TrustFile): string | undefined {
   let candidate = cwd;
   while (true) {
@@ -68,7 +88,7 @@ function trustedAncestor(cwd: string, decisions: TrustFile): string | undefined 
 
 /**
  * Owns realpath decisions and serializes read-modify-write operations.
- * Callers choose the durable file location; hosts commonly use `~/.uji/trust.json`.
+ * Callers choose the durable file location; hosts commonly use `~/.nyte/trust.json`.
  */
 export class WorkspaceTrustStore {
   readonly path: string;
@@ -81,7 +101,7 @@ export class WorkspaceTrustStore {
 
   resolve(cwd: string): Promise<WorkspaceTrustResolution> {
     return this.serialized(async () => {
-      const realPath = await realpath(resolve(cwd));
+      const realPath = await workspaceDirectory(cwd);
       const inheritedFrom = trustedAncestor(realPath, await this.read());
       return inheritedFrom === undefined
         ? { kind: "unknown", cwd: realPath }
@@ -97,7 +117,7 @@ export class WorkspaceTrustStore {
 
   trust(cwd: string): Promise<TrustedWorkspace> {
     return this.serialized(async () => {
-      const realPath = await realpath(resolve(cwd));
+      const realPath = await workspaceDirectory(cwd);
       const decisions = await this.read();
       decisions[realPath] = true;
       await this.write(decisions);
@@ -127,16 +147,9 @@ export class WorkspaceTrustStore {
   private async read(): Promise<TrustFile> {
     try {
       return parseTrustFile(await readFile(this.path, "utf8"));
-    } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        return {};
-      }
-      throw error;
+    } catch (cause) {
+      if (isMissingFileError(cause)) return {};
+      throw cause;
     }
   }
 

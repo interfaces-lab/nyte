@@ -1,6 +1,6 @@
 /** `fast` is the user-facing name; OpenAI receives its existing priority tier. */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { streamSimple as streamCodex } from "../src/api/openai-codex-responses.ts";
 import { streamSimple as streamOpenAI } from "../src/api/openai-responses.ts";
 import { OPENAI_CODEX_MODELS } from "../src/providers/openai-codex.models.ts";
@@ -44,8 +44,8 @@ function capture(): { seen: { body?: unknown }; options: SimpleStreamOptions } {
   };
 }
 
-void describe("OpenAI fast mode", () => {
-  void test("maps fast to the priority tier for OpenAI and Codex", async () => {
+describe("OpenAI fast mode", () => {
+  test("maps fast to the priority tier for OpenAI and Codex", async () => {
     const codex = capture();
     await streamCodex(codexModel, context, {
       ...codex.options,

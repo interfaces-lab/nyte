@@ -1,116 +1,158 @@
+/**
+ * Slash tokens, decided once here. A token is one of three kinds:
+ *
+ * - `action`: runs the moment Enter accepts it and leaves the composer empty,
+ *   with whatever argument was typed after it. Built-in verbs and plugin
+ *   commands.
+ * - `setting`: `/name` opens the choice picker; `/name <choice>` applies the
+ *   choice at once. The model, the thinking level, the theme, and every
+ *   setting a plugin declares.
+ * - `prompt`: stays in the composer; the token expands into the message when
+ *   it is sent. Skills.
+ *
+ * Also the parser that classifies a draft as chat or command, completion for
+ * the token under the cursor, and inline skill expansion. Nothing here touches
+ * a renderer.
+ *
+ * Based on opencode v2, where every slash command executes on Enter and only
+ * prompt templates and skills reach the model:
+ * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/prompt/autocomplete.tsx
+ */
 import fuzzysort from "fuzzysort";
-import type { Skill } from "@uji-ai/schema";
+import { completionTrigger } from "@nyte-ai/core";
+import { formatSkillInvocation } from "@nyte-ai/core/plugins";
+import type { Skill } from "@nyte-ai/schema";
 
-import { completionTrigger } from "./completion-trigger.ts";
-import { formatSkillInvocation } from "@uji-ai/core/plugins";
+export interface ParsedSlashCommand {
+  readonly name: string;
+  readonly argument: string;
+}
+
+export type ComposerSubmission =
+  | { readonly kind: "empty" }
+  | { readonly kind: "command"; readonly command: ParsedSlashCommand }
+  | { readonly kind: "prompt"; readonly text: string };
+
+function isAsciiLetter(character: string | undefined): boolean {
+  if (character === undefined) return false;
+  const code = character.charCodeAt(0);
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+}
+
+function isSlashCommandNameCharacter(character: string): boolean {
+  const code = character.charCodeAt(0);
+  return isAsciiLetter(character) || (code >= 48 && code <= 57) || character === "-";
+}
+
+/** Parse one slash command while preserving spaces inside its argument. */
+export function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
+  const value = input.trim();
+  const first = value[1];
+  if (
+    !value.startsWith("/") ||
+    first === undefined ||
+    first === "-" ||
+    !isSlashCommandNameCharacter(first)
+  ) {
+    return undefined;
+  }
+  if (value.includes("\n") || value.includes("\r")) return undefined;
+
+  let nameEnd = 2;
+  while (nameEnd < value.length) {
+    const character = value[nameEnd];
+    if (character === undefined || character.trim() === "") break;
+    if (!isSlashCommandNameCharacter(character)) return undefined;
+    nameEnd += 1;
+  }
+
+  return {
+    name: value.slice(1, nameEnd).toLowerCase(),
+    argument: value.slice(nameEnd).trim(),
+  };
+}
+
+/** Classify composer text once at the chat-or-command boundary. */
+export function parseComposerSubmission(input: string): ComposerSubmission {
+  const text = input.trim();
+  if (text === "") return { kind: "empty" };
+  const command = parseSlashCommand(text);
+  return command === undefined ? { kind: "prompt", text } : { kind: "command", command };
+}
+
+export type SlashKind = "action" | "setting" | "prompt";
 
 export interface SlashCommand {
-  name: string;
-  description: string;
-  aliases?: readonly string[];
-  argument?: { kind: "required"; hint: `<${string}>` } | { kind: "optional" } | { kind: "prompt" };
+  readonly name: string;
+  readonly description: string;
+  readonly kind: SlashKind;
+  readonly aliases?: readonly string[];
 }
 
 export const SLASH_COMMANDS = [
-  { name: "help", description: "Browse commands" },
-  { name: "settings", description: "Change settings" },
-  { name: "theme", description: "Switch color theme" },
-  { name: "quit", description: "Quit Uji", aliases: ["exit"] },
+  { name: "help", description: "Browse commands", kind: "action" },
+  { name: "settings", description: "Change settings", kind: "action" },
+  { name: "login", description: "Sign in to a provider", kind: "action" },
+  { name: "logout", description: "Sign out of a provider", kind: "action" },
+  { name: "quit", description: "Quit Nyte", kind: "action", aliases: ["exit"] },
   {
     name: "resume",
-    description: "Resume a previous chat",
+    description: "Resume a chat or subagent",
+    kind: "action",
     aliases: ["sessions", "continue"],
   },
-  { name: "new", description: "Start a new chat" },
-  {
-    name: "name",
-    description: "Name the current chat",
-    argument: { kind: "required", hint: "<name>" },
-  },
-  { name: "title", description: "Name this chat from its first message" },
-  {
-    name: "login",
-    description: "Log in to a provider",
-    argument: { kind: "optional" },
-  },
-  {
-    name: "logout",
-    description: "Log out of a provider",
-    argument: { kind: "optional" },
-  },
-  {
-    name: "provider",
-    description: "Switch provider",
-    aliases: ["providers"],
-    argument: { kind: "optional" },
-  },
-  {
-    name: "model",
-    description: "Switch model",
-    aliases: ["models"],
-    argument: { kind: "optional" },
-  },
-  {
-    name: "effort",
-    description: "Change thinking level",
-    aliases: ["thinking"],
-    argument: { kind: "optional" },
-  },
-  {
-    name: "compact",
-    description: "Compact conversation history",
-    argument: { kind: "optional" },
-  },
-  { name: "usage", description: "Show token usage and cost" },
-  {
-    name: "cd",
-    description: "Change the working directory",
-    argument: { kind: "required", hint: "<directory>" },
-  },
-  { name: "tree", description: "Move to a session branch" },
-  { name: "edit", description: "Edit a message you sent" },
-  { name: "plugins", description: "List loaded plugins" },
-  { name: "reload", description: "Reload plugins and redraw the chat" },
-  {
-    name: "update",
-    description: "Update uji to the latest release",
-    argument: { kind: "optional" },
-  },
-  { name: "skills", description: "Browse skills" },
+  { name: "new", description: "Start a new chat", kind: "action" },
+  { name: "compact", description: "Compact conversation history", kind: "action" },
+  { name: "usage", description: "Show token usage and cost", kind: "action" },
+  { name: "tasks", description: "Inspect subagents and shell output", kind: "action" },
+  { name: "tree", description: "Move to a session branch", kind: "action" },
+  { name: "edit", description: "Edit a message you sent", kind: "action" },
+  { name: "plugins", description: "List loaded plugins", kind: "action" },
+  { name: "reload", description: "Reload plugins and redraw the chat", kind: "action" },
+  { name: "update", description: "Update nyte to the latest release", kind: "action" },
+  { name: "skills", description: "Browse skills", kind: "action" },
 ] as const satisfies readonly SlashCommand[];
 
-type RegisteredSlashCommand = (typeof SLASH_COMMANDS)[number] & SlashCommand;
-
-/** Project host commands and skills into the CLI namespace without shadowing earlier entries. */
-export function availableSlashCommands(
-  pluginCommands: ReadonlyMap<string, { description: string }>,
-  skills: ReadonlyMap<string, Skill>,
-): SlashCommand[] {
-  const staticCommands: readonly SlashCommand[] = SLASH_COMMANDS;
-  const reserved = new Set(
-    staticCommands.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
-  );
-  const projectedPlugins = [...pluginCommands].flatMap(([name, command]) => {
-    if (reserved.has(name)) return [];
-    reserved.add(name);
-    return [{ name, description: command.description }];
-  });
-  const projectedSkills = [...skills].flatMap(([name, skill]) =>
-    reserved.has(name)
-      ? []
-      : [
-          {
-            name,
-            description: skill.description,
-            argument: { kind: "prompt" as const },
-          },
-        ],
-  );
-  return [...staticCommands, ...projectedPlugins, ...projectedSkills];
-}
+export type BuiltinSlashCommand = (typeof SLASH_COMMANDS)[number];
+export type BuiltinSlashName = BuiltinSlashCommand["name"];
 
 function aliasesFor(command: SlashCommand): readonly string[] {
   return command.aliases ?? [];
+}
+
+/** A setting the shell can open or apply by name. */
+export interface SlashSetting {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * The whole namespace, first claim wins: built-ins, then settings, then
+ * plugin commands, then skills.
+ */
+export function availableSlashCommands(
+  pluginCommands: ReadonlyMap<string, { readonly description: string }>,
+  settings: readonly SlashSetting[],
+  skills: ReadonlyMap<string, Skill>,
+): SlashCommand[] {
+  const builtins: readonly SlashCommand[] = SLASH_COMMANDS;
+  const reserved = new Set(builtins.flatMap((command) => [command.name, ...aliasesFor(command)]));
+  const claimed: SlashCommand[] = [...builtins];
+  const claim = (command: SlashCommand): void => {
+    if (reserved.has(command.name)) return;
+    reserved.add(command.name);
+    claimed.push(command);
+  };
+  for (const setting of settings) {
+    claim({ name: setting.id, description: setting.label, kind: "setting" });
+  }
+  for (const [name, command] of pluginCommands) {
+    claim({ name, description: command.description, kind: "action" });
+  }
+  for (const [name, skill] of skills) {
+    claim({ name, description: skill.description, kind: "prompt" });
+  }
+  return claimed;
 }
 
 const MAX_SUGGESTIONS = 10;
@@ -119,14 +161,10 @@ const DESCRIPTION_MATCH = 0.5;
 /** Shorter than this, a query is being typed toward a name, not searched for a topic. */
 const DESCRIPTION_QUERY = 3;
 
-function searchNames(command: SlashCommand): readonly string[] {
-  return [command.name, ...aliasesFor(command)];
-}
-
 /** Length of the shortest name or alias the query is a prefix of. */
 function prefixLength(command: SlashCommand, query: string): number | undefined {
   let shortest: number | undefined;
-  for (const name of searchNames(command)) {
+  for (const name of [command.name, ...aliasesFor(command)]) {
     if (!name.toLowerCase().startsWith(query)) continue;
     if (shortest === undefined || name.length < shortest) shortest = name.length;
   }
@@ -136,12 +174,9 @@ function prefixLength(command: SlashCommand, query: string): number | undefined 
 /**
  * What a typed name should find, in the order a typist expects it: everything
  * the query is a prefix of, shortest first, then fuzzy name matches, and only
- * then descriptions. Ranking descriptions with names is what used to bury
- * `/usage` under every skill whose blurb happens to spell u-s-a-g-e.
- *
- * An empty query lists the whole namespace A–Z, which is the menu `/` opens.
+ * then descriptions. An empty query lists the whole namespace A–Z.
  */
-function commandSuggestions(
+export function commandSuggestions(
   query: string,
   commands: readonly SlashCommand[],
 ): SlashCommand[] {
@@ -162,7 +197,6 @@ function commandSuggestions(
   const fuzzy = fuzzysort.go(needle, rest, {
     keys: [(command) => command.name, (command) => aliasesFor(command).join(" "), "description"],
     limit: MAX_SUGGESTIONS,
-    // Drops the coincidences scoreFn zeroes out.
     threshold: 0.001,
     scoreFn(results) {
       const named = Math.max(results[0]?.score ?? 0, results[1]?.score ?? 0);
@@ -185,22 +219,16 @@ function opensDraft(text: string, start: number): boolean {
 }
 
 /** The `/token` the cursor is inside, with the commands it matches. */
-interface SlashCompletion {
+export interface SlashCompletion {
   /** The token an accepted command replaces. */
-  start: number;
-  end: number;
+  readonly start: number;
+  readonly end: number;
   /** Whether the token opens the buffer rather than interrupting a draft. */
-  leading: boolean;
-  commands: SlashCommand[];
+  readonly leading: boolean;
+  readonly commands: readonly SlashCommand[];
 }
 
-/**
- * Slash completion for the token under the cursor. Every command remains
- * available inside a draft. Prompt commands become inline invocations, while
- * selecting an action command can run it without discarding the draft.
- *
- * `undefined` means the cursor is not in a slash token at all.
- */
+/** `undefined` means the cursor is not in a slash token at all. */
 export function slashCompletion(
   value: string,
   commands: readonly SlashCommand[] = SLASH_COMMANDS,
@@ -216,40 +244,34 @@ export function slashCompletion(
   };
 }
 
-/**
- * `/name` tokens the way the composer writes them: at the start of a word, in
- * the same character set the command parser accepts.
- */
+/** `/name` tokens the way the composer writes them: at the start of a word. */
 const INLINE_SKILL_PATTERN = /(?<=^|\s)\/([A-Za-z][A-Za-z0-9-]*)/g;
 
-/** The skills a draft names, as spans over its text. */
-function* skillTokens(
-  text: string,
-  skills: ReadonlyMap<string, Skill>,
-): Generator<{ start: number; end: number; skill: Skill }> {
+interface SkillToken {
+  readonly start: number;
+  readonly end: number;
+  readonly skill: Skill;
+}
+
+function skillTokens(text: string, skills: ReadonlyMap<string, Skill>): SkillToken[] {
+  const tokens: SkillToken[] = [];
   for (const match of text.matchAll(INLINE_SKILL_PATTERN)) {
     const skill = skills.get(match[1] ?? "");
     if (skill === undefined) continue;
-    yield { start: match.index, end: match.index + match[0].length, skill };
+    tokens.push({ start: match.index, end: match.index + match[0].length, skill });
   }
+  return tokens;
 }
 
-/**
- * Whether a draft invokes a skill from inside the prompt. A skill at the head
- * is a command line, which `runCommand` already expands; anything past it means
- * the message itself carries invocations and has to go out as a prompt.
- */
+/** Whether a draft invokes a skill from inside the prompt rather than at its head. */
 export function hasInlineSkills(text: string, skills: ReadonlyMap<string, Skill>): boolean {
-  for (const token of skillTokens(text, skills)) {
-    if (!opensDraft(text, token.start)) return true;
-  }
-  return false;
+  return skillTokens(text, skills).some((token) => !opensDraft(text, token.start));
 }
 
 /**
  * Replace every `/skill` token with that skill's instructions, so one message
- * can invoke several. The prompt the model sees carries the instructions; the
- * composer, the history, and the transcript keep the short token.
+ * can invoke several. The composer, the history, and the transcript keep the
+ * short token.
  */
 export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Skill>): string {
   let expanded = "";
@@ -261,16 +283,15 @@ export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Ski
   return expanded + text.slice(cursor);
 }
 
-interface SkillInvocation {
-  source: string;
-  name: string;
-  path: string;
+export interface SkillInvocation {
+  readonly source: string;
+  readonly name: string;
+  readonly path: string;
 }
 
 /**
  * Core writes a skill invocation as one `<skill>` block, so a client can find
- * the instructions again and show the short token the user typed instead. A
- * client that ignores the block still shows the model exactly what it saw.
+ * the instructions again and show the short token the user typed instead.
  */
 const SKILL_INVOCATION_PATTERN =
   /<skill name="([^"\n]*)" location="([^"\n]*)">\n[\s\S]*?\n<\/skill>/g;
@@ -285,51 +306,34 @@ function unescapeXml(value: string): string {
 }
 
 export function extractSkillInvocations(text: string): SkillInvocation[] {
-  return [...text.matchAll(SKILL_INVOCATION_PATTERN)].flatMap((match) => {
+  const invocations: SkillInvocation[] = [];
+  for (const match of text.matchAll(SKILL_INVOCATION_PATTERN)) {
     const [source, name, path] = match;
-    if (name === undefined || path === undefined) return [];
-    return [{ source, name: unescapeXml(name), path: unescapeXml(path) }];
-  });
+    if (name === undefined || path === undefined) continue;
+    invocations.push({ source, name: unescapeXml(name), path: unescapeXml(path) });
+  }
+  return invocations;
 }
 
-export function resolveSlashCommand(name: string): RegisteredSlashCommand | undefined {
+export function resolveSlashCommand(name: string): BuiltinSlashCommand | undefined {
   return SLASH_COMMANDS.find(
     (command) => command.name === name || aliasesFor(command).includes(name),
   );
 }
 
-/** Choices for the dedicated skill palette: name, then description, A–Z. */
-export function skillPaletteItems(
-  skills: ReadonlyMap<string, Skill>,
-): readonly { id: string; label: string; description: string }[] {
-  return [...skills.values()]
-    .toSorted((left, right) => left.name.localeCompare(right.name))
-    .map((skill) => ({
-      id: skill.name,
-      label: skill.name,
-      description: skill.description,
-    }));
-}
-
 export function slashCommandLabel(command: SlashCommand): string {
-  return `/${command.name}${command.argument?.kind === "required" ? ` ${command.argument.hint}` : ""}`;
+  return `/${command.name}`;
 }
 
-/** The composer text for a command: `/name`, plus a trailing space when it takes an argument. */
-function slashCommandInput(command: SlashCommand): string {
-  return `/${command.name}${command.argument === undefined ? "" : " "}`;
-}
-
-type SlashAcceptance = { action: "execute" } | { action: "complete"; token: string };
+export type SlashAcceptance =
+  | { readonly action: "execute" }
+  | { readonly action: "complete"; readonly token: string };
 
 /**
- * What accepting a selected command does. Enter executes ordinary commands,
- * while required arguments and skill prompts complete `/name ` in the composer.
- * Tab only ever completes. The selection already names the command, whether the
- * user typed a partial name, alias, or exact name. The returned token replaces
- * the typed one, so text drafted after it survives as the command's argument.
- *
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/slash/mod.rs
+ * What accepting a highlighted command does. Enter runs an action or a
+ * setting and leaves a prompt in the composer to be sent; Tab only completes.
+ * Text drafted after the token survives as its argument, so with a `rest` the
+ * token is completed rather than run.
  */
 export function acceptSlashCommand(
   command: SlashCommand,
@@ -337,19 +341,8 @@ export function acceptSlashCommand(
   rest = "",
 ): SlashAcceptance {
   if (rest !== "") return { action: "complete", token: `/${command.name}` };
-  if (via === "tab") return { action: "complete", token: slashCommandInput(command) };
-
-  const kind = command.argument?.kind;
-  switch (kind) {
-    case "required":
-    case "prompt":
-      return { action: "complete", token: slashCommandInput(command) };
-    case "optional":
-    case undefined:
-      return { action: "execute" };
-    default: {
-      const _exhaustive: never = kind;
-      return _exhaustive;
-    }
+  if (via === "tab" || command.kind === "prompt") {
+    return { action: "complete", token: `/${command.name} ` };
   }
+  return { action: "execute" };
 }

@@ -12,9 +12,9 @@
  * https://github.com/anomalyco/opencode/blob/dev/packages/tui/src/prompt/display.ts
  */
 
-type TriggerKind = "@" | "/";
+export type TriggerKind = "@" | "/";
 
-interface CompletionTrigger {
+export interface CompletionTrigger {
   kind: TriggerKind;
   /** The token: what accepting a suggestion replaces. */
   start: number;

@@ -11,10 +11,14 @@ import { watch, type FSWatcher } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { JsonValue } from "@uji-ai/schema";
+import type { JsonValue } from "@nyte-ai/schema";
 import type { LoadedPlugin, Plugin, PluginSource } from "./types.ts";
 
 type ManifestPluginRef = { id: string; options?: JsonValue };
+
+function isDisabledPluginId(item: string | ManifestPluginRef): item is string {
+  return typeof item === "string" && item.startsWith("-");
+}
 
 function hasDefaultExport(value: unknown): value is { default: unknown } {
   return typeof value === "object" && value !== null && "default" in value;
@@ -87,7 +91,7 @@ export async function resolvePlugins(options: ResolveOptions): Promise<ResolvedP
   }
   const disabled = new Set<string>();
   for (const item of options.manifest?.plugins ?? []) {
-    if (typeof item === "string" && item.startsWith("-")) disabled.add(item.slice(1));
+    if (isDisabledPluginId(item)) disabled.add(item.slice(1));
   }
   return { plugins: [...byId.values()].filter((plugin) => !disabled.has(plugin.id)), failures };
 }
@@ -169,7 +173,7 @@ export interface WatchOptions {
 /**
  * Watch plugin directories and call `onChange` once per burst of edits. A
  * directory that does not exist yet is retried on each burst from the others
- * and on a slow timer, so creating `.uji/plugins` later is picked up. Returns
+ * and on a slow timer, so creating `.nyte/plugins` later is picked up. Returns
  * a stop function.
  */
 export function watchPluginDirectories(options: WatchOptions): () => void {

@@ -1,151 +1,89 @@
 /**
- * The read model behind `/usage`: three facts that stay separate.
- *
- * - Durable workspace totals fold every session's entries.
- * - An in-progress operation is a live or interrupted run in this store; its
- *   usage is the sum of the `usage` records the run has committed, which the
- *   workspace total already contains. Nothing here estimates the open request.
- * - Subscription headroom is host memory. It joins the card and never enters
- *   the store.
- *
- * `usageCard` turns the three into strings, fills, and tones, so the panel
- * only paints.
+ * The read model behind `/usage`: durable workspace totals, in-progress runs,
+ * and subscription headroom the host fetched. `usageCard` turns the three into
+ * strings, fills, and tones, so the panel only paints.
  */
 import {
-  emptyUsageSummary,
-  MAIN,
-  mergeUsageSummaries,
-  projectRunUsage,
-  projectUsage,
-  type UsageSummary,
-} from "@uji-ai/core";
-import type { AccountLimits } from "@uji-ai/ai";
-import type { Usage } from "@uji-ai/schema";
+  fetchAnthropicAccountLimits,
+  fetchOpenAICodexAccountLimits,
+  hasApi,
+  type AccountLimits,
+  type Model,
+  type Models,
+} from "@nyte-ai/ai";
+import type { Usage } from "@nyte-ai/schema";
 import { GLYPHS } from "./constants.ts";
 import { formatDuration, formatTokens } from "./format.ts";
-import { truncateDisplay } from "./width.ts";
-import type { SessionRepo } from "@uji-ai/core/store";
-
-// ---------------------------------------------------------------------------
-// Durable: runs and totals
-// ---------------------------------------------------------------------------
-
-type OperationKind = "run" | "compaction" | "navigation";
-
-interface LiveRun {
-  readonly sessionId: string;
-  /** The session's name, else its id. */
-  readonly label: string;
-  /** The chat `/usage` was typed in. */
-  readonly current: boolean;
-  readonly operation: OperationKind;
-  /** `interrupted`: the operation is open but no runner holds its claim. */
-  readonly state: "live" | "interrupted";
-  readonly startedAt: number;
-  /** Sum of the run's committed `usage` records. Never the open request. */
-  readonly usage: Usage;
-}
-
-export interface WorkspaceUsage {
-  /** Current chat first, then oldest first. */
-  readonly runs: readonly LiveRun[];
-  /** Chats that recorded any usage. */
-  readonly chats: number;
-  readonly workspace: UsageSummary;
-  /** The active chat's share, zero when it has no usage yet. */
-  readonly current: UsageSummary;
-}
-
-/**
- * One read-only pass over the store. Reads the repo handle directly: SDK verbs
- * would pool every session and, under `attach()`, hand orphans a runner as a
- * side effect of looking.
- */
-export async function collectWorkspaceUsage(
-  repo: SessionRepo,
-  currentSessionId: string,
-): Promise<WorkspaceUsage> {
-  let workspace = emptyUsageSummary();
-  let current = emptyUsageSummary();
-  const runs: LiveRun[] = [];
-  let chats = 0;
-  for (const { id } of await repo.list()) {
-    const session = await repo.open(id);
-    let summary: UsageSummary;
-    try {
-      const [entries, claim, open, name] = await Promise.all([
-        session.findEntries(),
-        session.getLiveClaim(MAIN),
-        session.findOpenOperations(MAIN),
-        session.getName(),
-      ]);
-      summary = projectUsage(entries);
-      const started = open[0];
-      if (started !== undefined) {
-        runs.push({
-          sessionId: id,
-          label: name ?? id,
-          current: id === currentSessionId,
-          operation: started.intent.kind,
-          state: claim?.runId === started.id ? "live" : "interrupted",
-          startedAt: started.timestamp,
-          usage: projectRunUsage(await session.findRecords({ type: "usage", runId: started.id })),
-        });
-      }
-    } finally {
-      await session.close().catch(() => undefined);
-    }
-    if (!hasUsage(summary.total)) continue;
-    chats += 1;
-    workspace = mergeUsageSummaries(workspace, summary);
-    if (id === currentSessionId) current = summary;
-  }
-  runs.sort(
-    (left, right) =>
-      Number(right.current) - Number(left.current) || left.startedAt - right.startedAt,
-  );
-  return { runs, chats, workspace, current };
-}
-
-function hasUsage(usage: Usage): boolean {
-  return usage.totalTokens > 0 || usage.cost.total > 0;
-}
+import type { WorkspaceUsage } from "./host.ts";
+import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
 // ---------------------------------------------------------------------------
 // Ephemeral: subscription headroom
 // ---------------------------------------------------------------------------
 
-/** Where a provider's limits come from; decides the copy for a missing value. */
-type HeadroomSource = "fetched" | "observed";
+/** Providers with subscription windows. API-key providers have none. */
+const HEADROOM_PROVIDERS: ReadonlyMap<string, string> = new Map([
+  ["openai-codex", "OpenAI Codex"],
+  ["anthropic", "Claude"],
+]);
+
+/** Whether `/usage` has subscription headroom to fetch for the active provider. */
+export function hasHeadroom(provider: string): boolean {
+  return HEADROOM_PROVIDERS.has(provider);
+}
+
+/** The active provider's limits, fetched now. Nothing when the provider has no windows. */
+export async function fetchAccountLimits(
+  models: Models,
+  provider: string,
+  signal?: AbortSignal,
+): Promise<AccountLimits | undefined> {
+  try {
+    if (provider === "anthropic") {
+      const model = models
+        .getModels("anthropic")
+        .find((candidate) => hasApi(candidate, "anthropic-messages"));
+      if (model === undefined || !hasApi(model, "anthropic-messages")) return undefined;
+      const auth = await models.getAuth(model, { signal });
+      if (auth?.auth.apiKey === undefined || !auth.auth.apiKey.includes("sk-ant-oat")) {
+        return undefined;
+      }
+      const requestModel: Model<"anthropic-messages"> =
+        auth.auth.baseUrl === undefined ? model : { ...model, baseUrl: auth.auth.baseUrl };
+      return await fetchAnthropicAccountLimits(requestModel, {
+        apiKey: auth.auth.apiKey,
+        headers: auth.auth.headers,
+        signal,
+        timeoutMs: 10_000,
+      });
+    }
+    if (provider === "openai-codex") {
+      const model = models
+        .getModels("openai-codex")
+        .find((candidate) => hasApi(candidate, "openai-codex-responses"));
+      if (model === undefined || !hasApi(model, "openai-codex-responses")) return undefined;
+      const auth = await models.getAuth(model, { signal });
+      if (auth?.auth.apiKey === undefined) return undefined;
+      const requestModel: Model<"openai-codex-responses"> =
+        auth.auth.baseUrl === undefined ? model : { ...model, baseUrl: auth.auth.baseUrl };
+      return await fetchOpenAICodexAccountLimits(requestModel, {
+        apiKey: auth.auth.apiKey,
+        headers: auth.auth.headers,
+        signal,
+        timeoutMs: 10_000,
+      });
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface HeadroomWindow {
   readonly label: string;
   readonly remainingPercent: number;
   readonly resetsAt?: number;
 }
-
-type Headroom =
-  | {
-      readonly kind: "known";
-      readonly provider: string;
-      readonly name: string;
-      readonly source: HeadroomSource;
-      readonly plan?: string;
-      readonly observedAt: number;
-      readonly windows: readonly [HeadroomWindow, ...HeadroomWindow[]];
-    }
-  | {
-      readonly kind: "unknown";
-      readonly provider: string;
-      readonly name: string;
-      readonly source: HeadroomSource;
-    };
-
-/** Providers with subscription windows. API-key providers have none. */
-const HEADROOM_PROVIDERS: ReadonlyMap<string, { name: string; source: HeadroomSource }> = new Map([
-  ["openai-codex", { name: "OpenAI Codex", source: "fetched" }],
-  ["anthropic", { name: "Claude", source: "fetched" }],
-]);
 
 function windowLabel(window: AccountLimits["windows"][number]): string {
   if (window.id === "five_hour") return "5h";
@@ -158,73 +96,33 @@ function windowLabel(window: AccountLimits["windows"][number]): string {
   return window.id.replaceAll("_", " ");
 }
 
-/**
- * One row per supported provider that is active or has cached limits, active
- * first. A provider without a value stays `unknown`; nothing here invents 0%.
- */
-export function projectHeadroom(
-  limits: readonly AccountLimits[],
-  activeProvider: string,
-): readonly Headroom[] {
-  const byProvider = new Map(limits.map((value) => [value.providerId, value]));
-  const providers = new Set([activeProvider, ...byProvider.keys()]);
-  const rows: Headroom[] = [];
-  for (const provider of providers) {
-    const supported = HEADROOM_PROVIDERS.get(provider);
-    if (supported === undefined) continue;
-    const { name, source } = supported;
-    const found = byProvider.get(provider);
-    const [first, ...rest] = found?.windows ?? [];
-    if (found === undefined || first === undefined) {
-      rows.push({ kind: "unknown", provider, name, source });
-      continue;
-    }
-    const toWindow = (window: AccountLimits["windows"][number]): HeadroomWindow => ({
-      label: windowLabel(window),
-      remainingPercent: Math.round(Math.max(0, Math.min(100, 100 - window.usedPercent))),
-      ...(window.resetsAt === undefined ? {} : { resetsAt: window.resetsAt }),
-    });
-    rows.push({
-      kind: "known",
-      provider,
-      name,
-      source,
-      ...(found.plan === undefined ? {} : { plan: found.plan }),
-      observedAt: found.observedAt,
-      windows: [toWindow(first), ...rest.map(toWindow)],
-    });
-  }
-  return rows;
+function toWindow(window: AccountLimits["windows"][number]): HeadroomWindow {
+  const base: HeadroomWindow = {
+    label: windowLabel(window),
+    remainingPercent: Math.round(Math.max(0, Math.min(100, 100 - window.usedPercent))),
+  };
+  return window.resetsAt === undefined ? base : { ...base, resetsAt: window.resetsAt };
 }
 
 // ---------------------------------------------------------------------------
 // The card: strings, fills, tones
 // ---------------------------------------------------------------------------
 
-/** Cells in a bar. */
 export const USAGE_BAR_CELLS = 20;
-
-/** Limits older than this are shown with their age and a warning tone. */
 const STALE_AFTER_MS = 15 * 60_000;
-
-/** In-progress rows shown before the rest collapse into a count. */
 const MAX_RUN_ROWS = 5;
-
-/** Longest label before the model id is truncated to protect the columns. */
 const LABEL_CELLS = 24;
 
 export type Tone = "ok" | "warning" | "critical";
 
 export interface RunCardRow {
-  readonly state: LiveRun["state"];
+  readonly live: boolean;
   readonly label: string;
-  /** Operation and elapsed time for a live run, else `interrupted`. */
   readonly detail: string;
-  /** Committed tokens and cost. */
   readonly usage: string;
 }
 
-type RunsCard =
+export type RunsCard =
   | { readonly kind: "none" }
   | {
       readonly kind: "runs";
@@ -234,7 +132,7 @@ type RunsCard =
       readonly note: string;
     };
 
-interface HeadroomWindowRow {
+export interface HeadroomWindowRow {
   readonly label: string;
   readonly share: number;
   readonly tone: Tone;
@@ -242,41 +140,28 @@ interface HeadroomWindowRow {
   readonly reset: string;
 }
 
-type HeadroomCardRow =
+export type HeadroomCard =
+  | { readonly kind: "none" }
+  | { readonly kind: "checking"; readonly name: string }
+  | { readonly kind: "unavailable"; readonly name: string }
   | {
       readonly kind: "known";
       readonly name: string;
       readonly meta: string;
       readonly stale: boolean;
       readonly windows: readonly [HeadroomWindowRow, ...HeadroomWindowRow[]];
-    }
-  | {
-      readonly kind: "unknown";
-      readonly name: string;
-      readonly meta: string;
-    };
-
-type HeadroomCard =
-  | { readonly kind: "none" }
-  | {
-      readonly kind: "providers";
-      readonly summary: string;
-      readonly rows: readonly [HeadroomCardRow, ...HeadroomCardRow[]];
     };
 
 export interface UsageCardRow {
   readonly label: string;
   /** Compaction and tool buckets, rendered dim: spend without a model id. */
   readonly system: boolean;
-  /** This row's share of the costliest row, or busiest when every cost is zero. */
   readonly share: number;
-  /** Padded to the card's cost column. */
   readonly cost: string;
-  /** Padded to the card's token column. */
   readonly tokens: string;
 }
 
-type WorkspaceUsageCard =
+export type WorkspaceUsageCard =
   | { readonly kind: "empty"; readonly title: string; readonly message: string }
   | {
       readonly kind: "usage";
@@ -293,10 +178,15 @@ export interface UsageCard {
   readonly workspace: WorkspaceUsageCard;
 }
 
-interface UsageCardOptions {
+export type HeadroomState =
+  | { readonly kind: "none" }
+  | { readonly kind: "checking" }
+  | { readonly kind: "known"; readonly limits: AccountLimits }
+  | { readonly kind: "unavailable" };
+
+export interface UsageCardOptions {
   readonly activeProvider: string;
-  /** A limits fetch is in flight; fetched-source rows say so. */
-  readonly refreshing: boolean;
+  readonly headroom: HeadroomState;
   readonly now?: number;
 }
 
@@ -310,12 +200,6 @@ function elapsedLabel(timestamp: number, now: number): string {
   if (minutes === 0) return "now";
   if (minutes < 60) return `${String(minutes)}m ago`;
   return `${String(Math.floor(minutes / 60))}h ago`;
-}
-
-function ageLabel(timestamp: number, now: number): string {
-  const minutes = Math.max(0, Math.floor((now - timestamp) / 60_000));
-  if (minutes < 60) return `${String(minutes)}m`;
-  return `${String(Math.floor(minutes / 60))}h`;
 }
 
 function resetLabel(timestamp: number | undefined, now: number): string {
@@ -340,69 +224,37 @@ function count(value: number, noun: string): string {
   return `${String(value)} ${noun}${value === 1 ? "" : "s"}`;
 }
 
-function runsCard(runs: readonly LiveRun[], now: number): RunsCard {
-  const [first, ...rest] = runs.slice(0, MAX_RUN_ROWS).map((run): RunCardRow => ({
-    state: run.state,
-    label: run.current ? "this chat" : run.label,
-    detail:
-      run.state === "live"
-        ? `${run.operation} · ${formatDuration(Math.max(0, now - run.startedAt))}`
+function hasUsage(usage: Usage): boolean {
+  return usage.totalTokens > 0 || usage.cost.total > 0;
+}
+
+function runsCard(report: WorkspaceUsage, now: number): RunsCard {
+  const [first, ...rest] = report.runs.slice(0, MAX_RUN_ROWS).map((run): RunCardRow => {
+    const live = run.run.lease !== undefined;
+    return {
+      live,
+      label: run.current ? "this chat" : run.label,
+      detail: live
+        ? `${run.run.phase.kind} · ${formatDuration(Math.max(0, now - run.run.startedAt))}`
         : "interrupted",
-    usage: `${formatTokens(run.usage.totalTokens)} · ${formatCost(run.usage.cost.total)}`,
-  }));
+      usage: `${formatTokens(run.usage.totalTokens)} · ${formatCost(run.usage.cost.total)}`,
+    };
+  });
   if (first === undefined) return { kind: "none" };
-  const live = runs.filter((run) => run.state === "live").length;
-  const interrupted = runs.length - live;
+  const live = report.runs.filter((run) => run.run.lease !== undefined).length;
+  const interrupted = report.runs.length - live;
   const summary = [
     ...(live > 0 ? [`${String(live)} running`] : []),
     ...(interrupted > 0 ? [`${String(interrupted)} interrupted`] : []),
   ].join(" · ");
-  const hidden = runs.length - MAX_RUN_ROWS;
-  return {
+  const hidden = report.runs.length - MAX_RUN_ROWS;
+  const card: RunsCard = {
     kind: "runs",
     summary,
     rows: [first, ...rest],
-    ...(hidden > 0 ? { more: `+${String(hidden)} more` } : {}),
     note: "committed below · open requests excluded",
   };
-}
-
-function headroomRow(
-  headroom: Headroom,
-  options: { refreshing: boolean; now: number },
-): HeadroomCardRow {
-  const { refreshing, now } = options;
-  if (headroom.kind === "unknown") {
-    return {
-      kind: "unknown",
-      name: headroom.name,
-      meta:
-        headroom.source === "fetched"
-          ? refreshing
-            ? "checking…"
-            : "not available"
-          : "available after a Claude turn",
-    };
-  }
-  const stale = now - headroom.observedAt > STALE_AFTER_MS;
-  const plan =
-    headroom.plan === undefined
-      ? undefined
-      : headroom.plan.charAt(0).toUpperCase() + headroom.plan.slice(1);
-  const observation =
-    refreshing && headroom.source === "fetched" && stale
-      ? `checking · ${ageLabel(headroom.observedAt, now)} old`
-      : `${headroom.source} ${elapsedLabel(headroom.observedAt, now)}`;
-  return {
-    kind: "known",
-    name: headroom.name,
-    meta: plan === undefined ? observation : `${plan} · ${observation}`,
-    stale,
-    windows: [
-      headroomWindowRow(headroom.windows[0], now),
-      ...headroom.windows.slice(1).map((window) => headroomWindowRow(window, now)),
-    ],
-  };
+  return hidden > 0 ? { ...card, more: `+${String(hidden)} more` } : card;
 }
 
 function headroomWindowRow(window: HeadroomWindow, now: number): HeadroomWindowRow {
@@ -416,22 +268,42 @@ function headroomWindowRow(window: HeadroomWindow, now: number): HeadroomWindowR
   };
 }
 
-function headroomCard(
-  rows: readonly Headroom[],
-  options: { refreshing: boolean; now: number },
-): HeadroomCard {
-  const [first, ...rest] = rows.map((row) => headroomRow(row, options));
-  if (first === undefined) return { kind: "none" };
-  const all = [first, ...rest];
-  const known = all.filter((row) => row.kind === "known");
-  const stale = known.filter((row) => row.stale).length;
-  const summary = [
-    known.length === all.length
-      ? count(all.length, "provider")
-      : `${String(known.length)} of ${String(all.length)} known`,
-    ...(stale > 0 ? [`${String(stale)} stale`] : []),
-  ].join(" · ");
-  return { kind: "providers", summary, rows: [first, ...rest] };
+function headroomCard(options: UsageCardOptions, now: number): HeadroomCard {
+  const name = HEADROOM_PROVIDERS.get(options.activeProvider);
+  if (name === undefined) return { kind: "none" };
+  const { headroom } = options;
+  switch (headroom.kind) {
+    case "none":
+      return { kind: "none" };
+    case "checking":
+      return { kind: "checking", name };
+    case "unavailable":
+      return { kind: "unavailable", name };
+    case "known": {
+      const [first, ...rest] = headroom.limits.windows.map(toWindow);
+      if (first === undefined) return { kind: "unavailable", name };
+      const stale = now - headroom.limits.observedAt > STALE_AFTER_MS;
+      const plan =
+        headroom.limits.plan === undefined
+          ? undefined
+          : headroom.limits.plan.charAt(0).toUpperCase() + headroom.limits.plan.slice(1);
+      const observation = `fetched ${elapsedLabel(headroom.limits.observedAt, now)}`;
+      return {
+        kind: "known",
+        name,
+        meta: plan === undefined ? observation : `${plan} · ${observation}`,
+        stale,
+        windows: [
+          headroomWindowRow(first, now),
+          ...rest.map((window) => headroomWindowRow(window, now)),
+        ],
+      };
+    }
+    default: {
+      const _exhaustive: never = headroom;
+      return _exhaustive;
+    }
+  }
 }
 
 interface RawRow {
@@ -440,10 +312,7 @@ interface RawRow {
   readonly usage: Usage;
 }
 
-/**
- * Bars answer "where did the money go"; when nothing cost anything (free or
- * subscription-priced models) they fall back to "where did the tokens go".
- */
+/** Bars answer "where did the money go"; with no cost they fall back to tokens. */
 function shares(rows: readonly RawRow[]): number[] {
   const measure: (row: RawRow) => number = rows.some((row) => row.usage.cost.total > 0)
     ? (row) => row.usage.cost.total
@@ -463,7 +332,12 @@ function breakdownLines(total: Usage): readonly [string, ...string[]] {
 
 function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
   const { chats, workspace, current } = report;
-  if (chats === 0) return { kind: "empty", title: "workspace", message: "No usage recorded" };
+  const empty: WorkspaceUsageCard = {
+    kind: "empty",
+    title: "workspace",
+    message: "No usage recorded",
+  };
+  if (chats === 0) return empty;
 
   const raw: RawRow[] = workspace.models.map((row) => ({
     label: truncateDisplay(row.model, LABEL_CELLS, GLYPHS.ellipsis),
@@ -475,15 +349,13 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
   }
   if (hasUsage(workspace.tools)) raw.push({ label: "tools", system: true, usage: workspace.tools });
   const [first, ...rest] = raw;
-  if (first === undefined)
-    return { kind: "empty", title: "workspace", message: "No usage recorded" };
+  if (first === undefined) return empty;
 
   const costs = raw.map((row) => formatCost(row.usage.cost.total));
   const tokens = raw.map((row) => formatTokens(row.usage.totalTokens));
   const costWidth = Math.max(...costs.map((cost) => cost.length));
   const tokenWidth = Math.max(...tokens.map((value) => value.length));
   const rowShares = shares(raw);
-
   const toRow = (row: RawRow, index: number): UsageCardRow => ({
     label: row.label,
     system: row.system,
@@ -492,31 +364,97 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
     tokens: (tokens[index] ?? "").padStart(tokenWidth),
   });
 
-  return {
+  const card: WorkspaceUsageCard = {
     kind: "usage",
     title: `workspace · ${count(chats, "chat")}`,
     total: formatCost(workspace.total.cost.total),
     rows: [toRow(first, 0), ...rest.map((row, index) => toRow(row, index + 1))],
     breakdown: breakdownLines(workspace.total),
-    ...(chats > 1 && hasUsage(current.total)
-      ? {
-          thisChat: `this chat · ${formatTokens(current.total.totalTokens)} tokens · ${formatCost(current.total.cost.total)}`,
-        }
-      : {}),
   };
+  if (chats > 1 && hasUsage(current.total)) {
+    return {
+      ...card,
+      thisChat: `this chat · ${formatTokens(current.total.totalTokens)} tokens · ${formatCost(current.total.cost.total)}`,
+    };
+  }
+  return card;
 }
 
 /** Join in-progress runs, account headroom, and workspace totals into one card. */
-export function usageCard(
-  report: WorkspaceUsage,
-  limits: readonly AccountLimits[],
-  options: UsageCardOptions,
-): UsageCard {
+export function usageCard(report: WorkspaceUsage, options: UsageCardOptions): UsageCard {
   const now = options.now ?? Date.now();
-  const { refreshing } = options;
   return {
-    runs: runsCard(report.runs, now),
-    headroom: headroomCard(projectHeadroom(limits, options.activeProvider), { refreshing, now }),
+    runs: runsCard(report, now),
+    headroom: headroomCard(options, now),
     workspace: workspaceCard(report),
   };
+}
+
+// ---------------------------------------------------------------------------
+// The card as text, for the notice slot
+// ---------------------------------------------------------------------------
+
+const BAR_FILLED = "━";
+/** An open run nobody is driving: hollow, next to the running bullet. */
+const INTERRUPTED = "○";
+
+function bar(share: number, cells: number): string {
+  const fill = share <= 0 ? 0 : Math.max(1, Math.min(cells, Math.round(share * cells)));
+  return `${BAR_FILLED.repeat(fill)}${GLYPHS.rule.repeat(cells - fill)}`;
+}
+
+/** One line per row, the way the notice slot draws them: no colors, no panel. */
+export function usageLines(card: UsageCard): string[] {
+  const lines: string[] = [];
+  if (card.runs.kind === "none") lines.push("in progress · none");
+  else {
+    lines.push(`in progress · ${card.runs.summary}`);
+    for (const run of card.runs.rows) {
+      lines.push(
+        `  ${run.live ? GLYPHS.bullet : INTERRUPTED} ${run.label}  ${run.detail}  ${run.usage}`,
+      );
+    }
+    if (card.runs.more !== undefined) lines.push(`  ${card.runs.more}`);
+    lines.push(`  ${card.runs.note}`);
+  }
+  const { headroom } = card;
+  switch (headroom.kind) {
+    case "none":
+      lines.push("account headroom · not in use");
+      break;
+    case "checking":
+      lines.push(`${headroom.name} · checking…`);
+      break;
+    case "unavailable":
+      lines.push(`${headroom.name} · not available`);
+      break;
+    case "known":
+      lines.push(`${headroom.name} · ${headroom.meta}${headroom.stale ? " (stale)" : ""}`);
+      for (const window of headroom.windows) {
+        lines.push(
+          `  ${window.label} ${bar(window.share, USAGE_BAR_CELLS)}  ${window.remaining}  ${window.reset}`,
+        );
+      }
+      break;
+    default: {
+      const _exhaustive: never = headroom;
+      return _exhaustive;
+    }
+  }
+  const { workspace } = card;
+  if (workspace.kind === "empty") {
+    lines.push(`${workspace.title} · ${workspace.message}`);
+    return lines;
+  }
+  lines.push(`${workspace.title} · ${workspace.total}`);
+  const labelCells = Math.max(...workspace.rows.map((row) => displayWidth(row.label)));
+  for (const row of workspace.rows) {
+    lines.push(
+      `  ${padDisplay(row.label, labelCells)}  ${bar(row.share, USAGE_BAR_CELLS)}  ${row.cost}  ${row.tokens}`,
+    );
+  }
+  lines.push(...workspace.breakdown.map((line) => `  ${line}`));
+  if (workspace.thisChat !== undefined) lines.push(`  ${workspace.thisChat}`);
+  lines.push("  estimates exclude subscription billing");
+  return lines;
 }

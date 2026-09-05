@@ -1,5 +1,5 @@
 /**
- * Ls tool ported from pi's tools/ls.ts, adapted to Uji's AgentTool contract.
+ * Ls tool ported from pi's tools/ls.ts, adapted to Nyte's AgentTool contract.
  * TUI rendering code from pi is dropped.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/ls.ts
@@ -71,22 +71,44 @@ const lsParameters = Unsafe<LsToolInput>({
   },
 });
 
-function parseLsParams(params: unknown): LsToolInput {
+interface LsInputFields {
+  readonly path?: unknown;
+  readonly limit?: unknown;
+}
+
+function isLsInputObject(value: unknown): value is LsInputFields {
+  return typeof value === "object" && value !== null;
+}
+
+function hasValidLsPath(value: LsInputFields): value is LsInputFields & Pick<LsToolInput, "path"> {
+  return value.path === undefined || typeof value.path === "string";
+}
+
+function hasValidLsLimit(
+  value: LsInputFields,
+): value is LsInputFields & Pick<LsToolInput, "limit"> {
+  return value.limit === undefined || typeof value.limit === "number";
+}
+
+type LsArgumentPreparer = NonNullable<
+  AgentTool<typeof lsParameters, LsToolDetails | undefined>["prepareArguments"]
+>;
+
+const parseLsParams: LsArgumentPreparer = (params) => {
   if (params === undefined || params === null) {
     return {};
   }
-  if (typeof params !== "object") {
+  if (!isLsInputObject(params)) {
     throw new Error("Invalid arguments for ls: expected an object");
   }
-  const { path, limit } = params as Record<string, unknown>;
-  if (path !== undefined && typeof path !== "string") {
+  if (!hasValidLsPath(params)) {
     throw new Error('Invalid arguments for ls: "path" must be a string');
   }
-  if (limit !== undefined && typeof limit !== "number") {
+  if (!hasValidLsLimit(params)) {
     throw new Error('Invalid arguments for ls: "limit" must be a number');
   }
-  return { path, limit };
-}
+  return { path: params.path, limit: params.limit };
+};
 
 export function createLsTool(
   cwd: string,

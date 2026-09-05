@@ -5,6 +5,8 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,17 +16,24 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
-import type { SessionId, ThinkingLevel, Turn } from "@uji-ai/core";
+import type { SessionId, ThinkingLevel, Turn, UserTurnPart } from "@nyte-ai/core";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
-import { Composer, ComposerFrame } from "../conversation/composer.tsx";
-import { ModelPicker } from "../conversation/model-picker.tsx";
-import { Prose } from "../conversation/prose.tsx";
-import { ReasoningBlock, TurnView } from "../conversation/turn-view.tsx";
-import { handleOpenOutcome } from "../chrome/open-workspace.tsx";
-import { ConfirmDialog } from "../components/confirm-dialog.tsx";
+import {
+  Composer,
+  ComposerFrame,
+  composerMessageContent,
+  composerPromptText,
+  composerSource,
+  readComposerImageAttachments,
+} from "../conversation/composer.tsx";
+import type { ComposerChip, ComposerImageAttachment } from "../conversation/composer.tsx";
+import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
+import { ModelPicker, type ModelPickerChange } from "../conversation/model-picker.tsx";
+import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
-import { Button, IconButton } from "../components/ui.tsx";
+import { focus, IconButton } from "../components/ui.tsx";
+import { handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import {
   usePaneActions,
   usePaneControllerSnapshot,
@@ -34,38 +43,53 @@ import {
   activePane,
   BLANK_SELECTION,
   clampSplitRatio,
+  clampSplitRatioForSize,
   orderedPanes,
-  paneById,
 } from "../layout/pane-layout.ts";
-import type {
-  DropPlacement,
-  PaneId,
-  PaneLayout,
-  PaneState,
-  SplitDirection,
-} from "../layout/pane-layout.ts";
-import { subscribeSessionDragEvents } from "../layout/session-drag.ts";
-import type { SessionDragPoint } from "../layout/session-drag.ts";
+import type { PaneId, PaneLayout, PaneState, SplitDirection } from "../layout/pane-layout.ts";
+import { useSessionDropTarget, useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
+import type { SessionDropTarget } from "../layout/session-dnd.tsx";
 import type { BlankViewState, SessionViewState } from "../layout/session-view-state.ts";
-import { useSessionLive } from "../live.ts";
+import { livePartKey, useSessionLive } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import {
   keys,
   loadThread,
   queryClient,
-  useDefaultModel,
+  useCatalog,
   useDeleteSession,
   useHostState,
-  useModels,
+  useMentionFiles,
+  usePluginCatalog,
+  usePluginSettings,
   useRenameSession,
   useSession,
   useSessionSnapshot,
   useVcsSnapshot,
+  useWorkspaces,
 } from "../queries.ts";
-import { conversation } from "../theme/schema.stylex.ts";
+import { macPlatform } from "../platform.ts";
+import { sessionWorking } from "../run-state.ts";
+import { outbox } from "../use-outbox.ts";
+import { conversation, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import { uji } from "../uji.ts";
-import type { DesktopModelOption } from "../uji.ts";
+import { nyte } from "../nyte.ts";
+import type { DesktopModelOption } from "../nyte.ts";
+
+const Prose = lazy(() =>
+  import("../conversation/prose.tsx").then((module) => ({ default: module.Prose })),
+);
+const TurnView = lazy(() =>
+  import("../conversation/turn-view.tsx").then((module) => ({ default: module.TurnView })),
+);
+const WorkGroupView = lazy(() =>
+  import("../conversation/tool-group.tsx").then((module) => ({ default: module.WorkGroupView })),
+);
+const ConfirmDialog = lazy(() =>
+  import("../components/confirm-dialog.tsx").then((module) => ({
+    default: module.ConfirmDialog,
+  })),
+);
 import { WORKBENCH_STAGE_PANE_KEY } from "../workbench/controller.ts";
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
@@ -98,9 +122,12 @@ const styles = stylex.create({
     backgroundColor: t.bgBase,
   },
   paneSingle: { flex: 1 },
-  paneLeading: { flexGrow: 0, flexShrink: 0, flexBasis: "var(--uji-pane-basis, 50%)" },
+  paneLeading: (ratio: number) => ({
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: `${String(ratio * 100)}%`,
+  }),
   paneTrailing: { flex: 1 },
-  paneActive: { boxShadow: `inset 0 0 0 1px ${t.strokeFocused}` },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
   header: {
     display: "flex",
@@ -108,9 +135,6 @@ const styles = stylex.create({
     gap: 8,
     height: conversation.headerHeight,
     paddingInline: 12,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: t.strokeTertiary,
     flexShrink: 0,
   },
   title: {
@@ -132,7 +156,7 @@ const styles = stylex.create({
     borderRadius: t.radiusSm,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderAccent,
+    borderColor: { default: t.borderWeak, ":focus-visible": t.strokeFocused },
     backgroundColor: t.bgElevated,
     color: t.textPrimary,
     fontSize: t.fontBase,
@@ -149,7 +173,7 @@ const styles = stylex.create({
     width: `min(${conversation.measure}, 100%)`,
     marginInline: "auto",
     paddingInline: conversation.gutter,
-    paddingTop: 22,
+    paddingTop: 16,
     paddingBottom: 18,
   },
   banner: {
@@ -160,31 +184,23 @@ const styles = stylex.create({
     color: t.textWarning,
     fontSize: t.fontSm,
   },
+  bannerAction: {
+    padding: 0,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    color: "inherit",
+    fontSize: "inherit",
+    textDecorationLine: "underline",
+    cursor: "pointer",
+  },
   loading: { color: t.textTertiary, fontSize: t.fontSm },
-  working: {
+  liveTurn: {
     display: "flex",
-    gap: 4,
-    width: "max-content",
-    padding: "10px 12px",
-    borderRadius: 14,
-    backgroundColor: t.fillBubbleAgent,
+    flexDirection: "column",
+    gap: conversation.rowGap,
+    width: "100%",
+    minWidth: 0,
   },
-  workingDot: {
-    width: 5,
-    height: 5,
-    borderRadius: t.radiusFull,
-    backgroundColor: t.textTertiary,
-    animationName: stylex.keyframes({
-      "0%": { opacity: 0.3 },
-      "50%": { opacity: 1 },
-      "100%": { opacity: 0.3 },
-    }),
-    animationDuration: "1.2s",
-    animationIterationCount: "infinite",
-    "@media (prefers-reduced-motion: reduce)": { animationName: "none", opacity: 0.65 },
-  },
-  workingDot2: { animationDelay: "0.2s" },
-  workingDot3: { animationDelay: "0.4s" },
   blank: {
     display: "flex",
     flexDirection: "column",
@@ -192,31 +208,44 @@ const styles = stylex.create({
     justifyContent: "center",
     flex: 1,
     minHeight: 0,
-    paddingBottom: 80,
   },
   blankColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: 10,
-    width: "min(620px, calc(100% - 48px))",
+    gap: 8,
+    width: "min(608px, calc(100% - 40px))",
   },
   greeting: { paddingInlineStart: 4, color: t.textTertiary, fontSize: t.fontLg },
   workspaceContext: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    gap: 5,
     minWidth: 0,
     paddingInline: 4,
     color: t.textSecondary,
-    fontSize: t.fontSm,
+    fontSize: t.fontBase,
   },
   workspaceContextItem: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     minWidth: 0,
   },
-  workspaceContextPath: { flex: 1 },
+  workspaceContextButton: {
+    height: 26,
+    paddingInline: 5,
+    borderStyle: "none",
+    borderRadius: t.radiusBase,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
+      "[data-popup-open]": t.fillGhostSelected,
+    },
+    color: "inherit",
+    cursor: "pointer",
+  },
+  workspaceContextPath: { maxWidth: 280 },
+  workspaceContextStatic: { height: 26, paddingInline: 5 },
   workspaceContextText: {
     minWidth: 0,
     overflow: "hidden",
@@ -246,24 +275,56 @@ const styles = stylex.create({
   dropPreviewLayer: {
     position: "absolute",
     inset: 2,
-    zIndex: 1000,
+    zIndex: layer.dragPreview,
     overflow: "hidden",
     pointerEvents: "none",
   },
   dropPreview: {
     position: "absolute",
     borderRadius: t.radiusSm,
-    backgroundColor: `color-mix(in srgb, ${t.fillAccent} 28%, transparent)`,
-    boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${t.fillAccent} 62%, transparent)`,
+    borderWidth: 2,
+    borderStyle: "solid",
+    borderColor: t.fillAccent,
+    backgroundColor: `color-mix(in srgb, ${t.fillAccent} 8%, transparent)`,
     pointerEvents: "none",
-    transitionProperty: "top, left, width, height, opacity",
-    transitionDuration: "100ms",
-    transitionTimingFunction: "ease",
-    "@media (prefers-reduced-motion: reduce)": { transitionDuration: "0s" },
   },
 });
 
 const EMPTY_TURNS: readonly Turn[] = [];
+const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
+
+function setDataState(element: HTMLElement, name: string, active: boolean): void {
+  const value = active ? "true" : "false";
+  if (element.dataset[name] !== value) element.dataset[name] = value;
+}
+
+/**
+ * Cursor keeps the real user row sticky inside its turn boundary. Mutating a
+ * data state here avoids cloning the prompt or rerendering the transcript on
+ * every scroll tick; React continues to own the row and its edit state.
+ */
+function syncStickyUserMessage(scroll: HTMLDivElement, transcript: HTMLDivElement): void {
+  const viewportTop = scroll.getBoundingClientRect().top;
+  let active: HTMLElement | undefined;
+  const rows = transcript.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+
+  for (const row of rows) {
+    const turn = row.closest<HTMLElement>("[data-sticky-turn='true']");
+    const eligible = turn !== null && row.offsetHeight < scroll.clientHeight;
+    setDataState(row, "stickyDisabled", !eligible);
+    if (!eligible || turn === null) continue;
+
+    const sourceTop = turn.getBoundingClientRect().top - viewportTop + scroll.scrollTop;
+    if (sourceTop <= scroll.scrollTop + STICKY_MESSAGE_ACTIVATION_EPSILON) active = row;
+  }
+
+  for (const row of rows) {
+    const selected = row === active;
+    setDataState(row, "stickyActive", selected);
+    const fade = row.querySelector<HTMLElement>("[data-sticky-message-fade]");
+    if (fade !== null) setDataState(fade, "stickyVisible", selected);
+  }
+}
 
 function repositoryBranch(snapshot: DesktopVcsSnapshot | undefined): string | undefined {
   if (snapshot === undefined) return undefined;
@@ -279,61 +340,49 @@ function repositoryBranch(snapshot: DesktopVcsSnapshot | undefined): string | un
   }
 }
 
-function settledEntryIds(turns: readonly Turn[]): Set<string> {
-  const ids = new Set<string>();
-  for (const turn of turns) {
-    if (turn.kind !== "turn") continue;
-    for (const part of turn.parts) {
-      if (part.kind === "assistant" || part.kind === "thinking" || part.kind === "user") {
-        ids.add(part.entryId);
-      }
-    }
-  }
-  return ids;
+function displayWorkspacePath(path: string): string {
+  return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~").replace(/^\/home\/[^/]+(?=\/|$)/, "~");
 }
 
 function LiveTurn({
   live,
-  settled,
   working,
+  settledWork,
+  cwd,
 }: {
   live: LiveSnapshot;
-  settled: Set<string>;
   working: boolean;
+  settledWork: boolean;
+  cwd: string | undefined;
 }): ReactElement | null {
-  const parts = live.order.filter((ref) => ref.kind !== "tool" && !settled.has(ref.entryId));
-  const hasStreaming = parts.length > 0;
+  const appearance = useAppearanceSettings();
+  const textParts = live.order.filter((ref) => ref.kind === "text");
+  const hasText = textParts.length > 0;
+  const hasLiveWork =
+    live.order.some((ref) => ref.kind === "thinking") ||
+    live.tools.size > 0 ||
+    (!hasText && working);
   const busy = live.runState !== "idle" || working;
-  if (!hasStreaming && !busy) return null;
+  if (!hasText && !hasLiveWork && !busy) return null;
 
   return (
-    <div>
-      {parts.map((ref) => {
-        if (ref.kind === "thinking") {
-          const text = live.thinking.get(`${ref.entryId}:${String(ref.contentIndex)}`) ?? "";
-          return (
-            <ReasoningBlock
-              key={`thinking:${ref.entryId}:${String(ref.contentIndex)}`}
-              text={text}
-              streaming
-            />
-          );
-        }
-        if (ref.kind === "text") {
-          const text = live.text.get(`${ref.entryId}:${String(ref.contentIndex)}`) ?? "";
-          return text === "" ? null : (
-            <Prose key={`text:${ref.entryId}:${String(ref.contentIndex)}`} markdown={text} />
-          );
-        }
-        return null;
-      })}
-      {!hasStreaming && busy && (
-        <div {...stylex.props(styles.working)}>
-          <span {...stylex.props(styles.workingDot)} />
-          <span {...stylex.props(styles.workingDot, styles.workingDot2)} />
-          <span {...stylex.props(styles.workingDot, styles.workingDot3)} />
-        </div>
+    <div {...stylex.props(styles.liveTurn)}>
+      {!settledWork && hasLiveWork && (
+        <WorkGroupView
+          parts={[]}
+          live={live}
+          liveTools={live.tools}
+          cwd={cwd}
+          durationMs={0}
+          running={busy}
+          density={appearance.toolCalls}
+        />
       )}
+      {textParts.map((ref) => {
+        const key = livePartKey(ref.runId, ref.attempt, ref.index);
+        const text = live.text.get(key) ?? "";
+        return text === "" ? null : <Prose key={`text:${key}`} markdown={text} streaming />;
+      })}
     </div>
   );
 }
@@ -393,7 +442,7 @@ function PaneHeader({
   const { layout } = usePaneControllerSnapshot();
   const host = useHostState();
   const canSplit = layout.kind === "single";
-  const mac = host.data?.platform === "darwin";
+  const mac = macPlatform(host.data?.platform);
   const modifier = mac ? "⌘" : "Ctrl+";
   const shift = mac ? "⇧" : "Shift+";
 
@@ -412,7 +461,7 @@ function PaneHeader({
             disabled={!canSplit}
             onSelect={() => actions.split("down")}
           >
-            Split Down
+            Split down
           </MenuItem>
           <MenuItem
             icon="split-right"
@@ -420,10 +469,10 @@ function PaneHeader({
             disabled={!canSplit}
             onSelect={() => actions.split("right")}
           >
-            Split Right
+            Split right
           </MenuItem>
           <MenuItem icon="x" onSelect={() => actions.close(paneId)}>
-            Close Panel
+            Close pane
           </MenuItem>
           {sessionItems}
         </Menu>
@@ -443,45 +492,84 @@ function SessionConversation({
 }): ReactElement {
   const host = useHostState();
   const panes = usePaneActions();
+  const { layout } = usePaneControllerSnapshot();
   const session = useSession(sessionId);
+  const catalog = useCatalog();
   const renameSession = useRenameSession();
   const deleteSession = useDeleteSession();
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
+  const [navigating, setNavigating] = useState(false);
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
-  const settled = useMemo(() => settledEntryIds(turns), [turns]);
-  const live = useSessionLive(sessionId, snapshot.data?.seq, settled);
+  const live = useSessionLive(sessionId, snapshot.data?.seq);
   const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useSessionViewBinding(sessionId, paneId);
   const working =
+    navigating ||
     live.runState !== "idle" ||
-    snapshot.data?.session.heads.some((head) => head.run?.kind === "live") === true;
+    (snapshot.data !== undefined && sessionWorking(snapshot.data.session));
   const cwd = host.data?.workspace?.path;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
   const ready = snapshot.data !== undefined;
+  const modelOptions = catalog.data?.models ?? [];
+  const pluginSettings = usePluginSettings(
+    sessionId,
+    modelOptions.some((option) => option.fastMode.kind === "available"),
+  );
+  const fastEnabled = useMemo(
+    () =>
+      new Set(
+        (pluginSettings.data ?? [])
+          .filter((setting) => setting.current === "on")
+          .map((setting) => setting.id),
+      ),
+    [pluginSettings.data],
+  );
+  const configuredModel = snapshot.data?.config.model;
+  const branchModel: BranchModelPicker = {
+    catalog: catalog.data,
+    model: modelOptions.find(
+      (option) =>
+        option.id === configuredModel?.id &&
+        (configuredModel.provider === undefined || option.provider === configuredModel.provider),
+    ),
+    thinkingLevel: snapshot.data?.config.thinkingLevel,
+    fastEnabled,
+  };
+  const lastTurn = turns.at(-1);
+  const settledWork =
+    lastTurn?.kind === "turn" &&
+    lastTurn.parts.some((part) => part.kind === "thinking" || part.kind === "tool");
 
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    if (element === null) return;
+    const transcript = transcriptRef.current;
+    if (element === null || transcript === null) return undefined;
     const restored = viewStore.readSession(sessionId, paneId).scroll;
     element.scrollTop = restored.bottomPinned ? element.scrollHeight : restored.top;
+    syncStickyUserMessage(element, transcript);
+    // Streamed text, late highlights, and a shrinking scrollport all move the
+    // bottom; a reader pinned there follows it.
+    const observer = new ResizeObserver(() => {
+      if (viewStore.readSession(sessionId, paneId).scroll.bottomPinned) {
+        element.scrollTop = element.scrollHeight;
+      }
+      syncStickyUserMessage(element, transcript);
+    });
+    observer.observe(element);
+    observer.observe(transcript);
+    return () => observer.disconnect();
   }, [paneId, ready, sessionId, viewStore]);
-
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (element !== null && viewStore.readSession(sessionId, paneId).scroll.bottomPinned) {
-      element.scrollTop = element.scrollHeight;
-    }
-  });
 
   const title =
     snapshot.data?.session.name ??
     snapshot.data?.session.preview ??
     session.data?.name ??
     session.data?.preview ??
-    "New session";
+    "New chat";
   const commitRename = (): void => {
     if (draftName === undefined) return;
     const name = draftName.replaceAll(/\s+/g, " ").trim();
@@ -494,48 +582,116 @@ function SessionConversation({
     setDeletion({ kind: "open", sessionId });
   };
 
+  const editUserMessage = useCallback(
+    async (
+      part: UserTurnPart,
+      content: UserTurnPart["content"],
+      choice: BranchModelChoice,
+    ): Promise<void> => {
+      setNavigating(true);
+      try {
+        const outcome = await nyte.heads.move({ sessionId, to: part.commit });
+        switch (outcome.kind) {
+          case "moved":
+            if (outcome.restored?.commit !== part.commit) {
+              throw new Error("The selected message is no longer editable.");
+            }
+            if (choice.model !== undefined) {
+              const configured = await nyte.sessions.configure({
+                sessionId,
+                model: { provider: choice.model.provider, id: choice.model.id },
+                ...(choice.thinkingLevel === undefined
+                  ? {}
+                  : { thinkingLevel: choice.thinkingLevel }),
+              });
+              if (configured.kind === "unknown_model") {
+                throw new Error("That model is no longer available.");
+              }
+              if (configured.kind === "unknown_agent") {
+                throw new Error("The selected mode is no longer available.");
+              }
+            }
+            for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
+              const before = fastEnabled.has(settingId);
+              const after = choice.fastEnabled.has(settingId);
+              if (before === after) continue;
+              const applied = await nyte.plugins.settings.apply({
+                sessionId,
+                id: settingId,
+                choiceId: after ? "on" : "off",
+              });
+              if (applied.kind !== "applied") {
+                throw new Error("That model setting is no longer available.");
+              }
+            }
+            await outbox.submitDurably({ sessionId, content });
+            await loadThread(sessionId);
+            void queryClient.invalidateQueries({ queryKey: keys.sessions });
+            void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
+            return;
+          case "busy":
+            throw new Error("Wait for the current response before editing this message.");
+          case "moved_since":
+          case "not_found":
+            throw new Error("The selected message is no longer in this branch.");
+          case "failed":
+            throw new Error(outcome.message);
+          default: {
+            const _exhaustive: never = outcome;
+            return _exhaustive;
+          }
+        }
+      } finally {
+        setNavigating(false);
+      }
+    },
+    [fastEnabled, sessionId],
+  );
+
   return (
     <div {...stylex.props(styles.screen)} aria-busy={snapshot.isLoading}>
-      <PaneHeader
-        paneId={paneId}
-        menuTriggerRef={paneMenuTrigger}
-        title={
-          draftName === undefined ? (
-            title
-          ) : (
-            <input
-              aria-label="Session name"
-              autoFocus
-              {...stylex.props(styles.renameInput)}
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              onBlur={commitRename}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") commitRename();
-                if (event.key === "Escape") setDraftName(undefined);
-              }}
-            />
-          )
-        }
-        sessionItems={
-          <>
-            <MenuSeparator />
-            <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
-              Rename
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem icon="trash" danger onSelect={requestDelete}>
-              Delete
-            </MenuItem>
-          </>
-        }
-      />
+      {layout.kind === "split" && (
+        <PaneHeader
+          paneId={paneId}
+          menuTriggerRef={paneMenuTrigger}
+          title={
+            draftName === undefined ? (
+              title
+            ) : (
+              <input
+                aria-label="Chat name"
+                autoFocus
+                {...stylex.props(styles.renameInput)}
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitRename();
+                  if (event.key === "Escape") setDraftName(undefined);
+                }}
+              />
+            )
+          }
+          sessionItems={
+            <>
+              <MenuSeparator />
+              <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
+                Rename
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem icon="trash" danger onSelect={requestDelete}>
+                Delete
+              </MenuItem>
+            </>
+          }
+        />
+      )}
 
       <div {...stylex.props(styles.body)}>
         <div {...stylex.props(styles.conversation)}>
           <div
             ref={scrollRef}
-            data-uji-scrollport="balanced"
+            data-nyte-scrollport="balanced"
             {...stylex.props(styles.scroll)}
             onScroll={(event) => {
               const element = event.currentTarget;
@@ -545,33 +701,54 @@ function SessionConversation({
                 ...current,
                 scroll: { top: element.scrollTop, bottomPinned },
               }));
+              const transcript = transcriptRef.current;
+              if (transcript !== null) syncStickyUserMessage(element, transcript);
             }}
           >
-            <div {...stylex.props(styles.transcript)}>
-              {snapshot.isLoading && turns.length === 0 && (
-                <div {...stylex.props(styles.loading)}>Loading conversation…</div>
-              )}
-              {snapshot.isError && (
-                <div {...stylex.props(styles.banner)}>This conversation could not be loaded.</div>
-              )}
-              {turns.map((turn, index) => (
-                <TurnView
-                  key={turn.kind === "turn" ? turn.id : `${turn.kind}:${String(index)}`}
-                  turn={turn}
-                  liveTools={live.tools}
-                  cwd={cwd}
-                />
-              ))}
-              {live.runState === "retrying" && live.retry !== undefined && (
-                <div {...stylex.props(styles.banner)}>
-                  Retrying ({String(live.retry.attempt)}/{String(live.retry.maxAttempts)}):{" "}
-                  {live.retry.message}
-                </div>
-              )}
-              {live.runState === "compacting" && (
-                <div {...stylex.props(styles.banner)}>Compacting context…</div>
-              )}
-              <LiveTurn live={live} settled={settled} working={working} />
+            <div ref={transcriptRef} {...stylex.props(styles.transcript)}>
+              <Suspense
+                fallback={
+                  <div role="status" {...stylex.props(styles.loading)}>
+                    Loading chat…
+                  </div>
+                }
+              >
+                {snapshot.isLoading && turns.length === 0 && (
+                  <div role="status" {...stylex.props(styles.loading)}>
+                    Loading chat…
+                  </div>
+                )}
+                {snapshot.isError && (
+                  <div role="alert" {...stylex.props(styles.banner)}>
+                    Couldn&rsquo;t load this chat.{" "}
+                    <button
+                      type="button"
+                      {...stylex.props(styles.bannerAction, focus.ring)}
+                      onClick={() => void snapshot.refetch()}
+                    >
+                      Try again
+                    </button>
+                  </div>
+                )}
+                {turns.map((turn, index) => (
+                  <TurnView
+                    key={turn.kind === "turn" ? turn.id : `${turn.kind}:${turn.commit}`}
+                    turn={turn}
+                    liveTools={live.tools}
+                    live={working && index === turns.length - 1 ? live : undefined}
+                    cwd={cwd}
+                    onEditUser={editUserMessage}
+                    branchModel={branchModel}
+                    running={working && index === turns.length - 1}
+                  />
+                ))}
+                {live.runState === "retrying" && live.retry !== undefined && (
+                  <div role="status" title={live.retry.message} {...stylex.props(styles.banner)}>
+                    Retrying…
+                  </div>
+                )}
+                <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />
+              </Suspense>
             </div>
           </div>
 
@@ -592,27 +769,30 @@ function SessionConversation({
           />
         </div>
       </div>
-      <ConfirmDialog
-        open={deletion.kind === "open"}
-        pending={deleteSession.isPending}
-        error={deleteSession.isError ? "Couldn't delete this session. Try again." : undefined}
-        returnFocusRef={paneMenuTrigger}
-        onOpenChange={(nextOpen) => {
-          if (nextOpen) return;
-          deleteSession.reset();
-          setDeletion({ kind: "closed" });
-        }}
-        onConfirm={() => {
-          if (deletion.kind !== "open") return;
-          const { sessionId: targetSessionId } = deletion;
-          deleteSession.mutate(targetSessionId, {
-            onSuccess: () => {
+      {deletion.kind === "open" && (
+        <Suspense fallback={null}>
+          <ConfirmDialog
+            open
+            pending={deleteSession.isPending}
+            error={deleteSession.isError ? "Couldn't delete this chat. Try again." : undefined}
+            returnFocusRef={paneMenuTrigger}
+            onOpenChange={(nextOpen) => {
+              if (nextOpen) return;
+              deleteSession.reset();
               setDeletion({ kind: "closed" });
-              panes.removeSession(targetSessionId);
-            },
-          });
-        }}
-      />
+            }}
+            onConfirm={() => {
+              const { sessionId: targetSessionId } = deletion;
+              deleteSession.mutate(targetSessionId, {
+                onSuccess: () => {
+                  setDeletion({ kind: "closed" });
+                  panes.removeSession(targetSessionId);
+                },
+              });
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -628,99 +808,192 @@ function BlankConversation({
   const { layout } = usePaneControllerSnapshot();
   const workspace = host.data?.workspace;
   const vcs = useVcsSnapshot(workspace !== undefined);
-  const models = useModels();
-  const fallback = useDefaultModel();
+  const catalog = useCatalog();
+  const pluginCatalog = usePluginCatalog();
+  const workspaceFiles = useMentionFiles(workspace !== undefined);
+  const workspaces = useWorkspaces();
   const actions = usePaneActions();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
   const [picked, setPicked] = useState<DesktopModelOption | undefined>();
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel | undefined>();
-  const [error, setError] = useState<string | undefined>();
+  /** Fast-mode setting ids switched on for the session this composer will create. */
+  const [fastSettings, setFastSettings] = useState<ReadonlySet<string>>(() => new Set());
+  // The raw cause is diagnostic only: it rides in `title`, never in body copy.
+  const [startFailure, setStartFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
-  const branch = repositoryBranch(vcs.data);
-  const options = models.data ?? [];
+  const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
+  const [attachmentReads, setAttachmentReads] = useState(0);
+  const [attachmentError, setAttachmentError] = useState<string>();
+  const branch = workspace === undefined ? undefined : repositoryBranch(vcs.data);
+  const recentWorkspaces = (workspaces.data ?? []).filter(
+    (candidate) => candidate.path !== workspace?.path,
+  );
+  const defaults = catalog.data?.defaults;
   const current =
     picked ??
-    options.find(
-      (option) => option.provider === fallback.data?.provider && option.id === fallback.data.id,
+    catalog.data?.models.find(
+      (option) => option.provider === defaults?.model.provider && option.id === defaults.model.id,
     );
-
-  const start = (): void => {
-    const content = viewState.composer.draft.trim();
-    if (content === "" || sending) return;
-    setSending(true);
-    setError(undefined);
-    void (async () => {
-      const session = await uji.sessions.create();
-      if (picked !== undefined || thinkingLevel !== undefined) {
-        await uji.sessions.configure({
-          sessionId: session.sessionId,
-          ...(picked === undefined ? {} : { model: { provider: picked.provider, id: picked.id } }),
-          ...(thinkingLevel === undefined ? {} : { thinkingLevel }),
+  const effectiveThinkingLevel = thinkingLevel ?? defaults?.thinkingLevel;
+  const handleModelPickerChange = useCallback((change: ModelPickerChange) => {
+    switch (change.kind) {
+      case "model":
+        setPicked(change.option);
+        setThinkingLevel(change.thinkingLevel);
+        return;
+      case "thinking":
+        setThinkingLevel(change.thinkingLevel);
+        return;
+      case "fast":
+        setFastSettings((settings) => {
+          const next = new Set(settings);
+          if (change.enabled) next.add(change.settingId);
+          else next.delete(change.settingId);
+          return next;
         });
+        return;
+      default: {
+        const _exhaustive: never = change;
+        return _exhaustive;
       }
-      await uji.messages.send({ sessionId: session.sessionId, content });
+    }
+  }, []);
+
+  const start = async (chips: readonly ComposerChip[]): Promise<boolean> => {
+    const text = viewState.composer.draft.trim();
+    const prompt = composerPromptText(text, chips);
+    if ((prompt === "" && attachments.length === 0) || sending || attachmentReads !== 0) {
+      return false;
+    }
+    const content = composerMessageContent(text, attachments, chips);
+    setSending(true);
+    setStartFailure(undefined);
+    try {
+      const session = await nyte.sessions.create();
+      // Configure what the chip showed, picked or not: the host composed its
+      // default before any login or Settings change made since.
+      if (current !== undefined) {
+        const model = { provider: current.provider, id: current.id };
+        await nyte.sessions.configure(
+          effectiveThinkingLevel === undefined
+            ? { sessionId: session.sessionId, model }
+            : { sessionId: session.sessionId, model, thinkingLevel: effectiveThinkingLevel },
+        );
+      }
+      if (current?.fastMode.kind === "available" && fastSettings.has(current.fastMode.settingId)) {
+        const outcome = await nyte.plugins.settings.apply({
+          sessionId: session.sessionId,
+          id: current.fastMode.settingId,
+          choiceId: "on",
+        });
+        if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
+      }
+      await outbox.submitDurably({ sessionId: session.sessionId, content });
       updateViewState(() => ({
         composer: { draft: "", selectionStart: 0, selectionEnd: 0, focused: false },
       }));
+      setAttachments([]);
+      setAttachmentError(undefined);
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void loadThread(session.sessionId).catch(() => undefined);
       actions.openSessionInPane(paneId, session.sessionId);
-    })().catch((cause: unknown) => {
+      return true;
+    } catch (cause: unknown) {
       setSending(false);
-      setError(cause instanceof Error ? cause.message : String(cause));
-    });
+      setStartFailure(cause instanceof Error ? cause.message : String(cause));
+      return false;
+    }
   };
 
-  // No workspace yet: the stage stays mounted and asks for a folder instead of
-  // swapping to a separate home screen. Recents live in the rail.
-  if (host.data !== undefined && workspace === undefined) {
-    return (
-      <div {...stylex.props(styles.screen)}>
-        {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-        <div {...stylex.props(styles.blank)}>
-          <div {...stylex.props(styles.blankColumn)}>
-            <div {...stylex.props(styles.greeting)}>Open a folder to start.</div>
-            <div {...stylex.props(styles.blankHint)}>
-              Uji works inside one project at a time. Recent projects are in the sidebar.
-            </div>
-            <div {...stylex.props(styles.blankActions)}>
-              <Button
-                variant="primary"
-                icon="folder-open"
-                onClick={() => void uji.host.pickWorkspace().then(handleOpenOutcome)}
-              >
-                Open folder…
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const addFiles = async (files: readonly File[]): Promise<void> => {
+    setAttachmentReads((count) => count + 1);
+    try {
+      const result = await readComposerImageAttachments(files);
+      if (result.attachments.length > 0) {
+        setAttachments((current) => [...current, ...result.attachments]);
+      }
+      setAttachmentError(result.error);
+    } finally {
+      setAttachmentReads((count) => count - 1);
+    }
+  };
 
   return (
     <div {...stylex.props(styles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
       <div {...stylex.props(styles.blank)}>
         <div {...stylex.props(styles.blankColumn)}>
-          {workspace !== undefined && (
+          {host.data !== undefined && (
             <div {...stylex.props(styles.workspaceContext)}>
-              <span
-                title={workspace.path}
-                {...stylex.props(styles.workspaceContextItem, styles.workspaceContextPath)}
+              <Menu
+                label="Select workspace"
+                align="start"
+                trigger={
+                  <button
+                    type="button"
+                    title={workspace?.path ?? "Home"}
+                    {...stylex.props(
+                      styles.workspaceContextItem,
+                      styles.workspaceContextButton,
+                      styles.workspaceContextPath,
+                      focus.ring,
+                    )}
+                  >
+                    <span {...stylex.props(styles.workspaceContextText)}>
+                      {workspace === undefined ? "Home" : displayWorkspacePath(workspace.path)}
+                    </span>
+                    <Icon name="chevron-down" size={10} />
+                  </button>
+                }
               >
-                <Icon name="folder" size={13} />
-                <span {...stylex.props(styles.workspaceContextText)}>{workspace.path}</span>
-              </span>
+                <MenuItem
+                  icon="folder"
+                  onSelect={() => {
+                    if (workspace !== undefined) void nyte.host.closeWorkspace();
+                  }}
+                >
+                  Home
+                </MenuItem>
+                {recentWorkspaces.map((candidate) => (
+                  <MenuItem
+                    key={candidate.path}
+                    icon="folder"
+                    onSelect={() => {
+                      void nyte.host
+                        .openWorkspace({ path: candidate.path })
+                        .then(handleOpenOutcome);
+                    }}
+                  >
+                    {candidate.name}
+                  </MenuItem>
+                ))}
+                <MenuSeparator />
+                <MenuItem
+                  icon="folder-add"
+                  onSelect={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
+                >
+                  Open folder…
+                </MenuItem>
+              </Menu>
               {branch !== undefined && (
-                <span title={branch} {...stylex.props(styles.workspaceContextItem)}>
-                  <Icon name="git-branch" size={13} />
+                <span
+                  title={`Branch: ${branch}`}
+                  {...stylex.props(styles.workspaceContextItem, styles.workspaceContextStatic)}
+                >
                   <span {...stylex.props(styles.workspaceContextText)}>{branch}</span>
                 </span>
               )}
+              <span
+                title="This Mac"
+                {...stylex.props(styles.workspaceContextItem, styles.workspaceContextStatic)}
+              >
+                <Icon name="computer" size={13} />
+                <span {...stylex.props(styles.workspaceContextText)}>This Mac</span>
+              </span>
             </div>
           )}
           <ComposerFrame
+            surface="new-chat"
             value={viewState.composer.draft}
             onChange={(draft) =>
               updateViewState((currentState) => ({
@@ -733,8 +1006,22 @@ function BlankConversation({
               }))
             }
             onSubmit={start}
-            placeholder="Message Uji…"
-            disabled={sending}
+            placeholder="Plan, Build, / for skills, @ for context"
+            disabled={sending || host.data === undefined}
+            suggestionCatalog={composerSource(pluginCatalog.data, pluginCatalog.isError)}
+            mentionFiles={
+              workspace === undefined
+                ? { status: "ready", data: [] }
+                : composerSource(workspaceFiles.data, workspaceFiles.isError)
+            }
+            attachments={attachments}
+            attachmentBusy={attachmentReads !== 0}
+            attachmentError={attachmentError}
+            onFilesSelected={(files) => void addFiles(files)}
+            onAttachmentRemove={(id) => {
+              setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+              setAttachmentError(undefined);
+            }}
             inputRef={inputRef}
             selectionStart={viewState.composer.selectionStart}
             selectionEnd={viewState.composer.selectionEnd}
@@ -750,81 +1037,24 @@ function BlankConversation({
             }
             model={
               <ModelPicker
+                catalog={catalog.data}
                 current={current}
-                options={options}
-                thinkingLevel={thinkingLevel}
-                onModelSelect={(option, level) => {
-                  setPicked(option);
-                  setThinkingLevel(level);
-                }}
-                onThinkingLevel={setThinkingLevel}
+                thinkingLevel={effectiveThinkingLevel}
+                fastEnabled={fastSettings}
+                disabled={sending || host.data === undefined}
+                onChange={handleModelPickerChange}
               />
             }
           />
-          {error !== undefined && <div {...stylex.props(styles.error)}>{error}</div>}
+          {startFailure !== undefined && (
+            <div role="alert" title={startFailure} {...stylex.props(styles.error)}>
+              Couldn&rsquo;t start the chat. Try again.
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
-}
-
-interface SessionDropTarget {
-  readonly paneId: PaneId;
-  readonly placement: DropPlacement;
-}
-
-/** Cursor's pane target uses the nearest normalized edge and a central 25% zone. */
-function placementAt(
-  element: HTMLElement,
-  point: SessionDragPoint,
-  allowCenter: boolean,
-): DropPlacement | undefined {
-  const bounds = element.getBoundingClientRect();
-  if (bounds.width <= 0 || bounds.height <= 0) return undefined;
-  const x = (point.clientX - bounds.left) / bounds.width;
-  const y = (point.clientY - bounds.top) / bounds.height;
-  const distances: readonly (readonly [Exclude<DropPlacement, "center">, number])[] = [
-    ["left", x],
-    ["right", 1 - x],
-    ["top", y],
-    ["bottom", 1 - y],
-  ];
-  const [placement, distance] = distances.reduce((best, next) => (next[1] < best[1] ? next : best));
-  return allowCenter && distance > 0.375 ? "center" : placement;
-}
-
-function paneIdFromAttribute(value: string | null): PaneId | undefined {
-  switch (value) {
-    case "primary":
-    case "secondary":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function sessionDropTargetAt(
-  container: HTMLDivElement,
-  layout: PaneLayout,
-  sessionId: SessionId,
-  point: SessionDragPoint,
-): SessionDropTarget | undefined {
-  const hit = container.ownerDocument.elementFromPoint(point.clientX, point.clientY);
-  const paneElement = hit?.closest<HTMLElement>("[data-uji-pane-id]");
-  if (paneElement === undefined || paneElement === null || !container.contains(paneElement)) {
-    return undefined;
-  }
-  const paneId = paneIdFromAttribute(paneElement.getAttribute("data-uji-pane-id"));
-  if (paneId === undefined) return undefined;
-  const pane = paneById(layout, paneId);
-  if (
-    pane === undefined ||
-    (pane.selection.kind === "session" && pane.selection.sessionId === sessionId)
-  ) {
-    return undefined;
-  }
-  const placement = placementAt(paneElement, point, layout.kind === "split");
-  return placement === undefined ? undefined : { paneId, placement };
 }
 
 function panePreviewRect(
@@ -883,13 +1113,18 @@ function DropPreview({
   return (
     <div aria-hidden="true" {...stylex.props(styles.dropPreviewLayer)}>
       <div
-        data-uji-drop-preview=""
+        data-nyte-drop-preview=""
         {...stylex.props(styles.dropPreview)}
         style={dropPreviewRect(layout, target)}
       />
     </div>
   );
 }
+
+type PanePosition =
+  | { readonly kind: "single" }
+  | { readonly kind: "leading"; readonly ratio: number }
+  | { readonly kind: "trailing" };
 
 function PaneHost({
   pane,
@@ -898,11 +1133,12 @@ function PaneHost({
 }: {
   pane: PaneState;
   active: boolean;
-  position: "single" | "leading" | "trailing";
+  position: PanePosition;
 }): ReactElement {
   const actions = usePaneActions();
   const { focusRequest } = usePaneControllerSnapshot();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachDropTarget = useSessionPaneDropTarget(pane.id);
   const attachInput = useCallback((element: HTMLTextAreaElement | null) => {
     inputRef.current = element;
   }, []);
@@ -913,14 +1149,14 @@ function PaneHost({
 
   return (
     <section
+      ref={attachDropTarget}
       aria-label={`${active ? "Active " : ""}chat pane`}
-      data-uji-pane-id={pane.id}
+      data-nyte-pane-id={pane.id}
       {...stylex.props(
         styles.pane,
-        position === "single" && styles.paneSingle,
-        position === "leading" && styles.paneLeading,
-        position === "trailing" && styles.paneTrailing,
-        active && position !== "single" && styles.paneActive,
+        position.kind === "single" && styles.paneSingle,
+        position.kind === "leading" && styles.paneLeading(position.ratio),
+        position.kind === "trailing" && styles.paneTrailing,
       )}
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
@@ -938,17 +1174,33 @@ function PaneHost({
   );
 }
 
+/**
+ * The drag lives in the parent as state: the leading pane renders `dragRatio`
+ * while the pointer is down and the layout's ratio otherwise, and the
+ * controller only hears about the ratio the pointer released at.
+ */
 function SplitSash({
   direction,
   ratio,
+  dragRatio,
+  onDragRatio,
   containerRef,
 }: {
   direction: SplitDirection;
   ratio: number;
+  dragRatio: number | undefined;
+  onDragRatio: (ratio: number | undefined) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }): ReactElement {
   const actions = usePaneActions();
-  const dragRatio = useRef<number | undefined>(undefined);
+
+  /**
+   * Only a side-by-side split can starve a pane of width, so the pixel floor
+   * applies on that axis alone; stacked panes keep the full container width
+   * whatever the ratio.
+   */
+  const clampRatio = (nextRatio: number, width: number): number =>
+    direction === "right" ? clampSplitRatioForSize(nextRatio, width) : clampSplitRatio(nextRatio);
 
   const ratioFromPointer = (event: PointerEvent<HTMLDivElement>): number | undefined => {
     const container = containerRef.current;
@@ -957,11 +1209,7 @@ function SplitSash({
     const size = direction === "right" ? bounds.width : bounds.height;
     if (size <= 0) return undefined;
     const pixels = direction === "right" ? event.clientX - bounds.left : event.clientY - bounds.top;
-    return clampSplitRatio(pixels / size);
-  };
-
-  const applyRatio = (nextRatio: number): void => {
-    containerRef.current?.style.setProperty("--uji-pane-basis", `${String(nextRatio * 100)}%`);
+    return clampRatio(pixels / size, bounds.width);
   };
 
   return (
@@ -979,35 +1227,29 @@ function SplitSash({
         if (nextRatio === undefined) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        dragRatio.current = nextRatio;
-        applyRatio(nextRatio);
+        onDragRatio(nextRatio);
       }}
       onPointerMove={(event) => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
         const nextRatio = ratioFromPointer(event);
-        if (nextRatio === undefined) return;
-        dragRatio.current = nextRatio;
-        applyRatio(nextRatio);
+        if (nextRatio !== undefined) onDragRatio(nextRatio);
       }}
       onPointerUp={(event) => {
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId);
         }
-        const completed = dragRatio.current;
-        dragRatio.current = undefined;
-        if (completed !== undefined) actions.resize(completed);
+        onDragRatio(undefined);
+        if (dragRatio !== undefined) actions.resize(dragRatio);
       }}
-      onPointerCancel={() => {
-        dragRatio.current = undefined;
-        applyRatio(ratio);
-      }}
+      onPointerCancel={() => onDragRatio(undefined)}
       onKeyDown={(event) => {
         const previous = direction === "right" ? "ArrowLeft" : "ArrowUp";
         const next = direction === "right" ? "ArrowRight" : "ArrowDown";
         if (event.key !== previous && event.key !== next) return;
         event.preventDefault();
         const step = event.shiftKey ? 0.1 : 0.02;
-        actions.resize(ratio + (event.key === previous ? -step : step));
+        const width = containerRef.current?.getBoundingClientRect().width ?? Number.NaN;
+        actions.resize(clampRatio(ratio + (event.key === previous ? -step : step), width));
       }}
     >
       <span
@@ -1029,18 +1271,18 @@ export function ThreadScreen({
   const actions = usePaneActions();
   const host = useHostState();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [draggedSession, setDraggedSession] = useState<SessionId | undefined>();
-  const [dropTarget, setDropTarget] = useState<SessionDropTarget | undefined>();
+  const dropTarget = useSessionDropTarget();
+  const [dragRatio, setDragRatio] = useState<number | undefined>();
   const panes = orderedPanes(layout);
   const leading = panes[0] ?? activePane(layout);
   const trailing = layout.kind === "split" ? (panes[1] ?? layout.secondary) : undefined;
   const activeSelection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
-  const workbenchTarget: WorkbenchTarget | undefined =
+  const workbenchTarget: WorkbenchTarget =
     activeSelection.kind === "session"
       ? { kind: "session", sessionId: activeSelection.sessionId }
       : workspacePath === undefined
-        ? undefined
+        ? { kind: "home" }
         : { kind: "workspace", workspacePath };
 
   useLayoutEffect(() => {
@@ -1050,22 +1292,6 @@ export function ThreadScreen({
         : { kind: "session", sessionId: routeSessionId },
     );
   }, [actions, routeSessionId]);
-
-  useLayoutEffect(() => {
-    if (layout.kind !== "split") return;
-    containerRef.current?.style.setProperty("--uji-pane-basis", `${String(layout.ratio * 100)}%`);
-  }, [layout]);
-
-  const clearDropState = useCallback((): void => {
-    setDraggedSession(undefined);
-    setDropTarget(undefined);
-  }, []);
-
-  const updateDropTarget = useCallback((next: SessionDropTarget | undefined): void => {
-    setDropTarget((current) =>
-      current?.paneId === next?.paneId && current?.placement === next?.placement ? current : next,
-    );
-  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -1077,42 +1303,6 @@ export function ThreadScreen({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [actions, layout]);
-
-  useEffect(
-    () =>
-      subscribeSessionDragEvents((event) => {
-        const container = containerRef.current;
-        switch (event.kind) {
-          case "move": {
-            setDraggedSession(event.sessionId);
-            updateDropTarget(
-              container === null
-                ? undefined
-                : sessionDropTargetAt(container, layout, event.sessionId, event),
-            );
-            return;
-          }
-          case "drop": {
-            const target =
-              container === null
-                ? undefined
-                : sessionDropTargetAt(container, layout, event.sessionId, event);
-            clearDropState();
-            if (target !== undefined)
-              actions.drop(event.sessionId, target.paneId, target.placement);
-            return;
-          }
-          case "cancel":
-            clearDropState();
-            return;
-          default: {
-            const _exhaustive: never = event;
-            return _exhaustive;
-          }
-        }
-      }),
-    [actions, clearDropState, layout, updateDropTarget],
-  );
 
   return (
     <div {...stylex.props(styles.stage)}>
@@ -1128,13 +1318,19 @@ export function ThreadScreen({
           key={leading.id}
           pane={leading}
           active={activePane(layout).id === leading.id}
-          position={layout.kind === "single" ? "single" : "leading"}
+          position={
+            layout.kind === "single"
+              ? { kind: "single" }
+              : { kind: "leading", ratio: dragRatio ?? layout.ratio }
+          }
         />
         {layout.kind === "split" && trailing !== undefined && (
           <SplitSash
             key="pane-sash"
             direction={layout.direction}
             ratio={layout.ratio}
+            dragRatio={dragRatio}
+            onDragRatio={setDragRatio}
             containerRef={containerRef}
           />
         )}
@@ -1143,16 +1339,12 @@ export function ThreadScreen({
             key={trailing.id}
             pane={trailing}
             active={activePane(layout).id === trailing.id}
-            position="trailing"
+            position={{ kind: "trailing" }}
           />
         )}
-        {draggedSession !== undefined && dropTarget !== undefined && (
-          <DropPreview layout={layout} target={dropTarget} />
-        )}
+        {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
       </div>
-      {workbenchTarget !== undefined && (
-        <Workbench target={workbenchTarget} paneKey={WORKBENCH_STAGE_PANE_KEY} />
-      )}
+      <Workbench target={workbenchTarget} paneKey={WORKBENCH_STAGE_PANE_KEY} />
     </div>
   );
 }

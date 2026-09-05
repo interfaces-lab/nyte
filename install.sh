@@ -1,26 +1,26 @@
 #!/bin/sh
-# Install the uji CLI from GitHub Releases.
+# Install the nyte CLI from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Itsnotaka/uji/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/Itsnotaka/uji/main/install.sh | sh -s -- --version 0.2.0
-#   curl -fsSL https://raw.githubusercontent.com/Itsnotaka/uji/main/install.sh | sh -s -- --no-modify-path
+#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh -s -- --version 0.2.0
+#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh -s -- --no-modify-path
 #
 # Environment:
-#   UJI_INSTALL_DIR     where the binary goes (default ~/.local/bin)
-#   UJI_VERSION         release to install (default: latest)
-#   UJI_NO_MODIFY_PATH  set to skip editing the shell rc file
+#   NYTE_INSTALL_DIR     where the binary goes (default ~/.local/bin)
+#   NYTE_VERSION         release to install (default: latest)
+#   NYTE_NO_MODIFY_PATH  set to skip editing the shell rc file
 #
 # The PATH handling (pick the rc file from $SHELL, append one exact line only
 # when it is missing, never rewrite the file) is based on
 # https://github.com/anomalyco/opencode/blob/v2/install
 set -eu
 
-REPO="Itsnotaka/uji"
+REPO="interfaces-lab/nyte"
 
 usage() {
 	cat <<EOF
-uji installer
+nyte installer
 
 Usage: install.sh [options]
 
@@ -31,8 +31,8 @@ Options:
 EOF
 }
 
-requested_version="${UJI_VERSION:-}"
-no_modify_path="${UJI_NO_MODIFY_PATH:-}"
+requested_version="${NYTE_VERSION:-}"
+no_modify_path="${NYTE_NO_MODIFY_PATH:-}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
 			;;
 		-v | --version)
 			if [ -z "${2:-}" ]; then
-				echo "uji install: --version needs a version argument." >&2
+				echo "nyte install: --version needs a version argument." >&2
 				exit 1
 			fi
 			requested_version="$2"
@@ -53,7 +53,7 @@ while [ $# -gt 0 ]; do
 			shift
 			;;
 		*)
-			echo "uji install: unknown option '$1'." >&2
+			echo "nyte install: unknown option '$1'." >&2
 			usage >&2
 			exit 1
 			;;
@@ -61,7 +61,7 @@ while [ $# -gt 0 ]; do
 done
 
 if ! command -v curl >/dev/null 2>&1; then
-	echo "uji install: curl is required." >&2
+	echo "nyte install: curl is required." >&2
 	exit 1
 fi
 
@@ -71,7 +71,7 @@ case "$os" in
 	Darwin) os=darwin ;;
 	Linux) os=linux ;;
 	*)
-		echo "uji install: no prebuilt binary for ${os}. Only macOS and Linux have releases." >&2
+		echo "nyte install: no prebuilt binary for ${os}. Only macOS and Linux have releases." >&2
 		exit 1
 		;;
 esac
@@ -79,7 +79,7 @@ case "$arch" in
 	arm64 | aarch64) arch=arm64 ;;
 	x86_64) arch=x64 ;;
 	*)
-		echo "uji install: no prebuilt binary for ${arch}." >&2
+		echo "nyte install: no prebuilt binary for ${arch}." >&2
 		exit 1
 		;;
 esac
@@ -88,7 +88,7 @@ if [ -n "$requested_version" ]; then
 	tag="v${requested_version#v}"
 	status=$(curl -fsSLI -o /dev/null -w '%{http_code}' "https://github.com/${REPO}/releases/tag/${tag}" || true)
 	if [ "$status" = "404" ]; then
-		echo "uji install: release ${tag} not found. See https://github.com/${REPO}/releases" >&2
+		echo "nyte install: release ${tag} not found. See https://github.com/${REPO}/releases" >&2
 		exit 1
 	fi
 else
@@ -97,12 +97,12 @@ else
 	final_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest")
 	tag=${final_url##*/}
 	if [ -z "$tag" ] || [ "$tag" = "latest" ]; then
-		echo "uji install: could not find the latest release." >&2
+		echo "nyte install: could not find the latest release." >&2
 		exit 1
 	fi
 fi
 
-asset="uji-${tag}-${os}-${arch}"
+asset="nyte-${tag}-${os}-${arch}"
 base_url="https://github.com/${REPO}/releases/download/${tag}"
 
 tmp=$(mktemp -d)
@@ -118,18 +118,18 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
 	shasum -a 256 -c "${asset}.tar.gz.sha256" >/dev/null
 else
-	echo "uji install: neither sha256sum nor shasum found, skipping verification." >&2
+	echo "nyte install: neither sha256sum nor shasum found, skipping verification." >&2
 fi
 echo "Checksum ok."
 
 tar -xzf "${asset}.tar.gz"
 
-install_dir="${UJI_INSTALL_DIR:-${HOME}/.local/bin}"
+install_dir="${NYTE_INSTALL_DIR:-${HOME}/.local/bin}"
 mkdir -p "$install_dir"
-mv -f uji "${install_dir}/uji"
-chmod 755 "${install_dir}/uji"
+mv -f nyte "${install_dir}/nyte"
+chmod 755 "${install_dir}/nyte"
 
-echo "Installed uji ${tag#v} to ${install_dir}/uji"
+echo "Installed nyte ${tag#v} to ${install_dir}/nyte"
 
 # Append `command` to `file` once. The exact line already present means skip;
 # an unwritable file means print the line for the user instead.
@@ -139,7 +139,7 @@ add_to_path() {
 	if grep -Fxq "$command" "$file" 2>/dev/null; then
 		echo "PATH already set in ${file}."
 	elif [ -w "$file" ]; then
-		printf '\n# uji\n%s\n' "$command" >>"$file"
+		printf '\n# nyte\n%s\n' "$command" >>"$file"
 		echo "Added ${install_dir} to PATH in ${file}."
 		echo "Open a new terminal, or run: ${command}"
 	else
@@ -207,4 +207,4 @@ if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_PATH:-}" ]; then
 	echo "Added ${install_dir} to GITHUB_PATH."
 fi
 
-echo "Next: uji login"
+echo "Next: nyte login"

@@ -1,0 +1,79 @@
+---
+title: Desktop
+description: The product Electron app composes createNyte. The demo desktop was the last pre-SDK host
+---
+
+There are two Electron apps in this repo. They are not the same product.
+
+| Path                    | Package                 | What it is                                                                                       |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `packages/desktop`      | `@nyte-ai/desktop`      | The product app. Main process hosts `createNyte`. Renderer talks SDK verbs over `window.nyte`.   |
+| `packages/demo/desktop` | `@nyte-ai/demo-desktop` | The leftover demo. Per-agent conversations and snapshots over the old harness, which is deleted. |
+
+Root `pnpm dev` still starts the **demo**. Until that script moves, start the product app from its package:
+
+```bash
+pnpm --dir packages/desktop dev
+pnpm --dir packages/demo/desktop dev   # also: pnpm dev
+```
+
+The product desktop keeps workspace history in `~/.nyte/workspaces/<path-hash>/sessions.db`.
+On first open, it imports an existing `<workspace>/.nyte/sessions.db` with a SQLite backup and leaves
+the original intact. Later desktop chats use the local copy. `NYTE_HOME` overrides `~/.nyte`.
+Missing folders stay in the sidebar with dimmed names, and their saved chats remain available.
+Trust grants live in `~/.nyte/trust.json`, so a folder you trusted in the terminal stays trusted here.
+
+## Product desktop
+
+Opening a workspace loads local history without checking trust. Sending resolves the folder through
+core and requests trust before loading project code. A missing path fails the send, which stays in
+the outbox for retry. The main process loads the same plugin set as the TUI (`system-prompt`,
+`rename`, `context-files`, `tools-fs`, `fast-mode`, `web-search` and its provider plugins,
+`skills`, plus user and project dirs), then `createNyte` and `attach()`. One workspace at a time.
+
+The renderer never imports `@nyte-ai/core`. IPC is one `nyte:call` channel: verb path plus one input object,
+the same namespaces as the in-process SDK (`sessions`, `messages`, `runs`, `heads`, `workspace`,
+`provider`, `plugins`). `watch` cannot be an AsyncIterable across IPC, so it is a start/stop pump with the
+same `afterSeq` / `live` cursors.
+
+What you get in the UI today: session list, composer send, plugin slash commands, abort, a pending strip
+with cancel and redeliver, and a context gauge from `runs.context`. What the bridge already exposes but the
+renderer does not draw: the session tree, `/usage` card, and run-end notifications. Those are TUI surfaces,
+not missing SDK verbs.
+
+The renderer imports controls from `@nyte-ai/ui` and product-specific headless composites from
+`@nyte-ai/ui/primitives`. Desktop keeps Cursor-specific layout and StyleX overrides locally; the shared
+package owns the Base UI dependency, accessible interaction contracts, and reusable control defaults.
+
+## Demo desktop
+
+Keep this around as a product sketch (agent profiles, per-agent history). Do not copy it if you want the
+SDK. Its preload was `window.ujiDesktop` with `initialize`, `login`, `send`, `abort`, `newChat`,
+`selectAgent`. It forwarded a handful of events from the old harness and discarded `suspended` on open, so crash resume
+was not faithful. Plugins were a system prompt from the agent instructions; no filesystem tools, no skills.
+
+[Host and client](/docs/host-sdk) used to treat that IPC as the desktop contract. It is now labeled as the
+legacy demo. The future `@nyte-ai/protocol` should mirror `window.nyte`, not `initialize` / `selectAgent`.
+
+## Related
+
+<Cards>
+  <DocCard
+    icon="IconCodeBrackets"
+    title="SDK"
+    href="/docs/sdk"
+    description="createNyte, attach, send, watch"
+  />
+  <DocCard
+    icon="IconConsole"
+    title="TUI"
+    href="/docs/tui"
+    description="The other product host, same store file"
+  />
+  <DocCard
+    icon="IconBridge"
+    title="Host and client"
+    href="/docs/host-sdk"
+    description="The reserved wire, and what the demo still does"
+  />
+</Cards>

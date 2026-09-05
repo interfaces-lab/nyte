@@ -1,5 +1,5 @@
 /**
- * @uji-ai/ai: the provider layer. Side-effect free: provider factories and API
+ * @nyte-ai/ai: the provider layer. Side-effect free: provider factories and API
  * implementations are exported explicitly below; nothing registers globally.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/index.ts
@@ -24,7 +24,11 @@ export {
   type OpenAICodexWebSocketDebugStats,
 } from "./api/openai-codex-responses.ts";
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
-export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
+export {
+  compactOpenAIResponsesContext,
+  type OpenAIResponsesOptions,
+} from "./api/openai-responses.ts";
+export type { OpenAICompactResult } from "./api/openai-compact.ts";
 export * from "./auth/context.ts";
 export * from "./auth/credential-store.ts";
 export * from "./auth/helpers.ts";
@@ -39,11 +43,7 @@ export {
 } from "./auth/resolve.ts";
 export { anthropicOAuth } from "./auth/oauth/anthropic.ts";
 export { getAccountId, openaiCodexOAuth } from "./auth/oauth/openai-codex.ts";
-export {
-  loadAnthropicOAuth,
-  loadOpenAICodexOAuth,
-  registerBundledOAuthFlowLoaders,
-} from "./auth/oauth/load.ts";
+export { loadAnthropicOAuth, loadOpenAICodexOAuth } from "./auth/oauth/load.ts";
 export { oauthErrorHtml, oauthSuccessHtml } from "./auth/oauth/oauth-page.ts";
 export { generatePKCE } from "./auth/oauth/pkce.ts";
 export {
@@ -54,6 +54,7 @@ export {
 } from "./auth/oauth/device-code.ts";
 export * from "./env-api-keys.ts";
 export * from "./models.ts";
+export { getFastModeCostMultiplier } from "./model-pricing.ts";
 export * from "./models-store.ts";
 export * from "./prompt-cache.ts";
 export * from "./session-resources.ts";
@@ -71,6 +72,7 @@ export { uuidv7 } from "./utils/uuid.ts";
 export * from "./utils/validation.ts";
 
 export { anthropicProvider } from "./providers/anthropic.ts";
+export { createNyteModels, defaultModelPerProvider } from "./providers/nyte-catalog.ts";
 export {
   parseOpenCodeCatalog,
   type OpenCodeApi,

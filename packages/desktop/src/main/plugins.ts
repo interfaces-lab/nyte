@@ -1,6 +1,6 @@
 /**
  * The desktop's plugin composition, mirroring the TUI host's: the same
- * built-ins, the same `~/.uji` and `<cwd>/.uji` directories, the same
+ * built-ins, the same `~/.nyte` and `<cwd>/.nyte` directories, the same
  * manifest. Trust is the argument: `resolveDesktopPlugins` takes a
  * `TrustedWorkspace`, a value that exists only after the trust gate
  * (invariant 21), so project code cannot load before the grant.
@@ -8,69 +8,85 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { FileCredentialStore } from "@uji-ai/ai";
-import type { Api, Model, Models } from "@uji-ai/ai";
-import { resolvePlugins } from "@uji-ai/core";
+import { Type, Unsafe } from "typebox";
+import { Compile } from "typebox/compile";
+import { FileCredentialStore } from "@nyte-ai/ai";
+import type { Api, Model, Models } from "@nyte-ai/ai";
+import { resolvePlugins } from "@nyte-ai/core";
 import type {
   PluginDirectory,
   PluginManifest,
   ResolvedPlugins,
   TrustedWorkspace,
-} from "@uji-ai/core";
-import { fastModePlugin } from "@uji-ai/plugin/examples/fast-mode";
+} from "@nyte-ai/core";
+import type { JsonValue } from "@nyte-ai/schema";
+import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
+import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
+import { renamePlugin } from "@nyte-ai/plugin/examples/rename";
 import {
   webSearchCredentialId,
-  webSearchPlugin,
+  webSearchPlugins,
   type WebSearchCredentials,
-} from "@uji-ai/plugin/examples/web-search";
+} from "@nyte-ai/plugin/examples/web-search";
 import {
   SKILLS_PLUGIN_ID,
   contextFilesPlugin,
   skillsPlugin,
   systemPromptPlugin,
   toolsFsPlugin,
-} from "@uji-ai/core/plugins";
-import { toJsonValue } from "@uji-ai/core/store";
+} from "@nyte-ai/core/plugins";
+import { errorCode } from "./errors.ts";
 
 /** A new generation per resolve, so re-opening a workspace re-scans skills. */
 let skillsGeneration = 0;
 
+export type DesktopPluginTarget =
+  | { readonly kind: "home" }
+  | { readonly kind: "project"; readonly workspace: TrustedWorkspace };
+
 export async function resolveDesktopPlugins(
-  workspace: TrustedWorkspace,
+  target: DesktopPluginTarget,
   context: { model: Model<Api>; models: Models },
 ): Promise<ResolvedPlugins> {
-  const { cwd } = workspace;
+  const cwd = target.kind === "project" ? target.workspace.cwd : undefined;
   return resolvePlugins({
     builtins: [
       systemPromptPlugin(),
-      contextFilesPlugin({ globalDir: join(homedir(), ".uji") }),
+      renamePlugin({ models: context.models, model: context.model }),
+      contextFilesPlugin({ globalDir: join(homedir(), ".nyte") }),
       toolsFsPlugin(),
-      fastModePlugin(context.model),
-      webSearchPlugin({ credentials: webSearchCredentials() }),
-      skillsPlugin({ directories: skillDirectories(cwd) }),
+      openaiCompactionPlugin({ models: context.models }),
+      fastModePlugin({ models: context.models, defaultModel: context.model }),
+      // The tool first, then the provider plugins that join it.
+      ...webSearchPlugins({ credentials: webSearchCredentials() }),
+      skillsPlugin({ directories: skillDirectories(target) }),
     ],
-    directories: pluginDirectories(cwd),
-    manifest: await readManifest(cwd),
+    directories: pluginDirectories(target),
+    manifest: cwd === undefined ? undefined : await readManifest(cwd),
     builtinVersions: { [SKILLS_PLUGIN_ID]: `builtin:${String(++skillsGeneration)}` },
   });
 }
 
-function pluginDirectories(cwd: string): PluginDirectory[] {
-  return [
-    { path: join(homedir(), ".uji", "plugins"), source: "user" },
-    { path: join(cwd, ".uji", "plugins"), source: "project" },
-  ];
+function pluginDirectories(target: DesktopPluginTarget): PluginDirectory[] {
+  const user = { path: join(homedir(), ".nyte", "plugins"), source: "user" } as const;
+  if (target.kind === "home") return [user];
+  return [user, { path: join(target.workspace.cwd, ".nyte", "plugins"), source: "project" }];
 }
 
-/** Project skills override user skills; Uji-native locations win over compatibility locations. */
-function skillDirectories(cwd: string): string[] {
-  return [
-    join(cwd, ".uji", "skills"),
-    join(cwd, ".agents", "skills"),
-    join(cwd, ".claude", "skills"),
-    join(homedir(), ".uji", "skills"),
+/** Project skills override user skills; Nyte-native locations win over compatibility locations. */
+function skillDirectories(target: DesktopPluginTarget): string[] {
+  const user = [
+    join(homedir(), ".nyte", "skills"),
     join(homedir(), ".agents", "skills"),
     join(homedir(), ".claude", "skills"),
+  ];
+  if (target.kind === "home") return user;
+  const cwd = target.workspace.cwd;
+  return [
+    join(cwd, ".nyte", "skills"),
+    join(cwd, ".agents", "skills"),
+    join(cwd, ".claude", "skills"),
+    ...user,
   ];
 }
 
@@ -92,61 +108,39 @@ function webSearchCredentials(): WebSearchCredentials {
   };
 }
 
-/** `.uji/uji.json` in the project; optional. Disables ids and sets options, never lists plugins. */
+/** `.nyte/nyte.json` in the project; optional. Disables ids and sets options, never lists plugins. */
+const manifestFile = Compile(
+  Type.Object(
+    {
+      plugins: Type.Optional(
+        Type.Array(
+          Type.Union([
+            Type.String(),
+            Type.Object(
+              // `JSON.parse` output is JSON by construction.
+              { id: Type.String(), options: Type.Optional(Unsafe<JsonValue>({})) },
+              { additionalProperties: false },
+            ),
+          ]),
+        ),
+      ),
+    },
+    { additionalProperties: false },
+  ),
+);
+
 async function readManifest(cwd: string): Promise<PluginManifest | undefined> {
   let text: string;
   try {
-    text = await readFile(join(cwd, ".uji", "uji.json"), "utf8");
+    text = await readFile(join(cwd, ".nyte", "nyte.json"), "utf8");
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-      return undefined;
-    }
+    if (errorCode(error) === "ENOENT") return undefined;
     throw error;
   }
-  return parsePluginManifest(JSON.parse(text));
-}
-
-type ManifestPlugin = NonNullable<PluginManifest["plugins"]>[number];
-
-function unknownProperty(value: unknown, allowed: readonly string[], path: string): void {
-  if (typeof value !== "object" || value === null) {
-    throw new Error(`${path} must be an object`);
-  }
-  const key = Object.keys(value).find((candidate) => !allowed.includes(candidate));
-  if (key !== undefined) throw new Error(`${path} has unknown property "${key}"`);
-}
-
-function parseManifestPlugin(value: unknown, index: number): ManifestPlugin {
-  if (typeof value === "string") return value;
-  const path = `.uji/uji.json.plugins[${String(index)}]`;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${path} must be a string or object`);
-  }
-  unknownProperty(value, ["id", "options"], path);
-  if (!("id" in value) || typeof value.id !== "string") {
-    throw new Error(`${path}.id must be a string`);
-  }
-  if (!("options" in value)) return { id: value.id };
-  try {
-    return { id: value.id, options: toJsonValue(value.options) };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${path}.options must be JSON: ${message}`, { cause: error });
-  }
-}
-
-function parsePluginManifest(value: unknown): PluginManifest {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(".uji/uji.json must be an object");
-  }
-  unknownProperty(value, ["plugins"], ".uji/uji.json");
-  if (!("plugins" in value)) return {};
-  if (!Array.isArray(value.plugins)) {
-    throw new Error(".uji/uji.json.plugins must be an array");
-  }
-  const plugins: ManifestPlugin[] = [];
-  for (const [index, plugin] of value.plugins.entries()) {
-    plugins.push(parseManifestPlugin(plugin, index));
-  }
-  return { plugins };
+  const parsed: unknown = JSON.parse(text);
+  if (manifestFile.Check(parsed)) return parsed;
+  const problems = manifestFile
+    .Errors(parsed)
+    .map((error) => `${error.instancePath || "/"}: ${error.message}`);
+  throw new Error(`.nyte/nyte.json: ${problems.join("; ")}`);
 }

@@ -1,10 +1,10 @@
-export const appName = "Uji";
+export const appName = "Nyte";
 export const docsRoute = "/docs";
 export const docsImageRoute = "/og/docs";
 export const docsContentRoute = "/llms.mdx/docs";
 
 export const gitConfig = {
-  user: "Itsnotaka",
-  repo: "uji",
+  user: "interfaces-lab",
+  repo: "nyte",
   branch: "main",
 };

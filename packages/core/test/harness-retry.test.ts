@@ -1,6 +1,6 @@
 /**
  * Retries are published, not silent. A transient provider failure must reach a client
- * as `retry_scheduled` / `retry_started`, and a first-try success must emit
+ * as `retry_scheduled` / `retry_start` / `retry_end`, and a first-try success must emit
  * none of them (pi harness.md 5.5).
  */
 import assert from "node:assert/strict";
@@ -11,13 +11,9 @@ import { afterEach, describe, test } from "node:test";
 import type { AssistantMessage, AssistantMessageEvent, Message, Model, Usage } from "@uji-ai/ai";
 import { EventStream } from "@uji-ai/ai";
 import type { StreamFn } from "../src/types.ts";
-import { AgentHarness } from "../src/harness/agent-harness.ts";
-import type { EphemeralEvent } from "../src/sdk/types.ts";
-import { inlinePlugin, systemPromptPlugin } from "../src/plugins/index.ts";
+import { AgentHarness, type RetryEvent } from "../src/harness/agent-harness.ts";
+import { inlinePlugin, systemPromptPlugin, type HarnessEvent } from "../src/plugins/index.ts";
 import { SqliteSessionRepo } from "../src/store.ts";
-import { prompt, submit, waitFinished } from "./harness-driver.ts";
-
-type RetryEvent = Extract<EphemeralEvent, { kind: "retry_scheduled" | "retry_started" }>;
 
 const directories: string[] = [];
 afterEach(() => {
@@ -100,8 +96,8 @@ async function open(streamFn: StreamFn, retryOverrides?: { baseDelayMs?: number 
   directories.push(directory);
   const repo = new SqliteSessionRepo(join(directory, "sessions.db"));
   const session = await repo.create();
-  const events: EphemeralEvent[] = [];
-  const harness = await AgentHarness.create({
+  const events: HarnessEvent[] = [];
+  const { harness } = await AgentHarness.create({
     session,
     streamFn,
     plugins: [inlinePlugin(systemPromptPlugin("base"))],
@@ -109,18 +105,13 @@ async function open(streamFn: StreamFn, retryOverrides?: { baseDelayMs?: number 
     model,
     retry: { enabled: true, maxRetries: 2, baseDelayMs: retryOverrides?.baseDelayMs ?? 0 },
   });
-  harness.attach();
   harness.subscribe((event) => {
     events.push(event);
   });
   return {
     harness,
     events,
-    retries: () =>
-      events.filter(
-        (event): event is RetryEvent =>
-          event.kind === "retry_scheduled" || event.kind === "retry_started",
-      ),
+    retries: () => events.filter((event): event is RetryEvent => event.type.startsWith("retry_")),
     records: async () => session.findRecords({ type: "retry_scheduled" }),
     close: async () => {
       await harness.close();
@@ -148,18 +139,20 @@ void describe("assistant retry", () => {
     const seen: Message[][] = [];
     const session = await open(flakyAssistantStream(1, seen));
     try {
-      const result = await prompt(session.harness, "hello");
-      assert.equal(result.outcome.kind, "completed");
+      const result = await session.harness.prompt("hello");
+      assert.ok(result.ok);
+      assert.equal(result.value.kind, "completed");
       assert.equal(seen.length, 2);
 
       const retries = session.retries();
       assert.deepEqual(
-        retries.map((event) => event.kind),
-        ["retry_scheduled", "retry_started"],
+        retries.map((event) => event.type),
+        ["retry_scheduled", "retry_start"],
       );
       const scheduled = retries[0];
-      assert.ok(scheduled?.kind === "retry_scheduled");
-      assert.equal(scheduled.message, "Connection error.");
+      assert.ok(scheduled?.type === "retry_scheduled");
+      assert.equal(scheduled.step, "assistant");
+      assert.equal(scheduled.errorMessage, "Connection error.");
     } finally {
       await session.close();
     }
@@ -168,7 +161,7 @@ void describe("assistant retry", () => {
   void test("the wake time is durable, so a lost process resumes the wait", async () => {
     const session = await open(flakyAssistantStream(1, []));
     try {
-      await prompt(session.harness, "hello");
+      await session.harness.prompt("hello");
       const scheduled = await session.records();
       assert.equal(scheduled.length, 1);
       const only = scheduled[0];
@@ -185,7 +178,7 @@ void describe("assistant retry", () => {
     const seen: Message[][] = [];
     const session = await open(flakyAssistantStream(1, seen));
     try {
-      await prompt(session.harness, "hello");
+      await session.harness.prompt("hello");
 
       const branch = await session.harness.session.getBranch("main");
       const stored = branch.flatMap((entry) =>
@@ -210,10 +203,11 @@ void describe("assistant retry", () => {
     const seen: Message[][] = [];
     const session = await open(flakyAssistantStream(Number.POSITIVE_INFINITY, seen));
     try {
-      const result = await prompt(session.harness, "hello");
-      assert.equal(result.outcome.kind, "failed");
-      if (result.outcome.kind === "failed") {
-        assert.equal(result.outcome.error.message, "Connection error.");
+      const result = await session.harness.prompt("hello");
+      assert.ok(result.ok);
+      assert.equal(result.value.kind, "failed");
+      if (result.value.kind === "failed") {
+        assert.equal(result.value.error.message, "Connection error.");
       }
       // The first attempt plus the policy's two retries.
       assert.equal(seen.length, 3);
@@ -226,8 +220,9 @@ void describe("assistant retry", () => {
     const session = await open(flakyAssistantStream(1, []), { baseDelayMs: 120 });
     try {
       const startedAt = Date.now();
-      const result = await prompt(session.harness, "hello");
-      assert.equal(result.outcome.kind, "completed");
+      const result = await session.harness.prompt("hello");
+      assert.ok(result.ok);
+      assert.equal(result.value.kind, "completed");
       assert.ok(
         Date.now() - startedAt >= 110,
         "the run must not race past its own committed wake time",
@@ -240,13 +235,13 @@ void describe("assistant retry", () => {
   void test("an abort during backoff stops the run instead of retrying", async () => {
     const session = await open(flakyAssistantStream(1, []), { baseDelayMs: 10_000 });
     try {
-      const started = await submit(session.harness, "hello");
-      const running = waitFinished(session.harness.session, started.runId);
+      const running = session.harness.prompt("hello");
       while (session.retries().length === 0)
         await new Promise<void>((resolve) => setTimeout(resolve, 5));
       await session.harness.abort();
       const result = await running;
-      assert.equal(result.outcome.kind, "aborted");
+      assert.ok(result.ok);
+      assert.equal(result.value.kind, "aborted");
     } finally {
       await session.close();
     }
@@ -261,8 +256,9 @@ void describe("assistant retry", () => {
       return settle(message("", "invalid_api_key: check your credentials"));
     });
     try {
-      const result = await prompt(session.harness, "hello");
-      assert.equal(result.outcome.kind, "failed");
+      const result = await session.harness.prompt("hello");
+      assert.ok(result.ok);
+      assert.equal(result.value.kind, "failed");
       assert.equal(calls, 1);
       assert.deepEqual(session.retries(), []);
     } finally {
@@ -275,21 +271,22 @@ void describe("retry events", () => {
   void test("a transient compaction failure is published, then recovers", async () => {
     const session = await open(flakySummaryStream(1));
     try {
-      await prompt(session.harness, "hello");
+      await session.harness.prompt("hello");
       const compacted = await session.harness.compact();
-      assert.equal(compacted.kind, "compacted");
+      assert.equal(compacted.ok, true);
 
       const retries = session.retries();
       assert.deepEqual(
-        retries.map((event) => event.kind),
-        ["retry_scheduled", "retry_started"],
+        retries.map((event) => event.type),
+        ["retry_scheduled", "retry_start"],
       );
 
       const scheduled = retries[0];
-      assert.ok(scheduled?.kind === "retry_scheduled");
+      assert.ok(scheduled?.type === "retry_scheduled");
+      assert.equal(scheduled.step, "compaction");
       assert.equal(scheduled.attempt, 1);
       assert.equal(scheduled.maxAttempts, 2);
-      assert.equal(scheduled.message, "Connection error.");
+      assert.equal(scheduled.errorMessage, "Connection error.");
     } finally {
       await session.close();
     }
@@ -298,14 +295,15 @@ void describe("retry events", () => {
   void test("an exhausted budget stops scheduling and the step reports the failure", async () => {
     const session = await open(flakySummaryStream(Number.POSITIVE_INFINITY));
     try {
-      await prompt(session.harness, "hello");
+      await session.harness.prompt("hello");
       const compacted = await session.harness.compact();
 
       assert.deepEqual(
-        session.retries().map((event) => event.kind),
-        ["retry_scheduled", "retry_started", "retry_scheduled", "retry_started"],
+        session.retries().map((event) => event.type),
+        ["retry_scheduled", "retry_start", "retry_scheduled", "retry_start"],
       );
-      assert.equal(compacted.kind, "failed");
+      assert.ok(compacted.ok);
+      assert.equal(compacted.value.kind, "failed");
     } finally {
       await session.close();
     }
@@ -314,7 +312,7 @@ void describe("retry events", () => {
   void test("a first-try success stays silent", async () => {
     const session = await open(flakySummaryStream(0));
     try {
-      await prompt(session.harness, "hello");
+      await session.harness.prompt("hello");
       await session.harness.compact();
       assert.deepEqual(session.retries(), []);
     } finally {

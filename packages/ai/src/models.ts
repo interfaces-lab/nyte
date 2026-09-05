@@ -1,5 +1,5 @@
 import { lazyStream } from "./api/lazy.ts";
-import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
 import { type AuthResolutionOverrides, ModelsError, resolveProviderAuth } from "./auth/resolve.ts";

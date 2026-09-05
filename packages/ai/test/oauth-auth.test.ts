@@ -1,12 +1,12 @@
 /**
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/oauth-auth.test.ts
  * Synced with pi 7ebf9087e.
- * Uji keeps only the anthropic and openai-codex flows; the github-copilot,
+ * Nyte keeps only the anthropic and openai-codex flows; the github-copilot,
  * kimi, openrouter, and xai cases are dropped with their providers. The
  * Models.getAuth cases run through resolveProviderAuth + lazyOAuth directly.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test } from "vitest";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { defaultProviderAuthContext } from "../src/auth/context.ts";
 import { lazyOAuth } from "../src/auth/helpers.ts";
@@ -33,18 +33,18 @@ function createAccessToken(accountId: string): string {
   return `${header}.${payload}.signature`;
 }
 
-void describe("OAuthAuth adapters", () => {
+describe("OAuthAuth adapters", () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
   });
 
-  void test("identifies subscription-backed OAuth flows as subscriptions", () => {
+  test("identifies subscription-backed OAuth flows as subscriptions", () => {
     for (const oauth of [anthropicOAuth, openaiCodexOAuth]) {
       assert.equal(oauth.isSubscription, true);
     }
   });
 
-  void test("anthropic toAuth derives the api key from the access token", async () => {
+  test("anthropic toAuth derives the api key from the access token", async () => {
     const auth = await anthropicOAuth.toAuth({
       type: "oauth",
       access: "token",
@@ -54,15 +54,15 @@ void describe("OAuthAuth adapters", () => {
     assert.deepEqual(auth, { apiKey: "token" });
   });
 
-  void test("openai-codex toAuth derives the api key and account header from the access token", async () => {
-    // Uji divergence: pi returns only { apiKey }; Uji's toAuth also carries
+  test("openai-codex toAuth derives the api key and account header from the access token", async () => {
+    // Nyte divergence: pi returns only { apiKey }; Nyte's toAuth also carries
     // the chatgpt-account-id header for the legacy Responses adapter.
     const access = createAccessToken("acct-1");
     const auth = await openaiCodexOAuth.toAuth({ type: "oauth", access, refresh: "r", expires: 0 });
     assert.deepEqual(auth, { apiKey: access, headers: { "chatgpt-account-id": "acct-1" } });
   });
 
-  void test("anthropic refresh exchanges the refresh token and returns a typed credential", async () => {
+  test("anthropic refresh exchanges the refresh token and returns a typed credential", async () => {
     globalThis.fetch = (async () =>
       jsonResponse({
         access_token: "new-access",
@@ -81,8 +81,8 @@ void describe("OAuthAuth adapters", () => {
   });
 });
 
-void describe("OAuth through resolveProviderAuth (lazy load chain)", () => {
-  void test("resolves stored anthropic oauth credentials via the lazy flow import", async () => {
+describe("OAuth through resolveProviderAuth (lazy load chain)", () => {
+  test("resolves stored anthropic oauth credentials via the lazy flow import", async () => {
     const credentials = new InMemoryCredentialStore();
     await credentials.modify("anthropic", async () => ({
       type: "oauth",

@@ -1,24 +1,25 @@
 <p align="center">
-  <img alt="uji" src="https://raw.githubusercontent.com/Itsnotaka/uji/main/packages/docs/public/brand/uji-icon.svg" width="128">
+  <img alt="nyte" src="https://raw.githubusercontent.com/interfaces-lab/nyte/main/packages/docs/public/brand/nyte-icon.svg" width="128">
 </p>
 <p align="center">
-  <a href="https://github.com/Itsnotaka/uji/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Itsnotaka/uji?style=flat-square"></a>
-  <a href="https://github.com/Itsnotaka/uji/releases/latest"><img alt="macOS Apple silicon" src="https://img.shields.io/badge/macOS-Apple_silicon-black?style=flat-square"></a>
+  <a href="https://github.com/interfaces-lab/nyte/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/interfaces-lab/nyte?style=flat-square"></a>
+  <a href="https://github.com/interfaces-lab/nyte/releases/latest"><img alt="macOS Apple silicon" src="https://img.shields.io/badge/macOS-Apple_silicon-black?style=flat-square"></a>
 </p>
 
-# Uji
+# Nyte
 
-Uji is an agent harness with a terminal client. Durable sessions that survive a
-crash and resume, an agent loop with tool calling, provider auth, and the
-clients that attach to them.
+Nyte is a durable runtime for agent conversations, with a terminal client. Sessions
+are git-like object stores that survive a crash and resume, an agent loop with tool
+calling, provider auth, and the clients that attach to them.
 
-* **[@uji-ai/core](packages/core)**: agent loop, harness, SQLite sessions, plugins, skills,
-  compaction, hooks, and the tools: read, bash, edit, write, ls
-* **[@uji-ai/ai](packages/ai)**: unified multi-provider API. OpenAI, Anthropic, Google,
+* **[@nyte-ai/core](packages/core)**: the kernel (objects, refs, leases, events over SQLite),
+  the agent loop, `createNyte`, plugins, skills, compaction, hooks, and the tools: read, bash,
+  edit, write, ls
+* **[@nyte-ai/ai](packages/ai)**: unified multi-provider API. OpenAI, Anthropic, Google,
   OpenCode. Credentials, OAuth, event streams
-* **[@uji-ai/schema](packages/schema)**: neutral `Message`, `Model`, `Tool`, and `Skill` contracts
-* **[@uji-ai/plugin](packages/plugin)**: `definePlugin` and the types a plugin file imports
-* **[@uji-ai/tui](packages/tui)**: the `uji` CLI. An OpenTUI app with print mode
+* **[@nyte-ai/schema](packages/schema)**: neutral `Message`, `Model`, `Tool`, and `Skill` contracts
+* **[@nyte-ai/plugin](packages/plugin)**: `definePlugin` and the types a plugin file imports
+* **[@nyte-ai/tui](packages/tui)**: the `nyte` terminal client. Bun and OpenTUI, with print mode
 
 To learn more, read the [design record](packages/docs/content/docs/design.mdx): the chosen
 path, the reasoning, the contracts, and the build order.
@@ -26,46 +27,50 @@ path, the reasoning, the contracts, and the build order.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Itsnotaka/uji/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh
 ```
 
 macOS (Apple silicon) binaries are on
-[GitHub Releases](https://github.com/Itsnotaka/uji/releases). The script verifies the sha256
+[GitHub Releases](https://github.com/interfaces-lab/nyte/releases). The script verifies the sha256
 and installs to `~/.local/bin`. Then log in and run:
 
 ```sh
-uji login
-uji
+nyte login
+nyte
 ```
 
-Installed copies update themselves with `uji update`. One prompt without the full screen:
+In the TUI, `/tasks` opens the live subagent and shell-call picker. Press Enter to
+inspect output, Escape to return, or Down from an empty composer to open the picker.
+The inspector is read-only; stopping a shell call stops its owning run.
+
+Installed copies update themselves with `nyte update`. One prompt without the full screen:
 
 ```sh
-uji -p "summarize the files in packages/core/src"
+nyte -p "summarize the files in packages/core/src"
 ```
 
 ## Trust and permissions
 
-Uji asks once per directory whether you trust it. That is the only permission gate. A trusted
+Nyte asks once per directory whether you trust it. That is the only permission gate. A trusted
 workspace lets the tools read files, run shell commands, and edit code with your process's
 access. There are no per-tool prompts. If you need stronger boundaries, containerize or
-sandbox the process; nothing in the harness assumes the host is safe.
+sandbox the process; nothing in the kernel assumes the host is safe.
 
 ## All packages
 
-Library and app packages are private to this workspace. `uji-ai` on npm reserves the `uji`
-bin. "Shipped" means the source is here and runs.
+Library and app packages are private to this workspace. `nyte-ai` on npm installs the native
+`nyte` terminal client. "Shipped" means the source is here and runs.
 
 | Package | Description |
 | --- | --- |
-| **[@uji-ai/schema](packages/schema)** | Wire contracts: `Message`, `Model`, `Tool`, `Skill` |
-| **[@uji-ai/ai](packages/ai)** | Provider adapters, credentials, OAuth, model catalogs |
-| **[@uji-ai/core](packages/core)** | Loop, harness, session storage, plugins, skills, tools |
-| **[@uji-ai/plugin](packages/plugin)** | Plugin authoring surface; the host lives in core |
-| **[@uji-ai/telemetry](packages/telemetry)** | `TelemetryContext`; the default records nothing |
-| **[@uji-ai/ui](packages/ui)** | Shared Base UI components in StyleX |
-| **[@uji-ai/tui](packages/tui)** | The terminal client |
-| **[uji-ai](packages/cli)** | npm placeholder reserving the `uji` bin |
+| **[@nyte-ai/schema](packages/schema)** | Wire contracts: `Message`, `Model`, `Tool`, `Skill` |
+| **[@nyte-ai/ai](packages/ai)** | Provider adapters, credentials, OAuth, model catalogs |
+| **[@nyte-ai/core](packages/core)** | Kernel, agent loop, SDK, SQLite store, plugins, skills, tools |
+| **[@nyte-ai/plugin](packages/plugin)** | Plugin authoring surface; the host lives in core |
+| **[@nyte-ai/telemetry](packages/telemetry)** | `TelemetryContext`; the default records nothing |
+| **[@nyte-ai/ui](packages/ui)** | Shared Base UI components in StyleX |
+| **[@nyte-ai/tui](packages/tui)** | The terminal client, on Bun and OpenTUI |
+| **[nyte-ai](packages/cli)** | npm launcher for the native `nyte` terminal client |
 
 ## Development
 

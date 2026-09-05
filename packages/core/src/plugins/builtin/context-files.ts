@@ -20,7 +20,7 @@ export interface ContextFile {
 }
 
 export interface ContextFilesOptions {
-  /** Directory holding the user-global context file, e.g. `~/.uji`. */
+  /** Directory holding the user-global context file, e.g. `~/.nyte`. */
   readonly globalDir?: string;
 }
 
@@ -183,11 +183,14 @@ export function contextFilesPlugin(options: ContextFilesOptions = {}) {
   return definePlugin({
     id: "context-files",
     session(api) {
-      const files = loadProjectContextFiles({
+      const loadOptions = {
         cwd: api.env.cwd,
-        ...(options.globalDir === undefined ? {} : { globalDir: options.globalDir }),
-        warn: (message) => api.diagnostics.warn(message),
-      });
+        warn: (message: string) => api.diagnostics.warn(message),
+      };
+      const files =
+        options.globalDir === undefined
+          ? loadProjectContextFiles(loadOptions)
+          : loadProjectContextFiles({ ...loadOptions, globalDir: options.globalDir });
       const text = formatContextFilesForPrompt(files);
       if (text === "") return;
       // After the base system prompt, before skills.

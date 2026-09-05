@@ -1,5 +1,5 @@
 /**
- * Streaming Markdown is parsed and hardened by Streamdown. Uji supplies the
+ * Streaming Markdown is parsed and hardened by Streamdown. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
  * fenced code retains the visibility + idle + dynamic-import rendering path.
  */
@@ -8,17 +8,19 @@ import { Children, isValidElement, memo } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { Streamdown } from "streamdown";
 import type { Components, ExtraProps } from "streamdown";
-import { uji } from "../uji.ts";
+import { nyte } from "../nyte.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 
 type MarkdownPreProps = ComponentProps<"pre"> & ExtraProps;
 type MarkdownTableProps = ComponentProps<"table"> & ExtraProps;
 
+function isTextNode(node: ReactNode): node is string | number | bigint {
+  return typeof node === "string" || typeof node === "number" || typeof node === "bigint";
+}
+
 function nodeText(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number" || typeof node === "bigint") {
-    return String(node);
-  }
+  if (isTextNode(node)) return String(node);
   if (Array.isArray(node)) return node.map(nodeText).join("");
   if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
   return "";
@@ -44,7 +46,7 @@ function MarkdownPre({
     return <CodeBlock code={code} lang={codeLanguage(child.props.className)} />;
   }
   return (
-    <pre {...props} data-uji-scrollport {...stylex.props(proseStyles.fallbackPre)}>
+    <pre {...props} data-nyte-scrollport {...stylex.props(proseStyles.fallbackPre)}>
       {children}
     </pre>
   );
@@ -57,7 +59,7 @@ function MarkdownTable({
   ...props
 }: MarkdownTableProps): ReactElement {
   return (
-    <div data-uji-scrollport {...stylex.props(proseStyles.tableWrap)}>
+    <div data-nyte-scrollport data-prose-table {...stylex.props(proseStyles.tableWrap)}>
       <table {...props} {...stylex.props(proseStyles.table)}>
         {children}
       </table>
@@ -82,10 +84,10 @@ const markdownComponents = {
     <h4 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
   ),
   h5: ({ node: _node, className: _className, ...props }) => (
-    <h5 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
+    <h5 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h5)} />
   ),
   h6: ({ node: _node, className: _className, ...props }) => (
-    <h6 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
+    <h6 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h6)} />
   ),
   strong: ({ node: _node, className: _className, ...props }) => (
     <strong {...props} {...stylex.props(proseStyles.strong)} />
@@ -102,7 +104,7 @@ const markdownComponents = {
       onClick={(event) => {
         if (href === undefined) return;
         event.preventDefault();
-        void uji.host.openExternal({ url: href }).catch(() => undefined);
+        void nyte.host.openExternal({ url: href }).catch(() => undefined);
       }}
     />
   ),

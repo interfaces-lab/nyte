@@ -5,22 +5,46 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-controller.ts
  */
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@uji-ai/core";
-import { z } from "../schemas/zod.ts";
+import type { SessionId } from "@nyte-ai/core";
+import { Type } from "typebox";
+import type { Static } from "typebox";
+import { Value } from "typebox/value";
 
-export const WORKBENCH_WIDTH_DEFAULT = 384;
+export const WORKBENCH_WIDTH_DEFAULT = 500;
 export const WORKBENCH_WIDTH_MIN = 384;
-export const WORKBENCH_WIDTH_MAX = 960;
+export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 export const WORKBENCH_STAGE_PANE_KEY = "stage";
+/** Read by the title bar to draw the column seam above the open panel. */
+export const WORKBENCH_ACTIVE_WIDTH_VARIABLE = "--nyte-active-workbench-width";
 
-export type WorkbenchTabId = "launcher" | "changes" | "browser" | "pull-request";
-export type WorkbenchLauncherTabId = "changes" | "browser";
-export type WorkbenchScrollableTabId = "changes" | "pull-request";
+export type WorkbenchTabId = "changes" | "browser" | "terminal";
+export type WorkbenchScrollableTabId = "changes";
 export type WorkbenchViewKey = string & { readonly __brand: "WorkbenchViewKey" };
 
 export type WorkbenchTarget =
+  | { readonly kind: "home" }
   | { readonly kind: "workspace"; readonly workspacePath: string }
   | { readonly kind: "session"; readonly sessionId: SessionId };
+
+export type WorkbenchScope = { readonly kind: "pathless" } | { readonly kind: "project" };
+
+export function workbenchScopeForTarget(
+  target: WorkbenchTarget,
+  currentWorkspacePath: string | undefined,
+): WorkbenchScope {
+  switch (target.kind) {
+    case "home":
+      return { kind: "pathless" };
+    case "workspace":
+      return { kind: "project" };
+    case "session":
+      return currentWorkspacePath === undefined ? { kind: "pathless" } : { kind: "project" };
+    default: {
+      const _exhaustive: never = target;
+      return _exhaustive;
+    }
+  }
+}
 
 export interface WorkbenchViewIdentity {
   readonly key: WorkbenchViewKey;
@@ -28,36 +52,53 @@ export interface WorkbenchViewIdentity {
   readonly target: WorkbenchTarget;
 }
 
-export interface WorkbenchTabDefinition {
-  readonly id: WorkbenchTabId;
-  readonly label: string;
-  readonly panelLabel: string;
+const PATHLESS_TABS = Object.freeze(["browser", "terminal"] satisfies WorkbenchTabId[]);
+const PROJECT_TABS = Object.freeze(["changes", "browser", "terminal"] satisfies WorkbenchTabId[]);
+
+export function workbenchTabs(scope: WorkbenchScope): readonly WorkbenchTabId[] {
+  switch (scope.kind) {
+    case "pathless":
+      return PATHLESS_TABS;
+    case "project":
+      return PROJECT_TABS;
+    default: {
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
+  }
 }
 
-export const WORKBENCH_TABS = [
-  { id: "launcher", label: "Workbench", panelLabel: "Workbench launcher" },
-  { id: "changes", label: "Changes", panelLabel: "Workspace changes" },
-  { id: "browser", label: "Browser", panelLabel: "Browser" },
-  { id: "pull-request", label: "Pull request", panelLabel: "GitHub pull request" },
-] satisfies readonly WorkbenchTabDefinition[];
-
-export const WORKBENCH_LAUNCHER_TABS = [
-  "changes",
-  "browser",
-] satisfies readonly WorkbenchLauncherTabId[];
+export function workbenchTabAvailable(scope: WorkbenchScope, tab: WorkbenchTabId): boolean {
+  switch (tab) {
+    case "browser":
+    case "terminal":
+      return true;
+    case "changes":
+      return scope.kind === "project";
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
 
 export interface WorkbenchScrollState {
   readonly changes: number;
-  readonly "pull-request": number;
 }
+
+export type WorkbenchWidthBounds =
+  | { readonly kind: "docked"; readonly min: number; readonly max: number }
+  | { readonly kind: "overlay"; readonly min: number; readonly max: number };
 
 export interface WorkbenchViewState {
   readonly expanded: boolean;
-  readonly activeTab: WorkbenchTabId;
-  readonly visitedTabs: readonly WorkbenchTabId[];
+  readonly activeTab: WorkbenchTabId | null;
+  readonly maximized: boolean;
+  readonly openTabs: readonly WorkbenchTabId[];
   readonly selectedPath: string | undefined;
   readonly width: number;
   readonly scrollTop: WorkbenchScrollState;
+  readonly browserUrl: string | undefined;
 }
 
 export interface WorkbenchSnapshot {
@@ -74,9 +115,10 @@ export interface WorkbenchController {
   readonly getSnapshot: () => WorkbenchSnapshot;
   readonly getView: (key: WorkbenchViewKey) => WorkbenchViewState;
   readonly actions: {
-    readonly toggleTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
     readonly openTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
-    readonly close: (key: WorkbenchViewKey) => void;
+    readonly closeTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
+    readonly toggle: (key: WorkbenchViewKey) => void;
+    readonly toggleMaximized: (key: WorkbenchViewKey) => void;
     readonly selectPath: (key: WorkbenchViewKey, path: string | undefined) => void;
     readonly setWidth: (key: WorkbenchViewKey, width: number) => void;
     readonly setScrollTop: (
@@ -84,42 +126,116 @@ export interface WorkbenchController {
       tab: WorkbenchScrollableTabId,
       scrollTop: number,
     ) => void;
+    readonly setBrowserUrl: (key: WorkbenchViewKey, url: string | undefined) => void;
   };
 }
 
-const STORAGE_KEY = "uji:desktop:workbench:v1";
+const STORAGE_KEY = "nyte:desktop:workbench:v5";
+const LEGACY_STORAGE_KEY = "nyte:desktop:workbench:v4";
 const VIEW_IDENTITIES = new Map<WorkbenchViewKey, WorkbenchViewIdentity>();
-const EMPTY_SCROLL = Object.freeze({ changes: 0, "pull-request": 0 });
+const EMPTY_SCROLL = Object.freeze({ changes: 0 });
 const DEFAULT_VIEW = Object.freeze({
   expanded: false,
-  activeTab: "launcher",
-  visitedTabs: Object.freeze([]),
+  activeTab: null,
+  maximized: false,
+  openTabs: Object.freeze([]),
   selectedPath: undefined,
   width: WORKBENCH_WIDTH_DEFAULT,
   scrollTop: EMPTY_SCROLL,
+  browserUrl: undefined,
 }) satisfies WorkbenchViewState;
 
-const persistedWorkbenchView = z.strictObject({
-  key: z.string().min(1),
-  expanded: z.boolean(),
-  activeTab: z.enum(["launcher", "changes", "browser", "pull-request"]),
-  selectedPath: z.string().min(1).optional(),
-  width: z.number().finite(),
-  scrollTop: z.strictObject({
-    changes: z.number().finite().nonnegative(),
-    "pull-request": z.number().finite().nonnegative(),
-  }),
-});
+const strict = { additionalProperties: false };
+const nonEmpty = Type.String({ minLength: 1 });
+const legacyWorkbenchView = Type.Object(
+  {
+    key: nonEmpty,
+    visible: Type.Optional(Type.Boolean()),
+    expanded: Type.Boolean(),
+    activeTab: Type.Enum(["changes", "browser"]),
+    selectedPath: Type.Optional(nonEmpty),
+    width: Type.Number(),
+    scrollTop: Type.Object({ changes: Type.Number({ minimum: 0 }) }, strict),
+    browserUrl: Type.Optional(nonEmpty),
+  },
+  strict,
+);
 
-const persistedWorkbenchSnapshot = z.strictObject({
-  version: z.literal(1),
-  views: z.array(persistedWorkbenchView),
-});
+const legacyWorkbenchSnapshot = Type.Object(
+  { version: Type.Literal(4), views: Type.Array(legacyWorkbenchView) },
+  strict,
+);
 
-export type PersistedWorkbenchSnapshot = z.output<typeof persistedWorkbenchSnapshot>;
+const persistedTab = Type.Enum(["changes", "browser", "terminal"]);
+const persistedWorkbenchView = Type.Object(
+  {
+    key: nonEmpty,
+    expanded: Type.Boolean(),
+    maximized: Type.Boolean(),
+    activeTab: Type.Union([persistedTab, Type.Null()]),
+    openTabs: Type.Array(persistedTab, { uniqueItems: true }),
+    selectedPath: Type.Optional(nonEmpty),
+    width: Type.Number(),
+    scrollTop: Type.Object({ changes: Type.Number({ minimum: 0 }) }, strict),
+    browserUrl: Type.Optional(nonEmpty),
+  },
+  strict,
+);
+const persistedWorkbenchSnapshot = Type.Object(
+  { version: Type.Literal(5), views: Type.Array(persistedWorkbenchView) },
+  strict,
+);
+
+export type PersistedWorkbenchSnapshot = Static<typeof persistedWorkbenchSnapshot>;
+
+export function activeWorkbenchTab(
+  view: WorkbenchViewState,
+  scope: WorkbenchScope,
+): WorkbenchTabId | null {
+  const tabs = view.openTabs.filter((tab) => workbenchTabAvailable(scope, tab));
+  return tabs.find((tab) => tab === view.activeTab) ?? tabs[0] ?? null;
+}
+
+export function workbenchTabLabel(tab: WorkbenchTabId): string {
+  switch (tab) {
+    case "changes":
+      return "Changes";
+    case "browser":
+      return "Browser";
+    case "terminal":
+      return "Terminal";
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
 
 export function clampWorkbenchWidth(width: number): number {
-  return Math.min(WORKBENCH_WIDTH_MAX, Math.max(WORKBENCH_WIDTH_MIN, Math.round(width)));
+  return Number.isFinite(width)
+    ? Math.max(WORKBENCH_WIDTH_MIN, Math.round(width))
+    : WORKBENCH_WIDTH_DEFAULT;
+}
+
+export function workbenchWidthBounds(availableWidth: number): WorkbenchWidthBounds {
+  const width = Math.max(0, Math.floor(availableWidth));
+  if (width < WORKBENCH_WIDTH_MIN + WORKBENCH_CENTER_WIDTH_MIN) {
+    return Object.freeze({
+      kind: "overlay",
+      min: Math.min(WORKBENCH_WIDTH_MIN, width),
+      max: width,
+    });
+  }
+  return Object.freeze({
+    kind: "docked",
+    min: WORKBENCH_WIDTH_MIN,
+    max: width - WORKBENCH_CENTER_WIDTH_MIN,
+  });
+}
+
+export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidthBounds): number {
+  const normalized = Number.isFinite(width) ? Math.round(width) : WORKBENCH_WIDTH_DEFAULT;
+  return Math.min(bounds.max, Math.max(bounds.min, normalized));
 }
 
 /** Decode localStorage once; the controller never receives transport data. */
@@ -127,8 +243,27 @@ export function decodePersistedWorkbenchSnapshot(
   serialized: string,
 ): PersistedWorkbenchSnapshot | undefined {
   try {
-    const result = persistedWorkbenchSnapshot.safeParse(JSON.parse(serialized));
-    return result.success ? result.data : undefined;
+    const parsed: unknown = JSON.parse(serialized);
+    if (Value.Check(persistedWorkbenchSnapshot, parsed)) {
+      return parsed.views.every((view) =>
+        view.activeTab === null
+          ? view.openTabs.length === 0 && !view.expanded
+          : view.openTabs.includes(view.activeTab),
+      )
+        ? parsed
+        : undefined;
+    }
+    if (Value.Check(legacyWorkbenchSnapshot, parsed)) {
+      return {
+        version: 5,
+        views: parsed.views.map(({ visible: _visible, ...view }) => ({
+          ...view,
+          maximized: false,
+          openTabs: [view.activeTab],
+        })),
+      };
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -139,15 +274,19 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
   for (const stored of persisted?.views ?? []) {
     // SAFETY: the persistence schema proved that this storage key is non-empty.
     const key = stored.key as WorkbenchViewKey;
+    const openTabs = Object.freeze(stored.openTabs.filter((tab) => tab !== "terminal"));
+    const activeTab = openTabs.find((tab) => tab === stored.activeTab) ?? openTabs[0] ?? null;
     views.set(
       key,
       Object.freeze({
-        expanded: stored.expanded,
-        activeTab: stored.activeTab,
-        visitedTabs: Object.freeze(stored.expanded ? [stored.activeTab] : []),
+        expanded: stored.expanded && activeTab !== null,
+        activeTab,
+        maximized: stored.maximized,
+        openTabs,
         selectedPath: stored.selectedPath,
         width: clampWorkbenchWidth(stored.width),
         scrollTop: Object.freeze(stored.scrollTop),
+        browserUrl: stored.browserUrl,
       }),
     );
   }
@@ -156,15 +295,23 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
 
 function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
   return {
-    version: 1,
-    views: [...snapshot.views].map(([key, view]) => ({
-      key,
-      expanded: view.expanded,
-      activeTab: view.activeTab,
-      selectedPath: view.selectedPath,
-      width: view.width,
-      scrollTop: view.scrollTop,
-    })),
+    version: 5,
+    views: [...snapshot.views].map(([key, view]) => {
+      // Shells belong to this window's PTY host and do not survive an app restart.
+      const openTabs = view.openTabs.filter((tab) => tab !== "terminal");
+      const activeTab = openTabs.find((tab) => tab === view.activeTab) ?? openTabs[0] ?? null;
+      return {
+        key,
+        expanded: view.expanded && activeTab !== null,
+        activeTab,
+        maximized: view.maximized,
+        openTabs,
+        selectedPath: view.selectedPath,
+        width: view.width,
+        scrollTop: view.scrollTop,
+        browserUrl: view.browserUrl,
+      };
+    }),
   };
 }
 
@@ -173,7 +320,10 @@ function browserPersistence(): WorkbenchPersistence | undefined {
   return {
     read() {
       try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
+        const raw =
+          window.localStorage.getItem(STORAGE_KEY) ??
+          window.localStorage.getItem(LEGACY_STORAGE_KEY) ??
+          window.localStorage.getItem("nyte:desktop:workbench:v3");
         return raw === null ? undefined : decodePersistedWorkbenchSnapshot(raw);
       } catch {
         return undefined;
@@ -194,10 +344,22 @@ export function workbenchViewKey(input: {
   readonly target: WorkbenchTarget;
 }): WorkbenchViewKey {
   if (input.paneKey === "") throw new Error("Invalid workbench pane key: empty");
-  const targetKey =
-    input.target.kind === "session"
-      ? encodeURIComponent(input.target.sessionId)
-      : `workspace:${encodeURIComponent(input.target.workspacePath)}`;
+  let targetKey: string;
+  switch (input.target.kind) {
+    case "home":
+      targetKey = "home";
+      break;
+    case "workspace":
+      targetKey = `workspace:${encodeURIComponent(input.target.workspacePath)}`;
+      break;
+    case "session":
+      targetKey = `session:${encodeURIComponent(input.target.sessionId)}`;
+      break;
+    default: {
+      const _exhaustive: never = input.target;
+      return _exhaustive;
+    }
+  }
   // SAFETY: the non-empty pane key and discriminated target are encoded into a stable key.
   const key = `${encodeURIComponent(input.paneKey)}:${targetKey}` as WorkbenchViewKey;
   if (!VIEW_IDENTITIES.has(key)) {
@@ -216,7 +378,7 @@ export function workbenchViewIdentity(key: WorkbenchViewKey): WorkbenchViewIdent
 function freezeView(view: WorkbenchViewState): WorkbenchViewState {
   return Object.freeze({
     ...view,
-    visitedTabs: Object.freeze([...view.visitedTabs]),
+    openTabs: Object.freeze([...view.openTabs]),
     scrollTop: Object.freeze({ ...view.scrollTop }),
   });
 }
@@ -245,29 +407,59 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
   };
 
   const visit = (current: WorkbenchViewState, tab: WorkbenchTabId): readonly WorkbenchTabId[] =>
-    current.visitedTabs.includes(tab) ? current.visitedTabs : [...current.visitedTabs, tab];
+    current.openTabs.includes(tab) ? current.openTabs : [...current.openTabs, tab];
 
   const actions: WorkbenchController["actions"] = {
-    toggleTab(key, tab) {
-      update(key, (current) =>
-        current.expanded && current.activeTab === tab
-          ? { ...current, expanded: false }
-          : { ...current, expanded: true, activeTab: tab, visitedTabs: visit(current, tab) },
-      );
-    },
     openTab(key, tab) {
       update(key, (current) =>
-        current.expanded && current.activeTab === tab && current.visitedTabs.includes(tab)
+        current.expanded && current.activeTab === tab && current.openTabs.includes(tab)
           ? current
-          : { ...current, expanded: true, activeTab: tab, visitedTabs: visit(current, tab) },
+          : {
+              ...current,
+              expanded: true,
+              activeTab: tab,
+              openTabs: visit(current, tab),
+            },
       );
     },
-    close(key) {
-      update(key, (current) => (current.expanded ? { ...current, expanded: false } : current));
+    closeTab(key, tab) {
+      update(key, (current) => {
+        const index = current.openTabs.indexOf(tab);
+        if (index === -1) return current;
+        const openTabs = current.openTabs.filter((candidate) => candidate !== tab);
+        const activeTab =
+          current.activeTab === tab
+            ? (openTabs[index] ?? openTabs[index - 1] ?? null)
+            : current.activeTab;
+        return {
+          ...current,
+          openTabs,
+          activeTab,
+          expanded: current.expanded && activeTab !== null,
+        };
+      });
+    },
+    toggle(key) {
+      update(key, (current) => {
+        const activeTab = current.activeTab ?? "browser";
+        return {
+          ...current,
+          expanded: !current.expanded,
+          activeTab,
+          openTabs: visit(current, activeTab),
+        };
+      });
+    },
+    toggleMaximized(key) {
+      update(key, (current) => ({ ...current, maximized: !current.maximized }));
     },
     selectPath(key, path) {
+      // A saved scroll offset belongs to the file it was read at, so choosing
+      // another file starts its patch from the top.
       update(key, (current) =>
-        current.selectedPath === path ? current : { ...current, selectedPath: path },
+        current.selectedPath === path
+          ? current
+          : { ...current, selectedPath: path, scrollTop: { ...current.scrollTop, changes: 0 } },
       );
     },
     setWidth(key, width) {
@@ -282,6 +474,12 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
         current.scrollTop[tab] === nextScroll
           ? current
           : { ...current, scrollTop: { ...current.scrollTop, [tab]: nextScroll } },
+      );
+    },
+    setBrowserUrl(key, url) {
+      const nextUrl = url === "" ? undefined : url;
+      update(key, (current) =>
+        current.browserUrl === nextUrl ? current : { ...current, browserUrl: nextUrl },
       );
     },
   };

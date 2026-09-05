@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, readlink } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { createTwoFilesPatch } from "diff";
-import type { VcsBackend, VcsDiff, VcsStatus } from "@uji-ai/core";
+import type { VcsBackend, VcsDiff, VcsStatus } from "@nyte-ai/core";
 import type { DesktopVcsSnapshot } from "../shared/ipc.ts";
 
 interface GitResult {

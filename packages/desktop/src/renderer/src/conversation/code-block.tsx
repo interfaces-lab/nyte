@@ -1,6 +1,7 @@
 // Fenced code paints as escaped plain text immediately. Known grammars upgrade
 // through an idle-loaded Shiki chunk, keeping syntax work out of thread clicks.
 import * as stylex from "@stylexjs/stylex";
+import { Button } from "@nyte-ai/ui";
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
@@ -184,22 +185,23 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
         <span {...stylex.props(codeBlockStyles.language)}>
           {language === "" ? "code" : language}
         </span>
-        <button
+        <Button
+          unstyled
           type="button"
           aria-label={copied ? "Code copied" : "Copy code"}
           title={copied ? "Copied" : "Copy code"}
           onClick={() => {
-            void navigator.clipboard.writeText(code).then(
-              () => setCopiedCode(code),
-              () => undefined,
-            );
+            navigator.clipboard
+              .writeText(code)
+              .then(() => setCopiedCode(code))
+              .catch(() => undefined);
           }}
           {...stylex.props(codeBlockStyles.copy, focus.ringInset)}
         >
           <Icon name={copied ? "checkmark" : "copy"} size={13} />
-        </button>
+        </Button>
       </div>
-      <div data-uji-scrollport {...stylex.props(codeBlockStyles.scroll)}>
+      <div data-nyte-scrollport {...stylex.props(codeBlockStyles.scroll)}>
         {html === undefined ? (
           <pre {...stylex.props(codeBlockStyles.pre)}>
             <code>{code}</code>

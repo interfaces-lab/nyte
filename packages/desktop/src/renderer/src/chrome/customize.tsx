@@ -1,44 +1,91 @@
 import * as stylex from "@stylexjs/stylex";
+import { Tabs } from "@nyte-ai/ui/primitives";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { PluginInfo, SessionId, SettingInfo } from "@uji-ai/core";
-import type { Skill } from "@uji-ai/schema";
+import type { PluginCatalog, PluginInfo, SessionId, SettingInfo } from "@nyte-ai/core";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
-import { uji } from "../uji.ts";
+import { isOption } from "./sidebar-view.ts";
+import { nyte } from "../nyte.ts";
+import { keys } from "../queries.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
+import { SettingsSelect } from "./settings-controls.tsx";
+import { errorMessage } from "../../../shared/errors.ts";
 
-interface CustomizeInventory {
-  readonly plugins: readonly PluginInfo[];
-  readonly settings: readonly SettingInfo[];
-  readonly skills: readonly Skill[];
+type CustomizeInventory = Pick<PluginCatalog, "plugins" | "settings" | "skills">;
+
+type CustomizeTab = "plugins" | "skills" | "settings";
+
+const CUSTOMIZE_TABS = [
+  ["plugins", "Plugins & MCPs"],
+  ["skills", "Skills"],
+  ["settings", "Settings"],
+] as const satisfies readonly (readonly [CustomizeTab, string])[];
+const CUSTOMIZE_TAB_IDS = CUSTOMIZE_TABS.map(([id]) => id);
+
+const EMPTY_INVENTORY: CustomizeInventory = { plugins: [], settings: [], skills: [] };
+
+function matchesQuery(query: string, ...values: readonly string[]): boolean {
+  const needle = query.trim().toLocaleLowerCase();
+  return needle === "" || values.some((value) => value.toLocaleLowerCase().includes(needle));
+}
+
+function filterInventory(inventory: CustomizeInventory, query: string): CustomizeInventory {
+  return {
+    plugins: inventory.plugins.filter((plugin) =>
+      matchesQuery(
+        query,
+        plugin.id,
+        plugin.source,
+        plugin.version,
+        plugin.status,
+        plugin.status === "failed" ? plugin.error : "",
+      ),
+    ),
+    skills: inventory.skills.filter((skill) =>
+      matchesQuery(query, skill.name, skill.description, skill.filePath),
+    ),
+    settings: inventory.settings.filter((setting) =>
+      matchesQuery(
+        query,
+        setting.label,
+        setting.owner,
+        ...setting.choices.flatMap((choice) => [choice.label, choice.description ?? ""]),
+      ),
+    ),
+  };
+}
+
+function tabCount(inventory: CustomizeInventory, tab: CustomizeTab): number {
+  switch (tab) {
+    case "plugins":
+      return inventory.plugins.length;
+    case "skills":
+      return inventory.skills.length;
+    case "settings":
+      return inventory.settings.length;
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
 }
 
 function pluginDetail(plugin: PluginInfo): string {
-  if (plugin.status === "failed") return plugin.error;
+  if (plugin.status === "failed") return `Couldn't load this plugin. ${plugin.error}`;
   return `${plugin.source} · ${plugin.version}`;
 }
 
 function InventoryLoading(): ReactElement {
   return (
-    <>
-      {(["connections", "skills"] as const).map((key) => (
-        <section key={key} aria-busy="true" {...stylex.props(styles.section)}>
-          <div {...stylex.props(styles.sectionHeading)}>
-            <div {...stylex.props(styles.loadingLine)} />
-          </div>
-          <div {...stylex.props(styles.list)}>
-            <div {...stylex.props(styles.quiet)}>
-              <div {...stylex.props(styles.loadingLine)} />
-            </div>
-            <div {...stylex.props(styles.quiet)}>
-              <div {...stylex.props(styles.loadingLine)} />
-            </div>
-          </div>
-        </section>
+    <div aria-busy="true" aria-label="Loading inventory" {...stylex.props(styles.list)}>
+      {(["first", "second", "third"] as const).map((key) => (
+        <div key={key} {...stylex.props(styles.quiet)}>
+          <div {...stylex.props(styles.loadingLine)} />
+        </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -46,14 +93,14 @@ function PluginSettings({
   sessionId,
   settings,
 }: {
-  sessionId: SessionId;
+  sessionId: SessionId | undefined;
   settings: readonly SettingInfo[];
 }): ReactElement | null {
   const client = useQueryClient();
   const [failure, setFailure] = useState<string | undefined>();
   const apply = useMutation({
-    mutationFn: (input: { id: string; choiceId: string }) =>
-      uji.plugins.settings.apply({ sessionId, ...input }),
+    mutationFn: (input: { sessionId: SessionId; id: string; choiceId: string }) =>
+      nyte.plugins.settings.apply(input),
     onSuccess: (outcome) => {
       if (outcome.kind !== "applied") {
         setFailure("That setting is no longer available.");
@@ -63,175 +110,223 @@ function PluginSettings({
       void client.invalidateQueries({ queryKey: ["customize", sessionId] });
     },
     onError: (cause) => {
-      setFailure(cause instanceof Error ? cause.message : String(cause));
+      setFailure(errorMessage(cause));
     },
   });
 
   if (settings.length === 0) return null;
   return (
-    <section aria-labelledby="customize-settings-title" {...stylex.props(styles.section)}>
-      <div {...stylex.props(styles.sectionHeading)}>
-        <h2 id="customize-settings-title" {...stylex.props(styles.sectionTitle)}>
-          Plugin settings
-        </h2>
-        <p {...stylex.props(styles.sectionDescription)}>
-          Choices supplied by the active plugins for this session.
-        </p>
-      </div>
+    <>
       <div {...stylex.props(styles.list)}>
         {settings.map((setting) => (
-          <label key={setting.id} {...stylex.props(styles.row)}>
+          <div key={setting.id} {...stylex.props(styles.row)}>
             <span {...stylex.props(styles.rowBody)}>
               <span {...stylex.props(styles.rowTitle)}>{setting.label}</span>
               <span {...stylex.props(styles.rowDetail)}>{setting.owner}</span>
             </span>
-            <select
-              aria-label={setting.label}
-              disabled={apply.isPending}
+            <SettingsSelect
+              label={setting.label}
+              disabled={sessionId === undefined || apply.isPending}
               value={setting.current}
-              {...stylex.props(styles.select, focus.ring)}
-              onChange={(event) => {
-                const choiceId = event.target.value;
-                if (setting.choices.some((choice) => choice.id === choiceId)) {
-                  apply.mutate({ id: setting.id, choiceId });
-                }
+              options={setting.choices.map((choice) => ({
+                value: choice.id,
+                label: choice.label,
+              }))}
+              onValueChange={(choiceId) => {
+                if (sessionId !== undefined) apply.mutate({ sessionId, id: setting.id, choiceId });
               }}
-            >
-              {setting.choices.map((choice) => (
-                <option key={choice.id} value={choice.id}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            />
+          </div>
         ))}
       </div>
-      {failure !== undefined && <div {...stylex.props(styles.error)}>{failure}</div>}
-    </section>
+      {sessionId === undefined && (
+        <div {...stylex.props(styles.settingsNote)}>
+          Defaults shown. Open a chat to change its settings.
+        </div>
+      )}
+      {failure !== undefined && (
+        <div role="alert" title={failure} {...stylex.props(styles.error)}>
+          Couldn&rsquo;t change that setting. Try again.
+        </div>
+      )}
+    </>
   );
 }
 
 function Inventory({
   sessionId,
   inventory,
+  tab,
 }: {
-  sessionId: SessionId;
+  sessionId: SessionId | undefined;
   inventory: CustomizeInventory;
+  tab: CustomizeTab;
 }): ReactElement {
-  return (
-    <>
-      <section aria-labelledby="customize-connections-title" {...stylex.props(styles.section)}>
-        <div {...stylex.props(styles.sectionHeading)}>
-          <h2 id="customize-connections-title" {...stylex.props(styles.sectionTitle)}>
-            MCP servers and plugins
-          </h2>
-          <p {...stylex.props(styles.sectionDescription)}>
-            Host extensions available to this session. Failed connections stay visible.
-          </p>
-        </div>
+  switch (tab) {
+    case "plugins":
+      return (
         <div {...stylex.props(styles.list)}>
-          {inventory.plugins.length === 0 ? (
-            <div {...stylex.props(styles.quiet)}>No MCP servers or plugins reported.</div>
-          ) : (
-            inventory.plugins.map((plugin) => (
-              <div key={plugin.id} {...stylex.props(styles.row)}>
-                <span {...stylex.props(styles.rowIcon)}>
-                  <Icon name="globe" size={14} />
+          {inventory.plugins.map((plugin) => (
+            <div key={plugin.id} {...stylex.props(styles.row)}>
+              <span {...stylex.props(styles.rowIcon)}>
+                <Icon name="mcp" size={14} />
+              </span>
+              <span {...stylex.props(styles.rowBody)}>
+                <span {...stylex.props(styles.rowTitle)}>{plugin.id}</span>
+                <span title={pluginDetail(plugin)} {...stylex.props(styles.rowDetail)}>
+                  {pluginDetail(plugin)}
                 </span>
-                <span {...stylex.props(styles.rowBody)}>
-                  <span {...stylex.props(styles.rowTitle)}>{plugin.id}</span>
-                  <span title={pluginDetail(plugin)} {...stylex.props(styles.rowDetail)}>
-                    {pluginDetail(plugin)}
-                  </span>
-                </span>
-                <span
-                  {...stylex.props(styles.badge, plugin.status === "failed" && styles.failedBadge)}
-                >
-                  {plugin.status}
-                </span>
-              </div>
-            ))
-          )}
+              </span>
+              <span
+                {...stylex.props(styles.badge, plugin.status === "failed" && styles.failedBadge)}
+              >
+                {plugin.status}
+              </span>
+            </div>
+          ))}
         </div>
-      </section>
-
-      <section aria-labelledby="customize-skills-title" {...stylex.props(styles.section)}>
-        <div {...stylex.props(styles.sectionHeading)}>
-          <h2 id="customize-skills-title" {...stylex.props(styles.sectionTitle)}>
-            Skills
-          </h2>
-          <p {...stylex.props(styles.sectionDescription)}>
-            Instructions Uji can load when a task matches them.
-          </p>
-        </div>
+      );
+    case "skills":
+      return (
         <div {...stylex.props(styles.list)}>
-          {inventory.skills.length === 0 ? (
-            <div {...stylex.props(styles.quiet)}>No skills found for this workspace.</div>
-          ) : (
-            inventory.skills.map((skill) => (
-              <div key={skill.filePath} {...stylex.props(styles.row)}>
-                <span {...stylex.props(styles.rowIcon)}>
-                  <Icon name="sparkle" size={14} />
+          {inventory.skills.map((skill) => (
+            <div key={skill.filePath} {...stylex.props(styles.row)}>
+              <span {...stylex.props(styles.rowIcon)}>
+                <Icon name="skills" size={14} />
+              </span>
+              <span {...stylex.props(styles.rowBody)}>
+                <span {...stylex.props(styles.rowTitle)}>{skill.name}</span>
+                <span title={skill.description} {...stylex.props(styles.rowDetail)}>
+                  {skill.description}
                 </span>
-                <span {...stylex.props(styles.rowBody)}>
-                  <span {...stylex.props(styles.rowTitle)}>{skill.name}</span>
-                  <span title={skill.description} {...stylex.props(styles.rowDetail)}>
-                    {skill.description}
-                  </span>
-                </span>
-              </div>
-            ))
-          )}
+              </span>
+            </div>
+          ))}
         </div>
-      </section>
-
-      <PluginSettings sessionId={sessionId} settings={inventory.settings} />
-    </>
-  );
+      );
+    case "settings":
+      return <PluginSettings sessionId={sessionId} settings={inventory.settings} />;
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
 }
 
-export function CustomizeSettings({
+function emptyInventoryMessage(tab: CustomizeTab, searching: boolean): string {
+  if (searching) return "No installed items match this search.";
+  switch (tab) {
+    case "plugins":
+      return "No plugins or MCP servers are available.";
+    case "skills":
+      return "No skills are available.";
+    case "settings":
+      return "The active plugins do not expose settings.";
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
+
+export function CustomizeSurface({
   sessionId,
 }: {
   sessionId: SessionId | undefined;
 }): ReactElement {
+  const [tab, setTab] = useState<CustomizeTab>("plugins");
+  const [query, setQuery] = useState("");
   const inventory = useQuery<CustomizeInventory>({
-    queryKey: ["customize", sessionId],
-    enabled: sessionId !== undefined,
+    queryKey: sessionId === undefined ? keys.pluginCatalog : ["customize", sessionId],
     queryFn: async () => {
-      if (sessionId === undefined) return { plugins: [], settings: [], skills: [] };
+      if (sessionId === undefined) return nyte.plugins.catalog();
       const [plugins, settings, skills] = await Promise.all([
-        uji.plugins.list({ sessionId }),
-        uji.plugins.settings.list({ sessionId }),
-        uji.plugins.resources.list({ sessionId }),
+        nyte.plugins.list({ sessionId }),
+        nyte.plugins.settings.list({ sessionId }),
+        nyte.plugins.resources.list({ sessionId }),
       ]);
       return { plugins, settings, skills };
     },
   });
-
-  if (sessionId === undefined) {
-    return (
-      <div {...stylex.props(styles.noSession)}>
-        <div {...stylex.props(styles.noSessionTitle)}>Start a chat to inspect its setup</div>
-        <div {...stylex.props(styles.noSessionDetail)}>
-          MCP servers, plugins, and skills are activated per session. New Chat stays empty until you
-          send the first message.
-        </div>
-      </div>
-    );
-  }
+  const filtered = useMemo(
+    () => filterInventory(inventory.data ?? EMPTY_INVENTORY, query),
+    [inventory.data, query],
+  );
+  const searching = query.trim() !== "";
 
   return (
-    <div {...stylex.props(styles.root)}>
-      {inventory.isPending && <InventoryLoading />}
-      {inventory.isError && (
-        <div role="alert" {...stylex.props(styles.error)}>
-          {inventory.error.message}
-        </div>
-      )}
-      {inventory.data !== undefined && (
-        <Inventory sessionId={sessionId} inventory={inventory.data} />
-      )}
+    <div data-nyte-customize-surface {...stylex.props(styles.surface)}>
+      <Tabs.Root
+        value={tab}
+        {...stylex.props(styles.root)}
+        onValueChange={(value) => {
+          if (isOption(value, CUSTOMIZE_TAB_IDS)) setTab(value);
+        }}
+      >
+        <search {...stylex.props(styles.searchRow)}>
+          <label {...stylex.props(styles.searchField)}>
+            <Icon name="search" size={13} />
+            <input
+              type="search"
+              aria-label="Search inventory"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Search plugins, skills, and settings…"
+              value={query}
+              {...stylex.props(styles.searchInput)}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        </search>
+
+        <Tabs.List aria-label="Customize inventory" {...stylex.props(styles.tabs)}>
+          {CUSTOMIZE_TABS.map(([id, label]) => (
+            <Tabs.Tab
+              key={id}
+              value={id}
+              {...stylex.props(styles.tab, focus.ring, tab === id && styles.tabActive)}
+            >
+              {label}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+
+        {CUSTOMIZE_TABS.map(([panelTab]) => {
+          const visibleCount = tabCount(filtered, panelTab);
+          return (
+            <Tabs.Panel
+              key={panelTab}
+              value={panelTab}
+              render={<section />}
+              {...stylex.props(styles.inventory)}
+            >
+              <div {...stylex.props(styles.inventoryHeading)}>
+                <h1 {...stylex.props(styles.inventoryTitle)}>Installed</h1>
+                {inventory.data !== undefined && (
+                  <span aria-live="polite" {...stylex.props(styles.inventoryCount)}>
+                    {visibleCount}
+                  </span>
+                )}
+              </div>
+
+              {inventory.isPending && <InventoryLoading />}
+              {inventory.isError && (
+                <div role="alert" title={inventory.error.message} {...stylex.props(styles.error)}>
+                  Couldn&rsquo;t load plugins and skills. Try again.
+                </div>
+              )}
+              {inventory.data !== undefined && visibleCount === 0 && (
+                <div {...stylex.props(styles.quiet)}>
+                  {emptyInventoryMessage(panelTab, searching)}
+                </div>
+              )}
+              {inventory.data !== undefined && visibleCount > 0 && (
+                <Inventory sessionId={sessionId} inventory={filtered} tab={panelTab} />
+              )}
+            </Tabs.Panel>
+          );
+        })}
+      </Tabs.Root>
     </div>
   );
 }

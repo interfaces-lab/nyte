@@ -3,100 +3,90 @@ import * as stylex from "@stylexjs/stylex";
 import { IconCrossSmall } from "central-icons";
 import type * as React from "react";
 
-import { Button } from "@uji-ai/ui/components/ui/button";
-import { IconBox } from "@uji-ai/ui/components/ui/icon-box";
-import { mergeStyleProps, type XStyle } from "@uji-ai/ui/style";
-import {
-  borderVars,
-  colorVars,
-  controlVars,
-  elevationVars,
-  fontVars,
-  motionVars,
-  overlayVars,
-  radiusVars,
-  spaceVars,
-} from "@uji-ai/ui/tokens.stylex";
+import { tokens } from "../../platform-tokens.stylex.ts";
+import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { Button } from "./button.tsx";
+import { IconBox } from "./icon-box.tsx";
 
 const styles = stylex.create({
   overlay: {
     position: "fixed",
     inset: 0,
-    zIndex: overlayVars["--uji-layer-dialog"],
-    backgroundColor: colorVars["--uji-color-scrim"],
+    zIndex: tokens.overlay["--nyte-layer-dialog"],
+    backgroundColor: tokens.color["--nyte-color-scrim"],
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     transitionProperty: "opacity",
     transitionDuration: {
-      default: motionVars["--uji-motion-normal"],
+      default: tokens.motion["--nyte-motion-normal"],
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motionVars["--uji-motion-ease-out"],
+    transitionTimingFunction: tokens.motion["--nyte-motion-ease-out"],
   },
   popup: {
     position: "fixed",
     top: "50%",
     left: "50%",
-    zIndex: overlayVars["--uji-layer-dialog"],
+    zIndex: tokens.overlay["--nyte-layer-dialog"],
     display: "grid",
     boxSizing: "border-box",
-    width: overlayVars["--uji-dialog-width"],
-    maxWidth: overlayVars["--uji-dialog-max-width"],
-    maxHeight: overlayVars["--uji-dialog-max-height"],
-    gap: spaceVars["--uji-space-4"],
+    width: tokens.overlay["--nyte-dialog-width"],
+    maxWidth: tokens.overlay["--nyte-dialog-max-width"],
+    maxHeight: tokens.overlay["--nyte-dialog-max-height"],
+    gap: tokens.space["--nyte-space-4"],
     overflowY: "auto",
-    padding: spaceVars["--uji-space-4"],
+    padding: tokens.space["--nyte-space-4"],
     transform: "translate(-50%, -50%)",
     transformOrigin: "center",
-    borderWidth: borderVars["--uji-border-control-width"],
+    borderWidth: tokens.border["--nyte-border-control-width"],
     borderStyle: "solid",
-    borderColor: colorVars["--uji-color-border"],
-    borderRadius: radiusVars["--uji-radius-dialog"],
-    backgroundColor: colorVars["--uji-color-popover"],
-    boxShadow: elevationVars["--uji-elevation-dialog"],
-    color: colorVars["--uji-color-popover-foreground"],
-    fontFamily: fontVars["--uji-font-family-ui"],
-    fontSize: fontVars["--uji-font-size-body"],
-    lineHeight: fontVars["--uji-leading-body"],
+    borderColor: tokens.color["--nyte-color-border"],
+    borderRadius: tokens.radius["--nyte-radius-dialog"],
+    backgroundColor: tokens.color["--nyte-color-popover"],
+    boxShadow: tokens.elevation["--nyte-elevation-dialog"],
+    color: tokens.color["--nyte-color-popover-foreground"],
+    fontFamily: tokens.font["--nyte-font-family-ui"],
+    fontSize: tokens.font["--nyte-font-size-body"],
+    lineHeight: tokens.font["--nyte-leading-body"],
     outline: "none",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     scale: { default: 1, "[data-starting-style]": 0.98, "[data-ending-style]": 0.98 },
     transitionProperty: "opacity, scale",
     transitionDuration: {
-      default: motionVars["--uji-motion-normal"],
+      default: tokens.motion["--nyte-motion-normal"],
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    transitionTimingFunction: motionVars["--uji-motion-ease-out"],
+    transitionTimingFunction: tokens.motion["--nyte-motion-ease-out"],
   },
   close: {
     position: "absolute",
-    top: spaceVars["--uji-space-2"],
-    right: spaceVars["--uji-space-2"],
+    top: tokens.space["--nyte-space-2"],
+    right: tokens.space["--nyte-space-2"],
   },
   header: {
     display: "flex",
     flexDirection: "column",
     // Clears the absolutely positioned close button.
-    paddingInlineEnd: controlVars["--uji-control-height-sm"],
-    gap: spaceVars["--uji-space-1"],
+    paddingInlineEnd: tokens.control["--nyte-control-height-sm"],
+    gap: tokens.space["--nyte-space-1"],
   },
   footer: {
     display: "flex",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: spaceVars["--uji-space-2"],
+    gap: tokens.space["--nyte-space-2"],
   },
   title: {
     margin: 0,
-    color: colorVars["--uji-color-popover-foreground"],
-    fontSize: fontVars["--uji-font-size-title"],
-    fontWeight: fontVars["--uji-font-weight-medium"],
-    lineHeight: fontVars["--uji-leading-title"],
+    color: tokens.color["--nyte-color-popover-foreground"],
+    fontSize: tokens.font["--nyte-font-size-title"],
+    fontWeight: tokens.font["--nyte-font-weight-medium"],
+    lineHeight: tokens.font["--nyte-leading-title"],
   },
   description: {
     margin: 0,
-    color: colorVars["--uji-color-muted-foreground"],
-    fontSize: fontVars["--uji-font-size-body"],
-    lineHeight: fontVars["--uji-leading-body"],
+    color: tokens.color["--nyte-color-muted-foreground"],
+    fontSize: tokens.font["--nyte-font-size-body"],
+    lineHeight: tokens.font["--nyte-leading-body"],
   },
 });
 
@@ -104,21 +94,10 @@ const styles = stylex.create({
 export const dialogStyles = styles;
 
 export const Dialog = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogPortal = DialogPrimitive.Portal;
-export const DialogClose = DialogPrimitive.Close;
-export const createDialogHandle = DialogPrimitive.createHandle;
-export type DialogHandle<Payload> = DialogPrimitive.Handle<Payload>;
 
-type StyledProps<Props> = Omit<Props, "className" | "style"> & {
-  className?: string;
-  style?: React.CSSProperties;
-  xstyle?: XStyle;
-};
+type DialogOverlayProps = StyledProps<DialogPrimitive.Backdrop.Props>;
 
-export type DialogOverlayProps = StyledProps<DialogPrimitive.Backdrop.Props>;
-
-export function DialogOverlay({ className, style, xstyle, ...props }: DialogOverlayProps) {
+function DialogOverlay({ className, style, xstyle, ...props }: DialogOverlayProps) {
   return (
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
@@ -129,34 +108,23 @@ export function DialogOverlay({ className, style, xstyle, ...props }: DialogOver
 }
 
 export interface DialogContentProps extends StyledProps<DialogPrimitive.Popup.Props> {
-  motionDuration?: React.CSSProperties["transitionDuration"];
-  overlayXstyle?: XStyle;
   showCloseButton?: boolean;
 }
 
 export function DialogContent({
   children,
   className,
-  motionDuration,
-  overlayXstyle,
   showCloseButton = true,
   style,
   xstyle,
   ...props
 }: DialogContentProps) {
   return (
-    <DialogPortal>
-      <DialogOverlay
-        style={motionDuration === undefined ? undefined : { transitionDuration: motionDuration }}
-        xstyle={overlayXstyle}
-      />
+    <DialogPrimitive.Portal>
+      <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
-        {...mergeStyleProps(
-          stylex.props(styles.popup, xstyle),
-          className,
-          motionDuration === undefined ? style : { ...style, transitionDuration: motionDuration },
-        )}
+        {...mergeStyleProps(stylex.props(styles.popup, xstyle), className, style)}
         {...props}
       >
         {children}
@@ -171,7 +139,7 @@ export function DialogContent({
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
-    </DialogPortal>
+    </DialogPrimitive.Portal>
   );
 }
 
@@ -187,29 +155,15 @@ export function DialogHeader({ className, style, xstyle, ...props }: DialogHeade
   );
 }
 
-export interface DialogFooterProps extends StyledProps<React.ComponentProps<"div">> {
-  showCloseButton?: boolean;
-}
+export type DialogFooterProps = StyledProps<React.ComponentProps<"div">>;
 
-export function DialogFooter({
-  children,
-  className,
-  showCloseButton = false,
-  style,
-  xstyle,
-  ...props
-}: DialogFooterProps) {
+export function DialogFooter({ className, style, xstyle, ...props }: DialogFooterProps) {
   return (
     <div
       data-slot="dialog-footer"
       {...mergeStyleProps(stylex.props(styles.footer, xstyle), className, style)}
       {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close render={<Button variant="outline" />}>Close</DialogPrimitive.Close>
-      )}
-    </div>
+    />
   );
 }
 

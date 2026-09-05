@@ -2,12 +2,12 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/context-estimate.test.ts
  * Synced with pi 7ebf9087e.
  *
- * Uji divergence: the `buildBaseOptions(model, context).maxTokens` assertion is
+ * Nyte divergence: the `buildBaseOptions(model, context).maxTokens` assertion is
  * omitted; `api/simple-options.ts` is ported with the adapters, not the utils.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import type { AssistantMessage, Context, Usage } from "@uji-ai/schema";
+import { describe, test } from "vitest";
+import type { AssistantMessage, Context, Usage } from "@nyte-ai/schema";
 import { estimateContextTokens } from "../src/utils/estimate.ts";
 
 function createUsage(totalTokens: number): Usage {
@@ -34,8 +34,8 @@ function createAssistant(timestamp: number, totalTokens: number): AssistantMessa
   };
 }
 
-void describe("context token estimation", () => {
-  void test("ignores stale assistant usage after a newer message is inserted before it", () => {
+describe("context token estimation", () => {
+  test("ignores stale assistant usage after a newer message is inserted before it", () => {
     const context: Context = {
       systemPrompt: "system",
       messages: [
@@ -53,7 +53,7 @@ void describe("context token estimation", () => {
     });
   });
 
-  void test("uses assistant usage again after a response to the inserted context", () => {
+  test("uses assistant usage again after a response to the inserted context", () => {
     const context: Context = {
       messages: [
         { role: "user", content: "summary", timestamp: 200 },

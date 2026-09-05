@@ -1,22 +1,11 @@
 /**
- * Steers and follow-ups core is still holding, drawn between the transcript
- * and the composer.
+ * Messages core is still holding, drawn between the transcript and the
+ * composer: the store's pending changes, and the outbox's rows that are
+ * still on their way to the store.
  *
- * These messages have not been sent. The transcript is an append-only record,
- * so drawing them inside it made a mutable list look like history: consuming
- * one deleted a block from the middle and shifted everything below it, and
- * scrolling up hid the one thing worth taking back. They live in their own
- * region instead, a sibling of the scroll box, pinned above the composer where
- * the next thing you send is already in view.
- *
- * One row per item, because a pending message is a promise about a line of
- * text and not a turn: the glyph and one word say when it goes, and the row
- * closest to the composer carries the key that takes it back. Core has two
- * delivery modes, so the vocabulary here has two words.
- *
- * Core's queue events are the only source: `queued` adds or moves a row,
- * `queue_consumed` and `queue_cancelled` remove it, and one `messages.pending`
- * read at wire time shows what a resumed session left pending.
+ * These messages have not been answered, so they do not belong in the record.
+ * One row per item: the glyph and one word say when it goes, and the row
+ * closest to the composer carries the key that opens the queue.
  *
  * Based on opencode's queued user messages, which render with a QUEUED badge
  * until their turn begins:
@@ -24,19 +13,32 @@
  */
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import type { PendingItem } from "@uji-ai/core";
-import { DELIVERY, GLYPHS, pendingHint } from "./constants.ts";
-import { partsText } from "./format.ts";
+import type { Lane, PendingItem } from "@nyte-ai/core";
+import type { UserMessage } from "@nyte-ai/schema";
+import { GLYPHS, pendingHint } from "./constants.ts";
+import { userText } from "./format.ts";
+import type { LaneRoles } from "./lanes.ts";
+import type { OutboxEntry } from "./outbox.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
-type Delivery = PendingItem["delivery"];
+/** One row: a durable pending change, or a message the outbox is still sending. */
+export type GutterRow =
+  | { readonly kind: "pending"; readonly item: PendingItem }
+  | { readonly kind: "sending"; readonly entry: OutboxEntry };
 
-/**
- * The gutter never takes more than this share of the terminal. A long queue
- * summarizes its tail instead of pushing the transcript off the screen, since
- * the point of the region is to sit beside the conversation, not replace it.
- */
+/** Durable first, oldest first; then what is still on its way. */
+export function gutterRows(
+  pending: readonly PendingItem[],
+  sending: readonly OutboxEntry[],
+): GutterRow[] {
+  return [
+    ...pending.map((item): GutterRow => ({ kind: "pending", item })),
+    ...sending.map((entry): GutterRow => ({ kind: "sending", entry })),
+  ];
+}
+
+/** The gutter never takes more than this share of the terminal. */
 const MAX_ROW_SHARE = 0.3;
 const MIN_ROWS = 1;
 
@@ -48,92 +50,101 @@ function gutterRowLimit(terminalHeight: number): number {
 const MIN_TEXT_COLUMNS = 12;
 /** Leading space, glyph, trailing space. */
 const LEAD_COLUMNS = 3;
-/** Between the message and the delivery word. The right margin is counted separately. */
 const GAP_COLUMNS = 2;
 
-/** A pending message on one line: no newlines, no runs of blank space. */
-function pendingText(item: PendingItem): string {
-  return partsText(item.content).replaceAll(/\s+/gu, " ").trim();
+function rowText(content: UserMessage["content"]): string {
+  return userText(content).replaceAll(/\s+/gu, " ").trim();
 }
 
-/**
- * The message enter sends on an empty composer: the one at the front of the
- * queue that is still waiting for the run to end. A steer is already going out
- * at the next boundary, so pressing enter at it would mean nothing.
- *
- * Based on OpenCode v2, where enter on an empty prompt steers the first queued
- * prompt:
- * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/routes/session/index.tsx
- */
-export function nextToSteer(items: readonly PendingItem[]): PendingItem | undefined {
-  return items.find((item) => item.delivery !== "steer");
+interface RowMark {
+  readonly glyph: string;
+  readonly label: string;
+  readonly tone: string;
+}
+
+/** The glyph and word for a lane, by the role the landing policy gives it. */
+export function laneMark(lane: Lane, roles: LaneRoles, theme: CliTheme): RowMark {
+  if (lane === roles.steer) return { glyph: GLYPHS.steer, label: lane, tone: theme.accent };
+  return { glyph: GLYPHS.queue, label: lane, tone: theme.warning };
+}
+
+function rowMark(row: GutterRow, roles: LaneRoles, theme: CliTheme): RowMark {
+  switch (row.kind) {
+    case "pending":
+      return laneMark(row.item.lane, roles, theme);
+    case "sending": {
+      const attempts = row.entry.attempts;
+      return {
+        glyph: GLYPHS.sending,
+        label: attempts > 1 ? `sending (retry ${String(attempts - 1)})` : "sending",
+        tone: theme.dim,
+      };
+    }
+    default: {
+      const _exhaustive: never = row;
+      return _exhaustive;
+    }
+  }
 }
 
 /**
  * `<glyph> <message>   <word> · <key>`, with the message taking whatever the
  * fixed parts leave. Chrome goes before the delivery word when the terminal
- * narrows, because which mode a message is in outranks the key that changes it.
+ * narrows.
  */
 function pendingRow(
   text: string,
-  delivery: Delivery,
+  mark: RowMark,
   width: number,
   theme: CliTheme,
   hint?: string,
 ): StyledText {
-  const mark = DELIVERY[delivery];
-  const tone = theme[mark.tone];
   const room = Math.max(0, Math.floor(width));
-  // A row that outgrows its width wraps, and a wrapped row is two rows, which
-  // breaks the one-message-one-line rule the region is built on. Below the
-  // glyph's own width there is nothing left to lay out.
   const lead = ` ${mark.glyph} `;
   if (room <= LEAD_COLUMNS) {
-    return new StyledText([fg(tone)(padDisplay(truncateDisplay(lead, room), room))]);
+    return new StyledText([fg(mark.tone)(padDisplay(truncateDisplay(lead, room), room))]);
   }
-  // A trailing column on every row, so the region has an even right edge
-  // whether or not the delivery word survived the width.
   const fixed = LEAD_COLUMNS + 1;
-
   const fits = (right: string): boolean =>
     room - fixed - GAP_COLUMNS - displayWidth(right) >= MIN_TEXT_COLUMNS;
   const showLabel = fits(mark.label);
-  const showHint = hint !== undefined && fits(`${mark.label} \u00b7 ${hint}`);
-
-  const right = showLabel ? mark.label : "";
+  const showHint = hint !== undefined && fits(`${mark.label} · ${hint}`);
   const textRoom = Math.max(
     0,
     room -
       fixed -
-      (showLabel ? GAP_COLUMNS + displayWidth(right) : 0) -
-      (showHint ? displayWidth(` \u00b7 ${hint}`) : 0),
+      (showLabel ? GAP_COLUMNS + displayWidth(mark.label) : 0) -
+      (showHint ? displayWidth(` · ${hint}`) : 0),
   );
-
   const chunks = [
-    fg(tone)(lead),
+    fg(mark.tone)(lead),
     fg(theme.user)(padDisplay(truncateDisplay(text, textRoom, GLYPHS.ellipsis), textRoom)),
   ];
-  if (showLabel) chunks.push(fg(theme.muted)("  "), fg(tone)(right));
-  if (showHint) chunks.push(fg(theme.muted)(" \u00b7 "), fg(theme.dim)(hint));
+  if (showLabel) chunks.push(fg(theme.muted)("  "), fg(mark.tone)(mark.label));
+  if (showHint) chunks.push(fg(theme.muted)(" · "), fg(theme.dim)(hint));
   chunks.push(fg(theme.muted)(" "));
   return new StyledText(chunks);
 }
 
-/**
- * The region itself. Hidden while nothing is pending, so an idle session gives
- * every row it owns back to the transcript.
- */
+/** The region itself. Hidden while nothing is pending, so an idle session gives its rows back. */
 export class PendingGutter {
   readonly container: BoxRenderable;
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
   private readonly nextId: (prefix?: string) => string;
-  private items: readonly PendingItem[] = [];
+  private roles: LaneRoles;
+  private items: readonly GutterRow[] = [];
   private readonly rows: TextRenderable[] = [];
 
-  constructor(renderer: CliRenderer, theme: CliTheme, nextId: (prefix?: string) => string) {
+  constructor(
+    renderer: CliRenderer,
+    theme: CliTheme,
+    roles: LaneRoles,
+    nextId: (prefix?: string) => string,
+  ) {
     this.renderer = renderer;
     this.theme = theme;
+    this.roles = roles;
     this.nextId = nextId;
     this.container = new BoxRenderable(renderer, {
       id: "pending-gutter",
@@ -147,46 +158,25 @@ export class PendingGutter {
     this.container.onSizeChange = this.repaint;
   }
 
-  /** The last list core reported, including rows the height cap is hiding. */
-  get pending(): readonly PendingItem[] {
-    return this.items;
-  }
-
   /** A shorter terminal fits fewer rows, so the cap is re-taken on resize. */
   resize(): void {
     this.sync(this.items);
   }
 
-  /** Repaint colors after the shared theme object changes. */
   retheme(): void {
     this.container.backgroundColor = this.theme.terminal;
     this.repaint();
   }
 
-  sync(items: readonly PendingItem[]): void {
-    this.items = items;
-    this.setRowCount(Math.min(items.length, gutterRowLimit(this.renderer.height)));
+  setRoles(roles: LaneRoles): void {
+    this.roles = roles;
     this.repaint();
   }
 
-  /** Core reported the item: a new row, or a lane change on one already shown. */
-  upsert(item: PendingItem): void {
-    const index = this.items.findIndex((shown) => shown.entryId === item.entryId);
-    this.sync(index === -1 ? [...this.items, item] : this.items.with(index, item));
-  }
-
-  /** Core consumed or cancelled the item, so its row leaves. */
-  resolve(entryId: string): void {
-    if (!this.items.some((item) => item.entryId === entryId)) return;
-    this.sync(this.items.filter((item) => item.entryId !== entryId));
-  }
-
-  /**
-   * Drops the rows but keeps the list, because `replaceTranscript` clears the
-   * whole view and then hands `pending` straight back to `sync`.
-   */
-  clear(): void {
-    this.setRowCount(0);
+  sync(items: readonly GutterRow[]): void {
+    this.items = items;
+    this.setRowCount(Math.min(items.length, gutterRowLimit(this.renderer.height)));
+    this.repaint();
   }
 
   private setRowCount(count: number): void {
@@ -218,12 +208,11 @@ export class PendingGutter {
     for (const [index, row] of this.rows.entries()) {
       const item = this.items[index];
       if (item === undefined) continue;
-      // The key that takes a message back is stated once, on the row nearest
-      // the composer, rather than on every row that could use it.
       const last = index === shown - 1;
+      const text = rowText(item.kind === "pending" ? item.item.content : item.entry.content);
       row.content = pendingRow(
-        pendingText(item),
-        item.delivery,
+        text,
+        rowMark(item, this.roles, this.theme),
         width,
         this.theme,
         last ? pendingHint(hidden) : undefined,

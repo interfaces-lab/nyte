@@ -1,5 +1,5 @@
 /**
- * Read tool ported from pi's harness read tool, adapted to Uji's AgentTool
+ * Read tool ported from pi's read tool, bound to Nyte's AgentTool
  * contract and direct filesystem access (pi routes reads through its
  * ExecutionEnv effects boundary). Images are detected by content (magic
  * bytes) and returned as image content parts as-is; core carries no image
@@ -54,22 +54,53 @@ const readParameters = Unsafe<ReadToolInput>({
   required: ["path"],
 });
 
-function parseReadParams(params: unknown): ReadToolInput {
-  if (typeof params !== "object" || params === null) {
+interface ReadInputFields {
+  readonly path?: unknown;
+  readonly offset?: unknown;
+  readonly limit?: unknown;
+}
+
+function isReadInputObject(value: unknown): value is ReadInputFields {
+  return typeof value === "object" && value !== null;
+}
+
+function hasReadPath(
+  value: ReadInputFields,
+): value is ReadInputFields & Pick<ReadToolInput, "path"> {
+  return typeof value.path === "string";
+}
+
+function hasValidReadOffset(
+  value: ReadInputFields,
+): value is ReadInputFields & Pick<ReadToolInput, "offset"> {
+  return value.offset === undefined || typeof value.offset === "number";
+}
+
+function hasValidReadLimit(
+  value: ReadInputFields,
+): value is ReadInputFields & Pick<ReadToolInput, "limit"> {
+  return value.limit === undefined || typeof value.limit === "number";
+}
+
+type ReadArgumentPreparer = NonNullable<
+  AgentTool<typeof readParameters, ReadToolDetails | undefined>["prepareArguments"]
+>;
+
+const parseReadParams: ReadArgumentPreparer = (params) => {
+  if (!isReadInputObject(params)) {
     throw new Error("Invalid arguments for read: expected an object");
   }
-  const { path, offset, limit } = params as Record<string, unknown>;
-  if (typeof path !== "string") {
+  if (!hasReadPath(params)) {
     throw new Error('Invalid arguments for read: "path" must be a string');
   }
-  if (offset !== undefined && typeof offset !== "number") {
+  if (!hasValidReadOffset(params)) {
     throw new Error('Invalid arguments for read: "offset" must be a number');
   }
-  if (limit !== undefined && typeof limit !== "number") {
+  if (!hasValidReadLimit(params)) {
     throw new Error('Invalid arguments for read: "limit" must be a number');
   }
-  return { path, offset, limit };
-}
+  return { path: params.path, offset: params.offset, limit: params.limit };
+};
 
 export function createReadTool(
   cwd: string,

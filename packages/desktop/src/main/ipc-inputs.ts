@@ -1,10 +1,17 @@
-// Main is the only Electron process allowed to JIT validators. This import must
-// run before the schemas below are constructed; the renderer's CSP forbids eval.
-import "zod/compile";
-import { z } from "zod";
-import type { Uji } from "@uji-ai/core";
-import { asSessionId } from "../shared/ipc.ts";
+/**
+ * Main is the only Electron process that compiles validators: `Compile` emits
+ * code through `new Function`, which the renderer's CSP forbids. Renderer code
+ * imports `typebox/value` and never `typebox/compile`.
+ */
+import { BROWSER_ACTIONS } from "../shared/ipc.ts";
+import { Type } from "typebox";
+import type { TProperties, TSchema } from "typebox";
+import { Compile } from "typebox/compile";
+import type { Nyte } from "@nyte-ai/core";
+import { VERBS } from "@nyte-ai/protocol";
+import { sessionId } from "../shared/schemas.ts";
 import type {
+  BrowserBoundsMessage,
   CallInput,
   CallOutput,
   CallPath,
@@ -13,165 +20,185 @@ import type {
   WatchStartInput,
 } from "../shared/ipc.ts";
 
-const sessionId = z.string().min(1, "Invalid session id").transform(asSessionId);
-const id = z.string();
-const seq = z.number().int();
-const thinkingLevel = z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-const noInput = z.undefined();
-
-const textContent = z.strictObject({ type: z.literal("text"), text: z.string() });
-const imageContent = z.strictObject({
-  type: z.literal("image"),
-  data: z.string(),
-  mimeType: z.string(),
-});
-const userContent = z.union([z.string(), z.array(z.union([textContent, imageContent]))]);
-const sessionHead = z.strictObject({ sessionId, head: id.optional() });
-
-export const CALL_INPUT_SCHEMAS = {
-  "sessions.create": z
-    .strictObject({ sessionId: sessionId.optional(), name: z.string().optional() })
-    .optional(),
-  "sessions.get": z.strictObject({ sessionId }),
-  "sessions.snapshot": sessionHead,
-  "sessions.list": z
-    .strictObject({
-      search: z.string().optional(),
-      limit: z.number().finite().optional(),
-      cursor: z.string().optional(),
-    })
-    .optional(),
-  "sessions.rename": z.strictObject({ sessionId, name: z.string() }),
-  "sessions.delete": z.strictObject({ sessionId }),
-  "sessions.configure": z.strictObject({
-    sessionId,
-    model: z.strictObject({ provider: z.string(), id }).optional(),
-    thinkingLevel: thinkingLevel.optional(),
-  }),
-  "messages.send": z.strictObject({
-    sessionId,
-    entryId: id.optional(),
-    content: userContent,
-    delivery: z.enum(["steer", "queue"]).optional(),
-    head: id.optional(),
-  }),
-  "messages.cancel": z.strictObject({ sessionId, entryId: id }),
-  "messages.redeliver": z.strictObject({
-    sessionId,
-    entryId: id,
-    delivery: z.enum(["steer", "queue"]),
-  }),
-  "runs.abort": z.strictObject({
-    sessionId,
-    runId: id.optional(),
-    continue: z.boolean().optional(),
-  }),
-  "runs.changes": z.strictObject({
-    sessionId,
-    head: id.optional(),
-    runId: id.optional(),
-  }),
-  "workspace.list": noInput,
-  "workspace.forget": z.strictObject({ path: z.string() }),
-  "workspace.vcs.diff": z.strictObject({ paths: z.array(z.string()).optional() }).optional(),
-  "provider.models.default": noInput,
-  "plugins.list": z.strictObject({ sessionId }),
-  "plugins.settings.list": z.strictObject({ sessionId }),
-  "plugins.settings.apply": z.strictObject({
-    sessionId,
-    id,
-    choiceId: id,
-  }),
-  "plugins.resources.list": z.strictObject({ sessionId }),
-  "host.state": noInput,
-  "host.openWorkspace": z.strictObject({ path: z.string() }),
-  "host.pickWorkspace": noInput,
-  "host.trustWorkspace": z.strictObject({ path: z.string() }),
-  "host.closeWorkspace": noInput,
-  "host.providers": noInput,
-  "host.login": z.strictObject({ provider: z.string() }),
-  "host.logout": z.strictObject({ provider: z.string() }),
-  "host.models": noInput,
-  "host.vcs.snapshot": noInput,
-  "host.github.state": noInput,
-  "host.github.refresh": noInput,
-  "host.github.signIn": noInput,
-  "host.github.signOut": noInput,
-  "host.openExternal": z.strictObject({ url: z.string() }),
-} satisfies { readonly [P in CallPath]: z.ZodType<CallInput<P>> };
-
-function callRequestFor<P extends CallPath>(path: P, input: z.ZodType<CallInput<P>>) {
-  return z.strictObject({ path: z.literal(path), input });
+interface Parser<T> {
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the boundary parser itself
+  Parse(value: unknown): T;
 }
 
-const callRequest = z.discriminatedUnion("path", [
-  callRequestFor("sessions.create", CALL_INPUT_SCHEMAS["sessions.create"]),
-  callRequestFor("sessions.get", CALL_INPUT_SCHEMAS["sessions.get"]),
-  callRequestFor("sessions.snapshot", CALL_INPUT_SCHEMAS["sessions.snapshot"]),
-  callRequestFor("sessions.list", CALL_INPUT_SCHEMAS["sessions.list"]),
-  callRequestFor("sessions.rename", CALL_INPUT_SCHEMAS["sessions.rename"]),
-  callRequestFor("sessions.delete", CALL_INPUT_SCHEMAS["sessions.delete"]),
-  callRequestFor("sessions.configure", CALL_INPUT_SCHEMAS["sessions.configure"]),
-  callRequestFor("messages.send", CALL_INPUT_SCHEMAS["messages.send"]),
-  callRequestFor("messages.cancel", CALL_INPUT_SCHEMAS["messages.cancel"]),
-  callRequestFor("messages.redeliver", CALL_INPUT_SCHEMAS["messages.redeliver"]),
-  callRequestFor("runs.abort", CALL_INPUT_SCHEMAS["runs.abort"]),
-  callRequestFor("runs.changes", CALL_INPUT_SCHEMAS["runs.changes"]),
-  callRequestFor("workspace.list", CALL_INPUT_SCHEMAS["workspace.list"]),
-  callRequestFor("workspace.forget", CALL_INPUT_SCHEMAS["workspace.forget"]),
-  callRequestFor("workspace.vcs.diff", CALL_INPUT_SCHEMAS["workspace.vcs.diff"]),
-  callRequestFor("provider.models.default", CALL_INPUT_SCHEMAS["provider.models.default"]),
-  callRequestFor("plugins.list", CALL_INPUT_SCHEMAS["plugins.list"]),
-  callRequestFor("plugins.settings.list", CALL_INPUT_SCHEMAS["plugins.settings.list"]),
-  callRequestFor("plugins.settings.apply", CALL_INPUT_SCHEMAS["plugins.settings.apply"]),
-  callRequestFor("plugins.resources.list", CALL_INPUT_SCHEMAS["plugins.resources.list"]),
-  callRequestFor("host.state", CALL_INPUT_SCHEMAS["host.state"]),
-  callRequestFor("host.openWorkspace", CALL_INPUT_SCHEMAS["host.openWorkspace"]),
-  callRequestFor("host.pickWorkspace", CALL_INPUT_SCHEMAS["host.pickWorkspace"]),
-  callRequestFor("host.trustWorkspace", CALL_INPUT_SCHEMAS["host.trustWorkspace"]),
-  callRequestFor("host.closeWorkspace", CALL_INPUT_SCHEMAS["host.closeWorkspace"]),
-  callRequestFor("host.providers", CALL_INPUT_SCHEMAS["host.providers"]),
-  callRequestFor("host.login", CALL_INPUT_SCHEMAS["host.login"]),
-  callRequestFor("host.logout", CALL_INPUT_SCHEMAS["host.logout"]),
-  callRequestFor("host.models", CALL_INPUT_SCHEMAS["host.models"]),
-  callRequestFor("host.vcs.snapshot", CALL_INPUT_SCHEMAS["host.vcs.snapshot"]),
-  callRequestFor("host.github.state", CALL_INPUT_SCHEMAS["host.github.state"]),
-  callRequestFor("host.github.refresh", CALL_INPUT_SCHEMAS["host.github.refresh"]),
-  callRequestFor("host.github.signIn", CALL_INPUT_SCHEMAS["host.github.signIn"]),
-  callRequestFor("host.github.signOut", CALL_INPUT_SCHEMAS["host.github.signOut"]),
-  callRequestFor("host.openExternal", CALL_INPUT_SCHEMAS["host.openExternal"]),
-]) satisfies z.ZodType<CallRequest>;
-const watchStart = z.union([
-  z.strictObject({ watchId: z.string().min(1), sessionId, live: z.literal(true) }),
-  z.strictObject({ watchId: z.string().min(1), sessionId, afterSeq: seq.optional() }),
-]);
-const watchStop = z.strictObject({ watchId: z.string().min(1) });
+const strict = <P extends TProperties>(properties: P) =>
+  Type.Object(properties, { additionalProperties: false });
+/** Pins `Compile`'s result type so the `satisfies` below cannot widen it. */
+const compile = <T extends TSchema>(schema: T) => Compile(schema);
+
+const id = Type.String();
+const nonEmpty = Type.String({ minLength: 1 });
+const thinkingLevel = Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const noInput = Type.Optional(Type.Undefined());
+const model = strict({ provider: Type.String(), id });
+
+export const CALL_INPUT_SCHEMAS = {
+  // The SDK verbs validate with the wire protocol's own input schemas, compiled here.
+  "sessions.create": compile(VERBS["sessions.create"].input),
+  "sessions.get": compile(VERBS["sessions.get"].input),
+  "sessions.snapshot": compile(VERBS["sessions.snapshot"].input),
+  "sessions.list": compile(VERBS["sessions.list"].input),
+  "sessions.rename": compile(VERBS["sessions.rename"].input),
+  "sessions.setPinned": compile(VERBS["sessions.setPinned"].input),
+  "sessions.setArchived": compile(VERBS["sessions.setArchived"].input),
+  "sessions.delete": compile(VERBS["sessions.delete"].input),
+  "sessions.configure": compile(VERBS["sessions.configure"].input),
+  "messages.send": compile(VERBS["messages.send"].input),
+  "messages.cancel": compile(VERBS["messages.cancel"].input),
+  "messages.redeliver": compile(VERBS["messages.redeliver"].input),
+  "runs.abort": compile(VERBS["runs.abort"].input),
+  "runs.changes": compile(VERBS["runs.changes"].input),
+  "heads.move": compile(VERBS["heads.move"].input),
+  "workspace.list": compile(VERBS["workspace.list"].input),
+  "workspace.forget": compile(VERBS["workspace.forget"].input),
+  "workspace.vcs.diff": compile(VERBS["workspace.vcs.diff"].input),
+  "provider.models.default": compile(VERBS["provider.models.default"].input),
+  "plugins.catalog": compile(VERBS["plugins.catalog"].input),
+  "plugins.list": compile(VERBS["plugins.list"].input),
+  "plugins.commands.list": compile(VERBS["plugins.commands.list"].input),
+  "plugins.commands.run": compile(VERBS["plugins.commands.run"].input),
+  "plugins.settings.list": compile(VERBS["plugins.settings.list"].input),
+  "plugins.settings.apply": compile(VERBS["plugins.settings.apply"].input),
+  "plugins.resources.list": compile(VERBS["plugins.resources.list"].input),
+  "host.state": compile(noInput),
+  "host.fonts": compile(noInput),
+  "host.openWorkspace": compile(strict({ path: Type.String() })),
+  "host.pickWorkspace": compile(noInput),
+  "host.trustWorkspace": compile(strict({ path: Type.String() })),
+  "host.closeWorkspace": compile(noInput),
+  "host.catalog": compile(noInput),
+  "host.login": compile(
+    strict({
+      provider: Type.String(),
+      method: Type.Union([
+        strict({ kind: Type.Literal("browser") }),
+        // A key must hold something other than whitespace.
+        strict({ kind: Type.Literal("api_key"), key: Type.String({ pattern: "\\S" }) }),
+      ]),
+    }),
+  ),
+  "host.logout": compile(strict({ provider: Type.String() })),
+  "host.setPreference": compile(
+    Type.Union([
+      strict({ kind: Type.Literal("provider"), provider: Type.String(), enabled: Type.Boolean() }),
+      strict({
+        kind: Type.Literal("models"),
+        provider: Type.String(),
+        ids: Type.Array(id),
+        hidden: Type.Boolean(),
+      }),
+      strict({
+        kind: Type.Literal("defaults"),
+        model: Type.Optional(model),
+        thinkingLevel: Type.Optional(thinkingLevel),
+      }),
+    ]),
+  ),
+  "host.vcs.snapshot": compile(noInput),
+  "host.files.list": compile(noInput),
+  "host.github.state": compile(noInput),
+  "host.github.refresh": compile(noInput),
+  "host.github.signIn": compile(noInput),
+  "host.github.signOut": compile(noInput),
+  "host.openExternal": compile(strict({ url: Type.String() })),
+  "host.browser.open": compile(strict({ surface: nonEmpty, url: Type.String() })),
+  "host.browser.navigate": compile(
+    strict({
+      surface: nonEmpty,
+      action: Type.Enum(["back", "forward", "reload", "stop"]),
+    }),
+  ),
+  "host.browser.menu": compile(
+    strict({
+      surface: nonEmpty,
+      bookmarksVisible: Type.Boolean(),
+      x: Type.Integer(),
+      y: Type.Integer(),
+    }),
+  ),
+  "host.browser.perform": compile(
+    strict({ surface: nonEmpty, action: Type.Enum(BROWSER_ACTIONS) }),
+  ),
+  "host.browser.close": compile(strict({ surface: nonEmpty })),
+  "host.terminal.create": compile(
+    strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
+  ),
+  "host.terminal.write": compile(strict({ id: nonEmpty, data: Type.String({ maxLength: 65536 }) })),
+  "host.terminal.resize": compile(
+    strict({
+      id: nonEmpty,
+      cols: Type.Integer({ minimum: 2, maximum: 1000 }),
+      rows: Type.Integer({ minimum: 1, maximum: 1000 }),
+    }),
+  ),
+  "host.terminal.acknowledge": compile(
+    strict({ id: nonEmpty, length: Type.Integer({ minimum: 0, maximum: 1048576 }) }),
+  ),
+  "host.terminal.close": compile(strict({ id: nonEmpty })),
+} satisfies { readonly [P in CallPath]: Parser<CallInput<P>> };
+
+const callRequest = Compile(
+  Type.Union(
+    Object.entries(CALL_INPUT_SCHEMAS).map(([path, input]) =>
+      strict({ path: Type.Literal(path), input: input.Type() }),
+    ),
+  ),
+);
+const watchStart = Compile(
+  Type.Union([
+    strict({ watchId: nonEmpty, sessionId, live: Type.Literal(true) }),
+    strict({ watchId: nonEmpty, sessionId, afterSeq: Type.Optional(Type.Integer()) }),
+  ]),
+);
+const watchStop = Compile(strict({ watchId: nonEmpty }));
+const size = Type.Number({ minimum: 0 });
+const browserBounds = Compile(
+  strict({
+    surface: nonEmpty,
+    bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
+    visible: Type.Boolean(),
+  }),
+);
+
+/** The wire value already carries the static type; the check earns it. */
+function checked<T>(validator: Parser<unknown>, value: T): T {
+  validator.Parse(value);
+  return value;
+}
 
 export function decodeCallRequest(input: CallRequest): CallRequest {
-  return callRequest.parse(input);
+  return checked(callRequest, input);
 }
 
 export function decodeWatchStart(input: WatchStartInput): WatchStartInput {
-  return watchStart.parse(input);
+  return checked(watchStart, input);
 }
 
 export function decodeWatchStop(input: { readonly watchId: string }): string {
-  return watchStop.parse(input).watchId;
+  return watchStop.Parse(input).watchId;
+}
+
+export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
+  return checked(browserBounds, input);
 }
 
 export interface SdkVerb {
-  invoke(input: CallInput<SdkVerbPath>, getSdk: () => Uji): Promise<CallOutput<SdkVerbPath>>;
+  invoke(
+    input: CallInput<SdkVerbPath>,
+    getSdk: () => Promise<Nyte>,
+  ): Promise<CallOutput<SdkVerbPath>>;
 }
 
 /** Bind an SDK verb to its exact input parser before it enters the dispatcher. */
 export function sdkVerb<
   TInput extends CallInput<SdkVerbPath>,
   TResult extends CallOutput<SdkVerbPath>,
->(schema: z.ZodType<TInput>, run: (sdk: Uji, input: TInput) => Promise<TResult>): SdkVerb {
+>(schema: Parser<TInput>, run: (sdk: Nyte, input: TInput) => Promise<TResult>): SdkVerb {
   return {
-    invoke: (input, getSdk) => {
-      const decoded = schema.parse(input);
-      return run(getSdk(), decoded);
-    },
+    invoke: async (input, getSdk) => run(await getSdk(), schema.Parse(input)),
   };
 }

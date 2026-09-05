@@ -6,9 +6,11 @@
  * Synced with pi 7ebf9087e.
  */
 
-// Uji divergence: pi's page carries the pi logo; Uji has no SVG mark yet,
-// so the logo slot renders a neutral glyph instead.
-const LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" aria-hidden="true"><circle cx="400" cy="400" r="220" fill="none" stroke="#fff" stroke-width="48"/></svg>`;
+// Nyte divergence: pi's page is a dark, centered layout with the pi logo. This
+// one follows the Nyte landing language (paper/ink, hairline rules with corner
+// ticks, square corners), picks light or dark from the OS, and carries the
+// provider name in the heading. No mark yet, one system font, no JS, no
+// network: the page has to work offline and load from nothing but this string.
 
 function escapeHtml(value: string): string {
   return value
@@ -20,105 +22,172 @@ function escapeHtml(value: string): string {
 }
 
 function renderPage(options: {
-  title: string;
+  kind: "success" | "error";
+  status: string;
   heading: string;
   message: string;
+  footer: string;
   details?: string;
 }): string {
-  const title = escapeHtml(options.title);
   const heading = escapeHtml(options.heading);
+  const status = escapeHtml(options.status);
   const message = escapeHtml(options.message);
+  const footer = escapeHtml(options.footer);
   const details = options.details ? escapeHtml(options.details) : undefined;
+  const isError = options.kind === "error";
 
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title}</title>
+  <meta name="robots" content="noindex" />
+  <title>${heading} · Nyte</title>
   <style>
     :root {
-      --text: #fafafa;
-      --text-dim: #a1a1aa;
-      --page-bg: #09090b;
-      --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color-scheme: light dark;
+      --bg: #eeeeee;
+      --card: #fcfcfc;
+      --ink: #141414;
+      --dim: #767676;
+      --rule: #a5a5a533;
+      --tick: #a5a5a5;
+      --ok: #378e23;
+      --err: #c3691e;
+      --wash: #26262608;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #141414;
+        --card: #1c1c1c;
+        --ink: #e1e1e1;
+        --dim: #8a8a8a;
+        --rule: #58585899;
+        --tick: #585858;
+        --ok: #9ece6a;
+        --err: #ff9e64;
+        --wash: #e1e1e10a;
+      }
     }
     * { box-sizing: border-box; }
-    html { color-scheme: dark; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       padding: 24px;
-      background: var(--page-bg);
-      color: var(--text);
-      font-family: var(--font-sans);
-      text-align: center;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
     }
     main {
       width: 100%;
-      max-width: 560px;
+      max-width: 640px;
+      background: var(--card);
+      border: 1px solid var(--rule);
+      position: relative;
+    }
+    main::before, main::after {
+      content: "";
+      position: absolute;
+      top: -1px;
+      width: 1px;
+      height: 14px;
+      background: var(--tick);
+    }
+    main::before { left: -1px; }
+    main::after { right: -1px; }
+    header {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--rule);
+      font-size: 13px;
+      line-height: 1;
+      color: var(--dim);
     }
-    .logo {
-      width: 72px;
-      height: 72px;
-      display: block;
-      margin-bottom: 24px;
+    .brand { color: var(--ink); font-weight: 500; }
+    .status { display: flex; align-items: center; gap: 7px; }
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      background: var(--ok);
     }
+    .status.err::before { background: var(--err); }
+    section { padding: 36px 24px 32px; }
     h1 {
-      margin: 0 0 10px;
-      font-size: 28px;
+      margin: 0 0 12px;
+      font-size: 26px;
       line-height: 1.15;
-      font-weight: 650;
-      color: var(--text);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      text-wrap: balance;
     }
     p {
       margin: 0;
-      line-height: 1.7;
-      color: var(--text-dim);
-      font-size: 15px;
+      font-size: 16px;
+      line-height: 1.5;
+      max-width: 48ch;
+      color: var(--dim);
+      text-wrap: pretty;
     }
     .details {
-      margin-top: 16px;
-      font-family: var(--font-mono);
+      margin: 20px -24px -32px;
+      padding: 14px 24px;
+      border-top: 1px solid var(--rule);
+      background: var(--wash);
       font-size: 13px;
-      color: var(--text-dim);
+      line-height: 1.5;
+      color: var(--dim);
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    footer {
+      padding: 12px 24px;
+      border-top: 1px solid var(--rule);
+      font-size: 13px;
+      color: var(--dim);
     }
   </style>
 </head>
 <body>
-  <main>
-    <div class="logo">${LOGO_SVG}</div>
-    <h1>${heading}</h1>
-    <p>${message}</p>
-    ${details ? `<div class="details">${details}</div>` : ""}
+  <main data-kind="${options.kind}">
+    <header>
+      <div class="brand">Nyte</div>
+      <div class="status${isError ? " err" : ""}">${status}</div>
+    </header>
+    <section>
+      <h1>${heading}</h1>
+      <p>${message}</p>
+      ${details ? `<div class="details">${details}</div>` : ""}
+    </section>
+    <footer>${footer}</footer>
   </main>
 </body>
 </html>`;
 }
 
-export function oauthSuccessHtml(message: string): string {
+export function oauthSuccessHtml(options: { provider: string }): string {
   return renderPage({
-    title: "Authentication successful",
-    heading: "Authentication successful",
-    message,
+    kind: "success",
+    status: "Signed in",
+    heading: `Signed in to ${options.provider}`,
+    message: "Nyte received the callback and is finishing up. You can close this tab.",
+    footer: "Return to the terminal.",
   });
 }
 
 export function oauthErrorHtml(message: string, details?: string): string {
   return renderPage({
-    title: "Authentication failed",
-    heading: "Authentication failed",
+    kind: "error",
+    status: "Not signed in",
+    heading: "Sign-in did not complete",
     message,
+    footer: "The terminal has the full error.",
     details,
   });
 }

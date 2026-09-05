@@ -2,13 +2,13 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/deferred-tools.test.ts
  * Synced with pi 7ebf9087e.
  *
- * Uji divergence: only the estimate test is here. The payload-capture tests go
+ * Nyte divergence: only the estimate test is here. The payload-capture tests go
  * through the adapters (`streamSimple`, `convertMessages`) and belong with them.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { Type } from "typebox";
-import type { AssistantMessage, Tool, ToolResultMessage, UserMessage } from "@uji-ai/schema";
+import type { AssistantMessage, Tool, ToolResultMessage, UserMessage } from "@nyte-ai/schema";
 import { estimateContextTokens } from "../src/utils/estimate.ts";
 
 function makeTool(name: string): Tool {
@@ -55,8 +55,8 @@ function makeToolResult(addedToolNames: string[]): ToolResultMessage {
   };
 }
 
-void describe("deferred tools", () => {
-  void test("counts definitions marked after the latest usage checkpoint", () => {
+describe("deferred tools", () => {
+  test("counts definitions marked after the latest usage checkpoint", () => {
     const assistant: AssistantMessage = {
       ...makeAssistantToolCall(),
       content: [{ type: "text", text: "done" }],

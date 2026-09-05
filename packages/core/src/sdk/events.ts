@@ -1,18 +1,20 @@
 /**
  * The log is the event stream. This projects one `LogItem` into the durable
- * `SessionEvent` a client renders. Ephemeral overlays are built where they
- * happen: the runner stamps deltas and tool progress with the entry id they
- * settle into, and the harness and plugin host emit their own notices.
+ * `SessionEvent` a client renders, and one live `HarnessEvent` into the
+ * ephemeral overlay that references the provisioned entry it settles into.
  *
  * Nothing here reads storage: a projection consumes what it was handed, so a
  * replaying watcher and a live watcher produce the same events for the same
  * item. That rule shapes the event types: an event carries exactly what its
- * log item knows. Claim state has its own `claim` events; projecting usage
- * onto a run boundary event would mean inventing values here.
+ * log item knows. Claim state has its own `claim` events, and usage comes from
+ * `runs.get`, which can read the ledger; projecting either onto a run boundary
+ * event would mean inventing values here.
  */
-import type { Entry, LogItem } from "../harness/session/types.ts";
+import type { HarnessEvent } from "../harness/agent-harness.ts";
+import { toJsonValue } from "../harness/session/types.ts";
+import type { Entry, JsonValue, LogItem } from "../harness/session/types.ts";
 import { transcriptFromEntries } from "../views/transcript.ts";
-import type { DurableEvent, RunEnd } from "./types.ts";
+import type { DurableEvent, EphemeralEvent, RunEnd, ToolProgress } from "./types.ts";
 
 /**
  * A durable item becomes at most one event. Items with no client meaning
@@ -102,16 +104,6 @@ function recordEvent(
         },
       };
     }
-    case "tool_waiting":
-      return {
-        seq,
-        kind: "run_waiting",
-        runId: record.runId,
-        head: record.head,
-        toolCallId: record.toolCallId,
-        toolName: record.toolName,
-        args: record.effectiveArgs,
-      };
     case "queue_consumed":
       return { seq, kind: "queue_consumed", entryId: record.entryId };
     case "queue_cancelled":
@@ -136,5 +128,118 @@ function runEnd(
       const exhaustive: never = outcome;
       return exhaustive;
     }
+  }
+}
+
+/**
+ * A tool's partial result is author-shaped and typed `any` upstream, so it is
+ * narrowed here like any boundary value: text parts flatten, images become
+ * placeholders, anything else contributes nothing.
+ */
+function toolProgress(partialResult: unknown): ToolProgress {
+  if (typeof partialResult !== "object" || partialResult === null) return { text: "" };
+  const content = "content" in partialResult ? partialResult.content : undefined;
+  const title = "title" in partialResult ? partialResult.title : undefined;
+  const details = "details" in partialResult ? jsonDetails(partialResult.details) : undefined;
+  const text = Array.isArray(content)
+    ? content
+        .map(partText)
+        .filter((part) => part !== "")
+        .join("\n")
+    : "";
+  return {
+    text,
+    ...(typeof title === "string" ? { title } : {}),
+    ...(details === undefined ? {} : { details }),
+  };
+}
+
+/** A partial that does not round-trip through JSON drops rather than throws (invariant 31). */
+function jsonDetails(value: unknown): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  try {
+    return toJsonValue(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function partText(part: unknown): string {
+  if (typeof part !== "object" || part === null || !("type" in part)) return "";
+  if (part.type === "text" && "text" in part && typeof part.text === "string") return part.text;
+  if (part.type === "image" && "mimeType" in part && typeof part.mimeType === "string") {
+    return `[image ${part.mimeType}]`;
+  }
+  return "";
+}
+
+/** A live harness event becomes an overlay, or nothing a client can use. */
+export function ephemeralEvent(event: HarnessEvent): EphemeralEvent | undefined {
+  switch (event.type) {
+    case "message_update": {
+      const update = event.assistantMessageEvent;
+      if (update.type === "text_delta") {
+        return {
+          kind: "text_delta",
+          entryId: event.entryId,
+          contentIndex: update.contentIndex,
+          delta: update.delta,
+        };
+      }
+      if (update.type === "thinking_delta") {
+        return {
+          kind: "reasoning_delta",
+          entryId: event.entryId,
+          contentIndex: update.contentIndex,
+          delta: update.delta,
+        };
+      }
+      return undefined;
+    }
+    case "tool_execution_update":
+      return {
+        kind: "tool_progress",
+        entryId: event.entryId,
+        callId: event.toolCallId,
+        progress: toolProgress(event.partialResult),
+      };
+    case "retry_scheduled":
+      return {
+        kind: "retry_scheduled",
+        runId: event.runId,
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+        at: Date.now() + event.delayMs,
+        message: event.errorMessage,
+      };
+    case "retry_start":
+      return { kind: "retry_started", runId: event.runId, attempt: event.attempt };
+    case "compaction_start":
+      return { kind: "compacting", runId: event.runId, reason: event.reason };
+    case "plugin_updated":
+      return { kind: "plugins_changed", plugins: event.plugins };
+    case "handler_error":
+      // A hook, listener, or plugin failure is contained (invariant 21), but a
+      // client should still hear about it; it arrives as the diagnostic it is.
+      return {
+        kind: "diagnostic",
+        owner:
+          event.kind === "hook"
+            ? `hook ${event.hook}`
+            : event.kind === "event"
+              ? `listener ${event.event}`
+              : `plugin ${event.plugin}`,
+        level: "error",
+        message: event.error,
+      };
+    case "diagnostic":
+      return {
+        kind: "diagnostic",
+        owner: event.owner,
+        level: event.level,
+        message: event.message,
+      };
+    default:
+      return undefined;
   }
 }

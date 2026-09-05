@@ -8,11 +8,11 @@ const outputPath = join(packageRoot, "src/platform-tokens.css");
 const check = process.argv.includes("--check");
 
 const sourceText = await readFile(sourcePath, "utf8");
-const declaredTokens = sourceText.match(/"--uji-[^"]+"\s*:/g) ?? [];
-if (declaredTokens.length === 0) throw new Error("No literal Uji tokens found");
+const declaredTokens = sourceText.match(/"--nyte-[^"]+"\s*:/g) ?? [];
+if (declaredTokens.length === 0) throw new Error("No literal Nyte tokens found");
 
 const tokenPattern =
-  /"(?<name>--uji-[^"]+)"\s*:\s*(?:"(?<doubleQuoted>[^"\\]*)"|'(?<singleQuoted>[^'\\]*)'|(?<number>-?\d+(?:\.\d+)?)),/g;
+  /"(?<name>--nyte-[^"]+)"\s*:\s*(?:"(?<doubleQuoted>[^"\\]*)"|'(?<singleQuoted>[^'\\]*)'|(?<number>-?\d+(?:\.\d+)?)),/g;
 const declarations = [...sourceText.matchAll(tokenPattern)].map(({ groups }) => {
   if (groups === undefined) throw new Error("Token parser invariant failed");
   const { name, doubleQuoted, singleQuoted, number } = groups;
@@ -23,16 +23,16 @@ const declarations = [...sourceText.matchAll(tokenPattern)].map(({ groups }) => 
 
 if (declarations.length !== declaredTokens.length) {
   throw new Error(
-    `Unsupported token literal: extracted ${declarations.length} of ${declaredTokens.length} Uji tokens`,
+    `Unsupported token literal: extracted ${declarations.length} of ${declaredTokens.length} Nyte tokens`,
   );
 }
 
-const generated = `/* Generated from platform-tokens.stylex.ts. Run pnpm --filter @uji-ai/ui sync:tokens. */\n:root {\n  color-scheme: light dark;\n${declarations.join("\n")}\n}\n`;
+const generated = `/* Generated from platform-tokens.stylex.ts. Run pnpm --filter @nyte-ai/ui sync:tokens. */\n:root {\n  color-scheme: light dark;\n${declarations.join("\n")}\n}\n`;
 
 if (check) {
   const current = await readFile(outputPath, "utf8");
   if (current !== generated) {
-    throw new Error("platform-tokens.css is stale; run pnpm --filter @uji-ai/ui sync:tokens");
+    throw new Error("platform-tokens.css is stale; run pnpm --filter @nyte-ai/ui sync:tokens");
   }
 } else {
   await writeFile(outputPath, generated);

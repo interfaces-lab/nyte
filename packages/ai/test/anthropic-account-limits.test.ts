@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { fetchAnthropicAccountLimits } from "../src/api/anthropic-messages.ts";
 import type { Model } from "../src/types.ts";
 
@@ -20,8 +20,8 @@ function model(): Model<"anthropic-messages"> {
   };
 }
 
-void describe("Anthropic account limits", () => {
-  void test("fetches and normalizes Claude Code subscription windows", async () => {
+describe("Anthropic account limits", () => {
+  test("fetches and normalizes Claude Code subscription windows", async () => {
     const resetsAt = new Date(NOW).toISOString();
     const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -67,7 +67,7 @@ void describe("Anthropic account limits", () => {
     ]);
   });
 
-  void test("rejects API keys before calling the subscription endpoint", async () => {
+  test("rejects API keys before calling the subscription endpoint", async () => {
     let called = false;
     await assert.rejects(
       fetchAnthropicAccountLimits(model(), {

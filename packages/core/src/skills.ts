@@ -5,7 +5,7 @@
  */
 import { lstat, readFile, readdir, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
-import type { Skill } from "@uji-ai/schema";
+import type { Skill } from "@nyte-ai/schema";
 import ignorePackage from "ignore";
 import type { Ignore } from "ignore";
 import { parse } from "yaml";
@@ -15,18 +15,30 @@ const MAX_DESCRIPTION_LENGTH = 1024;
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"] as const;
 
 type IgnoreFactory = () => Ignore;
+interface IgnoreModuleNamespace {
+  readonly default?: IgnoreFactory;
+}
+type IgnorePackageExport = IgnoreFactory | IgnoreModuleNamespace | null | undefined;
 
-/** `ignore` is CommonJS; NodeNext and bundler consumers expose its default differently. */
-function parseIgnoreFactory(value: unknown): IgnoreFactory {
-  if (typeof value === "function") return value as IgnoreFactory;
-  if (
+function isIgnoreFactory(value: IgnorePackageExport): value is IgnoreFactory {
+  return typeof value === "function";
+}
+
+function hasDefaultIgnoreFactory(
+  value: IgnorePackageExport,
+): value is { readonly default: IgnoreFactory } {
+  return (
     typeof value === "object" &&
     value !== null &&
     "default" in value &&
-    typeof value.default === "function"
-  ) {
-    return value.default as IgnoreFactory;
-  }
+    isIgnoreFactory(value.default)
+  );
+}
+
+/** `ignore` is CommonJS; NodeNext and bundler consumers expose its default differently. */
+function parseIgnoreFactory(value: IgnorePackageExport): IgnoreFactory {
+  if (isIgnoreFactory(value)) return value;
+  if (hasDefaultIgnoreFactory(value)) return value.default;
   throw new TypeError("ignore package does not export a factory");
 }
 
@@ -63,13 +75,22 @@ interface ParsedFrontmatter {
   readonly body: string;
 }
 
+function isDirectoryList(value: string | readonly string[]): value is readonly string[] {
+  return Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
 /** Discover standard skill folders recursively. A folder containing `SKILL.md` is a leaf. */
 export async function loadSkills(
   directories: string | readonly string[],
 ): Promise<{ skills: Skill[]; diagnostics: SkillDiagnostic[] }> {
   const skills: Skill[] = [];
   const diagnostics: SkillDiagnostic[] = [];
-  for (const directory of typeof directories === "string" ? [directories] : directories) {
+  const roots = isDirectoryList(directories) ? directories : [directories];
+  for (const directory of roots) {
     const kind = await pathKind(directory, diagnostics);
     if (kind !== "directory") continue;
     const loaded = await loadSkillsFromDirectory(directory, directory, createIgnore());
@@ -211,11 +232,14 @@ function parseFrontmatter(content: string): ParsedFrontmatter {
     throw new Error("skill frontmatter must be a YAML object");
   }
   const raw = value ?? {};
-  const frontmatter: SkillFrontmatter = {
-    ...(typeof raw.name === "string" ? { name: raw.name } : {}),
-    ...(typeof raw.description === "string" ? { description: raw.description } : {}),
-    ...(raw["disable-model-invocation"] === true ? { disableModelInvocation: true } : {}),
-  };
+  let frontmatter: SkillFrontmatter = {};
+  if (isString(raw.name)) frontmatter = { ...frontmatter, name: raw.name };
+  if (isString(raw.description)) {
+    frontmatter = { ...frontmatter, description: raw.description };
+  }
+  if (raw["disable-model-invocation"] === true) {
+    frontmatter = { ...frontmatter, disableModelInvocation: true };
+  }
   return {
     frontmatter,
     body: normalized.slice(end + 4).trim(),
@@ -332,14 +356,12 @@ function diagnostic(code: SkillDiagnosticCode, message: string, path: string): S
   return { type: "warning", code, message, path };
 }
 
-function errorCode(error: unknown): string | undefined {
-  return error instanceof Error && "code" in error && typeof error.code === "string"
-    ? error.code
-    : undefined;
+function errorCode(cause: unknown): string | undefined {
+  return cause instanceof Error && "code" in cause && isString(cause.code) ? cause.code : undefined;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 function isRawSkillFrontmatter(value: unknown): value is RawSkillFrontmatter {

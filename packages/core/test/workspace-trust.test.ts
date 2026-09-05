@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { WorkspaceTrustRequired, WorkspaceTrustStore } from "../src/workspace-trust.ts";
 
 async function fixture(): Promise<{ root: string; store: WorkspaceTrustStore }> {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "uji-trust-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "nyte-trust-")));
   return { root, store: new WorkspaceTrustStore(join(root, "state", "trust.json")) };
 }
 
-void describe("WorkspaceTrustStore", () => {
-  void test("fails closed until the workspace is trusted", async () => {
+describe("WorkspaceTrustStore", () => {
+  test("fails closed until the workspace is trusted", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     await mkdir(workspace);
@@ -32,7 +32,7 @@ void describe("WorkspaceTrustStore", () => {
     );
   });
 
-  void test("inherits the closest trusted parent", async () => {
+  test("inherits the closest trusted parent", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     const child = join(workspace, "packages", "core");
@@ -47,7 +47,7 @@ void describe("WorkspaceTrustStore", () => {
     }
   });
 
-  void test("uses one identity for symlinked workspaces", async () => {
+  test("uses one identity for symlinked workspaces", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     const alias = join(root, "alias");
@@ -58,7 +58,7 @@ void describe("WorkspaceTrustStore", () => {
     assert.equal((await store.require(workspace)).cwd, workspace);
   });
 
-  void test("forgets only the exact decision", async () => {
+  test("forgets only the exact decision", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     await mkdir(workspace);
@@ -68,7 +68,7 @@ void describe("WorkspaceTrustStore", () => {
     assert.equal((await store.resolve(workspace)).kind, "unknown");
   });
 
-  void test("rejects malformed external state", async () => {
+  test("rejects malformed external state", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     await mkdir(workspace);
@@ -78,7 +78,7 @@ void describe("WorkspaceTrustStore", () => {
     await assert.rejects(store.resolve(workspace), /absolute paths to true/);
   });
 
-  void test("serializes concurrent decisions without losing one", async () => {
+  test("serializes concurrent decisions without losing one", async () => {
     const { root, store } = await fixture();
     const alpha = join(root, "alpha");
     const beta = join(root, "beta");

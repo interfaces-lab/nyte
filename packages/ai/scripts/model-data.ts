@@ -8,7 +8,7 @@ import type { KnownProvider } from "../src/types.ts";
 export const MODEL_DATA_SCHEMA_VERSION = 3;
 export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
 
-/** Static provider catalogs Uji checks in and exposes through explicit factories. */
+/** Static provider catalogs Nyte checks in and exposes through explicit factories. */
 export const GENERATED_MODEL_PROVIDER_IDS: readonly KnownProvider[] = [
   "anthropic",
   "openai",

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
+import { getServiceTierCostMultiplier } from "../model-pricing.ts";
 import type {
   Api,
   AssistantMessage,
@@ -19,7 +20,7 @@ import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
-import { getUjiUserAgent } from "../utils/uji-user-agent.ts";
+import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
@@ -29,6 +30,7 @@ import {
   convertResponsesTools,
   processResponsesStream,
 } from "./openai-responses-shared.ts";
+import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
 import { buildBaseOptions } from "./simple-options.ts";
 
 const OPENAI_TOOL_CALL_PROVIDERS = new Set(["openai", "openai-codex", "opencode"]);
@@ -94,6 +96,42 @@ export interface OpenAIResponsesOptions extends StreamOptions {
   reasoningSummary?: "auto" | "detailed" | "concise" | null;
   serviceTier?: ResponseCreateParamsStreaming["service_tier"];
   toolChoice?: ResponseCreateParamsStreaming["tool_choice"];
+}
+
+/**
+ * Compact through OpenAI's stateless endpoint, preserving its complete output window.
+ * https://developers.openai.com/api/docs/guides/compaction#standalone-compact-endpoint
+ */
+export async function compactOpenAIResponsesContext(
+  model: Model<"openai-responses">,
+  context: Context,
+  options?: OpenAIResponsesOptions,
+): Promise<OpenAICompactResult> {
+  const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
+  const client = createClient(model, context, apiKey, options?.headers, options?.fetch);
+  // Instructions travel separately so the request does not duplicate the system message.
+  const input = buildParams(model, { ...context, systemPrompt: undefined }, options).input;
+  const requestOptions: NonNullable<Parameters<typeof client.responses.compact>[1]> = {
+    maxRetries: 0,
+  };
+  if (options?.signal !== undefined) requestOptions.signal = options.signal;
+  if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
+  const response = await retryProviderRequest(
+    () =>
+      client.responses
+        .compact({ model: model.id, input, instructions: context.systemPrompt }, requestOptions)
+        .asResponse(),
+    {
+      maxRetries: options?.maxRetries,
+      maxRetryDelayMs: options?.maxRetryDelayMs,
+      signal: options?.signal,
+    },
+  );
+  await options?.onResponse?.(
+    { status: response.status, headers: headersToRecord(response.headers) },
+    model,
+  );
+  return readOpenAICompactResponse(response, model);
 }
 
 /**
@@ -237,7 +275,7 @@ function createClient(
   sessionId?: string,
 ) {
   const compat = getCompat(model);
-  const headers: ProviderHeaders = { "User-Agent": getUjiUserAgent(), ...model.headers };
+  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...model.headers };
   if (model.provider === "github-copilot") {
     const hasImages = hasCopilotVisionInput(context.messages);
     const copilotHeaders = buildCopilotDynamicHeaders({
@@ -363,26 +401,12 @@ function buildParams(
   return params;
 }
 
-function getServiceTierCostMultiplier(
-  model: Pick<Model<"openai-responses">, "id">,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): number {
-  switch (serviceTier) {
-    case "flex":
-      return 0.5;
-    case "priority":
-      return model.id === "gpt-5.5" ? 2.5 : 2;
-    default:
-      return 1;
-  }
-}
-
 function applyServiceTierPricing(
   usage: Usage,
   serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
   model: Pick<Model<"openai-responses">, "id">,
 ) {
-  const multiplier = getServiceTierCostMultiplier(model, serviceTier);
+  const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);
   if (multiplier === 1) return;
 
   usage.cost.input *= multiplier;

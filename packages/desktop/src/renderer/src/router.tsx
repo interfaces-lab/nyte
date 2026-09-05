@@ -8,20 +8,23 @@
  * Settings, ⌘D and ⇧⌘D split the stage — because the renderer owns chords.
  */
 import * as stylex from "@stylexjs/stylex";
+import { Tooltip } from "@nyte-ai/ui/primitives";
 import {
   createMemoryHistory,
   createRootRoute,
   createRoute,
   createRouter,
-  Outlet,
+  lazyRouteComponent,
+  Matches,
   redirect,
+  useMatch,
   useRouter,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import type { ReactElement } from "react";
-import { SettingsDialogHost } from "./chrome/appearance-settings.tsx";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
-import { shellActions } from "./chrome/shell-state.ts";
+import { isSettingsSection } from "./chrome/settings-navigation.tsx";
+import { shellActions, useShellState } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Titlebar } from "./chrome/titlebar.tsx";
@@ -30,11 +33,23 @@ import {
   usePaneActions,
   usePaneControllerSnapshot,
 } from "./layout/pane-context.tsx";
+import { SessionDndProvider } from "./layout/session-dnd.tsx";
+import { MIN_PANE_WIDTH } from "./layout/pane-layout.ts";
 import { keys, queryClient, useHostState, warmThread } from "./queries.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { t } from "./theme/vars.stylex.ts";
-import { asSessionId, uji } from "./uji.ts";
+import { asSessionId, nyte } from "./nyte.ts";
+import { macPlatform } from "./platform.ts";
+import { activateOutbox } from "./use-outbox.ts";
+
+const CustomizeSurface = lazy(() =>
+  import("./chrome/customize.tsx").then((module) => ({ default: module.CustomizeSurface })),
+);
+const SettingsSurface = lazyRouteComponent(
+  () => import("./chrome/appearance-settings.tsx"),
+  "SettingsSurface",
+);
 
 const styles = stylex.create({
   shell: {
@@ -42,7 +57,7 @@ const styles = stylex.create({
     flexDirection: "column",
     width: "100%",
     height: "100%",
-    backgroundColor: t.bgSubtle,
+    backgroundColor: t.bgSidebar,
   },
   stage: {
     display: "flex",
@@ -60,13 +75,21 @@ const styles = stylex.create({
   },
 });
 
-function Shell(): ReactElement {
+export function Shell(): ReactElement {
   const host = useHostState();
+  const workspacePath = host.data?.workspace?.path;
+
+  useEffect(() => {
+    if (host.data === undefined) return;
+    void activateOutbox(workspacePath);
+  }, [host.data, workspacePath]);
 
   return (
-    <PaneControllerProvider workspaceKey={host.data?.workspace?.path}>
-      <ShellChrome />
-    </PaneControllerProvider>
+    <Tooltip.Provider delay={600} closeDelay={0} timeout={400}>
+      <PaneControllerProvider workspaceKey={host.data?.workspace?.path}>
+        <ShellChrome />
+      </PaneControllerProvider>
+    </Tooltip.Provider>
   );
 }
 
@@ -75,66 +98,113 @@ function ShellChrome(): ReactElement {
   const shellRouter = useRouter();
   const panes = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
-  const canSplit = layout.kind === "single";
-  const platform = host.data?.platform;
+  const { stage: shellStage } = useShellState();
+  const canSplit = layout.kind === "single" && shellStage.kind === "workspace";
+  const customizeOpen = shellStage.kind === "customize";
+  const mac = macPlatform(host.data?.platform);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        platform === undefined ||
-        !(platform === "darwin" ? event.metaKey : event.ctrlKey) ||
-        event.altKey
-      )
-        return;
+      if (!(mac ? event.metaKey : event.ctrlKey) || event.altKey) return;
+      const settingsOpen = shellRouter.state.matches.some(
+        (match) => match.routeId === settingsRoute.id,
+      );
       const key = event.key.toLocaleLowerCase();
       if (key === "d") {
-        if (!canSplit) return;
+        if (settingsOpen || customizeOpen || !canSplit) return;
+        // The stage is never wider than the window, so a window this narrow
+        // would split into two panes that clip.
+        if (window.innerWidth < 2 * MIN_PANE_WIDTH) return;
         event.preventDefault();
         panes.split(event.shiftKey ? "down" : "right");
         return;
       }
       if (event.shiftKey) return;
-      if (key === "n" || (key === "[" && shellRouter.state.location.pathname !== "/")) {
+      if (key === "n") {
         event.preventDefault();
+        shellActions.showWorkspace();
         panes.newChat();
+      } else if (key === "[" && settingsOpen) {
+        event.preventDefault();
+        shellRouter.history.back();
+      } else if (key === "[" && customizeOpen) {
+        event.preventDefault();
+        shellActions.showWorkspace();
+      } else if (key === "[" && shellRouter.history.canGoBack()) {
+        event.preventDefault();
+        shellActions.showWorkspace();
+        shellRouter.history.back();
+      } else if (
+        key === "]" &&
+        shellRouter.history.location.state.__TSR_index < shellRouter.history.length - 1
+      ) {
+        event.preventDefault();
+        shellActions.showWorkspace();
+        shellRouter.history.forward();
       } else if (key === "b") {
+        if (settingsOpen) return;
         event.preventDefault();
         shellActions.toggleSidebar();
       } else if (key === ",") {
+        if (settingsOpen) return;
         event.preventDefault();
-        shellActions.openSettings("general");
+        void shellRouter.navigate({
+          to: "/settings/$section",
+          params: { section: "general" },
+        });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [canSplit, panes, platform, shellRouter]);
+  }, [canSplit, customizeOpen, mac, panes, shellRouter, shellStage.kind]);
 
   return (
-    <div data-uji-shell {...stylex.props(styles.shell)}>
+    <div data-nyte-shell {...stylex.props(styles.shell)}>
       <Titlebar />
-      <div {...stylex.props(styles.stage)}>
-        <SidebarPane>
-          <Sidebar />
-        </SidebarPane>
-        <main {...stylex.props(styles.surface)}>
-          <Outlet />
-        </main>
+      <div
+        {...stylex.props(styles.stage)}
+        onClickCapture={(event) => {
+          if (!customizeOpen || !(event.target instanceof Element)) return;
+          const sidebarAction = event.target.closest(
+            'nav[aria-label="Sessions and workspaces"] button',
+          );
+          if (sidebarAction === null || sidebarAction.getAttribute("aria-haspopup") === "dialog")
+            return;
+          shellActions.showWorkspace();
+        }}
+      >
+        <SessionDndProvider>
+          <SidebarPane>
+            <Sidebar />
+          </SidebarPane>
+          <main {...stylex.props(styles.surface)}>
+            <StageContent shellStage={shellStage} />
+          </main>
+        </SessionDndProvider>
       </div>
       <WorkspaceDialogHost />
-      <SettingsDialogHost />
     </div>
   );
 }
 
-export const rootRoute = createRootRoute({ component: Shell });
-
-async function readRouteHost() {
-  const host = await uji.host.state();
-  queryClient.setQueryData(keys.host, host);
-  return host;
+function StageContent({
+  shellStage,
+}: {
+  readonly shellStage: ReturnType<typeof useShellState>["stage"];
+}): ReactElement {
+  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
+  if (settings !== undefined) return <Matches />;
+  if (shellStage.kind === "workspace") return <Matches />;
+  return (
+    <Suspense fallback={null}>
+      <CustomizeSurface sessionId={shellStage.sessionId} />
+    </Suspense>
+  );
 }
+
+export const rootRoute = createRootRoute();
 
 /**
  * The stage route. `workspace` is undefined until a folder opens; the stage
@@ -143,10 +213,6 @@ async function readRouteHost() {
 export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "_workspace",
-  beforeLoad: async () => {
-    const host = await readRouteHost();
-    return { workspace: host.workspace };
-  },
   component: WorkspaceStage,
 });
 
@@ -155,12 +221,12 @@ let startupDestinationPending = true;
 export const indexRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/",
-  beforeLoad: async ({ context }) => {
+  beforeLoad: async () => {
     if (!startupDestinationPending) return;
     startupDestinationPending = false;
-    if (getStartupDestination() === "new-chat" || context.workspace === undefined) return;
+    if (getStartupDestination() === "new-chat") return;
 
-    const sessions = await uji.sessions.list({ limit: 1 });
+    const sessions = await nyte.sessions.list({ limit: 1 });
     const sessionId = startupSession("last-session", sessions.items);
     if (sessionId !== undefined) {
       throw redirect({
@@ -180,7 +246,7 @@ export const threadRoute = createRoute({
     stringify: ({ sessionId }) => ({ sessionId }),
   },
   beforeLoad: async ({ params }) => {
-    const session = await uji.sessions.get({ sessionId: params.sessionId });
+    const session = await nyte.sessions.get({ sessionId: params.sessionId });
     queryClient.setQueryData(keys.session(params.sessionId), session ?? null);
     if (session === undefined) throw redirect({ to: indexRoute.to, replace: true });
   },
@@ -190,8 +256,28 @@ export const threadRoute = createRoute({
   loader: ({ params }) => warmThread(params.sessionId),
 });
 
+export const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings/$section",
+  pendingMs: Infinity,
+  params: {
+    parse: ({ section }) => {
+      if (!isSettingsSection(section)) {
+        throw redirect({
+          to: "/settings/$section",
+          params: { section: "general" },
+          replace: true,
+        });
+      }
+      return { section };
+    },
+    stringify: ({ section }) => ({ section }),
+  },
+  component: SettingsSurface,
+});
+
 const workspaceRouteTree = workspaceRoute.addChildren([indexRoute, threadRoute]);
-const routeTree = rootRoute.addChildren([workspaceRouteTree]);
+const routeTree = rootRoute.addChildren([workspaceRouteTree, settingsRoute]);
 const history = createMemoryHistory({ initialEntries: ["/"] });
 
 export const router = createRouter({

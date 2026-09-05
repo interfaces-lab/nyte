@@ -3,10 +3,10 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import type { Tool, ToolCall } from "@uji-ai/schema";
+import type { Tool, ToolCall } from "@nyte-ai/schema";
 import { validateToolArguments } from "../src/utils/validation.ts";
 
 function createToolCallWithPlainSchema(
@@ -38,8 +38,8 @@ function createToolCallWithPlainSchema(
   return { tool, toolCall };
 }
 
-void describe("validateToolArguments", () => {
-  void test("still validates when Function constructor is unavailable", () => {
+describe("validateToolArguments", () => {
+  test("still validates when Function constructor is unavailable", () => {
     const originalFunction = globalThis.Function;
     const tool: Tool = {
       name: "echo",
@@ -66,7 +66,7 @@ void describe("validateToolArguments", () => {
     }
   });
 
-  void test("coerces serialized plain JSON schemas with AJV-compatible primitive rules", () => {
+  test("coerces serialized plain JSON schemas with AJV-compatible primitive rules", () => {
     const passingCases: Array<{
       schema: Tool["parameters"];
       input: unknown;
@@ -103,7 +103,7 @@ void describe("validateToolArguments", () => {
     }
   });
 
-  void test("treats null as omission for optional non-nullable properties", () => {
+  test("treats null as omission for optional non-nullable properties", () => {
     const tool: Tool = {
       name: "echo",
       description: "Echo tool",
@@ -128,7 +128,7 @@ void describe("validateToolArguments", () => {
     });
   });
 
-  void test("preserves optional nulls whose referenced schema is nullable", () => {
+  test("preserves optional nulls whose referenced schema is nullable", () => {
     const tool: Tool = {
       name: "echo",
       description: "Echo tool",
@@ -148,7 +148,7 @@ void describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
 
-  void test("preserves a value that already matches a nullable union arm", () => {
+  test("preserves a value that already matches a nullable union arm", () => {
     const tool: Tool = {
       name: "echo",
       description: "Echo tool",
@@ -166,7 +166,7 @@ void describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
 
-  void test("preserves a value that already matches a oneOf nullable union arm", () => {
+  test("preserves a value that already matches a oneOf nullable union arm", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
       { oneOf: [{ type: "number" }, { type: "null" }] } as Tool["parameters"],
       null,
@@ -175,7 +175,7 @@ void describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
 
-  void test("still coerces nullable unions when the original value does not match any arm", () => {
+  test("still coerces nullable unions when the original value does not match any arm", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
       { anyOf: [{ type: "number" }, { type: "null" }] } as Tool["parameters"],
       "42",
@@ -184,7 +184,7 @@ void describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: 42 });
   });
 
-  void test("accepts null for nullable array schemas with items", () => {
+  test("accepts null for nullable array schemas with items", () => {
     const { tool, toolCall } = createToolCallWithPlainSchema(
       { type: ["array", "null"], items: { type: "string" } } as Tool["parameters"],
       null,
@@ -199,7 +199,7 @@ void describe("validateToolArguments", () => {
     assert.deepEqual(validateToolArguments(tool, toolCall), { value: null });
   });
 
-  void test("rejects invalid coercions for serialized plain JSON schemas", () => {
+  test("rejects invalid coercions for serialized plain JSON schemas", () => {
     const failingCases: Array<{
       schema: Tool["parameters"];
       input: unknown;

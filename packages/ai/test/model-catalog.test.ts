@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { anthropicProvider } from "../src/providers/anthropic.ts";
 
-void describe("generated model catalog", () => {
-  void test("includes Claude Fable 5.1 with its direct Anthropic capabilities", () => {
+describe("generated model catalog", () => {
+  test("includes Claude Fable 5.1 with its direct Anthropic capabilities", () => {
     const model = anthropicProvider()
       .getModels()
       .find((candidate) => candidate.id === "claude-fable-5-1");

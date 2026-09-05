@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import type { Context, Model } from "../src/types.ts";
 import {
   compactOpenAICodexContext,
@@ -32,8 +32,8 @@ function accessToken(accountId: string): string {
   return `${header}.${payload}.signature`;
 }
 
-void describe("OpenAI Codex account limits and compaction", () => {
-  void test("parses subscription windows from wham/usage", async () => {
+describe("OpenAI Codex account limits and compaction", () => {
+  test("parses subscription windows from wham/usage", async () => {
     const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       assert.equal(url, "https://chatgpt.com/backend-api/wham/usage");
@@ -75,7 +75,7 @@ void describe("OpenAI Codex account limits and compaction", () => {
     );
   });
 
-  void test("retries a missing native compact route three times before succeeding", async () => {
+  test("retries a missing native compact route three times before succeeding", async () => {
     const nativeItems = [{ type: "compaction", encrypted_content: "opaque" }];
     const context: Context = {
       messages: [{ role: "user", content: "old conversation", timestamp: 1 }],
@@ -99,7 +99,7 @@ void describe("OpenAI Codex account limits and compaction", () => {
     assert.deepEqual(compacted.data, nativeItems);
   });
 
-  void test("stops after the native compact retry budget is exhausted", async () => {
+  test("stops after the native compact retry budget is exhausted", async () => {
     const context: Context = {
       messages: [{ role: "user", content: "old conversation", timestamp: 1 }],
     };
@@ -121,7 +121,7 @@ void describe("OpenAI Codex account limits and compaction", () => {
     assert.equal(calls, 4);
   });
 
-  void test("returns opaque compact output and replays it only to the matching target", async () => {
+  test("returns opaque compact output and replays it only to the matching target", async () => {
     const nativeItems = [{ type: "compaction", encrypted_content: "opaque" }];
     const context: Context = {
       systemPrompt: "agent",

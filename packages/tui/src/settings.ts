@@ -9,312 +9,229 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
-import type { Transport } from "@uji-ai/ai";
-import { DEFAULT_COMPACTION_SETTINGS } from "@uji-ai/core";
-import type { CompactionSettings, ThinkingLevel } from "@uji-ai/core";
-import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
-import { RUN_NOTIFICATION_MODES } from "./notifications.ts";
-import type { RunNotificationMode } from "./notifications.ts";
-import { TOOL_CALL_DISPLAY_MODES } from "./constants.ts";
-import type { ToolCallDisplay } from "./constants.ts";
+import type { Transport } from "@nyte-ai/ai";
+import { DEFAULT_COMPACTION_SETTINGS, isThinkingLevel } from "@nyte-ai/core";
+import type { CompactionSettings, ThinkingLevel } from "@nyte-ai/core";
+import { toJsonValue } from "@nyte-ai/core/store";
+import type { JsonValue } from "@nyte-ai/schema";
+import { isJsonObject, isMissingFile, type JsonObject } from "./json.ts";
+import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 
 export const TRANSPORTS = [
   "sse",
   "websocket",
   "websocket-cached",
   "auto",
-] satisfies readonly Transport[];
+] as const satisfies readonly Transport[];
+
+function isTransport(value: string): value is Transport {
+  return TRANSPORTS.some((candidate) => candidate === value);
+}
 
 interface CompactionSettingsFile {
-  enabled?: boolean;
-  reserveTokens?: number;
-  keepRecentTokens?: number;
+  readonly enabled?: boolean;
+  readonly reserveTokens?: number;
+  readonly keepRecentTokens?: number;
 }
 
-interface OptionalSettingsFile {
-  defaultThinkingLevel?: ThinkingLevel;
-  transport?: Transport;
-  externalEditor?: string;
-  compaction?: CompactionSettingsFile;
+interface SettingsFile {
+  readonly defaultProvider?: string;
+  readonly defaultModel?: string;
+  readonly defaultThinkingLevel?: ThinkingLevel;
+  readonly transport?: Transport;
+  readonly externalEditor?: string;
+  readonly compaction?: CompactionSettingsFile;
   /** Install a newer release when the TUI starts, instead of only saying one exists. */
-  autoUpdate?: boolean;
-  /** Alert when an agent run stops, with an optional terminal bell. */
-  runNotifications?: RunNotificationMode;
-  /** How the transcript draws consecutive tool calls. */
-  toolCalls?: ToolCallDisplay;
+  readonly autoUpdate?: boolean;
+  /** A pinned mode, or `auto` to follow the terminal. */
+  readonly theme?: ThemeChoice;
 }
 
-type DefaultModelSettings =
-  | { defaultProvider?: never; defaultModel?: never }
-  | { defaultProvider: string; defaultModel?: string };
-
-type SettingsFile = OptionalSettingsFile & DefaultModelSettings;
-
-interface ResolvedOptionalSettings {
-  defaultThinkingLevel?: ThinkingLevel;
-  transport: Transport;
-  externalEditor?: string;
-  compaction: CompactionSettings;
-  autoUpdate: boolean;
-  runNotifications: RunNotificationMode;
-  toolCalls: ToolCallDisplay;
+export interface ResolvedSettings {
+  readonly defaultProvider?: string;
+  readonly defaultModel?: string;
+  readonly defaultThinkingLevel?: ThinkingLevel;
+  readonly transport: Transport;
+  readonly externalEditor?: string;
+  readonly compaction: CompactionSettings;
+  readonly autoUpdate: boolean;
+  readonly theme: ThemeChoice;
 }
 
-export type ResolvedSettings = ResolvedOptionalSettings & DefaultModelSettings;
+export type SettingsPatch = SettingsFile;
 
-type DefaultModelPatch =
-  | { defaultProvider?: never; defaultModel?: never }
-  | { defaultProvider: string; defaultModel?: string };
-
-type SettingsPatch = Partial<OptionalSettingsFile> & DefaultModelPatch;
-
-interface UnparsedCompactionSettings {
-  enabled?: unknown;
-  reserveTokens?: unknown;
-  keepRecentTokens?: unknown;
-}
-
-interface UnparsedSettings {
-  defaultProvider?: unknown;
-  defaultModel?: unknown;
-  defaultThinkingLevel?: unknown;
-  transport?: unknown;
-  externalEditor?: unknown;
-  compaction?: unknown;
-  autoUpdate?: unknown;
-  runNotifications?: unknown;
-  toolCalls?: unknown;
-}
+const SETTINGS_KEYS = new Set([
+  "defaultProvider",
+  "defaultModel",
+  "defaultThinkingLevel",
+  "transport",
+  "externalEditor",
+  "compaction",
+  "autoUpdate",
+  "theme",
+]);
+const COMPACTION_KEYS = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
 
 function defaultSettingsPath(): string {
-  const home = process.env["UJI_HOME"] ?? join(homedir(), ".uji");
+  const home = process.env["NYTE_HOME"] ?? join(homedir(), ".nyte");
   return join(home, "settings.json");
 }
 
 function projectSettingsPath(cwd: string): string {
-  return join(cwd, ".uji", "settings.json");
+  return join(cwd, ".nyte", "settings.json");
 }
 
-function requireSettingsObject(value: unknown, path: string): UnparsedSettings {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${path} must be an object`);
-  }
-  return value;
+function isNonEmptyString(value: JsonValue | undefined): value is string {
+  return typeof value === "string" && value.trim() !== "";
 }
 
-function requireCompactionObject(value: unknown, path: string): UnparsedCompactionSettings {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${path} must be an object`);
-  }
-  return value;
+function isBoolean(value: JsonValue | undefined): value is boolean {
+  return typeof value === "boolean";
 }
 
-function optionalString(
-  value: UnparsedSettings,
-  key: "defaultProvider" | "defaultModel" | "externalEditor",
-  path: string,
-): string | undefined {
-  const field = value[key];
-  if (field === undefined) return undefined;
-  if (typeof field !== "string" || field.trim() === "") {
-    throw new Error(`${path}.${key} must be a non-empty string`);
-  }
-  return field;
+function isTokenCount(value: JsonValue | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function optionalTokenCount(
-  value: UnparsedCompactionSettings,
-  key: "reserveTokens" | "keepRecentTokens",
-  path: string,
-): number | undefined {
-  const field = value[key];
-  if (field === undefined) return undefined;
-  if (typeof field !== "number" || !Number.isSafeInteger(field) || field < 0) {
-    throw new Error(`${path}.${key} must be a non-negative safe integer`);
-  }
-  return field;
-}
-
-function parseSettingsFile(value: unknown, path = "settings"): SettingsFile {
-  const object = requireSettingsObject(value, path);
-  const allowed = new Set([
-    "defaultProvider",
-    "defaultModel",
-    "defaultThinkingLevel",
-    "transport",
-    "externalEditor",
-    "compaction",
-    "autoUpdate",
-    "runNotifications",
-    "toolCalls",
-    // Read and dropped: fast mode is session state the plugin owns. Files
-    // written by an older build lose the key on their next write.
-    "fastMode",
-  ]);
+function rejectUnknownKeys(object: JsonObject, allowed: ReadonlySet<string>, path: string): void {
   const unknown = Object.keys(object).find((key) => !allowed.has(key));
   if (unknown !== undefined) throw new Error(`${path} has unknown property "${unknown}"`);
+}
 
-  const defaultProvider = optionalString(object, "defaultProvider", path);
-  const defaultModel = optionalString(object, "defaultModel", path);
+function optionalString(object: JsonObject, key: string, path: string): string | undefined {
+  const field = object[key];
+  if (field === undefined) return undefined;
+  if (!isNonEmptyString(field)) throw new Error(`${path}.${key} must be a non-empty string`);
+  return field;
+}
+
+function optionalBoolean(object: JsonObject, key: string, path: string): boolean | undefined {
+  const field = object[key];
+  if (field === undefined) return undefined;
+  if (!isBoolean(field)) throw new Error(`${path}.${key} must be a boolean`);
+  return field;
+}
+
+function optionalTokenCount(object: JsonObject, key: string, path: string): number | undefined {
+  const field = object[key];
+  if (field === undefined) return undefined;
+  if (!isTokenCount(field)) throw new Error(`${path}.${key} must be a non-negative safe integer`);
+  return field;
+}
+
+function parseCompaction(
+  value: JsonValue | undefined,
+  path: string,
+): CompactionSettingsFile | undefined {
+  if (value === undefined) return undefined;
+  if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
+  rejectUnknownKeys(value, COMPACTION_KEYS, path);
+  let compaction: CompactionSettingsFile = {};
+  const enabled = optionalBoolean(value, "enabled", path);
+  if (enabled !== undefined) compaction = { ...compaction, enabled };
+  const reserveTokens = optionalTokenCount(value, "reserveTokens", path);
+  if (reserveTokens !== undefined) compaction = { ...compaction, reserveTokens };
+  const keepRecentTokens = optionalTokenCount(value, "keepRecentTokens", path);
+  if (keepRecentTokens !== undefined) compaction = { ...compaction, keepRecentTokens };
+  return compaction;
+}
+
+/** Parse the complete settings file before any of it is trusted. */
+export function parseSettingsFile(value: JsonValue, path = "settings"): SettingsFile {
+  if (!isJsonObject(value)) throw new Error(`${path} must be an object`);
+  rejectUnknownKeys(value, SETTINGS_KEYS, path);
+
+  let settings: SettingsFile = {};
+  const defaultProvider = optionalString(value, "defaultProvider", path);
+  const defaultModel = optionalString(value, "defaultModel", path);
   if (defaultModel !== undefined && defaultProvider === undefined) {
     throw new Error(`${path}.defaultModel requires ${path}.defaultProvider`);
   }
-  const externalEditor = optionalString(object, "externalEditor", path);
+  if (defaultProvider !== undefined) settings = { ...settings, defaultProvider };
+  if (defaultModel !== undefined) settings = { ...settings, defaultModel };
 
-  const thinking = object.defaultThinkingLevel;
-  const defaultThinkingLevel = MODEL_THINKING_LEVELS.find((level) => level === thinking);
-  if (thinking !== undefined && defaultThinkingLevel === undefined) {
-    throw new Error(`${path}.defaultThinkingLevel must be ${MODEL_THINKING_LEVELS.join(", ")}`);
-  }
-
-  const transportValue = object.transport;
-  const transport = TRANSPORTS.find((candidate) => candidate === transportValue);
-  if (transportValue !== undefined && transport === undefined) {
-    throw new Error(`${path}.transport must be ${TRANSPORTS.join(", ")}`);
-  }
-
-  const autoUpdate = object.autoUpdate;
-  if (autoUpdate !== undefined && typeof autoUpdate !== "boolean") {
-    throw new Error(`${path}.autoUpdate must be a boolean`);
-  }
-
-  const notificationValue = object.runNotifications;
-  const runNotifications = RUN_NOTIFICATION_MODES.find(
-    (candidate) => candidate === notificationValue,
-  );
-  if (notificationValue !== undefined && runNotifications === undefined) {
-    throw new Error(`${path}.runNotifications must be ${RUN_NOTIFICATION_MODES.join(", ")}`);
-  }
-
-  const toolCallsValue = object.toolCalls;
-  const toolCalls = TOOL_CALL_DISPLAY_MODES.find((candidate) => candidate === toolCallsValue);
-  if (toolCallsValue !== undefined && toolCalls === undefined) {
-    throw new Error(`${path}.toolCalls must be ${TOOL_CALL_DISPLAY_MODES.join(", ")}`);
-  }
-
-  let compaction: CompactionSettingsFile | undefined;
-  const compactionValue = object.compaction;
-  if (compactionValue !== undefined) {
-    const compactionPath = `${path}.compaction`;
-    const source = requireCompactionObject(compactionValue, compactionPath);
-    const compactionAllowed = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
-    const unknownCompaction = Object.keys(source).find((key) => !compactionAllowed.has(key));
-    if (unknownCompaction !== undefined) {
-      throw new Error(`${compactionPath} has unknown property "${unknownCompaction}"`);
+  const thinking = value["defaultThinkingLevel"];
+  if (thinking !== undefined) {
+    if (!isNonEmptyString(thinking) || !isThinkingLevel(thinking)) {
+      throw new Error(`${path}.defaultThinkingLevel is not a thinking level`);
     }
-    const enabled = source.enabled;
-    if (enabled !== undefined && typeof enabled !== "boolean") {
-      throw new Error(`${compactionPath}.enabled must be a boolean`);
-    }
-    const reserveTokens = optionalTokenCount(source, "reserveTokens", compactionPath);
-    const keepRecentTokens = optionalTokenCount(source, "keepRecentTokens", compactionPath);
-    compaction = {
-      ...(enabled === undefined ? {} : { enabled }),
-      ...(reserveTokens === undefined ? {} : { reserveTokens }),
-      ...(keepRecentTokens === undefined ? {} : { keepRecentTokens }),
-    };
+    settings = { ...settings, defaultThinkingLevel: thinking };
   }
 
-  const optional: OptionalSettingsFile = {
-    ...(defaultThinkingLevel === undefined ? {} : { defaultThinkingLevel }),
-    ...(transport === undefined ? {} : { transport }),
-    ...(externalEditor === undefined ? {} : { externalEditor }),
-    ...(compaction === undefined ? {} : { compaction }),
-    ...(autoUpdate === undefined ? {} : { autoUpdate }),
-    ...(runNotifications === undefined ? {} : { runNotifications }),
-    ...(toolCalls === undefined ? {} : { toolCalls }),
-  };
-  if (defaultProvider === undefined) return optional;
-  return {
-    ...optional,
-    defaultProvider,
-    ...(defaultModel === undefined ? {} : { defaultModel }),
-  };
+  const transport = value["transport"];
+  if (transport !== undefined) {
+    if (!isNonEmptyString(transport) || !isTransport(transport)) {
+      throw new Error(`${path}.transport must be ${TRANSPORTS.join(", ")}`);
+    }
+    settings = { ...settings, transport };
+  }
+
+  const externalEditor = optionalString(value, "externalEditor", path);
+  if (externalEditor !== undefined) settings = { ...settings, externalEditor };
+
+  const compaction = parseCompaction(value["compaction"], `${path}.compaction`);
+  if (compaction !== undefined) settings = { ...settings, compaction };
+
+  const autoUpdate = optionalBoolean(value, "autoUpdate", path);
+  if (autoUpdate !== undefined) settings = { ...settings, autoUpdate };
+
+  const theme = value["theme"];
+  if (theme !== undefined) {
+    if (!isNonEmptyString(theme) || !isThemeChoice(theme)) {
+      throw new Error(`${path}.theme must be auto, dark, or light`);
+    }
+    settings = { ...settings, theme };
+  }
+  return settings;
 }
 
 async function readSettings(path: string): Promise<SettingsFile> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
-  } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-      return {};
-    }
-    throw error;
+  } catch (cause) {
+    if (isMissingFile(cause)) return {};
+    throw cause;
   }
-  let parsed: unknown;
+  let parsed: JsonValue;
   try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Invalid JSON in ${path}`, { cause: error });
+    parsed = toJsonValue(JSON.parse(text));
+  } catch (cause) {
+    throw new Error(`Invalid JSON in ${path}`, { cause });
   }
   return parseSettingsFile(parsed, path);
-}
-
-function defaultModelSettings(settings: SettingsFile): DefaultModelSettings {
-  if (settings.defaultProvider === undefined) return {};
-  return {
-    defaultProvider: settings.defaultProvider,
-    ...(settings.defaultModel === undefined ? {} : { defaultModel: settings.defaultModel }),
-  };
 }
 
 function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSettings {
   const model =
     project.defaultProvider === undefined
-      ? defaultModelSettings(global)
-      : defaultModelSettings(project);
-  const defaultThinkingLevel = project.defaultThinkingLevel ?? global.defaultThinkingLevel;
-  const externalEditor = project.externalEditor ?? global.externalEditor;
-  return {
-    ...model,
-    ...(defaultThinkingLevel === undefined ? {} : { defaultThinkingLevel }),
+      ? { provider: global.defaultProvider, model: global.defaultModel }
+      : { provider: project.defaultProvider, model: project.defaultModel };
+  let resolved: ResolvedSettings = {
     transport: project.transport ?? global.transport ?? "auto",
-    ...(externalEditor === undefined ? {} : { externalEditor }),
     compaction: {
       ...DEFAULT_COMPACTION_SETTINGS,
       ...global.compaction,
       ...project.compaction,
     },
     autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
-    runNotifications: project.runNotifications ?? global.runNotifications ?? "alert",
-    toolCalls: project.toolCalls ?? global.toolCalls ?? "auto",
+    theme: project.theme ?? global.theme ?? "auto",
   };
+  if (model.provider !== undefined) resolved = { ...resolved, defaultProvider: model.provider };
+  if (model.model !== undefined) resolved = { ...resolved, defaultModel: model.model };
+  const thinking = project.defaultThinkingLevel ?? global.defaultThinkingLevel;
+  if (thinking !== undefined) resolved = { ...resolved, defaultThinkingLevel: thinking };
+  const editor = project.externalEditor ?? global.externalEditor;
+  if (editor !== undefined) resolved = { ...resolved, externalEditor: editor };
+  return resolved;
 }
 
 function applySettingsPatch(current: SettingsFile, patch: SettingsPatch): SettingsFile {
-  const model =
-    patch.defaultProvider === undefined
-      ? defaultModelSettings(current)
-      : {
-          defaultProvider: patch.defaultProvider,
-          ...(patch.defaultModel === undefined ? {} : { defaultModel: patch.defaultModel }),
-        };
-  const defaultThinkingLevel = patch.defaultThinkingLevel ?? current.defaultThinkingLevel;
-  const transport = patch.transport ?? current.transport;
-  const externalEditor = patch.externalEditor ?? current.externalEditor;
-  const compaction =
-    patch.compaction === undefined
-      ? current.compaction
-      : { ...current.compaction, ...patch.compaction };
-  const autoUpdate = patch.autoUpdate ?? current.autoUpdate;
-  const runNotifications = patch.runNotifications ?? current.runNotifications;
-  const toolCalls = patch.toolCalls ?? current.toolCalls;
-  const optional: OptionalSettingsFile = {
-    ...(defaultThinkingLevel === undefined ? {} : { defaultThinkingLevel }),
-    ...(transport === undefined ? {} : { transport }),
-    ...(externalEditor === undefined ? {} : { externalEditor }),
-    ...(compaction === undefined ? {} : { compaction }),
-    ...(autoUpdate === undefined ? {} : { autoUpdate }),
-    ...(runNotifications === undefined ? {} : { runNotifications }),
-    ...(toolCalls === undefined ? {} : { toolCalls }),
-  };
-  if (model.defaultProvider === undefined) return optional;
-  return {
-    ...optional,
-    defaultProvider: model.defaultProvider,
-    ...(model.defaultModel === undefined ? {} : { defaultModel: model.defaultModel }),
-  };
+  const merged: SettingsFile = { ...current, ...patch };
+  if (patch.compaction !== undefined) {
+    return { ...merged, compaction: { ...current.compaction, ...patch.compaction } };
+  }
+  return merged;
 }
 
 async function writeSettings(path: string, settings: SettingsFile): Promise<void> {
@@ -353,17 +270,9 @@ export class FileSettingsStore {
   }
 
   updateGlobal(patch: SettingsPatch): Promise<void> {
-    return this.update(this.globalPath, patch);
-  }
-
-  updateProject(cwd: string, patch: SettingsPatch): Promise<void> {
-    return this.update(projectSettingsPath(cwd), patch);
-  }
-
-  private update(path: string, patch: SettingsPatch): Promise<void> {
     const next = this.writes.then(async () => {
-      const current = await readSettings(path);
-      await writeSettings(path, applySettingsPatch(current, patch));
+      const current = await readSettings(this.globalPath);
+      await writeSettings(this.globalPath, applySettingsPatch(current, patch));
     });
     this.writes = next.catch(() => undefined);
     return next;

@@ -7,15 +7,15 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import {
   formatProviderError,
   MAX_PROVIDER_ERROR_BODY_CHARS,
   normalizeProviderError,
 } from "../src/utils/error-body.ts";
 
-void describe("normalizeProviderError", () => {
-  void test("extracts status and body from a Mistral-shaped error", () => {
+describe("normalizeProviderError", () => {
+  test("extracts status and body from a Mistral-shaped error", () => {
     const error = Object.assign(new Error("Mistral request failed"), {
       statusCode: 403,
       body: '{"error":"blocked by gateway WAF"}',
@@ -28,7 +28,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  void test("reads the parsed body off an openai APIError when the message is opaque", () => {
+  test("reads the parsed body off an openai APIError when the message is opaque", () => {
     const error = Object.assign(new Error("403 status code (no body)"), {
       status: 403,
       error: { error: "blocked by gateway WAF" },
@@ -41,7 +41,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  void test("preserves the message when @google/genai already folds the body into it", () => {
+  test("preserves the message when @google/genai already folds the body into it", () => {
     const body = { error: { code: 403, message: "Permission denied" } };
     const error = Object.assign(new Error(JSON.stringify(body)), { status: 403 });
 
@@ -52,7 +52,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.message, JSON.stringify(body));
   });
 
-  void test("extracts status and body from a Bedrock-shaped ServiceException", () => {
+  test("extracts status and body from a Bedrock-shaped ServiceException", () => {
     const error = Object.assign(new Error("UnknownError"), {
       name: "UnknownError",
       $metadata: { httpStatusCode: 403 },
@@ -66,7 +66,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  void test("ignores a Bedrock response stream instead of serializing its internals", () => {
+  test("ignores a Bedrock response stream instead of serializing its internals", () => {
     const error = Object.assign(
       new Error(
         "Invocation of model ID anthropic.claude-opus-5 with on-demand throughput isn't supported.",
@@ -89,7 +89,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, true);
   });
 
-  void test("ignores a class-instance response body without a pipe method instead of serializing it", () => {
+  test("ignores a class-instance response body without a pipe method instead of serializing it", () => {
     class SdkHttpResponseBody {
       locked = false;
       state = { storedError: undefined };
@@ -108,7 +108,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, true);
   });
 
-  void test("ignores a class-instance `error` field instead of serializing it", () => {
+  test("ignores a class-instance `error` field instead of serializing it", () => {
     class SdkInnerError {
       code = "EPROTO";
       internalState = {};
@@ -125,7 +125,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, true);
   });
 
-  void test("still surfaces a plain parsed JSON body object", () => {
+  test("still surfaces a plain parsed JSON body object", () => {
     const error = Object.assign(new Error("400 status code (no body)"), {
       status: 400,
       error: { message: "schema validation failed", field: "tools[0]" },
@@ -137,7 +137,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  void test("JSON-stringifies a non-Error thrown value", () => {
+  test("JSON-stringifies a non-Error thrown value", () => {
     const norm = normalizeProviderError({ reason: "boom" });
 
     assert.equal(norm.status, undefined);
@@ -146,7 +146,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, false);
   });
 
-  void test("treats an empty parsed body object as no body", () => {
+  test("treats an empty parsed body object as no body", () => {
     const error = Object.assign(new Error("403 status code (no body)"), { status: 403, error: {} });
 
     const norm = normalizeProviderError(error);
@@ -155,7 +155,7 @@ void describe("normalizeProviderError", () => {
     assert.equal(norm.messageCarriesBody, true);
   });
 
-  void test("truncates the body at the cap", () => {
+  test("truncates the body at the cap", () => {
     const longBody = "x".repeat(MAX_PROVIDER_ERROR_BODY_CHARS + 50);
     const error = Object.assign(new Error("failed"), { statusCode: 500, body: longBody });
 
@@ -165,7 +165,7 @@ void describe("normalizeProviderError", () => {
     assert.ok((norm.body?.length ?? Number.POSITIVE_INFINITY) < longBody.length);
   });
 
-  void test("sets messageCarriesBody when the message already contains the extracted body", () => {
+  test("sets messageCarriesBody when the message already contains the extracted body", () => {
     const error = Object.assign(new Error("500: upstream exploded"), {
       statusCode: 500,
       body: "upstream exploded",
@@ -177,8 +177,8 @@ void describe("normalizeProviderError", () => {
   });
 });
 
-void describe("formatProviderError", () => {
-  void test("surfaces status and body without a prefix", () => {
+describe("formatProviderError", () => {
+  test("surfaces status and body without a prefix", () => {
     const norm = normalizeProviderError(
       Object.assign(new Error("403 status code (no body)"), {
         status: 403,
@@ -193,7 +193,7 @@ void describe("formatProviderError", () => {
     assert.notEqual(formatted, "403 status code (no body)");
   });
 
-  void test("applies a provider prefix with status and body", () => {
+  test("applies a provider prefix with status and body", () => {
     const norm = normalizeProviderError(
       Object.assign(new Error("403 status code (no body)"), {
         status: 403,
@@ -207,14 +207,14 @@ void describe("formatProviderError", () => {
     );
   });
 
-  void test("preserves the message (with prefix + status) when it already carries the body", () => {
+  test("preserves the message (with prefix + status) when it already carries the body", () => {
     const body = JSON.stringify({ error: { message: "Permission denied" } });
     const norm = normalizeProviderError(Object.assign(new Error(body), { status: 403 }));
 
     assert.equal(formatProviderError(norm, "OpenAI API error"), `OpenAI API error (403): ${body}`);
   });
 
-  void test("returns the bare message for a non-Error value", () => {
+  test("returns the bare message for a non-Error value", () => {
     const norm = normalizeProviderError({ reason: "boom" });
 
     assert.equal(formatProviderError(norm), '{"reason":"boom"}');

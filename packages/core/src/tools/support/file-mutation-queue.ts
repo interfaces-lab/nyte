@@ -10,7 +10,11 @@ import { resolve } from "node:path";
 const fileMutationQueues = new Map<string, Promise<void>>();
 let registrationQueue = Promise.resolve();
 
-function isMissingPathError(error: unknown): boolean {
+interface MissingPathError {
+  readonly code: "ENOENT" | "ENOTDIR";
+}
+
+function isMissingPathError(error: unknown): error is MissingPathError {
   return (
     typeof error === "object" &&
     error !== null &&

@@ -1,5 +1,5 @@
 /**
- * Write tool ported from pi's harness write tool, adapted to Uji's AgentTool
+ * Write tool ported from pi's write tool, bound to Nyte's AgentTool
  * contract and direct filesystem access (pi routes writes through its
  * ExecutionEnv effects boundary).
  *
@@ -40,22 +40,50 @@ const writeParameters = Unsafe<WriteToolInput>({
   required: ["path", "content"],
 });
 
-function parseWriteParams(params: unknown): WriteToolInput {
-  if (typeof params !== "object" || params === null) {
-    throw new Error("Invalid arguments for write: expected an object");
-  }
-  const { path, content } = params as Record<string, unknown>;
-  if (typeof path !== "string") {
-    throw new Error('Invalid arguments for write: "path" must be a string');
-  }
-  if (typeof content !== "string") {
-    throw new Error('Invalid arguments for write: "content" must be a string');
-  }
-  return { path, content };
+interface WriteInputFields {
+  readonly path?: unknown;
+  readonly content?: unknown;
 }
 
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+function isWriteInputObject(value: unknown): value is WriteInputFields {
+  return typeof value === "object" && value !== null;
+}
+
+function hasWritePath(
+  value: WriteInputFields,
+): value is WriteInputFields & Pick<WriteToolInput, "path"> {
+  return typeof value.path === "string";
+}
+
+function hasWriteContent(
+  value: WriteInputFields,
+): value is WriteInputFields & Pick<WriteToolInput, "content"> {
+  return typeof value.content === "string";
+}
+
+type WriteArgumentPreparer = NonNullable<
+  AgentTool<typeof writeParameters, FileMutationDetails>["prepareArguments"]
+>;
+
+const parseWriteParams: WriteArgumentPreparer = (params) => {
+  if (!isWriteInputObject(params)) {
+    throw new Error("Invalid arguments for write: expected an object");
+  }
+  if (!hasWritePath(params)) {
+    throw new Error('Invalid arguments for write: "path" must be a string');
+  }
+  if (!hasWriteContent(params)) {
+    throw new Error('Invalid arguments for write: "content" must be a string');
+  }
+  return { path: params.path, content: params.content };
+};
+
+interface MissingFileError extends Error {
+  readonly code: "ENOENT";
+}
+
+function isMissingFile(cause: unknown): cause is MissingFileError {
+  return cause instanceof Error && "code" in cause && cause.code === "ENOENT";
 }
 
 export function createWriteTool(

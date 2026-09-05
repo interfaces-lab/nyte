@@ -22,122 +22,35 @@
   }
 
   :root {
-    color: var(--cursor-text-primary);
-    background: var(--sand-bg-subtle);
-    font-family: var(--cursor-font-family-sans);
-    font-size: var(--cursor-font-size-base);
-    line-height: var(--cursor-line-height-base);
+    color: var(--nyte-text-primary);
+    background: transparent;
+    font-family: var(--nyte-font-family-sans);
+    font-size: var(--nyte-font-size-base);
+    line-height: var(--nyte-line-height-base);
     font-weight: 400;
-    -webkit-font-smoothing: var(--uji-font-smoothing, antialiased);
-    -moz-osx-font-smoothing: var(--uji-moz-font-smoothing, grayscale);
+    -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
+    -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
     user-select: none;
   }
 
-  html[data-uji-session-drag-active],
-  html[data-uji-session-drag-active] * {
+  [data-nyte-session-drag-active],
+  [data-nyte-session-drag-active] * {
     cursor: grabbing !important;
     user-select: none !important;
-  }
-
-  .boot-shell {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100%;
-    background: var(--sand-bg-subtle);
-  }
-
-  .boot-titlebar {
-    display: flex;
-    align-items: center;
-    height: var(--uji-titlebar-height);
-    padding-inline: 84px 10px;
-    flex-shrink: 0;
-  }
-
-  .boot-stage {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .boot-sidebar {
-    display: flex;
-    flex-direction: column;
-    width: var(--uji-sidebar-width);
-    min-width: 0;
-    min-height: 0;
-    border-inline-end: 1px solid var(--sand-border-subtle);
-    padding-inline: var(--uji-sidebar-gutter);
-    flex-shrink: 0;
-  }
-
-  .boot-sidebar-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    height: var(--uji-compact-row-height);
-    padding-inline: var(--uji-sidebar-row-padding-inline);
-  }
-
-  .boot-sidebar-icon {
-    width: var(--uji-sidebar-icon-slot);
-    height: var(--uji-sidebar-icon-slot);
-    border-radius: var(--cursor-radius-sm);
-    background: var(--cursor-bg-tertiary);
-    flex-shrink: 0;
-  }
-
-  .boot-sidebar-line,
-  .boot-sidebar-search {
-    border-radius: var(--cursor-radius-sm);
-    background: var(--cursor-bg-quaternary);
-  }
-
-  .boot-sidebar-line {
-    height: 6px;
-  }
-
-  .boot-sidebar-line-primary {
-    width: 58px;
-  }
-
-  .boot-sidebar-line-section {
-    width: 74px;
-    margin: 11px 6px 5px;
-  }
-
-  .boot-sidebar-line-secondary {
-    width: 108px;
-  }
-
-  .boot-sidebar-line-tertiary {
-    width: 82px;
-  }
-
-  .boot-sidebar-search {
-    height: var(--uji-compact-row-height);
-    margin-top: var(--uji-sidebar-list-gap);
-  }
-
-  .boot-sidebar-section {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .boot-surface {
-    display: flex;
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    background: var(--sand-bg-base);
   }
 
   *,
   *::before,
   *::after {
     box-sizing: border-box;
+  }
+
+  /*
+   * Central Icons draw a 1.5-unit stroke on a 24-unit grid. The desktop only
+   * renders them at 10–17px, where 1.875 units (1.25px at 16px) reads right.
+   */
+  [data-nyte-icon] svg [stroke]:not([stroke="none"]) {
+    stroke-width: 1.875;
   }
 
   button,
@@ -152,7 +65,7 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--cursor-accent) 30%, transparent);
+    background: color-mix(in srgb, var(--nyte-accent) 30%, transparent);
   }
 
   /*
@@ -160,50 +73,50 @@
    * pseudo-element recipe repeated by every StyleX component.
    * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/index.css
    */
-  [data-uji-scrollport] {
+  [data-nyte-scrollport] {
     scrollbar-gutter: stable;
     scrollbar-width: thin;
     scrollbar-color: transparent transparent;
     overscroll-behavior: contain;
   }
 
-  [data-uji-scrollport="balanced"] {
+  [data-nyte-scrollport="balanced"] {
     scrollbar-gutter: stable both-edges;
   }
 
-  [data-uji-scrollport]:hover {
-    scrollbar-color: var(--cursor-scrollbar-thumb) transparent;
+  [data-nyte-scrollport]:hover {
+    scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
-  [data-uji-scrollport]::-webkit-scrollbar {
-    width: var(--uji-scrollbar-lane);
-    height: var(--uji-scrollbar-lane);
+  [data-nyte-scrollport]::-webkit-scrollbar {
+    width: var(--nyte-scrollbar-lane);
+    height: var(--nyte-scrollbar-lane);
   }
 
-  [data-uji-scrollport]::-webkit-scrollbar-track,
-  [data-uji-scrollport]::-webkit-scrollbar-corner {
+  [data-nyte-scrollport]::-webkit-scrollbar-track,
+  [data-nyte-scrollport]::-webkit-scrollbar-corner {
     background: transparent;
   }
 
-  [data-uji-scrollport]::-webkit-scrollbar-thumb {
-    border: calc(var(--uji-scrollbar-lane) / 3) solid transparent;
-    border-radius: var(--cursor-radius-full);
+  [data-nyte-scrollport]::-webkit-scrollbar-thumb {
+    border: calc(var(--nyte-scrollbar-lane) / 3) solid transparent;
+    border-radius: var(--nyte-radius-full);
     background-color: transparent;
     background-clip: padding-box;
-    transition: background-color var(--cursor-duration-fast) var(--cursor-easing-out);
+    transition: background-color var(--nyte-duration-fast) var(--nyte-easing-out);
   }
 
-  [data-uji-scrollport]:hover::-webkit-scrollbar-thumb {
-    background-color: var(--cursor-scrollbar-thumb);
+  [data-nyte-scrollport]:hover::-webkit-scrollbar-thumb {
+    background-color: var(--nyte-scrollbar-thumb);
   }
 
-  [data-uji-scrollport]::-webkit-scrollbar-thumb:hover,
-  [data-uji-scrollport]::-webkit-scrollbar-thumb:active {
-    background-color: var(--cursor-scrollbar-thumb-hover);
+  [data-nyte-scrollport]::-webkit-scrollbar-thumb:hover,
+  [data-nyte-scrollport]::-webkit-scrollbar-thumb:active {
+    background-color: var(--nyte-scrollbar-thumb-hover);
   }
 
   @media (prefers-reduced-motion: reduce) {
-    [data-uji-scrollport]::-webkit-scrollbar-thumb {
+    [data-nyte-scrollport]::-webkit-scrollbar-thumb {
       transition-duration: 0s;
     }
   }
@@ -223,4 +136,14 @@
     margin: 0;
     background: transparent !important;
   }
+}
+
+/* Preference overrides intentionally sit above StyleX's cascade layers. */
+:root[data-nyte-code-block-word-wrap="true"] figure [data-nyte-scrollport] {
+  overflow-x: hidden;
+}
+
+:root[data-nyte-code-block-word-wrap="true"] figure [data-nyte-scrollport] :is(pre, code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

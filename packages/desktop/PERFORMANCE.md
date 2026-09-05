@@ -4,7 +4,7 @@ The desktop app treats startup and thread navigation as paint problems. It shows
 first, then fills that page with local data. Local storage is fast, but waiting for every local read,
 React module, and formatter before changing the screen still feels slow.
 
-This note records the design after the 2026-08-29 performance pass. It supplements the core
+This note records the design after the 2026-09-03 first-shell pass. It supplements the core
 [design record](../docs/content/docs/design.mdx). That record still owns SDK and storage contracts.
 
 ## Result
@@ -17,17 +17,16 @@ timings on the development machine:
 | First contentful paint | 463.8 ms |
 | React ready | 487.1 ms |
 
-Those timings are historical rather than a current startup measure. The static shell now contains
-no text or image, so Chromium can paint it without reporting a contentful paint; FCP no longer marks
-the first frame the user sees.
+Those timings are historical rather than a current startup measure. The renderer no longer paints
+a substitute HTML shell, so they do not describe the current first React frame.
 
-The production build after removing the profiler emits:
+The current production build emits:
 
 | Entry | Size |
 | --- | ---: |
-| Electron main | 2.9 KiB |
-| Preload | 3.0 KiB |
-| Renderer entry | 1170.6 KiB |
+| Electron main | 3.3 KiB |
+| Preload | 2.6 KiB |
+| Renderer entry | 791.9 KiB |
 
 These numbers are a dated result, not a promise across machines. The temporary timing harness was
 removed after the measurements. `scripts/check-startup-bundle.mjs` remains because it is a build
@@ -38,40 +37,40 @@ guard, not a benchmark. It fails a normal desktop build if a startup entry cross
 The startup path has three phases.
 
 1. Electron creates the window.
-2. Local HTML and CSS paint the window shape.
-3. React replaces the boot shell and local queries fill the app.
+2. React mounts the permanent titlebar, sidebar, stage, and New Chat input.
+3. The router and local queries fill data into that mounted app.
 
-The first visible frame does not need the host, session database, model catalog, router, or React.
-`src/renderer/index.html` contains the titlebar, sidebar, and editor geometry. The renderer entry
-loads theme and global CSS eagerly, asks TanStack Router to resolve the initial valid destination,
-then mounts React into that exact frame. There is no animation-frame or component-local import gate
-between a workspace choice and its New Chat stage.
+`src/renderer/index.html` contains only the React root. Electron's native background color and the
+root CSS background cover the short interval before JavaScript runs without duplicating app chrome.
+The renderer mounts React without awaiting TanStack Router. The shell lives outside route matches,
+so route validation can only hold the center's dynamic destination, never the window chrome.
 
-The static shell uses the same CSS variables, sidebar schema, and system font stacks as the mounted
-app. There is no web font request and no font swap. Its sidebar rows are neutral geometry rather
-than fake labels or substitute icons. React mounts the same shell dimensions, then host state fills
-the workspace/session rail and either the draft composer or an in-editor start page.
+The workspace stage imports the normal conversation screen eagerly. New Chat therefore paints its
+real textarea and fixed controls with the shell. Host state keeps the input disabled until the
+workspace identity is known, while models, sessions, workspaces, and VCS data fill their reserved
+places. The model trigger remains mounted and disabled while its catalog loads.
 
 The Electron entry also stays narrow. `src/main/index.ts` creates the window and registers IPC, but
 it imports the desktop host and IPC decoders only when the renderer makes its first call. Opening the
 window therefore does not open a workspace, compose plugins, initialize the SDK, or load input
 validation code.
 
-The preload does one job. It exposes the typed SDK bridge. Startup profiling, measurement events,
-and benchmark-only environment switches are not shipped.
+The preload exposes the typed SDK bridge and writes the platform marker used by first-frame chrome.
+Startup profiling, measurement events, and benchmark-only environment switches are not shipped.
 
-Once React loads, queries start independently. The shell can render while host state, workspaces,
-sessions, and models cross local IPC. A workspace change refills related caches in parallel and
-commits host state last, so the mounted workspace shell does not observe a half-switched cache.
+Queries start independently with the first React commit. The shell renders while host state,
+workspaces, sessions, and models cross local IPC. A workspace change refills related caches in
+parallel and commits host state last, so the mounted workspace shell does not observe a
+half-switched cache.
 
 ## Thread navigation
 
 A thread click changes the route immediately. It never waits for a snapshot.
 
-The root router keeps the titlebar, sidebar, pane controller, and conversation stage mounted. The
-stage is eager because production builds proved its former route-level dynamic import produced no
-stage chunk. Blank/session route markers update the active pane without an async screen boundary,
-so a click cannot expose a route fallback or recreate pane and workbench owners.
+The React shell keeps the titlebar, sidebar, pane controller, and conversation stage mounted outside
+route resolution. The stage is eager, while transcript presentation remains deferred. Blank/session
+route markers update the active pane without an async screen boundary, so a click cannot expose a
+route fallback or recreate pane and workbench owners.
 
 Pointer intent uses `warmThread` to read the coherent session snapshot into TanStack Query.
 
@@ -104,6 +103,9 @@ one animation frame.
 
 ## Work deferred from thread clicks
 
+The pane frame and composer are eager. Markdown, reasoning, and tool-turn presentation load only
+when a session has content to render; the session composer stays mounted while that module arrives.
+
 Syntax highlighting was the largest avoidable thread cost. The Shiki grammar and theme module is
 about 2.6 MiB, so it remains outside the renderer entry.
 
@@ -124,7 +126,7 @@ speed.
 
 - The visible shell must not wait for local data.
 - Navigation must not await warming or snapshots.
-- Boot HTML may reserve geometry, but it must not show fake icons or fallback fonts.
+- Boot HTML must not duplicate React chrome.
 - Heavy formatters and secondary panels load on visibility or intent.
 - One coherent snapshot is the settled source of truth. Live data is a disposable overlay.
 - New startup imports must fit the build budgets in `scripts/check-startup-bundle.mjs`.

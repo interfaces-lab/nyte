@@ -39,7 +39,7 @@ import type {
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { providerHeadersToRecord } from "../utils/headers.ts";
-import { getUjiUserAgent } from "../utils/uji-user-agent.ts";
+import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 import {
@@ -377,7 +377,7 @@ function createClient(
     httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
   }
   const headers = providerHeadersToRecord({
-    "User-Agent": getUjiUserAgent(),
+    "User-Agent": getNyteUserAgent(),
     ...model.headers,
     ...optionsHeaders,
   });

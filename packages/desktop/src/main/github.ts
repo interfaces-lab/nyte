@@ -11,6 +11,7 @@ import type {
   GitHubPullRequestContext,
   GitHubRepository,
 } from "../shared/ipc.ts";
+import { errorCode } from "./errors.ts";
 
 const COMMAND_OUTPUT_LIMIT = 1_000_000;
 const DETECTION_TIMEOUT_MS = 3_000;
@@ -51,10 +52,6 @@ function httpsUrl(value: string, hostname?: string): string | undefined {
   }
 }
 
-function isMissingCommandError(error: Error): boolean {
-  return error.message.includes("ENOENT");
-}
-
 export const runProviderCommand: CommandRunner = (request) =>
   new Promise((resolveResult) => {
     const child = spawn(request.command, [...request.args], {
@@ -89,7 +86,7 @@ export const runProviderCommand: CommandRunner = (request) =>
     child.stdout.on("data", (chunk: Buffer) => collect(stdout, chunk));
     child.stderr.on("data", (chunk: Buffer) => collect(stderr, chunk));
     child.on("error", (error) => {
-      finish(isMissingCommandError(error) ? { kind: "missing" } : { kind: "failed" });
+      finish(errorCode(error) === "ENOENT" ? { kind: "missing" } : { kind: "failed" });
     });
     child.on("close", (code) => {
       finish({
@@ -293,18 +290,28 @@ export function decodeGitHubPullRequestOutput(output: string): GitHubPullRequest
   };
 }
 
-function commandFailed(result: CommandResult, action: string): string {
+/**
+ * What the person reading the message can do next. The `gh` exit code and
+ * stderr say nothing to them, so they never reach the renderer.
+ */
+type GitHubAction = "sign-in" | "sign-out" | "account" | "pull-request";
+
+const ACTION_RECOVERY: Readonly<Record<GitHubAction, string>> = {
+  "sign-in": "Couldn't sign in to GitHub. Run `gh auth login` in a terminal, then try again.",
+  "sign-out": "Couldn't sign out of GitHub. Run `gh auth logout` in a terminal, then try again.",
+  account: "Couldn't read your GitHub account. Try again.",
+  "pull-request": "Couldn't read this branch's pull request. Try again.",
+};
+
+function commandFailed(result: CommandResult, action: GitHubAction): string {
   switch (result.kind) {
     case "missing":
-      return `${action}: command is not installed`;
+      return "Install the GitHub CLI (gh), then try again.";
     case "timeout":
-      return `${action}: command timed out`;
     case "output_limit":
-      return `${action}: command returned too much data`;
     case "failed":
-      return `${action}: command could not start`;
     case "completed":
-      return `${action}: command exited with code ${String(result.code)}`;
+      return ACTION_RECOVERY[action];
     default: {
       const _exhaustive: never = result;
       return _exhaustive;
@@ -326,7 +333,7 @@ async function accountState(
   if (auth.kind === "missing") return { kind: "cli_missing", repository };
   if (auth.kind === "completed" && auth.code !== 0) return { kind: "signed_out", repository };
   if (auth.kind !== "completed") {
-    return { kind: "error", repository, message: commandFailed(auth, "GitHub authentication") };
+    return { kind: "error", repository, message: commandFailed(auth, "sign-in") };
   }
 
   const accountResult = await run({
@@ -346,12 +353,12 @@ async function accountState(
     return {
       kind: "error",
       repository,
-      message: commandFailed(accountResult, "GitHub account lookup"),
+      message: commandFailed(accountResult, "account"),
     };
   }
   const account = decodeGitHubAccountOutput(accountResult.stdout);
   if (account === undefined) {
-    return { kind: "error", repository, message: "GitHub returned an invalid account response" };
+    return { kind: "error", repository, message: ACTION_RECOVERY.account };
   }
 
   const pullResult = await run({
@@ -374,7 +381,7 @@ async function accountState(
     const parsed = decodeGitHubPullRequestOutput(pullResult.stdout);
     pullRequest =
       parsed === undefined
-        ? { kind: "error", message: "GitHub returned an invalid pull request response" }
+        ? { kind: "error", message: ACTION_RECOVERY["pull-request"] }
         : { kind: "ready", pullRequest: parsed };
   } else if (
     pullResult.kind === "completed" &&
@@ -385,7 +392,7 @@ async function accountState(
   } else {
     pullRequest = {
       kind: "error",
-      message: commandFailed(pullResult, "GitHub pull request lookup"),
+      message: commandFailed(pullResult, "pull-request"),
     };
   }
   return { kind: "ready", repository, account, pullRequest };
@@ -448,7 +455,7 @@ export function createGitHubProvider(
       });
       if (result.kind === "missing") return { kind: "cli_missing", repository };
       if (result.kind !== "completed" || result.code !== 0) {
-        return { kind: "error", repository, message: commandFailed(result, "GitHub sign-in") };
+        return { kind: "error", repository, message: commandFailed(result, "sign-in") };
       }
       cached = undefined;
       return state(true);
@@ -464,7 +471,7 @@ export function createGitHubProvider(
       });
       if (result.kind === "missing") return { kind: "cli_missing", repository };
       if (result.kind !== "completed" || result.code !== 0) {
-        return { kind: "error", repository, message: commandFailed(result, "GitHub sign-out") };
+        return { kind: "error", repository, message: commandFailed(result, "sign-out") };
       }
       cached = undefined;
       return state(true);

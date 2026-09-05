@@ -1,4 +1,4 @@
-import type { SessionId } from "@uji-ai/core";
+import type { SessionId } from "@nyte-ai/core";
 import {
   activePane,
   activeSelection,

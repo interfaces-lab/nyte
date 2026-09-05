@@ -1,15 +1,24 @@
 import * as stylex from "@stylexjs/stylex";
-import { useState } from "react";
-import type { FormEvent, ReactElement } from "react";
+import { Button } from "@nyte-ai/ui";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { MouseEvent, FormEvent, ReactElement, ReactNode, RefObject } from "react";
+import { flushSync } from "react-dom";
+import type { BrowserBoundsMessage, BrowserNavigationAction } from "../../../shared/ipc.ts";
+import { Icon } from "../components/icons";
 import { focus, IconButton } from "../components/ui";
 import { workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
-import { uji } from "../uji";
+import { nyte } from "../nyte";
+import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
+import {
+  applyBrowserEvent,
+  clearBrowserHistory,
+  dismissRefusedDownload,
+  forgetBrowserSurface,
+  useBrowserSurface,
+} from "./browser-surfaces.ts";
 
-type BrowserStatus =
-  | { readonly kind: "idle" }
-  | { readonly kind: "opening" }
-  | { readonly kind: "error"; readonly message: string };
+import { toggleBookmark, toggleBookmarkBar, useBookmarks } from "./browser-bookmarks.ts";
 
 const styles = stylex.create({
   panel: {
@@ -20,160 +29,549 @@ const styles = stylex.create({
     minHeight: 0,
     backgroundColor: t.bgBase,
   },
-  header: {
+  toolbar: {
     display: "flex",
     alignItems: "center",
-    gap: 7,
+    gap: 2,
     height: workbench.headerHeight,
-    paddingInline: 8,
     flexShrink: 0,
+    paddingInline: 6,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: t.borderSubtle,
   },
-  heading: {
+  bookmarks: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    minHeight: 32,
+    paddingInline: 6,
+    overflowX: "auto",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: t.borderSubtle,
+  },
+  bookmark: { display: "flex", alignItems: "center", flexShrink: 0, maxWidth: 220 },
+  bookmarkLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  },
+  addressForm: {
+    display: "flex",
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    marginInline: 4,
+  },
+  addressWrap: {
+    display: "flex",
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    gap: 6,
+    height: 26,
+    paddingInline: 8,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.borderWeak,
+    borderRadius: t.radiusLg,
+    backgroundColor: t.bgElevated,
+  },
+  addressIcon: { display: "inline-flex", flexShrink: 0, color: t.iconSecondary },
+  blocked: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 0,
+    paddingInline: 4,
+    color: t.textTertiary,
+    fontSize: t.fontCode,
+    fontFamily: t.fontMono,
+    fontVariantNumeric: "tabular-nums",
+  },
+  blockedOff: { opacity: 0.5 },
+  address: {
+    flex: 1,
+    minWidth: 0,
+    height: "100%",
+    borderStyle: "none",
+    outlineStyle: "none",
+    backgroundColor: "transparent",
     color: t.textPrimary,
-    fontSize: t.fontBase,
-    fontWeight: 600,
+    fontSize: t.fontSm,
   },
-  spacer: { flex: 1 },
-  body: {
+  slot: {
+    position: "relative",
     display: "flex",
     flex: 1,
     minWidth: 0,
     minHeight: 0,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
-    paddingBottom: 76,
+    padding: 24,
   },
-  form: {
-    display: "flex",
-    width: "min(440px, 100%)",
-    flexDirection: "column",
-    gap: 10,
+  body: { display: "flex", flex: 1, minWidth: 0, minHeight: 0 },
+  history: {
+    width: workbench.fileListWidth,
+    maxWidth: "45%",
+    flexShrink: 0,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: 5,
+    borderInlineStartWidth: 1,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: t.borderSubtle,
+    backgroundColor: t.bgSubtle,
   },
-  title: {
-    color: t.textPrimary,
-    fontSize: t.fontBase,
-    fontWeight: 600,
-  },
-  detail: {
+  historyHeading: {
+    margin: 0,
+    paddingBlock: 6,
+    paddingInline: 6,
     color: t.textTertiary,
     fontSize: t.fontSm,
+    fontWeight: 400,
     lineHeight: t.leadingSm,
   },
-  label: {
+  historyEntry: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    minWidth: 0,
+    minHeight: 32,
+    padding: 6,
+    borderStyle: "none",
+    borderRadius: t.radiusBase,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
+    },
+    color: t.textSecondary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+    textAlign: "start",
+    cursor: "pointer",
+  },
+  historyCurrent: { backgroundColor: t.fillGhostSelected, color: t.textPrimary },
+  historyText: { display: "flex", flex: 1, minWidth: 0, flexDirection: "column" },
+  historyTitle: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  historyAddress: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: t.textTertiary,
+    fontSize: t.fontXs,
+  },
+  message: {
+    display: "flex",
+    maxWidth: 360,
+    flexDirection: "column",
+    gap: 8,
+    textAlign: "center",
+  },
+  messageTitle: { color: t.textPrimary, fontSize: t.fontBase, fontWeight: 600 },
+  messageDetail: { color: t.textTertiary, fontSize: t.fontSm, lineHeight: t.leadingSm },
+  notice: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+    paddingBlock: 6,
+    paddingInline: 10,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: t.borderSubtle,
+    backgroundColor: t.bgSubtle,
     color: t.textSecondary,
     fontSize: t.fontSm,
   },
-  input: {
-    width: "100%",
-    minHeight: 34,
-    paddingInline: 10,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: t.borderWeak,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.bgElevated,
-    color: t.textPrimary,
-    fontSize: t.fontBase,
+  noticeText: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   action: {
-    alignSelf: "flex-start",
-    minHeight: 30,
-    paddingInline: 12,
+    minHeight: 26,
+    paddingInline: 10,
     borderStyle: "none",
     borderRadius: t.radiusLg,
-    backgroundColor: {
-      default: t.fillSecondary,
-      ":hover:not(:disabled)": t.fillSecondaryHover,
-    },
+    backgroundColor: { default: t.fillSecondary, ":hover": t.fillSecondaryHover },
     color: t.textPrimary,
     fontSize: t.fontSm,
-    cursor: { default: "pointer", ":disabled": "default" },
-    opacity: { ":disabled": 0.5 },
-  },
-  error: {
-    color: t.textDanger,
-    fontSize: t.fontSm,
+    cursor: "pointer",
   },
 });
 
-function externalWebUrl(value: string): string | undefined {
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
+const CLOSE_GRACE_MS = 50;
+const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>();
+
+function keepSurface(surface: string): void {
+  const pending = pendingCloses.get(surface);
+  if (pending === undefined) return;
+  clearTimeout(pending);
+  pendingCloses.delete(surface);
+}
+
+function releaseSurface(surface: string): void {
+  keepSurface(surface);
+  pendingCloses.set(
+    surface,
+    setTimeout(() => {
+      pendingCloses.delete(surface);
+      forgetBrowserSurface(surface);
+      void nyte.host.browser.close({ surface }).catch(() => undefined);
+    }, CLOSE_GRACE_MS),
+  );
+}
+
+function sameBounds(a: BrowserBoundsMessage, b: BrowserBoundsMessage): boolean {
+  return (
+    a.visible === b.visible &&
+    a.bounds.x === b.bounds.x &&
+    a.bounds.y === b.bounds.y &&
+    a.bounds.width === b.bounds.width &&
+    a.bounds.height === b.bounds.height
+  );
+}
+
+function useSurfaceBounds(
+  slot: RefObject<HTMLDivElement | null>,
+  surface: string,
+  visible: boolean,
+): void {
+  const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
+  useLayoutEffect(() => {
+    const element = slot.current;
+    if (element === null) return;
+    let frame: number | undefined;
+    const measure = (): void => {
+      frame = undefined;
+      const rect = element.getBoundingClientRect();
+      const message: BrowserBoundsMessage = {
+        surface,
+        bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        visible: visible && rect.width > 0 && rect.height > 0,
+      };
+      if (lastRef.current !== undefined && sameBounds(lastRef.current, message)) return;
+      lastRef.current = message;
+      nyte.host.browser.setBounds(message);
+    };
+    const schedule = (): void => {
+      frame ??= requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
+    for (let node: Element | null = element; node !== null; node = node.parentElement) {
+      observer.observe(node);
+    }
+    window.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, { capture: true, passive: true });
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("scroll", schedule, { capture: true });
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      const last = lastRef.current;
+      if (last !== undefined && last.visible) {
+        lastRef.current = { ...last, visible: false };
+        nyte.host.browser.setBounds(lastRef.current);
+      }
+    };
+  }, [slot, surface, visible]);
+}
+
+export interface BrowserPanelProps {
+  readonly surface: string;
+  readonly visible: boolean;
+  readonly historyVisible: boolean;
+  readonly url: string | undefined;
+  readonly onUrlChange: (url: string | undefined) => void;
+  readonly toolbarActions?: ReactNode;
 }
 
 export function BrowserPanel({
-  onHome,
-  onClose,
-}: {
-  readonly onHome: () => void;
-  readonly onClose: () => void;
-}): ReactElement {
-  const [address, setAddress] = useState("");
-  const [status, setStatus] = useState<BrowserStatus>({ kind: "idle" });
+  surface,
+  visible,
+  historyVisible,
+  url,
+  onUrlChange,
+  toolbarActions,
+}: BrowserPanelProps): ReactElement {
+  const bookmarks = useBookmarks();
+  const slotRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { state, refusedDownload, history } = useBrowserSurface(surface);
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const [failure, setFailure] = useState<string | undefined>(undefined);
+  const currentUrl = state?.url ?? url ?? "";
+  const hasPage = state !== undefined && state.url !== "";
+  const showSurface = visible && hasPage && state.error === undefined;
+
+  useSurfaceBounds(slotRef, surface, showSurface);
+
+  useEffect(() => {
+    keepSurface(surface);
+    if (url !== undefined) {
+      void nyte.host.browser.open({ surface, url }).then(
+        (state) => applyBrowserEvent({ kind: "browser_changed", surface, state }),
+        (cause: unknown) => {
+          setFailure(cause instanceof Error ? cause.message : "The page could not open.");
+        },
+      );
+    }
+    return () => releaseSurface(surface);
+  }, [surface, url]);
+
+  useEffect(() => {
+    if (state !== undefined && state.url !== "" && state.url !== url) onUrlChange(state.url);
+  }, [onUrlChange, state, url]);
+
+  const navigate = (action: BrowserNavigationAction): void => {
+    void nyte.host.browser.navigate({ surface, action }).catch(() => undefined);
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (status.kind === "opening") return;
-    const url = externalWebUrl(address);
-    if (url === undefined) {
-      setStatus({ kind: "error", message: "Enter a complete http or https address." });
-      return;
-    }
-    setStatus({ kind: "opening" });
-    void uji.host.openExternal({ url }).then(
-      () => setStatus({ kind: "idle" }),
-      () => setStatus({ kind: "error", message: "The system browser could not be opened." }),
-    );
+    const target = resolveBrowserAddress(draft ?? "");
+    if (target === undefined) return;
+    setDraft(undefined);
+    setFailure(undefined);
+    inputRef.current?.blur();
+    if (target === url) navigate("reload");
+    else onUrlChange(target);
   };
+
+  const openMenu = (event: MouseEvent<HTMLButtonElement>): void => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setFailure(undefined);
+    void nyte.host.browser
+      .menu({
+        surface,
+        bookmarksVisible: bookmarks.visible,
+        x: Math.round(rect.left),
+        y: Math.round(rect.bottom),
+      })
+      .then(async (action) => {
+        if (action === undefined) return;
+        if (action === "toggle-bookmarks") {
+          toggleBookmarkBar();
+          return;
+        }
+        await nyte.host.browser.perform({ surface, action });
+        if (action === "clear-history") clearBrowserHistory();
+      })
+      .catch((cause) => setFailure(cause instanceof Error ? cause.message : String(cause)));
+  };
+
+  const loading = state?.loading === true;
+  const secure = state?.secure ?? "none";
 
   return (
     <section aria-label="Browser" {...stylex.props(styles.panel)}>
-      <header {...stylex.props(styles.header)}>
-        <IconButton icon="plus" label="Open workbench launcher" onClick={onHome} />
-        <span {...stylex.props(styles.heading)}>Browser</span>
-        <span {...stylex.props(styles.spacer)} />
-        <IconButton icon="panel-right" label="Close workbench" size={13} onClick={onClose} />
-      </header>
-      <div {...stylex.props(styles.body)}>
-        <form {...stylex.props(styles.form)} onSubmit={submit}>
-          <span {...stylex.props(styles.title)}>Open in the system browser</span>
-          <span {...stylex.props(styles.detail)}>
-            This desktop build has no embedded browser panel. Web addresses open outside Uji.
-          </span>
-          <label htmlFor="workbench-browser-address" {...stylex.props(styles.label)}>
-            Web address
-          </label>
-          <input
-            id="workbench-browser-address"
-            type="url"
-            inputMode="url"
-            autoComplete="url"
-            placeholder="https://example.com"
-            value={address}
-            {...stylex.props(styles.input, focus.ring)}
-            onChange={(event) => {
-              setAddress(event.currentTarget.value);
-              if (status.kind === "error") setStatus({ kind: "idle" });
-            }}
-          />
-          <button
-            type="submit"
-            disabled={status.kind === "opening"}
-            {...stylex.props(styles.action, focus.ring)}
-          >
-            {status.kind === "opening" ? "Opening…" : "Open browser"}
-          </button>
-          {status.kind === "error" && (
-            <span role="alert" {...stylex.props(styles.error)}>
-              {status.message}
-            </span>
-          )}
+      <div {...stylex.props(styles.toolbar)}>
+        <IconButton
+          icon="arrow-left"
+          label="Back"
+          disabled={state?.canGoBack !== true}
+          onClick={() => navigate("back")}
+        />
+        <IconButton
+          icon="arrow-right"
+          label="Forward"
+          disabled={state?.canGoForward !== true}
+          onClick={() => navigate("forward")}
+        />
+        <IconButton
+          icon={loading ? "x" : "refresh"}
+          label={loading ? "Stop" : "Reload"}
+          disabled={!hasPage}
+          onClick={() => navigate(loading ? "stop" : "reload")}
+        />
+        <form {...stylex.props(styles.addressForm)} onSubmit={submit}>
+          <div {...stylex.props(styles.addressWrap)}>
+            {secure === "https" && draft === undefined && (
+              <span {...stylex.props(styles.addressIcon)} title="Secure connection">
+                <Icon name="lock" size={12} />
+              </span>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Address"
+              placeholder="Search or enter address"
+              value={draft ?? displayAddress(currentUrl)}
+              {...stylex.props(styles.address, focus.ring)}
+              onFocus={(event) => {
+                flushSync(() => setDraft(currentUrl));
+                event.currentTarget.select();
+              }}
+              onBlur={() => setDraft(undefined)}
+              onChange={(event) => setDraft(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDraft(undefined);
+                  event.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
         </form>
+        {hasPage && (
+          <span
+            {...stylex.props(styles.blocked, state.blocking || styles.blockedOff)}
+            title={
+              state.blocking
+                ? `${String(state.blocked)} requests blocked on this page`
+                : "No filter lists in this build; run pnpm adblock"
+            }
+          >
+            <Icon name="shield" size={12} />
+            {state.blocking ? String(state.blocked) : "off"}
+          </span>
+        )}
+        <IconButton
+          icon="globe"
+          label="Open in system browser"
+          disabled={!hasPage}
+          onClick={() => void nyte.host.openExternal({ url: currentUrl }).catch(() => undefined)}
+        />
+        <IconButton icon="more" label="Browser actions" onClick={openMenu} aria-haspopup="menu" />
+        {toolbarActions}
+      </div>
+      {failure !== undefined && (
+        <div role="alert" {...stylex.props(styles.notice)}>
+          <span {...stylex.props(styles.noticeText)}>{failure}</span>
+          <IconButton
+            icon="x"
+            label="Dismiss browser error"
+            onClick={() => setFailure(undefined)}
+          />
+        </div>
+      )}
+      {bookmarks.visible && (
+        <div aria-label="Bookmark bar" {...stylex.props(styles.bookmarks)}>
+          <button
+            type="button"
+            {...stylex.props(styles.action, focus.ring)}
+            disabled={!hasPage}
+            onClick={() => toggleBookmark({ url: currentUrl, title: state?.title || currentUrl })}
+          >
+            {bookmarks.items.some((item) => item.url === currentUrl)
+              ? "Remove bookmark"
+              : "Bookmark this page"}
+          </button>
+          {bookmarks.items.map((item) => (
+            <div key={item.url} {...stylex.props(styles.bookmark)}>
+              <button
+                type="button"
+                title={item.url}
+                {...stylex.props(styles.action, styles.bookmarkLabel, focus.ring)}
+                onClick={() => onUrlChange(item.url)}
+              >
+                {item.title || displayAddress(item.url)}
+              </button>
+              <IconButton
+                icon="x"
+                label={`Remove bookmark: ${item.title || item.url}`}
+                onClick={() => toggleBookmark(item)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {refusedDownload !== undefined && (
+        <div role="status" {...stylex.props(styles.notice)}>
+          <span {...stylex.props(styles.noticeText)}>
+            Downloads do not run here: {refusedDownload}
+          </span>
+          <button
+            type="button"
+            {...stylex.props(styles.action, focus.ring)}
+            onClick={() => {
+              void nyte.host.openExternal({ url: refusedDownload }).catch(() => undefined);
+              dismissRefusedDownload(surface);
+            }}
+          >
+            Open in system browser
+          </button>
+          <IconButton icon="x" label="Dismiss" onClick={() => dismissRefusedDownload(surface)} />
+        </div>
+      )}
+      <div {...stylex.props(styles.body)}>
+        <div ref={slotRef} {...stylex.props(styles.slot)}>
+          {!hasPage && failure === undefined && (
+            <div {...stylex.props(styles.message)}>
+              <span {...stylex.props(styles.messageTitle)}>Nothing open</span>
+              <span {...stylex.props(styles.messageDetail)}>
+                Enter an address or search above. Pages cannot ask for permissions, open popups, or
+                download files here.
+              </span>
+            </div>
+          )}
+          {state?.error !== undefined && (
+            <div role="alert" {...stylex.props(styles.message)}>
+              <span {...stylex.props(styles.messageTitle)}>This page did not load</span>
+              <span {...stylex.props(styles.messageDetail)}>
+                {state.error.description} ({String(state.error.code)})
+              </span>
+              <button
+                type="button"
+                {...stylex.props(styles.action, focus.ring)}
+                onClick={() => navigate("reload")}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+        </div>
+        {historyVisible && (
+          <nav aria-label="Visit history" data-nyte-scrollport {...stylex.props(styles.history)}>
+            <h2 {...stylex.props(styles.historyHeading)}>Visit History</h2>
+            {history.length === 0 ? (
+              <p {...stylex.props(styles.historyHeading)}>No pages visited yet</p>
+            ) : (
+              history.map((entry) => (
+                <Button
+                  unstyled
+                  key={entry.url}
+                  type="button"
+                  title={entry.url}
+                  aria-current={entry.url === currentUrl ? "page" : undefined}
+                  {...stylex.props(
+                    styles.historyEntry,
+                    focus.ringInset,
+                    entry.url === currentUrl && styles.historyCurrent,
+                  )}
+                  onClick={() => {
+                    setDraft(undefined);
+                    setFailure(undefined);
+                    onUrlChange(entry.url);
+                  }}
+                >
+                  <span {...stylex.props(styles.addressIcon)}>
+                    <Icon name="globe" size={13} />
+                  </span>
+                  <span {...stylex.props(styles.historyText)}>
+                    <span {...stylex.props(styles.historyTitle)}>
+                      {entry.title || displayAddress(entry.url)}
+                    </span>
+                    <span {...stylex.props(styles.historyAddress)}>
+                      {displayAddress(entry.url)}
+                    </span>
+                  </span>
+                </Button>
+              ))
+            )}
+          </nav>
+        )}
       </div>
     </section>
   );

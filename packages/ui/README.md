@@ -1,10 +1,10 @@
-# `@uji-ai/ui`
+# `@nyte-ai/ui`
 
-Raw-source React primitives for Uji demos. Base UI owns interaction and accessibility; StyleX owns reusable component styling; each app owns layout, typography, and product identity.
+Raw-source React primitives for Nyte products and demos. Base UI owns interaction and accessibility; StyleX owns reusable component styling; each app owns layout, typography, and product identity.
 
 ## Add it to a demo
 
-Install `@uji-ai/ui` from the workspace and put the StyleX compiler before React:
+Install `@nyte-ai/ui` from the workspace and put the StyleX compiler before React:
 
 ```ts
 import stylex from "@stylexjs/unplugin";
@@ -12,23 +12,25 @@ import react from "@vitejs/plugin-react";
 
 export default {
   plugins: [stylex.vite({ useCSSLayers: true }), react()],
-  optimizeDeps: { exclude: ["@uji-ai/ui"] },
+  optimizeDeps: { exclude: ["@nyte-ai/ui"] },
   resolve: { dedupe: ["react", "react-dom"] },
 };
 ```
 
-Apps using the Tailwind-based shadcn components also import `@uji-ai/ui/styles.css` once. StyleX-only primitives, such as Avatar, are emitted by the compiler and do not require that stylesheet.
+Import `@nyte-ai/ui/platform-tokens.css` once for StyleX-only apps. Apps that also author Tailwind can import `@nyte-ai/ui/styles.css` instead; it includes the same tokens and maps them into Tailwind's theme.
+
+Product-specific composites may import headless namespaces from `@nyte-ai/ui/primitives`. This keeps the Base UI dependency and version behind the shared package while the product retains its own composition and geometry. Simple controls should use the styled root exports. Their `unstyled` mode is reserved for product surfaces that supply a complete `xstyle` treatment.
 
 ## Theme it
 
-Primitives use inherited `--uji-*` custom properties. Override only the tokens that express the app's identity, ideally on the app root so previews can be themed independently:
+Primitives use inherited `--nyte-*` custom properties. Override only the tokens that express the app's identity, ideally on the app root so previews can be themed independently:
 
 ```css
 .my-demo {
   color-scheme: dark;
-  --uji-color-avatar-orange-background: #5f2a06;
-  --uji-color-avatar-orange-foreground: #ffb27d;
+  --nyte-color-avatar-orange-background: #5f2a06;
+  --nyte-color-avatar-orange-foreground: #ffb27d;
 }
 ```
 
-Use `className` for consumer layout and `xstyle` when a primitive needs a deliberate visual override. Reuse Base UI parts before creating a new wrapper, and keep domain adapters in the app.
+The generated CSS variables and the typed StyleX map come from `platform-tokens.stylex.ts`. Use `className` for consumer layout, including Tailwind utilities, and `xstyle` for a deliberate StyleX override. Reuse Base UI parts before creating a new wrapper, and keep domain adapters in the app.

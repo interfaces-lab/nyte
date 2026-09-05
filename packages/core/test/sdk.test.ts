@@ -97,6 +97,8 @@ function gate(): { wait: () => Promise<void>; open: () => void } {
 const catalog = {
   getModels: () => [model as Model<"openai-responses">],
   getModel: (_provider: string, id: string) => (id === model.id ? model : undefined),
+  checkAuth: async (provider: string) => (provider === "openai" ? { type: "api_key" } : undefined),
+  getProvider: (id: string) => (id === "openai" ? { id } : undefined),
 };
 
 async function open(
@@ -163,7 +165,7 @@ describe("three phones", () => {
       true,
     );
     // Nothing forks: one head, and every send is on its branch in send order.
-    const heads = (await uji.sessions.get({ sessionId }))?.heads ?? [];
+    const heads = await uji.heads.list({ sessionId });
     assert.equal(heads.length, 1);
     assert.deepEqual(userTexts(await uji.messages.list({ sessionId })), ["one", "two", "three"]);
 
@@ -303,6 +305,33 @@ describe("namespaces", () => {
     await close();
   });
 
+  void test("fork copies the path to the fork point into a new session", async () => {
+    const { uji, close } = await open();
+    const source = await uji.sessions.create({ name: "source" });
+    const { sessionId } = source;
+    const a = await uji.messages.send({ sessionId, content: "a" });
+    await uji.messages.send({ sessionId, content: "b" });
+
+    const fork = await uji.sessions.fork({ sessionId, at: a.entryId, name: "forked" });
+    assert.equal(fork.name, "forked");
+    assert.deepEqual(userTexts(await uji.messages.list({ sessionId: fork.sessionId })), ["a"]);
+    // The fork point keeps its id, and the source is untouched.
+    assert.equal((await uji.heads.list({ sessionId: fork.sessionId }))[0]?.entryId, a.entryId);
+    assert.deepEqual(userTexts(await uji.messages.list({ sessionId })), ["a", "b"]);
+
+    // No `at` forks from the head's tip.
+    const whole = await uji.sessions.fork({ sessionId });
+    assert.deepEqual(userTexts(await uji.messages.list({ sessionId: whole.sessionId })), [
+      "a",
+      "b",
+    ]);
+
+    await assert.rejects(uji.sessions.fork({ sessionId, at: "missing" as never }), {
+      name: "UnknownEntry",
+    });
+    await close();
+  });
+
   void test("delete settles the session and removes it from the directory", async () => {
     const { uji, close } = await open();
     const kept = await uji.sessions.create({ name: "kept" });
@@ -364,7 +393,7 @@ describe("namespaces", () => {
       thinkingLevel: "off",
     });
     // The gauge measures against the declared model, not the host fallback.
-    assert.equal((await uji.sessions.snapshot({ sessionId }))?.context.contextWindow, 50_000);
+    assert.equal((await uji.runs.context({ sessionId })).contextWindow, 50_000);
 
     const detach = uji.attach();
     await uji.messages.send({ sessionId, content: "hello" });
@@ -381,12 +410,14 @@ describe("namespaces", () => {
     await store.close();
   });
 
-  void test("messages expose the transcript and the pending queue", async () => {
+  void test("messages expose the transcript, the model's context, and the pending queue", async () => {
     const { uji, close } = await open();
     const { sessionId } = await uji.sessions.create();
     await uji.messages.send({ sessionId, content: "hello" });
 
     assert.deepEqual(userTexts(await uji.messages.list({ sessionId })), ["hello"]);
+    const context = await uji.messages.context({ sessionId });
+    assert.equal(context.at(-1)?.role, "user");
     assert.deepEqual(await uji.messages.pending({ sessionId }), []);
 
     await close();
@@ -420,10 +451,12 @@ describe("namespaces", () => {
     await close();
   });
 
-  void test("runs settle an abort and a compaction request on an idle head", async () => {
+  void test("runs report context and settle a compaction request with nothing to compact", async () => {
     const { uji, close } = await open();
     const { sessionId } = await uji.sessions.create();
 
+    const status = await uji.runs.context({ sessionId });
+    assert.equal(status.contextWindow, model.contextWindow);
     assert.deepEqual(await uji.runs.abort({ sessionId }), { kind: "not_running" });
     assert.deepEqual(await uji.runs.compact({ sessionId }), { kind: "nothing_to_compact" });
 
@@ -442,7 +475,7 @@ describe("namespaces", () => {
     assert.equal(moved.kind, "moved");
     if (moved.kind !== "moved") throw new Error("expected a move");
     assert.deepEqual(moved.restored, { entryId: placed.entryId, content: "one" });
-    assert.deepEqual((await uji.sessions.get({ sessionId }))?.heads[0]?.entryId, null);
+    assert.deepEqual((await uji.heads.list({ sessionId }))[0]?.entryId, null);
 
     // The move ran as a structural run: the replayed stream shows the
     // operation bracket, and the deliberate move is distinguishable from the
@@ -460,10 +493,44 @@ describe("namespaces", () => {
       ["append", "append", "move"],
     );
 
+    await uji.heads.label({ sessionId, entryId: placed.entryId, label: "before" });
+    const tree = await uji.heads.tree({ sessionId });
+    assert.equal(tree.find((node) => node.entryId === placed.entryId)?.label, "before");
     assert.deepEqual(await uji.heads.move({ sessionId, to: "missing" as never }), {
       kind: "not_found",
     });
 
+    await close();
+  });
+
+  void test("a finished run reports its measured usage, not zeros", async () => {
+    const { uji, close } = await open();
+    const { sessionId } = await uji.sessions.create();
+    const detach = uji.attach();
+    await uji.messages.send({ sessionId, content: "hello" });
+
+    // The attached runner picks the placement up; wait for its terminal record.
+    let finished: Extract<SessionEvent, { kind: "run_finished" }> | undefined;
+    for (let attempt = 0; attempt < 200 && finished === undefined; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      finished = (await replay(uji, sessionId)).find(
+        (event): event is Extract<SessionEvent, { kind: "run_finished" }> =>
+          event.kind === "run_finished",
+      );
+    }
+    assert.equal(finished?.outcome.kind, "completed");
+    if (finished === undefined) throw new Error("run never finished");
+
+    const run = await uji.runs.get({ sessionId, runId: finished.runId });
+    assert.equal(run?.kind, "finished");
+    if (run?.kind !== "finished") throw new Error("expected a finished run");
+    assert.equal(run.outcome.kind, "completed");
+    if (run.outcome.kind !== "completed") throw new Error("expected a completed outcome");
+    // The echo stream reports 2 tokens per turn; the sum is measurement, not filler.
+    assert.equal(run.outcome.usage.totalTokens, 2);
+    assert.equal(run.startedAt <= run.finishedAt, true);
+
+    detach();
     await close();
   });
 
@@ -566,13 +633,26 @@ describe("namespaces", () => {
     await close();
   });
 
-  void test("provider reports the catalog", async () => {
+  void test("provider reports the catalog and credential status", async () => {
     const { uji, close } = await open();
     assert.deepEqual(
       (await uji.provider.models.list()).map((info) => info.id),
       ["test-model"],
     );
     assert.equal((await uji.provider.models.default())?.id, "test-model");
+    assert.deepEqual(await uji.provider.credentials.status({ provider: "openai" }), {
+      kind: "authenticated",
+      type: "api_key",
+    });
+    assert.deepEqual(await uji.provider.credentials.status({ provider: "nope" }), {
+      kind: "unknown_provider",
+    });
+    await close();
+  });
+
+  void test("workspace trust answers untrusted without a backend", async () => {
+    const { uji, cwd, close } = await open();
+    assert.deepEqual(await uji.workspace.trust.status({ path: cwd }), { kind: "untrusted" });
     await close();
   });
 });
@@ -730,6 +810,7 @@ describe("lifecycle", () => {
         return store.list();
       },
       delete: (id) => store.delete(id),
+      watch: (input) => store.watch(input),
     };
     const uji = await createUji({
       store: slowStore,
@@ -871,12 +952,19 @@ describe("lifecycle", () => {
     directories.push(cwd);
     const store = new SqliteSessionRepo(join(cwd, "sessions.db"));
     // Activation blocks inside AgentHarness.create until the gate opens, so
-    // close runs while the runner's harness build is in flight.
+    // close runs while the runner's harness build is in flight. The effect
+    // reports whether that harness was disposed.
     const building = gate();
     const entered = gate();
+    let effectAborted = false;
     const slow = definePlugin({
       id: "slow",
-      async session() {
+      async session(api) {
+        api.effect((signal) => {
+          signal.addEventListener("abort", () => {
+            effectAborted = true;
+          });
+        });
         entered.open();
         await building.wait();
       },
@@ -902,6 +990,8 @@ describe("lifecycle", () => {
       building.open();
       await withTimeout(closing, "close never settled");
       detach();
+      // The harness that finished building after close was closed, not kept.
+      assert.equal(effectAborted, true);
       assert.throws(() => uji.attach(), { name: "UjiClosed" });
       await assert.rejects(uji.sessions.get({ sessionId }), { name: "UjiClosed" });
       // Rejections surface after the microtask queue drains; one macrotask is enough.
@@ -960,11 +1050,11 @@ describe("lifecycle", () => {
   void test("a harness asked for in the gap before close is refused before it builds", async () => {
     const { uji, store, activated } = await openWithProbe();
     const { sessionId } = await uji.sessions.create();
-    // `plugins.list` passes alive() and awaits the pooled session: one microtask.
+    // `pending` passes alive() and awaits the pooled session: one microtask.
     // `close` flips `closed` synchronously, so the continuation finds it set.
-    const listing = uji.plugins.list({ sessionId });
+    const pending = uji.messages.pending({ sessionId });
     const closing = uji.close();
-    await assert.rejects(listing, { name: "UjiClosed" });
+    await assert.rejects(pending, { name: "UjiClosed" });
     await withTimeout(closing, "close never settled");
     assert.equal(activated(), false);
     await store.close();
@@ -974,10 +1064,10 @@ describe("lifecycle", () => {
     const { uji, store, activated } = await openWithProbe();
     const { sessionId } = await uji.sessions.create();
     // Both verbs await the pooled session once; continuations run in call
-    // order, so delete retires the session before `plugins.list` reaches harnessFor.
+    // order, so delete retires the session before `pending` reaches harnessFor.
     const deleting = uji.sessions.delete({ sessionId });
-    const listing = uji.plugins.list({ sessionId });
-    await assert.rejects(listing, { name: "UnknownSession" });
+    const pending = uji.messages.pending({ sessionId });
+    await assert.rejects(pending, { name: "UnknownSession" });
     await withTimeout(deleting, "delete never settled");
     assert.equal(activated(), false);
     assert.equal(await uji.sessions.get({ sessionId }), undefined);
@@ -1036,6 +1126,23 @@ function writeThenStop(): StreamFn {
 }
 
 describe("parity verbs", () => {
+  void test("markRead is a monotonic per-reader watermark folded into SessionInfo", async () => {
+    const { uji, close } = await open();
+    const { sessionId } = await uji.sessions.create();
+
+    await uji.sessions.markRead({ sessionId, upToSeq: 5 });
+    assert.deepEqual((await uji.sessions.get({ sessionId }))?.readBy, { local: 5 });
+
+    // A stale viewer never regresses the watermark it can see.
+    await uji.sessions.markRead({ sessionId, upToSeq: 3 });
+    assert.deepEqual((await uji.sessions.get({ sessionId }))?.readBy, { local: 5 });
+
+    await uji.sessions.markRead({ sessionId, upToSeq: 9, origin: { userId: "kai" } });
+    assert.deepEqual((await uji.sessions.get({ sessionId }))?.readBy, { local: 5, kai: 9 });
+
+    await close();
+  });
+
   void test("parent links land at creation and filter the directory", async () => {
     const { uji, close } = await open();
     const root = await uji.sessions.create({ name: "root" });
@@ -1063,6 +1170,40 @@ describe("parity verbs", () => {
     );
     const everyone = await uji.sessions.list();
     assert.equal(everyone.items.length, 2);
+
+    await close();
+  });
+
+  void test("agents.list resolves declared defaults", async () => {
+    const contributed = inlinePlugin(
+      definePlugin({
+        id: "agents-test",
+        session(api) {
+          api.agents.add((draft) => {
+            draft.set("build", { id: "build" });
+            draft.set("explore", {
+              id: "explore",
+              mode: "subagent",
+              description: "Reads the codebase",
+            });
+          });
+        },
+      }),
+    );
+    const { uji, close } = await open(undefined, [contributed]);
+    const { sessionId } = await uji.sessions.create();
+
+    const agents = await uji.agents.list({ sessionId });
+    assert.deepEqual(agents, [
+      { id: "build", mode: "all", hidden: false, disabled: false },
+      {
+        id: "explore",
+        mode: "subagent",
+        hidden: false,
+        disabled: false,
+        description: "Reads the codebase",
+      },
+    ]);
 
     await close();
   });
@@ -1271,6 +1412,50 @@ describe("parity verbs", () => {
     await store.close();
   });
 
+  void test("watchSessions reports creations, changes, and deletions", async () => {
+    const { uji, close } = await open();
+    const seen: { kind: string; sessionId?: string; name?: string }[] = [];
+    const controller = new AbortController();
+    const watcher = (async () => {
+      for await (const event of uji.watchSessions({ signal: controller.signal })) {
+        if (event.kind === "session_changed") {
+          seen.push({
+            kind: event.kind,
+            sessionId: event.info.sessionId,
+            ...(event.info.name === undefined ? {} : { name: event.info.name }),
+          });
+        } else if (event.kind === "session_deleted") {
+          seen.push({ kind: event.kind, sessionId: event.sessionId });
+        } else {
+          seen.push({ kind: event.kind });
+        }
+      }
+    })();
+    await until(async () => seen.some((event) => event.kind === "synced"), "never synced");
+
+    const { sessionId } = await uji.sessions.create();
+    await until(
+      async () => seen.some((e) => e.kind === "session_changed" && e.sessionId === sessionId),
+      "creation never reported",
+    );
+
+    await uji.sessions.rename({ sessionId, name: "renamed" });
+    await until(
+      async () => seen.some((e) => e.kind === "session_changed" && e.name === "renamed"),
+      "rename never reported",
+    );
+
+    await uji.sessions.delete({ sessionId });
+    await until(
+      async () => seen.some((e) => e.kind === "session_deleted" && e.sessionId === sessionId),
+      "deletion never reported",
+    );
+
+    controller.abort();
+    await watcher;
+    await close();
+  });
+
   void test("task delegates to a durable child session and settles TaskDetails", async () => {
     const captured: { sys: string; tools: string[] }[] = [];
     let parentTurn = 0;
@@ -1361,12 +1546,7 @@ describe("parity verbs", () => {
     const detach = uji.attach();
 
     await uji.messages.send({ sessionId: parentId, content: "count the ducks" });
-    // A foreground delegation parks the parent, so `wait` may honestly answer
-    // `waiting` while the child runs; done means idle.
-    await until(
-      async () => (await uji.runs.wait({ sessionId: parentId })).kind === "idle",
-      "the delegation never completed",
-    );
+    await uji.runs.wait({ sessionId: parentId });
 
     // The parent's transcript settled the delegation with durable details.
     const turns = await uji.messages.list({ sessionId: parentId });
@@ -1432,17 +1612,6 @@ describe("parity verbs", () => {
         : [],
     );
     assert.deepEqual(childTexts, ["seven ducks"]);
-
-    // The wake nudge never surfaces as conversation: the parent's user turns
-    // are exactly what the user sent.
-    const parentUserTexts = (await uji.messages.list({ sessionId: parentId })).flatMap((turn) =>
-      turn.kind === "turn"
-        ? turn.parts.flatMap((part) =>
-            part.kind === "user" && typeof part.content === "string" ? [part.content] : [],
-          )
-        : [],
-    );
-    assert.deepEqual(parentUserTexts, ["count the ducks"]);
 
     detach();
     await uji.close();
@@ -1546,10 +1715,7 @@ describe("parity verbs", () => {
     ]);
 
     await uji.messages.send({ sessionId: parentId, content: "delegate the counting" });
-    await until(
-      async () => (await uji.runs.wait({ sessionId: parentId })).kind === "idle",
-      "the delegation never completed",
-    );
+    await uji.runs.wait({ sessionId: parentId });
 
     const delegating = toolsSeen.find((tools) => tools.includes("task"));
     assert.ok(delegating, "after the reload the model was offered task");

@@ -13,7 +13,7 @@ interface NotificationOutput {
   write(text: string): unknown;
 }
 
-interface RunNotificationOptions {
+export interface RunNotificationOptions {
   readonly end: RunEnd;
   readonly mode: RunNotificationMode;
   readonly renderer: NotificationRenderer;

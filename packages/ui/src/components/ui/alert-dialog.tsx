@@ -2,19 +2,12 @@ import { AlertDialog as AlertDialogPrimitive } from "@base-ui/react/alert-dialog
 import * as stylex from "@stylexjs/stylex";
 import type * as React from "react";
 
-import { dialogStyles } from "@uji-ai/ui/components/ui/dialog";
-import { mergeStyleProps, type XStyle } from "@uji-ai/ui/style";
+import { mergeStyleProps, type StyledProps } from "../../style.ts";
+import { dialogStyles } from "./dialog.tsx";
 
 export const AlertDialog = AlertDialogPrimitive.Root;
 export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
-export const AlertDialogPortal = AlertDialogPrimitive.Portal;
 export const AlertDialogClose = AlertDialogPrimitive.Close;
-
-type StyledProps<Props> = Omit<Props, "className" | "style"> & {
-  className?: string;
-  style?: React.CSSProperties;
-  xstyle?: XStyle;
-};
 
 export type AlertDialogContentProps = StyledProps<AlertDialogPrimitive.Popup.Props>;
 
@@ -26,7 +19,7 @@ export function AlertDialogContent({
   ...props
 }: AlertDialogContentProps) {
   return (
-    <AlertDialogPortal>
+    <AlertDialogPrimitive.Portal>
       <AlertDialogPrimitive.Backdrop
         data-slot="alert-dialog-overlay"
         {...stylex.props(dialogStyles.overlay)}
@@ -38,7 +31,7 @@ export function AlertDialogContent({
       >
         {children}
       </AlertDialogPrimitive.Popup>
-    </AlertDialogPortal>
+    </AlertDialogPrimitive.Portal>
   );
 }
 

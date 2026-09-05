@@ -1,0 +1,23 @@
+{
+  "name": "@nyte-ai/protocol",
+  "private": true,
+  "description": "The Nyte wire contract: SDK data types, TypeBox schemas, verb table, JSON envelopes, and the SSE codec. No core, no Node.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/schema": "workspace:*",
+    "typebox": "1.3.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

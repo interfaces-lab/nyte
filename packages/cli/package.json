@@ -1,7 +1,7 @@
 {
-  "name": "uji-ai",
+  "name": "nyte-ai",
   "version": "0.0.2",
-  "description": "Headless agent runner and terminal client for Uji",
+  "description": "Headless agent runner and terminal client for Nyte",
   "keywords": [
     "agent",
     "ai",
@@ -9,12 +9,12 @@
     "coding-agent",
     "headless"
   ],
-  "license": "UNLICENSED",
   "bin": {
-    "uji": "bin/uji.js"
+    "nyte": "bin/nyte.js"
   },
   "files": [
     "bin",
+    "src",
     "README.md"
   ],
   "type": "module",
@@ -23,7 +23,10 @@
   },
   "scripts": {
     "clean": "rm -rf node_modules .turbo",
-    "test": "node --test"
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.0"
   },
   "engines": {
     "node": ">=26"

@@ -1,11 +1,11 @@
 /**
- * Self-update for the compiled `uji` binary. Downloads the release tarball
+ * Self-update for the compiled `nyte` binary. Downloads the release tarball
  * for this platform, verifies its sha256, and swaps the binary in place with
  * one rename. A build running from source has no binary to replace and is
  * told so.
  *
  * Release assets are the ones `scripts/package.sh` stages:
- * `uji-v<version>-<os>-<arch>.tar.gz` plus a `.sha256` beside it.
+ * `nyte-v<version>-<os>-<arch>.tar.gz` plus a `.sha256` beside it.
  */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,7 +15,6 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { valid } from "semver";
@@ -24,32 +23,27 @@ import { fetchLatestRelease, isNewerVersion, REPO, VERSION } from "./version.ts"
 const execFileAsync = promisify(execFile);
 
 export type UpdateOutcome =
-  | { kind: "updated"; from: string; to: string; path: string }
-  | { kind: "current"; version: string }
-  | { kind: "unsupported"; reason: string }
-  | { kind: "failed"; message: string };
+  | { readonly kind: "updated"; readonly from: string; readonly to: string; readonly path: string }
+  | { readonly kind: "current"; readonly version: string }
+  | { readonly kind: "unsupported"; readonly reason: string }
+  | { readonly kind: "failed"; readonly message: string };
 
-/**
- * What the update is doing, as data. Clients word it: the CLI paints a
- * rewritten percent row, the TUI keeps one transcript note. Reporting prose
- * from here forced both to parse strings back into intent.
- */
+/** What the update is doing, as data. Clients word it. */
 export type UpdateProgress =
-  | { kind: "downloading"; asset: string }
-  | { kind: "percent"; percent: number }
-  | { kind: "verified" };
+  | { readonly kind: "downloading"; readonly asset: string }
+  | { readonly kind: "percent"; readonly percent: number }
+  | { readonly kind: "verified" };
 
-interface UpdateOptions {
+export interface UpdateOptions {
   /** Install this release instead of the newest one. A leading `v` is fine. */
-  version?: string;
-  /** Progress events, one at a time, in the order they happen. */
-  report?: (event: UpdateProgress) => void;
-  fetchFn?: typeof globalThis.fetch;
+  readonly version?: string;
+  readonly report?: (event: UpdateProgress) => void;
+  readonly fetchFn?: typeof globalThis.fetch;
   /** The binary to replace. Defaults to the running compiled binary. */
-  binaryPath?: string;
+  readonly binaryPath?: string;
 }
 
-/** `uji-v0.2.0-darwin-arm64`, or `undefined` when no release is built for the platform. */
+/** `nyte-v0.2.0-darwin-arm64`, or `undefined` when no release is built for the platform. */
 export function releaseAssetName(
   version: string,
   platform: string = process.platform,
@@ -58,7 +52,7 @@ export function releaseAssetName(
   const os = platform === "darwin" || platform === "linux" ? platform : undefined;
   const cpu = arch === "arm64" || arch === "x64" ? arch : undefined;
   if (os === undefined || cpu === undefined) return undefined;
-  return `uji-v${version.replace(/^v/u, "")}-${os}-${cpu}`;
+  return `nyte-v${version.replace(/^v/u, "")}-${os}-${cpu}`;
 }
 
 /** The hex digest from a `sha256sum`/`shasum` line: `<hex>  <file>`. */
@@ -70,8 +64,7 @@ function parseSha256(text: string): string | undefined {
 /**
  * The compiled binary's path, or `undefined` when running from source. A Bun
  * standalone executable serves its modules from the `/$bunfs/` virtual
- * filesystem and reports itself as `process.execPath`; under `bun src/...` or
- * `node`, `execPath` is the runtime, not us.
+ * filesystem and reports itself as `process.execPath`.
  */
 export function installedBinaryPath(
   moduleUrl: string = import.meta.url,
@@ -85,15 +78,16 @@ export function installedBinaryPath(
   return execPath;
 }
 
+export type UpdateTarget =
+  | { readonly kind: "install"; readonly version: string; readonly explicit: boolean }
+  | { readonly kind: "current"; readonly version: string }
+  | { readonly kind: "failed"; readonly message: string };
+
 /** Decide what to install: an explicit version wins; otherwise the latest when it is newer. */
 export async function resolveUpdateTarget(
   options: Pick<UpdateOptions, "version" | "fetchFn">,
   current: string = VERSION,
-): Promise<
-  | { kind: "install"; version: string; explicit: boolean }
-  | { kind: "current"; version: string }
-  | { kind: "failed"; message: string }
-> {
+): Promise<UpdateTarget> {
   if (options.version !== undefined) {
     const version = valid(options.version.trim().replace(/^v/u, ""));
     if (version === null) {
@@ -127,8 +121,7 @@ async function downloadTo(
   const total = length === null ? undefined : Number(length);
   const hash = createHash("sha256");
   let received = 0;
-  // SAFETY: fetch's body is a WHATWG ReadableStream; node:stream's fromWeb wants its own alias of the same type.
-  const body = Readable.fromWeb(response.body as unknown as WebReadableStream);
+  const body = Readable.fromWeb(response.body);
   body.on("data", (chunk: Buffer) => {
     hash.update(chunk);
     received += chunk.length;
@@ -144,6 +137,15 @@ async function fetchText(fetchFn: typeof globalThis.fetch, url: string): Promise
   return response.text();
 }
 
+function isPermissionError(cause: unknown): cause is { readonly code: "EACCES" | "EPERM" } {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    (cause.code === "EACCES" || cause.code === "EPERM")
+  );
+}
+
 export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOutcome> {
   const report = options.report ?? (() => undefined);
   const fetchFn = options.fetchFn ?? globalThis.fetch;
@@ -151,7 +153,7 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   if (binaryPath === undefined) {
     return {
       kind: "unsupported",
-      reason: "uji is running from source. Update with git pull, not uji update.",
+      reason: "nyte is running from source. Update with git pull, not nyte update.",
     };
   }
 
@@ -166,8 +168,8 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   }
 
   const base = `https://github.com/${REPO}/releases/download/v${target.version}`;
-  const workDir = await mkdtemp(join(tmpdir(), "uji-update-"));
-  const staged = join(dirname(binaryPath), `.uji-update-${String(process.pid)}`);
+  const workDir = await mkdtemp(join(tmpdir(), "nyte-update-"));
+  const staged = join(dirname(binaryPath), `.nyte-update-${String(process.pid)}`);
   try {
     report({ kind: "downloading", asset: `${asset}.tar.gz` });
     const expected = parseSha256(await fetchText(fetchFn, `${base}/${asset}.tar.gz.sha256`));
@@ -193,9 +195,9 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     report({ kind: "verified" });
 
     await execFileAsync("tar", ["-xzf", archive, "-C", workDir]);
-    const extracted = join(workDir, "uji");
+    const extracted = join(workDir, "nyte");
     if (!(await stat(extracted).catch(() => undefined))?.isFile()) {
-      return { kind: "failed", message: `${asset}.tar.gz does not contain a uji binary.` };
+      return { kind: "failed", message: `${asset}.tar.gz does not contain a nyte binary.` };
     }
     await copyFile(extracted, staged);
     await chmod(staged, 0o755);
@@ -203,13 +205,11 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     // old inode mapped; the next launch gets the new file.
     await rename(staged, binaryPath);
     return { kind: "updated", from: VERSION, to: target.version, path: binaryPath };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const code = typeof error === "object" && error !== null && "code" in error ? error.code : "";
-    const hint =
-      code === "EACCES" || code === "EPERM"
-        ? ` Can't write ${binaryPath}; rerun with permission to that directory.`
-        : "";
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    const hint = isPermissionError(cause)
+      ? ` Can't write ${binaryPath}; rerun with permission to that directory.`
+      : "";
     return { kind: "failed", message: `${message}${hint}` };
   } finally {
     await rm(workDir, { recursive: true, force: true });
@@ -217,16 +217,20 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   }
 }
 
-/** One line per outcome, shared by `uji update` and `/update`. */
+/** One line per outcome, shared by `nyte update` and `/update`. */
 export function describeUpdateOutcome(outcome: UpdateOutcome): string {
   switch (outcome.kind) {
     case "updated":
-      return `Updated uji ${outcome.from} → ${outcome.to} at ${outcome.path}. Restart uji to use it.`;
+      return `Updated nyte ${outcome.from} → ${outcome.to} at ${outcome.path}. Restart nyte to use it.`;
     case "current":
-      return `uji ${outcome.version} is the latest release.`;
+      return `nyte ${outcome.version} is the latest release.`;
     case "unsupported":
       return outcome.reason;
     case "failed":
       return outcome.message;
+    default: {
+      const _exhaustive: never = outcome;
+      return _exhaustive;
+    }
   }
 }

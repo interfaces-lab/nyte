@@ -1,0 +1,23 @@
+{
+  "name": "@nyte-ai/client",
+  "private": true,
+  "description": "A typed Nyte client over fetch: the SDK namespaces as JSON calls and watch as an AsyncIterable over SSE. No core, no Node.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@nyte-ai/schema": "workspace:*",
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

@@ -9,9 +9,9 @@ that is the generator's job.
 
 Two conventions make the set read as one system:
 
-  * Colour is never literal. Strokes are `currentColor` or a `var(--color-cog-*)`
-    token, so a figure inverts with the theme and picks up the accent the rest
-    of the page uses. The SVG is inlined into the page rather than loaded
+  * Colour is never literal. Strokes are `currentColor` or a `var(--color-fig-*)`
+    token (declared in src/app/global.css), so a figure inverts with the theme
+    and picks up the accent the rest of the page uses. The SVG is inlined into the page rather than loaded
     through <img>, which is what makes that work.
   * Motion is slow, linear, and endless. These are ambient figures beside a
     paragraph, not animations a reader is meant to watch finish. Every script
@@ -34,12 +34,12 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "src" / "diagrams"
 # The roles a figure may paint with. `ink` is the page's text colour, so a
 # figure is legible in both themes without a second palette.
 INK = "currentColor"
-ACCENT = "var(--color-cog-accent)"
-GREEN = "var(--color-cog-green)"
-AMBER = "var(--color-cog-amber)"
-VIOLET = "var(--color-cog-violet)"
-CYAN = "var(--color-cog-cyan)"
-GOLD = "var(--color-cog-gold)"
+ACCENT = "var(--color-fig-accent)"
+GREEN = "var(--color-fig-green)"
+AMBER = "var(--color-fig-amber)"
+VIOLET = "var(--color-fig-violet)"
+CYAN = "var(--color-fig-cyan)"
+GOLD = "var(--color-fig-gold)"
 
 # Literal values, for figures that keep one appearance wherever they are shown.
 BLACK = "#000000"
@@ -181,7 +181,7 @@ class Canvas:
         """Trace a path on, hold, and start again — growth, not a loop."""
         self.css(
             f".{cls}{{stroke-dasharray:{fmt(length)};stroke-dashoffset:{fmt(length)};"
-            f"animation:{cls}-draw {fmt(seconds)}s var(--ease-uji, ease-out) {fmt(delay)}s infinite}}"
+            f"animation:{cls}-draw {fmt(seconds)}s var(--ease-nyte, ease-out) {fmt(delay)}s infinite}}"
             f"@keyframes {cls}-draw{{0%{{stroke-dashoffset:{fmt(length)}}}"
             f"55%,100%{{stroke-dashoffset:0}}}}"
         )

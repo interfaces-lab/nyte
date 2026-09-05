@@ -1,34 +1,42 @@
 /**
- * One home for every way a folder opens. `pickWorkspace` and `openWorkspace`
- * end in an outcome union, and each caller — the blank stage, the rail's
- * recents and open-folder rows — funnels it through `handleOpenOutcome` so no `needs_trust`
- * or `failed` outcome is dropped on the floor. The host renders a native
- * `<dialog>` via `showModal`: real focus trap, Escape cancels, `::backdrop`
- * scrims. Both prompts answer the action the user just took, so a modal does
- * not interrupt anything — it *is* the next step of the task. Trust is the
- * product's one permission gate (invariant 21); the copy matches the TUI so
- * both clients ask the same question.
+ * Trust is requested when sending. Folder selection failures appear as a
+ * dismissible toast, leaving the current chat usable.
  */
+import { Dialog } from "@nyte-ai/ui/primitives";
+import { toast } from "@nyte-ai/ui/sonner";
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { Button } from "../components/ui";
 import { keys, queryClient } from "../queries.ts";
+import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import { uji } from "../uji.ts";
-import type { OpenWorkspaceOutcome } from "../uji.ts";
+import { nyte } from "../nyte.ts";
+import type { OpenWorkspaceOutcome } from "../nyte.ts";
 
 const styles = stylex.create({
-  // No `display` here: the user-agent's `dialog:not([open])` rule must keep
-  // winning, and any layered author display would override it.
-  dialog: {
+  backdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: layer.dialogBackdrop,
+    backgroundColor: t.bgScrim,
+  },
+  popup: {
+    position: "fixed",
+    top: "50%",
+    left: "50%",
+    zIndex: layer.dialog,
     width: "min(460px, calc(100vw - 48px))",
+    maxHeight: "calc(100dvh - 48px)",
     padding: 20,
+    overflowY: "auto",
     borderStyle: "none",
     borderRadius: t.radiusXl,
+    outline: "none",
     backgroundColor: t.bgElevated,
     color: t.textPrimary,
     boxShadow: t.shadowModal,
+    transform: "translate(-50%, -50%)",
   },
   inner: { display: "flex", flexDirection: "column", gap: 14 },
   title: { fontSize: t.fontLg, fontWeight: 600, color: t.textPrimary },
@@ -46,9 +54,7 @@ const styles = stylex.create({
   actions: { display: "flex", justifyContent: "flex-end", gap: 8 },
 });
 
-type OpenPrompt = { kind: "trust"; path: string } | { kind: "failed"; message: string };
-
-let prompt: OpenPrompt | undefined;
+let prompt: string | undefined;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -58,11 +64,11 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function snapshot(): OpenPrompt | undefined {
+function snapshot(): string | undefined {
   return prompt;
 }
 
-function setPrompt(next: OpenPrompt | undefined): void {
+function setPrompt(next: string | undefined): void {
   prompt = next;
   for (const listener of listeners) listener();
 }
@@ -71,13 +77,20 @@ function setPrompt(next: OpenPrompt | undefined): void {
 export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   switch (outcome.kind) {
     case "needs_trust":
-      setPrompt({ kind: "trust", path: outcome.path });
+      toast.dismiss("workspace-open");
+      setPrompt(outcome.path);
       return;
     case "failed":
-      setPrompt({ kind: "failed", message: outcome.message });
+      setPrompt(undefined);
+      toast.error("Couldn't open folder", {
+        id: "workspace-open",
+        description: outcome.message,
+        duration: Infinity,
+      });
       return;
     case "opened":
     case "cancelled":
+      toast.dismiss("workspace-open");
       setPrompt(undefined);
       return;
     default: {
@@ -89,9 +102,10 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
 
 function grantTrust(path: string): void {
   setPrompt(undefined);
-  void uji.host.trustWorkspace({ path }).then((outcome) => {
+  void nyte.host.trustWorkspace({ path }).then((outcome) => {
     handleOpenOutcome(outcome);
     void queryClient.invalidateQueries({ queryKey: keys.workspaces });
+    void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog });
   });
 }
 
@@ -104,15 +118,15 @@ function Modal({
   onDismiss: () => void;
   children: ReactNode;
 }): ReactElement {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog !== null && !dialog.open) dialog.showModal();
-  }, []);
   return (
-    <dialog ref={ref} aria-label={label} {...stylex.props(styles.dialog)} onClose={onDismiss}>
-      <div {...stylex.props(styles.inner)}>{children}</div>
-    </dialog>
+    <Dialog.Root open onOpenChange={(open) => !open && onDismiss()}>
+      <Dialog.Portal>
+        <Dialog.Backdrop {...stylex.props(styles.backdrop)} />
+        <Dialog.Popup aria-label={label} {...stylex.props(styles.popup)}>
+          <div {...stylex.props(styles.inner)}>{children}</div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -121,38 +135,20 @@ export function WorkspaceDialogHost(): ReactElement | null {
   const current = useSyncExternalStore(subscribe, snapshot);
   if (current === undefined) return null;
 
-  if (current.kind === "trust") {
-    return (
-      <Modal
-        key={`trust:${current.path}`}
-        label="Do you trust this folder?"
-        onDismiss={() => setPrompt(undefined)}
-      >
-        <div {...stylex.props(styles.title)}>Do you trust this folder?</div>
-        <div {...stylex.props(styles.path)}>{current.path}</div>
-        <div {...stylex.props(styles.body)}>
-          Uji can execute code and access files in this directory. Project plugins and skills load
-          only after you trust it.
-        </div>
-        <div {...stylex.props(styles.actions)}>
-          <Button variant="ghost" autoFocus onClick={() => setPrompt(undefined)}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={() => grantTrust(current.path)}>
-            Trust and continue
-          </Button>
-        </div>
-      </Modal>
-    );
-  }
-
   return (
-    <Modal key="failed" label="Couldn't open folder" onDismiss={() => setPrompt(undefined)}>
-      <div {...stylex.props(styles.title)}>Couldn&rsquo;t open folder</div>
-      <div {...stylex.props(styles.body)}>{current.message}</div>
+    <Modal key={current} label="Do you trust this folder?" onDismiss={() => setPrompt(undefined)}>
+      <div {...stylex.props(styles.title)}>Do you trust this folder?</div>
+      <div {...stylex.props(styles.path)}>{current}</div>
+      <div {...stylex.props(styles.body)}>
+        Nyte can execute code and access files in this folder. Project plugins and skills load only
+        after you trust it.
+      </div>
       <div {...stylex.props(styles.actions)}>
-        <Button variant="primary" autoFocus onClick={() => setPrompt(undefined)}>
-          OK
+        <Button variant="ghost" autoFocus onClick={() => setPrompt(undefined)}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={() => grantTrust(current)}>
+          Trust and continue
         </Button>
       </div>
     </Modal>

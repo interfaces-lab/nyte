@@ -9,6 +9,7 @@ import type {
   AssistantMessage,
   AssistantMessageEvent,
   AssistantMessageEventStream,
+  CacheRetention,
   Context,
   ImageContent,
   ProviderCheckpointMaterial,
@@ -19,15 +20,17 @@ import type {
   TextContent,
   Tool,
   ToolResultMessage,
+  Transport,
   Usage,
-} from "@uji-ai/ai";
-import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
-import type { JsonValue } from "@uji-ai/schema";
+} from "@nyte-ai/ai";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
+import type { JsonValue } from "@nyte-ai/schema";
+import type { JsonObject } from "./kernel/json.ts";
 import type { Static, TSchema } from "typebox";
 
 /**
  * Stream function used by the agent loop. `Models.streamSimple` satisfies
- * this shape.
+ * this contract.
  *
  * Contract:
  * - Must not throw or return a rejected promise for request/model/runtime failures.
@@ -42,12 +45,50 @@ export type StreamFn = (
 ) => AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 /**
+ * Provider request options snapshotted per turn and available to
+ * `before_request` hooks.
+ *
+ * Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/types.ts
+ * Synced with pi 7ebf9087e.
+ */
+type SamplingParams = NonNullable<SimpleStreamOptions["samplingParams"]>;
+
+export interface StreamOptions {
+  /** Maximum provider retry attempts. */
+  maxRetries?: number;
+  /** Optional cap for provider-requested retry delays. */
+  maxRetryDelayMs?: number;
+  /** Preferred transport for providers that support more than one. */
+  transport?: Transport;
+  /** Prompt cache retention preference. */
+  cacheRetention?: CacheRetention;
+  /** Request the selected model's advertised fast inference mode. */
+  fast?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+  /** Additional request headers merged with auth and lifecycle headers. */
+  headers?: Record<string, string>;
+  /** Sampling parameters merged into OpenAI-compatible request bodies. */
+  samplingParams?: SamplingParams;
+}
+
+/** Per-request stream option patch returned by provider hooks. */
+export interface StreamOptionsPatch extends Omit<
+  Partial<StreamOptions>,
+  "headers" | "samplingParams"
+> {
+  /** Header patch. `undefined` values delete keys; an undefined field clears all headers. */
+  headers?: Record<string, string | undefined> | undefined;
+  /** Sampling patch. `undefined` values delete keys; an undefined field clears all parameters. */
+  samplingParams?: SamplingParams | undefined;
+}
+
+/**
  * Controls how many queued user messages are injected when the agent loop reaches a queue drain point.
  *
  * - "all": drain and inject every queued message at that point.
  * - "one-at-a-time": drain and inject only the oldest queued message, leaving the rest queued for later drain points.
  */
-export type QueueMode = "all" | "one-at-a-time";
 
 /** A single tool call content block emitted by an assistant message. */
 export type AgentToolCall = Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
@@ -61,6 +102,11 @@ export type AgentToolCall = Extract<AssistantMessage["content"][number], { type:
 export interface BeforeToolCallResult {
   block?: boolean;
   reason?: string;
+  /**
+   * Replacement arguments. The loop validates them against the tool's schema
+   * before the tool runs, exactly as it validated the model's proposal.
+   */
+  args?: JsonObject;
 }
 
 /**
@@ -115,37 +161,9 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
   model: Model<any>;
 
   /**
-   * Converts AgentMessage[] to LLM-compatible Message[] before each LLM call.
+   * Optional transform applied to the context before the request.
    *
-   * Each AgentMessage must be converted to a UserMessage, AssistantMessage, or ToolResultMessage
-   * that the LLM can understand. AgentMessages that cannot be converted (e.g., UI-only notifications,
-   * status messages) should be filtered out.
-   *
-   * Contract: must not throw or reject. Return a safe fallback value instead.
-   * Throwing interrupts the low-level agent loop without producing a normal event sequence.
-   *
-   * @example
-   * ```typescript
-   * convertToLlm: (messages) => messages.flatMap(m => {
-   *   if (m.role === "custom") {
-   *     // Convert custom message to user message
-   *     return [{ role: "user", content: m.content, timestamp: m.timestamp }];
-   *   }
-   *   if (m.role === "notification") {
-   *     // Filter out UI-only messages
-   *     return [];
-   *   }
-   *   // Pass through standard LLM messages
-   *   return [m];
-   * })
-   * ```
-   */
-  convertToLlm: (messages: AgentMessage[]) => Message[] | Promise<Message[]>;
-
-  /**
-   * Optional transform applied to the context before `convertToLlm`.
-   *
-   * Use this for operations that work at the AgentMessage level:
+   * Use this for operations that work on the whole message list:
    * - Context window management (pruning old messages)
    * - Injecting context from external sources
    *
@@ -162,7 +180,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
    * }
    * ```
    */
-  transformContext?: (messages: AgentMessage[], signal?: AbortSignal) => Promise<AgentMessage[]>;
+  transformContext?: (messages: Message[], signal?: AbortSignal) => Promise<Message[]>;
 
   /**
    * Called before a tool is executed, after arguments have been validated.
@@ -195,7 +213,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 
 /**
  * Thinking/reasoning level for models that support it, including "off".
- * Derived from @uji-ai/schema's MODEL_THINKING_LEVELS tuple — the
+ * Derived from @nyte-ai/schema's MODEL_THINKING_LEVELS tuple — the
  * ordered runtime list and both unions live there, not here.
  * Note: "xhigh" and "max" are only supported by selected model families. Use model
  * thinking-level metadata from @earendil-works/pi-ai to detect support for a concrete model.
@@ -206,32 +224,6 @@ export type ThinkingLevel = ModelThinkingLevel;
 export function isThinkingLevel(value: string): value is ThinkingLevel {
   return MODEL_THINKING_LEVELS.some((level) => level === value);
 }
-
-/**
- * Extensible interface for custom app messages.
- * Apps can extend via declaration merging:
- *
- * @example
- * ```typescript
- * declare module "@mariozechner/agent" {
- *   interface CustomAgentMessages {
- *     artifact: ArtifactMessage;
- *     notification: NotificationMessage;
- *   }
- * }
- * ```
- */
-export interface CustomAgentMessages {
-  // Empty by default - apps extend via declaration merging
-}
-
-/**
- * AgentMessage: Union of LLM messages + custom messages.
- * This abstraction allows apps to add custom message types while maintaining
- * type safety and compatibility with the base LLM messages.
- */
-// oxlint-disable-next-line no-redundant-type-constituents -- upstream extension point resolves to never until declaration-merged
-export type AgentMessage = Message | CustomAgentMessages[keyof CustomAgentMessages];
 
 /** Final or partial result produced by a tool. */
 export interface AgentToolResult<T> {
@@ -273,7 +265,7 @@ export type AgentToolUpdateCallback<T = any> = (partialResult: AgentToolResult<T
  * tool that thinks it must smuggle state across the gap should derive it
  * instead.
  */
-const TOOL_WAIT_BRAND = Symbol.for("uji.toolWait");
+const TOOL_WAIT_BRAND = Symbol.for("nyte.toolWait");
 
 export class ToolWait {
   /** Shared-symbol brand: `instanceof` fails across duplicated bundles. */
@@ -281,11 +273,11 @@ export class ToolWait {
 }
 
 export function isToolWait(error: unknown): error is ToolWait {
-  // SAFETY: probing the brand symbol on a foreign copy of the class.
   return (
     typeof error === "object" &&
     error !== null &&
-    (error as Record<symbol, unknown>)[TOOL_WAIT_BRAND] === true
+    TOOL_WAIT_BRAND in error &&
+    error[TOOL_WAIT_BRAND] === true
   );
 }
 
@@ -340,7 +332,7 @@ export interface AgentTool<
    * Optional compatibility shim for raw tool-call arguments before schema validation.
    * Must return an object that matches `TParameters`.
    */
-  prepareArguments?: (args: unknown) => Static<TParameters>;
+  prepareArguments?: (args: AgentToolCall["arguments"]) => Static<TParameters>;
   /** Execute the tool call. Throw on failure instead of encoding errors in `content`. */
   execute: (
     toolCallId: string,
@@ -368,7 +360,7 @@ export interface AgentContext {
   /** Provider-native replacement for the history before `messages`. */
   checkpoint?: ProviderCheckpointMaterial;
   /** Transcript visible to the model after the checkpoint, if any. */
-  messages: AgentMessage[];
+  messages: Message[];
   /** Tools available for this run. */
   tools?: AgentTool<any>[];
 }
@@ -380,12 +372,12 @@ export interface AgentContext {
 export type AgentEvent =
   // Turn lifecycle - a turn is one assistant response + any tool calls/results
   | { type: "turn_start" }
-  | { type: "turn_end"; message: AgentMessage; toolResults: ToolResultMessage[] }
+  | { type: "turn_end"; message: Message; toolResults: ToolResultMessage[] }
   // Message lifecycle - emitted for user, assistant, and toolResult messages
-  | { type: "message_start"; message: AgentMessage }
+  | { type: "message_start"; message: Message }
   // Only emitted for assistant messages during streaming
-  | { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
-  | { type: "message_end"; message: AgentMessage }
+  | { type: "message_update"; message: Message; assistantMessageEvent: AssistantMessageEvent }
+  | { type: "message_end"; message: Message }
   // Tool execution lifecycle
   | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: any }
   | {

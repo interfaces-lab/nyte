@@ -1,6 +1,6 @@
 /**
- * Request option and adapter contract types for @uji-ai/ai. The neutral message,
- * model, and tool types live in @uji-ai/schema and are re-exported here so
+ * Request option and adapter contract types for @nyte-ai/ai. The neutral message,
+ * model, and tool types live in @nyte-ai/schema and are re-exported here so
  * callers that follow pi's layout can import everything from one place; this
  * file adds only what a provider request needs on top of them: transport and
  * auth options, the stream function contract, and the per-API option map.
@@ -8,8 +8,8 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/types.ts
  * Synced with pi 7ebf9087e.
  */
-import type { Api, Context, DeferredHandle, Model, ThinkingLevel } from "@uji-ai/schema";
-import type { TelemetryContext } from "@uji-ai/telemetry";
+import type { Api, Context, DeferredHandle, Model, ThinkingLevel } from "@nyte-ai/schema";
+import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type { AnthropicOptions } from "./api/anthropic-messages.ts";
 import type { GoogleOptions } from "./api/google-generative-ai.ts";
 import type { OpenAICodexResponsesOptions } from "./api/openai-codex-responses.ts";
@@ -63,7 +63,7 @@ export type {
   ToolResultMessage,
   Usage,
   UserMessage,
-} from "@uji-ai/schema";
+} from "@nyte-ai/schema";
 
 export type ToolChoice = "auto" | "none";
 
@@ -184,7 +184,7 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
   /**
    * Arbitrary sampling parameters merged into the request body as-is, after the named request
    * fields, so keys here override them. Lets custom OpenAI-compatible servers receive parameters
-   * Uji does not model, e.g. `top_p`, `top_k`, `min_p`, `repetition_penalty`. Merged over
+   * Nyte does not model, e.g. `top_p`, `top_k`, `min_p`, `repetition_penalty`. Merged over
    * `Model.samplingParams` per key. Only applied by OpenAI-compatible adapters; other APIs ignore it.
    */
   samplingParams?: Record<string, unknown>;

@@ -1,13 +1,13 @@
 /** Local Git changes. GitHub state never participates in this query path. */
+import { Tabs } from "@nyte-ai/ui/primitives";
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import type { ReactElement } from "react";
-import type { FileChange, SessionId, VcsStatus } from "@uji-ai/core";
+import type { FileChange, SessionId, VcsStatus } from "@nyte-ai/core";
 import { FileTypeIcon, FileTypeIconSprite } from "../components/file-type-icon";
-import { Icon } from "../components/icons";
-import { focus, IconButton } from "../components/ui";
-import { DiffCard } from "../conversation/diff-view";
-import { refreshVcs, useRunChanges, useVcsDiff, useVcsSnapshot } from "../queries.ts";
+import { focus } from "../components/ui";
+import { DiffView } from "../conversation/diff-view";
+import { useRunChanges, useVcsDiff, useVcsSnapshot } from "../queries.ts";
 import type { VcsDiffIdentity } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -31,41 +31,20 @@ const styles = stylex.create({
     minHeight: 0,
     backgroundColor: t.bgBase,
   },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 7,
-    height: workbench.headerHeight,
-    paddingInline: 10,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
-    flexShrink: 0,
-  },
-  heading: { color: t.textPrimary, fontSize: t.fontBase, fontWeight: 600 },
-  branch: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    minWidth: 0,
-    color: t.textTertiary,
-    fontFamily: t.fontMono,
-    fontSize: t.fontCode,
-  },
-  branchText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  spacer: { flex: 1 },
   body: { display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   files: {
+    order: 1,
     width: workbench.fileListWidth,
     flexShrink: 0,
     minHeight: 0,
     overflowY: "auto",
     padding: 5,
-    borderInlineEndWidth: 1,
-    borderInlineEndStyle: "solid",
-    borderInlineEndColor: t.borderSubtle,
+    borderInlineStartWidth: 1,
+    borderInlineStartStyle: "solid",
+    borderInlineStartColor: t.borderSubtle,
     backgroundColor: t.bgSubtle,
   },
+  filesHidden: { display: "none" },
   file: {
     display: "flex",
     alignItems: "center",
@@ -90,9 +69,9 @@ const styles = stylex.create({
     fontSize: t.fontCode,
     textAlign: "center",
   },
-  addedStatus: { color: t.added },
-  modifiedStatus: { color: t.warn },
-  removedStatus: { color: t.removed },
+  addedStatus: { color: t.textSuccess },
+  modifiedStatus: { color: t.textWarning },
+  removedStatus: { color: t.textDanger },
   filePath: {
     flex: 1,
     minWidth: 0,
@@ -107,8 +86,8 @@ const styles = stylex.create({
     fontSize: t.fontXs,
     fontVariantNumeric: "tabular-nums",
   },
-  added: { color: t.added },
-  removed: { color: t.removed },
+  added: { color: t.textSuccess },
+  removed: { color: t.textDanger },
   preview: { flex: 1, minWidth: 0, minHeight: 0, overflow: "auto", padding: 8 },
   empty: {
     display: "flex",
@@ -191,20 +170,18 @@ export interface ChangesPanelProps {
   readonly sessionId: SessionId | undefined;
   readonly selectedPath: string | undefined;
   readonly scrollTop: number;
+  readonly fileTreeVisible: boolean;
   readonly onSelectPath: (path: string | undefined) => void;
   readonly onScrollTop: (scrollTop: number) => void;
-  readonly onHome: () => void;
-  readonly onClose: () => void;
 }
 
 export function ChangesPanel({
   sessionId,
   selectedPath,
   scrollTop,
+  fileTreeVisible,
   onSelectPath,
   onScrollTop,
-  onHome,
-  onClose,
 }: ChangesPanelProps): ReactElement {
   const declared = useRunChanges(sessionId);
   const snapshot = useVcsSnapshot(true);
@@ -226,63 +203,60 @@ export function ChangesPanel({
       ? undefined
       : parseCachedDiff(identity, diff.data.patch);
   const unavailable = queryError(snapshot.error, declared.error);
-  const previewRef = useRef<HTMLDivElement>(null);
-  const previousPath = useRef<string | undefined>(activePath);
-  const restoredScrollTop = useRef(scrollTop);
-
-  useEffect(() => {
-    if (activePath !== undefined && activePath !== selectedPath) onSelectPath(activePath);
-  }, [activePath, onSelectPath, selectedPath]);
-
-  useLayoutEffect(() => {
-    const preview = previewRef.current;
-    if (preview === null) return;
-    if (previousPath.current === activePath) preview.scrollTop = restoredScrollTop.current;
-    else {
-      previousPath.current = activePath;
-      preview.scrollTop = 0;
-      onScrollTop(0);
-    }
-  }, [activePath, onScrollTop]);
+  // The saved offset belongs to the file it was read at, so it is restored once,
+  // when that file's panel mounts. Every other panel mounts scrolled to the top.
+  const restore = useRef<
+    { readonly path: string | undefined; readonly scrollTop: number } | undefined
+  >({
+    path: selectedPath,
+    scrollTop,
+  });
+  const restorePreviewScroll = (preview: HTMLDivElement | null): void => {
+    const pending = restore.current;
+    if (preview === null || pending === undefined || pending.path !== activePath) return;
+    restore.current = undefined;
+    preview.scrollTop = pending.scrollTop;
+  };
 
   return (
     <section {...stylex.props(styles.panel)} aria-label="Workspace changes">
       <FileTypeIconSprite />
-      <header {...stylex.props(styles.header)}>
-        <IconButton icon="plus" label="Open workbench launcher" size={13} onClick={onHome} />
-        <span {...stylex.props(styles.heading)}>Changes</span>
-        {status?.branch !== undefined && (
-          <span {...stylex.props(styles.branch)} title={status.branch}>
-            <Icon name="git-branch" size={12} />
-            <span {...stylex.props(styles.branchText)}>{status.branch}</span>
-          </span>
-        )}
-        <span {...stylex.props(styles.spacer)} />
-        <IconButton icon="refresh" label="Refresh changes" size={13} onClick={refreshVcs} />
-        <IconButton icon="panel-right" label="Close workbench" size={13} onClick={onClose} />
-      </header>
       {rows.length === 0 ? (
-        <div {...stylex.props(styles.empty)}>
+        <div
+          role={unavailable === undefined ? "status" : "alert"}
+          title={unavailable}
+          {...stylex.props(styles.empty)}
+        >
           {unavailable !== undefined
-            ? `Changes unavailable: ${unavailable}`
+            ? "Couldn't read changes. Check that this folder is a Git repository."
             : snapshot.isLoading || declared.isLoading
               ? "Reading changes…"
               : "Working tree is clean"}
         </div>
       ) : (
-        <div {...stylex.props(styles.body)}>
-          <div data-uji-scrollport {...stylex.props(styles.files)}>
+        <Tabs.Root
+          orientation="vertical"
+          value={activePath}
+          {...stylex.props(styles.body)}
+          onValueChange={(value) => {
+            const row = rows.find((candidate) => candidate.path === value);
+            if (row !== undefined) onSelectPath(row.path);
+          }}
+        >
+          <Tabs.List
+            data-nyte-scrollport
+            {...stylex.props(styles.files, !fileTreeVisible && styles.filesHidden)}
+          >
             {rows.map((row) => (
-              <button
+              <Tabs.Tab
                 key={row.path}
-                type="button"
+                value={row.path}
                 title={row.path}
                 {...stylex.props(
                   styles.file,
                   focus.ringInset,
                   row.path === activePath && styles.fileSelected,
                 )}
-                onClick={() => onSelectPath(row.path)}
               >
                 <FileTypeIcon path={row.path} />
                 <span {...stylex.props(styles.filePath)}>{row.path.split("/").at(-1)}</span>
@@ -307,33 +281,40 @@ export function ChangesPanel({
                 >
                   {statusLetter(row.kind)}
                 </span>
-              </button>
+              </Tabs.Tab>
             ))}
-          </div>
-          <div
-            ref={previewRef}
-            data-uji-scrollport="balanced"
-            {...stylex.props(styles.preview)}
-            onScroll={(event) => onScrollTop(event.currentTarget.scrollTop)}
-          >
-            {active?.inWorkingTree === false ? (
-              <div {...stylex.props(styles.notice)}>
-                This file changed during the conversation but is no longer different in the working
-                tree.
-              </div>
-            ) : diff.isLoading ? (
-              <div {...stylex.props(styles.notice)}>Loading patch…</div>
-            ) : diff.isError ? (
-              <div {...stylex.props(styles.notice)}>The patch could not be read.</div>
-            ) : parsed !== undefined && activePath !== undefined ? (
-              <DiffCard path={activePath} diff={parsed} fill />
-            ) : diff.data !== undefined && diff.data.patch.trim() !== "" ? (
-              <pre {...stylex.props(styles.raw)}>{diff.data.patch}</pre>
-            ) : (
-              <div {...stylex.props(styles.notice)}>No text diff is available for this file.</div>
-            )}
-          </div>
-        </div>
+          </Tabs.List>
+          {rows.map((row) => (
+            <Tabs.Panel
+              key={row.path}
+              ref={row.path === activePath ? restorePreviewScroll : undefined}
+              value={row.path}
+              data-nyte-scrollport="balanced"
+              {...stylex.props(styles.preview)}
+              onScroll={(event) => onScrollTop(event.currentTarget.scrollTop)}
+            >
+              {row.path === activePath &&
+                (active?.inWorkingTree === false ? (
+                  <div {...stylex.props(styles.notice)}>
+                    This file changed during the conversation but is no longer different in the
+                    working tree.
+                  </div>
+                ) : diff.isLoading ? (
+                  <div {...stylex.props(styles.notice)}>Loading patch…</div>
+                ) : diff.isError ? (
+                  <div {...stylex.props(styles.notice)}>The patch could not be read.</div>
+                ) : parsed !== undefined && activePath !== undefined ? (
+                  <DiffView path={activePath} diff={parsed} variant="workbench" />
+                ) : diff.data !== undefined && diff.data.patch.trim() !== "" ? (
+                  <pre {...stylex.props(styles.raw)}>{diff.data.patch}</pre>
+                ) : (
+                  <div {...stylex.props(styles.notice)}>
+                    No text diff is available for this file.
+                  </div>
+                ))}
+            </Tabs.Panel>
+          ))}
+        </Tabs.Root>
       )}
     </section>
   );

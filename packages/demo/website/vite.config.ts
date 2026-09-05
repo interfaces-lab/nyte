@@ -23,7 +23,7 @@ export default defineConfig({
     tailwindcss(),
     nitro(),
   ],
-  optimizeDeps: { exclude: ["@uji-ai/ui"] },
+  optimizeDeps: { exclude: ["@nyte-ai/ui"] },
   resolve: { dedupe: ["react", "react-dom"] },
   server: {
     port: 5174,

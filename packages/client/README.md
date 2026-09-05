@@ -1,0 +1,105 @@
+# @nyte-ai/client
+
+The Nyte SDK namespaces over `fetch`, typed against `@nyte-ai/protocol`.
+Every verb is one `POST /v1/call/{verb}`; `watch` reads `GET /v1/watch` as
+server-sent events and yields an `AsyncIterable<SessionEvent>`.
+
+Dependencies: `@nyte-ai/protocol` only. No core, no Node. It runs wherever
+`fetch`, `Headers`, `ReadableStream`, and `TextDecoder` exist, and it never
+compiles code, so a browser page under a strict content security policy can
+use it.
+
+## Use
+
+A Node script (a browser page does the same with a token it was handed and
+its own event consumer; the package itself has no Node dependency):
+
+```ts
+import { createNyteClient, NyteWireError, NyteTransportError } from "@nyte-ai/client";
+
+const nyte = createNyteClient({
+  baseUrl: "http://127.0.0.1:8787",
+  token: process.env.NYTE_TOKEN, // undefined sends no Authorization header
+  // headers: { "x-trace": id },    extra headers on every request
+  // fetch: myFetch,                 a test can pass a server handler here
+  // maxFrameChars: 4_194_304,       the most one watch frame may hold (UTF-16 code units)
+});
+
+const session = await nyte.sessions.create({ name: "wire" });
+const receipt = await nyte.messages.send({
+  sessionId: session.sessionId,
+  content: "hello",
+  key: crypto.randomUUID(), // the same key twice answers `duplicate` with the same change
+});
+
+const snapshot = await nyte.sessions.snapshot({ sessionId: session.sessionId });
+if (snapshot === undefined) throw new Error("the session vanished");
+render(snapshot);
+for await (const event of nyte.watch({ sessionId: session.sessionId, afterSeq: snapshot.seq })) {
+  fold(event); // must tolerate a commit the snapshot already holds; see below
+  if (event.kind === "run" && event.run.phase.kind === "done") break;
+}
+```
+
+A watch from a snapshot's `seq` can replay a commit the snapshot already
+includes: the snapshot reads its cursor first and its transcript after, and
+a commit can land between the two. Fold events idempotently (a commit by its
+`oid`, a pending item by its `change`) rather than assuming each arrives
+once.
+
+Breaking out of the loop, calling `return()` on the iterator, or aborting
+the `signal` passed to `watch` cancels the response body and the request at
+once, even while a read is pending; that pending read resolves done. The
+server sees the disconnect and stops its SDK watch. The run keeps going.
+
+## What a reply must be
+
+The client trusts nothing it did not check. A call's reply must be
+`application/json`, must be the protocol's envelope, and its value must
+match the verb's output schema; otherwise the call throws
+`NyteTransportError` with `failure.kind` of `bad_content_type`, `bad_body`,
+`bad_status`, or `network`. A reply that is the envelope with `ok: false`
+throws `NyteWireError`, whose `code` is the stable protocol code and whose
+`status` is the HTTP status that carried it.
+
+A watch event is decoded against the `SessionEvent` schema before it is
+yielded. A frame that outgrows `maxFrameChars` (counted in UTF-16 code units
+of the decoded text, default 4 194 304) ends the watch with `bad_body`. An `error` frame throws `NyteWireError` (with `status` undefined:
+the stream was already open). End of stream without an `ended` frame throws
+`NyteTransportError` with `failure.kind === "disconnected"`; a finished
+watch is only one the server finished.
+
+Redirects are refused (`redirect: "error"`): an authenticated `POST` must not
+be replayed elsewhere as a `GET`. Nothing is retried.
+
+## Recovering
+
+When a watch throws, take a new snapshot and watch from its `seq`:
+
+```ts
+try {
+  for await (const event of nyte.watch({ sessionId, afterSeq })) fold(event);
+} catch (error) {
+  if (error instanceof NyteWireError && error.code === "cursor_expired") {
+    // the events between afterSeq and error.error.floor are gone; refold from a snapshot
+  }
+  const fresh = await nyte.sessions.snapshot({ sessionId });
+  if (fresh) {
+    reset(fresh);
+    // then watch again from fresh.seq
+  }
+}
+```
+
+Watching again from the last seq you saw is not a lossless resume after an
+arbitrary disconnect, because several events can share one seq. The
+snapshot's seq is the cursor the SDK guarantees.
+
+## Limitations
+
+- The verb set is the desktop's SDK subset plus `landing`; see the protocol
+  README. `runs.wait` and `runs.compact` are not available remotely.
+- No reconnect logic, no backoff, no queueing while offline. The caller owns
+  those.
+- One token for everything; the client has no notion of which sessions the
+  token may name.

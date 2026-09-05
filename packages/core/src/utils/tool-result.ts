@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent } from "@uji-ai/schema";
+import type { ImageContent, TextContent } from "@nyte-ai/schema";
 import type { AgentToolResult } from "../types.ts";
 
 /** Wraps plain text as tool-result content. */
@@ -31,48 +31,40 @@ export class ToolError<TDetails = unknown> extends Error {
  * and title filling gaps the error left. A `ToolError` is the tool's own
  * structured decision and is not amended.
  */
-export function toolErrorResult(error: unknown, lastPartial?: unknown): AgentToolResult<unknown> {
-  if (error instanceof ToolError) return error.result;
+export function toolErrorResult(
+  cause: unknown,
+  lastPartial?: AgentToolResult<unknown>,
+): AgentToolResult<unknown> {
+  if (cause instanceof ToolError) return cause.result;
   const result: AgentToolResult<unknown> = {
-    content: toolResultContent(error instanceof Error ? error.message : String(error)),
+    content: toolResultContent(cause instanceof Error ? cause.message : String(cause)),
     details: {},
   };
   return lastPartial === undefined ? result : withPartial(result, lastPartial);
 }
 
-function withPartial(result: AgentToolResult<unknown>, partial: unknown): AgentToolResult<unknown> {
-  if (typeof partial !== "object" || partial === null) return result;
-  const content =
-    "content" in partial && Array.isArray(partial.content)
-      ? partial.content.filter(isResultPart)
-      : [];
-  const details = "details" in partial ? partial.details : undefined;
-  const title = "title" in partial && typeof partial.title === "string" ? partial.title : undefined;
-  return {
+function withPartial(
+  result: AgentToolResult<unknown>,
+  partial: AgentToolResult<unknown>,
+): AgentToolResult<unknown> {
+  const settled: AgentToolResult<unknown> = {
     ...result,
-    content: [...result.content, ...content],
-    details: emptyDetails(result.details) && details !== undefined ? details : result.details,
-    ...(result.title === undefined && title !== undefined ? { title } : {}),
+    content: [...result.content, ...partial.content],
+    details:
+      emptyDetails(result.details) && partial.details !== undefined
+        ? partial.details
+        : result.details,
   };
+  if (result.title === undefined && partial.title !== undefined) {
+    settled.title = partial.title;
+  }
+  return settled;
 }
 
-function emptyDetails(details: unknown): boolean {
+/** True for absent details and for an empty object, the default a failure settles with. */
+function emptyDetails(details: unknown): details is undefined | object {
   return (
     details === undefined ||
     (typeof details === "object" && details !== null && Object.keys(details).length === 0)
   );
-}
-
-function isResultPart(part: unknown): part is TextContent | ImageContent {
-  if (typeof part !== "object" || part === null || !("type" in part)) return false;
-  if (part.type === "text") return "text" in part && typeof part.text === "string";
-  if (part.type === "image") {
-    return (
-      "data" in part &&
-      typeof part.data === "string" &&
-      "mimeType" in part &&
-      typeof part.mimeType === "string"
-    );
-  }
-  return false;
 }

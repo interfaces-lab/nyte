@@ -3,7 +3,7 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, mock, test } from "node:test";
+import { afterEach, describe, vi, test } from "vitest";
 import { uuidv7 } from "../src/utils/uuid.ts";
 
 const UUID_V7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -14,19 +14,19 @@ function parseTimestamp(uuid: string): number {
 }
 
 afterEach(() => {
-  mock.timers.reset();
-  mock.restoreAll();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
-void describe("uuidv7", () => {
-  void test("generates ordered UUIDv7s while preserving follower timestamps", () => {
-    mock.timers.enable({ apis: ["Date"], now: TIMESTAMP });
+describe("uuidv7", () => {
+  test("generates ordered UUIDv7s while preserving follower timestamps", () => {
+    vi.useFakeTimers({ toFake: ["Date"], now: TIMESTAMP });
 
     const first = uuidv7();
     const second = uuidv7();
-    mock.timers.setTime(TIMESTAMP - 1);
+    vi.setSystemTime(TIMESTAMP - 1);
     const afterRollback = uuidv7();
-    mock.timers.setTime(TIMESTAMP + 1);
+    vi.setSystemTime(TIMESTAMP + 1);
     const afterAdvance = uuidv7();
     const ordinaryIds = [first, second, afterRollback, afterAdvance];
     const followerTimestamp = TIMESTAMP - 1_000;
@@ -45,11 +45,12 @@ void describe("uuidv7", () => {
     assert.equal(new Set(followers).size, followers.length);
   });
 
-  void test("uses fresh randomness for every UUID tail", () => {
+  test("uses fresh randomness for every UUID tail", () => {
     let randomByte = 0;
-    mock.method(globalThis.crypto, "getRandomValues", (bytes: Uint8Array) =>
-      bytes.fill(++randomByte),
-    );
+    vi.spyOn(globalThis.crypto, "getRandomValues").mockImplementation((bytes) => {
+      if (bytes instanceof Uint8Array) bytes.fill(++randomByte);
+      return bytes;
+    });
 
     assert.deepEqual(
       [uuidv7(TIMESTAMP).slice(-8), uuidv7(TIMESTAMP).slice(-8)],
@@ -58,13 +59,13 @@ void describe("uuidv7", () => {
   });
 
   for (const timestamp of [0, 2 ** 48 - 1]) {
-    void test(`accepts timestamp boundary ${timestamp}`, () => {
+    test(`accepts timestamp boundary ${timestamp}`, () => {
       assert.equal(parseTimestamp(uuidv7(timestamp)), timestamp);
     });
   }
 
   for (const timestamp of [-1, 2 ** 48, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-    void test(`rejects invalid timestamp ${timestamp}`, () => {
+    test(`rejects invalid timestamp ${timestamp}`, () => {
       assert.throws(() => uuidv7(timestamp), RangeError);
     });
   }

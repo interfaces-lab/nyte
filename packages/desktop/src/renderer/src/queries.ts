@@ -2,18 +2,27 @@
 // fills its data. Watches invalidate settled data; queries never poll except
 // for the session directory, which has no cross-session watch verb yet.
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@nyte-ai/ui/sonner";
 import type {
   FileChange,
+  MentionFile,
+  PluginCatalog,
   Seq,
   SessionId,
   SessionInfo,
   SessionSnapshot,
+  SettingInfo,
   ThinkingLevel,
   VcsDiff,
-} from "@uji-ai/core";
-import type { DesktopVcsSnapshot, GitHubProviderState } from "../../shared/ipc.ts";
+} from "@nyte-ai/core";
+import type {
+  DesktopVcsSnapshot,
+  GitHubProviderState,
+  PreferenceChange,
+} from "../../shared/ipc.ts";
 import { INITIAL_SESSION_FETCH_LIMIT, type SessionPage } from "./session-directory.ts";
-import { uji } from "./uji.ts";
+import { nyte } from "./nyte.ts";
+import { runLive } from "./run-state.ts";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,29 +42,32 @@ export const keys = {
   sessions: ["sessions"] as const,
   sessionPreview: ["sessions", "preview"] as const,
   sessionSearch: (search: string) => ["sessions", "search", search] as const,
-  providers: ["providers"] as const,
-  models: ["models"] as const,
-  modelDefault: ["modelDefault"] as const,
+  catalog: ["catalog"] as const,
+  pluginCatalog: ["plugins", "catalog"] as const,
   github: ["github"] as const,
   session: (sessionId: SessionId) => ["session", sessionId] as const,
   snapshot: (sessionId: SessionId) => ["snapshot", sessionId] as const,
   changes: (sessionId: SessionId) => ["changes", sessionId] as const,
+  pluginSettings: (sessionId: SessionId) => ["plugins", "settings", sessionId] as const,
   workspaceChanges: ["changes", { kind: "workspace" }] as const,
   vcsSnapshot: ["vcs", "snapshot"] as const,
+  mentionFiles: ["files", "mentions"] as const,
   vcsDiff: (repositoryId: string, revision: string, path: string) =>
     ["vcs", "diff", repositoryId, revision, path] as const,
 };
 
 const SNAPSHOT_WARM_MS = 1_000;
 
-const readHost = () => uji.host.state();
-const readWorkspaces = () => uji.workspace.list();
-const readSessionPreview = () => uji.sessions.list({ limit: INITIAL_SESSION_FETCH_LIMIT });
-const readModels = () => uji.host.models();
-const readDefaultModel = () => uji.provider.models.default();
-const readSession = async (sessionId: SessionId) => (await uji.sessions.get({ sessionId })) ?? null;
+const readHost = () => nyte.host.state();
+const readWorkspaces = () => nyte.workspace.list();
+const readSessionPreview = () =>
+  nyte.sessions.list({ limit: INITIAL_SESSION_FETCH_LIMIT, includeArchived: true });
+const readCatalog = () => nyte.host.catalog();
+const readPluginCatalog = (): Promise<PluginCatalog> => nyte.plugins.catalog();
+const readSession = async (sessionId: SessionId) =>
+  (await nyte.sessions.get({ sessionId })) ?? null;
 const readSnapshot = async (sessionId: SessionId): Promise<SessionSnapshot> => {
-  const snapshot = await uji.sessions.snapshot({ sessionId });
+  const snapshot = await nyte.sessions.snapshot({ sessionId });
   if (snapshot === undefined) throw new Error(`Unknown session: ${sessionId}`);
   return snapshot;
 };
@@ -66,6 +78,15 @@ export function useHostState() {
 
 export function useWorkspaces() {
   return useQuery({ queryKey: keys.workspaces, queryFn: readWorkspaces });
+}
+
+/** Drop a workspace from the rail. The host closes it first if it is the open one. */
+export function useForgetWorkspace() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) => nyte.workspace.forget({ path }),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.workspaces }),
+  });
 }
 
 export function useSessionPreview(enabled = true) {
@@ -82,7 +103,7 @@ export function useSessionSearch(search: string, enabled = true) {
   const normalized = search.trim();
   return useQuery({
     queryKey: keys.sessionSearch(normalized),
-    queryFn: () => uji.sessions.list({ search: normalized, limit: 50 }),
+    queryFn: () => nyte.sessions.list({ search: normalized, limit: 50 }),
     enabled: enabled && normalized !== "",
   });
 }
@@ -109,7 +130,7 @@ export function useRunChanges(sessionId: SessionId | undefined, enabled = true) 
   return useQuery<readonly FileChange[]>({
     queryKey: sessionId === undefined ? keys.workspaceChanges : keys.changes(sessionId),
     queryFn: () =>
-      sessionId === undefined ? Promise.resolve([]) : uji.runs.changes({ sessionId }),
+      sessionId === undefined ? Promise.resolve([]) : nyte.runs.changes({ sessionId }),
     enabled: enabled && sessionId !== undefined,
   });
 }
@@ -117,7 +138,7 @@ export function useRunChanges(sessionId: SessionId | undefined, enabled = true) 
 export function useVcsSnapshot(enabled: boolean) {
   return useQuery<DesktopVcsSnapshot>({
     queryKey: keys.vcsSnapshot,
-    queryFn: () => uji.host.vcs.snapshot(),
+    queryFn: () => nyte.host.vcs.snapshot(),
     enabled,
     refetchInterval: enabled ? 5_000 : false,
   });
@@ -141,7 +162,7 @@ export function useVcsDiff(identity: VcsDiffIdentity | undefined, enabled: boole
         : vcsDiffQueryKey(identity),
     queryFn: async () => {
       if (identity === undefined) return undefined;
-      return (await uji.workspace.vcs.diff({ paths: [identity.path] }))[0];
+      return (await nyte.workspace.vcs.diff({ paths: [identity.path] }))[0];
     },
     enabled: enabled && identity !== undefined,
   });
@@ -149,43 +170,66 @@ export function useVcsDiff(identity: VcsDiffIdentity | undefined, enabled: boole
 
 export function refreshVcs(): void {
   void queryClient.invalidateQueries({ queryKey: ["vcs"] });
+  void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
 }
 
-export function useModels() {
-  return useQuery({ queryKey: keys.models, queryFn: readModels });
+/**
+ * The open workspace's files for `@` mentions. Runs rewrite the tree, so the
+ * list is invalidated with the VCS state and refetched when a composer mounts.
+ */
+export function useMentionFiles(enabled: boolean) {
+  return useQuery<readonly MentionFile[]>({
+    queryKey: keys.mentionFiles,
+    queryFn: () => nyte.host.files.list(),
+    enabled,
+    staleTime: 10_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  });
 }
 
-/** What a fresh session will run with, for the draft composer's chip. */
-export function useDefaultModel() {
-  return useQuery({ queryKey: keys.modelDefault, queryFn: readDefaultModel });
+/** Providers, models, and the defaults a new chat starts with, in one read. */
+export function useCatalog() {
+  return useQuery({ queryKey: keys.catalog, queryFn: readCatalog });
 }
 
-export function useProviders() {
-  return useQuery({ queryKey: keys.providers, queryFn: () => uji.host.providers() });
+/** Commands and skills available before a chat exists. */
+export function usePluginCatalog() {
+  return useQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog });
+}
+
+/** The host answers with the catalog as it now stands, so the cache never guesses. */
+export function useSetPreference() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (change: PreferenceChange) => nyte.host.setPreference(change),
+    onSuccess: (catalog) => client.setQueryData(keys.catalog, catalog),
+    onError: () => toast.error("Couldn't save model preferences. Try again."),
+  });
 }
 
 export function useGitHubState(enabled: boolean) {
   return useQuery<GitHubProviderState>({
     queryKey: keys.github,
-    queryFn: () => uji.host.github.state(),
+    queryFn: () => nyte.host.github.state(),
     enabled,
   });
 }
 
 export async function refreshGitHub(): Promise<GitHubProviderState> {
-  const state = await uji.host.github.refresh();
+  const state = await nyte.host.github.refresh();
   queryClient.setQueryData(keys.github, state);
   return state;
 }
 
 export async function signInGitHub(): Promise<GitHubProviderState> {
-  const state = await uji.host.github.signIn();
+  const state = await nyte.host.github.signIn();
   queryClient.setQueryData(keys.github, state);
   return state;
 }
 
 export async function signOutGitHub(): Promise<GitHubProviderState> {
-  const state = await uji.host.github.signOut();
+  const state = await nyte.host.github.signOut();
   queryClient.setQueryData(keys.github, state);
   return state;
 }
@@ -197,8 +241,10 @@ function clearWorkspaceData(): void {
     "snapshot",
     "changes",
     "vcs",
+    "files",
     "github",
-    "modelDefault",
+    "plugins",
+    "customize",
   ]);
   queryClient.removeQueries({
     predicate: (query) => workspaceScopes.has(String(query.queryKey[0])),
@@ -210,36 +256,26 @@ let localLoadVersion = 0;
 /** Refill workspace caches after a host transition, committing host state last. */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
-  const [host, workspaces, models] = await Promise.all([
+  const [host, workspaces, catalog, pluginCatalog, sessionPreview] = await Promise.all([
     readHost(),
     readWorkspaces(),
-    readModels(),
-  ]);
-
-  if (host.workspace === undefined) {
-    if (version !== localLoadVersion) return;
-    clearWorkspaceData();
-    queryClient.setQueryData(keys.workspaces, workspaces);
-    queryClient.setQueryData(keys.models, models);
-    queryClient.setQueryData(keys.host, host);
-    return;
-  }
-
-  const [sessionPreview, defaultModel] = await Promise.all([
+    readCatalog(),
+    // Plugin metadata improves first paint, but one malformed local plugin
+    // must not prevent the workspace shell from loading.
+    readPluginCatalog().catch(() => undefined),
     readSessionPreview(),
-    readDefaultModel(),
   ]);
   if (version !== localLoadVersion) return;
 
   clearWorkspaceData();
   queryClient.setQueryData(keys.workspaces, workspaces);
-  queryClient.setQueryData(keys.models, models);
+  queryClient.setQueryData(keys.catalog, catalog);
+  if (pluginCatalog !== undefined) queryClient.setQueryData(keys.pluginCatalog, pluginCatalog);
   queryClient.setQueryData(keys.sessionPreview, sessionPreview);
-  queryClient.setQueryData(keys.modelDefault, defaultModel);
   for (const session of sessionPreview.items) {
     queryClient.setQueryData(keys.session(session.sessionId), session);
   }
-  // Commit host last. Mounting the workspace shell now finds every local cache filled.
+  // Commit host last. Home and projects both find their local session cache filled.
   queryClient.setQueryData(keys.host, host);
 }
 
@@ -271,8 +307,8 @@ async function fetchThreadSnapshot(
 }
 
 /** Force one coherent snapshot after a mutation that needs its result. */
-export async function loadThread(sessionId: SessionId): Promise<void> {
-  await fetchThreadSnapshot(sessionId, 0);
+export function loadThread(sessionId: SessionId): Promise<SessionSnapshot> {
+  return fetchThreadSnapshot(sessionId, 0);
 }
 
 interface ThreadRefreshState {
@@ -306,9 +342,10 @@ export function refreshThread(sessionId: SessionId, requiredSeq?: Seq): void {
   const drain = async (): Promise<void> => {
     do {
       state.dirty = false;
-      const [, , snapshot] = await Promise.all([
+      const [, , , snapshot] = await Promise.all([
         queryClient.invalidateQueries({ queryKey: keys.changes(sessionId), exact: true }),
         queryClient.invalidateQueries({ queryKey: ["vcs"] }),
+        queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true }),
         fetchThreadSnapshot(sessionId, 0),
       ]);
       if (state.requiredSeq !== undefined && snapshot.seq < state.requiredSeq) state.dirty = true;
@@ -349,7 +386,7 @@ export function useConfigureSession(sessionId: SessionId) {
     mutationKey: ["session", sessionId, "configure"],
     scope: { id: `session-config:${sessionId}` },
     mutationFn: async (patch: ConfigureSessionPatch) => {
-      const outcome = await uji.sessions.configure({ sessionId, ...patch });
+      const outcome = await nyte.sessions.configure({ sessionId, ...patch });
       if (outcome.kind === "unknown_model") throw new Error("That model is no longer available");
       return outcome;
     },
@@ -364,7 +401,11 @@ export function useConfigureSession(sessionId: SessionId) {
       client.setQueryData<SessionSnapshot>(keys.snapshot(sessionId), (current) =>
         current === undefined
           ? current
-          : { ...current, session: withSessionConfig(current.session, patch) },
+          : {
+              ...current,
+              session: withSessionConfig(current.session, patch),
+              config: runLive(current.run) ? current.config : { ...current.config, ...patch },
+            },
       );
       client.setQueryData<SessionPage>(keys.sessionPreview, (current) =>
         current === undefined
@@ -384,7 +425,51 @@ export function useConfigureSession(sessionId: SessionId) {
       client.setQueryData(keys.snapshot(sessionId), rollback.snapshot);
       client.setQueryData(keys.sessionPreview, rollback.sessionPreview);
     },
-    onSettled: () => refreshThread(sessionId),
+    onSettled: () => {
+      refreshThread(sessionId);
+      void client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
+    },
+  });
+}
+
+export function usePluginSettings(sessionId: SessionId, enabled = true) {
+  return useQuery({
+    queryKey: keys.pluginSettings(sessionId),
+    queryFn: () => nyte.plugins.settings.list({ sessionId }),
+    enabled,
+  });
+}
+
+interface ApplyPluginSettingInput {
+  readonly id: string;
+  readonly choiceId: string;
+}
+
+export function useApplyPluginSetting(sessionId: SessionId) {
+  const client = useQueryClient();
+  const queryKey = keys.pluginSettings(sessionId);
+  return useMutation({
+    mutationFn: async ({ id, choiceId }: ApplyPluginSettingInput) => {
+      const outcome = await nyte.plugins.settings.apply({ sessionId, id, choiceId });
+      if (outcome.kind === "not_found") throw new Error("That setting is no longer available");
+      if (outcome.kind === "invalid_choice") throw new Error("That setting value is not valid");
+    },
+    onMutate: async ({ id, choiceId }) => {
+      await client.cancelQueries({ queryKey, exact: true });
+      const previous = client.getQueryData<readonly SettingInfo[]>(queryKey);
+      client.setQueryData<readonly SettingInfo[]>(queryKey, (current) =>
+        current?.map((setting) =>
+          setting.id === id ? { ...setting, current: choiceId } : setting,
+        ),
+      );
+      return previous;
+    },
+    onError: (_error, _input, previous) => {
+      if (previous !== undefined) client.setQueryData(queryKey, previous);
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey, exact: true });
+    },
   });
 }
 
@@ -392,7 +477,7 @@ export function useConfigureSession(sessionId: SessionId) {
 export function useDeleteSession() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (sessionId: SessionId) => uji.sessions.delete({ sessionId }),
+    mutationFn: (sessionId: SessionId) => nyte.sessions.delete({ sessionId }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.sessions }),
   });
 }
@@ -400,7 +485,61 @@ export function useDeleteSession() {
 export function useRenameSession() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { sessionId: SessionId; name: string }) => uji.sessions.rename(input),
+    mutationFn: (input: { sessionId: SessionId; name: string }) => nyte.sessions.rename(input),
+    onSettled: () => client.invalidateQueries({ queryKey: keys.sessions }),
+  });
+}
+
+export function useSetSessionPinned() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { sessionId: SessionId; pinned: boolean }) =>
+      nyte.sessions.setPinned(input),
+    onSettled: (_data, _error, input) => {
+      void client.invalidateQueries({ queryKey: keys.sessions });
+      void client.invalidateQueries({ queryKey: keys.session(input.sessionId) });
+    },
+  });
+}
+
+export function useSetSessionArchived() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { sessionId: SessionId; archived: boolean }) =>
+      nyte.sessions.setArchived(input),
+    onSettled: (_data, _error, input) => {
+      void client.invalidateQueries({ queryKey: keys.sessions });
+      void client.invalidateQueries({ queryKey: keys.session(input.sessionId) });
+    },
+  });
+}
+
+/**
+ * Archive every open chat in the current workspace. The sidebar only holds a
+ * preview page, so this walks the full directory first; a partial failure
+ * still refreshes so the list shows what actually happened.
+ */
+export function useArchiveAllSessions() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<number> => {
+      const sessions: SessionInfo[] = [];
+      let cursor: string | undefined;
+      do {
+        const page: SessionPage = await nyte.sessions.list(
+          cursor === undefined ? undefined : { cursor },
+        );
+        sessions.push(...page.items);
+        cursor = page.next;
+      } while (cursor !== undefined);
+      const open = sessions.filter((session) => !session.archived);
+      await Promise.all(
+        open.map((session) =>
+          nyte.sessions.setArchived({ sessionId: session.sessionId, archived: true }),
+        ),
+      );
+      return open.length;
+    },
     onSettled: () => client.invalidateQueries({ queryKey: keys.sessions }),
   });
 }

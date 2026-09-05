@@ -6,18 +6,23 @@
  *
  * Argued in the design record: `packages/docs/content/docs/design.mdx`, "The SDK".
  */
-import type { Api, JsonValue, Model, Skill, UserMessage } from "@uji-ai/schema";
+import type { Api, JsonValue, Message, Model, Skill, Usage, UserMessage } from "@uji-ai/schema";
+import type { RetryPolicy } from "@uji-ai/ai";
 import type { StreamFn, ThinkingLevel } from "../types.ts";
 import type { ContextStatus } from "../views/context.ts";
 import type { FileChange } from "../views/changes.ts";
 import type { Turn } from "../views/transcript.ts";
 
 export type { FileChange } from "../views/changes.ts";
-import type { Disposer, LoadedPlugin, PluginInfo, SettingInfo } from "../plugins/types.ts";
+import type {
+  AskPresenter,
+  Disposer,
+  LoadedPlugin,
+  PluginInfo,
+  SettingInfo,
+} from "../plugins/types.ts";
 import type { CompactionSettings } from "../harness/compaction/compaction.ts";
 import type { SessionRepo } from "../harness/session/types.ts";
-import type { ToolReplyAdmission } from "../harness/session/store.ts";
-export type { ToolReplyAdmission } from "../harness/session/store.ts";
 import type { AgentHarnessStreamOptions } from "../harness/types.ts";
 import type { WorkspaceInfo, WorkspaceRegistryBackend } from "../workspace-registry.ts";
 
@@ -57,10 +62,29 @@ export const MAIN: HeadName = "main";
 // sessions
 // ---------------------------------------------------------------------------
 
+/** Who sent this, as the host defines identity. Attribution, not authorization. */
+export interface Origin {
+  readonly clientId?: string;
+  readonly userId?: string;
+  readonly device?: string;
+}
+
 export interface HeadInfo {
   readonly name: HeadName;
   readonly entryId: EntryId | null;
   readonly run?: RunInfo;
+}
+
+/**
+ * The run inputs the session's branch currently declares, folded from its
+ * `model_change` and `thinking_level_change` entries. Absent members mean the
+ * branch never declared a choice; runs fall back to the host's defaults.
+ */
+export interface SessionConfig {
+  readonly model?: { readonly provider?: string; readonly id: string };
+  readonly thinkingLevel?: ThinkingLevel;
+  /** The declared driving agent; re-resolved against the running host's registry at run start. */
+  readonly agent?: string;
 }
 
 /**
@@ -83,20 +107,11 @@ export interface SessionInfo {
   readonly createdAt: number;
   readonly lastActivityAt: number;
   readonly heads: readonly HeadInfo[];
-  /**
-   * The run inputs the branch currently declares, folded from its
-   * `model_change`, `thinking_level_change`, and `agent_change` entries. Absent
-   * members mean the branch never declared a choice; runs fall back to the
-   * host's defaults. The agent is re-resolved against the running host's
-   * registry at run start.
-   */
-  readonly config: {
-    readonly model?: { readonly provider?: string; readonly id: string };
-    readonly thinkingLevel?: ThinkingLevel;
-    readonly agent?: string;
-  };
+  readonly config: SessionConfig;
   /** Present on a child session; written at creation. */
   readonly parent?: SessionParent;
+  /** Read watermarks by reader (origin userId, else clientId), monotonic per reader. */
+  readonly readBy?: Readonly<Record<string, Seq>>;
 }
 
 export interface Page<T> {
@@ -117,6 +132,7 @@ export interface Sessions {
   create(input?: {
     sessionId?: SessionId;
     name?: string;
+    origin?: Origin;
     /** Written before first admission; what makes a session a child. */
     parent?: SessionParent;
   }): Promise<SessionInfo>;
@@ -131,6 +147,19 @@ export interface Sessions {
     parent?: SessionId | null;
   }): Promise<Page<SessionInfo>>;
   rename(input: { sessionId: SessionId; name: string }): Promise<void>;
+  /**
+   * Durable read watermark: this reader has seen the session up to `upToSeq`.
+   * Unread state is multiplayer state, so it is a session fact keyed by reader
+   * (origin userId, else clientId, else `local`), never client memory, and it
+   * is monotonic: a stale viewer never moves a watermark backwards.
+   */
+  markRead(input: { sessionId: SessionId; upToSeq: Seq; origin?: Origin }): Promise<void>;
+  /**
+   * A new session whose head starts at `at` (default: the source head's tip).
+   * The path from the root to `at` is copied; entries keep their ids, and the
+   * source session is untouched. `at` may sit on an abandoned branch.
+   */
+  fork(input: { sessionId: SessionId; at?: EntryId; name?: string }): Promise<SessionInfo>;
   /** Aborts any live run, waits for the head to go idle, then deletes. */
   delete(input: { sessionId: SessionId }): Promise<void>;
   /**
@@ -165,6 +194,7 @@ export interface SendInput {
   readonly content: UserMessage["content"];
   readonly delivery?: "steer" | "queue";
   readonly head?: HeadName;
+  readonly origin?: Origin;
   /** Default true. `false` admits without asking a host to run, for batch import. */
   readonly wake?: boolean;
   /**
@@ -214,6 +244,8 @@ export interface Messages {
   }): Promise<RedeliverOutcome>;
   /** The transcript projection: what a client renders. */
   list(input: { sessionId: SessionId; head?: HeadName }): Promise<readonly Turn[]>;
+  /** What the model sees on the next step. */
+  context(input: { sessionId: SessionId; head?: HeadName }): Promise<readonly Message[]>;
   pending(input: { sessionId: SessionId; head?: HeadName }): Promise<readonly PendingItem[]>;
 }
 
@@ -221,7 +253,16 @@ export interface Messages {
 // runs
 // ---------------------------------------------------------------------------
 
-/** How a run ended, as the terminal record alone knows it. */
+export type RunOutcome =
+  | { kind: "completed"; usage: Usage }
+  | { kind: "aborted"; usage: Usage }
+  | { kind: "failed"; error: { message: string }; usage: Usage };
+
+/**
+ * How a run ended, as the terminal record alone knows it. `RunOutcome` adds
+ * usage because `runs.get` sums the run's usage records; a projected event
+ * cannot, so its type does not pretend to.
+ */
 export type RunEnd =
   | { kind: "completed" }
   | { kind: "aborted" }
@@ -236,12 +277,14 @@ export type RunInfo =
       claim: { ownerId: string; expiresAt: number };
     }
   | { kind: "orphaned"; runId: RunId; head: HeadName; startedAt: number; expiredAt: number }
-  /**
-   * Parked on waiting tool calls, holding no claim and no process (design
-   * record, "Wait and wake"). Wake input arrives by admission; abort is
-   * always an exit.
-   */
-  | { kind: "waiting"; runId: RunId; head: HeadName; startedAt: number };
+  | {
+      kind: "finished";
+      runId: RunId;
+      head: HeadName;
+      startedAt: number;
+      finishedAt: number;
+      outcome: RunOutcome;
+    };
 
 export type AbortOutcome = { kind: "requested"; runId: RunId } | { kind: "not_running" };
 
@@ -250,42 +293,18 @@ export type CompactOutcome =
   | { kind: "nothing_to_compact" }
   | { kind: "failed"; message: string };
 
-/**
- * How a `wait` resolved. A waiting run may wait for input forever, so a
- * caller that blocked on "done" learns to render the question instead of
- * hanging; a headless client prints it and exits.
- */
-export type WaitOutcome = { kind: "idle" } | { kind: "waiting"; runId: RunId };
-
 export interface Runs {
   /** Read from the claim, never from memory: a run another process owns reads the same. */
   current(input: { sessionId: SessionId; head?: HeadName }): Promise<RunInfo | undefined>;
+  get(input: { sessionId: SessionId; runId: RunId }): Promise<RunInfo | undefined>;
   abort(input: { sessionId: SessionId; runId?: RunId; continue?: boolean }): Promise<AbortOutcome>;
-  /** Resolves when the head is idle, or when its run parks with no wake input pending. */
-  wait(input: {
-    sessionId: SessionId;
-    head?: HeadName;
-    signal?: AbortSignal;
-  }): Promise<WaitOutcome>;
-  /**
-   * Answer one waiting tool call directly: the ask reply channel. Targets
-   * an explicit call id, or the head's sole live wait matching
-   * `toolName`. First writer wins, and the reply never enters the
-   * conversation, so it cannot be mistaken for a message and a message
-   * cannot be mistaken for it.
-   */
-  reply(input: {
-    sessionId: SessionId;
-    toolCallId?: string;
-    toolName?: string;
-    reply: JsonValue;
-    head?: HeadName;
-  }): Promise<ToolReplyAdmission>;
+  wait(input: { sessionId: SessionId; head?: HeadName; signal?: AbortSignal }): Promise<void>;
   compact(input: {
     sessionId: SessionId;
     head?: HeadName;
     customInstructions?: string;
   }): Promise<CompactOutcome>;
+  context(input: { sessionId: SessionId; head?: HeadName }): Promise<ContextStatus>;
   /**
    * Per-file totals folded from settled patches; `runId` scopes to that run's
    * operation bracket on its own head, and an unknown run reports nothing.
@@ -296,8 +315,6 @@ export interface Runs {
     head?: HeadName;
     runId?: RunId;
   }): Promise<readonly FileChange[]>;
-  /** The context gauge: tokens and share of the window of the model the next run would use. */
-  context(input: { sessionId: SessionId; head?: HeadName }): Promise<ContextStatus>;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,7 +339,15 @@ export type MoveOutcome =
   /** The navigation run failed, e.g. the branch summary could not be generated. */
   | { kind: "failed"; message: string };
 
+export interface TreeNode {
+  readonly entryId: EntryId;
+  readonly parentId: EntryId | null;
+  readonly label?: string;
+  readonly heads: readonly HeadName[];
+}
+
 export interface Heads {
+  list(input: { sessionId: SessionId }): Promise<readonly HeadInfo[]>;
   /**
    * Re-point the head as a durable structural run: it claims the head exactly
    * as compaction does, so nothing moves under a live run's feet. With
@@ -333,13 +358,19 @@ export interface Heads {
     sessionId: SessionId;
     head?: HeadName;
     to: EntryId | null;
+    label?: string;
     summary?: { customInstructions?: string };
   }): Promise<MoveOutcome>;
+  tree(input: { sessionId: SessionId }): Promise<readonly TreeNode[]>;
+  /** A label is a fact, so no claim is needed and a live run is no obstacle. */
+  label(input: { sessionId: SessionId; entryId: EntryId; label?: string }): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
 // workspace and provider
 // ---------------------------------------------------------------------------
+
+export type TrustStatus = { kind: "trusted"; decidedAt: number } | { kind: "untrusted" };
 
 export interface VcsStatus {
   readonly branch?: string;
@@ -354,7 +385,7 @@ export interface VcsDiff {
   readonly patch: string;
 }
 
-/** The host-supplied effect behind `workspace.vcs`. */
+/** The host-supplied effect behind `workspace.vcs`, the `trust` precedent. */
 export interface VcsBackend {
   status(): Promise<VcsStatus>;
   diff(input?: { paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
@@ -369,6 +400,11 @@ export interface Workspace {
   list(): Promise<readonly WorkspaceInfo[]>;
   /** Remove one workspace from the registry. A no-op without a registry. */
   forget(input: { path: string }): Promise<void>;
+  trust: {
+    status(input: { path: string }): Promise<TrustStatus>;
+    grant(input: { path: string }): Promise<void>;
+    revoke(input: { path: string }): Promise<void>;
+  };
   /**
    * Whole-tree truth the changes view cannot see (bash side effects). Core
    * owns the verb so a wire can carry it; the host supplies the backend;
@@ -388,8 +424,37 @@ export interface ModelInfo {
   readonly contextWindow?: number;
 }
 
+export type CredentialStatus =
+  | { kind: "authenticated"; type: string }
+  | { kind: "missing" }
+  | { kind: "unknown_provider" };
+
 export interface Provider {
   models: { list(): Promise<readonly ModelInfo[]>; default(): Promise<ModelInfo | undefined> };
+  credentials: { status(input: { provider: string }): Promise<CredentialStatus> };
+}
+
+// ---------------------------------------------------------------------------
+// agents
+// ---------------------------------------------------------------------------
+
+/**
+ * One declared agent with its defaults resolved, for pickers and delegate
+ * lists. Session-scoped like `plugins.*` because activation is; two hosts may
+ * honestly answer differently (invariant 21). A picker filters out
+ * `mode: "subagent"` and `hidden`.
+ */
+export interface AgentInfo {
+  readonly id: string;
+  readonly mode: "primary" | "subagent" | "all";
+  readonly hidden: boolean;
+  readonly disabled: boolean;
+  readonly description?: string;
+  readonly model?: string;
+}
+
+export interface Agents {
+  list(input: { sessionId: SessionId }): Promise<readonly AgentInfo[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,8 +497,8 @@ export type DurableEvent = { readonly seq: Seq } & (
   | { kind: "head_moved"; head: HeadName; to: EntryId | null; by: "append" | "move" }
   /**
    * Run boundaries carry what their records know, nothing more. Claim state
-   * arrives as `claim` events; usage is a fold over the run's usage records
-   * (`projectRunUsage`). An event that claimed either would be fabricating.
+   * arrives as `claim` events; usage arrives from `runs.get`, which sums the
+   * run's usage records. An event that claimed either would be fabricating.
    * `operation` is the intent kind, so a client renders "compacting" or
    * "navigating" without reading records.
    */
@@ -447,20 +512,6 @@ export type DurableEvent = { readonly seq: Seq } & (
       agent?: string;
     }
   | { kind: "run_finished"; runId: RunId; head: HeadName; finishedAt: number; outcome: RunEnd }
-  /**
-   * A tool call settled as waiting: the run parked, holding nothing, and
-   * its claim released. One event per waiting call; the settlement arrives
-   * later as the reserved entry's `message` event.
-   */
-  | {
-      kind: "run_waiting";
-      runId: RunId;
-      head: HeadName;
-      toolCallId: string;
-      toolName: string;
-      /** The call's validated arguments: everything a client needs to render the ask. */
-      args: JsonValue;
-    }
   | {
       kind: "claim";
       head: HeadName;
@@ -524,6 +575,13 @@ export type SessionEvent = DurableEvent | EphemeralEvent;
 // errors
 // ---------------------------------------------------------------------------
 
+/** Values, not throws, at every verb that can meet one. */
+export type SdkError =
+  | { kind: "not_found"; what: "session" | "entry" | "run" | "head" }
+  | { kind: "invalid_input"; message: string }
+  | { kind: "closed" }
+  | { kind: "untrusted"; path: string };
+
 export class UjiClosed extends Error {
   readonly kind = "closed" as const;
   constructor() {
@@ -538,6 +596,15 @@ export class UnknownSession extends Error {
   constructor(id: string) {
     super(`Unknown session: ${id}`);
     this.name = "UnknownSession";
+  }
+}
+
+export class UnknownEntry extends Error {
+  readonly kind = "not_found" as const;
+  readonly what = "entry" as const;
+  constructor(id: string) {
+    super(`Unknown entry: ${id}`);
+    this.name = "UnknownEntry";
   }
 }
 
@@ -568,8 +635,17 @@ export interface UjiOptions {
   /** Where tools run. */
   readonly env: { readonly cwd: string };
   readonly compaction?: CompactionSettings;
+  readonly retry?: RetryPolicy;
   /** Provider request defaults applied before per-run options and request hooks. */
   readonly streamOptions?: AgentHarnessStreamOptions;
+  /**
+   * Presents a plugin's mid-run question on this host. Omitted, this host
+   * cannot ask and a plugin's `ask` fails contained. Ask vocabulary stays off
+   * the wire: presentation is host composition, exactly like `streamFn`.
+   */
+  readonly ask?: AskPresenter;
+  /** Consulted by `workspace.trust`; omitted means every path answers `untrusted`. */
+  readonly trust?: TrustBackend;
   /** Consulted by `workspace.vcs`; omitted answers empty. */
   readonly vcs?: VcsBackend;
   /**
@@ -584,7 +660,26 @@ export interface UjiOptions {
 export interface ModelCatalog {
   getModels(provider?: string): readonly Model<Api>[];
   getModel(provider: string, id: string): Model<Api> | undefined;
+  /** `Models.checkAuth`: undefined means no credential for the provider. */
+  checkAuth(providerId: string): Promise<{ type: string } | undefined>;
+  getProvider(id: string): { id: string } | undefined;
 }
+
+/** The slice of `WorkspaceTrustStore` the SDK reads. */
+export interface TrustBackend {
+  status(path: string): Promise<TrustStatus>;
+  grant(path: string): Promise<void>;
+  revoke(path: string): Promise<void>;
+}
+
+/**
+ * Directory events are the class invariant 18 excepts: coalesced, cursorless,
+ * promising nothing durable, fully re-derivable by `sessions.list`.
+ */
+export type DirectoryEvent =
+  | { kind: "synced" }
+  | { kind: "session_changed"; info: SessionInfo }
+  | { kind: "session_deleted"; sessionId: SessionId };
 
 export interface Uji {
   readonly sessions: Sessions;
@@ -594,6 +689,7 @@ export interface Uji {
   readonly workspace: Workspace;
   readonly provider: Provider;
   readonly plugins: Plugins;
+  readonly agents: Agents;
   /**
    * Replay durable items from the cursor, emit `synced`, then interleave live
    * durable items with ephemeral overlays. Reconnect is the same call with the
@@ -604,6 +700,12 @@ export interface Uji {
   watch(
     input: { sessionId: SessionId; signal?: AbortSignal } & ({ afterSeq?: Seq } | { live: true }),
   ): AsyncIterable<SessionEvent>;
+  /**
+   * The cross-session signal a picker follows: `synced`, then one
+   * `session_changed` per session whose read model moved and one
+   * `session_deleted` per session gone, coalesced per storage bump.
+   */
+  watchSessions(input?: { signal?: AbortSignal }): AsyncIterable<DirectoryEvent>;
   /**
    * Volunteer this process as a runner. A thin client never calls it. Each
    * call is one attachment and its disposer withdraws exactly that one; a

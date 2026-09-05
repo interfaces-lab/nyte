@@ -2,64 +2,58 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import * as stylex from "@stylexjs/stylex";
 import type * as React from "react";
 
-import { mergeStyleProps, type XStyle } from "@uji-ai/ui/style";
-import {
-  borderVars,
-  colorVars,
-  controlVars,
-  fontVars,
-  motionVars,
-  radiusVars,
-} from "@uji-ai/ui/tokens.stylex";
+import { tokens } from "../../platform-tokens.stylex.ts";
+import { mergeStyleProps, type XStyle } from "../../style.ts";
 
 const styles = stylex.create({
   root: {
     boxSizing: "border-box",
     width: "100%",
     minWidth: 0,
-    minHeight: controlVars["--uji-control-height-md"],
-    paddingInline: controlVars["--uji-control-padding-lg"],
-    paddingBlock: controlVars["--uji-control-padding-sm"],
-    borderWidth: borderVars["--uji-border-control-width"],
+    minHeight: tokens.control["--nyte-control-height-md"],
+    paddingInline: tokens.control["--nyte-control-padding-lg"],
+    paddingBlock: tokens.control["--nyte-control-padding-sm"],
+    borderWidth: tokens.border["--nyte-border-control-width"],
     borderStyle: "solid",
     borderColor: {
-      default: colorVars["--uji-color-border"],
-      ":focus-visible": colorVars["--uji-color-ring"],
-      "[aria-invalid=true]": colorVars["--uji-color-destructive"],
+      default: tokens.color["--nyte-color-border"],
+      ":focus-visible": tokens.color["--nyte-color-ring"],
+      "[aria-invalid=true]": tokens.color["--nyte-color-destructive"],
     },
-    borderRadius: radiusVars["--uji-radius-field"],
-    backgroundColor: colorVars["--uji-color-field-background"],
+    borderRadius: tokens.radius["--nyte-radius-field"],
+    backgroundColor: tokens.color["--nyte-color-field-background"],
     boxShadow: {
       default: "none",
-      ":focus-visible": `0 0 0 2px ${colorVars["--uji-color-ring"]}`,
+      ":focus-visible": `0 0 0 2px ${tokens.color["--nyte-color-ring"]}`,
     },
-    color: colorVars["--uji-color-foreground"],
-    fontFamily: fontVars["--uji-font-family-ui"],
-    fontSize: fontVars["--uji-font-size-body"],
-    fontWeight: fontVars["--uji-font-weight-regular"],
-    lineHeight: fontVars["--uji-leading-body"],
+    color: tokens.color["--nyte-color-foreground"],
+    fontFamily: tokens.font["--nyte-font-family-ui"],
+    fontSize: tokens.font["--nyte-font-size-body"],
+    fontWeight: tokens.font["--nyte-font-weight-regular"],
+    lineHeight: tokens.font["--nyte-leading-body"],
     outlineStyle: "none",
-    opacity: { default: 1, ":disabled": controlVars["--uji-control-disabled-opacity"] },
+    opacity: { default: 1, ":disabled": tokens.control["--nyte-control-disabled-opacity"] },
     transitionProperty: "background-color, border-color, outline-color, opacity",
     transitionDuration: {
-      default: motionVars["--uji-motion-fast"],
+      default: tokens.motion["--nyte-motion-fast"],
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
-    "::placeholder": { color: colorVars["--uji-color-muted-foreground"] },
+    "::placeholder": { color: tokens.color["--nyte-color-muted-foreground"] },
   },
 });
 
 export interface InputProps extends Omit<InputPrimitive.Props, "className" | "style"> {
   className?: string;
   style?: React.CSSProperties;
+  unstyled?: boolean;
   xstyle?: XStyle;
 }
 
-export function Input({ className, style, xstyle, ...props }: InputProps) {
+export function Input({ className, style, unstyled = false, xstyle, ...props }: InputProps) {
   return (
     <InputPrimitive
       data-slot="input"
-      {...mergeStyleProps(stylex.props(styles.root, xstyle), className, style)}
+      {...mergeStyleProps(stylex.props(!unstyled && styles.root, xstyle), className, style)}
       {...props}
     />
   );

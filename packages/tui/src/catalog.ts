@@ -1,66 +1,29 @@
-import {
-  anthropicProvider,
-  createModels,
-  defaultProviderAuthContext,
-  FileCredentialStore,
-  FileModelsStore,
-  opencodeGoProvider,
-  opencodeProvider,
-  openaiCodexProvider,
-  openaiProvider,
-} from "@uji-ai/ai";
-import type {
-  Api,
-  AuthCheck,
-  FetchFunction,
-  Model,
-  Models,
-  MutableModels,
-  Provider,
-} from "@uji-ai/ai";
-import type { ThinkingLevel } from "@uji-ai/core";
+/**
+ * The terminal client's provider catalog: explicit provider factories over
+ * the `~/.nyte` credential and model stores, so a login made here is a login
+ * in every Nyte client.
+ */
+import { defaultModelPerProvider } from "@nyte-ai/ai";
+import type { Api, AuthCheck, Model, Models, Provider } from "@nyte-ai/ai";
+import type { ThinkingLevel } from "@nyte-ai/core";
 
 export const DEFAULT_PROVIDER_ID = "openai-codex";
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
-function preferredModelId(providerId: Provider["id"]): Model<Api>["id"] | undefined {
-  if (providerId === "anthropic") return "claude-opus-5";
-  if (providerId === "opencode") return "x-preview-f-free";
-  if (providerId === "opencode-go") return "ox-alpha-free";
-  if (providerId === "openai-codex" || providerId === "openai") return "gpt-5.6-luna";
-  return undefined;
-}
-
-/** The terminal client owns which explicit, side-effect-free provider factories it exposes. */
-export function createCliModels(options: { fetch?: FetchFunction } = {}): MutableModels {
-  const models = createModels({
-    credentials: new FileCredentialStore(),
-    authContext: defaultProviderAuthContext(),
-    modelsStore: new FileModelsStore(),
-  });
-  models.setProvider(openaiCodexProvider());
-  models.setProvider(openaiProvider());
-  models.setProvider(anthropicProvider());
-  models.setProvider(opencodeProvider({ fetch: options.fetch }));
-  models.setProvider(opencodeGoProvider({ fetch: options.fetch }));
-  return models;
-}
-
 /**
  * Restore the provider's persisted catalog on top of its baked models. Local
- * disk only: the boot path must work on a plane, so the network freshen is
- * the background `loadAuthenticatedModels` warm, never this call.
+ * disk only: the boot path must work on a plane.
  */
 export async function loadProviderCatalog(models: Models, providerId: string): Promise<void> {
   await models.refresh({ providers: [providerId], allowNetwork: false });
 }
 
 export type ProviderAuthStatus =
-  | { kind: "authenticated"; provider: Provider; auth: AuthCheck }
-  | { kind: "unauthenticated"; provider: Provider };
+  | { readonly kind: "authenticated"; readonly provider: Provider; readonly auth: AuthCheck }
+  | { readonly kind: "unauthenticated"; readonly provider: Provider };
 
-/** Resolve provider status concurrently so pickers can mark and filter logged-in providers. */
-export async function providerAuthStatuses(models: Models): Promise<ProviderAuthStatus[]> {
+/** Resolve provider status concurrently so pickers can mark logged-in providers. */
+export function providerAuthStatuses(models: Models): Promise<ProviderAuthStatus[]> {
   return Promise.all(
     models.getProviders().map(async (provider): Promise<ProviderAuthStatus> => {
       const auth = await models.checkAuth(provider.id);
@@ -73,16 +36,13 @@ export async function providerAuthStatuses(models: Models): Promise<ProviderAuth
 
 async function fetchAuthenticatedModels(
   models: Models,
-  options: { force?: boolean },
+  force: boolean,
 ): Promise<readonly Model<Api>[]> {
   const statuses = await providerAuthStatuses(models);
   const providers = statuses.flatMap((status) =>
     status.kind === "authenticated" ? [status.provider] : [],
   );
-  await models.refresh({
-    providers: providers.map((provider) => provider.id),
-    force: options.force,
-  });
+  await models.refresh({ providers: providers.map((provider) => provider.id), force });
   const available = await Promise.all(
     providers.map((provider) => models.getAvailable(provider.id)),
   );
@@ -104,26 +64,20 @@ function cacheFor(models: Models): CatalogCache {
   return created;
 }
 
-/**
- * The last catalog this process loaded. A menu paints from it and asks for a
- * reload behind the frame, so opening one never waits on the network.
- */
+/** The last catalog this process loaded, so a menu paints before the network answers. */
 export function cachedAuthenticatedModels(models: Models): readonly Model<Api>[] | undefined {
   return cacheFor(models).loaded;
 }
 
-/**
- * Load one model catalog spanning every provider with configured auth.
- * Concurrent callers share one refresh; `force` starts a fresh one.
- */
+/** One model catalog across every provider with configured auth. Concurrent callers share a refresh. */
 export function loadAuthenticatedModels(
   models: Models,
-  options: { force?: boolean } = {},
+  options: { readonly force?: boolean } = {},
 ): Promise<readonly Model<Api>[]> {
   const cache = cacheFor(models);
   const pending = cache.loading;
   if (pending !== undefined && options.force !== true) return pending;
-  const load = fetchAuthenticatedModels(models, options)
+  const load = fetchAuthenticatedModels(models, options.force === true)
     .then((available) => {
       cache.loaded = available;
       return available;
@@ -141,10 +95,10 @@ export function requireProvider(models: Models, providerId: string): Provider {
   return provider;
 }
 
-/** Default choice is client policy; model capabilities still come from @uji-ai/ai. */
+/** Default choice is client policy; model capabilities still come from @nyte-ai/ai. */
 export function defaultModel(models: Models, providerId: string): Model<Api> {
   const providerModels = models.getModels(providerId);
-  const preferredId = preferredModelId(providerId);
+  const preferredId = defaultModelPerProvider[providerId];
   const model =
     providerModels.find((candidate) => candidate.id === preferredId) ?? providerModels.at(0);
   if (model === undefined) throw new Error(`${providerId} does not expose any models`);

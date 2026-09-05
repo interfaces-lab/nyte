@@ -29,13 +29,3 @@ export interface Skill {
   /** Exclude this skill from model-visible skill lists while still allowing explicit invocation. */
   disableModelInvocation?: boolean;
 }
-
-/** Prompt template that can be formatted into a prompt for explicit invocation. */
-export interface PromptTemplate {
-  /** Stable template name used for lookup or command routing. */
-  name: string;
-  /** Optional description for command lists or autocomplete. */
-  description?: string;
-  /** Template content. Argument placeholders are formatted at invocation. */
-  content: string;
-}

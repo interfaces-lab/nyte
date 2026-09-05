@@ -1,0 +1,278 @@
+---
+title: SDK
+description: createNyte is how a host talks to Nyte. A store, a stream function, a catalog, and plugins go in; verbs and one event stream come out
+---
+
+A product attaches to Nyte by composing one `Nyte` over a store, a stream function, a model catalog, and
+a plugin list. Clients call verbs on that object and fold its events. The TUI and the desktop app both do
+this. The full contract is in the [design record](/docs/design#the-sdk); this page is the copy-paste path.
+
+Send does not start a run. It admits a message into a lane. A host that called `attach()` is the process
+that volunteers to run. Without an attached runner, `runs.wait` can sit forever on a message that is
+already stored.
+
+## Three entries
+
+| Entry                 | Imports                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/core`       | `createNyte`, the whole wire contract, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose. |
+| `@nyte-ai/core/store` | `SqliteStore` and the `Store` contract a backend implements. Hosts name their storage here; clients never import it.            |
+| `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                       |
+
+Plugin authoring is `@nyte-ai/core/plugins`; `@nyte-ai/plugin` re-exports it verbatim. `SqliteStore`
+takes one file path; the session file lives at `<workspace>/.nyte/sessions.db`.
+
+```ts title="host.ts"
+import { join } from "node:path";
+import process from "node:process";
+import { createModels, FileCredentialStore, openaiCodexProvider } from "@nyte-ai/ai";
+import { createNyte, DEFAULT_LANDING, MAIN } from "@nyte-ai/core";
+import { inlinePlugin, systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
+import { SqliteStore } from "@nyte-ai/core/store";
+
+const cwd = process.cwd();
+const store = new SqliteStore(join(cwd, ".nyte", "sessions.db"));
+const models = createModels({ credentials: new FileCredentialStore() });
+models.setProvider(openaiCodexProvider());
+const model = models.getModel("openai-codex", "gpt-5.6-luna");
+if (model === undefined) throw new Error("model unavailable");
+
+const nyte = await createNyte({
+  store,
+  streamFn: (requested, context, options) => models.streamSimple(requested, context, options),
+  models,
+  model,
+  landing: DEFAULT_LANDING,
+  plugins: [inlinePlugin(systemPromptPlugin()), inlinePlugin(toolsFsPlugin())],
+  env: { cwd },
+});
+
+const detach = nyte.attach();
+const session = await nyte.sessions.create();
+
+const printer = (async () => {
+  for await (const event of nyte.watch({ sessionId: session.sessionId, live: true })) {
+    if (event.kind === "text_delta") process.stdout.write(event.delta);
+  }
+})();
+
+await nyte.messages.send({
+  sessionId: session.sessionId,
+  head: MAIN,
+  content: "list the TypeScript files here",
+});
+await nyte.runs.wait({ sessionId: session.sessionId });
+
+detach();
+await nyte.close();
+await store.close();
+```
+
+`landing` is the host's lane policy. Leaving it out means `DEFAULT_LANDING`. `head` defaults to `MAIN`
+on every verb, so the send above could omit it.
+
+## The client loop
+
+A client opens with `sessions.snapshot`, draws it, then watches from the snapshot's `seq`. Each `commit`
+event folds into the transcript with `appendTranscriptCommit`. That function returns `undefined` when the
+commit's parent is not the tip it holds, which means the head moved under the client: take a new snapshot.
+A cursor older than the event floor throws `CursorExpired` from `watch`; the answer is the same.
+
+```ts title="follow.ts"
+import { appendTranscriptCommit, CursorExpired } from "@nyte-ai/core";
+import type { Nyte, SessionId, TranscriptState } from "@nyte-ai/core";
+
+async function follow(
+  sdk: Nyte,
+  sessionId: SessionId,
+  draw: (transcript: TranscriptState) => void,
+): Promise<void> {
+  for (;;) {
+    const snapshot = await sdk.sessions.snapshot({ sessionId });
+    if (snapshot === undefined) return;
+    let transcript: TranscriptState = { items: snapshot.transcript, tip: snapshot.tip };
+    draw(transcript);
+
+    let refold = false;
+    try {
+      for await (const event of sdk.watch({ sessionId, afterSeq: snapshot.seq })) {
+        if (event.kind !== "commit" || event.head !== snapshot.head) continue;
+        const next = appendTranscriptCommit(transcript, event.item);
+        if (next === undefined) {
+          refold = true;
+          break;
+        }
+        transcript = next;
+        draw(transcript);
+      }
+    } catch (cause) {
+      if (!(cause instanceof CursorExpired)) throw cause;
+      refold = true;
+    }
+    if (!refold) return;
+  }
+}
+```
+
+`watch({ afterSeq })` replays retained events, emits `synced`, then stays live. `watch({ live: true })`
+skips the replay. The snapshot already carries `pending`, `run`, and `context`, so a client that opens a
+conversation makes one read, not four.
+
+## Sends go through an outbox
+
+Core cannot see the gap between Enter and its receipt, so the client closes it. Mint a key on Enter, keep
+the message locally as `sending`, draw it in the pending gutter at once, and submit with that key until the
+store answers. `queued` and `duplicate` both mean the message is durable; a retry after a lost response is
+a `duplicate`, so nothing lands twice. Only the user takes a sending message back.
+
+```ts title="outbox.ts"
+async function submit(
+  sdk: Nyte,
+  sessionId: SessionId,
+  content: string,
+  sleep: (ms: number) => Promise<void>,
+): Promise<string> {
+  const key = crypto.randomUUID();
+  // Keep { key, content } locally as "sending" and draw it now.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const receipt = await sdk.messages.send({ sessionId, content, key });
+      // queued and duplicate both mean the store holds it: drop the local row.
+      return receipt.change;
+    } catch {
+      await sleep(Math.min(10_000, 250 * 2 ** (attempt - 1)));
+    }
+  }
+}
+```
+
+The key is written in the same compare-and-swap as the queue tip, so the guarantee is the store's, not
+the client's.
+
+## Lanes
+
+A lane is a name the sender chooses; the host's `landing` says which lanes exist and when each lands.
+`nyte.landing` is the policy in force. `DEFAULT_LANDING` is:
+
+| Lane    | Lands                                                              |
+| ------- | ------------------------------------------------------------------ |
+| `steer` | At the next response boundary, or at once when the head is idle    |
+| `queue` | Only when the head is idle; one message at a time (`drain: "one"`) |
+
+`messages.send` without a `lane` goes to the first lane of the policy. A lane the policy does not list is
+refused with a `TypeError`, since no runner would land it. Enter in the TUI steers; `ctrl+enter` queues.
+`messages.redeliver` moves a still-pending item between lanes; `messages.cancel` withdraws one. A cancel
+racing a landing settles as `cancelled` or `landed`, never both.
+
+## Runs
+
+| Verb           | Outcome                                                              | Use                                                                       |
+| -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `runs.wait`    | `idle` \| `waiting { runId }`                                        | Block until the head is free, or until a tool parks on a question.        |
+| `runs.reply`   | `signalled` \| `not_waiting` \| `not_found`                          | Answer a parked call by `callId`. The first reply wins; later ones miss.  |
+| `runs.abort`   | `requested { runId }` \| `not_running`                               | Stop the live run. What was already said is kept.                         |
+| `runs.compact` | `compacted { commit }` \| `nothing_to_compact` \| `busy` \| `failed` | Write one checkpoint now, with the branch's own model and thinking level. |
+
+```ts
+const outcome = await sdk.runs.wait({ sessionId });
+if (outcome.kind === "waiting") {
+  await sdk.runs.reply({ sessionId, runId: outcome.runId, callId: "ask-1", reply: "blue" });
+}
+const compacted = await sdk.runs.compact({ sessionId, customInstructions: "keep file paths" });
+```
+
+A waiting run needs no live process. Its refs hold everything, so a phone can answer an hour later and
+whichever runner next acquires the head wakes the call. `runs.context` is the token gauge; `runs.changes`
+is the per-run file diff.
+
+## Heads
+
+`heads.move` is how `/tree` works: one `main` pointer, abandoned branches kept. Selecting a user message
+parks the head on its parent and hands the original content back in `restored`. With `summary`, the
+commits the move abandons are summarized into one `summary` commit whose parent is the target, in the same
+compare-and-swap a plain move uses. Nothing abandoned means a plain move; a model failure returns `failed`
+and leaves the head where it was.
+
+```ts
+const moved = await sdk.heads.move({
+  sessionId,
+  to: user.commit,
+  expect: snapshot.tip,
+  summary: { customInstructions: "what the abandoned attempt learned" },
+});
+if (moved.kind === "moved") {
+  void moved.restored?.content; // hand the selected message back to the composer
+  void moved.summary; // the summary commit, when anything was abandoned
+}
+```
+
+The outcomes are `moved`, `busy { run }`, `moved_since { tip }`, `not_found`, and `failed`. `expect` rejects
+a view that was already stale. `heads.create` cuts a stacked head from another head or a commit;
+`heads.merge` fast-forwards a current stacked child into its parent.
+
+## Events a client folds
+
+Every event carries `seq`. A client keeps the last one it applied as its cursor.
+
+| Kind                                    | Fold                                                                          |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                      |
+| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.             |
+| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.     |
+| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.        |
+| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.   |
+| `tool_progress` / `effect`              | A call's live output and its durable state: intent, waiting, signal, result.  |
+| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away.                 |
+| `synced`                                | Replay is over; what follows is live.                                         |
+| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                             |
+| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model. |
+
+There is no compaction event. A checkpoint arrives as an ordinary `commit`.
+
+## What the host still owns
+
+`createNyte` does not pick a provider, load plugins, or decide trust. You do that first.
+
+1. Build `Models`, register the providers this product supports, resolve a credential.
+2. Gate project plugins on workspace trust (`WorkspaceTrustStore`). The grant lives in
+   `~/.nyte/trust.json` and is inherited from a trusted ancestor. Print mode will not grant trust.
+3. Resolve the plugin list with `resolvePlugins`: built-ins, then `~/.nyte/plugins`, then
+   `<cwd>/.nyte/plugins`, filtered by `.nyte/nyte.json`.
+4. Pass that list, `streamFn`, `store`, and `env.cwd` into `createNyte`, or pass `resolveActivation`
+   to load plugins the first time a session activates.
+5. Call `attach()` in the process that should run tools.
+
+Trust is not a sandbox and not a per-call approval. After trust, project plugins and unrestricted
+filesystem tools load.
+
+Subagents are not a getting-started feature. An agent is a plugin contribution and a child is a child
+session with durable parent coordinates; see [design, Agents](/docs/design#agents).
+
+## Related
+
+<Cards>
+  <DocCard
+    icon="IconPackage"
+    title="Design record"
+    href="/docs/design#the-sdk"
+    description="Namespaces, outcome unions, and the event kinds"
+  />
+  <DocCard
+    icon="IconAgent"
+    title="Desktop"
+    href="/docs/desktop"
+    description="The Electron host: same SDK, window.nyte over IPC"
+  />
+  <DocCard
+    icon="IconCodeBrackets"
+    title="Admission"
+    href="/docs/design#admission-is-open"
+    description="Lanes, chains, and why a send never errors"
+  />
+  <DocCard
+    icon="IconConsole"
+    title="Events and views"
+    href="/docs/design#events-and-views"
+    description="The retained stream, the floor, and the projections"
+  />
+</Cards>

@@ -1,10 +1,9 @@
 import { defineConfig } from "vitest/config";
 
-// Upstream pi-ai tests copied verbatim run under vitest; Uji's own tests use node:test.
-// The excluded files import pi's deprecated global registry (src/compat.ts), which Uji does not carry.
+// The excluded files import pi's deprecated global registry (src/compat.ts), which Nyte does not carry.
 export default defineConfig({
   test: {
-    include: ["test/upstream/**/*.test.ts"],
+    include: ["test/**/*.test.ts"],
     exclude: [
       "test/upstream/model-catalog-types.test.ts", // imports other providers' catalogs
 

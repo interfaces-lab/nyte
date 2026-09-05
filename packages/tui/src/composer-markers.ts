@@ -47,7 +47,7 @@ interface ComposerMarkersOptions {
  */
 export class ComposerMarkers {
   private readonly options: ComposerMarkersOptions;
-  private pillStyleId: number | undefined;
+  private readonly pillStyleId: number | undefined;
   private parts: readonly ComposerPart[] = [];
   private activeMarker: string | undefined;
   private generation = 0;
@@ -57,16 +57,6 @@ export class ComposerMarkers {
     this.options = options;
     this.pillStyleId =
       options.input.editBuffer.getSyntaxStyle()?.getStyleId(COMPOSER_MARKER_STYLE) ?? undefined;
-  }
-
-  /** Refresh cached syntax after the shared palette changes. */
-  retheme(previewSyntaxStyle: SyntaxStyle): void {
-    this.options.previewSyntaxStyle = previewSyntaxStyle;
-    this.pillStyleId =
-      this.options.input.editBuffer.getSyntaxStyle()?.getStyleId(COMPOSER_MARKER_STYLE) ??
-      undefined;
-    this.closePreview();
-    this.paintMarkers();
   }
 
   refresh(parts: readonly ComposerPart[]): void {
@@ -183,6 +173,7 @@ export class ComposerMarkers {
       content: text,
       filetype: pathToFiletype(part.path) ?? undefined,
       syntaxStyle: this.options.previewSyntaxStyle,
+      fg: this.options.theme.foreground,
       maxHeight: MAX_TEXT_PREVIEW_ROWS,
       overflow: "hidden",
       selectionBg: this.options.theme.selectionBackground,

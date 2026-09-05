@@ -11,7 +11,7 @@ import { VERSION } from "./version.ts";
 
 /** True only for an interactive terminal that has not opted out of color. */
 export function ansiEnabled(): boolean {
-  if (process.stdout.isTTY !== true) return false;
+  if (!process.stdout.isTTY) return false;
   const noColor = process.env["NO_COLOR"];
   if (noColor !== undefined && noColor !== "") return false;
   return process.env["CI"] !== "true";
@@ -39,7 +39,12 @@ export function cyan(text: string): string {
 /** How a finished step reads. One vocabulary for glyphs, colors, and exit codes. */
 export type Severity = "ok" | "warn" | "fail";
 
-const SEVERITY_STYLE: Readonly<Record<Severity, { glyph: string; code: SgrCode }>> = {
+interface SeverityStyle {
+  readonly glyph: string;
+  readonly code: SgrCode;
+}
+
+const SEVERITY_STYLE: Readonly<Record<Severity, SeverityStyle>> = {
   ok: { glyph: GLYPHS.check, code: SGR.green },
   warn: { glyph: GLYPHS.bullet, code: SGR.yellow },
   fail: { glyph: GLYPHS.cross, code: SGR.red },
@@ -51,11 +56,6 @@ export function statusGlyph(severity: Severity, color: boolean): string {
   return paint(color, code, glyph);
 }
 
-/**
- * How an update outcome reads. The switch is exhaustive, so a new
- * `UpdateOutcome` variant fails the build here instead of silently
- * rendering as a failure.
- */
 export function updateSeverity(outcome: UpdateOutcome): Severity {
   switch (outcome.kind) {
     case "updated":
@@ -66,25 +66,20 @@ export function updateSeverity(outcome: UpdateOutcome): Severity {
     case "failed":
       return "fail";
     default: {
-      const exhaustive: never = outcome;
-      return exhaustive;
+      const _exhaustive: never = outcome;
+      return _exhaustive;
     }
   }
 }
 
 interface AlignedRow {
-  label: string;
-  detail: string;
+  readonly label: string;
+  readonly detail: string;
 }
 
-/** Two spaces between the label column and the detail column. */
 const COLUMN_GAP = 2;
 
-/**
- * `label  detail` rows sharing one detail column. `width` pins that column
- * across sections that must line up with each other; by default it hugs the
- * longest label. A row with no detail is just its label.
- */
+/** `label  detail` rows sharing one detail column. A row with no detail is just its label. */
 export function alignedRows(
   rows: readonly AlignedRow[],
   color: boolean,
@@ -102,17 +97,17 @@ export function alignedRows(
 const HELP_LABEL_WIDTH = 29;
 
 const HELP_COMMANDS: readonly AlignedRow[] = [
-  { label: "uji", detail: "open the full-screen TUI" },
-  { label: "uji --resume [<session-id>]", detail: "resume the latest or specified session" },
-  { label: "uji login [provider]", detail: "sign in (default: openai-codex)" },
-  { label: "uji logout [provider]", detail: "remove the stored credential" },
-  { label: "uji status", detail: "list stored credentials" },
+  { label: "nyte", detail: "open the full-screen TUI" },
+  { label: "nyte --resume [<session-id>]", detail: "resume the latest or specified session" },
+  { label: "nyte login [provider]", detail: "sign in (default: openai-codex)" },
+  { label: "nyte logout [provider]", detail: "remove the stored credential" },
+  { label: "nyte status", detail: "list stored credentials" },
   {
-    label: "uji update [version|--check]",
+    label: "nyte update [version|--check]",
     detail: "install the latest release, a given one, or only check",
   },
-  { label: "uji --version", detail: "print the installed version" },
-  { label: "uji -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
+  { label: "nyte --version", detail: "print the installed version" },
+  { label: "nyte -p [--json] [--quiet] [--resume] [prompt]", detail: "" },
 ];
 
 const HELP_FLAGS: readonly AlignedRow[] = [
@@ -121,16 +116,13 @@ const HELP_FLAGS: readonly AlignedRow[] = [
   { label: "--effort <level>", detail: "set thinking level" },
 ];
 
-/**
- * The `--help` screen. Colored on a TTY, plain otherwise; the plain form is
- * what `USAGE` sends to stderr, so it must read fine without color.
- */
+/** The `--help` screen. Colored on a TTY, plain otherwise. */
 export function renderHelp(color: boolean = ansiEnabled()): string {
   return [
-    `${paint(color, SGR.bold, "uji")} ${paint(color, SGR.dim, `v${VERSION} · durable agent sessions in your terminal`)}`,
+    `${paint(color, SGR.bold, "nyte")} ${paint(color, SGR.dim, `v${VERSION} · durable agent sessions in your terminal`)}`,
     "",
     `  ${paint(color, SGR.dim, "usage:")}`,
-    `  ${paint(color, SGR.bold, "uji")} ${paint(color, SGR.dim, "[command] [flags]")}`,
+    `  ${paint(color, SGR.bold, "nyte")} ${paint(color, SGR.dim, "[command] [flags]")}`,
     "",
     `  ${paint(color, SGR.dim, "commands:")}`,
     ...alignedRows(HELP_COMMANDS, color, HELP_LABEL_WIDTH),

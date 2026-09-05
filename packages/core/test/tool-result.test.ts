@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { toolProgress } from "../src/harness/runner.ts";
+import { ephemeralEvent } from "../src/sdk/events.ts";
 import { ToolError, toolErrorResult } from "../src/utils/tool-result.ts";
 
 void describe("toolErrorResult with a last partial", () => {
@@ -54,7 +54,15 @@ void describe("toolErrorResult with a last partial", () => {
 });
 
 void describe("tool_progress overlay", () => {
-  const update = (partialResult: unknown) => toolProgress(partialResult);
+  const update = (partialResult: unknown) =>
+    ephemeralEvent({
+      type: "tool_execution_update",
+      toolCallId: "c1",
+      toolName: "websearch",
+      args: {},
+      partialResult,
+      entryId: "e1",
+    });
 
   void test("passes the partial's details through beside text and title", () => {
     assert.deepEqual(
@@ -63,13 +71,23 @@ void describe("tool_progress overlay", () => {
         title: "uji",
         details: { provider: "exa", results: [] },
       }),
-      { text: "searching", title: "uji", details: { provider: "exa", results: [] } },
+      {
+        kind: "tool_progress",
+        entryId: "e1",
+        callId: "c1",
+        progress: { text: "searching", title: "uji", details: { provider: "exa", results: [] } },
+      },
     );
   });
 
   void test("drops details that do not round-trip through JSON", () => {
     const circular: { self?: unknown } = {};
     circular.self = circular;
-    assert.deepEqual(update({ content: [], details: circular }), { text: "" });
+    assert.deepEqual(update({ content: [], details: circular }), {
+      kind: "tool_progress",
+      entryId: "e1",
+      callId: "c1",
+      progress: { text: "" },
+    });
   });
 });

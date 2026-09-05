@@ -6,12 +6,12 @@ import { resolve } from "node:path";
 const esbuild = { tsconfigRaw: { compilerOptions: { target: "ES2024" } } };
 const rendererInput = resolve("src/renderer/index.html");
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   main: {
     esbuild,
     build: {
       externalizeDeps: {
-        exclude: ["@uji-ai/ai", "@uji-ai/core", "@uji-ai/plugin", "@uji-ai/schema"],
+        exclude: ["@nyte-ai/ai", "@nyte-ai/core", "@nyte-ai/plugin", "@nyte-ai/schema"],
       },
       minify: true,
       reportCompressedSize: false,
@@ -25,11 +25,13 @@ export default defineConfig({
   preload: {
     esbuild,
     build: {
+      externalizeDeps: { exclude: ["@nyte-ai/core"] },
       minify: true,
       reportCompressedSize: false,
       target: "node24",
       rollupOptions: {
         input: resolve("src/preload/index.ts"),
+        treeshake: { moduleSideEffects: false },
         output: { format: "cjs", entryFileNames: "[name].js" },
       },
     },
@@ -38,12 +40,16 @@ export default defineConfig({
     esbuild,
     plugins: [
       stylex.vite({
+        // Lazy renderer chunks must install their rules before React mounts them.
+        // Production still extracts one layered stylesheet.
+        devMode: command === "serve" ? "css-only" : "off",
+        runtimeInjection: command === "serve",
         useCSSLayers: true,
         lightningcssOptions: { targets: { chrome: 142 << 16 } },
       }),
       react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
     ],
-    optimizeDeps: { exclude: ["@uji-ai/ui"], include: ["react", "react-dom/client"] },
+    optimizeDeps: { exclude: ["@nyte-ai/ui"], include: ["react", "react-dom/client"] },
     resolve: {
       alias: { "node:crypto": resolve("src/renderer/src/browser-crypto.ts") },
       dedupe: ["react", "react-dom"],
@@ -56,4 +62,4 @@ export default defineConfig({
     },
     server: { host: "127.0.0.1", port: 5174, strictPort: true },
   },
-});
+}));

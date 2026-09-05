@@ -5,6 +5,7 @@
 /install.sh
 /scripts
 /vendor
+/.nyte
 /.uji
 
 /packages/ai
@@ -20,6 +21,7 @@
 
 **/.next
 **/.turbo
+**/.nyte
 **/.uji
 **/dist
 **/out

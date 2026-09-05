@@ -3,7 +3,7 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test } from "vitest";
 import {
   resolveHttpProxyUrlForTarget,
   UNSUPPORTED_PROXY_PROTOCOL_MESSAGE,
@@ -44,8 +44,8 @@ afterEach(() => {
   }
 });
 
-void describe("node HTTP proxy resolution", () => {
-  void test("respects NO_PROXY exclusions", () => {
+describe("node HTTP proxy resolution", () => {
+  test("respects NO_PROXY exclusions", () => {
     resetProxyEnv();
     process.env.HTTPS_PROXY = "http://proxy.example:8080";
     process.env.NO_PROXY = "bedrock-runtime.us-east-1.amazonaws.com";
@@ -56,7 +56,7 @@ void describe("node HTTP proxy resolution", () => {
     );
   });
 
-  void test("resolves HTTP and HTTPS proxy URLs", () => {
+  test("resolves HTTP and HTTPS proxy URLs", () => {
     resetProxyEnv();
     process.env.HTTPS_PROXY = "http://proxy.example:8080";
 
@@ -66,7 +66,7 @@ void describe("node HTTP proxy resolution", () => {
     );
   });
 
-  void test("prefers scoped proxy env aliases before process env aliases", () => {
+  test("prefers scoped proxy env aliases before process env aliases", () => {
     resetProxyEnv();
     process.env.https_proxy = "http://process-proxy.example:8080";
 
@@ -78,7 +78,7 @@ void describe("node HTTP proxy resolution", () => {
     );
   });
 
-  void test("rejects SOCKS and PAC proxy URLs explicitly", () => {
+  test("rejects SOCKS and PAC proxy URLs explicitly", () => {
     resetProxyEnv();
     process.env.HTTPS_PROXY = "socks5://proxy.example:1080";
 

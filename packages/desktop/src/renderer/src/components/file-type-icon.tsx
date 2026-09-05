@@ -1,5 +1,5 @@
 /**
- * File identity is Pierre's concern; size and color remain Uji schema choices.
+ * File identity is Pierre's concern; size and color remain Nyte schema choices.
  * One shared sprite keeps rows cheap, while exact basenames and compound
  * extensions stay inside Pierre's resolver instead of becoming desktop lore.
  *
@@ -66,7 +66,7 @@ const TONE_STYLE = {
   magenta: styles.magenta,
 } satisfies Record<FileIconTone, stylex.StyleXStyles>;
 
-const TOKEN_TONE: Readonly<Record<string, FileIconTone>> = {
+const TOKEN_TONE = {
   astro: "purple",
   babel: "yellow",
   bash: "green",
@@ -115,11 +115,16 @@ const TOKEN_TONE: Readonly<Record<string, FileIconTone>> = {
   yml: "red",
   zig: "orange",
   zip: "orange",
-};
+} satisfies Readonly<Record<string, FileIconTone>>;
+
+function isFileIconToken(token: string): token is keyof typeof TOKEN_TONE {
+  return Object.hasOwn(TOKEN_TONE, token);
+}
 
 export function FileTypeIcon({ path }: { readonly path: string }): ReactElement {
   const icon = resolver.resolveIcon("file-tree-icon-file", path.replaceAll("\\", "/"));
-  const tone = TOKEN_TONE[icon.token ?? ""] ?? "gray";
+  const token = icon.token ?? "";
+  const tone = isFileIconToken(token) ? TOKEN_TONE[token] : "gray";
   const width = icon.width ?? 16;
   const height = icon.height ?? 16;
 
