@@ -7,7 +7,6 @@ import { CommandMenu, MenuItem } from "../components/menu.tsx";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { focus, formatTimeAgo, Kbd, srOnly, StatusDot } from "../components/ui.tsx";
 import { macPlatform } from "../platform.ts";
-import { sessionWorking } from "../run-state.ts";
 import { isOption } from "./sidebar-view.ts";
 import { useSessionPreview, useSessionSearch } from "../queries.ts";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
@@ -261,7 +260,15 @@ export function SearchPalette({
           <MenuItem
             key={session.sessionId}
             itemStyle={styles.result}
-            leading={<StatusDot working={sessionWorking(session)} />}
+            leading={
+              <StatusDot
+                working={session.heads.some(
+                  (head) =>
+                    head.run !== undefined &&
+                    !["done", "aborted", "failed"].includes(head.run.phase.kind),
+                )}
+              />
+            }
             meta={formatTimeAgo(session.lastActivityAt)}
             textValue={sessionTitle(session)}
             onSelect={() => run(() => onOpenSession(session.sessionId))}

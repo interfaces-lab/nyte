@@ -260,9 +260,6 @@ export const UserContent = typed<UserMessageType["content"]>()(
   Type.Union([Type.String(), Type.Array(Type.Union([TextContent, ImageContent]))]),
 );
 
-/** The lane a send or redelivery names; the server checks it against the landing policy. */
-export const LaneInput = Type.Object({ lane: Type.Optional(Type.String()) });
-
 export const UserMessage = typed<UserMessageType>()(
   open({ role: Type.Literal("user"), content: UserContent, timestamp: Type.Number() }),
 );

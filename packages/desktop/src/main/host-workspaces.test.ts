@@ -2,13 +2,44 @@ import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, test, vi } from "vitest";
-import type { HostEvent } from "../shared/ipc.ts";
+import { afterAll, afterEach, test, vi } from "vitest";
+import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
+import { loadSessionDirectory } from "../renderer/src/session-directory.ts";
 import { DesktopHost } from "./host.ts";
+import { keys, loadLocalResources, queryClient } from "../renderer/src/queries.ts";
+
+interface RendererHostFixture {
+  current: DesktopHost | undefined;
+}
+
+const renderer = vi.hoisted(() => {
+  const state: RendererHostFixture = { current: undefined };
+  const host = (): DesktopHost => {
+    if (state.current === undefined) throw new Error("No renderer host fixture selected");
+    return state.current;
+  };
+  // The renderer uses the real host through the methods normally supplied by preload.
+  vi.stubGlobal("window", {
+    nyte: {
+      host: {
+        state: () => host().call("host.state", undefined),
+        sessionDirectory: () => host().call("host.sessionDirectory", undefined),
+        catalog: () => host().call("host.catalog", undefined),
+      },
+      workspace: { list: () => host().call("workspace.list", undefined) },
+      plugins: { catalog: () => host().call("plugins.catalog", undefined) },
+    },
+  });
+  return state;
+});
+
+afterAll(() => vi.unstubAllGlobals());
 
 const directories: string[] = [];
 const hosts: DesktopHost[] = [];
 afterEach(async () => {
+  queryClient.clear();
+  renderer.current = undefined;
   for (const host of hosts.splice(0)) await host.close();
   vi.unstubAllEnvs();
   await Promise.all(
@@ -21,10 +52,11 @@ async function fixture() {
   directories.push(root);
   vi.stubEnv("NYTE_HOME", join(root, "state"));
   const events: HostEvent[] = [];
+  const watchEvents: WatchEnvelope[] = [];
   const createHost = () => {
     const host = new DesktopHost({
       emitHostEvent: (event) => events.push(event),
-      emitWatchEvent: () => undefined,
+      emitWatchEvent: (event) => watchEvents.push(event),
       openExternal: () => undefined,
       pickFolder: async () => undefined,
       listFonts: async () => ({ sans: [], monospace: [] }),
@@ -44,7 +76,7 @@ async function fixture() {
     hosts.push(host);
     return host;
   };
-  return { root, events, createHost };
+  return { root, events, watchEvents, createHost };
 }
 
 test("selecting an untrusted project loads history without prompting; sending asks for trust once", async () => {
@@ -158,5 +190,120 @@ test("project terminals require the selected workspace and its trust grant", asy
   assert.equal(
     events.some((event) => event.kind === "terminal_data"),
     false,
+  );
+});
+
+test("a complete sidebar directory survives pagination and workspace switches", async () => {
+  const { root, createHost } = await fixture();
+  const host = createHost();
+  const path = join(root, "directory-project");
+  await mkdir(path);
+  await host.call("host.openWorkspace", { path });
+  const saved = [];
+  for (let index = 0; index < 7; index += 1) {
+    saved.push(await host.call("sessions.create", { name: `Chat ${index}` }));
+  }
+  const archived = saved[0];
+  assert.ok(archived);
+  await host.call("sessions.setArchived", { sessionId: archived.sessionId, archived: true });
+  await host.call("host.closeWorkspace", undefined);
+  await host.call("host.openWorkspace", { path });
+  const directory = await loadSessionDirectory((input) =>
+    host.call("sessions.list", { ...input, limit: 2 }),
+  );
+  assert.equal(directory.next, undefined);
+  assert.deepEqual(
+    new Set(directory.items.map((session) => session.sessionId)),
+    new Set(saved.map((session) => session.sessionId)),
+  );
+  assert.equal(
+    directory.items.find((session) => session.sessionId === archived.sessionId)?.archived,
+    true,
+  );
+});
+
+test("opening another workspace preserves its predecessor's sessions and live watch", async () => {
+  const { root, events, watchEvents, createHost } = await fixture();
+  const host = createHost();
+  const first = join(root, "first");
+  const second = join(root, "second");
+  await Promise.all([mkdir(first), mkdir(second)]);
+  await host.call("host.openWorkspace", { path: first });
+  const firstSession = await host.call("sessions.create", { name: "First folder chat" });
+  host.watchStart({ watchId: "first-folder", sessionId: firstSession.sessionId });
+  await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
+  await host.call("host.openWorkspace", { path: second });
+  const secondSession = await host.call("sessions.create", { name: "Second folder chat" });
+  await host.call("sessions.rename", { sessionId: firstSession.sessionId, name: "Still open" });
+  assert.equal(
+    (await host.call("sessions.get", { sessionId: firstSession.sessionId }))?.name,
+    "Still open",
+  );
+  assert.equal((await host.call("host.state", undefined)).workspace?.path, second);
+  const transitionCount = events.length;
+  const directory = await host.call("host.sessionDirectory", undefined);
+  assert.deepEqual(
+    directory
+      .find((entry) => entry.workspacePath === first)
+      ?.sessions.map((session) => session.name),
+    ["Still open"],
+  );
+  assert.deepEqual(
+    directory
+      .find((entry) => entry.workspacePath === second)
+      ?.sessions.map((session) => session.sessionId),
+    [secondSession.sessionId],
+  );
+  assert.equal(events.length, transitionCount);
+  assert.equal((await host.call("host.state", undefined)).workspace?.path, second);
+  assert.equal(
+    watchEvents.some((event) => event.kind === "ended"),
+    false,
+  );
+  await host.call("host.closeWorkspace", undefined);
+  assert.equal(
+    (await host.call("sessions.get", { sessionId: firstSession.sessionId }))?.name,
+    "Still open",
+  );
+  assert.equal(
+    (await host.call("sessions.get", { sessionId: secondSession.sessionId }))?.name,
+    "Second folder chat",
+  );
+  host.watchStop("first-folder");
+});
+
+test("searching the same term after switching workspaces returns the selected folder's chats", async () => {
+  const { root, createHost } = await fixture();
+  const host = createHost();
+  renderer.current = host;
+  const first = join(root, "search-first");
+  const second = join(root, "search-second");
+  await Promise.all([mkdir(first), mkdir(second)]);
+  await host.call("host.openWorkspace", { path: first });
+  const firstSession = await host.call("sessions.create", { name: "Shared topic in first" });
+  await loadLocalResources();
+  const search = () =>
+    queryClient.fetchQuery({
+      queryKey: keys.sessionSearch("Shared"),
+      queryFn: () => host.call("sessions.list", { search: "Shared", limit: 50 }),
+    });
+  assert.deepEqual(
+    (await search()).items.map((session) => session.sessionId),
+    [firstSession.sessionId],
+  );
+
+  await host.call("host.openWorkspace", { path: second });
+  const secondSession = await host.call("sessions.create", { name: "Shared topic in second" });
+  await loadLocalResources();
+  assert.deepEqual(
+    (await search()).items.map((session) => session.sessionId),
+    [secondSession.sessionId],
+  );
+
+  await host.call("host.openWorkspace", { path: first });
+  await loadLocalResources();
+  assert.deepEqual(
+    (await search()).items.map((session) => session.sessionId),
+    [firstSession.sessionId],
   );
 });

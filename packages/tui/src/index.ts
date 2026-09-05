@@ -160,17 +160,6 @@ async function print(flags: RunFlags): Promise<void> {
   const detach = host.attach();
   try {
     const target = await targetSession(host.nyte, flags.resume);
-    // A model or effort named on the command line is an explicit choice worth
-    // recording in the tree; settings-derived defaults stay fallbacks.
-    if (flags.model !== undefined || process.env["NYTE_MODEL"] !== undefined) {
-      await host.nyte.sessions.configure({
-        sessionId: target.sessionId,
-        model: { provider: model.provider, id: model.id },
-      });
-    }
-    if (flags.effort !== undefined) {
-      await host.nyte.sessions.configure({ sessionId: target.sessionId, thinkingLevel });
-    }
     controller.signal.addEventListener(
       "abort",
       () => void host.nyte.runs.abort({ sessionId: target.sessionId }).catch(() => undefined),
@@ -180,7 +169,13 @@ async function print(flags: RunFlags): Promise<void> {
       write: (text: string): void => void process.stdout.write(text),
       error: (text: string): void => void process.stderr.write(`${text}\n`),
     };
-    const outcome = await printRun({
+    // Record explicit CLI choices together; settings-derived defaults stay fallbacks.
+    const modelConfig =
+      flags.model !== undefined || process.env["NYTE_MODEL"] !== undefined
+        ? { model: { provider: model.provider, id: model.id } }
+        : undefined;
+    const configure = flags.effort === undefined ? modelConfig : { ...modelConfig, thinkingLevel };
+    const input = {
       nyte: host.nyte,
       sessionId: target.sessionId,
       content: flags.rest.join(" "),
@@ -188,7 +183,8 @@ async function print(flags: RunFlags): Promise<void> {
       quiet: flags.quiet,
       output,
       signal: controller.signal,
-    });
+    };
+    const outcome = await printRun(configure === undefined ? input : { ...input, configure });
     if (outcome.kind === "completed") {
       void settingsStore.updateGlobal({
         defaultProvider: runtime.provider.id,

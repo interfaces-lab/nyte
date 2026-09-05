@@ -14,5 +14,5 @@ export default defineConfig({
       callees: ["clsx", "cva", "cn"],
     },
   },
-  ignorePatterns: ["node_modules/", "dist/"],
+  ignorePatterns: ["node_modules/"],
 });

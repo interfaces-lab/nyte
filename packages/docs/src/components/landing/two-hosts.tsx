@@ -178,7 +178,6 @@ export function TwoHosts() {
         <Terminal frame={frame} />
         <Desktop frame={frame} />
       </div>
-
     </>
   );
 }

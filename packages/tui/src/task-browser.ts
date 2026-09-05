@@ -180,7 +180,7 @@ export class TaskBrowser {
         onSelect: (id) => this.inspect(id),
         onCancel: () => this.close(),
         // Bash runs may contain concurrent calls. Name the actual cancellation scope.
-        actions: [{ key: "x", ctrl: true, label: "stop run", run: (id) => this.stop(id) }],
+        actions: [{ command: "chat.task.stop", label: "stop run", run: (id) => this.stop(id) }],
       },
       (cause) => this.options.onError(cause instanceof Error ? cause : new Error(String(cause))),
     );
@@ -221,7 +221,7 @@ export class TaskBrowser {
           ? task.turn
           : task.state.transcript.items.findLast((item) => item.kind === "turn");
       const duration =
-        canStopTask(task) && task.state.run !== undefined
+        ["running", "waiting", "retrying"].includes(status) && task.state.run !== undefined
           ? Math.max(0, Date.now() - task.state.run.startedAt)
           : turn?.durationMs;
       const elapsed = duration === undefined ? "" : formatDuration(duration);

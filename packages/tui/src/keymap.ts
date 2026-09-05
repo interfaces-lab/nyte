@@ -12,6 +12,7 @@
  * Based on OpenCode's keymap wiring:
  * https://github.com/anomalyco/opencode/blob/main/packages/tui/src/keymap.tsx
  */
+import { CliRenderEvents } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
 import type { Command, Keymap, KeymapEvent } from "@opentui/keymap";
 import {
@@ -30,12 +31,6 @@ import { CHAT_KEYBINDS, type ChatCommand } from "./constants.ts";
  * chat layer. Both keys mean something else the moment the selection is gone,
  * and the layer's `enabled` is what says so.
  */
-const SELECTION_KEYBINDS = {
-  // Terminals rarely hand cmd+c to the app, so ctrl+c copies too.
-  "selection.copy": "ctrl+c,super+c,meta+c",
-  "selection.clear": "escape",
-} as const satisfies Readonly<Record<string, string>>;
-
 const SELECTION_PRIORITY = 10;
 
 export interface ChatCommandSpec {
@@ -91,8 +86,8 @@ function chatCommand<T extends object, E extends KeymapEvent>(
 }
 
 /**
- * `commands` is keyed by the whole `CHAT_KEYBINDS` set, so a bound command with
- * no handler and a handler with no binding are both compile errors.
+ * Each layer owns its commands; bindings and displayed shortcuts come from
+ * `CHAT_KEYBINDS`. The shared QA matrix covers every command in that registry.
  */
 export function registerChatLayer<T extends object, E extends KeymapEvent>(
   keymap: Keymap<T, E>,
@@ -102,16 +97,23 @@ export function registerChatLayer<T extends object, E extends KeymapEvent>(
      * an open completion. The layer stands down rather than racing them.
      */
     readonly enabled: () => boolean;
-    readonly commands: ChatCommands;
+    readonly commands: Partial<ChatCommands>;
     readonly keybinds?: Readonly<Record<ChatCommand, string>>;
   },
 ): () => void {
-  const names = Object.keys(CHAT_KEYBINDS).filter(isChatCommand);
-  const commands = names.map((name) => chatCommand<T, E>(name, options.commands[name]));
+  const names = Object.keys(options.commands).filter(isChatCommand);
+  const commands = names.flatMap((name) => {
+    const spec = options.commands[name];
+    return spec === undefined ? [] : [chatCommand<T, E>(name, spec)];
+  });
   return keymap.registerLayer({
     enabled: options.enabled,
     commands,
-    bindings: commandBindings<T, E>(options.keybinds ?? CHAT_KEYBINDS),
+    bindings: commandBindings<T, E>(
+      Object.fromEntries(
+        names.map((name) => [name, options.keybinds?.[name] ?? CHAT_KEYBINDS[name]]),
+      ),
+    ),
   });
 }
 
@@ -119,14 +121,62 @@ function isChatCommand(name: string): name is ChatCommand {
   return Object.hasOwn(CHAT_KEYBINDS, name);
 }
 
+/** Based on https://github.com/anomalyco/opencode/blob/8381153418faa32396af98ec173228d7eb16ea5f/packages/tui/src/util/selection.ts */
+export function copy(renderer: CliRenderer, write: (text: string) => void): boolean {
+  const selection = renderer.getSelection();
+  if (selection === null || (selection.isStart && selection.behavior === "cell")) return false;
+  const text = selection.getSelectedText();
+  if (text === "") return false;
+  write(text);
+  // Copy never clears selection: clearing also resets multi-click history.
+  return true;
+}
+
+export function copyOnSelectRelease(renderer: CliRenderer, write: (text: string) => void): boolean {
+  return copy(renderer, write);
+}
+
+export function handleSelectionKey(
+  renderer: CliRenderer,
+  write: (text: string) => void,
+  command: "selection.copy" | "selection.clear",
+  copyOnSelect: boolean,
+): boolean {
+  const selection = renderer.getSelection();
+  if (selection === null) return false;
+  const focus = renderer.currentFocusedEditor;
+  const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
+  if (command === "selection.copy") {
+    if ((copyOnSelect && !editing) || !copy(renderer, write)) {
+      renderer.clearSelection();
+      return false;
+    }
+    return true;
+  }
+  const text =
+    selection.isStart && selection.behavior === "cell" ? "" : selection.getSelectedText();
+  renderer.clearSelection();
+  return text !== "";
+}
+
 export function registerSelectionLayer(
   keymap: Keymap<Renderable, KeyEvent>,
-  renderer: Pick<
-    CliRenderer,
-    "hasSelection" | "getSelection" | "copyToClipboardOSC52" | "clearSelection"
-  >,
+  renderer: CliRenderer,
+  options: { readonly copy: (text: string) => void; readonly copyOnSelect: () => boolean },
 ): () => void {
-  return keymap.registerLayer({
+  const onSelection = (): void => {
+    if (options.copyOnSelect()) copyOnSelectRelease(renderer, options.copy);
+  };
+  const onKey = (event: KeyEvent): void => {
+    if (event.defaultPrevented) return;
+    const selection = renderer.getSelection();
+    const focus = renderer.currentFocusedEditor;
+    if (focus?.hasSelection() && selection?.selectedRenderables.includes(focus)) return;
+    renderer.clearSelection();
+  };
+  renderer.on(CliRenderEvents.SELECTION, onSelection);
+  renderer.keyInput.on("keypress", onKey);
+  const unregister = keymap.registerLayer({
     priority: SELECTION_PRIORITY,
     enabled: () => renderer.hasSelection,
     commands: [
@@ -134,23 +184,27 @@ export function registerSelectionLayer(
         name: "selection.copy",
         category: "Selection",
         title: "Copy the selected text",
-        run: () => {
-          const selected = renderer.getSelection()?.getSelectedText();
-          if (selected !== undefined && selected !== "") renderer.copyToClipboardOSC52(selected);
-          renderer.clearSelection();
-        },
+        run: () =>
+          handleSelectionKey(renderer, options.copy, "selection.copy", options.copyOnSelect()),
       },
       {
         name: "selection.clear",
         category: "Selection",
         title: "Dismiss the selection",
-        run: () => {
-          renderer.clearSelection();
-        },
+        run: () =>
+          handleSelectionKey(renderer, options.copy, "selection.clear", options.copyOnSelect()),
       },
     ],
-    bindings: commandBindings(SELECTION_KEYBINDS),
+    bindings: commandBindings({
+      "selection.copy": CHAT_KEYBINDS["selection.copy"],
+      "selection.clear": CHAT_KEYBINDS["selection.clear"],
+    }),
   });
+  return () => {
+    renderer.off(CliRenderEvents.SELECTION, onSelection);
+    renderer.keyInput.off("keypress", onKey);
+    unregister();
+  };
 }
 
 // ---------------------------------------------------------------------------

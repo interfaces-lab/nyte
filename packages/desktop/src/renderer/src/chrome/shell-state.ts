@@ -26,12 +26,14 @@ const SIDEBAR_WIDTH_VARIABLE = "--nyte-sidebar-width";
 const persistedSidebarSchema = Type.Object({
   visible: Type.Optional(Type.Unknown()),
   width: Type.Optional(Type.Unknown()),
+  homeVisible: Type.Optional(Type.Unknown()),
 });
 const widthSchema = Type.Number();
 
 interface ShellState {
   readonly sidebarVisible: boolean;
   readonly sidebarWidth: number;
+  readonly homeVisible: boolean;
   readonly stage: ShellStage;
 }
 
@@ -48,8 +50,8 @@ function storage(): Storage | undefined {
   }
 }
 
-function readPersisted(): Pick<ShellState, "sidebarVisible" | "sidebarWidth"> {
-  const fallback = { sidebarVisible: true, sidebarWidth: SIDEBAR_WIDTH_DEFAULT };
+function readPersisted(): Pick<ShellState, "sidebarVisible" | "sidebarWidth" | "homeVisible"> {
+  const fallback = { sidebarVisible: true, sidebarWidth: SIDEBAR_WIDTH_DEFAULT, homeVisible: true };
   try {
     const raw = storage()?.getItem(SIDEBAR_KEY);
     if (raw === null || raw === undefined) return fallback;
@@ -58,6 +60,7 @@ function readPersisted(): Pick<ShellState, "sidebarVisible" | "sidebarWidth"> {
     const { visible, width } = parsed;
     return {
       sidebarVisible: visible !== false,
+      homeVisible: parsed.homeVisible !== false,
       sidebarWidth: Value.Check(widthSchema, width)
         ? clampSidebarWidth(width)
         : SIDEBAR_WIDTH_DEFAULT,
@@ -71,7 +74,11 @@ function persist(next: ShellState): void {
   try {
     storage()?.setItem(
       SIDEBAR_KEY,
-      JSON.stringify({ visible: next.sidebarVisible, width: next.sidebarWidth }),
+      JSON.stringify({
+        visible: next.sidebarVisible,
+        width: next.sidebarWidth,
+        homeVisible: next.homeVisible,
+      }),
     );
   } catch {
     // The in-memory choice still applies for this window.
@@ -109,6 +116,12 @@ export const shellActions = Object.freeze({
   setSidebarVisible(visible: boolean): void {
     if (state.sidebarVisible === visible) return;
     const next = { ...state, sidebarVisible: visible };
+    persist(next);
+    publish(next);
+  },
+  setHomeVisible(homeVisible: boolean): void {
+    if (state.homeVisible === homeVisible) return;
+    const next = { ...state, homeVisible };
     persist(next);
     publish(next);
   },

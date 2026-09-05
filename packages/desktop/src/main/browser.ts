@@ -1,3 +1,4 @@
+import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 /** Browser panel pages: one `WebContentsView` per surface in a guest partition. */
 import { app, session, WebContentsView } from "electron";
 import type { BrowserWindow, Session, WebContents } from "electron";
@@ -8,7 +9,7 @@ import type {
   HostEvent,
   HostBridge,
 } from "../shared/ipc.ts";
-import type { Blocker } from "./adblock.ts";
+import { loadBlocker, type Blocker } from "./adblock.ts";
 import {
   httpsUpgrade,
   permissionAllowed,
@@ -64,11 +65,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   let blockerReady: Promise<void> | undefined;
 
   const ensureBlocker = (): Promise<void> => {
-    blockerReady ??= import("./adblock.ts")
-      .then(({ loadBlocker }) => loadBlocker(dependencies.filterListPath))
-      .then((loaded) => {
-        blocker = loaded;
-      });
+    blockerReady ??= loadBlocker(dependencies.filterListPath).then((loaded) => {
+      blocker = loaded;
+    });
     return blockerReady;
   };
 
@@ -311,7 +310,6 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     async menu(input) {
       const contents = surfaces.get(input.surface)?.view.webContents;
       const hasPage = contents !== undefined && !contents.isDestroyed() && contents.getURL() !== "";
-      const { showBrowserMenu } = await import("./browser-actions.ts");
       return showBrowserMenu({ window: dependencies.window(), hasPage, input });
     },
     async perform({ surface: id, action }) {
@@ -324,7 +322,6 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         }
         return;
       }
-      const { performBrowserAction } = await import("./browser-actions.ts");
       return performBrowserAction({
         action,
         contents: surfaces.get(id)?.view.webContents,

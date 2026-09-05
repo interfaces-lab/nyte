@@ -86,18 +86,28 @@ so on) wait for a later revision. `VERBS` is the authoritative list.
 ## Using it
 
 ```ts
-import { VERBS, decode, schemas, sessionId, type SessionInfo } from "@nyte-ai/protocol";
+import { Value } from "typebox/value";
+import { VERBS, describeIssues, validationIssues } from "@nyte-ai/protocol";
 
-const input = decode(VERBS["messages.send"].input, JSON.parse(body));
-if (!input.ok) throw new Error(input.issues.map((i) => i.path).join(", "));
-
-const info = decode(schemas.SessionInfo, JSON.parse(reply));
-// info.value: SessionInfo when info.ok
+const input: unknown = JSON.parse(body);
+const schema = VERBS["messages.send"].input;
+if (!Value.Check(schema, input)) {
+  throw new Error(describeIssues(validationIssues(Value.Errors(schema, input))));
+}
+// input now has the verb's input type, including its branded sessionId.
 ```
 
-`createSseParser({ maxFrameChars })` bounds one frame (the unterminated line
-plus the fields gathered so far) in UTF-16 code units of the decoded text,
-not bytes; the default is 4 194 304. Past the bound `parser.overflow` is
+Check untrusted values at the HTTP or SSE boundary with `Value.Check`.
+Pass the resulting types to SDK code without revalidating them.
+`validationIssues` limits schema diagnostics to 20 entries. `parseVerb`
+returns a verb from `VERBS`, or `undefined` for an unrecognized route name.
+
+`createSseParser({ maxFrameChars })` bounds the decoded text of one frame
+in UTF-16 code units, not bytes, including field names, comments, line
+endings, and the terminating blank line. The default is 4 194 304. The
+limit is independent of chunk boundaries and applies to `id:` fields too.
+An id may persist across frames, but it must fit in the frame that supplied
+it. Overflow releases retained parser state. Past the bound `parser.overflow` is
 set, frames completed before the offending one are still returned, and
 nothing more is parsed.
 

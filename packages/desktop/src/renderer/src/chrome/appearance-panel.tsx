@@ -86,17 +86,6 @@ function installedFontOptions<T extends UiFont | CodeFont>(
   return options;
 }
 
-function UiFontPreview(): ReactElement {
-  return (
-    <div aria-label="UI font preview" {...stylex.props(styles.uiFontPreview)}>
-      <span {...stylex.props(styles.uiFontPreviewTitle)}>Build with Nyte</span>
-      <span {...stylex.props(styles.uiFontPreviewCopy)}>
-        Interface text uses the selected typeface and size.
-      </span>
-    </div>
-  );
-}
-
 function CodeFontPreview(): ReactElement {
   return (
     <div aria-label="Code and diff font preview" {...stylex.props(styles.codeFontPreview)}>
@@ -272,7 +261,9 @@ export function AppearanceSettings(): ReactElement {
       </div>
 
       <section {...stylex.props(settingsPatterns.section)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Agent Conversations</h2>
+        <div {...stylex.props(settingsPatterns.sectionHeader)}>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Agent Conversations</h2>
+        </div>
         <div {...stylex.props(settingsPatterns.group)}>
           <SettingsRow
             title="Tool Call Density"
@@ -310,7 +301,9 @@ export function AppearanceSettings(): ReactElement {
       </section>
 
       <section {...stylex.props(settingsPatterns.section)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Colors</h2>
+        <div {...stylex.props(settingsPatterns.sectionHeader)}>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Colors</h2>
+        </div>
         <div {...stylex.props(settingsPatterns.group)}>
           <SettingsRow title="Hue" description="Choose a tint color">
             <HueControl
@@ -345,7 +338,9 @@ export function AppearanceSettings(): ReactElement {
       </section>
 
       <section {...stylex.props(settingsPatterns.section)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Typography</h2>
+        <div {...stylex.props(settingsPatterns.sectionHeader)}>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Typography</h2>
+        </div>
         <div {...stylex.props(settingsPatterns.group)}>
           <SettingsRow title="UI Font Size" description="Font size for the Nyte user interface">
             <SettingsStepper
@@ -369,7 +364,6 @@ export function AppearanceSettings(): ReactElement {
             title="UI Font Family"
             description="Override the Nyte user interface typeface"
             controlWidth="wide"
-            detail={<UiFontPreview />}
           >
             <SettingsSelect<UiFont>
               label="UI Font Family"

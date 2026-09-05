@@ -306,12 +306,17 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000).toFixed(1)}m`;
 }
 
-export function powerlineSegments(state: PowerlineState): PowerlineSegment[] {
-  const branch = state.branch === undefined ? "" : ` ${state.branch}${state.dirty ? "*" : ""}`;
-  const badges = [...(state.effort === undefined ? [] : [state.effort]), ...state.statuses];
+export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegment[] {
+  const branch =
+    state.dirty === undefined
+      ? " · git loading"
+      : state.branch === undefined
+        ? ""
+        : ` ${state.branch}${state.dirty ? "*" : ""}`;
+  const badges = [...(state.effort === undefined ? [] : [state.effort]), ...(state.statuses ?? [])];
   const segments: PowerlineSegment[] = [
-    { text: `${state.workspace}${branch}`, tone: "workspace" },
-    { text: state.model, tone: "model" },
+    { text: `${state.workspace ?? "workspace loading"}${branch}`, tone: "workspace" },
+    { text: state.model ?? "model loading", tone: "model" },
   ];
   if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
   if (state.tokens !== undefined && state.tokens > 0) {
@@ -320,7 +325,8 @@ export function powerlineSegments(state: PowerlineState): PowerlineSegment[] {
       tone: "usage",
     });
   }
-  if (state.queued > 0) segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
+  if (state.queued !== undefined && state.queued > 0)
+    segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
   return segments;
 }
 

@@ -16,7 +16,7 @@ import {
 import { branch, contextCommits, history } from "../graph.ts";
 import { hashObject } from "../hash.ts";
 import { listEffects, signalEffect } from "../effects.ts";
-import type { Actor, Commit, CommitBody, Event, Oid, RefName, Run, RunPhase } from "../model.ts";
+import type { Actor, Commit, CommitBody, Event, Oid, RefName, Run } from "../model.ts";
 import {
   DELETED_REF,
   FACT_PREFIX,
@@ -163,24 +163,6 @@ async function untilLeaseReleased(session: Session, name: string): Promise<boole
   return false;
 }
 
-function isTerminal(phase: RunPhase): boolean {
-  switch (phase.kind) {
-    case "done":
-    case "aborted":
-    case "failed":
-      return true;
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return false;
-    default: {
-      const _exhaustive: never = phase;
-      return _exhaustive;
-    }
-  }
-}
-
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
@@ -264,7 +246,7 @@ function noticeEvent(notice: Notice, seq: number): SessionEvent {
         owner: notice.owner,
         message: notice.message,
         sound: notice.sound === true,
-      } as const;
+      } satisfies SessionEvent;
       return notice.title === undefined ? base : { ...base, title: notice.title };
     }
     case "status_changed":
@@ -455,7 +437,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
   /** The run's calls still parked for a reply. A finished run has none. */
   const parkedCalls = async (session: Session, run: RunInfo): Promise<ParkedCall[]> => {
-    if (isTerminal(run.phase)) return [];
+    if (["done", "aborted", "failed"].includes(run.phase.kind)) return [];
     const views = await listEffects(session, run.runId);
     return views.flatMap((view) =>
       view.effect.state === "waiting"
@@ -675,7 +657,9 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
     const readActiveRunId = async (head: HeadName): Promise<string | undefined> => {
       const stored = await readRun(pooled.session, head);
-      return stored !== undefined && !isTerminal(stored.run.phase) ? stored.run.id : undefined;
+      return stored !== undefined && !["done", "aborted", "failed"].includes(stored.run.phase.kind)
+        ? stored.run.id
+        : undefined;
     };
 
     const wake = (head: HeadName): void => {
@@ -877,7 +861,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       const oid = await session.refs.read(name);
       if (oid === null) return undefined;
       const run = await runAtRef(session, oid);
-      if (run === undefined || isTerminal(run.phase)) return undefined;
+      if (run === undefined || ["done", "aborted", "failed"].includes(run.phase.kind))
+        return undefined;
       const head = headFromRunRef(name);
       if (run.abortRequested === true) {
         if (head !== undefined) abortLocalDrive(id, head, run.id);
@@ -1088,7 +1073,11 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     waitingRun?: Run,
   ): Promise<void> => {
     const childRun = head === MAIN ? await readRun(pooled.session, MAIN) : undefined;
-    if (pooled.parent !== undefined && childRun !== undefined && isTerminal(childRun.run.phase)) {
+    if (
+      pooled.parent !== undefined &&
+      childRun !== undefined &&
+      ["done", "aborted", "failed"].includes(childRun.run.phase.kind)
+    ) {
       await signalParent(pooled.parent, id);
     }
     if (waitingRun === undefined) return;
@@ -1097,7 +1086,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       const child = await openChild(id, waitingRun.id, effect.intent.callId);
       if (child === undefined) continue;
       const run = await readRun(child.pooled.session, MAIN);
-      if (run === undefined || !isTerminal(run.run.phase)) continue;
+      if (run === undefined || !["done", "aborted", "failed"].includes(run.run.phase.kind))
+        continue;
       await signalParent(
         { sessionId: id, runId: waitingRun.id, callId: effect.intent.callId },
         child.id,
@@ -1359,6 +1349,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
               head: input.head ?? MAIN,
               change: input.change,
               lane: servedLane(input.lane),
+              content: input.content,
+              before: input.before,
             },
             options.actor,
           ),
@@ -1416,7 +1408,11 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
               if (!(await untilLeaseReleased(session, headRef(head)))) return undefined;
               continue;
             }
-            if (stored !== undefined && !isTerminal(stored.run.phase)) return undefined;
+            if (
+              stored !== undefined &&
+              !["done", "aborted", "failed"].includes(stored.run.phase.kind)
+            )
+              return undefined;
             if (queued.length > 0) return undefined;
             // The run's last publish and the lease release are two writes.
             // `idle` promises the head is free, so wait for the runner to let go.
@@ -1452,18 +1448,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
             options.actor,
           ),
         );
-        switch (outcome.kind) {
-          case "signalled":
-            return { kind: "signalled" };
-          case "not_waiting":
-            return { kind: "not_waiting" };
-          case "not_found":
-            return { kind: "not_found" };
-          default: {
-            const _exhaustive: never = outcome;
-            return _exhaustive;
-          }
-        }
+        return { kind: outcome.kind };
       },
       async compact(input): Promise<CompactOutcome> {
         alive();
@@ -1472,7 +1457,10 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const { session } = pooled;
         const head = input.head ?? MAIN;
         const running = await readRun(session, head);
-        if (running !== undefined && !isTerminal(running.run.phase)) {
+        if (
+          running !== undefined &&
+          !["done", "aborted", "failed"].includes(running.run.phase.kind)
+        ) {
           const lease = await session.leases.read(headRef(head));
           return { kind: "busy", run: runInfo(running.run, lease) };
         }
@@ -1522,7 +1510,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
               return { kind: "aborted" };
             case "busy": {
               const current = await currentRun(session, head);
-              return current !== undefined && !isTerminal(current.phase)
+              return current !== undefined &&
+                !["done", "aborted", "failed"].includes(current.phase.kind)
                 ? { kind: "busy", run: current }
                 : { kind: "failed", message: `Head ${head} is busy without a live run` };
             }
@@ -1602,7 +1591,10 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           return { kind: "moved_since", tip };
         }
         const running = await readRun(session, head);
-        if (running !== undefined && !isTerminal(running.run.phase)) {
+        if (
+          running !== undefined &&
+          !["done", "aborted", "failed"].includes(running.run.phase.kind)
+        ) {
           const lease = await session.leases.read(headRef(head));
           return { kind: "busy", run: runInfo(running.run, lease) };
         }

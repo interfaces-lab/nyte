@@ -14,13 +14,12 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  lazyRouteComponent,
   Matches,
   redirect,
   useMatch,
   useRouter,
 } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect } from "react";
+import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
 import { isSettingsSection } from "./chrome/settings-navigation.tsx";
@@ -36,20 +35,17 @@ import {
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
 import { MIN_PANE_WIDTH } from "./layout/pane-layout.ts";
 import { keys, queryClient, useHostState, warmThread } from "./queries.ts";
+import type { SessionPage } from "./session-directory.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { t } from "./theme/vars.stylex.ts";
-import { asSessionId, nyte } from "./nyte.ts";
+import { sessionId } from "@nyte-ai/protocol";
+import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { activateOutbox } from "./use-outbox.ts";
 
-const CustomizeSurface = lazy(() =>
-  import("./chrome/customize.tsx").then((module) => ({ default: module.CustomizeSurface })),
-);
-const SettingsSurface = lazyRouteComponent(
-  () => import("./chrome/appearance-settings.tsx"),
-  "SettingsSurface",
-);
+import { CustomizeSurface } from "./chrome/customize.tsx";
+import { SettingsSurface } from "./chrome/appearance-settings.tsx";
 
 const styles = stylex.create({
   shell: {
@@ -197,11 +193,7 @@ function StageContent({
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
   if (settings !== undefined) return <Matches />;
   if (shellStage.kind === "workspace") return <Matches />;
-  return (
-    <Suspense fallback={null}>
-      <CustomizeSurface sessionId={shellStage.sessionId} />
-    </Suspense>
-  );
+  return <CustomizeSurface sessionId={shellStage.sessionId} />;
 }
 
 export const rootRoute = createRootRoute();
@@ -226,8 +218,11 @@ export const indexRoute = createRoute({
     startupDestinationPending = false;
     if (getStartupDestination() === "new-chat") return;
 
-    const sessions = await nyte.sessions.list({ limit: 1 });
-    const sessionId = startupSession("last-session", sessions.items);
+    const sessions = queryClient.getQueryData<SessionPage>(keys.sessionPreview);
+    const sessionId = startupSession(
+      "last-session",
+      sessions?.items.filter((session) => !session.archived) ?? [],
+    );
     if (sessionId !== undefined) {
       throw redirect({
         to: threadRoute.to,
@@ -242,7 +237,7 @@ export const threadRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/session/$sessionId",
   params: {
-    parse: ({ sessionId }) => ({ sessionId: asSessionId(sessionId) }),
+    parse: (params) => ({ sessionId: sessionId(params.sessionId) }),
     stringify: ({ sessionId }) => ({ sessionId }),
   },
   beforeLoad: async ({ params }) => {

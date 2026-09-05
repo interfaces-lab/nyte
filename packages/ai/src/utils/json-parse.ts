@@ -5,6 +5,10 @@
  * Synced with pi 7ebf9087e.
  */
 import { parse as partialParse } from "partial-json";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
+
+const ToolArgumentsSchema = Type.Record(Type.String(), Type.Unknown());
 
 const VALID_JSON_ESCAPES = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
 
@@ -88,18 +92,6 @@ export function repairJson(json: string): string {
   return repaired;
 }
 
-export function parseJsonWithRepair<T>(json: string): T {
-  try {
-    return JSON.parse(json) as T;
-  } catch (error) {
-    const repairedJson = repairJson(json);
-    if (repairedJson !== json) {
-      return JSON.parse(repairedJson) as T;
-    }
-    throw error;
-  }
-}
-
 /**
  * Attempts to parse potentially incomplete JSON during streaming.
  * Always returns a valid object, even if the JSON is incomplete.
@@ -107,26 +99,26 @@ export function parseJsonWithRepair<T>(json: string): T {
  * @param partialJson The partial JSON string from streaming
  * @returns Parsed object or empty object if parsing fails
  */
-export function parseStreamingJson<T = Record<string, unknown>>(
+export function parseStreamingJson(
   partialJson: string | undefined,
-): T {
-  if (!partialJson || partialJson.trim() === "") {
-    return {} as T;
-  }
+): Static<typeof ToolArgumentsSchema> {
+  if (!partialJson || partialJson.trim() === "") return {};
 
+  let value: unknown;
   try {
-    return parseJsonWithRepair<T>(partialJson);
+    value = JSON.parse(partialJson);
   } catch {
+    const repaired = repairJson(partialJson);
     try {
-      const result = partialParse(partialJson);
-      return (result ?? {}) as T;
+      value = JSON.parse(repaired);
     } catch {
       try {
-        const result = partialParse(repairJson(partialJson));
-        return (result ?? {}) as T;
+        // Partial parsing can silently drop fields containing raw control characters.
+        value = partialParse(repaired);
       } catch {
-        return {} as T;
+        return {};
       }
     }
   }
+  return Value.Check(ToolArgumentsSchema, value) ? value : {};
 }

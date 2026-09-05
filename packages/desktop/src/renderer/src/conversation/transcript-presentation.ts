@@ -101,9 +101,11 @@ export interface TranscriptNotice {
 
 function nestedMessage(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const record = value as Readonly<Record<string, unknown>>;
-  if (typeof record.message === "string") return record.message;
-  return nestedMessage(record.error) ?? nestedMessage(record.cause);
+  if ("message" in value && typeof value.message === "string") return value.message;
+  return (
+    ("error" in value ? nestedMessage(value.error) : undefined) ??
+    ("cause" in value ? nestedMessage(value.cause) : undefined)
+  );
 }
 
 function jsonMessage(text: string): string | undefined {
@@ -111,7 +113,7 @@ function jsonMessage(text: string): string | undefined {
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) return undefined;
   try {
-    return nestedMessage(JSON.parse(text.slice(start, end + 1)) as unknown);
+    return nestedMessage(JSON.parse(text.slice(start, end + 1)));
   } catch {
     return undefined;
   }
@@ -181,21 +183,9 @@ export function presentTranscriptNotice(source: string): TranscriptNotice {
   };
 }
 
-function modelLabel(id: string): string {
-  return id
-    .split(/[-_]+/u)
-    .filter(Boolean)
-    .map((word) => {
-      if (word.toLocaleLowerCase() === "gpt") return "GPT";
-      return /^\d/u.test(word) ? word : word.slice(0, 1).toLocaleUpperCase() + word.slice(1);
-    })
-    .join(" ");
-}
-
 export function configChangeText(
   turn: Extract<Turn, { readonly kind: "config" }>,
 ): string | undefined {
-  if (turn.body.model !== undefined) return `Routed to ${modelLabel(turn.body.model.id)}`;
   if (turn.body.agent !== undefined) return `Mode set to ${turn.body.agent}`;
   return undefined;
 }

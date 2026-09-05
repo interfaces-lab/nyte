@@ -2,18 +2,18 @@
  * The workspace registry: the durable recents list behind `workspace.list`,
  * owned by core so hosts never hand-roll a store (design record, "workspace
  * and provider"). Reads are tolerant, writes are atomic, entries are
- * realpaths, and `createUji` records `env.cwd` when a registry is supplied.
+ * realpaths, and `createNyte` records `env.cwd` when a registry is supplied.
  */
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, test } from "node:test";
-import type { AssistantMessage, AssistantMessageEvent, Model, Usage } from "@uji-ai/ai";
-import { EventStream } from "@uji-ai/ai";
-import { createUji, WorkspaceRegistry } from "../src/index.ts";
-import { SqliteSessionRepo } from "../src/store.ts";
+import { afterEach, describe, test } from "vitest";
+import type { Model, Usage } from "@nyte-ai/ai";
+import { createAssistantMessageEventStream } from "@nyte-ai/ai";
+import { createNyte, WorkspaceRegistry } from "../src/index.ts";
+import { SqliteStore } from "../src/store.ts";
 import type { StreamFn } from "../src/types.ts";
 
 const directories: string[] = [];
@@ -161,14 +161,7 @@ const model: Model<"openai-responses"> = {
 };
 
 const idleStream: StreamFn = () => {
-  const events = new EventStream<AssistantMessageEvent, AssistantMessage>(
-    (event) => event.type === "done" || event.type === "error",
-    (event) => {
-      if (event.type === "done") return event.message;
-      if (event.type === "error") return event.error;
-      throw new Error("no terminal event");
-    },
-  );
+  const events = createAssistantMessageEventStream();
   events.push({
     type: "done",
     reason: "stop",
@@ -187,18 +180,18 @@ const idleStream: StreamFn = () => {
 };
 
 const catalog = {
-  getModels: () => [model as Model<"openai-responses">],
+  getModels: () => [model],
   getModel: (_provider: string, id: string) => (id === model.id ? model : undefined),
   checkAuth: async (provider: string) => (provider === "openai" ? { type: "api_key" } : undefined),
   getProvider: (id: string) => (id === "openai" ? { id } : undefined),
 };
 
 describe("workspace verbs", () => {
-  test("createUji records env.cwd; list and forget ride the SDK", async () => {
+  test("createNyte records env.cwd; list and forget ride the SDK", async () => {
     const cwd = scratch();
     const registry = new WorkspaceRegistry(join(cwd, "registry", "workspaces.json"));
-    const store = new SqliteSessionRepo(join(cwd, "sessions.db"));
-    const uji = await createUji({
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
       store,
       streamFn: idleStream,
       models: catalog,
@@ -222,8 +215,8 @@ describe("workspace verbs", () => {
 
   test("without a registry the list is empty and forget is a no-op", async () => {
     const cwd = scratch();
-    const store = new SqliteSessionRepo(join(cwd, "sessions.db"));
-    const uji = await createUji({
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
       store,
       streamFn: idleStream,
       models: catalog,

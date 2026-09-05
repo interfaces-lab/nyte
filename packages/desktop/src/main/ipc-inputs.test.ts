@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { asSessionId } from "../shared/ipc.ts";
+import { sessionId } from "@nyte-ai/protocol";
 import type { CallRequest } from "../shared/ipc.ts";
 import { CALL_INPUT_SCHEMAS, decodeCallRequest } from "./ipc-inputs.ts";
 
@@ -12,14 +12,14 @@ describe("plugin command IPC inputs", () => {
   });
 
   test("decodes command list and run requests", () => {
-    const sessionId = asSessionId("session-1");
+    const id = sessionId("session-1");
     const list = {
       path: "plugins.commands.list",
-      input: { sessionId },
+      input: { sessionId: id },
     } satisfies CallRequest;
     const run = {
       path: "plugins.commands.run",
-      input: { sessionId, name: "rename", argument: "A useful name" },
+      input: { sessionId: id, name: "rename", argument: "A useful name" },
     } satisfies CallRequest;
 
     assert.deepEqual(decodeCallRequest(list), list);

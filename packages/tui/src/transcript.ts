@@ -8,10 +8,13 @@
 import {
   BoxRenderable,
   CodeRenderable,
+  createMarkdownCodeBlockRenderer,
   DiffRenderable,
   fg,
+  ImageRenderable,
   LineNumberRenderable,
   MarkdownRenderable,
+  ScrollBoxRenderable,
   pathToFiletype,
   RenderableEvents,
   StyledText,
@@ -21,9 +24,9 @@ import {
 import type {
   BoxOptions,
   CliRenderer,
-  LineColorConfig,
+  MarkdownCodeBlockRenderer,
+  MarkdownOptions,
   Renderable,
-  ScrollBoxRenderable,
   TextChunk,
 } from "@opentui/core";
 import { presentNote, presentTool, projectToolView, turnPartId } from "@nyte-ai/core";
@@ -76,38 +79,114 @@ import {
 } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
 import type { LabelSyntax } from "./label-syntax.ts";
+import { renderMermaidASCII } from "beautiful-mermaid";
 import { livePartKey, type LivePart, type SessionState } from "./session-state.ts";
 import { extractSkillInvocations } from "./slash.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth } from "./width.ts";
 
-/**
- * OpenTUI's line background fill rejects rows above the screen instead of
- * clipping them. Keep the colors for visible rows while a diff scrolls past
- * the top edge.
- */
-function clipOffscreenDiffLineColors(diff: DiffRenderable): void {
-  for (const child of diff.getChildren()) {
-    if (!(child instanceof LineNumberRenderable)) continue;
-    const colors = child.getLineColors();
-    const lines = new Set([...colors.gutter.keys(), ...colors.content.keys()]);
-    const lineColors = new Map<number, LineColorConfig>();
-    for (const line of lines) {
-      lineColors.set(line, { gutter: colors.gutter.get(line), content: colors.content.get(line) });
-    }
-    let appliedFirstSafeLine: number | undefined;
-    const onSizeChange = child.onSizeChange;
-    child.onSizeChange = () => {
-      appliedFirstSafeLine = undefined;
-      onSizeChange?.();
+/** Based on https://github.com/anomalyco/opencode/blob/f3f1204802eaf9f3f26352330449d3ce4454f4af/packages/merman/src/markdown.ts */
+function prepareDiagram(source: string) {
+  if (source.length > 8_000 || source.split("\n").length > 120)
+    throw new RangeError("Diagram is too large");
+  const text = renderMermaidASCII(source, { colorMode: "none", paddingX: 3, paddingY: 2 });
+  const lines = text.split("\n");
+  if (lines.length > 300 || text.length > 100_000) throw new RangeError("Diagram is too large");
+  return { source, text, height: lines.length, width: Math.max(1, ...lines.map(displayWidth)) };
+}
+
+class StaticDiagramRenderable extends BoxRenderable {
+  constructor(
+    renderer: CliRenderer,
+    theme: CliTheme,
+    prepared: ReturnType<typeof prepareDiagram>,
+    source: Renderable,
+  ) {
+    super(renderer, { flexDirection: "column", width: "100%" });
+    const toggle = new TextRenderable(renderer, {
+      content: "mermaid · click for source",
+      fg: theme.dim,
+      selectable: false,
+      height: 1,
+    });
+    const viewport = new ScrollBoxRenderable(renderer, {
+      width: "100%",
+      height: Math.min(prepared.height + 1, 24),
+      scrollX: true,
+      scrollY: true,
+    });
+    viewport.add(
+      new TextRenderable(renderer, {
+        content: prepared.text,
+        fg: theme.foreground,
+        wrapMode: "none",
+        width: prepared.width,
+        selectionBg: theme.selectionBackground,
+        selectionFg: theme.selectionForeground,
+      }),
+    );
+    source.visible = false;
+    toggle.onMouseUp = (event) => {
+      if (event.button !== 0 || renderer.getSelection()?.getSelectedText()) return;
+      source.visible = !source.visible;
+      viewport.visible = !source.visible;
+      toggle.content = source.visible
+        ? "mermaid · click for diagram"
+        : "mermaid · click for source";
+      event.preventDefault();
+      event.stopPropagation();
     };
-    child.renderBefore = () => {
-      const firstSafeLine = Math.max(0, Math.ceil(-child.screenY));
-      if (firstSafeLine === appliedFirstSafeLine) return;
-      appliedFirstSafeLine = firstSafeLine;
-      child.setLineColors(new Map([...lineColors].filter(([line]) => line >= firstSafeLine)));
-    };
+    this.add(toggle);
+    this.add(viewport);
+    this.add(source);
   }
+}
+
+function createMermaidCodeBlockRenderer(
+  renderer: CliRenderer,
+  theme: CliTheme,
+): MarkdownCodeBlockRenderer {
+  const lastGood = new Map<string, ReturnType<typeof prepareDiagram>>();
+  return (token, context) => {
+    const source = context.defaultRender();
+    if (source === null) return undefined;
+    try {
+      const prepared = prepareDiagram(token.text);
+      const diagram = new StaticDiagramRenderable(renderer, theme, prepared, source);
+      claimLastGood(source.id, prepared, diagram, lastGood);
+      return diagram;
+    } catch {
+      const previous = lastGood.get(source.id);
+      if (previous === undefined) return undefined;
+      const diagram = new StaticDiagramRenderable(renderer, theme, previous, source);
+      claimLastGood(source.id, previous, diagram, lastGood);
+      return diagram;
+    }
+  };
+}
+
+function createMermaidMarkdownRenderer(
+  renderer: CliRenderer,
+  theme: CliTheme,
+): MarkdownOptions["renderNode"] {
+  return createMarkdownCodeBlockRenderer({
+    mermaid: createMermaidCodeBlockRenderer(renderer, theme),
+  });
+}
+
+function claimLastGood(
+  key: string,
+  value: ReturnType<typeof prepareDiagram>,
+  owner: StaticDiagramRenderable,
+  cache: Map<string, ReturnType<typeof prepareDiagram>>,
+): void {
+  const claim = { ...value };
+  cache.set(key, claim);
+  owner.once(RenderableEvents.DESTROYED, () => {
+    queueMicrotask(() => {
+      if (cache.get(key) === claim) cache.delete(key);
+    });
+  });
 }
 
 /**
@@ -407,7 +486,6 @@ function collapsedTag(
     event.preventDefault();
     event.stopPropagation();
     const selected = renderer.getSelection()?.getSelectedText() ?? "";
-    renderer.clearSelection();
     if (selected !== "") return;
     options.onToggle();
     paint();
@@ -527,10 +605,21 @@ function appendUser(
   }
   for (const file of presentation.files) addFileTag(transcript, block, tags, file);
   for (const [index, image] of presentation.images.entries()) {
+    const preview = new ImageRenderable(transcript.renderer, {
+      id: transcript.nextId("user-image"),
+      source: Buffer.from(image.data, "base64"),
+      width: "100%",
+      height: 12,
+      fit: "fit",
+      visible: false,
+    });
     collapsedTag(transcript, tags, {
       label: () => ` Image ${String(index + 1)} (${image.mimeType}) `,
-      onToggle: () => undefined,
+      onToggle: () => {
+        preview.visible = !preview.visible;
+      },
     });
+    block.add(preview);
   }
   return block;
 }
@@ -583,11 +672,13 @@ function appendCard(transcript: Transcript, heading: string, summary: string): B
   );
   if (visibleSummary !== "") {
     card.add(
-      new TextRenderable(transcript.renderer, {
+      new MarkdownRenderable(transcript.renderer, {
+        renderNode: createMermaidMarkdownRenderer(transcript.renderer, theme),
+        tableOptions: { selectable: true, cellPaddingX: 1 },
         id: transcript.nextId("card-summary"),
         content: visibleSummary,
+        syntaxStyle: transcript.subtleSyntaxStyle,
         fg: theme.dim,
-        wrapMode: "word",
       }),
     );
   }
@@ -699,6 +790,8 @@ class AssistantPartBlock {
   constructor(transcript: Transcript, parent: Renderable, before: Renderable | undefined) {
     this.box = section(transcript, "assistant", {}, parent, before);
     this.markdown = new MarkdownRenderable(transcript.renderer, {
+      renderNode: createMermaidMarkdownRenderer(transcript.renderer, transcript.theme),
+      tableOptions: { selectable: true, cellPaddingX: 1 },
       id: transcript.nextId("assistant-md"),
       content: "",
       syntaxStyle: transcript.syntaxStyle,
@@ -753,6 +846,8 @@ class ReasoningBlock {
       wrapMode: "none",
     });
     this.markdown = new MarkdownRenderable(transcript.renderer, {
+      renderNode: createMermaidMarkdownRenderer(transcript.renderer, transcript.theme),
+      tableOptions: { selectable: true, cellPaddingX: 1 },
       id: transcript.nextId("thinking-md"),
       content: "",
       syntaxStyle: transcript.subtleSyntaxStyle,
@@ -1173,7 +1268,6 @@ export class ToolCard {
           minHeight: hunk.rows > 0 ? hunk.rows : undefined,
           width: "100%",
         });
-        clipOffscreenDiffLineColors(diff);
         this.detail.add(diff);
         this.structuredBodies.push(diff);
         diffs.push(diff);
@@ -1592,7 +1686,8 @@ export class TranscriptView {
       this.order.every((key, index) => key === keys[index]);
     if (!extending) this.clear();
 
-    const running = isRunningPhase(state.run);
+    const running =
+      state.run !== undefined && !["done", "aborted", "failed"].includes(state.run.phase.kind);
     const lastIndex = items.length - 1;
     // Settled items are immutable records: a delta only touches the open turn,
     // so revisit the last known item (it may settle) and whatever is new.
@@ -1622,7 +1717,7 @@ export class TranscriptView {
       }
       const isLast = index === lastIndex;
       const status: TurnStatus =
-        isLast && running && state.run !== undefined
+        isLast && running
           ? {
               kind: "open",
               phase: state.run.phase,
@@ -1635,7 +1730,7 @@ export class TranscriptView {
 
     // Streaming with nothing to attach to: after a checkpoint, or on an empty branch.
     const last = items.at(-1);
-    if (running && state.run !== undefined && last?.kind !== "turn") {
+    if (running && last?.kind !== "turn") {
       const key = `live:${state.run.runId}`;
       if (this.liveTurn?.key !== key) {
         this.liveTurn?.block.remove();
@@ -1699,24 +1794,5 @@ export class TranscriptView {
     const scroll = this.transcript.container;
     scroll.stickyScroll = true;
     scroll.scrollTo(scroll.scrollHeight);
-  }
-}
-
-function isRunningPhase(run: RunInfo | undefined): boolean {
-  if (run === undefined) return false;
-  switch (run.phase.kind) {
-    case "done":
-    case "aborted":
-    case "failed":
-      return false;
-    case "respond":
-    case "tools":
-    case "waiting":
-    case "retry":
-      return true;
-    default: {
-      const _exhaustive: never = run.phase;
-      return _exhaustive;
-    }
   }
 }

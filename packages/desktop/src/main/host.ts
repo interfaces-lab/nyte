@@ -1,7 +1,7 @@
 /**
- * The desktop host over the SDK: one workspace open at a time, composed with
- * `createNyte` and volunteered as a runner with `attach()`, so crash resume is
- * core's, not ours. Every renderer request lands in `call` as a verb path plus
+ * The desktop host keeps workspace SDKs open independently. Selection chooses
+ * the destination for new chats; session ids route existing chats to their
+ * owning SDK. Runners attach per session, so switching folders preserves work. Every renderer request lands in `call` as a verb path plus
  * one input object — the SDK's own wire shape — and `watch` becomes a pump per
  * subscription that pushes events back over IPC.
  *
@@ -37,14 +37,15 @@ import type {
   SdkVerbPath,
   WatchEnvelope,
   WatchStartInput,
+  WorkspaceSessionDirectory,
 } from "../shared/ipc.ts";
 import { createNyteModels } from "@nyte-ai/ai";
 import { loadPersistedCatalog, login, readCatalog } from "./catalog.ts";
 import type { ResolvedCatalog } from "./catalog.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import type { BrowserSurfaces } from "./browser.ts";
-import type { TerminalSessions } from "./terminals.ts";
-import type { GitHubProvider } from "./github.ts";
+import { TerminalSessions } from "./terminals.ts";
+import { createGitHubProvider, type GitHubProvider } from "./github.ts";
 import { CALL_INPUT_SCHEMAS, sdkVerb, type SdkVerb } from "./ipc-inputs.ts";
 import { resolveDesktopPlugins, type DesktopPluginTarget } from "./plugins.ts";
 import { createGitVcs } from "./vcs.ts";
@@ -162,7 +163,7 @@ const SDK_DISPATCH = {
   ),
 } satisfies Record<Exclude<SdkVerbPath, RegistryVerbPath>, SdkVerb>;
 
-/** Registry verbs answer with no workspace open, so they bypass `ensureOpen`. */
+/** Registry verbs answer with no workspace open, so they bypass SDK preparation. */
 type RegistryVerbPath = "workspace.list" | "workspace.forget";
 
 function isSdkVerb(path: CallPath): path is Exclude<SdkVerbPath, RegistryVerbPath> {
@@ -178,6 +179,8 @@ export class DesktopHost {
   private modelsPromise: Promise<MutableModels> | undefined;
   private target: WorkspaceTarget = { kind: "home" };
   private open: OpenTarget | undefined;
+  private readonly openTargets = new Map<string | null, OpenTarget>();
+  private readonly sessionOwners = new Map<SessionId, OpenTarget>();
   private lifecycle: Promise<void> = Promise.resolve();
   private readonly watches = new Map<string, AbortController>();
   private closed = false;
@@ -213,9 +216,24 @@ export class DesktopHost {
         contextWindow: model.contextWindow,
       };
     }
+    if (path === "sessions.create") {
+      const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+      const open = await this.prepare();
+      const session = await open.sdk.sessions.create(decoded);
+      this.sessionOwners.set(session.sessionId, open);
+      return session;
+    }
+    if (path === "sessions.list") {
+      const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+      const owner = decoded?.parent == null ? undefined : this.sessionOwners.get(decoded.parent);
+      const open = owner ?? (await this.prepare());
+      const page = await open.sdk.sessions.list(decoded);
+      for (const session of page.items) this.sessionOwners.set(session.sessionId, open);
+      return page;
+    }
     if (path === "messages.send") {
       const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-      const open = await this.ensureOpen();
+      const open = this.sessionOwners.get(decoded.sessionId) ?? (await this.prepare());
       if (open.kind === "project") {
         await this.trustStore.require(open.workspace.path).catch((cause: unknown) => {
           const key = decoded.key ?? decoded.sessionId;
@@ -231,13 +249,19 @@ export class DesktopHost {
     }
     if (isSdkVerb(path)) {
       const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-      const open = await this.ensureOpen();
+      const sessionId =
+        decoded !== undefined && "sessionId" in decoded ? decoded.sessionId : undefined;
+      const owner = sessionId === undefined ? undefined : this.sessionOwners.get(sessionId);
+      const open = owner ?? (await this.prepare());
       return SDK_DISPATCH[path].invoke(decoded, () => Promise.resolve(open.sdk));
     }
     switch (path) {
       case "host.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.state();
+      case "host.sessionDirectory":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.sessionDirectory();
       case "host.fonts":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.dependencies.listFonts();
@@ -340,7 +364,7 @@ export class DesktopHost {
     this.watches.set(input.watchId, stop);
     void (async () => {
       try {
-        const open = await this.ensureOpen();
+        const open = this.sessionOwners.get(input.sessionId) ?? (await this.prepare());
         if (stop.signal.aborted) return;
         this.attachSession(open, input.sessionId);
         const source =
@@ -394,9 +418,8 @@ export class DesktopHost {
   }
 
   private terminals(): Promise<TerminalSessions> {
-    this.terminalsPromise ??= import("./terminals.ts").then(
-      ({ TerminalSessions }) =>
-        new TerminalSessions((event) => this.dependencies.emitHostEvent(event)),
+    this.terminalsPromise ??= Promise.resolve(
+      new TerminalSessions((event) => this.dependencies.emitHostEvent(event)),
     );
     return this.terminalsPromise;
   }
@@ -414,7 +437,8 @@ export class DesktopHost {
     return open;
   }
 
-  private ensureOpen(): Promise<OpenTarget> {
+  /** Prepare local storage while Chromium starts; IPC joins the same initialization. */
+  prepare(): Promise<OpenTarget> {
     if (this.open !== undefined) return Promise.resolve(this.open);
     return this.serialize(async () => {
       if (this.open !== undefined) return this.open;
@@ -489,7 +513,6 @@ export class DesktopHost {
     const target = { kind: "project", workspace } as const;
     // Keep the current session open if local storage cannot be composed.
     const open = await this.compose(target);
-    await this.teardownOpen();
     this.target = target;
     this.trustPrompts.clear();
     this.open = open;
@@ -505,6 +528,9 @@ export class DesktopHost {
   }): Promise<OpenProjectTarget>;
   private compose(target: WorkspaceTarget): Promise<OpenTarget>;
   private async compose(target: WorkspaceTarget): Promise<OpenTarget> {
+    const key = target.kind === "home" ? null : target.workspace.path;
+    const existing = this.openTargets.get(key);
+    if (existing !== undefined) return existing;
     const models = await this.models();
     const { catalog, defaultModel: fallback } = await this.catalog();
     const projectCwd = target.kind === "project" ? target.workspace.path : undefined;
@@ -517,9 +543,7 @@ export class DesktopHost {
     let githubPromise: Promise<GitHubProvider> | undefined;
     const github = (): Promise<GitHubProvider> => {
       if (projectCwd === undefined) throw new Error("No project is open");
-      githubPromise ??= import("./github.ts").then((module) =>
-        module.createGitHubProvider(projectCwd),
-      );
+      githubPromise ??= Promise.resolve(createGitHubProvider(projectCwd));
       return githubPromise;
     };
     let activationPromise: Promise<ActiveSessionActivation> | undefined;
@@ -566,15 +590,21 @@ export class DesktopHost {
         },
       });
       const base = { sdk, store, sessionAttachments: new Map<SessionId, Disposer>() };
-      if (target.kind === "home") return { ...base, kind: "home" };
+      if (target.kind === "home") {
+        const open = { ...base, kind: "home" } satisfies OpenHomeTarget;
+        this.openTargets.set(null, open);
+        return open;
+      }
       if (vcs === undefined) throw new Error("Project VCS was not composed");
-      return {
+      const open = {
         ...base,
         kind: "project",
         workspace: target.workspace,
         vcs,
         github,
-      };
+      } satisfies OpenProjectTarget;
+      this.openTargets.set(target.workspace.path, open);
+      return open;
     } catch (error) {
       await sdk?.close().catch(() => undefined);
       await store.close().catch(() => undefined);
@@ -582,7 +612,7 @@ export class DesktopHost {
     }
   }
 
-  /** Drop a workspace from the rail. Forgetting the open one also closes it. */
+  /** Drop a workspace from the rail. Forgetting the selected one returns the view to Home. */
   private async forgetWorkspace(path: string): Promise<void> {
     await this.registry.forget(path);
     if (this.open?.kind !== "project") return;
@@ -592,24 +622,48 @@ export class DesktopHost {
 
   private closeWorkspace(): Promise<void> {
     return this.serialize(async () => {
-      await this.teardownOpen();
+      this.open = await this.compose({ kind: "home" });
       this.target = { kind: "home" };
       this.dependencies.emitHostEvent({ kind: "workspace_closed" });
     });
   }
 
+  /** Read every folder without selecting it or stopping another folder's work. */
+  private sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
+    return this.serialize(async () => {
+      const workspaces = await this.registry.list();
+      const targets: WorkspaceTarget[] = [
+        { kind: "home" },
+        ...workspaces.map(
+          (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
+        ),
+      ];
+      return Promise.all(
+        targets.map(async (target): Promise<WorkspaceSessionDirectory> => {
+          const open = await this.compose(target);
+          const { items } = await open.sdk.sessions.list({ includeArchived: true });
+          for (const session of items) this.sessionOwners.set(session.sessionId, open);
+          return {
+            workspacePath: target.kind === "home" ? null : target.workspace.path,
+            sessions: items,
+          };
+        }),
+      );
+    });
+  }
+
   private async teardownOpen(): Promise<void> {
-    const open = this.open;
-    if (open === undefined) return;
     this.open = undefined;
-    for (const [watchId, stop] of this.watches) {
-      stop.abort();
-      this.watches.delete(watchId);
+    for (const stop of this.watches.values()) stop.abort();
+    this.watches.clear();
+    this.sessionOwners.clear();
+    for (const open of this.openTargets.values()) {
+      for (const detach of open.sessionAttachments.values()) detach();
+      open.sessionAttachments.clear();
+      await open.sdk.close().catch(() => undefined);
+      await open.store.close().catch(() => undefined);
     }
-    for (const detach of open.sessionAttachments.values()) detach();
-    open.sessionAttachments.clear();
-    await open.sdk.close().catch(() => undefined);
-    await open.store.close().catch(() => undefined);
+    this.openTargets.clear();
   }
 
   private async login(

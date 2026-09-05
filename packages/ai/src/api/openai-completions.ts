@@ -5,6 +5,8 @@
  * Synced with pi 77f2d1235.
  */
 import OpenAI from "openai";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import type {
   ChatCompletionAssistantMessageParam,
   ChatCompletionChunk,
@@ -24,7 +26,6 @@ import type {
   CacheRetention,
   ChatTemplateKwargValue,
   Context,
-  ImageContent,
   JsonValue,
   Message,
   Model,
@@ -40,7 +41,6 @@ import type {
   ThinkingTokenBudgetField,
   Tool,
   ToolCall,
-  ToolResultMessage,
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -124,56 +124,7 @@ function getToolsByName(tools: Tool[] | undefined, names: Iterable<string>): Too
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
   return Array.from(names)
     .map((name) => toolsByName.get(name))
-    .filter((tool): tool is Tool => tool !== undefined);
-}
-
-function isTextContentBlock(block: { type: string }): block is TextContent {
-  return block.type === "text";
-}
-
-function isThinkingContentBlock(block: { type: string }): block is ThinkingContent {
-  return block.type === "thinking";
-}
-
-function isToolCallBlock(block: { type: string }): block is ToolCall {
-  return block.type === "toolCall";
-}
-
-function isImageContentBlock(block: { type: string }): block is ImageContent {
-  return block.type === "image";
-}
-
-function isReasoningDetailObject(detail: unknown): detail is Record<string, unknown> {
-  return typeof detail === "object" && detail !== null && !Array.isArray(detail);
-}
-
-function hasValidCommonReasoningDetailFields(candidate: Record<string, unknown>): boolean {
-  return (
-    (candidate.id === undefined || candidate.id === null || typeof candidate.id === "string") &&
-    (candidate.format === undefined || typeof candidate.format === "string") &&
-    (candidate.index === undefined || typeof candidate.index === "number")
-  );
-}
-
-function isOpenAIReasoningDetail(detail: unknown): detail is OpenAIReasoningDetail {
-  if (!isReasoningDetailObject(detail) || !hasValidCommonReasoningDetailFields(detail)) {
-    return false;
-  }
-  switch (detail.type) {
-    case "reasoning.summary":
-      return typeof detail.summary === "string";
-    case "reasoning.encrypted":
-      return typeof detail.data === "string";
-    case "reasoning.text":
-      return (
-        typeof detail.text === "string" &&
-        (detail.signature === undefined ||
-          detail.signature === null ||
-          typeof detail.signature === "string")
-      );
-    default:
-      return false;
-  }
+    .filter((tool) => tool !== undefined);
 }
 
 export interface OpenAICompletionsOptions extends StreamOptions {
@@ -207,6 +158,8 @@ type ResolvedOpenAICompletionsCompat = Omit<
 
 type ResolvedChatTemplateKwargValue = string | number | boolean | null;
 
+type CompatToolResultMessage = ChatCompletionToolMessageParam & { name?: string };
+
 type ChatCompletionInstructionMessageParam =
   | ChatCompletionDeveloperMessageParam
   | ChatCompletionSystemMessageParam;
@@ -216,45 +169,44 @@ type KimiToolSystemMessageParam = {
   tools: OpenAI.Chat.Completions.ChatCompletionTool[];
 };
 
-type OpenAIReasoningSummaryDetail = {
-  type: "reasoning.summary";
-  summary: string;
-  id?: string | null;
-  format?: string;
-  index?: number;
-} & Record<string, JsonValue>;
+const reasoningDetailFields = {
+  id: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  format: Type.Optional(Type.String()),
+  index: Type.Optional(Type.Number()),
+};
 
-type OpenAIEncryptedReasoningDetail = {
-  type: "reasoning.encrypted";
-  data: string;
-  id?: string | null;
-  format?: string;
-  index?: number;
-} & Record<string, JsonValue>;
-
-type OpenAIReasoningTextDetail = {
-  type: "reasoning.text";
-  text: string;
-  signature?: string | null;
-  id?: string | null;
-  format?: string;
-  index?: number;
-} & Record<string, JsonValue>;
-
-type OpenAIReasoningDetail =
-  | OpenAIReasoningSummaryDetail
-  | OpenAIEncryptedReasoningDetail
-  | OpenAIReasoningTextDetail;
+const OpenAIReasoningDetailSchema = Type.Union([
+  Type.Object({
+    ...reasoningDetailFields,
+    type: Type.Literal("reasoning.summary"),
+    summary: Type.String(),
+  }),
+  Type.Object({
+    ...reasoningDetailFields,
+    type: Type.Literal("reasoning.encrypted"),
+    data: Type.String(),
+  }),
+  Type.Object({
+    ...reasoningDetailFields,
+    type: Type.Literal("reasoning.text"),
+    text: Type.String(),
+    signature: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  }),
+]);
+const OpenAIReasoningDetailsSchema = Type.Array(OpenAIReasoningDetailSchema, { minItems: 1 });
+type OpenAIReasoningDetail = Static<typeof OpenAIReasoningDetailSchema>;
+type OpenAIEncryptedReasoningDetail = Extract<
+  OpenAIReasoningDetail,
+  { type: "reasoning.encrypted" }
+>;
 
 function parseOpenAIReasoningDetails(
   signature: string | undefined,
 ): OpenAIReasoningDetail[] | undefined {
   if (!signature) return undefined;
   try {
-    const parsed = JSON.parse(signature) as unknown;
-    return Array.isArray(parsed) && parsed.length > 0 && parsed.every(isOpenAIReasoningDetail)
-      ? parsed
-      : undefined;
+    const parsed: unknown = JSON.parse(signature);
+    return Value.Check(OpenAIReasoningDetailsSchema, parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -265,10 +217,11 @@ function parseLegacyEncryptedReasoningDetail(
 ): OpenAIEncryptedReasoningDetail | undefined {
   if (!signature) return undefined;
   try {
-    const parsed = JSON.parse(signature) as unknown;
-    return isOpenAIReasoningDetail(parsed) &&
+    const parsed: unknown = JSON.parse(signature);
+    return Value.Check(OpenAIReasoningDetailSchema, parsed) &&
       parsed.type === "reasoning.encrypted" &&
-      typeof parsed.id === "string" &&
+      parsed.id !== undefined &&
+      parsed.id !== null &&
       parsed.id.length > 0 &&
       parsed.data.length > 0
       ? parsed
@@ -286,11 +239,7 @@ const OPENAI_COMPLETIONS_REASONING_FIELDS = [
 
 type OpenAICompletionsReasoningField = (typeof OPENAI_COMPLETIONS_REASONING_FIELDS)[number];
 
-function isOpenAICompletionsReasoningField(
-  field: string,
-): field is OpenAICompletionsReasoningField {
-  return OPENAI_COMPLETIONS_REASONING_FIELDS.includes(field as OpenAICompletionsReasoningField);
-}
+const OpenAICompletionsReasoningFieldSchema = Type.Enum(OPENAI_COMPLETIONS_REASONING_FIELDS);
 
 type ChatCompletionAssistantMessageParamWithReasoning = ChatCompletionAssistantMessageParam &
   Partial<Record<OpenAICompletionsReasoningField, string>> & {
@@ -313,9 +262,19 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
   const stream = new AssistantMessageEventStream();
 
   (async () => {
+    interface StreamingToolCallBlock extends ToolCall {
+      partialArgs?: string;
+      customInput?: {
+        property: string;
+        jsonBuffer: GrammarToolInputJsonBuffer;
+      };
+      streamIndex?: number;
+    }
+    type StreamingBlock = TextContent | ThinkingContent | StreamingToolCallBlock;
+    const blocks: StreamingBlock[] = [];
     const output: AssistantMessage = {
       role: "assistant",
-      content: [],
+      content: blocks,
       api: model.api,
       provider: model.provider,
       model: model.id,
@@ -361,11 +320,12 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       if (nextParams !== undefined) {
         params = nextParams as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
       }
-      const requestOptions = {
-        ...(options?.signal ? { signal: options.signal } : {}),
-        ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
+      const requestOptions: OpenAI.RequestOptions = {
+        signal: options?.signal,
         maxRetries: 0,
       };
+      // The SDK rejects a present-but-undefined timeout instead of using its default.
+      if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
       const { data: openaiStream, response } = await retryProviderRequest(
         () => client.chat.completions.create(params, requestOptions).withResponse(),
         {
@@ -380,15 +340,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       );
       stream.push({ type: "start", partial: output });
 
-      interface StreamingToolCallBlock extends ToolCall {
-        partialArgs?: string;
-        customInput?: {
-          property: string;
-          jsonBuffer: GrammarToolInputJsonBuffer;
-        };
-        streamIndex?: number;
-      }
-      type StreamingBlock = TextContent | ThinkingContent | StreamingToolCallBlock;
       type StreamingToolCallDelta = {
         index?: number;
         id?: string;
@@ -402,7 +353,6 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       let hasFinishReason = false;
       const toolCallBlocksByIndex = new Map<number, StreamingToolCallBlock>();
       const toolCallBlocksById = new Map<string, StreamingToolCallBlock>();
-      const blocks = output.content as StreamingBlock[];
       const getContentIndex = (block: StreamingBlock) => blocks.indexOf(block);
       const getCustomToolCallInput = (block: StreamingToolCallBlock): string => {
         const property = block.customInput?.property;
@@ -679,7 +629,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
             .reasoning_details;
           if (Array.isArray(reasoningDetails)) {
             for (const detail of reasoningDetails) {
-              if (!isOpenAIReasoningDetail(detail)) continue;
+              if (!Value.Check(OpenAIReasoningDetailSchema, detail)) continue;
               const block = ensureThinkingBlock("");
               const preservedDetails = parseOpenAIReasoningDetails(block.thinkingSignature) ?? [];
               preservedDetails.push(detail);
@@ -716,12 +666,11 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
-      for (const block of output.content) {
-        delete (block as { index?: number }).index;
-        // Streaming scratch buffers are only used during parsing; never persist them.
-        delete (block as { partialArgs?: string }).partialArgs;
-        delete (block as { customInput?: unknown }).customInput;
-        delete (block as { streamIndex?: number }).streamIndex;
+      for (const block of blocks) {
+        if (block.type !== "toolCall") continue;
+        delete block.partialArgs;
+        delete block.customInput;
+        delete block.streamIndex;
       }
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage = formatProviderError(normalizeProviderError(error));
@@ -837,7 +786,7 @@ function buildParams(
   };
 
   if (compat.supportsUsageInStreaming !== false) {
-    (params as any).stream_options = { include_usage: true };
+    params.stream_options = { include_usage: true };
   }
 
   if (compat.supportsStore) {
@@ -846,7 +795,7 @@ function buildParams(
 
   if (options?.maxTokens) {
     if (compat.maxTokensField === "max_tokens") {
-      (params as any).max_tokens = options.maxTokens;
+      params.max_tokens = options.maxTokens;
     } else {
       params.max_completion_tokens = options.maxTokens;
     }
@@ -1316,7 +1265,7 @@ export function convertMessages(
       };
 
       const assistantTextParts = msg.content
-        .filter(isTextContentBlock)
+        .filter((block) => block.type === "text")
         .filter((block) => block.text.trim().length > 0)
         .map(
           (block) =>
@@ -1327,14 +1276,14 @@ export function convertMessages(
         );
       const assistantText = assistantTextParts.map((part) => part.text).join("");
 
-      const thinkingBlocks = msg.content.filter(isThinkingContentBlock);
-      const toolCalls = msg.content.filter(isToolCallBlock);
+      const thinkingBlocks = msg.content.filter((block) => block.type === "thinking");
+      const toolCalls = msg.content.filter((block) => block.type === "toolCall");
       const signedReasoningDetails = thinkingBlocks
         .map((block) => parseOpenAIReasoningDetails(block.thinkingSignature))
         .find((details) => details !== undefined);
       const legacyReasoningDetails = toolCalls
         .map((toolCall) => parseLegacyEncryptedReasoningDetail(toolCall.thoughtSignature))
-        .filter((detail): detail is OpenAIEncryptedReasoningDetail => detail !== undefined);
+        .filter((detail) => detail !== undefined);
       const preservedReasoningDetails =
         signedReasoningDetails ??
         (legacyReasoningDetails.length > 0 ? legacyReasoningDetails : undefined);
@@ -1366,7 +1315,7 @@ export function convertMessages(
             if (model.provider === "opencode-go" && signature === "reasoning") {
               signature = "reasoning_content";
             }
-            if (signature && isOpenAICompletionsReasoningField(signature)) {
+            if (signature && Value.Check(OpenAICompletionsReasoningFieldSchema, signature)) {
               assistantMsg[signature] = nonEmptyThinkingBlocks
                 .map((block) => block.thinking)
                 .join("\n");
@@ -1422,10 +1371,7 @@ export function convertMessages(
       // Other providers also don't accept empty assistant messages.
       // This handles aborted assistant responses that got no content.
       const content = assistantMsg.content;
-      const hasContent =
-        content !== null &&
-        content !== undefined &&
-        (typeof content === "string" ? content.length > 0 : content.length > 0);
+      const hasContent = content !== null && content !== undefined && content.length > 0;
       if (!hasContent && !assistantMsg.tool_calls) {
         continue;
       }
@@ -1435,12 +1381,13 @@ export function convertMessages(
       const deferredToolNames = new Set<string>();
       let j = i;
 
-      for (; j < transformedMessages.length && transformedMessages[j].role === "toolResult"; j++) {
-        const toolMsg = transformedMessages[j] as ToolResultMessage;
+      for (; j < transformedMessages.length; j++) {
+        const toolMsg = transformedMessages[j];
+        if (toolMsg.role !== "toolResult") break;
 
         // Extract text and image content
         const textResult = toolMsg.content
-          .filter(isTextContentBlock)
+          .filter((block) => block.type === "text")
           .map((block) => block.text)
           .join("\n");
         const hasImages = toolMsg.content.some((c) => c.type === "image");
@@ -1453,13 +1400,13 @@ export function convertMessages(
             ? "(see attached image)"
             : "(no tool output)";
         // Some providers require the 'name' field in tool results
-        const toolResultMsg: ChatCompletionToolMessageParam = {
+        const toolResultMsg: CompatToolResultMessage = {
           role: "tool",
           content: sanitizeSurrogates(toolResultText),
           tool_call_id: toolMsg.toolCallId,
         };
         if (compat.requiresToolResultName && toolMsg.toolName) {
-          (toolResultMsg as any).name = toolMsg.toolName;
+          toolResultMsg.name = toolMsg.toolName;
         }
         params.push(toolResultMsg);
 
@@ -1471,7 +1418,7 @@ export function convertMessages(
 
         if (hasImages && model.input.includes("image")) {
           for (const block of toolMsg.content) {
-            if (isImageContentBlock(block)) {
+            if (block.type === "image") {
               imageBlocks.push({
                 type: "image_url",
                 image_url: {

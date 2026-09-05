@@ -23,9 +23,6 @@ export const WIRE_VERSION = 1;
 export const CALL_ROUTE_PREFIX = "/v1/call/";
 export const WATCH_ROUTE = "/v1/watch";
 
-/** A verb name in a URL: dotted lower-camel segments, nothing else. */
-export const VERB_NAME_PATTERN = /^[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)*$/;
-
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -168,13 +165,9 @@ export type WatchFrame =
 /** The data of an `ended` frame: an object, today empty. */
 export const WatchEndedSchema = Type.Object({});
 
-export const WATCH_FRAME_KINDS = ["event", "ended", "error"] as const;
-
-export type WatchFrameKind = (typeof WATCH_FRAME_KINDS)[number];
-
-export function isWatchFrameKind(value: string): value is WatchFrameKind {
-  return WATCH_FRAME_KINDS.some((kind) => kind === value);
-}
+export const WatchFrameKindSchema = typed<WatchFrame["kind"]>()(
+  Type.Enum(["event", "ended", "error"]),
+);
 
 export const WATCH_QUERY = {
   sessionId: "sessionId",

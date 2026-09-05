@@ -4,7 +4,7 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/src/utils/typebox-helpers.ts
  * Synced with pi 7ebf9087e.
  */
-import { type TUnsafe, Type } from "typebox";
+import { Type } from "typebox";
 
 /**
  * Creates a string enum schema compatible with Google's API and other providers
@@ -17,14 +17,9 @@ import { type TUnsafe, Type } from "typebox";
  *
  * type Operation = Static<typeof OperationSchema>; // "add" | "subtract" | "multiply" | "divide"
  */
-export function StringEnum<T extends readonly string[]>(
-  values: T,
+export function StringEnum<T extends string[]>(
+  values: readonly [...T],
   options?: { description?: string; default?: T[number] },
-): TUnsafe<T[number]> {
-  return Type.Unsafe<T[number]>({
-    type: "string",
-    enum: values as any,
-    ...(options?.description && { description: options.description }),
-    ...(options?.default && { default: options.default }),
-  });
+) {
+  return Type.Enum(values, { type: "string", ...options });
 }

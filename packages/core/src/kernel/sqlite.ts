@@ -1,15 +1,17 @@
+import { schemas } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
 import { hashObject } from "./hash.ts";
-import { canonicalJson, type JsonObject, type JsonValue } from "./json.ts";
+import { canonicalJson } from "./json.ts";
 import { CursorExpired } from "./model.ts";
 import { isRefName, newOwnerId } from "./names.ts";
 import { sql } from "./sql.ts";
 import { UnknownSession } from "./store.ts";
 import type {
-  Actor,
   Event,
   EventBody,
   Lease,
@@ -19,7 +21,6 @@ import type {
   RefUpdate,
   RefUpdateOutcome,
   Seq,
-  ToolProgress,
 } from "./model.ts";
 import type {
   AppendOutcome,
@@ -149,52 +150,9 @@ function readTransaction<T>(db: DatabaseSync, fn: () => T): T {
 
 type SqliteRow = Record<string, SQLOutputValue>;
 
-function isObjectValue(value: unknown): value is object {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStringKey(value: PropertyKey): value is string {
-  return typeof value === "string";
-}
-
-function isJsonPrimitive(value: unknown): value is string | number | boolean {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || isJsonPrimitive(value)) return true;
-  if (Array.isArray(value)) {
-    for (let index = 0; index < value.length; index += 1) {
-      if (!isJsonValue(value[index])) return false;
-    }
-    return true;
-  }
-  return isRecord(value);
-}
-
-function isRecord(value: unknown): value is JsonObject {
-  if (!isObjectValue(value)) return false;
-  for (const key of Reflect.ownKeys(value)) {
-    if (!isStringKey(key)) continue;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !("value" in descriptor) || !isJsonValue(descriptor.value)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function isStringColumn(value: SQLOutputValue | undefined): value is string {
-  return typeof value === "string";
-}
-
-function isSafeIntegerColumn(value: SQLOutputValue | undefined): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value);
-}
-
 function stringColumn(row: SqliteRow, name: string): string {
   const value = row[name];
-  if (!isStringColumn(value)) {
+  if (!Value.Check(Type.String(), value)) {
     throw new TypeError(`SQLite column ${name} is not a string`);
   }
   return value;
@@ -202,104 +160,123 @@ function stringColumn(row: SqliteRow, name: string): string {
 
 function numberColumn(row: SqliteRow, name: string): number {
   const value = row[name];
-  if (!isSafeIntegerColumn(value)) {
+  if (
+    !Value.Check(
+      Type.Integer({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
+      value,
+    )
+  ) {
     throw new TypeError(`SQLite column ${name} is not a safe integer`);
   }
   return value;
 }
 
-const OBJECT_KINDS: ReadonlySet<string> = new Set([
-  "commit",
-  "change",
-  "run",
-  "effect",
-  "stack",
-  "blob",
+const NullableString = Type.Union([Type.String(), Type.Null()]);
+const ObjectSchema = Type.Union([
+  schemas.Commit,
+  Type.Object({
+    kind: Type.Literal("change"),
+    previous: NullableString,
+    supersedes: Type.Optional(Type.String()),
+    body: schemas.CommitBody,
+    at: Type.Number(),
+    author: Type.Optional(schemas.Actor),
+  }),
+  Type.Object({
+    kind: Type.Literal("run"),
+    id: Type.String(),
+    head: Type.String(),
+    phase: schemas.RunPhase,
+    startedAt: Type.Number(),
+    attempts: Type.Number(),
+    config: Type.Object({
+      model: Type.Optional(schemas.ModelRef),
+      thinkingLevel: Type.Optional(Type.String()),
+      agent: Type.Optional(Type.String()),
+    }),
+    abortRequested: Type.Optional(Type.Literal(true)),
+  }),
+  Type.Object({
+    kind: Type.Literal("effect"),
+    state: Type.Literal("intent"),
+    runId: Type.String(),
+    callId: Type.String(),
+    tool: Type.String(),
+    args: schemas.JsonValue,
+    replay: Type.Union([Type.Literal("safe"), Type.Literal("never")]),
+    at: Type.Number(),
+  }),
+  Type.Object({
+    kind: Type.Literal("effect"),
+    state: Type.Literal("waiting"),
+    intent: Type.String(),
+    at: Type.Number(),
+  }),
+  Type.Object({
+    kind: Type.Literal("effect"),
+    state: Type.Literal("signal"),
+    intent: Type.String(),
+    signal: schemas.JsonValue,
+    at: Type.Number(),
+    author: Type.Optional(schemas.Actor),
+  }),
+  Type.Object({
+    kind: Type.Literal("effect"),
+    state: Type.Literal("result"),
+    intent: Type.String(),
+    result: schemas.ToolResultMessage,
+    at: Type.Number(),
+  }),
+  Type.Object({ kind: Type.Literal("stack"), parent: Type.String(), base: NullableString }),
+  Type.Object({ kind: Type.Literal("blob"), value: schemas.JsonValue }),
 ]);
 
-function isObjectKind(value: JsonValue | undefined): value is Obj["kind"] {
-  return typeof value === "string" && OBJECT_KINDS.has(value);
-}
-
-/**
- * Stored bytes are trusted exactly as far as git trusts them: an object whose
- * canonical hash is the id it was filed under was written by `put` from a
- * typed `Obj`, so its fields are the writer's. Anything else is corruption, not
- * a value.
- */
+/** Validate the stored shape before checking its content-addressed identity. */
 function parseObject(raw: string, oid: Oid): Obj {
   const value: unknown = JSON.parse(raw);
-  if (!isRecord(value) || !isObjectKind(value.kind)) {
-    throw new TypeError(`Stored object ${oid} has an unknown kind`);
+  if (!Value.Check(ObjectSchema, value)) {
+    throw new TypeError(`Stored object ${oid} is not a known object`);
   }
-  // SAFETY: the hash below proves these bytes are what `put` serialized from an `Obj`.
-  const object = value as Obj;
-  if (hashObject(object) !== oid)
+  if (hashObject(value) !== oid)
     throw new TypeError(`Stored object ${oid} does not match its hash`);
-  return object;
+  return value;
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function isActor(value: unknown): value is Actor {
-  return (
-    isRecord(value) &&
-    (value.clientId === undefined || typeof value.clientId === "string") &&
-    (value.userId === undefined || typeof value.userId === "string") &&
-    (value.device === undefined || typeof value.device === "string")
-  );
-}
-
-function isToolProgress(value: unknown): value is ToolProgress {
-  return (
-    isRecord(value) &&
-    typeof value.text === "string" &&
-    (value.title === undefined || typeof value.title === "string")
-  );
-}
-
-/** Events carry no hash, so each kind is checked field by field. */
-function isEventBody(value: unknown): value is EventBody {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  switch (value.kind) {
-    case "ref":
-      return (
-        typeof value.name === "string" &&
-        isNullableString(value.from) &&
-        isNullableString(value.to) &&
-        typeof value.reason === "string" &&
-        (value.actor === undefined || isActor(value.actor))
-      );
-    case "delta":
-      return (
-        typeof value.runId === "string" &&
-        typeof value.attempt === "number" &&
-        typeof value.index === "number" &&
-        (value.part === "text" || value.part === "thinking") &&
-        typeof value.delta === "string"
-      );
-    case "progress":
-      return (
-        typeof value.runId === "string" &&
-        typeof value.callId === "string" &&
-        isToolProgress(value.progress)
-      );
-    case "notice":
-      return (
-        (value.level === "info" || value.level === "warn" || value.level === "error") &&
-        typeof value.owner === "string" &&
-        typeof value.message === "string"
-      );
-    default:
-      return false;
-  }
-}
+const EventBodySchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal("ref"),
+    name: Type.String(),
+    from: NullableString,
+    to: NullableString,
+    reason: Type.String(),
+    actor: Type.Optional(schemas.Actor),
+  }),
+  Type.Object({
+    kind: Type.Literal("delta"),
+    runId: Type.String(),
+    attempt: Type.Number(),
+    index: Type.Number(),
+    part: Type.Union([Type.Literal("text"), Type.Literal("thinking")]),
+    delta: Type.String(),
+  }),
+  Type.Object({
+    kind: Type.Literal("progress"),
+    runId: Type.String(),
+    callId: Type.String(),
+    progress: schemas.ToolProgress,
+  }),
+  Type.Object({
+    kind: Type.Literal("notice"),
+    level: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("error")]),
+    owner: Type.String(),
+    message: Type.String(),
+  }),
+]);
 
 function parseEventBody(raw: string): EventBody {
   const value: unknown = JSON.parse(raw);
-  if (!isEventBody(value)) throw new TypeError("Stored event is not a known event body");
+  if (!Value.Check(EventBodySchema, value))
+    throw new TypeError("Stored event is not a known event body");
   return value;
 }
 

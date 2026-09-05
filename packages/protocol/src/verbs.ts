@@ -62,7 +62,7 @@ const sessionOnly = strict({ sessionId: SessionId });
 const sessionHead = strict({ sessionId: SessionId, head: Type.Optional(HeadName) });
 const modelRef = strict({ provider: Type.String(), id: Type.String() });
 
-export const VERBS = {
+export const VERBS = Object.freeze({
   landing: verb(none, Landing),
 
   "sessions.create": verb(
@@ -128,6 +128,8 @@ export const VERBS = {
       head: Type.Optional(HeadName),
       change: Oid,
       lane: NonEmptyString,
+      content: Type.Optional(UserContent),
+      before: Type.Optional(nullable(Oid)),
     }),
     RedeliverOutcome,
   ),
@@ -175,17 +177,16 @@ export const VERBS = {
     ApplyOutcome,
   ),
   "plugins.resources.list": verb(sessionOnly, list(Skill)),
-};
+});
 
 export type Verb = keyof typeof VERBS;
 
 export type VerbInput<V extends Verb> = Static<(typeof VERBS)[V]["input"]>;
 export type VerbOutput<V extends Verb> = Static<(typeof VERBS)[V]["output"]>;
 
-/** Own keys only: a verb name parsed from a URL must never reach the prototype chain. */
-export function isVerb(value: string): value is Verb {
-  return Object.hasOwn(VERBS, value);
+/** Parse a route name without admitting inherited object properties. */
+export function parseVerb(value: string): Verb | undefined {
+  if (!Object.hasOwn(VERBS, value)) return undefined;
+  // SAFETY: the frozen literal table cannot gain keys; the own-key check proves membership.
+  return value as Verb;
 }
-
-/** Every verb the wire carries, in table order. */
-export const VERB_NAMES: readonly Verb[] = Object.keys(VERBS).filter(isVerb);

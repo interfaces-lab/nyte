@@ -6,7 +6,7 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/lib/diff-rendering.ts
  */
 import * as stylex from "@stylexjs/stylex";
-import type { FileDiffOptions, ThemesType } from "@pierre/diffs";
+import type { FileDiffOptions, PostRenderPhase, ThemesType } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
 import { memo } from "react";
 import type { ReactElement } from "react";
@@ -105,7 +105,21 @@ const PIERRE_SHADOW_CSS = `
 }
 `;
 
+/**
+ * Pierre keeps the previous instance's `<pre>` in the shadow root when it
+ * cleans up a React-managed container. StrictMode detaches and re-attaches
+ * the ref on mount, so the replacement instance finds that empty `<pre>`,
+ * treats it as prerendered HTML, and never renders. Its predecessor's pending
+ * highlight has already been orphaned. Clearing the `<pre>` on unmount makes
+ * the replacement render from scratch.
+ */
+function onPostRender(node: HTMLElement, _instance: unknown, phase: PostRenderPhase): void {
+  if (phase !== "unmount") return;
+  node.shadowRoot?.querySelector("pre")?.remove();
+}
+
 const BASE_OPTIONS = {
+  onPostRender,
   theme: THEMES,
   diffStyle: "unified",
   diffIndicators: "classic",

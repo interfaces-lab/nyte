@@ -24,7 +24,7 @@
  * Synced with pi 7ebf9087e.
  */
 import type {
-  Context as ModelContext,
+  Context,
   JsonValue,
   Message,
   ProviderCheckpointMaterial,
@@ -51,7 +51,7 @@ export interface HookMap {
   before_compaction: {
     event: {
       model: HookModelRef;
-      context: ModelContext;
+      context: Context;
       reason: "manual" | "threshold" | "overflow";
       customInstructions?: string;
       tokensBefore: number;
@@ -125,12 +125,8 @@ export type ToolCallDecision =
  * The runtime half of the decision contract. An untyped plugin can still
  * return malformed data, so every claimed field is checked before use.
  */
-function isString(value: JsonValue | undefined): value is string {
-  return typeof value === "string";
-}
-
 function isToolCallDecision(value: JsonValue): value is ToolCallDecision {
-  if (!isJsonObject(value) || !isString(value.action)) return false;
+  if (!isJsonObject(value)) return false;
   switch (value.action) {
     case "continue":
       return true;
@@ -138,7 +134,7 @@ function isToolCallDecision(value: JsonValue): value is ToolCallDecision {
       return isJsonObject(value.args);
     case "reject":
     case "error":
-      return isString(value.message);
+      return typeof value.message === "string";
     default:
       return false;
   }

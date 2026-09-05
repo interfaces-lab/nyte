@@ -3,6 +3,8 @@ import {
   activePane,
   activeSelection,
   orderedPanes,
+  paneById,
+  paneForSession,
   parsePersistedPaneLayout,
   reducePaneLayout,
   serializePaneLayout,
@@ -152,6 +154,26 @@ export class PaneController {
 
   removeSession(sessionId: SessionId): PaneLayout {
     return this.dispatch({ kind: "remove-session", sessionId });
+  }
+
+  /** Undo restores only the untouched blank pane, never a newer chat or draft. */
+  removeSessionWithUndo(sessionId: SessionId): () => boolean {
+    const previous = this.#snapshot.layout;
+    const pane = paneForSession(previous, sessionId);
+    if (pane === undefined) return () => false;
+    const focused = activePane(previous).id;
+    this.removeSession(sessionId);
+    this.focus(focused);
+    const removedPane = paneById(this.#snapshot.layout, pane.id);
+    return () => {
+      const current = this.#snapshot.layout;
+      if (paneById(current, pane.id) !== removedPane) return false;
+      if (this.#viewState.readBlank(pane.id).composer.draft !== "") return false;
+      const active = activePane(current);
+      this.selectSessionInPane(pane.id, sessionId);
+      this.focus(active.selection.kind === "blank" ? focused : active.id);
+      return true;
+    };
   }
 
   #rememberLayout(layout: PaneLayout): void {

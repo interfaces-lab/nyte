@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { DEFAULT_LANDING, type SessionSnapshot } from "@nyte-ai/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import { laneRoles } from "../src/lanes.ts";
-import { stateFromSnapshot } from "../src/session-state.ts";
+import { foldEvent, stateFromSnapshot } from "../src/session-state.ts";
 import { buildShell } from "../src/shell.ts";
 import { TaskBrowser } from "../src/task-browser.ts";
 import { canStopTask, projectTasks, TaskIndex, taskLabel, taskStatus } from "../src/tasks.ts";
@@ -22,7 +22,7 @@ async function fixture() {
   return { host, snapshot };
 }
 
-function withShell(snapshot: SessionSnapshot): SessionSnapshot {
+function withShell(snapshot: SessionSnapshot, finished: boolean): SessionSnapshot {
   return {
     ...snapshot,
     transcript: [
@@ -38,7 +38,9 @@ function withShell(snapshot: SessionSnapshot): SessionSnapshot {
             callId: "bash-1",
             toolName: "bash",
             args: { command: "pnpm test" },
-            result: { commit: "result", output: "All tests passed", isError: false },
+            ...(finished
+              ? { result: { commit: "result", output: "All tests passed", isError: false } }
+              : {}),
           },
         ],
       },
@@ -46,24 +48,22 @@ function withShell(snapshot: SessionSnapshot): SessionSnapshot {
   };
 }
 
-test("shell results retain their outcome when their owning run fails", async () => {
+test("only running shell calls are tasks", async () => {
   const { snapshot } = await fixture();
-  const state = stateFromSnapshot({
-    ...withShell(snapshot),
-    run: {
-      runId: "run",
-      head: "main",
-      phase: { kind: "failed", error: "Later provider failure" },
-      startedAt: 1,
-      attempts: 1,
-      config: {},
-    },
-  });
-  const task = projectTasks(state, [])[0];
+  const run = {
+    runId: "run",
+    head: "main",
+    phase: { kind: "tools" as const },
+    startedAt: 1,
+    attempts: 1,
+    config: {},
+  };
+  expect(projectTasks(stateFromSnapshot({ ...withShell(snapshot, true), run }), [])).toEqual([]);
+  const task = projectTasks(stateFromSnapshot({ ...withShell(snapshot, false), run }), [])[0];
   if (task === undefined) throw new Error("Missing shell task");
   expect(taskLabel(task)).toBe("pnpm test");
-  expect(taskStatus(task)).toBe("done");
-  expect(canStopTask(task)).toBe(false);
+  expect(taskStatus(task)).toBe("running");
+  expect(canStopTask(task)).toBe(true);
 });
 
 test("discovers children from durable parent links without a live spawn event", async () => {
@@ -110,7 +110,23 @@ test("inspection preserves the draft and filter through updates, resize, and Esc
     onError: (error) => errors.push(error),
   });
   cleanups.push(() => browser.dispose());
-  const state = stateFromSnapshot(withShell(snapshot));
+  const run = {
+    runId: "run",
+    head: "main",
+    phase: { kind: "tools" as const },
+    startedAt: 1,
+    attempts: 1,
+    config: {},
+  };
+  const folded = foldEvent(stateFromSnapshot({ ...withShell(snapshot, false), run }), {
+    seq: 99,
+    kind: "tool_progress",
+    runId: "run",
+    callId: "bash-1",
+    progress: { text: "All tests passed" },
+  });
+  if (folded.kind !== "state") throw new Error("Expected folded state");
+  const state = folded.state;
   setup.renderer.start();
   shell.input.setText("keep my draft");
   browser.update(state);

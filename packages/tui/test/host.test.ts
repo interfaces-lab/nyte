@@ -18,7 +18,7 @@ import { Outbox } from "../src/outbox.ts";
 import { resolveWorkspacePlugins } from "../src/plugins.ts";
 import { printRun } from "../src/print.ts";
 import { SessionFollower } from "../src/session-follow.ts";
-import { isRunning, type SessionState } from "../src/session-state.ts";
+import type { SessionState } from "../src/session-state.ts";
 import { echo, gate, model, openHost, untilState, within } from "./helpers.ts";
 
 interface Followed {
@@ -85,7 +85,7 @@ test("a send lands, streams into the overlay, and settles into the transcript th
       lane: laneRoles(host.nyte.landing).steer,
     });
     assert.equal(receipt.kind, "durable");
-    assert.ok(isRunning((await streamed).run));
+    assert.equal((await streamed).run?.phase.kind, "respond");
 
     const settled = await untilState(
       followed,
@@ -154,6 +154,42 @@ test("a follow-up queued during a run waits, can be taken back, and the cancel s
   }
 });
 
+test("the follower keeps live inputs and streamed text, then picks up the next idle configuration", async () => {
+  const finish = gate();
+  const host = await openHost(echo({ gate: finish }));
+  const { sessionId } = await host.nyte.sessions.create();
+  const detach = host.attach();
+  const followed = follow(host, sessionId);
+  try {
+    await followed.follower.start();
+    const streaming = untilState(followed, (state) => state.overlay.length > 0);
+    await host.nyte.messages.send({ sessionId, content: "keep going" });
+    const live = await streaming;
+    assert.deepEqual(live.config, {
+      model: { provider: model.provider, id: model.id },
+      thinkingLevel: "off",
+    });
+    assert.equal(live.overlay[0]?.kind, "text");
+    await host.nyte.sessions.configure({ sessionId, thinkingLevel: "high" });
+    assert.deepEqual(followed.current()?.config, live.config);
+    finish.release();
+    const idle = await untilState(
+      followed,
+      (state) =>
+        state.run?.phase.kind === "done" &&
+        state.config.thinkingLevel === "high" &&
+        state.transcript.items.some((item) => item.kind === "config"),
+    );
+    assert.deepEqual(idle.config, (await host.nyte.sessions.snapshot({ sessionId }))?.config);
+    assert.deepEqual(lines(idle), ["user:keep going", "assistant:saw 1", "config"]);
+    assert.deepEqual(idle.overlay, []);
+  } finally {
+    finish.release();
+    followed.follower.close();
+    detach();
+  }
+});
+
 test("going back to a sent message refolds the transcript from a fresh snapshot and hands the text back", async () => {
   const host = await openHost();
   const { sessionId } = await host.nyte.sessions.create();
@@ -177,7 +213,9 @@ test("going back to a sent message refolds the transcript from a fresh snapshot 
     if (moved.kind === "moved") assert.equal(moved.restored?.content, "second");
     const back = await untilState(
       followed,
-      (state) => state.transcript.tip === sent.parent && !isRunning(state.run),
+      (state) =>
+        state.transcript.tip === sent.parent &&
+        (state.run === undefined || ["done", "aborted", "failed"].includes(state.run.phase.kind)),
     );
     assert.deepEqual(lines(back), ["user:first", "assistant:saw 1"]);
 
@@ -218,6 +256,65 @@ test("print mode streams the answer, names the tool calls, and reports the run's
   } finally {
     detach();
   }
+});
+
+test("a cancelled print request leaves the session unconfigured and sends no message", async () => {
+  const host = await openHost();
+  const { sessionId } = await host.nyte.sessions.create();
+  const written: string[] = [];
+  const outcome = await within(
+    printRun({
+      nyte: host.nyte,
+      sessionId,
+      configure: { model: { provider: model.provider, id: model.id }, thinkingLevel: "off" },
+      content: "cancelled",
+      json: false,
+      quiet: false,
+      signal: AbortSignal.abort(),
+      output: { write: (text) => void written.push(text), error: () => undefined },
+    }),
+  );
+  assert.deepEqual(outcome, { kind: "cancelled" });
+  assert.deepEqual(await host.sessionCommits(sessionId), []);
+  assert.deepEqual(await host.nyte.messages.pending({ sessionId }), []);
+  assert.deepEqual(written, []);
+});
+
+test("cancellation while configuring print mode does not submit the prompt", async () => {
+  const host = await openHost();
+  const { sessionId } = await host.nyte.sessions.create();
+  const stop = new AbortController();
+  const written: string[] = [];
+  const outcome = await within(
+    printRun({
+      nyte: {
+        ...host.nyte,
+        sessions: {
+          ...host.nyte.sessions,
+          configure: async (input) => {
+            const configured = await host.nyte.sessions.configure(input);
+            stop.abort();
+            return configured;
+          },
+        },
+      },
+      sessionId,
+      configure: { model: { provider: model.provider, id: model.id }, thinkingLevel: "off" },
+      content: "cancelled",
+      json: true,
+      quiet: false,
+      signal: stop.signal,
+      output: { write: (text) => void written.push(text), error: () => undefined },
+    }),
+  );
+  assert.deepEqual(outcome, { kind: "cancelled" });
+  assert.deepEqual(await host.nyte.messages.pending({ sessionId }), []);
+  assert.equal(
+    (await host.sessionCommits(sessionId)).some((item) => item.commit.body.kind === "message"),
+    false,
+  );
+  assert.equal(await host.nyte.runs.current({ sessionId }), undefined);
+  assert.deepEqual(written, []);
 });
 
 test("the workspace plugin set carries the question and web-search tools beside the built-ins", async () => {

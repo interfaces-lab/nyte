@@ -9,7 +9,6 @@ import { sessionId } from "@nyte-ai/core";
 import type { AssistantMessage, UserMessage } from "@nyte-ai/schema";
 import {
   foldEvent,
-  isRunning,
   livePartKey,
   stateFromSnapshot,
   tipMismatch,
@@ -106,7 +105,7 @@ test("a user commit and its streamed answer fold into one turn, and the commit d
   assert.equal(streamed.seq, 15);
   assert.equal(streamed.transcript.tip, "u1");
   assert.equal(tipMismatch(streamed), false);
-  assert.ok(isRunning(streamed.run));
+  assert.equal(streamed.run?.phase.kind, "respond");
   assert.deepEqual(
     streamed.overlay.map((part) => [livePartKey(part), part.kind === "tool" ? "" : part.text]),
     [
@@ -126,7 +125,7 @@ test("a user commit and its streamed answer fold into one turn, and the commit d
     { seq: 17, kind: "run", head: "main", run: run("r1", { kind: "done" }) },
   ]);
   assert.deepEqual(settled.overlay, []);
-  assert.equal(isRunning(settled.run), false);
+  assert.equal(settled.run?.phase.kind, "done");
   const turn = settled.transcript.items[0];
   assert.ok(turn?.kind === "turn");
   assert.deepEqual(
@@ -144,6 +143,18 @@ test("a commit that does not extend the tip asks for a snapshot", () => {
     item: { oid: "x", commit: commit("elsewhere", user("hi")) },
   });
   assert.deepEqual(outcome, { kind: "resnapshot" });
+});
+
+test("a restored session keeps core's resolved inputs instead of the session declarations", () => {
+  const start = stateFromSnapshot({
+    ...snapshot(),
+    config: { model: { provider: "openai", id: "executor" }, thinkingLevel: "xhigh" },
+  });
+  assert.deepEqual(start.info.config, {});
+  assert.deepEqual(start.config, {
+    model: { provider: "openai", id: "executor" },
+    thinkingLevel: "xhigh",
+  });
 });
 
 test("a head that moves without commits to follow is a tip mismatch until they arrive", () => {

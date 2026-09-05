@@ -3,7 +3,7 @@ import type { Nyte, SessionEvent, SessionId, ToolTurnPart, Turn } from "@nyte-ai
 import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
 import { SessionFollower } from "./session-follow.ts";
-import { isRunning, type SessionState } from "./session-state.ts";
+import type { SessionState } from "./session-state.ts";
 
 type Conversation = Extract<Turn, { kind: "turn" }>;
 export type Task =
@@ -27,20 +27,16 @@ export type TaskStatus =
   | "failed";
 
 export function taskStatus(task: Task): TaskStatus {
-  if (task.kind === "shell" && task.part.result !== undefined) {
-    return task.part.result.isError ? "failed" : "done";
-  }
   const run = task.state.run;
   if (run === undefined) return "queued";
-  if (run.abortRequested && isRunning(run)) return "stopping";
   switch (run.phase.kind) {
     case "respond":
     case "tools":
-      return "running";
+      return run.abortRequested ? "stopping" : "running";
     case "waiting":
-      return "waiting";
+      return run.abortRequested ? "stopping" : "waiting";
     case "retry":
-      return "retrying";
+      return run.abortRequested ? "stopping" : "retrying";
     case "done":
       return task.kind === "shell" ? "stopped" : "done";
     case "aborted":
@@ -56,9 +52,9 @@ export function taskStatus(task: Task): TaskStatus {
 
 export function canStopTask(task: Task): boolean {
   return (
-    isRunning(task.state.run) &&
-    task.state.run?.abortRequested !== true &&
-    (task.kind === "agent" || task.part.result === undefined)
+    task.state.run !== undefined &&
+    !["done", "aborted", "failed"].includes(task.state.run.phase.kind) &&
+    task.state.run.abortRequested !== true
   );
 }
 
@@ -72,7 +68,7 @@ export function taskLabel(task: Task): string {
   for (const item of task.state.transcript.items) {
     if (item.kind !== "turn") continue;
     const user = item.parts.find((part) => part.kind === "user");
-    if (user?.kind === "user") return oneLine(userText(user.content));
+    if (user !== undefined) return oneLine(userText(user.content));
   }
   return info.preview ?? info.parent?.agent ?? info.sessionId;
 }
@@ -87,7 +83,7 @@ export function taskActivity(task: Task): string {
     (part) => part.kind === "tool" && (task.kind === "agent" || part.callId === task.part.callId),
   );
   if (progress?.kind === "tool") return oneLine(progress.progress.title ?? progress.progress.text);
-  if (task.kind === "shell") return oneLine(task.part.result?.output ?? "");
+  if (task.kind === "shell") return "";
   if (state.run?.phase.kind === "failed" || state.run?.phase.kind === "retry")
     return state.run.phase.error;
   const last = state.transcript.items.findLast((item) => item.kind === "turn");
@@ -101,11 +97,12 @@ export function projectTasks(parent: SessionState, children: readonly SessionSta
   const tasks: Task[] = [];
   for (const state of [parent, ...children]) {
     if (state !== parent) tasks.push({ kind: "agent", id: state.sessionId, state });
-    // Keep commands from the latest conversation turn, not every historical shell call.
+    // Keep only shell calls still running in the latest turn; finished commands are
+    // transcript history, not work to track.
     const turn = state.transcript.items.findLast((item) => item.kind === "turn");
     if (turn === undefined) continue;
     for (const part of turn.parts) {
-      if (part.kind === "tool" && part.toolName === "bash") {
+      if (part.kind === "tool" && part.toolName === "bash" && part.result === undefined) {
         tasks.push({ kind: "shell", id: `${state.sessionId}:${part.callId}`, state, turn, part });
       }
     }

@@ -32,6 +32,7 @@ import {
   SKILLS_PLUGIN_ID,
   contextFilesPlugin,
   skillsPlugin,
+  stockAgentsPlugin,
   systemPromptPlugin,
   toolsFsPlugin,
 } from "@nyte-ai/core/plugins";
@@ -60,6 +61,7 @@ export async function resolveDesktopPlugins(
       // The tool first, then the provider plugins that join it.
       ...webSearchPlugins({ credentials: webSearchCredentials() }),
       skillsPlugin({ directories: skillDirectories(target) }),
+      stockAgentsPlugin(),
     ],
     directories: pluginDirectories(target),
     manifest: cwd === undefined ? undefined : await readManifest(cwd),

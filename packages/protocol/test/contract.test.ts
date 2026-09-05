@@ -5,9 +5,10 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { decode } from "../src/parse.ts";
+import { Value } from "typebox/value";
+import { validationIssues, describeIssues } from "../src/parse.ts";
 import * as schemas from "../src/schemas.ts";
-import { VERBS, VERB_NAMES, isVerb } from "../src/verbs.ts";
+import { VERBS, parseVerb } from "../src/verbs.ts";
 import { CallReplySchema, WireErrorSchema, statusFor, type ErrorCode } from "../src/wire.ts";
 import type { SessionEvent } from "../src/sdk.ts";
 
@@ -15,9 +16,8 @@ test("a fact event whose value was deleted arrives without a value key and is st
   const deleted: SessionEvent = { seq: 4, kind: "fact", key: "name", value: undefined };
   const wire: unknown = JSON.parse(JSON.stringify(deleted));
   assert.deepEqual(wire, { seq: 4, kind: "fact", key: "name" });
-  const decoded = decode(schemas.SessionEvent, wire);
-  assert.ok(decoded.ok);
-  assert.equal(decoded.value.kind, "fact");
+  assert.ok(Value.Check(schemas.SessionEvent, wire));
+  assert.equal(wire.kind, "fact");
 });
 
 test("a commit event carries the whole message, and a mangled one is refused with a path", () => {
@@ -35,53 +35,53 @@ test("a commit event carries the whole message, and a mangled one is refused wit
       },
     },
   };
-  assert.ok(decode(schemas.SessionEvent, JSON.parse(JSON.stringify(event))).ok);
-  const broken = decode(schemas.SessionEvent, {
+  assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));
+  const broken = {
     ...event,
     item: { oid: "abc", commit: { ...event.item.commit, body: { kind: "message", message: 5 } } },
-  });
-  assert.ok(!broken.ok);
-  assert.ok(broken.issues.some((issue) => issue.path.startsWith("/item/commit/body")));
+  };
+  assert.ok(!Value.Check(schemas.SessionEvent, broken));
+  const issues = validationIssues(Value.Errors(schemas.SessionEvent, broken));
+  assert.ok(issues.some((issue) => issue.path.startsWith("/item/commit/body")));
 });
 
 test("strict inputs refuse unknown keys, including an own __proto__ key parsed from JSON", () => {
   const input = VERBS["sessions.get"].input;
-  assert.ok(decode(input, { sessionId: "s" }).ok);
-  assert.ok(!decode(input, { sessionId: "s", extra: 1 }).ok);
-  assert.ok(!decode(input, JSON.parse('{"sessionId":"s","__proto__":{"x":1}}')).ok);
-  assert.ok(!decode(input, { sessionId: "" }).ok);
+  assert.ok(Value.Check(input, { sessionId: "s" }));
+  assert.ok(!Value.Check(input, { sessionId: "s", extra: 1 }));
+  assert.ok(!Value.Check(input, JSON.parse('{"sessionId":"s","__proto__":{"x":1}}')));
+  assert.ok(!Value.Check(input, { sessionId: "" }));
 });
 
 test("JsonValue refuses undefined at any depth and accepts nested JSON", () => {
-  assert.ok(decode(schemas.JsonValue, { a: [1, "b", { c: null }] }).ok);
-  assert.ok(!decode(schemas.JsonValue, { a: [1, undefined] }).ok);
-  assert.ok(!decode(schemas.JsonValue, undefined).ok);
+  assert.ok(Value.Check(schemas.JsonValue, { a: [1, "b", { c: null }] }));
+  assert.ok(!Value.Check(schemas.JsonValue, { a: [1, undefined] }));
+  assert.ok(!Value.Check(schemas.JsonValue, undefined));
 });
 
 test("optional-input verbs accept undefined and void verbs accept only undefined", () => {
-  assert.ok(decode(VERBS["sessions.list"].input, undefined).ok);
-  assert.ok(decode(VERBS["sessions.list"].input, { limit: 2 }).ok);
-  assert.ok(!decode(VERBS["sessions.list"].input, { limit: 1.5 }).ok);
-  assert.ok(!decode(VERBS["sessions.list"].input, null).ok);
-  assert.ok(decode(VERBS["sessions.rename"].output, undefined).ok);
-  assert.ok(!decode(VERBS["sessions.rename"].output, null).ok);
-  assert.ok(decode(VERBS["sessions.get"].output, undefined).ok);
-  assert.ok(!decode(VERBS["plugins.catalog"].output, undefined).ok);
+  assert.ok(Value.Check(VERBS["sessions.list"].input, undefined));
+  assert.ok(Value.Check(VERBS["sessions.list"].input, { limit: 2 }));
+  assert.ok(!Value.Check(VERBS["sessions.list"].input, { limit: 1.5 }));
+  assert.ok(!Value.Check(VERBS["sessions.list"].input, null));
+  assert.ok(Value.Check(VERBS["sessions.rename"].output, undefined));
+  assert.ok(!Value.Check(VERBS["sessions.rename"].output, null));
+  assert.ok(Value.Check(VERBS["sessions.get"].output, undefined));
+  assert.ok(!Value.Check(VERBS["plugins.catalog"].output, undefined));
 });
 
 test("verb lookup never walks the prototype chain", () => {
-  assert.equal(isVerb("constructor"), false);
-  assert.equal(isVerb("__proto__"), false);
-  assert.equal(isVerb("toString"), false);
-  assert.ok(isVerb("messages.send"));
-  assert.ok(VERB_NAMES.includes("messages.send"));
+  assert.equal(parseVerb("constructor"), undefined);
+  assert.equal(parseVerb("__proto__"), undefined);
+  assert.equal(parseVerb("toString"), undefined);
+  assert.equal(parseVerb("messages.send"), "messages.send");
 });
 
 test("reply envelopes distinguish an undefined value from null, and every error code has a status", () => {
-  assert.ok(decode(CallReplySchema, { ok: true, defined: false }).ok);
-  assert.ok(decode(CallReplySchema, { ok: true, defined: true, value: null }).ok);
-  assert.ok(!decode(CallReplySchema, { ok: true }).ok);
-  assert.ok(!decode(CallReplySchema, { ok: false, error: { code: "made_up", message: "x" } }).ok);
+  assert.ok(Value.Check(CallReplySchema, { ok: true, defined: false }));
+  assert.ok(Value.Check(CallReplySchema, { ok: true, defined: true, value: null }));
+  assert.ok(!Value.Check(CallReplySchema, { ok: true }));
+  assert.ok(!Value.Check(CallReplySchema, { ok: false, error: { code: "made_up", message: "x" } }));
   const codes: readonly ErrorCode[] = [
     "invalid_input",
     "cursor_expired",
@@ -97,6 +97,16 @@ test("reply envelopes distinguish an undefined value from null, and every error 
     "internal",
   ];
   for (const code of codes) assert.ok(statusFor(code) >= 400 && statusFor(code) < 600, code);
-  assert.ok(decode(WireErrorSchema, { code: "cursor_expired", message: "m", floor: 3 }).ok);
-  assert.ok(!decode(WireErrorSchema, { code: "cursor_expired", message: "m" }).ok);
+  assert.ok(Value.Check(WireErrorSchema, { code: "cursor_expired", message: "m", floor: 3 }));
+  assert.ok(!Value.Check(WireErrorSchema, { code: "cursor_expired", message: "m" }));
+});
+
+test("validation diagnostics are bounded and readable", () => {
+  const errors = Value.Errors(schemas.SessionId, "");
+  const issues = validationIssues(errors);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.path, "");
+  assert.ok(describeIssues(issues).startsWith("/: "));
+  assert.equal(describeIssues([]), "value did not match its schema");
+  assert.equal(validationIssues(Array.from({ length: 30 }, () => errors).flat()).length, 20);
 });

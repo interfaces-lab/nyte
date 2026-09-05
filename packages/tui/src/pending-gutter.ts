@@ -16,6 +16,8 @@ import type { CliRenderer } from "@opentui/core";
 import type { Lane, PendingItem } from "@nyte-ai/core";
 import type { UserMessage } from "@nyte-ai/schema";
 import { GLYPHS, pendingHint } from "./constants.ts";
+import { extractFileAttachments } from "./composer.ts";
+import { basename } from "node:path";
 import { userText } from "./format.ts";
 import type { LaneRoles } from "./lanes.ts";
 import type { OutboxEntry } from "./outbox.ts";
@@ -52,8 +54,17 @@ const MIN_TEXT_COLUMNS = 12;
 const LEAD_COLUMNS = 3;
 const GAP_COLUMNS = 2;
 
-function rowText(content: UserMessage["content"]): string {
-  return userText(content).replaceAll(/\s+/gu, " ").trim();
+export function queuedPromptText(content: UserMessage["content"]): string {
+  const text = userText(content);
+  const attachments = extractFileAttachments(text);
+  const compact = attachments.reduce(
+    (value, file) => value.replace(file.source, `[File ${basename(file.path)}]`),
+    text,
+  );
+  const images = Array.isArray(content)
+    ? content.filter((part) => part.type === "image").length
+    : 0;
+  return `${compact.replaceAll(/\s+/gu, " ").trim()}${images === 0 ? "" : ` · ${images} ${images === 1 ? "image" : "images"}`}`;
 }
 
 interface RowMark {
@@ -129,12 +140,15 @@ function pendingRow(
 /** The region itself. Hidden while nothing is pending, so an idle session gives its rows back. */
 export class PendingGutter {
   readonly container: BoxRenderable;
+  onOpen: ((row: GutterRow) => void) | undefined;
+  onReorder: ((item: PendingItem, before: PendingItem | null) => void) | undefined;
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
   private readonly nextId: (prefix?: string) => string;
   private roles: LaneRoles;
   private items: readonly GutterRow[] = [];
   private readonly rows: TextRenderable[] = [];
+  private drag: { readonly item: PendingItem; readonly index: number; moving: boolean } | undefined;
 
   constructor(
     renderer: CliRenderer,
@@ -196,6 +210,50 @@ export class PendingGutter {
       });
       this.rows.push(row);
       this.container.add(row);
+      row.onMouseOver = () => {
+        row.bg = this.theme.hover;
+      };
+      row.onMouseOut = () => {
+        row.bg = this.theme.terminal;
+      };
+      row.onMouseDown = (event) => {
+        if (event.button !== 0) return;
+        const index = this.rows.indexOf(row);
+        const item = this.items[index];
+        if (item === undefined) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (item.kind === "pending" && event.x < row.x + LEAD_COLUMNS) {
+          this.drag = { item: item.item, index, moving: false };
+          return;
+        }
+        this.onOpen?.(item);
+      };
+      row.onMouseDrag = (event) => {
+        if (this.drag === undefined) return;
+        this.drag.moving = true;
+        event.preventDefault();
+        event.stopPropagation();
+      };
+      row.onMouseUp = () => {
+        const drag = this.drag;
+        this.drag = undefined;
+        if (drag !== undefined && !drag.moving) this.onOpen?.({ kind: "pending", item: drag.item });
+      };
+      row.onMouseDragEnd = (event) => {
+        const drag = this.drag;
+        this.drag = undefined;
+        if (drag === undefined || !drag.moving) return;
+        const index = this.rows.findIndex(
+          (candidate) => event.y >= candidate.y && event.y < candidate.y + candidate.height,
+        );
+        const target = this.items[index];
+        if (target?.kind === "pending" && target.item.lane !== drag.item.lane) return;
+        if (index === drag.index) return;
+        this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
+        event.preventDefault();
+        event.stopPropagation();
+      };
     }
     this.container.visible = count > 0;
   }
@@ -209,7 +267,9 @@ export class PendingGutter {
       const item = this.items[index];
       if (item === undefined) continue;
       const last = index === shown - 1;
-      const text = rowText(item.kind === "pending" ? item.item.content : item.entry.content);
+      const text = queuedPromptText(
+        item.kind === "pending" ? item.item.content : item.entry.content,
+      );
       row.content = pendingRow(
         text,
         rowMark(item, this.roles, this.theme),

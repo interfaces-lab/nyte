@@ -120,3 +120,52 @@ test("the bound is per frame: many small frames pass through a small bound", () 
   assert.equal(parser.overflow, undefined);
   assert.throws(() => createSseParser({ maxFrameChars: 0 }), RangeError);
 });
+
+test("an oversized complete id line is refused regardless of chunk boundaries", () => {
+  const bytes = encoder.encode(`id: ${"x".repeat(1_000)}\ndata: ok\n\n`);
+  for (const size of [bytes.length, 1, 7, 64]) {
+    const parser = createSseParser({ maxFrameChars: 64 });
+    const frames: SseFrame[] = [];
+    for (let index = 0; index < bytes.length; index += size) {
+      frames.push(...parser.feed(bytes.slice(index, index + size)));
+    }
+    assert.deepEqual(frames, []);
+    assert.ok(parser.overflow instanceof SseFrameTooLarge);
+    assert.deepEqual(parser.feed(encoder.encode("data: late\n\n")), []);
+  }
+});
+
+test("a short id persists across frames without consuming their budgets", () => {
+  const parser = createSseParser({ maxFrameChars: 32 });
+  const frames = parser.feed(encoder.encode("id: 12\ndata: one\n\ndata: two\n\n"));
+  assert.deepEqual(frames, [
+    { event: undefined, data: "one", id: "12" },
+    { event: undefined, data: "two", id: "12" },
+  ]);
+  assert.equal(parser.overflow, undefined);
+});
+
+test("frame limits count the same decoded text with any chunk boundaries", () => {
+  const samples = [
+    `data: ${"x".repeat(32)}\n\n`,
+    "id: 12\nevent: event\ndata: café😀\r\ndata: second\r\n\r\ndata: next\n\n",
+    "data: first\ndata: second\ndata: third\n\n",
+    `: ${"c".repeat(80)}\n\ndata: small\n\n`,
+  ];
+  for (const sample of samples) {
+    const bytes = encoder.encode(sample);
+    for (const limit of [16, 32, 40, 48, 64, 80, 128]) {
+      const parse = (size: number) => {
+        const parser = createSseParser({ maxFrameChars: limit });
+        const frames: SseFrame[] = [];
+        for (let index = 0; index < bytes.length; index += size) {
+          frames.push(...parser.feed(bytes.slice(index, index + size)));
+        }
+        frames.push(...parser.end());
+        return { frames, overflow: parser.overflow !== undefined };
+      };
+      const expected = parse(bytes.length);
+      for (const size of [1, 2, 3, 7, 16, 31]) assert.deepEqual(parse(size), expected);
+    }
+  }
+});

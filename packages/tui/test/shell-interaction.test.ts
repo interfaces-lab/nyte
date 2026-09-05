@@ -3,9 +3,8 @@ import { DEFAULT_LANDING } from "@nyte-ai/core";
 import { CliRenderEvents } from "@opentui/core";
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing";
 import { laneRoles } from "../src/lanes.ts";
-import { closePanel, buildShell, openInlineMenu, openPanel, type Shell } from "../src/shell.ts";
+import { buildShell, closePanel, openInlineMenu, type Shell } from "../src/shell.ts";
 import { DARK_THEME } from "../src/theme.ts";
-import { UsagePanel } from "../src/usage-panel.ts";
 
 describe("shell input ownership", () => {
   let setup: TestRendererSetup;
@@ -62,29 +61,6 @@ describe("shell input ownership", () => {
     setup.mockInput.pressEscape();
     setup.mockInput.pressKey("x");
     expect(shell.input.plainText).toBe("x");
-  });
-
-  test("a read-only panel does not edit the draft behind it", async () => {
-    const panel = new UsagePanel(
-      {
-        renderer: setup.renderer,
-        theme: DARK_THEME,
-        nextId: shell.nextId,
-        onRows: (rows) => shell.ephemeral.setRows(rows),
-        onClose: () => closePanel(shell, panel),
-      },
-      {
-        runs: { kind: "none" },
-        headroom: { kind: "none" },
-        workspace: { kind: "empty", title: "Usage", message: "No usage yet" },
-      },
-    );
-    openPanel(shell, panel);
-    setup.mockInput.pressKey("x");
-    expect(shell.input.plainText).toBe("");
-    setup.mockInput.pressEscape();
-    setup.mockInput.pressKey("y");
-    expect(shell.input.plainText).toBe("y");
   });
 
   test("menu mouse selection follows the visible row after scrolling and resizing", async () => {

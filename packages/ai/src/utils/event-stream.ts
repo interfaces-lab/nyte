@@ -11,17 +11,13 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
   private queue: T[] = [];
   private waiting: ((value: IteratorResult<T>) => void)[] = [];
   private done = false;
-  private finalResultPromise: Promise<R>;
-  private resolveFinalResult!: (result: R) => void;
+  private finalResult = Promise.withResolvers<R>();
   private isComplete: (event: T) => boolean;
   private extractResult: (event: T) => R;
 
   constructor(isComplete: (event: T) => boolean, extractResult: (event: T) => R) {
     this.isComplete = isComplete;
     this.extractResult = extractResult;
-    this.finalResultPromise = new Promise((resolve) => {
-      this.resolveFinalResult = resolve;
-    });
   }
 
   push(event: T): void {
@@ -29,7 +25,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
 
     if (this.isComplete(event)) {
       this.done = true;
-      this.resolveFinalResult(this.extractResult(event));
+      this.finalResult.resolve(this.extractResult(event));
     }
 
     // Deliver to waiting consumer or queue it
@@ -44,19 +40,18 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
   end(result?: R): void {
     this.done = true;
     if (result !== undefined) {
-      this.resolveFinalResult(result);
+      this.finalResult.resolve(result);
     }
     // Notify all waiting consumers that we're done
-    while (this.waiting.length > 0) {
-      const waiter = this.waiting.shift()!;
-      waiter({ value: undefined as any, done: true });
+    for (const waiter of this.waiting.splice(0)) {
+      waiter({ value: undefined, done: true });
     }
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<T> {
     while (true) {
       if (this.queue.length > 0) {
-        yield this.queue.shift()!;
+        yield* this.queue.splice(0, 1);
       } else if (this.done) {
         return;
       } else {
@@ -70,7 +65,7 @@ export class EventStream<T, R = T> implements AsyncIterable<T> {
   }
 
   result(): Promise<R> {
-    return this.finalResultPromise;
+    return this.finalResult.promise;
   }
 }
 

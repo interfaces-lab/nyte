@@ -1,8 +1,10 @@
 /**
  * Streaming Markdown is parsed and hardened by Streamdown. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
- * fenced code retains the visibility + idle + dynamic-import rendering path.
+ * fenced code paints immediately and highlights in a worker.
  */
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import * as stylex from "@stylexjs/stylex";
 import { Children, isValidElement, memo } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
@@ -15,12 +17,10 @@ import { proseStyles } from "./styles.stylex.ts";
 type MarkdownPreProps = ComponentProps<"pre"> & ExtraProps;
 type MarkdownTableProps = ComponentProps<"table"> & ExtraProps;
 
-function isTextNode(node: ReactNode): node is string | number | bigint {
-  return typeof node === "string" || typeof node === "number" || typeof node === "bigint";
-}
+const textNode = Type.Union([Type.String(), Type.Number(), Type.BigInt()]);
 
 function nodeText(node: ReactNode): string {
-  if (isTextNode(node)) return String(node);
+  if (Value.Check(textNode, node)) return String(node);
   if (Array.isArray(node)) return node.map(nodeText).join("");
   if (isValidElement<{ children?: ReactNode }>(node)) return nodeText(node.props.children);
   return "";

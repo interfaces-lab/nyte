@@ -425,7 +425,7 @@ export function reduceAssistantMessageFrames(
     if (state.kind !== "toolCall" || state.ended || state.json.length === 0) continue;
     const block = message.content[contentIndex];
     if (block?.type !== "toolCall") throw new Error("Unreachable tool-call frame state");
-    block.arguments = parseStreamingJson<ToolCall["arguments"]>(state.json);
+    block.arguments = parseStreamingJson(state.json);
   }
 
   return message;

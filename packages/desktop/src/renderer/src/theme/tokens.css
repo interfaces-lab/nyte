@@ -14,10 +14,10 @@
   /* ── core palette (light) ── */
   --nyte-accent-base: #1084fe;
   --nyte-base: #141414;
-  --nyte-chrome-base: #ebebed;
+  --nyte-chrome-base: #f8f8f8;
   --nyte-editor-base: #fcfcfc;
-  --nyte-sidebar-base: #f3f3f3;
-  --nyte-sidebar-material-opacity: 42%;
+  --nyte-sidebar-base: #ebebed;
+  --nyte-sidebar-material-opacity: 100%;
   --nyte-red: #ff263c;
   --nyte-green: #00c972;
   --nyte-yellow: #ff9800;
@@ -42,13 +42,13 @@
   --nyte-switch-thumb-background: #ffffff;
 
   /* ── sand semantic tier (light) ── */
-  --sand-bg-base: #f4f4f5;
-  --sand-bg-subtle: #ebebed;
+  --sand-bg-base: #f5f5f6;
+  --sand-bg-subtle: #f8f8f8;
   --sand-bg-elevated: #fcfcfc;
   --sand-bg-scrim: rgba(0, 0, 0, 0.4);
   --sand-text-primary: #141414;
-  --sand-text-secondary: #14141499;
-  --sand-text-tertiary: #14141466;
+  --sand-text-secondary: #141414bd;
+  --sand-text-tertiary: #14141499;
   --sand-text-disabled: #1414144d;
   --sand-text-on-primary: #fcfcfc;
   --sand-text-on-color: #fcfcfc;
@@ -73,7 +73,7 @@
   --sand-fill-secondary-hover: #14141412;
   --sand-fill-secondary-solid: #f3f3f3;
   --sand-fill-ghost-hover: #1414140a;
-  --sand-fill-ghost-selected: #14141412;
+  --sand-fill-ghost-selected: #1414140f;
   --sand-fill-elevated: #fcfcfc;
   --sand-fill-bubble-agent: #eeeeee;
   --sand-fill-bubble-user: #070707;

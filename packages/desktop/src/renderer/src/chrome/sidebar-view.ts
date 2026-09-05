@@ -1,5 +1,4 @@
 import type { SessionInfo } from "@nyte-ai/core";
-import { sessionWorking } from "../run-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -77,7 +76,13 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
 
 function statusOf(session: SessionInfo): SessionStatus {
   if (session.heads.some((head) => head.run?.phase.kind === "waiting")) return "needs-attention";
-  if (sessionWorking(session)) return "working";
+  if (
+    session.heads.some(
+      (head) =>
+        head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
+    )
+  )
+    return "working";
   if (session.preview === undefined && session.name === undefined) return "draft";
   return "done";
 }

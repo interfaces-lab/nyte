@@ -70,6 +70,7 @@ function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
 interface InFlight {
   entry: OutboxEntry;
   readonly stop: AbortController;
+  readonly settled: PromiseWithResolvers<OutboxOutcome>;
 }
 
 export class Outbox {
@@ -105,18 +106,19 @@ export class Outbox {
         attempts: 0,
       },
       stop,
+      settled: Promise.withResolvers<OutboxOutcome>(),
     };
     this.inFlight.set(key, flight);
     this.changed();
     return this.deliver(flight);
   }
 
-  /** Take a sending message back. True when it was still ours to take. */
-  withdraw(key: string): boolean {
+  /** Stop retrying, then report whether the in-flight attempt reached the store. */
+  withdraw(key: string): Promise<OutboxOutcome> | undefined {
     const flight = this.inFlight.get(key);
-    if (flight === undefined) return false;
+    if (flight === undefined) return undefined;
     flight.stop.abort();
-    return true;
+    return flight.settled.promise;
   }
 
   private async deliver(flight: InFlight): Promise<OutboxOutcome> {
@@ -139,6 +141,7 @@ export class Outbox {
 
   private settle(flight: InFlight, outcome: OutboxOutcome): OutboxOutcome {
     this.inFlight.delete(flight.entry.key);
+    flight.settled.resolve(outcome);
     this.changed();
     return outcome;
   }

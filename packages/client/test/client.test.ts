@@ -70,7 +70,12 @@ function openStream(frames: string) {
   });
   const fetchFn: typeof fetch = () =>
     Promise.resolve(new Response(stream, { headers: { "content-type": "text/event-stream" } }));
-  return { fetchFn, isCancelled: () => cancelled };
+  return {
+    fetchFn,
+    get cancelled() {
+      return cancelled;
+    },
+  };
 }
 
 test("a call is one POST with the bearer token, the caller's headers, and an explicit input envelope", async () => {
@@ -256,44 +261,44 @@ test("returning the iterator while a read is pending resolves that read as done 
 });
 
 test("after return, buffered events are not yielded and the body is cancelled", async () => {
-  const { fetchFn, isCancelled } = openStream(synced(1) + synced(2));
-  const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
+  const stream = openStream(synced(1) + synced(2));
+  const client = createNyteClient({ baseUrl: "http://h.test", fetch: stream.fetchFn });
   const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
   assert.equal((await iterator.next()).done, false);
   await iterator.return?.();
   assert.deepEqual(await iterator.next(), { done: true, value: undefined });
-  assert.ok(isCancelled());
+  assert.ok(stream.cancelled);
 });
 
 test("an ended frame releases the body; a malformed frame fails and releases it too", async () => {
   const ended = openStream(`${synced(1)}event: ended\ndata: {}\n\n`);
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: ended.fetchFn });
   assert.deepEqual(await drained(client.watch({ sessionId: sid, live: true })), ["synced"]);
-  assert.ok(ended.isCancelled());
+  assert.ok(ended.cancelled);
 
   const malformed = openStream(`${synced(1)}event: event\ndata: {"seq":"x"}\n\n`);
   const broken = createNyteClient({ baseUrl: "http://h.test", fetch: malformed.fetchFn });
   const error = await caught(drained(broken.watch({ sessionId: sid, live: true })));
   assert.ok(error instanceof NyteTransportError);
   assert.equal(error.failure.kind, "bad_body");
-  assert.ok(malformed.isCancelled());
+  assert.ok(malformed.cancelled);
 });
 
 test("an ended frame whose data is not an object is a malformed stream, not completion", async () => {
-  const { fetchFn, isCancelled } = openStream(`${synced(1)}event: ended\ndata: 42\n\n`);
-  const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
+  const stream = openStream(`${synced(1)}event: ended\ndata: 42\n\n`);
+  const client = createNyteClient({ baseUrl: "http://h.test", fetch: stream.fetchFn });
   const error = await caught(drained(client.watch({ sessionId: sid, live: true })));
   assert.ok(error instanceof NyteTransportError);
   assert.equal(error.failure.kind, "bad_body");
-  assert.ok(isCancelled());
+  assert.ok(stream.cancelled);
 });
 
 test("a response that arrives after the iterator was returned is cancelled, not read", async () => {
-  const { fetchFn, isCancelled } = openStream(synced(1));
+  const stream = openStream(synced(1));
   let requested = false;
   const late: typeof fetch = (input, init) => {
     requested = true;
-    return new Promise((resolve) => setTimeout(() => resolve(fetchFn(input, init)), 20));
+    return new Promise((resolve) => setTimeout(() => resolve(stream.fetchFn(input, init)), 20));
   };
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: late });
   const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
@@ -303,7 +308,7 @@ test("a response that arrives after the iterator was returned is cancelled, not 
   await iterator.return?.();
   assert.deepEqual(await pending, { done: true, value: undefined });
   await new Promise((resolve) => setTimeout(resolve, 40));
-  assert.ok(isCancelled());
+  assert.ok(stream.cancelled);
 });
 
 test("a reader failure mid-stream is a transport failure, not a bare error", async () => {
@@ -334,8 +339,12 @@ test("a reader failure mid-stream is a transport failure, not a bare error", asy
 });
 
 test("a frame larger than the client's bound ends the watch as bad_body and releases the body", async () => {
-  const { fetchFn, isCancelled } = openStream(`${synced(1)}event: event\ndata: ${"x".repeat(200)}`);
-  const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn, maxFrameChars: 128 });
+  const stream = openStream(`${synced(1)}event: event\ndata: ${"x".repeat(200)}`);
+  const client = createNyteClient({
+    baseUrl: "http://h.test",
+    fetch: stream.fetchFn,
+    maxFrameChars: 128,
+  });
   const kinds: string[] = [];
   const error = await caught(
     (async () => {
@@ -346,5 +355,77 @@ test("a frame larger than the client's bound ends the watch as bad_body and rele
   assert.ok(error instanceof NyteTransportError);
   assert.equal(error.failure.kind, "bad_body");
   assert.deepEqual(kinds, ["synced"]);
-  assert.ok(isCancelled());
+  assert.ok(stream.cancelled);
+});
+
+test("an oversized complete id line fails the watch and cancels its body", async () => {
+  const stream = openStream(`id: ${"x".repeat(1_000)}\n${synced(1)}`);
+  const client = createNyteClient({
+    baseUrl: "http://h.test",
+    fetch: stream.fetchFn,
+    maxFrameChars: 128,
+  });
+  const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
+  const error = await caught(iterator.next());
+  assert.ok(error instanceof NyteTransportError);
+  assert.equal(error.failure.kind, "bad_body");
+  assert.ok(stream.cancelled);
+  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+});
+
+test("calls and refused watches distinguish malformed JSON, bad envelopes, and unexpected statuses", async () => {
+  for (const [body, kind] of [
+    ["{", "bad_body"],
+    ['{"ok":true}', "bad_body"],
+    ['{"ok":true,"defined":false}', "bad_status"],
+  ]) {
+    const client = createNyteClient({
+      baseUrl: "http://h.test",
+      fetch: scripted(
+        () =>
+          new Response(body, {
+            status: 503,
+            headers: { "content-type": "application/json" },
+          }),
+      ).fetchFn,
+    });
+    for (const operation of [
+      () => client.sessions.get({ sessionId: sid }),
+      () => client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]().next(),
+    ]) {
+      const error = await caught(operation());
+      assert.ok(error instanceof NyteTransportError);
+      assert.equal(error.failure.kind, kind);
+    }
+  }
+});
+
+test("an invalid watch frame throws once after preceding events and releases the body", async () => {
+  for (const frame of [
+    "event: constructor\ndata: {}\n\n",
+    "event: event\ndata: {\n\n",
+    "event: error\ndata: {}\n\n",
+  ]) {
+    const stream = openStream(synced(1) + frame);
+    const client = createNyteClient({ baseUrl: "http://h.test", fetch: stream.fetchFn });
+    const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
+    assert.deepEqual(await iterator.next(), { done: false, value: { kind: "synced", seq: 1 } });
+    const error = await caught(iterator.next());
+    assert.ok(error instanceof NyteTransportError);
+    assert.equal(error.failure.kind, "bad_body");
+    assert.ok(stream.cancelled);
+    assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+  }
+});
+
+test("returning a watch discards a failure buffered after its last yielded event", async () => {
+  const stream = openStream(
+    `${synced(1)}event: error\ndata: {"code":"closed","message":"bye"}\n\n`,
+  );
+  const client = createNyteClient({ baseUrl: "http://h.test", fetch: stream.fetchFn });
+  const iterator = client.watch({ sessionId: sid, live: true })[Symbol.asyncIterator]();
+  assert.equal((await iterator.next()).done, false);
+  await iterator.return?.();
+  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+  assert.ok(stream.cancelled);
 });

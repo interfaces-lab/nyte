@@ -17,6 +17,7 @@ import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Prose } from "./prose.tsx";
+import { ImagePreview } from "./image-preview.tsx";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
 import { inlineTextStyles, turnStyles } from "./styles.stylex.ts";
@@ -43,26 +44,8 @@ export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
 
-function contentText(content: UserTurnPart["content"]): string {
-  if (!Array.isArray(content)) return content;
-  return content
-    .map((part) => {
-      switch (part.type) {
-        case "text":
-          return part.text;
-        case "image":
-          return "[image]";
-        default: {
-          const _exhaustive: never = part;
-          return _exhaustive;
-        }
-      }
-    })
-    .join("");
-}
-
 function UserMessageContent({ content }: { content: UserTurnPart["content"] }): ReactElement {
-  const segments = userTextSegments(contentText(content));
+  const segments = userTextSegments(editableText(content));
   return (
     <>
       {segments.map((segment, index) =>
@@ -119,23 +102,21 @@ function focusAtEnd(input: HTMLTextAreaElement | null): void {
   input.style.height = `${String(Math.min(input.scrollHeight, 180))}px`;
 }
 
-function EditableUserMessage({
-  part,
+/**
+ * One user row. Without `onEdit` it is read-only, which also draws a message
+ * that has left the composer but has no commit yet.
+ */
+export function UserMessageView({
+  content,
   onEdit,
   branchModel,
 }: {
-  part: UserTurnPart;
-  onEdit:
-    | ((
-        part: UserTurnPart,
-        content: UserTurnPart["content"],
-        choice: BranchModelChoice,
-      ) => Promise<void>)
-    | undefined;
-  branchModel: BranchModelPicker | undefined;
+  content: UserTurnPart["content"];
+  onEdit?: (content: UserTurnPart["content"], choice: BranchModelChoice) => Promise<void>;
+  branchModel?: BranchModelPicker;
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
-  const original = editableText(part.content);
+  const original = editableText(content);
 
   const begin = (): void => {
     if (onEdit === undefined || edit !== undefined) return;
@@ -153,13 +134,13 @@ function EditableUserMessage({
 
   const save = (): void => {
     if (edit === undefined || edit.saving || onEdit === undefined) return;
-    const content = replaceText(part.content, edit.draft);
-    if (Array.isArray(content) ? content.length === 0 : content.trim() === "") {
+    const next = replaceText(content, edit.draft);
+    if (Array.isArray(next) ? next.length === 0 : next.trim() === "") {
       setEdit({ ...edit, error: "A message cannot be empty." });
       return;
     }
     setEdit({ ...edit, saving: true, error: undefined });
-    void onEdit(part, content, {
+    void onEdit(next, {
       model: edit.model,
       thinkingLevel: edit.thinkingLevel,
       fastEnabled: edit.fastEnabled,
@@ -183,13 +164,15 @@ function EditableUserMessage({
       <div {...stylex.props(turnStyles.userPromptShell)}>
         {onEdit === undefined ? (
           <div {...stylex.props(turnStyles.userPrompt)}>
-            <UserMessageContent content={part.content} />
+            <UserMessageContent content={content} />
           </div>
         ) : edit === undefined ? (
           <BaseButton
             unstyled
             type="button"
-            aria-label={`Edit message: ${userDisplayText(contentText(part.content))}`}
+            aria-label={
+              original === "" ? "Edit message" : `Edit message: ${userDisplayText(original)}`
+            }
             {...stylex.props(turnStyles.userPrompt, turnStyles.userPromptEditable, focus.ring)}
             onClick={begin}
             onKeyDown={(event) => {
@@ -198,7 +181,7 @@ function EditableUserMessage({
               begin();
             }}
           >
-            <UserMessageContent content={part.content} />
+            <UserMessageContent content={content} />
           </BaseButton>
         ) : (
           <form
@@ -298,6 +281,19 @@ function EditableUserMessage({
               </div>
             </div>
           </form>
+        )}
+        {Array.isArray(content) && content.some((item) => item.type === "image") && (
+          <div aria-label="Image attachments" {...stylex.props(turnStyles.userImages)}>
+            {content.map((item, index) =>
+              item.type === "image" ? (
+                <ImagePreview
+                  key={index}
+                  src={`data:${item.mimeType};base64,${item.data}`}
+                  name={`Image ${String(index + 1)}`}
+                />
+              ) : null,
+            )}
+          </div>
         )}
       </div>
       <div aria-hidden="true" data-sticky-message-fade {...stylex.props(turnStyles.userFade)} />
@@ -405,7 +401,17 @@ export function TurnPartView({
 }): ReactElement | null {
   switch (part.kind) {
     case "user":
-      return <EditableUserMessage part={part} onEdit={onEditUser} branchModel={branchModel} />;
+      return (
+        <UserMessageView
+          content={part.content}
+          onEdit={
+            onEditUser === undefined
+              ? undefined
+              : (content, choice) => onEditUser(part, content, choice)
+          }
+          branchModel={branchModel}
+        />
+      );
     case "assistant":
       return part.text.trim() === "" ? null : <Prose markdown={part.text} />;
     case "thinking":

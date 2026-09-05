@@ -151,6 +151,13 @@ client closes it with an outbox:
 The key is `refs/keys/<key>`, written in the same CAS as the queue tip, so the
 guarantee is the store's, not the client's.
 
+`redeliver` can replace a queued user message's `content` or place it `before`
+another pending change. It appends the changed suffix and cancels the old suffix
+in one CAS, asserting the source and destination bases and the destination tip.
+An edit racing a landing cannot re-admit the landed message. Copies retain their
+original times; `pending` merges lanes chronologically while preserving each
+lane's delivery order. The queue event projection publishes every appended copy.
+
 ## Acceptance
 
 The drills every backend and every runner must pass:

@@ -15,8 +15,36 @@ import {
 } from "./names.ts";
 import type { Actor, Change, CommitBody, Obj, Oid, RefUpdate } from "./model.ts";
 import type { Objects, Session } from "./store.ts";
+import type { UserMessage } from "@nyte-ai/schema";
 
 const MAX_SUBMIT_ATTEMPTS = 1_000;
+
+/** Merge lanes chronologically without re-sorting a lane's chosen delivery order. */
+export function mergeQueuedLanes<T>(
+  items: readonly T[],
+  options: { readonly lane: (item: T) => string; readonly compare: (left: T, right: T) => number },
+): T[] {
+  const lanes = new Map<string, T[]>();
+  for (const item of items) {
+    const lane = options.lane(item);
+    const queue = lanes.get(lane);
+    if (queue === undefined) lanes.set(lane, [item]);
+    else queue.push(item);
+  }
+  const ordered: T[] = [];
+  while (lanes.size > 0) {
+    const next = [...lanes.values()]
+      .flatMap((queue) => (queue[0] === undefined ? [] : [queue[0]]))
+      .sort(options.compare)[0];
+    if (next === undefined) break;
+    ordered.push(next);
+    const lane = options.lane(next);
+    const queue = lanes.get(lane);
+    queue?.shift();
+    if (queue?.length === 0) lanes.delete(lane);
+  }
+  return ordered;
+}
 
 export type SubmitOutcome =
   | { readonly kind: "queued"; readonly change: Oid }
@@ -69,15 +97,6 @@ function onlyOid(oids: readonly Oid[]): Oid {
     throw new Error("Putting one queue object did not return exactly one oid");
   }
   return oid;
-}
-
-function twoOids(oids: readonly Oid[]): readonly [Oid, Oid] {
-  const first = oids[0];
-  const second = oids[1];
-  if (first === undefined || second === undefined || oids.length !== 2) {
-    throw new Error("Putting two queue objects did not return exactly two oids");
-  }
-  return [first, second];
 }
 
 async function readChange(objects: Objects, oid: Oid): Promise<Change> {
@@ -250,10 +269,10 @@ export async function pendingIn(
 
 export async function pending(session: Session, head: string): Promise<readonly PendingChange[]> {
   const [chains, cancelled] = await Promise.all([walkLanes(session, head), cancelledSet(session)]);
-  return chains
-    .flatMap((chain) => chain.changes)
-    .filter((item) => !cancelled.has(item.oid))
-    .sort(comparePending);
+  return mergeQueuedLanes(
+    chains.flatMap((chain) => chain.changes).filter((item) => !cancelled.has(item.oid)),
+    { lane: (item) => item.lane, compare: comparePending },
+  );
 }
 
 /**
@@ -303,13 +322,16 @@ export async function cancel(
   );
 }
 
-/** Move a pending change between lanes without exposing an intermediate state. */
+/** Move or edit a pending change in one CAS. Unchanged prefixes retain their ids. */
 export async function redeliver(
   session: Session,
   options: {
     readonly head: string;
     readonly change: Oid;
     readonly lane: string;
+    readonly content?: UserMessage["content"];
+    /** Omitted preserves position within a lane; null moves to the end. */
+    readonly before?: Oid | null;
     readonly actor?: Actor;
   },
 ): Promise<RedeliverOutcome> {
@@ -324,23 +346,52 @@ export async function redeliver(
         : { kind: "not_found" };
     }
     if ((await session.refs.read(tombstoneName)) !== null) return { kind: "not_found" };
-    if (located.chain.lane === options.lane) return { kind: "unchanged" };
-
     const target = chainIn(chains, options.lane);
-    const baseCopy: Change = {
-      kind: "change",
-      previous: target.tip,
-      supersedes: options.change,
-      body: located.item.change.body,
-      at: located.item.change.at,
-    };
-    const copy: Change =
-      located.item.change.author === undefined
-        ? baseCopy
-        : { ...baseCopy, author: located.item.change.author };
-    const [tombstone, copied] = twoOids(
-      await session.objects.put([{ kind: "blob", value: { at: Date.now() } }, copy]),
+    const cancelled = await cancelledSet(session);
+    const original = target.changes.filter((item) => !cancelled.has(item.oid));
+    const sourceIndex = original.findIndex((item) => item.oid === options.change);
+    const reordered = original.filter((item) => item.oid !== options.change);
+    const index =
+      options.before === undefined
+        ? sourceIndex === -1
+          ? reordered.length
+          : sourceIndex
+        : options.before === null
+          ? reordered.length
+          : options.before === options.change
+            ? sourceIndex
+            : reordered.findIndex((item) => item.oid === options.before);
+    if (index < 0) return { kind: "not_found" };
+    if (
+      options.content === undefined &&
+      index === sourceIndex &&
+      target.lane === located.chain.lane
+    )
+      return { kind: "unchanged" };
+    const body = located.item.change.body;
+    if (options.content !== undefined && (body.kind !== "message" || body.message.role !== "user"))
+      return { kind: "not_found" };
+    reordered.splice(index, 0, located.item);
+    const start = Math.min(sourceIndex === -1 ? original.length : sourceIndex, index);
+    const replaced = new Set([options.change, ...original.slice(start).map((item) => item.oid)]);
+    const tombstone = onlyOid(
+      await session.objects.put([{ kind: "blob", value: { at: Date.now() } }]),
     );
+    let tip = target.tip;
+    let copied = options.change;
+    for (const item of reordered.slice(start)) {
+      const change = item.change;
+      const nextBody =
+        item.oid === options.change &&
+        options.content !== undefined &&
+        body.kind === "message" &&
+        body.message.role === "user"
+          ? { ...body, message: { ...body.message, content: options.content } }
+          : change.body;
+      const copy = { ...change, previous: tip, supersedes: item.oid, body: nextBody };
+      tip = onlyOid(await session.objects.put([copy]));
+      if (item.oid === options.change) copied = tip;
+    }
     const sourceBaseName = queueBaseRef(options.head, located.chain.lane);
     const targetTipName = queueTipRef(options.head, options.lane);
     const updateOptions =
@@ -349,21 +400,27 @@ export async function redeliver(
         : { reason: "redeliver", actor: options.actor };
     const outcome = await session.refs.update(
       [
-        { name: tombstoneName, from: null, to: tombstone },
+        ...[...replaced].map((oid) => ({ name: cancelledRef(oid), from: null, to: tombstone })),
         {
           name: sourceBaseName,
           from: located.chain.base,
           to: located.chain.base,
         },
-        { name: targetTipName, from: target.tip, to: copied },
+        ...(target.lane === located.chain.lane
+          ? []
+          : [
+              { name: queueBaseRef(options.head, target.lane), from: target.base, to: target.base },
+            ]),
+        { name: targetTipName, from: target.tip, to: tip },
       ],
       updateOptions,
     );
     if (outcome.ok) return { kind: "redelivered", change: copied };
     if (outcome.reason === "fenced") throw new Error("Unexpected fenced queue redelivery");
     if (
-      outcome.name === tombstoneName ||
+      [...replaced].some((oid) => outcome.name === cancelledRef(oid)) ||
       outcome.name === sourceBaseName ||
+      outcome.name === queueBaseRef(options.head, target.lane) ||
       outcome.name === targetTipName
     ) {
       continue;

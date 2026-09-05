@@ -244,11 +244,13 @@ export function AccountsSettings(): ReactElement {
 
   return (
     <section {...stylex.props(settingsPatterns.section)}>
-      <h2 {...stylex.props(settingsPatterns.sectionTitle)}>GitHub</h2>
-      <p {...stylex.props(settingsPatterns.sectionDescription)}>
-        Signs in through the GitHub CLI. Nyte never sees the token. Optional; local Git works
-        without it.
-      </p>
+      <div {...stylex.props(settingsPatterns.sectionHeader)}>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>GitHub</h2>
+        <p {...stylex.props(settingsPatterns.sectionDescription)}>
+          Signs in through the GitHub CLI. Nyte never sees the token. Optional; local Git works
+          without it.
+        </p>
+      </div>
       <ConnectionList>
         <AccountRow account={account} />
         {repository !== undefined && <RepositoryRow repository={repository} />}

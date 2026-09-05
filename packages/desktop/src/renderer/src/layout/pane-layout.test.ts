@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { SessionId } from "@nyte-ai/core";
-import { asSessionId } from "../../../shared/ipc.ts";
+import { sessionId } from "@nyte-ai/protocol";
 import {
   DEFAULT_SPLIT_RATIO,
   activePane,
@@ -20,9 +20,9 @@ import type {
 type SplitPaneLayout = Extract<PaneLayout, { kind: "split" }>;
 type EdgePlacement = Exclude<DropPlacement, "center">;
 
-const ALPHA = asSessionId("alpha");
-const BETA = asSessionId("beta");
-const GAMMA = asSessionId("gamma");
+const ALPHA = sessionId("alpha");
+const BETA = sessionId("beta");
+const GAMMA = sessionId("gamma");
 const TARGET_PANE_IDS = ["primary", "secondary"] satisfies readonly PaneId[];
 
 const EDGE_CASES = [

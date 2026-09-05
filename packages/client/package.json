@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nyte-ai/protocol": "workspace:*"
+    "@nyte-ai/protocol": "workspace:*",
+    "typebox": "1.3.7"
   },
   "devDependencies": {
     "@nyte-ai/schema": "workspace:*",

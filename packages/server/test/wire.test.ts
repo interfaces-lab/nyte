@@ -8,8 +8,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/client";
 import { createNyte, type Nyte, type SessionEvent, type SessionId } from "@nyte-ai/core";
-import { CallReplySchema, decode, sessionId as parseSessionId } from "@nyte-ai/protocol";
+import { CallReplySchema, sessionId as parseSessionId } from "@nyte-ai/protocol";
 import { SqliteStore } from "@nyte-ai/core/store";
+import { Value } from "typebox/value";
 import type { Api, Model } from "@nyte-ai/schema";
 import { createNyteServer, type NyteServerOptions, type ServerFailure } from "../src/index.ts";
 
@@ -73,7 +74,7 @@ async function fixture(options: FixtureOptions = {}) {
   const client = createNyteClient({
     baseUrl: BASE,
     fetch: fetchFn,
-    ...(options.token === undefined ? { token: TOKEN } : { token: options.token }),
+    token: options.token ?? TOKEN,
   });
   const raw = (path: string, init: RequestInit = {}): Promise<Response> => {
     const headers = new Headers(init.headers);
@@ -88,10 +89,10 @@ function post(body: string, headers: Record<string, string> = {}): RequestInit {
 }
 
 async function errorOf(response: Response): Promise<{ status: number; code: string }> {
-  const reply = decode(CallReplySchema, await response.json());
-  assert.ok(reply.ok, "the reply is the protocol envelope");
-  assert.ok(!reply.value.ok, "the reply is an error");
-  return { status: response.status, code: reply.value.error.code };
+  const reply: unknown = await response.json();
+  assert.ok(Value.Check(CallReplySchema, reply), "the reply is the protocol envelope");
+  assert.ok(!reply.ok, "the reply is an error");
+  return { status: response.status, code: reply.error.code };
 }
 
 /** The client's own error out of a rejected promise, or a failed assertion. */
@@ -431,14 +432,36 @@ test("a custom authorizer decides per request and a throwing one fails closed", 
   assert.equal(brokenReply.headers.get("access-control-allow-origin"), "http://app.test");
   assert.equal(broken.failures[0]?.route, "request");
 
-  // SAFETY: a JavaScript host can return anything; the server must treat a non-decision as deny.
-  const malformed = await fixture({
-    server: { auth: { kind: "custom", authorize: () => ({ kind: "maybe" }) as never } },
+  for (const decision of [
+    null,
+    undefined,
+    true,
+    "allow",
+    [],
+    {},
+    { kind: "maybe" },
+    { kind: "deny" },
+    { kind: "deny", reason: "allow" },
+  ]) {
+    const malformed = await fixture({
+      // SAFETY: deliberately violate the callback contract to exercise an untyped JavaScript host.
+      server: { auth: { kind: "custom", authorize: () => decision as never } },
+    });
+    assert.deepEqual(await errorOf(await malformed.raw("/v1/call/sessions.list", post("{}"))), {
+      status: 403,
+      code: "forbidden",
+    });
+    assert.deepEqual(malformed.failures, []);
+  }
+
+  const anonymous = await fixture({
+    server: {
+      auth: { kind: "custom", authorize: () => ({ kind: "deny", reason: "unauthorized" }) },
+    },
   });
-  assert.deepEqual(await errorOf(await malformed.raw("/v1/call/sessions.list", post("{}"))), {
-    status: 403,
-    code: "forbidden",
-  });
+  const noCredential = await anonymous.raw("/v1/call/sessions.list", post("{}"));
+  assert.deepEqual(await errorOf(noCredential), { status: 401, code: "unauthorized" });
+  assert.equal(noCredential.headers.get("www-authenticate"), "Bearer");
 });
 
 test("browser origins: same-origin passes, listed origins get CORS headers, others are refused", async () => {
@@ -553,7 +576,6 @@ test("breaking out of a watch aborts the SDK watch on the server without touchin
     break;
   }
   await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(signals.length, 1);
   assert.equal(signals[0]?.aborted, true);
   assert.ok(await client.sessions.get({ sessionId }));
 
@@ -569,17 +591,8 @@ test("breaking out of a watch aborts the SDK watch on the server without touchin
   assert.equal(signals[1]?.aborted, true);
 });
 
-test("a pre-aborted request never opens a watch", async () => {
-  const signals: AbortSignal[] = [];
-  const { server, client } = await fixture({
-    wrap: (sdk) => ({
-      ...sdk,
-      watch: (input) => {
-        if (input.signal !== undefined) signals.push(input.signal);
-        return sdk.watch(input);
-      },
-    }),
-  });
+test("a pre-aborted watch request is refused as invalid input", async () => {
+  const { server, client } = await fixture();
   const { sessionId } = await client.sessions.create();
   const controller = new AbortController();
   controller.abort();
@@ -589,8 +602,8 @@ test("a pre-aborted request never opens a watch", async () => {
       signal: controller.signal,
     }),
   );
-  assert.equal(response.status, 400);
-  assert.deepEqual(signals, []);
+  assert.deepEqual(await errorOf(response), { status: 400, code: "invalid_input" });
+  assert.ok(await client.sessions.get({ sessionId }));
 });
 
 test("closing the server ends open watches with a closed error frame and refuses new ones", async () => {

@@ -14,7 +14,7 @@ import {
 } from "@nyte-ai/ai";
 import type { Api, AssistantMessage, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
 import type { Context, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
-import { Result, type Result as ResultValue } from "./result.ts";
+import { Result } from "./result.ts";
 import type { StreamFn, ThinkingLevel } from "../types.ts";
 import { contextMessages, modelContext } from "./context.ts";
 import { contextCommits } from "./graph.ts";
@@ -414,14 +414,14 @@ export interface SummaryGenerationInput {
 /** Generate or update a checkpoint summary with bounded provider retries. */
 export function generateSummaryWithUsage(
   input: SummaryGenerationInput,
-): Promise<ResultValue<{ readonly text: string; readonly usage: Usage }, CompactionError>> {
+): Promise<Result<{ readonly text: string; readonly usage: Usage }, CompactionError>> {
   return generateBoundedSummary(input, "checkpoint");
 }
 
 async function generateBoundedSummary(
   input: SummaryGenerationInput,
   kind: "checkpoint" | "turn-prefix" | "branch",
-): Promise<ResultValue<{ readonly text: string; readonly usage: Usage }, CompactionError>> {
+): Promise<Result<{ readonly text: string; readonly usage: Usage }, CompactionError>> {
   const maxTokens = Math.max(
     1,
     Math.min(
@@ -649,7 +649,7 @@ export function prepareCheckpoint(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
   settings: CompactionSettings,
   options?: PrepareCheckpointOptions,
-): ResultValue<CheckpointPreparation | undefined, CompactionError> {
+): Result<CheckpointPreparation | undefined, CompactionError> {
   if (commits.length === 0 || commits.at(-1)?.commit.body.kind === "checkpoint") {
     return Result.ok(undefined);
   }
@@ -733,7 +733,7 @@ async function summarizePreparedCheckpoint(input: {
   readonly material?: ProviderCheckpointMaterial;
   readonly signal?: AbortSignal;
   readonly retry?: RetryPolicy;
-}): Promise<ResultValue<Extract<CommitBody, { kind: "checkpoint" }>, CompactionError>> {
+}): Promise<Result<Extract<CommitBody, { kind: "checkpoint" }>, CompactionError>> {
   const preparation = input.preparation;
   let summary: string;
   let summaryUsage: Usage;
@@ -806,7 +806,7 @@ async function summarizePreparedCheckpoint(input: {
 /** Generate a checkpoint body without reading or writing a store. */
 export async function summarizeCheckpoint(
   input: SummarizeCheckpointInput,
-): Promise<ResultValue<Extract<CommitBody, { kind: "checkpoint" }>, CompactionError>> {
+): Promise<Result<Extract<CommitBody, { kind: "checkpoint" }>, CompactionError>> {
   const prepared = prepareCheckpoint(input.commits, {
     ...input.settings,
     keepRecentTokens: Math.min(
@@ -1045,7 +1045,7 @@ export interface GenerateBranchSummaryInput {
 /** Generate a summary body for prepared abandoned commits. */
 export async function generateBranchSummary(
   input: GenerateBranchSummaryInput,
-): Promise<ResultValue<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
+): Promise<Result<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
   const generated = await generateBoundedSummary(
     {
       currentMessages: input.preparation.messages,
@@ -1086,7 +1086,7 @@ export interface SummarizeBranchInput {
 /** Summarize abandoned commits without reading or writing a store. */
 export async function summarizeBranch(
   input: SummarizeBranchInput,
-): Promise<ResultValue<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
+): Promise<Result<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
   const preparation = prepareBranchSummary(
     input.abandoned,
     Math.max(0, input.model.contextWindow - DEFAULT_COMPACTION_SETTINGS.reserveTokens),

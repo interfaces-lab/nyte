@@ -6,6 +6,7 @@ import type { JSX, ReactElement, ReactNode } from "react";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon, type IconName } from "./icons";
+import { Spinner } from "./spinner.tsx";
 
 /**
  * Keyboard focus must be visible to navigate at all: `ring` for standalone
@@ -51,6 +52,7 @@ const styles = stylex.create({
     justifyContent: "center",
     gap: 6,
     height: 28,
+    paddingBlock: 0,
     paddingInline: 10,
     borderRadius: t.radiusLg,
     borderStyle: "none",
@@ -112,18 +114,7 @@ const styles = stylex.create({
     flexShrink: 0,
     pointerEvents: "none",
   },
-  statusWorking: {
-    backgroundColor: t.fillAccent,
-    animationName: stylex.keyframes({
-      "0%": { opacity: 1 },
-      "50%": { opacity: 0.35 },
-      "100%": { opacity: 1 },
-    }),
-    animationDuration: "1.6s",
-    animationTimingFunction: "ease-in-out",
-    animationIterationCount: "infinite",
-    "@media (prefers-reduced-motion: reduce)": { animationName: "none" },
-  },
+  statusWorking: { width: 15, height: 15, color: t.textAccent },
   statusIdle: {
     backgroundColor: "transparent",
     boxShadow: `inset 0 0 0 1.5px ${t.iconTertiary}`,
@@ -342,7 +333,9 @@ export function StatusDot({ working }: { working: boolean }): ReactElement {
       role="img"
       aria-label={working ? "Running" : "Idle"}
       {...stylex.props(styles.statusDot, working ? styles.statusWorking : styles.statusIdle)}
-    />
+    >
+      {working && <Spinner />}
+    </span>
   );
 }
 

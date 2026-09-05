@@ -1,19 +1,21 @@
 import * as stylex from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/primitives";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { PluginCatalog, PluginInfo, SessionId, SettingInfo } from "@nyte-ai/core";
+import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/core";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
 import { isOption } from "./sidebar-view.ts";
 import { nyte } from "../nyte.ts";
-import { keys } from "../queries.ts";
+import {
+  keys,
+  useApplyPluginSetting,
+  usePluginSettingsProjection,
+  type CustomizeInventory,
+} from "../queries.ts";
 import { customizeStyles as styles } from "./customize.stylex.ts";
 import { SettingsSelect } from "./settings-controls.tsx";
-import { errorMessage } from "../../../shared/errors.ts";
-
-type CustomizeInventory = Pick<PluginCatalog, "plugins" | "settings" | "skills">;
 
 type CustomizeTab = "plugins" | "skills" | "settings";
 
@@ -96,23 +98,7 @@ function PluginSettings({
   sessionId: SessionId | undefined;
   settings: readonly SettingInfo[];
 }): ReactElement | null {
-  const client = useQueryClient();
-  const [failure, setFailure] = useState<string | undefined>();
-  const apply = useMutation({
-    mutationFn: (input: { sessionId: SessionId; id: string; choiceId: string }) =>
-      nyte.plugins.settings.apply(input),
-    onSuccess: (outcome) => {
-      if (outcome.kind !== "applied") {
-        setFailure("That setting is no longer available.");
-        return;
-      }
-      setFailure(undefined);
-      void client.invalidateQueries({ queryKey: ["customize", sessionId] });
-    },
-    onError: (cause) => {
-      setFailure(errorMessage(cause));
-    },
-  });
+  const apply = useApplyPluginSetting(sessionId);
 
   if (settings.length === 0) return null;
   return (
@@ -133,7 +119,7 @@ function PluginSettings({
                 label: choice.label,
               }))}
               onValueChange={(choiceId) => {
-                if (sessionId !== undefined) apply.mutate({ sessionId, id: setting.id, choiceId });
+                if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
               }}
             />
           </div>
@@ -144,8 +130,8 @@ function PluginSettings({
           Defaults shown. Open a chat to change its settings.
         </div>
       )}
-      {failure !== undefined && (
-        <div role="alert" title={failure} {...stylex.props(styles.error)}>
+      {apply.isError && (
+        <div role="alert" title={apply.error.message} {...stylex.props(styles.error)}>
           Couldn&rsquo;t change that setting. Try again.
         </div>
       )}
@@ -236,8 +222,10 @@ export function CustomizeSurface({
 }): ReactElement {
   const [tab, setTab] = useState<CustomizeTab>("plugins");
   const [query, setQuery] = useState("");
+  const projectSettings = usePluginSettingsProjection(sessionId);
   const inventory = useQuery<CustomizeInventory>({
     queryKey: sessionId === undefined ? keys.pluginCatalog : ["customize", sessionId],
+    select: (inventory) => ({ ...inventory, settings: projectSettings(inventory.settings) }),
     queryFn: async () => {
       if (sessionId === undefined) return nyte.plugins.catalog();
       const [plugins, settings, skills] = await Promise.all([

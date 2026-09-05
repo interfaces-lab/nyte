@@ -1,5 +1,8 @@
+import type { HighlightRequest } from "./syntax-highlighter.worker.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 // Fenced code paints as escaped plain text immediately. Known grammars upgrade
-// through an idle-loaded Shiki chunk, keeping syntax work out of thread clicks.
+// in a bundled worker, keeping grammars and syntax work off the UI thread.
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { useEffect, useRef, useState } from "react";
@@ -60,64 +63,42 @@ interface HighlightedCode {
   readonly html: string;
 }
 
-type HighlighterModule = typeof import("./syntax-highlighter.ts");
-
-interface HighlightJob {
-  cancelled: boolean;
-  readonly run: (module: HighlighterModule) => void;
-}
-
-const highlightQueue: HighlightJob[] = [];
 const HIGHLIGHT_CACHE_LIMIT = 64;
 const highlightCache = new Map<string, HighlightedCode>();
-let highlighter: HighlighterModule | undefined;
-let highlighterLoading = false;
-let highlighterFailed = false;
-let highlightIdle: number | undefined;
+const pendingHighlights = new Map<number, (html: string) => void>();
+const highlightReply = Type.Object({
+  id: Type.Number(),
+  html: Type.Union([Type.String(), Type.Null()]),
+});
+let worker: Worker | undefined;
+let nextHighlightId = 0;
 
-function scheduleHighlightWork(): void {
-  if (highlightIdle !== undefined || highlighterFailed) return;
-  while (highlightQueue[0]?.cancelled === true) highlightQueue.shift();
-  if (highlightQueue.length === 0) return;
-
-  highlightIdle = window.requestIdleCallback(
-    () => {
-      highlightIdle = undefined;
-      if (highlighter === undefined) {
-        if (!highlighterLoading) {
-          highlighterLoading = true;
-          void import("./syntax-highlighter.ts")
-            .then((module) => {
-              highlighter = module;
-            })
-            .catch(() => {
-              highlighterFailed = true;
-              highlightQueue.length = 0;
-            })
-            .finally(() => {
-              highlighterLoading = false;
-              scheduleHighlightWork();
-            });
-        }
-        return;
-      }
-
-      let job = highlightQueue.shift();
-      while (job?.cancelled === true) job = highlightQueue.shift();
-      job?.run(highlighter);
-      // Never drain a long transcript in one frame.
-      window.requestAnimationFrame(scheduleHighlightWork);
-    },
-    { timeout: 500 },
-  );
-}
-
-function enqueueHighlight(run: HighlightJob["run"]): () => void {
-  const job: HighlightJob = { cancelled: false, run };
-  highlightQueue.push(job);
-  scheduleHighlightWork();
+function enqueueHighlight(
+  code: string,
+  language: string,
+  receive: (html: string) => void,
+): () => void {
+  if (worker === undefined) {
+    worker = new Worker(new URL("./syntax-highlighter.worker.ts", import.meta.url), {
+      type: "module",
+    });
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      const { id, html } = Value.Parse(highlightReply, event.data);
+      const notify = pendingHighlights.get(id);
+      pendingHighlights.delete(id);
+      if (html !== null) notify?.(html);
+    };
+    worker.onerror = () => {
+      worker?.terminate();
+      worker = undefined;
+      pendingHighlights.clear();
+    };
+  }
+  const id = ++nextHighlightId;
+  pendingHighlights.set(id, receive);
+  worker.postMessage({ id, code, language } satisfies HighlightRequest);
   return () => {
-    job.cancelled = true;
+    pendingHighlights.delete(id);
   };
 }
 
@@ -169,13 +150,10 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
   useEffect(() => {
     if (!nearViewport || !HIGHLIGHTABLE.has(language)) return;
     if (cachedHighlight(code, language) !== undefined) return;
-    return enqueueHighlight(({ highlightCode }) => {
-      const next = highlightCode(code, language);
-      if (next !== undefined) {
-        const value = { code, language, html: next };
-        rememberHighlight(value);
-        setHighlighted(value);
-      }
+    return enqueueHighlight(code, language, (html) => {
+      const value = { code, language, html };
+      rememberHighlight(value);
+      setHighlighted(value);
     });
   }, [code, language, nearViewport]);
 

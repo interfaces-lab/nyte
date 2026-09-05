@@ -1,7 +1,7 @@
 import type { JsonValue } from "@nyte-ai/schema";
 import { isThinkingLevel } from "../../types.ts";
 import { branchConfig } from "../context.ts";
-import type { Commit, Lease, Oid, Run, RunConfig as StoredRunConfig } from "../model.ts";
+import type { Commit, Lease, Oid, Run } from "../model.ts";
 import type { PendingChange } from "../queue.ts";
 import type { ListedHead } from "../stacks.ts";
 import { sessionDirectoryEntry } from "../views/directory.ts";
@@ -141,7 +141,7 @@ export function pendingItems(pending: readonly PendingChange[]): readonly Pendin
   return items;
 }
 
-function clientRunConfig(stored: StoredRunConfig): RunConfig {
+function clientRunConfig(stored: Run["config"]): RunConfig {
   let config: RunConfig = {};
   if (stored.model !== undefined) config = { ...config, model: stored.model };
   if (stored.thinkingLevel !== undefined && isThinkingLevel(stored.thinkingLevel)) {

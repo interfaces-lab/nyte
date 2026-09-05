@@ -132,6 +132,15 @@ export class SlashAutocomplete {
     return this.visible && this.hasMatches;
   }
 
+  /** Based on OpenCode #46414: complete a prompt before admitting it to the queue. */
+  completeQueueableCommand(): boolean {
+    const selected = this.suggestions[this.list.selectedIndex];
+    if (!this.accepting || selected?.kind !== "command" || selected.command.kind !== "prompt")
+      return false;
+    this.run(selected, "tab");
+    return true;
+  }
+
   get rows(): number {
     if (!this.container.visible) return 0;
     return (

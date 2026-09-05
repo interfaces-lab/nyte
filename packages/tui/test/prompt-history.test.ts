@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after, afterEach, before, beforeEach, describe, test } from "node:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, test } from "vitest";
 import { TextareaRenderable } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import type { TestRendererSetup } from "@opentui/core/testing";
@@ -13,7 +13,7 @@ import { browseHistory, PromptHistory } from "../src/prompt-history.ts";
  * press the real keys at a real wrapped textarea: the row geometry under test
  * is OpenTUI's, not a stand-in for it.
  */
-void describe("prompt history over a wrapped draft", () => {
+describe("prompt history over a wrapped draft", () => {
   let setup: TestRendererSetup;
   let keymap: ReturnType<typeof createChatKeymap>;
   let input: TextareaRenderable;
@@ -39,7 +39,7 @@ void describe("prompt history over a wrapped draft", () => {
     return input.cursorOffset;
   };
 
-  before(async () => {
+  beforeAll(async () => {
     setup = await createTestRenderer({ width: 40, height: 12, kittyKeyboard: true });
     keymap = createChatKeymap(setup.renderer);
   });
@@ -85,11 +85,11 @@ void describe("prompt history over a wrapped draft", () => {
     dispose();
   });
 
-  after(() => {
+  afterAll(() => {
     setup.renderer.destroy();
   });
 
-  void test("up climbs the wrapped rows of a paragraph before it recalls anything", async () => {
+  test("up climbs the wrapped rows of a paragraph before it recalls anything", async () => {
     await draft(PARAGRAPH);
     assert.equal(caretRow(), 3);
     assert.ok(input.scrollY > 0, "the first row is scrolled out of view");
@@ -116,7 +116,7 @@ void describe("prompt history over a wrapped draft", () => {
     assert.equal(input.plainText, "first", "the oldest entry is where the walk ends");
   });
 
-  void test("down descends the rows, reaches the end, and only then leaves the draft", async () => {
+  test("down descends the rows, reaches the end, and only then leaves the draft", async () => {
     const end = await draft(PARAGRAPH);
     input.cursorOffset = 0;
     await setup.renderOnce();
@@ -138,7 +138,7 @@ void describe("prompt history over a wrapped draft", () => {
     assert.equal(input.cursorOffset, end);
   });
 
-  void test("down walks forward through history and hands the stashed draft back", async () => {
+  test("down walks forward through history and hands the stashed draft back", async () => {
     const end = await draft(PARAGRAPH);
     for (let presses = 0; presses < 6; presses += 1) await press("up");
     assert.equal(input.plainText, "first");
@@ -158,7 +158,7 @@ void describe("prompt history over a wrapped draft", () => {
     assert.equal(input.plainText, PARAGRAPH, "nothing newer than the draft");
   });
 
-  void test("newline-delimited lines still walk one at a time", async () => {
+  test("newline-delimited lines still walk one at a time", async () => {
     await draft("one\ntwo");
     assert.equal(caretRow(), 1);
 
@@ -171,7 +171,7 @@ void describe("prompt history over a wrapped draft", () => {
     assert.equal(input.plainText, "second");
   });
 
-  void test("an empty composer recalls at once and comes back empty", async () => {
+  test("an empty composer recalls at once and comes back empty", async () => {
     await draft("");
 
     await press("up");
@@ -182,7 +182,7 @@ void describe("prompt history over a wrapped draft", () => {
     assert.equal(input.plainText, "");
   });
 
-  void test("the end of a wide-character entry is found in cells, not characters", async () => {
+  test("the end of a wide-character entry is found in cells, not characters", async () => {
     history.replace(["日本語 first", "second"]);
     await draft("");
 

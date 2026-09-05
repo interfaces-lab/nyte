@@ -50,7 +50,8 @@ export const appearancePanelStyles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
+    // Wide enough for "100%"; the hue swatch centers in the same slot.
+    width: 26,
     flexShrink: 0,
   },
   tintSwatch: {
@@ -69,7 +70,8 @@ export const appearancePanelStyles = stylex.create({
   tintValue: {
     color: t.textSecondary,
     fontSize: t.fontXs,
-    lineHeight: 1,
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: t.leadingSm,
     textAlign: "center",
   },
   density: {
@@ -110,32 +112,6 @@ export const appearancePanelStyles = stylex.create({
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-  },
-  uiFontPreview: {
-    display: "flex",
-    alignItems: "baseline",
-    gap: 8,
-    minWidth: 0,
-    padding: "8px 10px",
-    borderRadius: t.radiusBase,
-    backgroundColor: t.fillSecondary,
-    fontFamily: t.fontSans,
-  },
-  uiFontPreviewTitle: {
-    flexShrink: 0,
-    color: t.textPrimary,
-    fontSize: t.fontBase,
-    fontWeight: 500,
-    lineHeight: t.leadingBase,
-  },
-  uiFontPreviewCopy: {
-    minWidth: 0,
-    overflow: "hidden",
-    color: t.textSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
   },
   codeFontPreview: {
     overflow: "hidden",
