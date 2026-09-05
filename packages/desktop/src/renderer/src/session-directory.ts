@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@uji-ai/core";
+import type { SessionInfo } from "@nyte-ai/core";
 import type { SessionsBridge } from "../../shared/ipc.ts";
 
 export const INITIAL_VISIBLE_SESSION_COUNT = 3;
@@ -28,7 +28,7 @@ export async function loadRemainingSessions(
   const items = [...preview.items];
   let cursor = preview.next;
   while (cursor !== undefined) {
-    const page = await list({ cursor });
+    const page = await list({ cursor, includeArchived: true });
     items.push(...page.items);
     cursor = page.next;
   }

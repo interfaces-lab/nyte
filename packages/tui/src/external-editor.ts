@@ -9,9 +9,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 
-type ExternalEditorResult =
-  | { status: "completed"; text: string }
-  | { status: "failed"; error: Error };
+export type ExternalEditorResult =
+  | { readonly status: "completed"; readonly text: string }
+  | { readonly status: "failed"; readonly error: Error };
 
 export function resolveExternalEditor(
   configured: string | undefined,
@@ -53,14 +53,14 @@ export async function editInExternalEditor(
 ): Promise<ExternalEditorResult> {
   let directory: string | undefined;
   try {
-    directory = await mkdtemp(join(tmpdir(), "uji-editor-"));
+    directory = await mkdtemp(join(tmpdir(), "nyte-editor-"));
     const file = join(directory, "draft.md");
     await writeFile(file, text, "utf8");
     await runEditor(command, file);
     const edited = await readFile(file, "utf8");
     return { status: "completed", text: edited.replace(/^\uFEFF/u, "").replace(/\r?\n$/u, "") };
-  } catch (error) {
-    return { status: "failed", error: error instanceof Error ? error : new Error(String(error)) };
+  } catch (cause) {
+    return { status: "failed", error: cause instanceof Error ? cause : new Error(String(cause)) };
   } finally {
     if (directory !== undefined) {
       await rm(directory, { recursive: true, force: true }).catch(() => undefined);

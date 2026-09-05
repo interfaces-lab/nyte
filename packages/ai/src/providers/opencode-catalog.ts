@@ -1,4 +1,4 @@
-import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { RefreshModelsContext } from "../models.ts";

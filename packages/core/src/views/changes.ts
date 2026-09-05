@@ -8,7 +8,6 @@
  * revision.
  */
 import { parsePatch } from "diff";
-import { isJsonObject, type JsonValue } from "../harness/session/types.ts";
 import type { Turn } from "./transcript.ts";
 
 export interface FileChange {
@@ -32,9 +31,13 @@ export interface ChangesState {
 
 export const EMPTY_CHANGES: ChangesState = { files: [], folded: new Set() };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** The unified patch a settled result declares, under either conventional key. */
-export function patchOf(details: JsonValue | undefined): string | undefined {
-  if (!isJsonObject(details)) return undefined;
+export function patchOf(details: unknown): string | undefined {
+  if (!isRecord(details)) return undefined;
   const patch = details["patch"];
   if (typeof patch === "string" && patch !== "") return patch;
   const diff = details["diff"];

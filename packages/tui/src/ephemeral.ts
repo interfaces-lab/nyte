@@ -30,7 +30,7 @@ import type { CliTheme } from "./theme.ts";
  */
 const MAX_NOTICE_SHARE = 0.4;
 
-function noticeRowLimit(terminalHeight: number): number {
+export function noticeRowLimit(terminalHeight: number): number {
   return Math.max(1, Math.floor(terminalHeight * MAX_NOTICE_SHARE));
 }
 
@@ -176,11 +176,6 @@ export class Ephemeral {
   /** A shorter terminal fits fewer notice rows, so the cap is re-taken. */
   resize(): void {
     if (this.occupant.kind === "notice") this.paintNotice();
-  }
-
-  /** Repaint an uncolored notice after the shared theme object changes. */
-  retheme(): void {
-    if (this.occupant.kind === "notice" && this.occupant.color === undefined) this.paintNotice();
   }
 
   private detachPanel(): void {

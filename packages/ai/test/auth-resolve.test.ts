@@ -2,10 +2,10 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/models-runtime.test.ts
  * Synced with pi 7ebf9087e.
  * The auth-resolution cases of pi's Models runtime suite, run against
- * resolveProviderAuth directly (Uji has no Models collection yet).
+ * resolveProviderAuth directly (Nyte has no Models collection yet).
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { InMemoryCredentialStore } from "../src/auth/credential-store.ts";
 import { resolveProviderAuth, type AuthResolutionOverrides } from "../src/auth/resolve.ts";
 import type {
@@ -60,8 +60,8 @@ function getAuth(
   return resolveProviderAuth(provider, credentials, ctx, overrides);
 }
 
-void describe("resolveProviderAuth", () => {
-  void test("cancels queued credential mutations without running them later", async () => {
+describe("resolveProviderAuth", () => {
+  test("cancels queued credential mutations without running them later", async () => {
     const credentials = new InMemoryCredentialStore();
     let finishFirst: (() => void) | undefined;
     const firstBlocked = new Promise<void>((resolve) => {
@@ -92,7 +92,7 @@ void describe("resolveProviderAuth", () => {
     assert.deepEqual(await credentials.read("p1"), { type: "api_key", key: "first" });
   });
 
-  void test("passes cancellation to OAuth refresh and preserves the previous credential", async () => {
+  test("passes cancellation to OAuth refresh and preserves the previous credential", async () => {
     const credentials = new InMemoryCredentialStore();
     const previous: OAuthCredential = {
       type: "oauth",
@@ -136,7 +136,7 @@ void describe("resolveProviderAuth", () => {
     assert.deepEqual(await credentials.read("p1"), previous);
   });
 
-  void test("resolves auth: stored credential owns the provider, ambient only when nothing stored", async () => {
+  test("resolves auth: stored credential owns the provider, ambient only when nothing stored", async () => {
     const credentials = new InMemoryCredentialStore();
     const provider = testProvider({
       id: "p1",
@@ -167,7 +167,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(apiKeyResolution?.source, "stored");
   });
 
-  void test("a stored credential without a matching handler blocks ambient fallback", async () => {
+  test("a stored credential without a matching handler blocks ambient fallback", async () => {
     const credentials = new InMemoryCredentialStore();
     // provider has only apiKey auth, but an oauth credential is stored (stale config)
     const provider = testProvider({ id: "p1", auth: { apiKey: envKeyAuth("env-key") } });
@@ -181,7 +181,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(await getAuth(provider, credentials), undefined);
   });
 
-  void test("refreshes expired oauth credentials and persists the rotated credential", async () => {
+  test("refreshes expired oauth credentials and persists the rotated credential", async () => {
     const credentials = new InMemoryCredentialStore();
     const oauth = testOAuth({
       refresh: async (credential) => ({
@@ -203,7 +203,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(((await credentials.read("p1")) as { access: string }).access, "new-token");
   });
 
-  void test("refreshes oauth credentials with less than five minutes remaining", async () => {
+  test("refreshes oauth credentials with less than five minutes remaining", async () => {
     const credentials = new InMemoryCredentialStore();
     let refreshes = 0;
     const provider = testProvider({
@@ -228,7 +228,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(refreshes, 1);
   });
 
-  void test("honors a caller's longer OAuth minimum validity", async () => {
+  test("honors a caller's longer OAuth minimum validity", async () => {
     const credentials = new InMemoryCredentialStore();
     let refreshes = 0;
     const provider = testProvider({
@@ -256,7 +256,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(refreshes, 1);
   });
 
-  void test("rejects with code oauth when refresh fails, preserving the stored credential", async () => {
+  test("rejects with code oauth when refresh fails, preserving the stored credential", async () => {
     const credentials = new InMemoryCredentialStore();
     const oauth = testOAuth({
       refresh: async () => {
@@ -276,7 +276,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(((await credentials.read("p1")) as { access: string }).access, "old");
   });
 
-  void test("serializes concurrent OAuth refreshes through store.modify (no double refresh)", async () => {
+  test("serializes concurrent OAuth refreshes through store.modify (no double refresh)", async () => {
     const credentials = new InMemoryCredentialStore();
     await credentials.modify("p1", async () => ({
       type: "oauth",
@@ -309,7 +309,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(b?.auth.apiKey, "new-1");
   });
 
-  void test("valid oauth tokens resolve without touching modify", async () => {
+  test("valid oauth tokens resolve without touching modify", async () => {
     let modifies = 0;
     const base = new InMemoryCredentialStore();
     const credentials: CredentialStore = {
@@ -333,7 +333,7 @@ void describe("resolveProviderAuth", () => {
     assert.equal(modifies, 0);
   });
 
-  void test("wraps credential store failures in ModelsError", async () => {
+  test("wraps credential store failures in ModelsError", async () => {
     // read failure
     const readFailing: CredentialStore = {
       read: async () => {
@@ -359,7 +359,7 @@ void describe("resolveProviderAuth", () => {
     await assert.rejects(getAuth(oauthProvider, modifyFailing), { code: "auth" });
   });
 
-  void test("keeps the underlying reason in wrapped oauth refresh errors", async () => {
+  test("keeps the underlying reason in wrapped oauth refresh errors", async () => {
     const credentials = new InMemoryCredentialStore();
     await credentials.modify("p1", async () => ({
       type: "oauth",
@@ -383,7 +383,7 @@ void describe("resolveProviderAuth", () => {
     });
   });
 
-  void test("wraps api-key auth failures in ModelsError", async () => {
+  test("wraps api-key auth failures in ModelsError", async () => {
     const failing: ApiKeyAuth = {
       name: "Failing",
       resolve: async () => {
@@ -394,7 +394,7 @@ void describe("resolveProviderAuth", () => {
     await assert.rejects(getAuth(provider, new InMemoryCredentialStore()), { code: "auth" });
   });
 
-  void test("uses explicit request api key and env during provider auth resolution", async () => {
+  test("uses explicit request api key and env during provider auth resolution", async () => {
     const apiKey: ApiKeyAuth = {
       name: "Scoped",
       resolve: async ({ credential, ctx }) => {

@@ -1,7 +1,7 @@
 """
 Agent loop — a train of wheels.
 
-The loop is the one part of Uji that has no state of its own: it turns because
+The loop is the one part of Nyte that has no state of its own: it turns because
 something else turns it, and the ratio between the wheels is fixed by their
 tooth counts, not by anything either wheel decides.
 

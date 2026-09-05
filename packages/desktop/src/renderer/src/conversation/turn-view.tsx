@@ -5,22 +5,46 @@
  * streaming content exchange in place.
  */
 import * as stylex from "@stylexjs/stylex";
-import { memo, useId, useState } from "react";
+import { Button as BaseButton, Textarea } from "@nyte-ai/ui";
+import { Collapsible } from "@nyte-ai/ui/primitives";
+import { memo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { presentCustomEntry, turnPartId } from "@uji-ai/core/views";
-import type { ToolProgress, Turn, TurnPart, UserTurnPart } from "@uji-ai/core";
+import { presentNote, turnPartId } from "@nyte-ai/core/views";
+import type { ThinkingLevel, Turn, TurnPart, UserTurnPart } from "@nyte-ai/core";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
-import type { ToolCallDisplay } from "../theme/boot.ts";
+import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
+import type { ToolCallDensity } from "../theme/boot.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { displayParts } from "./density.ts";
 import { Prose } from "./prose.tsx";
-import { turnStyles } from "./styles.stylex.ts";
+import { ModelPicker } from "./model-picker.tsx";
+import type { ModelPickerChange } from "./model-picker.tsx";
+import { inlineTextStyles, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
-import { ToolGroupView } from "./tool-group.tsx";
+import { WorkGroupView } from "./tool-group.tsx";
+import {
+  configChangeText,
+  displayTranscriptParts,
+  isFailureNotice,
+  presentTranscriptNotice,
+  userDisplayText,
+  userTextSegments,
+} from "./transcript-presentation.ts";
+import { errorMessage } from "../../../shared/errors.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
+
+export interface BranchModelChoice {
+  readonly model: DesktopModelOption | undefined;
+  readonly thinkingLevel: ThinkingLevel | undefined;
+  readonly fastEnabled: ReadonlySet<string>;
+}
+
+export interface BranchModelPicker extends BranchModelChoice {
+  readonly catalog: DesktopCatalog | undefined;
+}
 
 function contentText(content: UserTurnPart["content"]): string {
-  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return content;
   return content
     .map((part) => {
       switch (part.type) {
@@ -37,8 +61,248 @@ function contentText(content: UserTurnPart["content"]): string {
     .join("");
 }
 
-function isErrorText(text: string): boolean {
-  return /^error\s*:/iu.test(text.trim());
+function UserMessageContent({ content }: { content: UserTurnPart["content"] }): ReactElement {
+  const segments = userTextSegments(contentText(content));
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.kind === "text" ? (
+          <span key={`text:${String(index)}`}>{segment.text}</span>
+        ) : (
+          <span
+            key={`reference:${String(index)}:${segment.label}`}
+            title={segment.target}
+            {...stylex.props(inlineTextStyles.skill)}
+          >
+            {segment.label}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+function editableText(content: UserTurnPart["content"]): string {
+  if (!Array.isArray(content)) return content;
+  return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+function replaceText(content: UserTurnPart["content"], text: string): UserTurnPart["content"] {
+  if (!Array.isArray(content)) return text;
+  let inserted = false;
+  const next: Exclude<UserTurnPart["content"], string> = [];
+  for (const part of content) {
+    if (part.type === "image") {
+      next.push(part);
+      continue;
+    }
+    if (inserted) continue;
+    inserted = true;
+    if (text !== "") next.push({ type: "text", text });
+  }
+  if (!inserted && text !== "") next.unshift({ type: "text", text });
+  return next;
+}
+
+interface UserEditState extends BranchModelChoice {
+  readonly draft: string;
+  readonly saving: boolean;
+  readonly error: string | undefined;
+}
+
+function focusAtEnd(input: HTMLTextAreaElement | null): void {
+  if (input === null) return;
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  input.style.height = "auto";
+  input.style.height = `${String(Math.min(input.scrollHeight, 180))}px`;
+}
+
+function EditableUserMessage({
+  part,
+  onEdit,
+  branchModel,
+}: {
+  part: UserTurnPart;
+  onEdit:
+    | ((
+        part: UserTurnPart,
+        content: UserTurnPart["content"],
+        choice: BranchModelChoice,
+      ) => Promise<void>)
+    | undefined;
+  branchModel: BranchModelPicker | undefined;
+}): ReactElement {
+  const [edit, setEdit] = useState<UserEditState | undefined>();
+  const original = editableText(part.content);
+
+  const begin = (): void => {
+    if (onEdit === undefined || edit !== undefined) return;
+    const selection = window.getSelection();
+    if (selection !== null && !selection.isCollapsed) return;
+    setEdit({
+      draft: original,
+      saving: false,
+      error: undefined,
+      model: branchModel?.model,
+      thinkingLevel: branchModel?.thinkingLevel,
+      fastEnabled: new Set(branchModel?.fastEnabled),
+    });
+  };
+
+  const save = (): void => {
+    if (edit === undefined || edit.saving || onEdit === undefined) return;
+    const content = replaceText(part.content, edit.draft);
+    if (Array.isArray(content) ? content.length === 0 : content.trim() === "") {
+      setEdit({ ...edit, error: "A message cannot be empty." });
+      return;
+    }
+    setEdit({ ...edit, saving: true, error: undefined });
+    void onEdit(part, content, {
+      model: edit.model,
+      thinkingLevel: edit.thinkingLevel,
+      fastEnabled: edit.fastEnabled,
+    })
+      .then(() => setEdit(undefined))
+      .catch((cause: unknown) => {
+        setEdit((current) =>
+          current === undefined
+            ? current
+            : {
+                ...current,
+                saving: false,
+                error: errorMessage(cause),
+              },
+        );
+      });
+  };
+
+  return (
+    <div data-sticky-user-message {...stylex.props(turnStyles.userRow)}>
+      <div {...stylex.props(turnStyles.userPromptShell)}>
+        {onEdit === undefined ? (
+          <div {...stylex.props(turnStyles.userPrompt)}>
+            <UserMessageContent content={part.content} />
+          </div>
+        ) : edit === undefined ? (
+          <BaseButton
+            unstyled
+            type="button"
+            aria-label={`Edit message: ${userDisplayText(contentText(part.content))}`}
+            {...stylex.props(turnStyles.userPrompt, turnStyles.userPromptEditable, focus.ring)}
+            onClick={begin}
+            onKeyDown={(event) => {
+              if (event.key !== "F2") return;
+              event.preventDefault();
+              begin();
+            }}
+          >
+            <UserMessageContent content={part.content} />
+          </BaseButton>
+        ) : (
+          <form
+            aria-busy={edit.saving || undefined}
+            {...stylex.props(turnStyles.userEdit)}
+            onSubmit={(event) => {
+              event.preventDefault();
+              save();
+            }}
+          >
+            <Textarea
+              unstyled
+              ref={focusAtEnd}
+              aria-label="Edit message"
+              rows={1}
+              value={edit.draft}
+              disabled={edit.saving}
+              {...stylex.props(turnStyles.userEditInput)}
+              onChange={(event) => {
+                setEdit({ ...edit, draft: event.target.value, error: undefined });
+                event.target.style.height = "auto";
+                event.target.style.height = `${String(Math.min(event.target.scrollHeight, 180))}px`;
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setEdit(undefined);
+                } else if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  save();
+                }
+              }}
+            />
+            <div {...stylex.props(turnStyles.userEditFooter)}>
+              {branchModel !== undefined && (
+                <ModelPicker
+                  catalog={branchModel.catalog}
+                  current={edit.model}
+                  thinkingLevel={edit.thinkingLevel}
+                  fastEnabled={edit.fastEnabled}
+                  disabled={edit.saving}
+                  onChange={(change: ModelPickerChange) => {
+                    switch (change.kind) {
+                      case "model":
+                        setEdit({
+                          ...edit,
+                          model: change.option,
+                          thinkingLevel: change.thinkingLevel,
+                        });
+                        return;
+                      case "thinking":
+                        setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
+                        return;
+                      case "fast": {
+                        const fastEnabled = new Set(edit.fastEnabled);
+                        if (change.enabled) fastEnabled.add(change.settingId);
+                        else fastEnabled.delete(change.settingId);
+                        setEdit({ ...edit, fastEnabled });
+                        return;
+                      }
+                      default: {
+                        const _exhaustive: never = change;
+                        return _exhaustive;
+                      }
+                    }
+                  }}
+                />
+              )}
+              {edit.error !== undefined && (
+                <span role="alert" title={edit.error} {...stylex.props(turnStyles.userEditError)}>
+                  {edit.error}
+                </span>
+              )}
+              <div {...stylex.props(turnStyles.userEditActions)}>
+                <BaseButton
+                  unstyled
+                  type="button"
+                  disabled={edit.saving}
+                  {...stylex.props(turnStyles.userEditCancel, focus.ring)}
+                  onClick={() => setEdit(undefined)}
+                >
+                  Cancel
+                </BaseButton>
+                <BaseButton
+                  unstyled
+                  type="submit"
+                  aria-label="Send edited message"
+                  disabled={edit.saving}
+                  {...stylex.props(turnStyles.userEditSubmit, focus.ring)}
+                >
+                  <Icon name={edit.saving ? "loader" : "arrow-up"} size={14} />
+                </BaseButton>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
+      <div aria-hidden="true" data-sticky-message-fade {...stylex.props(turnStyles.userFade)} />
+    </div>
+  );
 }
 
 export function ReasoningBlock({
@@ -49,52 +313,73 @@ export function ReasoningBlock({
   streaming: boolean;
 }): ReactElement {
   const [open, setOpen] = useState<boolean | undefined>();
-  const bodyId = useId();
-  const isOpen = open ?? streaming;
+  const expanded = open ?? streaming;
   return (
-    <div aria-busy={streaming || undefined} {...stylex.props(turnStyles.reasoning)}>
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        aria-controls={bodyId}
-        onClick={() => setOpen(!isOpen)}
-        {...stylex.props(turnStyles.reasoningToggle, focus.ring)}
-      >
+    <Collapsible.Root
+      open={expanded}
+      onOpenChange={setOpen}
+      aria-busy={streaming || undefined}
+      {...stylex.props(turnStyles.reasoning)}
+    >
+      <Collapsible.Trigger {...stylex.props(turnStyles.reasoningToggle, focus.ring)}>
         <span
           aria-hidden="true"
-          {...stylex.props(turnStyles.reasoningChevron, isOpen && turnStyles.reasoningChevronOpen)}
+          {...stylex.props(
+            turnStyles.reasoningChevron,
+            expanded && turnStyles.reasoningChevronOpen,
+          )}
         >
           <Icon name="chevron-right" size={11} />
         </span>
-        {streaming ? "Thinking…" : "Reasoning"}
-      </button>
-      {isOpen && text !== "" && (
-        <div id={bodyId} {...stylex.props(turnStyles.reasoningBody)}>
-          {text}
-        </div>
+        {streaming ? "Thinking" : "Thought"}
+      </Collapsible.Trigger>
+      {text !== "" && (
+        <Collapsible.Panel {...stylex.props(turnStyles.reasoningBody)}>
+          <Prose markdown={text} streaming={streaming} />
+        </Collapsible.Panel>
       )}
-    </div>
+    </Collapsible.Root>
   );
 }
 
-function Marker({ children }: { children: ReactNode }): ReactElement {
+function EventLine({ children }: { children: ReactNode }): ReactElement {
   return (
-    <div {...stylex.props(turnStyles.marker)}>
-      <span aria-hidden="true" {...stylex.props(turnStyles.markerRule)} />
-      <span {...stylex.props(turnStyles.markerLabel)}>{children}</span>
-      <span aria-hidden="true" {...stylex.props(turnStyles.markerRule)} />
+    <div role="status" {...stylex.props(turnStyles.event)}>
+      {children}
     </div>
   );
 }
 
-function Notice({ text, error = false }: { text: string; error?: boolean }): ReactElement {
+function HistoryDisclosure({
+  label,
+  children,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible.Root open={open} onOpenChange={setOpen} {...stylex.props(turnStyles.history)}>
+      <Collapsible.Trigger {...stylex.props(turnStyles.historyToggle, focus.ring)}>
+        <span {...stylex.props(turnStyles.historyChevron, open && turnStyles.historyChevronOpen)}>
+          <Icon name="chevron-right" size={11} />
+        </span>
+        {label}
+      </Collapsible.Trigger>
+      <Collapsible.Panel {...stylex.props(turnStyles.historyBody)}>{children}</Collapsible.Panel>
+    </Collapsible.Root>
+  );
+}
+
+function Notice({ text }: { text: string }): ReactElement {
+  const notice = presentTranscriptNotice(text);
   return (
     <div
-      role={error ? "alert" : "status"}
-      {...stylex.props(turnStyles.notice, error && turnStyles.noticeError)}
+      role={notice.tone === "danger" ? "alert" : "status"}
+      title={notice.detail}
+      {...stylex.props(turnStyles.notice, notice.tone === "danger" && turnStyles.noticeError)}
     >
-      {error && <span aria-hidden="true">!</span>}
-      <span>{text}</span>
+      {notice.text}
     </div>
   );
 }
@@ -104,19 +389,23 @@ export function TurnPartView({
   liveTools,
   cwd,
   toolCalls,
+  onEditUser,
+  branchModel,
 }: {
   part: TurnPart;
-  liveTools: ReadonlyMap<string, { entryId: string; progress: ToolProgress }>;
+  liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
-  toolCalls: ToolCallDisplay;
+  toolCalls: ToolCallDensity;
+  onEditUser?: (
+    part: UserTurnPart,
+    content: UserTurnPart["content"],
+    choice: BranchModelChoice,
+  ) => Promise<void>;
+  branchModel?: BranchModelPicker;
 }): ReactElement | null {
   switch (part.kind) {
     case "user":
-      return (
-        <div {...stylex.props(turnStyles.userRow)}>
-          <div {...stylex.props(turnStyles.userPrompt)}>{contentText(part.content)}</div>
-        </div>
-      );
+      return <EditableUserMessage part={part} onEdit={onEditUser} branchModel={branchModel} />;
     case "assistant":
       return part.text.trim() === "" ? null : <Prose markdown={part.text} />;
     case "thinking":
@@ -127,11 +416,11 @@ export function TurnPartView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
-          display={toolCalls}
+          density={toolCalls}
         />
       );
     case "note":
-      return <Notice text={part.text} error={isErrorText(part.text)} />;
+      return <Notice text={part.text} />;
     default: {
       const _exhaustive: never = part;
       return _exhaustive;
@@ -142,61 +431,103 @@ export function TurnPartView({
 export const TurnView = memo(function TurnView({
   turn,
   liveTools,
+  live,
   cwd,
+  onEditUser,
+  branchModel,
+  running = false,
 }: {
   turn: Turn;
-  liveTools: ReadonlyMap<string, { entryId: string; progress: ToolProgress }>;
+  liveTools: ReadonlyMap<string, LiveToolProgress>;
+  live?: LiveSnapshot;
   cwd: string | undefined;
+  onEditUser?: (
+    part: UserTurnPart,
+    content: UserTurnPart["content"],
+    choice: BranchModelChoice,
+  ) => Promise<void>;
+  branchModel?: BranchModelPicker;
+  running?: boolean;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
   switch (turn.kind) {
     case "turn": {
-      const hasErrorNote = turn.parts.some(
-        (part) => part.kind === "note" && isErrorText(part.text),
+      const hasFailureNote = turn.parts.some(
+        (part) => part.kind === "note" && isFailureNotice(part.text),
       );
       return (
-        <div {...stylex.props(turnStyles.turn)}>
-          {displayParts(turn.parts, appearance.toolCalls).map((item) =>
-            item.kind === "tools" ? (
-              <ToolGroupView
-                key={`tools:${item.parts[0]?.callId ?? turn.id}`}
-                parts={item.parts}
-                liveTools={liveTools}
-                cwd={cwd}
-              />
-            ) : (
+        <div
+          data-sticky-turn={turn.parts.some((part) => part.kind === "user") || undefined}
+          {...stylex.props(turnStyles.turn)}
+        >
+          {displayTranscriptParts(turn.parts).map((item) => {
+            if (item.kind === "work") {
+              const first = item.parts[0];
+              return (
+                <WorkGroupView
+                  key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
+                  parts={item.parts}
+                  live={live}
+                  liveTools={liveTools}
+                  cwd={cwd}
+                  durationMs={turn.durationMs}
+                  running={running}
+                  density={appearance.toolCalls}
+                />
+              );
+            }
+            if (item.kind === "response") {
+              const first = item.parts[0];
+              const markdown = item.parts.map((part) => part.text.trim()).join("\n\n");
+              return markdown === "" ? null : (
+                <Prose
+                  key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
+                  markdown={markdown}
+                />
+              );
+            }
+            return (
               <TurnPartView
                 key={turnPartId(item.part)}
                 part={item.part}
                 liveTools={liveTools}
                 cwd={cwd}
                 toolCalls={appearance.toolCalls}
+                onEditUser={onEditUser}
+                branchModel={branchModel}
               />
-            ),
-          )}
-          {turn.outcome === "aborted" && <Notice text="Run interrupted" />}
-          {turn.outcome === "failed" && !hasErrorNote && <Notice text="Run failed" error />}
+            );
+          })}
+          {turn.outcome === "aborted" && !hasFailureNote && <Notice text="Run stopped." />}
+          {turn.outcome === "failed" && !hasFailureNote && <Notice text="Error: Run failed." />}
         </div>
       );
     }
-    case "compaction":
+    case "checkpoint":
       return (
-        <Marker>
-          <Icon name="sparkle" size={12} />
-          Context compacted
-        </Marker>
+        <HistoryDisclosure
+          label={
+            <>
+              <Icon name="sparkle" size={12} />
+              Chat context summarized
+            </>
+          }
+        >
+          <Prose markdown={turn.body.summary} />
+        </HistoryDisclosure>
       );
-    case "model_change":
-      return <Marker>Model changed to {turn.entry.modelId}</Marker>;
-    case "branch_summary":
+    case "summary":
       return (
-        <div {...stylex.props(turnStyles.summary)}>
-          <span {...stylex.props(turnStyles.summaryLabel)}>Branch summary</span>
-          <div {...stylex.props(turnStyles.summaryText)}>{turn.entry.summary}</div>
-        </div>
+        <HistoryDisclosure label="Branch summary">
+          <Prose markdown={turn.body.text} />
+        </HistoryDisclosure>
       );
-    case "custom":
-      return <Notice text={presentCustomEntry(turn.entry).text} />;
+    case "config": {
+      const text = configChangeText(turn);
+      return text === undefined ? null : <EventLine>{text}</EventLine>;
+    }
+    case "note":
+      return <Notice text={presentNote(turn).text} />;
     default: {
       const _exhaustive: never = turn;
       return _exhaustive;

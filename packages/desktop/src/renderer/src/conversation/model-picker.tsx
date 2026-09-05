@@ -1,282 +1,384 @@
 /**
- * The composer's model control: one menu with the thinking level on top and
- * the catalog below it, so changing either is a single click and the chip
- * never becomes a settings form. Rows show the provider glyph, the model
- * name, and the context size in one column, so a larger-context variant of a
- * model reads as its own row the moment the catalog lists it.
+ * The composer's model chip. The menu holds the current model's parameters:
+ * Fast when the model offers it, Reasoning when it has more than one level,
+ * and the model itself in a searchable submenu grouped by provider. The host
+ * decides which models are listed (Settings › Models); the picker also keeps
+ * whatever the session already runs on.
  */
+import { Autocomplete } from "@nyte-ai/ui/primitives";
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ThinkingLevel } from "@uji-ai/core";
-import { Icon, type IconName } from "../components/icons.tsx";
+import type { ThinkingLevel } from "@nyte-ai/core";
+import { Icon } from "../components/icons.tsx";
 import {
   Menu,
-  MenuGroupLabel,
+  MenuItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
+  MenuSubmenu,
+  MenuSwitchItem,
 } from "../components/menu.tsx";
 import { focus } from "../components/ui.tsx";
-import { useProviders } from "../queries.ts";
 import { control } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import type { DesktopModelOption, ProviderStatus } from "../uji.ts";
+import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
+import {
+  modelTriggerLabel,
+  pickerGroups,
+  supportedThinkingLevel,
+  THINKING_LABELS,
+  thinkingLevelsFor,
+} from "./model-picker-state.ts";
 
-const THINKING_LEVELS = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const satisfies readonly ThinkingLevel[];
-
-const THINKING_LABELS: Readonly<Record<ThinkingLevel, string>> = {
-  off: "Off",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Maximum",
-};
+export type ModelPickerChange =
+  | {
+      readonly kind: "model";
+      readonly option: DesktopModelOption;
+      readonly thinkingLevel: ThinkingLevel;
+    }
+  | { readonly kind: "thinking"; readonly thinkingLevel: ThinkingLevel }
+  | {
+      readonly kind: "fast";
+      readonly settingId: string;
+      readonly enabled: boolean;
+    };
 
 const styles = stylex.create({
   trigger: {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    maxWidth: 220,
+    maxWidth: "100%",
     height: 24,
     paddingInline: 7,
     borderStyle: "none",
     borderRadius: t.radiusBase,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-      "[data-popup-open]": t.fillGhostHover,
+    backgroundColor: "transparent",
+    color: {
+      default: t.textSecondary,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.textPrimary },
     },
-    color: t.textSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    letterSpacing: t.letterBase,
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { ":disabled": 0.5 },
-    flexShrink: 0,
+    flexShrink: 1,
   },
-  triggerLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  popup: { width: control.modelMenuWidth, maxWidth: "calc(100vw - 24px)" },
+  triggerName: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  triggerDetail: { flexShrink: 0, color: t.textTertiary, whiteSpace: "nowrap" },
+  palette: {
+    width: `min(${control.modelMenuWidth}, var(--available-width))`,
+    maxWidth: "var(--available-width)",
+    maxHeight: `min(${control.menuMaxHeight}, var(--available-height))`,
+    borderRadius: t.radius2xl,
+  },
+  parameterPalette: {
+    width: `min(${control.parameterMenuWidth}, var(--available-width))`,
+    minWidth: `min(${control.parameterMenuWidth}, var(--available-width))`,
+    maxWidth: `min(${control.parameterMenuWidth}, var(--available-width))`,
+  },
+  modelPopup: { overflowY: "hidden" },
+  // The same anatomy as the footer item: compact height inside the popup's
+  // padding, text on the rows' inline edge, the shared separator beneath.
+  // flexShrink: 0 because the popup is a capped flex column and the list
+  // takes the slack; without it the field is squeezed on long lists.
   search: {
     display: "flex",
+    flexShrink: 0,
     alignItems: "center",
-    gap: 6,
-    height: 28,
-    marginInline: 2,
-    marginBlock: 2,
-    paddingInline: 6,
-    borderRadius: t.radiusBase,
-    backgroundColor: t.bgFaint,
-    color: t.iconTertiary,
-    boxShadow: { default: "none", ":focus-within": `inset 0 0 0 1px ${t.strokeFocused}` },
+    height: control.compactHeight,
+    paddingInline: 8,
   },
   searchInput: {
     flex: 1,
     minWidth: 0,
+    padding: 0,
     borderStyle: "none",
     outline: "none",
     backgroundColor: "transparent",
     color: t.textPrimary,
-    fontSize: t.fontSm,
-    "::placeholder": { color: t.textQuaternary },
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    "::placeholder": { color: t.textTertiary },
   },
-  list: { maxHeight: 264, overflowY: "auto", marginInline: -4, paddingInline: 4 },
-  empty: { padding: 8, color: t.textTertiary, fontSize: t.fontSm },
+  list: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    marginInline: -4,
+    paddingInline: 4,
+  },
+  groupLabel: {
+    display: "flex",
+    alignItems: "baseline",
+    gap: 6,
+    paddingInline: 8,
+    paddingBlock: "4px 3px",
+    color: t.textTertiary,
+    fontSize: t.fontXs,
+    lineHeight: t.leadingXs,
+    userSelect: "none",
+  },
+  modelItem: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 14px",
+    alignItems: "center",
+    columnGap: 8,
+    minHeight: control.compactHeight,
+    paddingBlock: 4,
+    paddingInline: 8,
+    borderRadius: t.radiusLg,
+    outline: "none",
+    backgroundColor: {
+      default: "transparent",
+      "[data-highlighted]": t.bgCard,
+      "[data-nyte-selected='true']": t.bgHover,
+    },
+    color: t.textPrimary,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    cursor: "default",
+    userSelect: "none",
+  },
+  modelName: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  modelCheck: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 14,
+    color: t.textSecondary,
+  },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: "10px 8px",
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  emptyTitle: { color: t.textSecondary, fontSize: t.fontBase, lineHeight: t.leadingBase },
 });
 
-function modelIcon(option: DesktopModelOption | undefined): IconName {
-  if (option === undefined) return "model-generic";
-  const id = option.id.toLowerCase();
-  if (id.includes("kimi")) return "model-kimi";
-  if (id.includes("glm")) return "model-zai";
-  if (option.provider === "anthropic") return "model-anthropic";
-  if (option.provider === "openai" || option.provider === "openai-codex") return "model-openai";
-  return "model-generic";
-}
-
-interface ModelGroup {
-  readonly provider: string;
-  readonly label: string;
-  readonly options: readonly DesktopModelOption[];
-}
-
-function providerLabel(provider: string, statuses: readonly ProviderStatus[]): string {
-  return (
-    statuses.find((candidate) => candidate.id === provider)?.name ??
-    provider
-      .split("-")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ")
-  );
-}
-
-function groupModelOptions(
-  options: readonly DesktopModelOption[],
-  statuses: readonly ProviderStatus[],
-  search: string,
-): readonly ModelGroup[] {
-  const needle = search.trim().toLowerCase();
-  const groups = new Map<string, DesktopModelOption[]>();
-  for (const option of options) {
-    const label = providerLabel(option.provider, statuses);
-    if (needle !== "" && !`${option.name}\n${option.id}\n${label}`.toLowerCase().includes(needle)) {
-      continue;
-    }
-    const group = groups.get(option.provider);
-    if (group === undefined) groups.set(option.provider, [option]);
-    else group.push(option);
-  }
-  return [...groups].map(([provider, grouped]) => ({
-    provider,
-    label: providerLabel(provider, statuses),
-    options: grouped,
-  }));
-}
-
-export function formatContextWindow(tokens: number): string {
-  if (tokens >= 1_000_000) return `${String(Math.round(tokens / 100_000) / 10)}M`;
-  return `${String(Math.round(tokens / 1_000))}k`;
-}
-
-function supportedThinkingLevel(
-  option: DesktopModelOption | undefined,
-  requested: ThinkingLevel | undefined,
-): ThinkingLevel {
-  const levels = option?.thinkingLevels ?? ["off"];
-  if (requested !== undefined && levels.includes(requested)) return requested;
-  if (levels.includes("medium")) return "medium";
-  return levels[0] ?? "off";
-}
-
 export interface ModelPickerProps {
+  catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
-  options: readonly DesktopModelOption[];
-  thinkingLevel?: ThinkingLevel;
+  thinkingLevel: ThinkingLevel | undefined;
+  /** Setting ids whose current choice is on. */
+  fastEnabled: ReadonlySet<string>;
   disabled?: boolean;
-  onModelSelect: (option: DesktopModelOption, thinkingLevel: ThinkingLevel) => void;
-  onThinkingLevel: (thinkingLevel: ThinkingLevel) => void;
+  onChange: (change: ModelPickerChange) => void;
 }
 
-export function ModelPicker({
+function ModelPickerView({
+  catalog,
   current,
-  options,
   thinkingLevel,
+  fastEnabled,
   disabled = false,
-  onModelSelect,
-  onThinkingLevel,
-}: ModelPickerProps): ReactElement | null {
+  onChange,
+}: ModelPickerProps): ReactElement {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const providers = useProviders();
-  const active = current;
-  const level = supportedThinkingLevel(active, thinkingLevel);
-  const levels = active?.thinkingLevels ?? (["off"] as const);
+  const currentOptionRef = useRef<HTMLDivElement>(null);
   const groups = useMemo(
-    () => groupModelOptions(options, providers.data ?? [], search),
-    [options, providers.data, search],
+    () => (catalog === undefined ? [] : pickerGroups(catalog, current, search)),
+    [catalog, current, search],
   );
-  const label =
-    level === "off"
-      ? (active?.name ?? "Model")
-      : `${active?.name ?? "Model"} · ${THINKING_LABELS[level]}`;
-
-  if (options.length === 0) return null;
+  const connected =
+    catalog?.providers.some((provider) => provider.connection.kind !== "disconnected") ?? false;
+  const levels = thinkingLevelsFor(current);
+  const level = supportedThinkingLevel(current, thinkingLevel);
+  const fast = current?.fastMode;
+  const fastOn = fast?.kind === "available" && fastEnabled.has(fast.settingId);
+  const label = modelTriggerLabel(current, thinkingLevel === undefined ? undefined : level, fastOn);
+  const hasParameters = fast?.kind === "available" || levels.length > 1;
 
   return (
     <Menu
-      label="Model and thinking level"
-      side="top"
-      popupStyle={styles.popup}
-      onOpenChangeComplete={(open) => {
-        if (open) searchRef.current?.focus();
-        else setSearch("");
+      label="Model"
+      open={open}
+      onOpenChange={setOpen}
+      popupStyle={styles.palette}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) setSearch("");
       }}
       trigger={
         <button
           type="button"
           disabled={disabled}
-          aria-label={`Model: ${label}`}
+          aria-label={
+            label.detail === undefined
+              ? `Model: ${label.name}`
+              : `Model: ${label.name}, ${label.detail}`
+          }
           {...stylex.props(styles.trigger, focus.ring)}
         >
-          <Icon name={modelIcon(active)} size={13} />
-          <span {...stylex.props(styles.triggerLabel)}>{label}</span>
+          <span {...stylex.props(styles.triggerName)}>{label.name}</span>
+          {label.detail !== undefined && (
+            <span {...stylex.props(styles.triggerDetail)}>{label.detail}</span>
+          )}
           <Icon name="chevron-down" size={10} />
         </button>
       }
     >
-      <MenuGroupLabel>Thinking level</MenuGroupLabel>
-      <MenuRadioGroup
-        value={level}
-        onValueChange={(value) => {
-          const next = THINKING_LEVELS.find((candidate) => candidate === value);
-          if (next !== undefined) onThinkingLevel(next);
+      {fast?.kind === "available" && (
+        <MenuSwitchItem
+          layout="plain"
+          checked={fastOn}
+          onCheckedChange={(enabled) =>
+            onChange({ kind: "fast", settingId: fast.settingId, enabled })
+          }
+        >
+          Fast
+        </MenuSwitchItem>
+      )}
+
+      {levels.length > 1 && (
+        <MenuSubmenu
+          label="Reasoning"
+          layout="plain"
+          align="center"
+          value={THINKING_LABELS[level]}
+          popupStyle={[styles.palette, styles.parameterPalette]}
+        >
+          <MenuRadioGroup
+            value={level}
+            onValueChange={(value) => {
+              const next = levels.find((candidate) => candidate === value);
+              if (next !== undefined) onChange({ kind: "thinking", thinkingLevel: next });
+            }}
+          >
+            {levels.map((candidate) => (
+              <MenuRadioItem key={candidate} value={candidate} layout="plain">
+                {THINKING_LABELS[candidate]}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuSubmenu>
+      )}
+
+      {hasParameters && <MenuSeparator />}
+
+      <MenuSubmenu
+        label="Model"
+        layout="plain"
+        align="center"
+        value={current?.name ?? "None"}
+        popupStyle={[styles.palette, styles.modelPopup]}
+        onOpenChangeComplete={(modelOpen) => {
+          if (!modelOpen) {
+            setSearch("");
+            return;
+          }
+          window.requestAnimationFrame(() => {
+            currentOptionRef.current?.scrollIntoView({ block: "nearest" });
+            searchRef.current?.focus({ preventScroll: true });
+          });
         }}
       >
-        {THINKING_LEVELS.filter((candidate) => levels.includes(candidate)).map((candidate) => (
-          <MenuRadioItem
-            key={candidate}
-            value={candidate}
-            closeOnClick={false}
-            meta={candidate === "off" ? "Default" : undefined}
-          >
-            {THINKING_LABELS[candidate]}
-          </MenuRadioItem>
-        ))}
-      </MenuRadioGroup>
-
-      <MenuSeparator />
-      <MenuGroupLabel>Model</MenuGroupLabel>
-      <label {...stylex.props(styles.search)}>
-        <Icon name="search" size={12} />
-        <input
-          ref={searchRef}
-          aria-label="Search models"
-          {...stylex.props(styles.searchInput)}
-          placeholder="Search models…"
+        <Autocomplete.Root
+          inline
+          open
+          mode="none"
+          autoHighlight
+          items={groups.flatMap((group) => group.options)}
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          onKeyDown={(event) => {
-            // Printable keys belong to the field, not to the menu's typeahead.
-            if (event.key.length === 1) event.stopPropagation();
-          }}
-        />
-      </label>
-      <div data-uji-scrollport {...stylex.props(styles.list)}>
-        {groups.length === 0 && <div {...stylex.props(styles.empty)}>No matching models</div>}
-        <MenuRadioGroup
-          value={active?.key ?? ""}
-          onValueChange={(value) => {
-            const option = options.find((candidate) => candidate.key === value);
-            if (option !== undefined) onModelSelect(option, supportedThinkingLevel(option, level));
-          }}
+          itemToStringValue={(option) => option.name}
+          onValueChange={setSearch}
         >
-          {groups.map((group) => (
-            <div key={group.provider} role="group" aria-label={group.label}>
-              <MenuGroupLabel>{group.label}</MenuGroupLabel>
-              {group.options.map((option) => (
-                <MenuRadioItem
-                  key={option.key}
-                  value={option.key}
-                  icon={modelIcon(option)}
-                  meta={formatContextWindow(option.contextWindow)}
-                >
-                  {option.name}
-                </MenuRadioItem>
-              ))}
-            </div>
-          ))}
-        </MenuRadioGroup>
-      </div>
+          <label {...stylex.props(styles.search)}>
+            <Autocomplete.Input
+              ref={searchRef}
+              aria-label="Search models"
+              {...stylex.props(styles.searchInput)}
+              placeholder="Search models"
+            />
+          </label>
+          <MenuSeparator />
+          <Autocomplete.List data-nyte-scrollport {...stylex.props(styles.list)}>
+            {groups.length === 0 && (
+              <div {...stylex.props(styles.empty)}>
+                {search.trim() !== "" ? (
+                  <span {...stylex.props(styles.emptyTitle)}>No models match</span>
+                ) : connected ? (
+                  <>
+                    <span {...stylex.props(styles.emptyTitle)}>Every model is hidden</span>
+                    <span>Show some in Settings › Models.</span>
+                  </>
+                ) : (
+                  <>
+                    <span {...stylex.props(styles.emptyTitle)}>No providers connected</span>
+                    <span>Sign in or add an API key in Settings › Models.</span>
+                  </>
+                )}
+              </div>
+            )}
+            {groups.map((group) => (
+              <div key={group.provider.id} role="group" aria-label={group.provider.name}>
+                <div aria-hidden="true" {...stylex.props(styles.groupLabel)}>
+                  <span>{group.provider.name}</span>
+                  {!group.provider.enabled ? (
+                    <span>· Off</span>
+                  ) : group.provider.connection.kind === "disconnected" ? (
+                    <span>· Not connected</span>
+                  ) : null}
+                </div>
+                {group.options.map((option) => (
+                  <Autocomplete.Item
+                    key={option.key}
+                    ref={option.key === current?.key ? currentOptionRef : undefined}
+                    value={option}
+                    data-nyte-selected={option.key === current?.key}
+                    {...stylex.props(styles.modelItem)}
+                    onClick={() => {
+                      onChange({
+                        kind: "model",
+                        option,
+                        thinkingLevel: supportedThinkingLevel(option, level),
+                      });
+                      setOpen(false);
+                    }}
+                  >
+                    <span {...stylex.props(styles.modelName)}>{option.name}</span>
+                    <span aria-hidden="true" {...stylex.props(styles.modelCheck)}>
+                      {option.key === current?.key && <Icon name="checkmark" size={11} />}
+                    </span>
+                  </Autocomplete.Item>
+                ))}
+              </div>
+            ))}
+          </Autocomplete.List>
+        </Autocomplete.Root>
+        <MenuSeparator />
+        <MenuItem
+          layout="plain"
+          onSelect={() =>
+            void navigate({ to: "/settings/$section", params: { section: "models" } })
+          }
+        >
+          {connected ? "Manage models…" : "Connect a provider…"}
+        </MenuItem>
+      </MenuSubmenu>
     </Menu>
   );
 }
+
+export const ModelPicker = memo(ModelPickerView);

@@ -1,5 +1,5 @@
-/** Discover skills once per plugin activation and expose their catalog to the harness. */
-import type { Skill } from "@uji-ai/schema";
+/** Discover skills once per plugin activation and expose their catalog to the host. */
+import type { Skill } from "@nyte-ai/schema";
 import { formatSkillsForPrompt, loadSkills } from "../../skills.ts";
 import { definePlugin } from "../types.ts";
 

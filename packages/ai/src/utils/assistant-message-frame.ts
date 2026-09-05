@@ -10,7 +10,7 @@ import type {
   TextContent,
   ThinkingContent,
   ToolCall,
-} from "@uji-ai/schema";
+} from "@nyte-ai/schema";
 import { parseStreamingJson } from "./json-parse.ts";
 
 /**

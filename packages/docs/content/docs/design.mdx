@@ -1,850 +1,965 @@
 ---
 title: Design
-description: "The shape of @uji-ai/core: a git-like conversation log, named heads, claimed runs, and one turn function, and how it behaves wherever it runs"
+description: "How @nyte-ai/core is put together: content-addressed objects, atomic refs, fenced leases, and one ordered event stream"
 ---
 
-This page is the design of `@uji-ai/core`: what the runtime is, the shape each part has, and the
-behavior every host and client can rely on. When this page and another document disagree on a
-contract, this page wins. **must** and **must not** are normative. What is built and what is not
-is a question for the tree and its tests; this page describes the shape, not the status.
+This is the design of `@nyte-ai/core`. It says what the runtime is, what shape each part has,
+and what a host or client can count on. When this page and any other document disagree about a
+contract, this page wins. **must** and **must not** are the load-bearing words. Whether a thing
+is built is a question for the tree and its tests, not for this page. What follows describes the
+kernel that exists today, checked against `packages/core/src/kernel` as of this writing.
 
-The measure for every section is the same: the fewest mechanisms that keep the promises below. A
-feature that can be a projection over the log is a projection. A verb that can be two existing
-verbs is not added. Where two mechanisms would do one job, this page picks one and names it.
+The yardstick for every section is the same. What is the smallest set of mechanisms that keeps
+the promises below? If a feature can be a projection, it is a projection. If it can be a ref, it
+is a ref. If a verb can be one compare-and-swap, it is one compare-and-swap. I have tried to be
+ruthless about this, because every extra mechanism is another thing that can disagree with the
+others at 3am.
 
 ## What core is
 
-Uji core is a durable runtime for agent conversations. Three promises drive it:
+Nyte core is a durable runtime for agent conversations. Three promises drive everything else:
 
-- **It runs anywhere.** The same core runs inside an Electron main process, under a TUI, on a VM,
-  and on stateless infrastructure such as a Cloudflare Worker or a Durable Object. A run is a
-  function over stored state, so where it runs never changes what survives. A long-lived process
-  is an optimization, not a requirement.
-- **Any number of participants at once.** A session is not owned by whoever renders it. A phone,
-  a web page, a desktop app, and a cloud job can all send into one conversation at the same
-  moment, and none of them gets an error for trying.
-- **Nothing is lost and nothing is rewritten.** Every message, tool call, head move, and run
-  boundary is an immutable fact in one ordered log. Going back is moving a pointer, never
-  deleting. A dead process leaves a resumable trail, not a half-finished conversation.
+- **It runs anywhere.** The same kernel runs inside an Electron main process, under a TUI, on a
+  VM, and in request-scoped infrastructure. A runner reads all durable state at the start of each
+  step. A long-lived process is an optimization, never a requirement.
+- **Any number of participants may write at once.** A phone, a web page, a desktop app, and a
+  cloud job may all submit to one session. Participant writes never take the runner's lease. They
+  linearize through compare-and-swap and retry the conflicts they are expected to meet.
+- **Accepted input is not lost and published history is not rewritten.** Objects are immutable.
+  Refs say which objects are current. A failed publish leaves a loose object, not a half-applied
+  transaction. Retention may collect an object only once no ref or retained ref event protects it
+  and its grace period has passed.
 
-Four scenes are the acceptance tests for the whole design:
+Four scenes are the acceptance tests for the whole design. If a change to the kernel breaks one of
+these, the change is wrong, whatever else it improves.
 
-1. Three phones send at the same moment into an idle session. The store serializes the sends. One
-   lands at the tip; the others queue to the run that claimed the head. One run drains all three
-   in order. Nobody gets an error, nothing forks, and the transcript reads like three people in a
-   room.
-2. A run is killed while a tool executes. Another process finds the expired claim, takes it over,
-   settles the half-done tool by its declared replay policy, and continues. The client watching
-   notices only a pause.
-3. A tool asks a question. The asking host exits. An hour later a phone answers. Whichever host
-   observes the answer resumes the run and settles the call exactly once.
-4. A serverless handler receives a message, runs one step inside the request, streams the result,
-   and exits. The next request, or an alarm, runs the next step. No process outlives a step.
+1. Three phones submit at the same moment into one lane of an idle head. Every submission
+   succeeds. The tip retries form one change chain, the oldest change lands first, and the rest
+   stay pending until later response boundaries. Nobody gets a contention error and nothing is
+   lost.
+2. A run is killed after a tool intent but before a result. Another process acquires the expired
+   lease. It runs a `safe` effect again, or settles a `never` effect as interrupted, then carries on
+   from refs. The client watching sees a pause and nothing else.
+3. A tool parks in `waiting`. The asking host exits. An hour later a phone signals the effect. The
+   first signal compare-and-swap wins, and whichever runner next acquires the head wakes and
+   settles the call.
+4. A serverless handler submits a change, runs one durable step, streams events, and exits. The
+   next request or alarm reads the run ref and takes the next step. No process-local run state is
+   needed.
 
 ### Facts we accept
 
-Each mechanism on this page answers a fact we cannot change. That is what keeps the mechanism
-count low: there is one per fact, and a new mechanism needs a new fact.
+Each mechanism on this page answers one fact I cannot change. That is what keeps the mechanism
+count down. One per fact, and a new mechanism needs a new fact behind it.
 
-| Fact                                                   | Mechanism                                                          | Section                                 |
-| ------------------------------------------------------ | ------------------------------------------------------------------ | --------------------------------------- |
-| The process can die at any moment, or never existed    | Every uncertain effect is bracketed by two commits                  | [Runs](#runs)                           |
-| Any process may be the one that continues a run        | A runner keeps nothing in memory across a step                     | [Many runners](#many-runners-one-store) |
-| Writers race constantly                                | Admission never errors; contention exists only on run claims       | [Admission](#admission-is-open)         |
-| Providers cache the context prefix                     | Mid-run context grows only at the tail; input queues to boundaries | [Admission](#admission-is-open)         |
-| The outside world will not join a database transaction | Per-tool replay policy instead of impossible exactly-once          | [Runs](#runs)                           |
-| A network client cannot hold object handles            | Every verb takes one flat object; ids ride inside it               | [The SDK](#the-sdk)                     |
-| Users change their minds                               | History is a tree; a head is a movable pointer with a log          | [Heads](#heads-are-named-pointers)      |
+| Fact                                                   | Mechanism                                                                    | Section                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------- |
+| The process can die at any moment, or never existed    | Every uncertain tool call moves an effect ref from intent to result          | [Runs](#runs)                           |
+| Any process may be the one that continues a run        | A runner keeps nothing in memory across a step                               | [Many runners](#many-runners-one-store) |
+| Writers race constantly                                | Multi-ref CAS, internal submission retry, and fenced runner publishes        | [Admission](#admission-is-open)         |
+| Providers cache the context prefix                     | Boundary lanes land at response boundaries; idle lanes wait for an idle head | [Admission](#admission-is-open)         |
+| The outside world will not join a database transaction | Per-effect replay policy instead of impossible exactly-once execution        | [Runs](#runs)                           |
+| A commit id is unknown while its message is streaming  | Deltas key on run, attempt, and content index                                | [Events and views](#events-and-views)   |
+| Clients may return after retained events have expired  | The event floor rejects the cursor and the client takes a snapshot           | [Events and views](#events-and-views)   |
+| A network client can fail between Enter and a receipt  | A local outbox retries one idempotency key                                   | [Admission](#admission-is-open)         |
+| Users change their minds                               | History is a tree and a head is a movable ref                                | [Heads](#heads-are-named-refs)          |
 
 ### Roles
 
-Six roles. One process can play several at once: the TUI plays all of them, a phone plays one.
+Six roles. One process can play several at once. The TUI plays all of them. A phone plays only
+client.
 
-| Role   | Is                                                                                                                                   |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| store  | The durable state: entries, records, heads, facts, claims. The only authority.                                                       |
-| runner | Whatever code holds a run claim and executes steps. A hot loop on a laptop and an alarm handler in the cloud are both runners.       |
-| host   | A process that composes core: opens a store, resolves plugins behind trust, supplies the stream function, and may volunteer runners. |
-| client | Anything that calls SDK verbs and renders events. It keeps no state beyond a cursor.                                                 |
-| plugin | Host-side code that decides what the model sees and can intercept a run.                                                             |
-| schema | The shared types every boundary speaks.                                                                                              |
+| Role   | Is                                                                                                          |
+| ------ | ----------------------------------------------------------------------------------------------------------- |
+| store  | The four durable authorities: objects, refs, leases, and events. A session is one repository.               |
+| runner | Code that holds a fenced lease over one head and advances its run one durable step at a time.               |
+| host   | A process that opens the store, supplies models and plugins, and may volunteer runners.                     |
+| client | Code that calls SDK verbs, renders snapshots and events, and keeps a cursor plus a local submission outbox. |
+| plugin | Host-side code that contributes model context, tools, commands, settings, resources, and policy.            |
+| schema | The shared message and JSON types used at the object boundary, by the agent loop, and by clients.           |
 
 ## The model, in git terms
 
-Core's session model is git's model with messages in place of files. The correspondence is exact
-enough to be the reading guide for the rest of this page.
+Core is git's object database with messages in place of files. If you know git, this table is
+the reading guide for the rest of the page. If you don't, it still tells you which ideas were
+borrowed and which were changed on purpose.
 
-| git                                     | core                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| object store                            | the session log: one ordered stream per session                                 |
-| commit: immutable, names its parent     | entry: immutable, names its parent                                              |
-| branch ref: a name pointing at a commit | head: a name pointing at an entry; `main` always exists                         |
-| HEAD: which ref you are on              | the head name a client passes; client state, never a store register             |
-| detached HEAD                           | reading at an entry with no head; sending needs a head, so create one there     |
-| reflog: old, new, actor, reason         | head moves in the log: from, to, cause, actor; unconditional, never pruned      |
-| index: staged, not yet committed        | the pending queue: admitted with an id, not yet in the tree                     |
-| ref lock and compare-and-swap           | the run claim: a compare-and-swap with a fence and a TTL                        |
-| worktree: one checkout of one branch    | a run: one head being advanced by one runner; one live run per head             |
-| stack metadata: parent branch, base     | a head's parent head and base entry; a child session's parent link              |
-| rebase and replay                       | carry-forward by summary: entries never move, a summary lands at the new base   |
-| clone                                   | fork: copy a branch into a new session                                          |
-| gc                                      | none: nothing is ever deleted                                                   |
+| git                           | core                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| object database               | `objects`: immutable values addressed by the SHA-256 hash of canonical JSON      |
+| commit with parent            | conversation commit with exactly one context parent                              |
+| extra parent or provenance    | `imports`: provenance that never joins model context                             |
+| branch ref                    | `refs/heads/<head>`                                                              |
+| HEAD                          | the head name supplied by the client, never a stored checkout register           |
+| detached read                 | reading at any commit without moving or checking out a head                      |
+| `update-ref` compare-and-swap | one atomic `refs.update` over any number of refs                                 |
+| lock file                     | a fenced lease over `refs/heads/<head>`                                          |
+| reflog                        | retained `ref` events in the session event stream                                |
+| index                         | one pending change chain per lane, behind queue tip and base refs                |
+| stack metadata                | `refs/stacks/<head>` pointing to `{ parent, base }`                              |
+| rebase                        | never replay generated text; the model writes a summary commit for carry-forward |
+| worktree                      | none; a client reads any commit and a runner reads refs at every step            |
+| garbage collection            | mark from refs and retained ref events, wait through a grace period, then sweep  |
 
-Two places core is deliberately stricter than git. Git's reflog is off in bare repositories and
-expires; core logs every head move, everywhere, forever, because the move log is the only undo and
-there is no human at a terminal to reconstruct state from memory. Git serializes writers but not
-readers, so a multi-ref update can be seen torn; core's store gives every read one snapshot.
+The stricter rule, and the one people push back on first, is the one-parent rule. A commit has one
+`parent`, or `null` at a root. That chain alone becomes model context. `imports` may name commits
+that were summarized or carried across a branch, but imports are provenance only. They **must not**
+add a second context path. Git merges are fine for files because a three-way merge of text is a
+well-understood operation. There is no such operation for two conversations.
 
-## The log
+There is no worktree and no checkout. A client may read any commit. A runner advances one head
+without materializing files or holding conversation state outside the store.
 
-A session is four kinds of state, all ordered by one per-session counter, `seq`:
+Generated text **must not** be mechanically replayed onto a new base. Instead the object model has
+a `summary` commit body for a path carried forward by meaning. `heads.move({ summary })` asks the
+model to summarize the abandoned path and writes that commit with the navigation target as its
+parent. A model failure returns `failed` and leaves the head where it was.
 
-- Write-once **entries**: the conversation tree, parent-linked.
-- Append-only **records**: run bookkeeping, scoped to a head and a run.
-- Mutable **heads**: named pointers into the tree, every move logged.
-- Mutable **facts**: small key-values (session name, labels, plugin storage), every write logged.
+The reflog is retained, not eternal. The store exposes a floor. Events at or below it may be
+removed, and unreachable objects lose the protection those old ref events gave them. A grace
+period still protects loose objects and recently unreachable history before collection.
 
-Nothing mutates an entry or record after commit. Heads and facts are the only things that change,
-and each change is itself a log item. Every value crosses the storage boundary through
-`toJsonValue`, which rejects anything JSON cannot round-trip.
+## The four authorities
 
-| Entry                                                   | Meaning                                                                                    |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `message`                                               | One user, assistant, or tool-result message.                                               |
-| `compaction`                                            | A context checkpoint: portable summary and retained tail, plus optional provider material. |
-| `branch_summary`                                        | What a path that was left was about, placed where the head landed.                         |
-| `model_change`, `thinking_level_change`, `agent_change` | Run-input declarations, folded at run start.                                               |
-| `custom`                                                | Product-defined. Core stores and replays it; clients render it.                            |
+A session has four authorities. Everything else is a helper or a projection over them.
 
-| Record               | Meaning                                                                          |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `operation_started`  | A run began: its intent (run, compaction, navigation) and the folded run inputs. |
-| `step_attempt`       | One provider call is about to happen.                                            |
-| `retry_scheduled`    | A transient failure; the wake time is durable.                                   |
-| `tool_started`       | Intent: this tool will run; its result lands at `resultEntryId`; replay policy.  |
-| `tool_waiting`       | The call parked on purpose; recovery must not touch its reserved entry.          |
-| `tool_reply`         | An answer admitted for a waiting call.                                           |
-| `tool_wake_observed` | A wake pass that settled nothing; bounds what the next wake re-reads.            |
-| `usage`              | Token usage for one cause.                                                       |
-| `queue_enqueued`     | Input admitted behind a live run: a provisioned entry and its lane.              |
-| `queue_consumed`     | A queued item entered the tree.                                                  |
-| `queue_cancelled`    | Tombstone for an unconsumed item.                                                |
-| `abort_requested`    | A durable abort the claimant honors at its next checkpoint or provider event.    |
-| `operation_finished` | Terminal: completed, aborted, or failed.                                         |
+### Objects
 
-The whole log is one typed stream, and that stream is the event system:
+Objects are content-addressed and immutable. `hashObject` is a SHA-256 hex digest over the object's
+canonical JSON. Writing the same value twice returns the same oid and rewrites nothing. Any field
+change produces a different oid.
 
-```ts
-type LogItem =
-  | { kind: "entry"; seq: number; entry: Entry }
-  | { kind: "record"; seq: number; record: SessionRecord }
-  | {
-      kind: "head";
-      seq: number;
-      head: string;
-      from: string | null;
-      to: string | null;
-      by: "append" | "move" | "create" | "delete";
-      actor?: string;
-    }
-  | { kind: "fact"; seq: number; fact: string; value: JsonValue | undefined }
-  | { kind: "claim"; seq: number; head: string; runId: string; state: "acquired" | "released" };
-```
+There are six object kinds:
 
-Why write-once plus one counter:
+| Object   | Meaning                                                                                                  |
+| -------- | -------------------------------------------------------------------------------------------------------- |
+| `commit` | One point in a conversation, with one parent, optional imports, provenance, and a body.                  |
+| `change` | A commit body waiting for a parent, linked to the prior change in the same lane.                         |
+| `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request. |
+| `effect` | One tool call's durable state: `intent`, `waiting`, `signal`, or `result`.                               |
+| `stack`  | The parent head and base commit for a stacked head.                                                      |
+| `blob`   | A small JSON value behind a fact, cancellation marker, or deletion marker.                               |
 
-- Crash states are enumerable. A crash lands between transactions, never inside one, so recovery
-  reads state instead of repairing it.
-- Projections are rebuildable. Transcript, tree, usage, and directory views fold the log; they
-  carry no authority and never write.
-- Concurrency is cheap. Appends from different processes cannot conflict at the content layer;
-  contention exists only at run claims.
+A commit's provenance is two optional oids. `change` names the submitted change it landed, and
+`run` names the run that wrote it. Neither is context. They exist so a client can ask which files
+one run touched, or which commit a receipt turned into, without guessing from timestamps.
 
-Liveness is not content. A claim's acquire and release are log items because a client renders
-them; a renewal is a register write and nothing else, so a heartbeat never consumes a `seq` and
-never reaches a watcher. A client that wants liveness asks `runs.current`, which reads the claim.
+A commit body is one of five kinds:
 
-## Heads are named pointers
+| Commit body  | Meaning                                                                                                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `message`    | One schema `Message`: user, assistant, or tool result.                                                           |
+| `checkpoint` | A context checkpoint with a summary, retained tail, token count, optional provider material, and optional usage. |
+| `summary`    | What a path being carried forward was about. It does not cut context.                                            |
+| `config`     | A model, thinking level, or agent declaration. The latest value of each field wins.                              |
+| `note`       | Product-defined JSON, replayed by core and unseen by the model.                                                  |
 
-A **head** is a named pointer to an entry: `head/{name} -> entryId | null`. Every session has
-`main`. Creating a head at an entry is the fork. That is the entire feature, and everything else
-on this page that looks like a feature (undo, branches, the tree view, stacks, subagents) is a
-consequence of it.
+Objects **must** be written before the ref update that makes them reachable. A failed update may
+leave loose objects. That is safe, because no ref names them, and retention collects them after
+the grace period. I would rather have a few orphaned rows than a ref pointing at nothing.
 
-A head carries five things and nothing else:
+One consequence takes people a moment. A commit oid cannot exist while an assistant message is
+still streaming, because the message is part of the bytes that get hashed. So streaming has its
+own identity. Provisional deltas name `(runId, attempt, index)`, and the finished commit supplies
+its oid at settlement.
 
-| Field    | Meaning                                                                              |
-| -------- | ------------------------------------------------------------------------------------ |
-| `name`   | The ref. `main` is created with the session; the rest are created by a verb.         |
-| `tip`    | The entry it points at, or `null` for an empty branch. Called `leafId` in the store. |
-| `parent` | The head it was created from, if any.                                                |
-| `base`   | The parent's tip at creation. The stack edge (below).                                |
-| `run`    | Derived, never stored: the claim on this head, if one is live.                       |
+### Refs
 
-What a head deliberately does not carry: a configuration register (model, thinking level, and agent
-are run inputs declared as entries on the branch), a state machine (the run claim is the state), a
-pending-input list (pending input is session-scoped and drained by whichever run comes), and a
-last-result register (a run's outcome is its terminal record).
+Refs are the only mutable domain state. They move only through one multi-ref compare-and-swap.
+Every update names the expected oid in `from` and the desired oid or absence in `to`. The store
+checks every expectation before writing any ref. All writes and their ref events commit together,
+or none do.
 
-### Moves and the move log
+An update with `to === from` is an assertion. The store checks it, but writes no row and emits no
+event. Runner publishes use this to assert that `refs/deleted` is absent. Cancellation and
+redelivery use assertions to close races with landing.
 
-A head moves in exactly four ways, and every one is a log item carrying the previous tip, the new
-tip, the cause, and the actor when known:
-
-- **append**: an entry written through the head advances it. Concurrent appends through one head
-  linearize; they never fork it.
-- **move**: a deliberate re-point to an existing entry or to `null`. This is the revert, the undo,
-  and the tree jump. There is no separate revert verb.
-- **create**: a new head at an entry.
-- **delete**: the name is dropped. The entries stay; the move log still names them.
-
-The move log is the reflog. `head@{n}` in git is "the tip before the last n moves" here, and it is
-how a client offers undo without core keeping an undo stack: undo is a move to the previous tip.
-Moves **must** be logged unconditionally and **must not** be pruned.
-
-### Where a client is
-
-The head a client is on is the head name it passes to verbs, defaulting to `main`. It is client
-state, not a store register, so two clients on one session can be on different heads and neither
-can corrupt the other. A client may read at any entry (the branch ending there is a projection),
-which is the detached state: reading is free, but sending requires a head, so a send from an old
-point either moves a head there or creates one.
-
-### Branching
-
-Going back is a move, and the path that was left is kept, its parent links intact. The tree view
-folds every entry into a forest and marks every head and the active path; a client renders it and
-a user jumps. Moving an existing head away from a path leaves that path reachable through the move
-log and the tree scan only, so a client that wants the path to stay findable and runnable creates
-a head at its tip first. Two verbs, and a crash between them leaves nothing inconsistent.
-
-A move executes as a **navigation run**: it claims the head exactly as compaction does, so nothing
-re-points a head under a live run's feet, and it may leave a `branch_summary` entry at the
-destination describing the path it left. Selecting a user message parks the head on that
-message's parent and hands the message back for editing rather than replaying it.
+The ref namespace is:
 
 ```text
-          e1 ─ e2 ─ e3 ─ e4           <- main was here; the path stays
-                 └─ e5 ─ e6           <- main moved to e2 and continued
-                 ^
-                 base of review       <- head "review" created at e6 records parent main, base e6
+refs/heads/<head>              branch tip; absence means unborn
+refs/stacks/<head>             Stack { parent, base }
+refs/queues/<head>/<lane>/tip  newest submitted Change in the lane
+refs/queues/<head>/<lane>/base last landed Change; pending is (base, tip]
+refs/runs/<head>               current Run object and phase
+refs/effects/<run>/<call>      Effect: intent -> waiting -> signal -> result
+refs/keys/<key>                idempotency receipt naming the Change
+refs/facts/<key>               Blob holding a small session value
+refs/cancelled/<change>        Blob tombstone for a withdrawn Change
+refs/deleted                   Blob marking a session being deleted
 ```
 
-### Stacks
-
-A head created from another head records `parent` and `base`. That pair is what stacked-branch
-tools keep beside each branch, and it answers the two questions a stack needs in constant time:
-
-- **Is this branch stale?** `base !== parent.tip`. The parent moved on since the fork.
-- **Which entries are mine?** Everything after `base` on my branch.
-
-Entries are immutable and a model's replies were conditioned on the prefix they were written
-under, so core never replays entries onto a new base the way `rebase` replays commits. Carrying a
-branch forward is **restack by summary**, and it is the existing move verb: move this head to the
-parent's tip with `summary`, which summarizes the entries after `base`, lands the summary at the
-new tip, and sets `base` to it, all in one transaction. When the parent has only advanced and the
-old base is still an ancestor of the new tip, `base` advances silently, the same self-heal
-stacked tools use.
-
-Stacks cross sessions too. A child session written by the `task` tool carries a durable parent
-link (session, run, tool call, agent, depth). Its completion is delivered into the parent as an
-ordinary admission, which is the whole of "sync" for a conversation stack.
-
-### Fork into a new session
-
-A fork copies the branch ending at an entry into a new session, keeping entry ids, so a copy can
-be told from the original by session alone. It is `clone`, and it exists for the one case a head
-cannot cover: a conversation that should stop sharing a log with its origin.
-
-## The turn
-
-The turn is the whole of the agent loop, and it does not loop.
-
-```ts
-runAgentTurn(context, config, emit, signal, streamFn): Promise<void>;
-```
-
-One assistant response is streamed, its tool calls are executed, and events are emitted. Whether
-another turn follows is the caller's decision. The turn imports nothing from the store, the
-runner, providers, or a Node host; it is a function over a message array, which is what makes the
-same function usable in three places:
-
-- **Under the runner**, once per durable step, over a branch projected from the log.
-- **Without a store**, over an in-memory context: a title, a compaction summary, a branch
-  summary, a script that wants one answer. This is the no-context path, and it is the same code.
-- **In recovery**, over a synthetic context holding only the calls an interrupted run never
-  started, so live and recovered settlements are built by one function and never drift.
-
-The last message in the context must convert to a `user` or `toolResult` message, or the provider
-rejects the request.
-
-### The tool batch
-
-Calls are validated and prepared in source order, and each call starts executing the moment its
-own preparation passes. A later call's preparation (a policy hook, an approval) therefore never
-holds an earlier call idle. This is a deliberate divergence from pi, which prepares every call
-before starting any: that shape freezes the working lane on a prompt. Results are emitted in
-source order regardless of completion order.
-
-- A `length` stop fails every tool call in the message, because streamed arguments finalized by a
-  salvage parser can validate and still be incomplete.
-- A failed or aborted call settles carrying the last partial it reported: partial content after
-  the error text, the partial's details and title when the error names none. A `ToolError` is the
-  tool's own structured decision and is not amended.
-- Every settlement, live or recovered, is built by one function.
-
-## Runs
-
-A **run** is an operation bracketed by `operation_started` and `operation_finished`, containing
-step attempts, tool intents, settlements, and usage. Runs come in three intents: a conversation
-run, a compaction, and a navigation.
-
-### Claims
-
-Execution rights come from a **run claim**: a store-level compare-and-swap binding one runner to
-one run on one head, with a fence and a TTL. Claims are the only lock in the system. Readers,
-senders, and runs on other heads never touch one.
-
-```ts
-interface RunClaim {
-  readonly head: string;
-  readonly runId: string;
-  readonly ownerId: string;
-  readonly fence: number;
-  readonly expiresAtMs: number;
-}
-```
-
-- Acquire is one upsert: insert, or take over a row whose TTL expired, incrementing the fence.
-  Losing the race is a value, never an error; the loser's input is already admitted and the
-  winner drains it.
-- Every runner write runs inside one transaction that first renews the claim on
-  `(ownerId, fence)`, ignoring expiry. Zero rows matched means fenced out, which is terminal for
-  that claimant and aborts before touching data. Expiry exists so a successor can take over after
-  a crash; it must not kill a claimant whose clock jumped while suspended.
-- Release deletes only the claimant's own `(ownerId, fence)` row, so a stale owner can never
-  release its successor.
-- An expired claim on an unfinished run is an orphan. Any runner may claim it and resume.
-
-The claim TTL is failover metadata. No public verb, claim, or runner option encodes a wall-clock
-execution budget: hosts own budgets, process termination is the fence, and recovery works from
-durable state alone.
-
-### The step
-
-The **step** is the durable unit of progress: one provider turn plus its tool batch, committed. A
-runner that has committed a step may die; nothing is lost and any runner continues. A step reads
-the run's state from the run's own records, makes one pass through a fixed pipeline, and commits.
-The order is the contract:
-
-| #   | Stage     | What happens                                                                                                                                 |
-| --- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | abort     | A pending `abort_requested` ends the run `aborted`.                                                                                          |
-| 2   | ceiling   | The agent's `steps` count, read off the run's records, ends the run `failed: steps`.                                                         |
-| 3   | backoff   | An owed retry window is waited out; a process lost mid-wait resumes the wait.                                                                |
-| 4   | drain     | Pending input for this boundary enters the tree, in `seq` order.                                                                             |
-| 5   | project   | The branch becomes model context: the newest checkpoint plus everything after it.                                                            |
-| 6   | compact   | Threshold compaction when the last usage report says the next request will not fit.                                                          |
-| 7   | turn      | `runAgentTurn`. Nothing on this row touches the store except through the event sink.                                                         |
-| 8   | settle    | Parked calls commit `tool_waiting` and the claim releases; a policy failure ends the run `failed: policy`; an overflowed request compacts once. |
-| 9   | retry     | A transient provider error schedules a durable retry and yields; any other error or an abort ends the run.                                   |
-| 10  | drain     | Steers that arrived during the turn enter the tree.                                                                                          |
-| 11  | continue? | Tool results or new input mean another step; otherwise queued follow-ups are drained and, if any, another step.                              |
-| 12  | finish    | No input left: `operation_finished`, remaining pending input applied, claim released, in one transaction.                                    |
-
-### The effect sandwich
-
-Every uncertain effect is wrapped in two commits:
-
-```text
-commit:  "about to do X; its output lands at provisioned id R"   <- intent
-         do X                                                    <- the uncertain part
-commit:  settled output at R + usage                             <- settlement
-```
-
-For tools, the intent is a `tool_started` record carrying the provisioned `resultEntryId`, the
-effective arguments, and the tool's replay policy. It commits before the tool executes; settlement
-is written exactly once, at that id, and a duplicate id is refused by the store.
-
-The replay policy answers the one question recovery cannot: after a crash between intent and
-settlement, did the tool run?
-
-- `replay: "safe"`: run it again with the persisted arguments. Reading a file twice hurts nobody.
-  At-least-once.
-- `replay: "never"` (the default): do not run it again. Recovery settles the reserved entry with an
-  error naming the interruption, so the model reads "outcome unknown" instead of a hole.
-  At-most-once.
-
-Exactly-once would need the outside world to join the transaction, and it will not. A settled
-result is never touched again.
-
-| Crash point                         | Recovery                                                      |
-| ----------------------------------- | ------------------------------------------------------------- |
-| before the intent commit            | previous state; the step runs as if nothing happened          |
-| after the intent, before settlement | apply the replay policy                                       |
-| after settlement                    | continue; never re-settle                                     |
-| mid provider stream                 | the turn is re-taken; a partially billed stream is the price  |
-
-An assistant turn commits `step_attempt` before the request and the message after it. A crash in
-between leaves a branch whose tail still expects an answer, so the next step simply asks again.
-
-### Wait and wake
-
-A run does not have to hold a claim while it waits on the world. A tool parks by throwing
-`ToolWait` from `execute`: the runner writes one `tool_waiting` record per parked call and
-releases the claim without a terminal record. The run then consumes no process anywhere. The wake
-input arrives as ordinary admission: an answer through `runs.reply`, a child session's completion,
-a webhook-driven append. Whichever host observes it claims the run, calls the tool's `wake`, and
-settles the reserved entry exactly once.
-
-- The park carries no payload. A wake re-derives everything from the intent's validated arguments
-  and ids derived from the session, run, and call.
-- Admission treats a waiting run as live: sends queue to it and other writes defer, so mid-run
-  context still grows only at the tail.
-- The wake predicate is durable: a parked run resumes only when input newer than its last
-  released claim has arrived, or an abort is pending. A host without the owning plugin leaves the
-  wait alone; abort is the exit that works everywhere.
-
-This one mechanism is the ask that outlives its process, the mid-run approval, the foreground
-subagent, and the scheduled wake. Core carries no ask vocabulary: the pending tool call renders
-the question, and the reply is a message the tool's `wake` absorbs.
-
-### Retries
-
-A transient provider failure commits `retry_scheduled` with the attempt and a `notBefore` time,
-then yields the step. The wait is durable, so a process lost mid-backoff resumes the wait rather
-than restarting the turn, and a step-at-a-time host schedules its re-entry from the record. The
-failed turn stays in the tree as history and never reaches the retry. The retry budget resets on
-any turn that settles without a provider error, so a long healthy run never exhausts it. Overflow
-is classified before retry, so an oversized request compacts instead of retrying unchanged.
-
-### Compaction
-
-A `compaction` entry is a context checkpoint. Context projection starts at the newest one and
-keeps everything after it; the transcript keeps everything, because compaction changes what the
-model sees, not what happened. Every compaction carries a portable summary and retained tail, and
-may carry opaque provider material bound to one provider, API, and model. Core passes the material
-as `context.checkpoint` only when the next request targets exactly that triple; every other target
-gets the portable projection. Both are written in one entry, so a later model switch never
-depends on a failed oversized request to recover.
-
-Compaction runs for three reasons: `manual`, as its own run; `threshold`, inside a run, when the
-last usage report says the next request will not fit under the reserve; `overflow`, at most once
-per run, when the provider rejects the request as too large. A `branch_summary` is not a
-checkpoint: projection keeps everything before it and adds the summary as one message.
-
-### Two runner shapes
-
-- **Hot loop** (desktop, TUI, VM): claim once, execute steps in-process until the run finishes or
-  waits, renew as it goes. Releasing between steps would read as an orphan to every other host.
-- **Step-at-a-time** (Worker, queue consumer, alarm-driven Durable Object): claim or renew, read
-  the run's state, execute one step, commit, schedule re-entry, exit. The TTL covers the gap.
-
-Both have identical durable behavior because of one rule: **a runner must not require in-memory
-state that outlives a step.** Drained positions, retry counts, compaction bookkeeping, and the
-turn count are all derived from the run's records.
-
-## Admission is open
-
-Appending a message, an answer, or a custom entry requires no claim of any kind. The store
-serializes concurrent appends and assigns `seq`. Rejecting a send because someone else is talking
-**must not** happen at any layer. Session exclusivity is not something a sender can see.
-
-Open admission does not mean mid-run insertion into the provider context. Across one run's
-requests, context grows only at the tail, so admission has two dispositions, decided inside the
-admit transaction by reading the head's claim:
-
-```text
-TX[
-  if the caller's entryId already has a receipt:  return it, "duplicate"
-  if no live or waiting run on the head:          write the entry at the tip, "placed"
-  else:                                           write queue_enqueued { lane, entry }, "queued"
-]
-```
-
-### Lanes
-
-There is one pending record kind. A queued message and a deferred custom entry are the same thing:
-a provisioned entry waiting for a boundary, with a lane.
-
-| Lane    | Drains                                                    |
-| ------- | --------------------------------------------------------- |
-| `steer` | At the run's next checkpoint, before the next turn.       |
-| `queue` | When the run would otherwise stop, starting another turn. |
-
-- **Delivery is a property of the item, not a decision frozen at send.** A second
-  `queue_enqueued` for the same entry moves it between lanes; the first record fixes its position
-  and its id. Moving into `steer` with no live run is itself the wake.
-- **Pending is a store query.** An item is pending when its latest record is not cancelled and
-  its entry is not yet in the tree. The drain, the pending list, and the terminal sweep ask the
-  store one question, so they cannot disagree.
-- **Cancel** writes a tombstone. **Consumption** writes `queue_consumed` beside the entry.
-- A drain takes one item per lane per boundary unless the host asks for all, so one-at-a-time
-  delivery stays the default a model can follow.
-- The terminal transaction applies whatever is still pending, including for an aborted run, so a
-  write racing the end of a run is neither lost nor ordered after it.
-
-### The working lane never freezes
-
-The runner reads pending input only at checkpoints and never mid-batch, and admission never takes
-a claim. A send during a tool batch commits in its own transaction; the tool batch runs on; the
-two meet at the next boundary. The runtime is not one thread that alternates between user and
-model. It is two lanes joined by a log.
-
-### Who runs?
-
-Ensuring a run exists is host territory. A host that called `attach()` follows the log and, when
-a placement lands on an idle head or an orphan appears, races the claim. One host wins; the
-losers do nothing. A thin client may have no runner at all; its send sits durable until a host
-attaches. Opening, observing, or closing a session never contests a live claim: close is
-claim-neutral, and a deliberate stop is `runs.abort` or `sessions.delete`.
-
-Two additions ride admission because multiplayer input needs them. **Attribution**: entries and
-send records carry an optional `origin` the host defines. Attribution, not authorization.
-**Idempotency**: a caller-supplied `entryId` makes a retry return the first receipt instead of a
-second message.
-
-## Many runners, one store
-
-The run is a worktree: one checkout of one head, advanced by one runner. Git allows one checkout
-per branch and any number of worktrees over one object store, and core has the same rule at every
-level.
-
-- **Heads are independent.** Two runs on two heads of one session proceed concurrently with no
-  coordination. Contention exists only at the claim of one head.
-- **Sessions are independent.** A host serving many sessions holds one runner per claimed head,
-  and a store holds any number of sessions.
-- **Processes are interchangeable.** The same runner code in two processes points at different
-  state because all state is in the store, exactly as one `git` binary serves every repository.
-  Nothing a runner needs survives in memory across a step, so which process runs the next step
-  is a scheduling choice, not a correctness question.
-- **Takeover is by fence.** A successor increments the fence; the predecessor's next write dies
-  before touching data. A second process can abort a run in flight by writing `abort_requested`;
-  the claimant sees it at its next provider event or checkpoint.
-- **Children are sessions.** A subagent is a child session with a durable parent link written
-  before its first admission. Its ids derive from the parent session, run, and call, so a crashed
-  spawn retried lands once. Foreground delegation is background delegation plus a wait.
-
-## Deployment
-
-Three placements, one runtime.
-
-- **Embedded.** The host process is also the runner and the client: the TUI, the desktop's main
-  process. The store is a file, `watch` is a store subscription, overlays stream in-process.
-- **Server.** A long-lived host owns a store and volunteers runners; clients speak the wire.
-- **Serverless.** No process outlives a request. The store is remote; a request is a runner.
-
-### The request shape
-
-The request-scoped runner is the shape stateless chat SDKs made familiar: a handler receives a
-message, streams the answer, and exits. Core provides it without a second code path. The sketch:
-
-```text
-POST /sessions/{id}/messages          admit: placed | queued | duplicate
-GET  /sessions/{id}/events?after=seq  durable items, then live items; seq is the cursor
-POST /sessions/{id}/steps             claim, run one step, release: continue | waiting | finished
-```
-
-A handler that wants to answer inline admits, claims, and drives steps while the request lives,
-streaming overlays on the same response. If the client disconnects, the run either continues
-under a long-lived host or is resumed by the next step request or an alarm; the claim TTL covers
-the gap. Reconnect is `after=seq`, so a resumable stream needs no stream id and no side store:
-the log is the stream, and what a lost connection loses is intermediate animation frames, never
-state.
-
-### The wire
-
-Three package names are reserved for it. `@uji-ai/protocol` is the SDK's wire definition and
-nothing else: one route per verb, the verb's input object as the body, outcome unions as response
-bodies, thrown errors as status codes, one SSE channel per session. `@uji-ai/server` binds one
-host to it. `@uji-ai/client` is the first-party TypeScript client with reconnect-by-cursor built
-in. The wire **must** be implementable from any language; a Swift app is a citizen of the
-protocol, not a port of the TypeScript client.
-
-### Backends
-
-A backend implements `SessionRepo` and `SessionStorage` from `@uji-ai/core/store`. The contract a
-backend must hold is short: one `seq` counter per session shared by every item kind; ids unique
-and entries never updated or deleted; an append reads the tip and advances it in one atomic unit;
-participant writes serialized by the store; run writes fenced by the claim; every read from one
-snapshot. A conformance suite, not review, keeps a second backend honest.
-
-## Events and views
-
-Two event tiers, one contract.
-
-- **Durable events are the log.** Log items are the replayable stream and `seq` is the cursor. A
-  client that reconnects replays from its cursor and is complete with respect to durable state.
-- **Ephemeral overlays reference the log.** Streaming deltas and tool progress name the
-  provisioned entry they settle into. A client that missed them recovers the settled entry and
-  lost only animation frames.
-
-`watch({ afterSeq })` replays durable items, emits `synced`, then interleaves live items with
-overlays, racing the two sources so a streaming turn renders in real time. Every committing write
-publishes its items before the writing verb resolves, so no item is neither replayed nor
-delivered. `sessions.snapshot` is the cold open: one read model at one `seq`, handed straight to
-`watch`.
-
-Projections are pure functions over the log, shipped beside the store so every client agrees:
-transcript (entries to turns, tool calls paired with results, one incremental fold), tree (the
-forest with every head and the active path), stacks (heads with parents and staleness), usage,
-the context gauge, the session directory, and file changes folded from settled patches. Core also
-ships the base presentation of any tool result, total over unknown tool names and custom types; a
-client's per-tool renderer is refinement, never load-bearing. **The transcript must render,
-completely and honestly, with zero plugins active.** If a renderer needs it, the tool settles it.
-
-## Plugins
-
-Everything the model sees comes from a plugin. The harness owns no system prompt, tool list, or
-skill catalog; the built-ins are ordinary plugins a host lists first and a user or project plugin
-replaces by id. A plugin is an id and one factory over a session API with two verbs:
-
-- **Contributions** are declarative and synchronous: functions over a draft, replayed over a
-  fresh draft in activation order whenever the plugin set changes. A later plugin may update,
-  wrap, or delete an earlier entry, which is how a policy wraps `bash` without owning it.
-  Registries: tools, commands, prompt sections, resources, settings, agents.
-- **Hooks** return a result the harness reads, combined per hook in registration order:
-  `transform_context` (chained replacement), `before_request` (patches over stream options),
-  `before_tool` (continue, modify, reject, or error; fails closed), `after_tool` (field-wise
-  patch), `before_compaction` (first provider material wins).
-
-Tool-call policy has one boundary, `before_tool`. `reject` settles the call as a model-visible
-error and the run goes on; `error` settles it the same way and then fails the run, because a
-policy that could not decide must not read as one that allowed the call. `continue` cannot bypass
-a later policy.
-
-Activation is per session, per host process, and a stateless runner activates before its step and
-disposes after it, so handlers **must** be re-entrant and cross-step memory goes to plugin storage,
-which is session facts under the plugin's own prefix. Core does not check trust: a host **must
-not** hand the resolver a project directory before the workspace is trusted, and that is the whole
-gate.
-
-## Agents
-
-There is one entity, the **agent**, a declared record in the `agents` registry: id, `mode`
-(subtractive over a default of `all`: `primary` withholds it from parents, `subagent` from the
-user's picker), `hidden`, description, an optional model ref, a system layer, and a `steps`
-ceiling. A subagent is not a type; it is an agent a parent may name. Configuration is declared,
-never composed at run time: a parent selects an agent by name and hands it a prompt, and cannot
-widen its model, prompt, or the policies over its tools, because none of those are arguments the
-model passes. Which agent drives a run is a run input recorded in `operation_started` and
-re-resolved from the running host's registry on resume.
-
-Delegation is the `task` tool over a child session: create with the parent link, send the prompt
-under derived ids, and either settle at once with the child's session id (`background`) or wait
-for the child's terminal record. The child is composed without the `subagents` builtin, which is
-the nesting limit. A model-facing background job settles through the log, never through a
-process-local registry the model polls; a host-local live terminal is a separate, ephemeral,
-human-facing service.
-
-## The SDK
-
-Four entry points, not one barrel:
-
-```text
-@uji-ai/core            createUji, Uji, the SDK types, the projections, and the turn for one-shot use.
-@uji-ai/core/plugins    definePlugin, SessionApi, hook names, builtin plugins. Host-side authoring.
-@uji-ai/core/store      SessionRepo, SessionStorage, the SQLite backend, step and drive. Hosts and backends only.
-@uji-ai/core/views      The projections again, reachable without the Node graph.
-```
-
-Every verb takes exactly one argument, an object, and `sessionId` rides inside it. There is no
-session handle, because a handle is the one thing a wire cannot carry. Every SDK type is a plain
-interface or a `kind`-discriminated union, which is what makes the protocol a mechanical mirror.
-Domain outcomes are values on each verb's own union; the only thrown errors are `UjiClosed` and
-`UnknownSession`. "Someone is running" is not an error anywhere.
-
-```text
-createUji({ store, streamFn, models, model, plugins, env, thinkingLevel?, compaction?, streamOptions?, workspaces?, vcs? })
-
-Uji
-  sessions   create · get · snapshot · list · rename · delete · configure
-  messages   send · cancel · redeliver · list · pending
-  runs       current · abort · wait · reply · compact · context · changes
-  heads      list · create · move · delete
-  workspace  list · forget · vcs.status · vcs.diff
-  provider   models.list · models.default
-  plugins    list · commands.list · commands.run · settings.list · settings.apply · resources.list
-  watch({ sessionId, afterSeq } | { sessionId, live: true })   AsyncIterable<SessionEvent>
-  attach(options?)                                             host verb: volunteer this process as a runner
-  setPlugins(plugins)                                          host verb: the resolved list changed
-  close()
-```
-
-The reads that matter are two: `sessions.snapshot` for a cold open and `watch` for everything
-after. The single reads (`messages.list`, `messages.pending`, `runs.context`) exist for a wire
-that wants one cheap answer, and each is a projection the snapshot already contains. Every verb
-that takes `head` honors it; `main` is the default, never the only value.
-
-The outcome unions a client switches on:
-
-```text
-SendReceipt       placed | queued | duplicate
-CancelOutcome     cancelled | already_consumed | not_found
-RedeliverOutcome  redelivered | unchanged | already_consumed | not_found
-ConfigureOutcome  applied | deferred | unknown_model | unknown_agent
-RunInfo           live | orphaned | waiting
-AbortOutcome      requested | not_running
-WaitOutcome       idle | waiting
-CompactOutcome    compacted | nothing_to_compact | failed
-MoveOutcome       moved (restored?) | busy | not_found | aborted | failed
-```
-
-`busy` on a head move is the one place a client can see a live run as a reason for not doing
-something, and it is the honest one: re-pointing under a run's feet would corrupt it.
+Heads and lanes are names, and the kernel privileges none of them. Which lane lands when is the
+runner's landing policy, passed to every step. The default head (`main`) and the default lanes
+(`steer`, `queue`) belong to the SDK, which lists its default head before the head has a ref.
+
+### Leases
+
+A lease is fenced execution authority over one name. Runners acquire the head ref name. A lease
+has `name`, `owner`, `fence`, and `expiresAt`. Leases are liveness, not history. They never enter
+the object graph or the reflog.
+
+Acquire inserts a lease when none exists. After expiry, takeover changes the owner and increments
+the fence. Losing an acquire returns the current holder as a value, not an exception. Renew and
+release match both owner and fence, so an old process cannot extend or release its successor's
+lease. Renew ignores expiry for the matching holder. Expiry permits takeover. It is not an
+execution budget, and hosts should not treat it as one.
+
+Every runner ref update and every runner event append **must** carry the lease. The store checks
+the stored owner and fence inside the transaction. A mismatch returns `fenced` before any ref or
+event changes.
 
 ### Events
 
-```text
-DurableEvent, each with seq
-  message { entryId, turn }                                     projected, never a raw entry
-  head_moved { head, from, to, by }
-  run_started { runId, head, startedAt, operation, agent? }
-  run_finished { runId, head, finishedAt, outcome }
-  run_waiting { runId, head, toolCallId, toolName }
-  claim { head, runId, state: acquired | released }
-  queued { item } · queue_consumed { entryId } · queue_cancelled { entryId }
-  compaction { entryId, summary } · name_changed { name } · synced
+Events are both the reflog and the live feed. One increasing `seq` orders every event in a session,
+starting at 1. Four raw event bodies exist:
 
-EphemeralEvent
-  text_delta · reasoning_delta { entryId, contentIndex, delta }
-  tool_progress { entryId, callId, progress }
-  retry_scheduled { runId, attempt, maxAttempts, at, message } · retry_started { runId, attempt }
-  compacting { runId, reason }
-  plugins_changed { plugins } · diagnostic { owner, level, message }
+| Event      | Meaning                                                                    |
+| ---------- | -------------------------------------------------------------------------- |
+| `ref`      | One written ref move with name, from, to, reason, and optional actor.      |
+| `delta`    | One text or thinking fragment keyed by run id, attempt, and content index. |
+| `progress` | One tool call's partial output keyed by run id and call id.                |
+| `notice`   | An informational, warning, or error notice owned by a component.           |
+
+`refs.update` appends one `ref` event per actual ref write, followed by any extra events, in the
+same transaction. Assertions emit nothing. `events.append` adds deltas, progress, or notices
+without moving a ref, and may be fenced by a lease.
+
+`read` and `watch` yield events after a cursor in sequence order. `last` returns the newest
+sequence, and `floor` returns the oldest valid cursor boundary. Trimming removes events at or
+below a chosen sequence and raises the floor, never past the newest event. Reading below the floor
+throws `CursorExpired`.
+
+## Heads are named refs
+
+A head is `refs/heads/<head>` pointing to a commit oid, or absent for an unborn branch. The head
+name supplied to a verb defaults to `main`. It is client state, not a stored current-checkout
+register. Two clients may use different heads in one session and neither has to know.
+
+### Moves and live runs
+
+A participant moves a head by compare-and-swap from the oid it read. It may also supply `expect`
+to reject a view that was already stale. A non-null target **must** name an existing commit. At
+the kernel level the outcome is `moved`, `moved_since`, or `not_found`.
+
+The SDK's `heads.move` applies `navigationTarget` first, so selecting a user message restores it to
+the composer and targets its parent. With `summary`, the abandoned commits are summarized into one
+commit whose parent is that target, and one head CAS moves from the expected old tip to the
+summary. Nothing abandoned, or an empty summary, falls back to the plain move. Generated text is
+never replayed. A summarization failure returns `failed` without moving the head.
+
+The low-level move does not take the runner's lease or wait for a live run. The SDK checks first
+and returns `busy` when one is live. A run that races the check still publishes with its expected
+head, expected run ref, lease, and an assertion that deletion has not started. If the participant
+moved the head in between, that publish fails. The runner re-reads and moves the same run to
+`aborted` in an update whose event reason is `superseded`. It leaves the participant's head alone
+and consumes no queued input. Any output objects prepared for the failed publish stay loose until
+retention collects them.
+
+Every actual head ref write emits a retained `ref` event with its previous and next oid, reason,
+and optional actor. Undo is another move, and it works for as long as the needed ref event and
+object are still retained. The kernel **must not** promise undo beyond the configured event and
+object retention window.
+
+### Branching
+
+Creating a head from another head copies its current tip and writes a stack object naming the
+parent head and that tip as the base. A parent is a name, so cutting from an unborn parent records
+no base. Creating from a commit writes only the head ref and no stack metadata. An unborn head
+therefore needs a stack parent. Moving an unborn head to a commit is what creates it. The SDK cuts
+from and moves only heads the session lists, or its default head, so a mistyped name creates
+nothing and answers `unknown_parent` or `not_found`.
+
+Deleting a head removes its head ref, stack, every lane's tip and base refs, and run ref in one
+CAS. It refuses with `busy` while a live lease exists for that head. The kernel deletes any head.
+The SDK refuses its default head. The objects stay until retention proves them unreachable and old
+enough.
+
+There is no stored HEAD and no forked worktree. Reading an older commit is a projection.
+Continuing from it means moving a head or creating a head there.
+
+### Stacks
+
+`refs/stacks/<head>` points to a `Stack { parent, base }` object. A stacked head is stale exactly
+when `base !== parent.tip`. That one equality check is the whole staleness model.
+
+The stack operations are deliberately narrow:
+
+- `advanceBase` returns `unchanged` when there is no stack or the base already matches. If the old
+  base is still an ancestor of the parent's tip, it updates only the stack base and returns
+  `advanced`. If the parent diverged, it returns `diverged`.
+- `fastForward`, exposed by the SDK as `heads.merge`, requires a current stack and a non-empty
+  child. One CAS moves the parent head to the child tip and advances the child's stack base to the
+  same oid. Its outcomes are `merged`, `stale`, `empty`, and `no_stack`.
+
+Carry-forward without replay goes through `heads.move({ summary })`, which uses `summary` commits
+and `imports`. The stack code offers no general join of two heads, and I am not in a hurry to add
+one.
+
+## The turn
+
+The kernel turn has two calls and one commit boundary between them:
+
+```ts
+interface Turn {
+  respond(input: TurnInput): Promise<RespondOutcome>;
+  tools(input: TurnInput & { assistant: AssistantMessage }): Promise<ToolBatchOutcome>;
+}
 ```
 
-A durable item becomes at most one event; items with no client meaning project to nothing.
-`queued` is keyed by `entryId` and upserted: a second one is the item changing lanes. Ids are
-branded (`SessionId`, `EntryId`, `RunId`, `HeadName`, `Seq`), created by the store, parsed at the
-boundary, and named for their type in every field, so a value a verb returns is spelled the way
-the next verb takes it.
+`respond` receives the session, lease, run, attempt number, the commits since the newest
+checkpoint, an event emitter, and an abort signal. It projects model context and streams one
+assistant message. Its outcomes are `checkpoint`, `complete`, `tools`, `retry`, `failed`, and
+`aborted`. All but `checkpoint` carry the complete assistant message the step will commit.
+`checkpoint` carries a checkpoint body instead. The step commits it and calls `respond` again, so
+compaction is a commit like any other and never a special phase.
+
+`tools` receives the same durable inputs plus the committed assistant message. It recovers or
+executes each tool call through its effect ref. Its outcomes are `complete`, `waiting`, and
+`failed`. Complete and failed outcomes carry tool-result messages in call order. Waiting names the
+parked call ids.
+
+The turn emits text and thinking deltas with the supplied attempt number. Tool progress names the
+run and call. Emission is buffered through a fenced outbox and flushed before the call returns, so
+a fenced event append aborts the in-flight work rather than letting it finish into the void.
+
+### The tool batch
+
+Tool calls use the existing agent loop. A `length` stop returns an error result for every tool call
+in the message, because truncated arguments cannot be trusted. Tool failures settle a structured
+error result, and the last partial progress is available to that settlement. Results come back in
+the assistant message's call order.
+
+No turn state survives the call. On a resumed `tools` phase, the turn reads the assistant commit
+and every effect ref again and starts from what it finds.
+
+## Runs
+
+A run is one head being advanced. `refs/runs/<head>` points to the current immutable `Run` object.
+Each phase change writes a new run object and moves that ref. The run id stays stable across all
+of them.
+
+A run records `id`, `head`, `phase`, `startedAt`, `attempts`, and the branch configuration folded
+when the run began. The SDK runner resolves its model and thinking defaults into that configuration
+before publishing the run. Before responding, it also resolves legacy runs and records any fallback
+required when a successor host cannot supply the recorded model. Observers read these inputs from
+the run; their own host defaults say nothing about another host's execution. An idle head's snapshot
+combines declared configuration with the last recorded or observed response inputs. Legacy history
+can reveal a model without revealing its thinking level. A participant may set `abortRequested`.
+The phases are:
+
+| Phase     | Meaning                                                                           |
+| --------- | --------------------------------------------------------------------------------- |
+| `respond` | The next step may land a boundary-lane change, then ask the model for an answer.  |
+| `tools`   | The assistant message has tool calls to recover or execute.                       |
+| `waiting` | At least one effect is parked until a signal or abort arrives.                    |
+| `retry`   | A provider attempt failed transiently and may resume at the stored time.          |
+| `done`    | The run completed.                                                                |
+| `aborted` | The participant, host signal, deletion, or superseding head move stopped the run. |
+| `failed`  | The run ended with the stored error.                                              |
+
+### Leases and the step
+
+`step(session, turn, options)` acquires a lease over the head unless the caller supplies one. It
+does one durable action and releases a lease it acquired itself. `drive` acquires once, renews
+before every step, loops over `continue`, waits through a retry deadline, and releases when it
+returns.
+
+The step reads the head, run, and deletion refs. A session being deleted makes every step `idle`.
+Otherwise the step follows this table:
+
+| Run phase        | Pending change        | Step does                                                                            | Publish CAS                                    |
+| ---------------- | --------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| none or terminal | none                  | return `idle`                                                                        | none                                           |
+| none or terminal | some                  | land from the first policy lane; start in `respond` with a message, otherwise `done` | head, queue base, run                          |
+| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                    | head, lane base                                |
+| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                    | assistant commit at head, next run phase       |
+| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                   | result commits, effect cleanup, next run phase |
+| `waiting`        | any                   | call tools again after a signal or abort, otherwise return `waiting`                 | the same publish as `tools` when it wakes      |
+| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                             | none until responding                          |
+
+Two small rules sit inside the `respond` row. First, an abort request already on the run stores
+`aborted` without calling the model. Second, if the projected context ends in something other than
+a user message or a tool result, there is nothing to answer, and the run goes straight to `done`.
+
+Every runner publish carries the lease and asserts `refs/deleted` absent. A participant head move,
+an abort request written through the run ref, another run ref change, or session deletion may make
+the CAS fail. The runner re-reads and ends or continues according to current refs. It **must not**
+force stale output.
+
+A step ceiling is checked before `turn.respond`. The ceiling may be a fixed number or a function of
+the run, which is how an agent declares its own limit. Reaching it stores a failed run. Pending
+input is never consumed by failure, abort, or supersession. A later step starts a new run and
+lands it.
+
+### The effect sandwich
+
+Each tool call owns `refs/effects/<run>/<call>`. The ref moves through immutable effect objects:
+
+```text
+intent -> waiting -> signal -> result
+   |                     |
+   +-------------------->+
+```
+
+The runner writes `intent` before executing the tool. The intent stores the run id, call id, tool,
+JSON arguments, replay policy, and time. Recovery depends only on the ref state:
+
+| State     | Recovery                                                          |
+| --------- | ----------------------------------------------------------------- |
+| `intent`  | execute again for `safe`; settle an interrupted error for `never` |
+| `waiting` | remain blocked unless the run is aborted                          |
+| `signal`  | call the tool's wake handler with the first reply                 |
+| `result`  | reuse the stored tool-result message and never execute again      |
+
+A tool that declares no replay policy gets `never`. That is the conservative default on purpose. A
+tool has to opt into being run twice, because the kernel cannot know whether "send the email" is
+idempotent.
+
+A tool parks by moving the effect ref to `waiting`. A participant replies by comparing that exact
+waiting oid and moving the ref to `signal`. The first signal wins. A later reply returns
+`not_waiting`. The wake handler may settle a result or park again.
+
+When a tool batch completes, one runner CAS advances the conversation head with result commits,
+moves the run back to `respond`, and deletes the run's effect refs. A failed batch stores a failed
+run. A waiting batch stores the `waiting` phase and keeps effect refs.
+
+Exactly-once execution is not promised, and I want to be blunt about that. The outside world does
+not share the ref transaction. `safe` is at-least-once after an uncertain crash. `never` is
+at-most-once and reports an unknown outcome after interruption. Anything claiming better than
+that for an HTTP call is lying.
+
+### Wait and wake
+
+A waiting run needs no live process and no held lease. Its run ref and effect refs contain
+everything needed to resume. `runs.reply` targets a call id, optionally checks a run id, and uses
+the effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and `not_found`.
+
+On the next acquired step, a `waiting` run calls tools again if any effect has a signal or the run
+has an abort request. Otherwise the step returns `waiting`. Ordinary submitted messages stay in
+their lane while the run waits. A tool reply is a signal, not a conversation message, and the two
+never get confused for each other.
+
+### Retries
+
+A retryable provider failure produces a complete assistant error message and a `retry` outcome.
+The step commits that assistant message, increments `attempts`, and writes the run phase as
+`retry { at, error }`. Before `at`, a step returns the durable deadline. At or after `at`, it calls
+`respond` again. `drive` waits in process. A step-at-a-time host schedules another entry.
+
+The retry policy decides whether an assistant error is retryable and computes the delay, including
+any provider-requested minimum. Retries are a run phase. They are not timers in runner memory,
+because runner memory is exactly the thing this design refuses to depend on.
+
+### Checkpoints
+
+A `checkpoint` commit is a context boundary. It stores a portable summary, retained tail,
+`tokensBefore`, optional usage, and optional provider checkpoint material. The context projection
+starts at the newest checkpoint. It uses provider material only when provider, API, and model all
+match. Transcript and usage projections keep the checkpoint as history.
+
+`Turn` produces checkpoint outcomes for threshold and overflow compaction, and `step` commits them
+before asking for another response. `runs.compact` calls `writeCheckpoint` for a manual checkpoint
+under the head lease, summarizing with the model and thinking level the branch declares. Watchers
+receive the resulting head update as an ordinary `commit` event. There is no compaction event kind,
+because there is no compaction that is not a commit.
+
+### Two ways to run
+
+- **Hot loop.** A desktop, TUI, or VM calls `drive`, renews one lease, and executes until idle,
+  waiting, finished, busy, or fenced.
+- **Step at a time.** A request, queue consumer, or alarm calls `step`, persists nothing locally,
+  and schedules another entry when the outcome requires one.
+
+Both have the same durable behavior, because a runner **must not** require in-memory state that
+outlives a step. The hot loop is just the step loop with the lease kept warm.
+
+## Admission is open
+
+`submit` always creates a pending `Change`. It never appends directly to the conversation head and
+never inspects or acquires the runner lease. The lane is the submitter's choice. The SDK sends to
+the first lane of its landing policy when a client names none, and refuses a lane the policy does
+not list, since no runner would ever land it.
+
+Submission reads the lane tip, builds a change whose `previous` names that tip, writes the object,
+then compares and moves the tip ref. A tip conflict retries internally, up to a bounded attempt
+limit that no real workload should reach. If the caller supplied a key, the same CAS writes
+`refs/keys/<key>` to the new change. A competing key write returns `duplicate` with the first
+change oid. The only successful outcomes are `queued` and `duplicate`.
+
+### Lanes are chains
+
+Each head has one independent chain per lane, and a head has whichever lanes its refs name. A lane
+exists so a message can overtake older ones without rewriting their chain. A chain is
+content-addressed with one base pointer, so a runner takes only from its front, and each delivery
+timing needs a front of its own. The runner's landing policy lists the lanes it serves, in
+priority order, and says when each lands:
+
+| `lands`    | Lands                                                   |
+| ---------- | ------------------------------------------------------- |
+| `boundary` | Before the next assistant response, and on an idle head |
+| `idle`     | Only when the run is absent or terminal                 |
+
+The SDK's default policy is `steer` at boundaries and `queue` when idle. A host may declare other
+lanes, such as one per user in a shared session.
+
+For each lane, `tip` names the newest change and `base` names the last landed change. Pending is
+the half-open chain interval `(base, tip]`, walked through `Change.previous` and presented oldest
+first. The store holds no pending array. Concurrent submissions form one chain because every tip
+move compares its predecessor.
+
+The policy's `drain` says how much lands at once. `"one"` lands through the first message in the
+selected lane, including any config or note changes ahead of it, so the model answers one message
+at a time. `"all"` lands the whole lane. With `"one"`, a boundary lane mid-run waits until the last
+landed message has its answer. Otherwise a steering message could land on top of an unanswered one
+and the model would see two questions for one reply. A response-phase step considers only
+boundary lanes. An idle or terminal head considers every lane in policy order.
+
+`pending` walks every chain, drops tombstoned changes, and sorts the visible items by submission
+time and oid. All clients read that store projection and see the same list.
+
+### Cancel and redeliver
+
+Cancel does not rewrite a change or splice a chain. It writes a blob behind
+`refs/cancelled/<change>` and asserts the source lane base in the same CAS. Pending walks skip the
+tombstone. Landing asserts that every change it selected has no tombstone. A cancel racing a land
+therefore settles as `cancelled` or `landed`, never both.
+
+Redelivery moves a pending item between lanes in one atomic update. It writes the original
+change's tombstone, asserts the source base, writes a copy on the target chain, and advances the
+target tip. The copy keeps the body, author, and submission time, records `supersedes`, and gets a
+new oid because its predecessor and provenance changed. No intermediate state shows the item in
+both lanes or in neither.
+
+### A submitted message is never lost
+
+The only ways a pending change stops being visible are landing and an explicit cancellation
+tombstone. A failed, aborted, or superseded run leaves pending changes in their chains. A
+reconnecting client asks the store for pending and sees the same set as every other client.
+
+Each store transaction is atomic. If submit throws because the disk is full or the connection is
+lost, it may have written an unreachable loose object, but it has not half-applied a ref update.
+Core does not repair an unknown request. The client retries.
+
+Core cannot cover the gap between a user pressing Enter and receiving a durable receipt. The
+client closes it with an outbox:
+
+1. Mint a key on Enter, keep the message locally as `sending`, and render it immediately.
+2. Submit with that key. On a network failure, keep the row and retry with backoff using the same
+   key until it succeeds or the user cancels the local send.
+3. Treat `queued` and `duplicate` as durable. Replace the local row with the returned change oid.
+
+The idempotency ref and queue tip move in one CAS. A retry after a lost response returns the first
+change and never enqueues the message twice.
+
+### Who runs?
+
+Admission makes work durable but does not guarantee that this process will execute it. A host that
+called `attach` watches the session's event stream, wakes a driver for a head whenever its head,
+queue, run, or effect refs move, and races for the head lease. One runner wins. Thin clients do
+not call `attach`. Their submissions stay durable until a host volunteers.
+
+Attribution is optional `Actor` data with `clientId`, `userId`, and `device`. A host sets it once
+in `NyteOptions`, and the SDK writes it on participant objects and ref events. Attribution is not
+authorization.
+
+## Many runners, one store
+
+Heads and sessions are independent. Two runners may hold leases for different heads in one
+session. Any number of sessions may share one backend. Processes are interchangeable because a
+step reads objects and refs again and every runner write is fenced.
+
+Takeover increments the lease fence. The old runner's next ref update or event append returns
+`fenced` before it changes durable state. A second participant may request abort without the
+lease. The runner honors the new run ref at its next publish.
+
+The `Store` contract has four namespaces on every `Session`:
+
+| Namespace | Required behavior                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------- |
+| `objects` | Idempotent content-addressed put, get, list with write time, and collector delete.                      |
+| `refs`    | Read, prefix list, and atomic multi-ref CAS with assertions, optional lease, actor, reason, and events. |
+| `leases`  | Acquire, renew, release, and read fenced execution rights.                                              |
+| `events`  | Fenced append, cursor read, last, floor, trim, and gap-free ordered watch.                              |
+
+The transaction that matters spans a `refs.update`: check the lease, check every `from`, apply
+every non-assertion ref write, allocate sequences, append ref events and supplied events, then
+publish to watchers. A backend that cannot make that atomic **must not** host the kernel. Objects
+are put first and may stay loose if this transaction loses its race.
+
+The SQLite backend uses five tables:
+
+| Table      | Holds                                                            |
+| ---------- | ---------------------------------------------------------------- |
+| `sessions` | Session id, creation time, next event sequence, and event floor. |
+| `objects`  | Session, oid, object kind, canonical body, and write time.       |
+| `refs`     | Session and ref name to oid.                                     |
+| `leases`   | Session and lease name to owner, fence, and expiry.              |
+| `events`   | Session and sequence to time and event body.                     |
+
+SQLite serializes writes with `BEGIN IMMEDIATE`. One session row allocates every event sequence.
+An assertion changes no ref row and emits no ref event. Trimming deletes event rows and raises the
+session floor in one transaction.
+
+## Deployment
+
+Three placements use the same store and step contract:
+
+- **Embedded.** The host process is also runner and client. The TUI and desktop use a local store
+  and in-process watch.
+- **Server.** A long-lived host owns a store, attaches runners, and exposes SDK verbs over a wire.
+- **Serverless.** A request or alarm opens a session, calls `step`, and exits. A remote backend
+  supplies the same four authorities.
+
+Only the embedded placement ships today. The request protocol below is the shape a server would
+take, following the SDK rather than inventing a second runtime:
+
+```text
+POST /sessions/{id}/messages          submit: queued | duplicate
+GET  /sessions/{id}/snapshot          complete read model at seq
+GET  /sessions/{id}/events?after=seq  retained events, then live events
+POST /sessions/{id}/steps             idle | busy | waiting | retry | finished | fenced
+```
+
+Reconnect uses the last sequence. If the cursor is below the floor, the client takes a new
+snapshot and watches from the snapshot sequence. A protocol **must** keep the SDK's plain objects
+and discriminated outcomes, so another language can implement it without TypeScript object
+handles.
+
+## Events and views
+
+The raw event stream is durable. Ref moves, deltas, tool progress, and notices all take sequence
+numbers in the same feed. That is what pays for cross-process streaming until retention advances
+the floor. A reconnect within the window replays the deltas it missed. A reconnect below the floor
+gets `CursorExpired`, throws away incremental state, takes `sessions.snapshot`, and resumes after
+the snapshot's `seq`.
+
+The event stream is also the bounded reflog. The collector marks every current ref target and both
+ends of every retained ref event, then follows object links, including a commit's `change`
+provenance. It sweeps only unmarked objects older than the supplied grace period. A host that wants
+to reclaim history first calls `trimStream`, which advances the floor and drops old ref-event
+roots, then calls `collect`.
+
+Retention is explicit. The kernel supplies floor, trim, mark, grace, and sweep. It does not pick a
+default event window, grace period, or schedule. Those are product decisions and I did not want to
+bake a guess into the kernel.
+
+Projections in `kernel/views` are pure reads:
+
+| Projection area | Exports                                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| changes         | `appendTurnChanges`, `changesFromTurns`, `diffStat`, `patchedPath`, and `readPatch` |
+| context         | `projectContextStatus`                                                              |
+| directory       | `sessionDirectoryEntry`                                                             |
+| presentation    | `createPresenter`, `presentNote`, `presentTool`, and `projectToolView`              |
+| transcript      | `appendTranscriptCommit`, `transcriptFromCommits`, and `turnPartId`                 |
+| tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                           |
+| usage           | `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage`                      |
+
+Projections **must not** write. The transcript must render complete settled messages without a
+plugin. Presentation refiners may improve a tool or note, but an unknown tool or note still has a
+base presentation. A client should never see a blank row because a plugin is missing.
+
+## Plugins
+
+Plugins stay host composition. A plugin may contribute tools, commands, prompt sections, resources,
+settings, and agents, and may install hooks. The host resolves plugins only after workspace trust
+and passes the resolved list into core.
+
+Hooks are the points where plugin code intercepts a run and returns a typed result. They are a
+separate list from event listeners on purpose. A listener has no return value the runner reads.
+A hook does, and keeping the two apart is what stops an observer from turning into an interceptor
+by accident. The hooks are `transform_context`, `before_request`, `before_tool`, `after_tool`, and
+`before_compaction`. `before_tool` is the policy hook. Its handlers run in registration order,
+`modify` decisions chain, and the first `reject` or `error` stops the chain. A handler that throws
+becomes `error`, so a broken policy plugin fails closed.
+
+A command runs at once with the argument typed after it. It answers with text for the user, with a
+`prompt` the client sends as the user's next message, or with nothing. A plugin acts on its own
+session through `api.session`: `info` (the name, and whether the session is a child), `rename`,
+and `context` (the main branch as the model would see it next). A plugin that needs more asks for
+a new verb here. It does not reach for the store.
+
+Hooks and events are two lists on purpose, the way a pre-commit hook and a post-receive hook are.
+A hook handler returns something the runner reads, so it can refuse or rewrite what is about to
+happen. `api.events.subscribe` delivers the same `SessionEvent` stream a client folds, after the
+fact, and nothing a listener returns or throws reaches the run. Observers built on it, such as
+notifications and the footer's status items, cannot become interceptors by accident.
+
+Two more ways a plugin reaches the user without touching the conversation: `diagnostics.notify`
+asks for attention (a title, a message, and whether to make a sound), and the `status` registry
+holds short items a client shows beside the model. Both travel as events, `notification` and
+`status_changed`, so every client renders them the same way.
+
+Activation is per session and per host process. Handlers **must** be re-entrant. Cross-step state
+belongs behind session fact refs or in a host-owned service, never in a runner closure. Plugin
+failure **must not** weaken a policy decision into permission.
+
+Facts use `refs/facts/<key>` pointing to blobs. The SDK keeps a session's `name` and `parent`
+there, and plugin storage lives under a per-plugin prefix. Ref updates make their changes visible
+in the same event stream as every other domain ref.
+
+## Agents
+
+An agent is a host-resolved plugin contribution, not a second runner type. A run stores the folded
+agent name in its `config`. A parent names an agent. It does not pass a model, prompt, or enlarged
+tool set through a tool call.
+
+Child work is a child session with durable parent coordinates stored as a `parent` fact: parent
+session, run, call, agent, and depth. `sessions.create({ parent })` writes them, `sessions.list({
+parent })` finds the children, and a plugin reads `session.info().child`. Durable child completion
+**must** travel through stored state, never through a process-local registry the model queries.
+
+Delegation is a `task` tool that creates the child and parks through the effect sandwich. The child
+runs independently, so a tool batch may run several children at once and the parent holds no lease
+while it waits. Child completion signals the parent's effect; the wake handler reads the result from
+the child session rather than trusting process-local state. The SDK installs `task` only in root
+sessions, so delegation depth is 1. A client presents a parked task as background work rather than
+as a request for user input; it can expose the live child transcript through the child session.
+
+## The SDK
+
+The kernel SDK is plain data and one options object per verb. `SessionId` is the only branded id.
+Run ids, head names, oids, and sequences use fields that name their meaning. `main` is the default
+head.
+
+The root contract is:
+
+```text
+Nyte
+  landing    the landing policy in force: the lanes a client may send to, in priority order
+  sessions   create · get · snapshot · list · rename · setPinned · setArchived · delete · configure
+  messages   send · cancel · redeliver · list · pending
+  runs       current · abort · wait · reply · compact · context · changes
+  heads      list · create · move · delete · merge
+  workspace  list · forget · vcs.status · vcs.diff
+  provider   models.list · models.default
+  plugins    list · commands.list · commands.run · settings.list · settings.apply · resources.list · status.list
+  watch({ sessionId, afterSeq? } | { sessionId, live: true })
+  attach({ sessions? })
+  setPlugins(plugins)
+  close()
+```
+
+`NyteOptions` always supplies `store`, `streamFn`, `models`, and a fallback `model`. It may supply
+`landing` (the lanes this host serves; absent means `steer` and `queue`), `actor`, `thinkingLevel`,
+`compaction`, stream options, VCS, and a workspace registry. Static composition supplies `plugins`
+and `env`. Lazy composition supplies `resolveActivation` and must not also supply static plugins or
+env.
+
+`runs.compact` writes a manual checkpoint. `heads.move({ summary })` carries abandoned history to
+the navigation target with a summary commit. `runs.wait` resolves `idle` only once the run is
+terminal, nothing is pending, and the runner has released its lease, because the last publish and
+the lease release are two writes and `idle` promises the head is free.
+
+The outcome unions a client switches on are exactly:
+
+```text
+ConfigureOutcome   queued { change } | unknown_model | unknown_agent
+SendReceipt        queued { change } | duplicate { change }
+CancelOutcome      cancelled | landed | not_found
+RedeliverOutcome   redelivered { change } | unchanged | landed | not_found
+AbortOutcome       requested { runId } | not_running
+WaitOutcome        idle | waiting { runId }
+ReplyOutcome       signalled | not_waiting | not_found
+CompactOutcome     compacted { commit } | nothing_to_compact | busy { run } | failed { message }
+CreateHeadOutcome  created { tip } | exists | unknown_parent
+MoveOutcome        moved { from, restored?: { commit, content }, summary?: Oid } | busy { run } | moved_since { tip } | not_found | failed { message }
+DeleteHeadOutcome  deleted | not_found | busy
+MergeOutcome       merged { tip } | stale | empty | no_stack
+CommandOutcome     ran { output? } | prompt { prompt } | not_found | failed { message }
+ApplyOutcome       applied | not_found | invalid_choice
+```
+
+`RunInfo` is not a terminal-state union. It carries `runId`, `head`, the kernel `RunPhase`,
+`startedAt`, `attempts`, optional `abortRequested`, and the current lease owner and expiry when a
+lease exists.
+
+### Events
+
+Every `SessionEvent` carries `seq`. The SDK projects raw ref events and objects into these exact
+kinds:
+
+```text
+commit           { head, item: { oid, commit } }
+head_moved       { head, from, to, reason, actor? }
+run              { head, run }
+queued           { head, item }
+landed           { head, change }
+queue_cancelled  { change }
+effect           { runId, callId, state: intent | waiting | signal | result, tool, args }
+stack            { head, parent, base }
+fact             { key, value }
+deleted
+synced
+text_delta       { runId, attempt, index, delta }
+reasoning_delta  { runId, attempt, index, delta }
+tool_progress    { runId, callId, progress }
+diagnostic       { level: info | warn | error, owner, message }
+plugins_changed  { plugins }
+notification     { owner, title?, message, sound }
+status_changed   { items }
+```
+
+The SDK event contract has no claim events, entry ids, retry overlay, compacting overlay, or
+compaction event. Deltas use the provisional run tuple because no commit oid exists until the
+assistant message is whole.
 
 ## Invariants
 
-The numbered list is the contract other documents and code comments cite by number. Numbers are
-never reused.
+This numbered list is the contract other documents and code comments cite by number. Numbers are
+never reused. A superseded number stays here with one line saying why.
 
 Storage and session:
 
-1. Entries and records are write-once; writing under an existing id is corruption.
-2. One `seq` per session orders entries, records, head moves, claims, and facts. Backends must not
-   shard counters.
-3. Heads and facts are the only mutable state, and a head moves only by append-through, deliberate
-   move, create, or delete.
-4. A value crosses into durable storage only through `toJsonValue`.
-5. Admission never requires a claim, never blocks on one, and never fails because one exists. Its
-   two dispositions are decided atomically with the claim-state read.
-6. Concurrent sends linearize; nothing forks a head except creating a head or moving one.
-7. Admission is idempotent under a caller-supplied key.
+1. **Superseded.** Entries and records no longer exist. All six object kinds are immutable and
+   addressed by canonical-content hash.
+2. **Superseded.** `seq` orders events only. Objects, refs, and leases do not receive a shared log
+   position.
+3. **Superseded.** Heads and facts are not the only mutable state. Every domain register is a ref,
+   including queues, runs, effects, stacks, keys, cancellation, and deletion.
+4. **Superseded.** The object store canonicalizes typed objects directly. `toJsonValue` remains a
+   boundary for unknown effect, note, and progress payloads, not every durable write.
+5. **Superseded.** Admission no longer chooses placed or queued by reading a claim. Every submit
+   appends a change to a lane chain without taking a lease.
+6. Concurrent participant writes linearize through ref CAS. A head advances only from its expected
+   oid, so concurrent writers do not create an implicit fork.
+7. Submission is idempotent under a caller-supplied key written with the queue tip in one CAS.
 
-Claims and runs:
+Leases and runs:
 
-8. At most one live claim per head; every run write is fenced by its claim; a fenced-out runner's
-   transaction aborts before touching data.
-9. An unfinished run with an expired claim is claimable by any runner. Resume settles unsettled
-   intents by replay policy and never replays a settled effect.
-10. The `tool_started` intent, with provisioned `resultEntryId` and replay policy, commits before
-    the tool executes; settlement is written exactly once, at that id.
-11. Every accepted run eventually commits `operation_finished`, including on runner failure,
-    including when a different process finishes it.
-12. A runner requires no in-memory state that outlives a step; everything the next step needs is
-    in the log.
-13. A waiting run holds no claim and consumes no process anywhere; its wake input arrives by
-    admission and its settlement obeys invariant 10.
+8. At most one live lease exists per head name. Every runner ref write and event append is fenced,
+   and a fenced transaction changes nothing.
+9. Any runner may acquire an expired head lease and resume the run named by refs. It recovers an
+   effect from its stored state and replay policy and never executes a stored result again.
+10. **Superseded.** Tools no longer provision a result entry id. An effect ref names immutable
+    intent, waiting, signal, and result objects, and result messages enter the branch at tool-batch
+    publish.
+11. **Superseded.** The kernel cannot promise eventual completion without a runner. A run remains
+    durable in its current phase until some process advances it.
+12. A runner requires no in-memory state that outlives a step. The next step reads the head, run,
+    queue, effect, and deletion refs.
+13. **Superseded.** Wake input is not ordinary message admission. A waiting run is woken by the
+    first CAS from an effect's waiting state to its signal state, or by abort.
 
 Turn and boundaries:
 
-14. The turn imports nothing from runner, store, providers, or Node hosts; a stream function never
-    throws, failing in-band by stop reason.
-15. A `length`-stopped turn fails its whole tool batch.
-16. Tool results are content parts end to end; adapters encode at request time.
+14. **Superseded.** The kernel `Turn` receives the session and lease so it can maintain durable
+    effect refs and emit fenced events.
+15. A `length`-stopped assistant message fails its whole tool batch.
+16. Tool results remain schema content parts end to end. Providers encode them at request
+    time.
 
 Events and views:
 
-17. The log is the durable event stream; `seq` is the only cursor; replay from a cursor is
-    complete with respect to durable state.
-18. Ephemeral overlays reference the provisioned entry they settle into; host notifications carry
-    nothing durable and are re-derivable by a list call. No client state depends on having seen
-    either.
-19. Projections read the log and never write.
+17. **Superseded.** The event stream is not the object store. It is a retained stream of ref moves,
+    deltas, progress, and notices, and replay below its floor is refused.
+18. **Superseded.** Streaming overlays cannot reference a provisioned entry. They reference run id,
+    attempt, and content index until the completed message has a commit oid.
+19. Projections read objects, refs, and events and never write authoritative state.
 
 Policy:
 
-20. Ported files change only within the recorded divergence classes; new behavior composes.
-21. Extension failures are contained; extension capabilities degrade across hosts; project
-    extension code never loads before trust.
-22. No global mutable defaults in core; the stream function is injected.
-23. No public verb, claim, or runner option encodes a wall-clock execution budget. The claim TTL is
-    failover metadata; hosts own budgets, process termination is the fence, and recovery works
-    from durable state alone.
+20. Ported files change only within recorded divergence classes. New behavior composes around the
+    port unless the divergence is named.
+21. Extension failures are contained, extension capabilities may degrade across hosts, and project
+    extension code **must not** load before trust.
+22. Core has no global mutable defaults. The stream function and model catalog are injected.
+23. No public SDK verb encodes a wall-clock execution budget. Lease TTL is failover metadata;
+    hosts own execution budgets.
 
 Plugins:
 
-24. Nothing reaches the model except through a plugin contribution. The harness owns no prompt,
-    tool, or skill of its own; built-ins are plugins and are replaceable by id.
-25. Contribution tables are a function of the activation list alone: replaying the same list over
-    a fresh draft yields the same tables, and a rebuild never reads the previous table.
-26. Plugin storage is session facts under the plugin's own prefix. A plugin cannot reach another
-    plugin's keys, and a setting has no in-memory copy the log could contradict.
+24. Nothing reaches the model except through host composition and plugin contribution. Built-ins
+    are replaceable plugin contributions.
+25. Contribution tables are a function of the activation list. Replaying the same list over a
+    fresh draft yields the same tables.
+26. Plugin session storage uses fact refs under the plugin's prefix. A plugin **must not** read or
+    write another plugin's keys.
 
 Agents:
 
-27. An agent is one declared record from the `agents` registry. There is no separate subagent
-    type; `mode` is subtractive over a default of `all` and never grants a capability. Built-in
-    agents are contributions replaceable by id.
-28. A parent selects an agent by name only. It never sets the child's model, prompt, or tools, and
-    it cannot loosen the policies over them. A child composed without the `subagents` builtin is
-    the nesting limit.
-29. The driving agent is a run input recorded in `operation_started` and re-resolved from the
-    running host's registry on resume; the head carries no agent register.
-30. A model-facing background job settles through the durable log, never through a process-local
-    registry the model queries. A host-local live terminal is a separate, ephemeral, human-facing
-    service.
+27. An agent is one plugin registry contribution. There is no separate subagent runner type, and
+    its mode never grants a capability.
+28. A parent selects an agent by name. It **must not** set the child's model, prompt, tools, or a
+    weaker policy through model-supplied arguments.
+29. **Superseded.** There is no `operation_started` record. The run object stores configuration
+    folded from config commits when the run starts.
+30. A model-facing background job settles through durable session state, never through a
+    process-local registry the model queries.
 
 Presentation:
 
-31. A settled tool result is self-contained: failure and abort settlements preserve the last
-    reported partial, and no projection reads ephemeral history. Core projections and base
-    presentation are total over unknown tools and custom types and never consult the plugin list.
-    Per-tool renderers are client composition and are never load-bearing.
+31. A settled tool result is self-contained. Core transcript and base presentation remain total
+    for unknown tools and note types and do not depend on ephemeral progress.
 
 Heads and pending input:
 
-32. Every head move is logged with its previous tip, its new tip, its cause, and its actor when
-    known, unconditionally, and the move log is never pruned.
-33. A head created from another records its parent and base; staleness is `base !== parent.tip`;
-    a branch is carried forward by a summary at the new base, and no entry is ever rewritten or
-    re-parented.
-34. Pending input is one record kind with a lane, and "pending" is one store query every consumer
-    shares.
+32. **Superseded.** Head moves are logged as ref events, but the reflog is retained only above the
+    event floor and may be trimmed.
+33. Parent, base, and staleness remain. Summary navigation carries an abandoned path forward with
+    one summary commit at the new base and never replays generated text.
+34. **Superseded.** Pending input is not a record kind. It is the visible portion of the lane
+    chains after tombstones are removed.
+
+Kernel CAS, queues, retention, and streaming:
+
+35. Every ref CAS checks all `from` values before any write. `to === from` is an assertion that
+    emits no event. Runner publishes **must** assert `refs/deleted` absent.
+36. Each lane is one `Change.previous` chain bounded by base and tip refs. Submitting **must not**
+    replace it with an array or a client-owned queue.
+37. Cancellation is a tombstone ref. Landing and cancellation assert the state they race over, so
+    a change is cancelled or landed, never both. Redelivery tombstones the original and appends
+    its replacement in one CAS.
+38. Retention marks current refs and retained ref-event endpoints, follows all object links, and
+    sweeps only unmarked objects older than grace. Raising the event floor **must** make older
+    cursors fail with `CursorExpired` and take a snapshot.
+39. A streaming delta is keyed by `(runId, attempt, index)`. It **must not** claim a commit oid
+    before the complete message has been hashed.
+40. A client outbox **must** persist one key from Enter through receipt and retry that same key.
+    `queued` and `duplicate` both prove that the submitted change is durable.
+41. A commit has exactly one context parent. `imports` record provenance and **must not** enter the
+    model context chain.
+42. Objects **must** be put before a ref names them. A failed CAS may leave loose objects and
+    **must not** expose a partial ref update.
+43. The kernel **must not** name a head or a lane. Which lanes exist and when each lands is the
+    landing policy a runner passes to every step; the default head and default lanes are the
+    SDK's. A lane a head has never used is created by the first change written to it.
+44. TypeBox is the one schema library. A TypeBox type is the JSON Schema providers and MCP
+    exchange, so `Tool.parameters` crosses the wire without conversion, and hosts validate
+    their own boundaries with the same library. Only Node-side code imports `typebox/compile`;
+    a renderer under a no-eval CSP checks through `typebox/value`.
 
 ## Open questions
 
-1. **Long tools on stateless placements.** A bash command that outlives a request needs to run
-   where a process lives and settle by admission. The wait mechanism covers it; the host wiring
-   does not exist yet. Decide with the first remote backend.
-2. **Durable streaming frames.** One compact frame per provider event in an auxiliary table keyed
-   by the reserved entry id, deleted at settlement, would give cross-process observers token
-   granularity through the store alone. The price is a write per event. Measure before paying.
-3. **Records ledger growth.** Every record is kept forever for audit and replay. Revisit only when
-   growth measurably hurts.
-4. **Joining heads.** Restack by summary carries one branch onto another. A general join of two
-   named heads stays deferred until a product needs one.
-5. **Identity.** `origin` is attribution. ACL-scoped callers are host and protocol territory; the
-   only core obligation is that `origin` is durable and hooks can read it.
-6. **Host-scoped plugin storage.** Session facts are one session. Preferences that follow a user
-   across sessions need a host-owned store on the session API; decide when a second plugin needs
-   it.
+1. **Long tools on stateless placements.** A command that outlives a request needs a process that
+   can finish it or an external service that later signals its effect. The wait mechanism exists.
+   The first remote backend has to decide the host wiring.
+2. **Joining heads.** `heads.merge` fast-forwards a current stacked child into its parent. A general
+   join of two named heads stays deferred until a product needs one.
+3. **Identity and authorization.** `Actor` is durable attribution. ACL-scoped callers are host and
+   protocol territory.
+4. **Host-scoped plugin storage.** Fact refs belong to one session. Preferences shared across
+   sessions need a host-owned store when a concrete plugin needs one.
+5. **Retention defaults.** The kernel exposes trim, floor, grace, mark, and sweep without choosing
+   a window or schedule. Each host needs a policy before users can rely on a specific undo horizon.
 
 ## Lineage
 
-The turn and the durability mechanics (the effect sandwich, provisioned ids, replay policy, one
-`seq`) are ported from and tracked against pi, with one recorded divergence: the tool batch starts
-each call as it is prepared instead of preparing every call first. The admission vocabulary
-(`steer`, `queue`, `wait`, opaque cursors) follows OpenCode. The head model follows git (objects,
-refs, reflog, worktrees, ref locks) and the stack metadata follows Graphite's open-source fork
-charcoal (a parent branch and base revision per branch, staleness as one equality, restack from
-the recorded base). Open admission, heads with a move log, run claims, and the step contract are
-Uji's own. Ported files keep their `Based on` credit, and `THIRD-PARTY-NOTICES.md` lists every
-upstream.
+The kernel's git correspondence is deliberate. Object database to `objects`, refs and `update-ref`
+CAS to `refs`, lock files to `leases`, reflog to `events`. Nyte swaps the content for messages,
+enforces one context parent, has no worktree, and retains the reflog instead of keeping it
+forever.
+
+The turn, schema message types, effect sandwich, and replay policies come from pi. Ported files
+keep their `Based on` credit, and `THIRD-PARTY-NOTICES.md` lists upstreams. The SDK's default
+`steer` and `queue` lanes follow OpenCode's admission vocabulary.
+
+Stack metadata follows Graphite and its open-source fork charcoal: one parent branch and one base
+revision, with staleness as an equality check. The kernel does not copy their commit replay model.
+Generated conversation text is not a patch you can reapply safely, and pretending otherwise is how
+you end up with a transcript the model never said.
+
+The plain-object, one-options-object-per-verb SDK form follows `code.storage`. Nyte keeps that
+wire-friendly shape while exposing kernel oids, run phases, lane names, and the event cursor
+directly.

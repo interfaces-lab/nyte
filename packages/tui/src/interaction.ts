@@ -1,6 +1,6 @@
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
-import type { AuthInteraction, AuthPrompt } from "@uji-ai/ai";
+import type { AuthInteraction, AuthPrompt } from "@nyte-ai/ai";
 import { bold, cyan, dim } from "./cli-style.ts";
 
 async function ask(message: string, signal: AbortSignal): Promise<string> {
@@ -12,10 +12,7 @@ async function ask(message: string, signal: AbortSignal): Promise<string> {
   }
 }
 
-/**
- * CLI driver for the login funnel: prompts over readline, events to stdout.
- * A GUI implements this same interface with windows and forms.
- */
+/** CLI driver for the login funnel: prompts over readline, events to stdout. */
 export function cliInteraction(signal: AbortSignal): AuthInteraction {
   return {
     signal,

@@ -1,0 +1,19 @@
+{
+  "name": "Blue edition",
+  "note": "Raised paper, worn ink, and a bright yellow edge over gradient blue.",
+  "shape": "valley",
+  "letter": "none",
+  "slant": -24,
+  "finish": "press",
+  "halftone": 49,
+  "registration": 3,
+  "wear": 80,
+  "palette": "bluepress",
+  "crop": 77,
+  "offset": 90,
+  "scale": 97,
+  "depth": 30,
+  "blend": 22,
+  "grain": 0,
+  "light": 315
+}

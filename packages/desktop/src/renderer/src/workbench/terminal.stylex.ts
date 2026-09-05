@@ -1,0 +1,58 @@
+import * as stylex from "@stylexjs/stylex";
+import { t } from "../theme/vars.stylex";
+
+export const terminalStyles = stylex.create({
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    backgroundColor: t.bgBase,
+  },
+  body: { position: "relative", flex: 1, minHeight: 0, minWidth: 0 },
+  panel: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    minWidth: 0,
+    outlineStyle: "none",
+    backgroundColor: t.bgBase,
+  },
+  hidden: { display: "none" },
+  canvas: {
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    paddingBlock: 8,
+    paddingInline: 6,
+    overflow: "hidden",
+  },
+  state: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    paddingBlock: 8,
+    paddingInline: 12,
+    color: t.textSecondary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  failure: { color: t.textDanger },
+  empty: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    padding: 24,
+    color: t.textSecondary,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    textAlign: "center",
+  },
+});

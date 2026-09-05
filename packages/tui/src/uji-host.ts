@@ -11,7 +11,10 @@
  * (design record, import rules). The durable transcript fold rides that
  * handle; the SDK's `watch` carries the live overlays.
  */
+import { join } from "node:path";
+import process from "node:process";
 import {
+  clampThinkingLevel,
   fetchAnthropicAccountLimits,
   fetchOpenAICodexAccountLimits,
   hasApi,
@@ -19,8 +22,9 @@ import {
   type Api,
   type Model,
 } from "@uji-ai/ai";
-import { sessionId as parseSessionId } from "@uji-ai/core";
+import { createUji, isThinkingLevel, sessionId as parseSessionId } from "@uji-ai/core";
 import type {
+  AskPresenter,
   CommandInfo,
   Disposer,
   SessionEvent,
@@ -31,11 +35,13 @@ import type {
   Uji,
 } from "@uji-ai/core";
 import type { Skill } from "@uji-ai/schema";
-import { openUji, resolveCliPlugins, type OpenUjiOptions, type ResolvedRuntime } from "./run.ts";
-import type { SqliteSessionRepo, SessionStorage } from "@uji-ai/core/store";
+import { requireModel } from "./catalog.ts";
+import { resolveCliPlugins, resolveRunModelId, type ResolvedRuntime } from "./run.ts";
+import type { ResolvedSettings } from "./settings.ts";
+import { SqliteSessionRepo, type SessionStorage } from "@uji-ai/core/store";
 
 /** What the status line says the active session is doing, folded from `watch`. */
-type HostRunState =
+export type HostRunState =
   | "idle"
   | "working"
   | "compacting"
@@ -44,17 +50,25 @@ type HostRunState =
   | "resuming"
   | "running tool";
 
-/** The intent kind of a run, as `run_started` declares it. */
-export type RunOperation = Extract<SessionEvent, { kind: "run_started" }>["operation"];
-
-interface UjiHostOptions
-  extends Pick<OpenUjiOptions, "workspace" | "settings" | "model" | "thinkingLevel" | "storePath"> {
+export interface UjiHostOptions {
+  workspace: TrustedWorkspace;
+  settings: ResolvedSettings;
   runtime: ResolvedRuntime;
+  /** Composition fallbacks; a session's declared config wins per run. */
+  model: Model<Api>;
+  thinkingLevel: ThinkingLevel;
+  ask: AskPresenter;
+  /**
+   * Where the sessions live. Defaults to the workspace's own store; `/cd`
+   * passes the launch workspace's path, because changing the tool directory
+   * must not strand the conversation in another database.
+   */
+  storePath?: string;
   /** Plugin load failures and other host chatter, for the transcript. */
   report?: (message: string) => void;
 }
 
-type HostResumeTarget =
+export type HostResumeTarget =
   | { kind: "new" }
   | { kind: "latest" }
   | { kind: "session"; id: string };
@@ -87,11 +101,8 @@ export class UjiHost {
   private watchStop: AbortController | undefined;
   private readonly listeners = new Set<(event: SessionEvent) => void>();
   private runState: HostRunState = "idle";
-  /** Kept through `run_finished`, so a listener can tell a compaction's end from a turn's. */
-  private operation: RunOperation = "run";
   private currentModel: Model<Api>;
   private currentThinking: ThinkingLevel;
-  private currentName: string | undefined;
   private commandCache: ReadonlyMap<string, CommandInfo> = new Map();
   private skillCache: ReadonlyMap<string, Skill> = new Map();
   private readonly limitsByProvider = new Map<string, AccountLimits>();
@@ -128,17 +139,45 @@ export class UjiHost {
     options: UjiHostOptions,
     target: HostResumeTarget,
   ): Promise<{ host: UjiHost; created: boolean }> {
-    // Delegating closures: a provider switch re-points `host.runtime` and the
-    // next request follows, with no composition rebuild.
-    const runtimeBox = { current: options.runtime };
+    const store = new SqliteSessionRepo(
+      options.storePath ?? join(options.workspace.cwd, ".uji", "sessions.db"),
+    );
+    let sdk: Uji | undefined;
     let host: UjiHost | undefined;
-    const { sdk, store } = await openUji({
-      ...options,
-      runtime: () => runtimeBox.current,
-      report: (message) => options.report?.(message),
-      onAccountLimits: (limits) => host?.observeAccountLimits(limits),
-    });
     try {
+      const resolved = await resolveCliPlugins(options.workspace, {
+        model: options.model,
+        models: options.runtime.models,
+      });
+      for (const failure of resolved.failures) {
+        options.report?.(`plugin ${failure.path}: ${failure.error}`);
+      }
+      // Delegating closures: a provider switch re-points `host.runtime` and the
+      // next request follows, with no composition rebuild.
+      const runtimeBox = { current: options.runtime };
+      sdk = await createUji({
+        store,
+        streamFn: (model, context, streamOptions) =>
+          runtimeBox.current.models.streamSimple(model, context, {
+            ...streamOptions,
+            onAccountLimits: (limits) => {
+              host?.observeAccountLimits(limits);
+            },
+          }),
+        models: {
+          getModels: (provider) => runtimeBox.current.models.getModels(provider),
+          getModel: (provider, id) => runtimeBox.current.models.getModel(provider, id),
+          checkAuth: (provider) => runtimeBox.current.models.checkAuth(provider),
+          getProvider: (id) => runtimeBox.current.models.getProvider(id),
+        },
+        model: options.model,
+        thinkingLevel: options.thinkingLevel,
+        plugins: resolved.plugins,
+        env: { cwd: options.workspace.cwd },
+        compaction: options.settings.compaction,
+        streamOptions: { transport: options.settings.transport },
+        ask: options.ask,
+      });
       const { info, created } = await openTarget(sdk, target);
       const storage = await store.open(info.sessionId);
       host = new UjiHost(options, sdk, store, { info, storage }, runtimeBox);
@@ -148,7 +187,7 @@ export class UjiHost {
       host.startWatch();
       return { host, created };
     } catch (error) {
-      await sdk.close().catch(() => undefined);
+      await sdk?.close().catch(() => undefined);
       await store.close().catch(() => undefined);
       throw error;
     }
@@ -171,25 +210,8 @@ export class UjiHost {
     return this.currentThinking;
   }
 
-  /** The chat's name, folded from `name_changed`; the terminal title reads it. */
-  get name(): string | undefined {
-    return this.currentName;
-  }
-
-  private waitingRunId: string | undefined;
-
-  get state(): {
-    runState: HostRunState;
-    busy: boolean;
-    waiting: boolean;
-    operation: RunOperation;
-  } {
-    return {
-      runState: this.runState,
-      busy: this.runState !== "idle",
-      waiting: this.waitingRunId !== undefined,
-      operation: this.operation,
-    };
+  get state(): { runState: HostRunState; busy: boolean } {
+    return { runState: this.runState, busy: this.runState !== "idle" };
   }
 
   /** Plugin commands, cached for synchronous autocomplete. */
@@ -392,7 +414,6 @@ export class UjiHost {
         ? this.runtime.models.getModel(declared.provider, declared.id)
         : undefined) ?? this.fallbackModel;
     this.currentThinking = info?.config.thinkingLevel ?? this.fallbackThinking;
-    this.currentName = info?.name;
   }
 
   private async refreshContributions(): Promise<void> {
@@ -419,7 +440,7 @@ export class UjiHost {
           signal: stop.signal,
         })) {
           if (stop.signal.aborted) return;
-          await this.fold(event);
+          this.fold(event);
           for (const listener of this.listeners) listener(event);
         }
       } catch (error) {
@@ -431,27 +452,18 @@ export class UjiHost {
     })();
   }
 
-  /** Folded before listeners run, so what they read from the host is already current. */
-  private async fold(event: SessionEvent): Promise<void> {
+  private fold(event: SessionEvent): void {
     switch (event.kind) {
       case "run_started":
-        this.operation = event.operation;
         this.runState =
           event.operation === "compaction"
             ? "compacting"
             : event.operation === "navigation"
               ? "navigating"
               : "working";
-        this.waitingRunId = undefined;
         return;
       case "run_finished":
         this.runState = "idle";
-        this.waitingRunId = undefined;
-        return;
-      case "run_waiting":
-        // The composer is live, so the status is idle; escape still aborts.
-        this.runState = "idle";
-        this.waitingRunId = event.runId;
         return;
       case "retry_scheduled":
         this.runState = "retrying";
@@ -463,10 +475,7 @@ export class UjiHost {
         this.runState = "compacting";
         return;
       case "plugins_changed":
-        await this.refreshContributions().catch(() => undefined);
-        return;
-      case "name_changed":
-        this.currentName = event.name;
+        void this.refreshContributions().catch(() => undefined);
         return;
       default:
         return;
@@ -499,4 +508,24 @@ async function openTarget(
       return _exhaustive;
     }
   }
+}
+
+/** Resolve the composition fallbacks a workspace launch starts from. */
+export function hostFallbacks(
+  runtime: ResolvedRuntime,
+  settings: ResolvedSettings,
+  flags: { model?: string; effort?: string },
+): { model: Model<Api>; thinkingLevel: ThinkingLevel } {
+  const modelId = resolveRunModelId(runtime.models, runtime.provider.id, {
+    flag: flags.model,
+    environment: process.env["UJI_MODEL"],
+    settings,
+  });
+  const model = requireModel(runtime.models, runtime.provider.id, modelId);
+  const requested = flags.effort ?? process.env["UJI_EFFORT"];
+  const effort =
+    requested !== undefined && isThinkingLevel(requested)
+      ? requested
+      : (settings.defaultThinkingLevel ?? "medium");
+  return { model, thinkingLevel: clampThinkingLevel(model, effort) };
 }

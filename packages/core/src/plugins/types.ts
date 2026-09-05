@@ -1,20 +1,25 @@
 /**
- * The plugin contract: what a plugin module exports and what the harness
+ * The plugin contract: what a plugin module exports and what the host
  * hands its `session` factory. Built-ins under `./builtin` and files under
- * `.uji/plugins` both use this and nothing else.
+ * `.nyte/plugins` both use this and nothing else.
  *
  * Design: packages/docs/content/docs/design.mdx, "Plugins". Contract from pi
- * dev's extensions-v2 notes, runtime shape from opencode v2
+ * dev's extensions-v2 notes, runtime form from opencode v2
  * (`define({ id, effect(ctx) })`, a scope per plugin).
  */
-import type { JsonValue, Skill } from "@uji-ai/schema";
-import type { HarnessTool } from "../harness/agent-harness.ts";
-import type { HookHandler, HookName } from "../harness/hooks.ts";
+import type { JsonValue, Message, Skill } from "@nyte-ai/schema";
+import type { PluginSource, SettingChoice } from "@nyte-ai/protocol";
+import type { SessionEvent } from "../kernel/sdk/types.ts";
+import type { AgentTool } from "../types.ts";
+import type { HookHandler, HookName } from "./hooks.ts";
 
 export type Disposer = () => void;
 
-/** Where a plugin came from. Later sources replace earlier ones with the same id. */
-export type PluginSource = "builtin" | "user" | "project" | "inline";
+/**
+ * `PluginSource`, `PluginInfo`, `SettingChoice`, and `SettingInfo` are what
+ * clients read, so they are declared in `@nyte-ai/protocol` and re-exported.
+ */
+export type { PluginInfo, PluginSource, SettingChoice, SettingInfo } from "@nyte-ai/protocol";
 
 export interface Plugin {
   readonly id: string;
@@ -31,13 +36,6 @@ export interface LoadedPlugin {
   readonly path?: string;
 }
 
-export type PluginInfo = {
-  readonly id: string;
-  readonly version: string;
-  readonly source: PluginSource;
-  readonly path?: string;
-} & ({ readonly status: "active" } | { readonly status: "failed"; readonly error: string });
-
 export interface Draft<T> {
   set(id: string, value: T): void;
   update(id: string, fn: (current: T) => T): void;
@@ -47,9 +45,9 @@ export interface Draft<T> {
   ids(): readonly string[];
 }
 
-export interface ToolDraft extends Draft<HarnessTool> {
+export interface ToolDraft extends Draft<AgentTool> {
   /** Replace a tool's `execute` with one that can call the previous implementation. */
-  wrap(id: string, wrap: (inner: HarnessTool["execute"]) => HarnessTool["execute"]): void;
+  wrap(id: string, wrap: (inner: AgentTool["execute"]) => AgentTool["execute"]): void;
 }
 
 /**
@@ -59,7 +57,7 @@ export interface ToolDraft extends Draft<HarnessTool> {
  * guessing at a fixed set.
  */
 export interface ToolRegistry extends Registry<ToolDraft> {
-  list(): readonly HarnessTool[];
+  list(): readonly AgentTool[];
 }
 
 /**
@@ -74,12 +72,18 @@ export interface Agent {
   readonly mode?: "primary" | "subagent" | "all";
   /** Hide from both the picker and the delegate list without changing run rights. */
   readonly hidden?: boolean;
-  /** What a parent reads to decide whether to delegate. Also the `task` menu line. */
+  /** What a parent reads to decide whether to delegate. */
   readonly description?: string;
   /** A `provider/model` ref the catalog resolves; omitted inherits the run's fallback model. */
   readonly model?: string;
   /** Persona layered onto the base system prompt, never replacing it. */
   readonly system?: string;
+  /**
+   * The tools this agent may call, by name. Omitted, it calls every tool the
+   * session has. A name the session lacks is skipped, not an error, so a
+   * read-only agent declared once works in a host that lacks some of its tools.
+   */
+  readonly tools?: readonly string[];
   /** A step-count ceiling, not a wall-clock budget (design.mdx invariant 23). */
   readonly steps?: number;
   readonly disabled?: boolean;
@@ -88,8 +92,7 @@ export interface Agent {
 /**
  * The `agents` contribution registry. Like every registry a plugin `add`s to
  * and `rebuild`s, plus `list`: the materialized agents after the last rebuild,
- * so a plugin that projects agents (the `subagents` builtin) reads them while
- * contributing its own tool.
+ * so a plugin that projects agents into a tool reads them while contributing it.
  */
 export interface AgentRegistry extends Registry<Draft<Agent>> {
   list(): readonly Agent[];
@@ -101,23 +104,26 @@ export interface PromptSection {
   readonly order?: number;
 }
 
-export interface Command {
-  readonly description: string;
-  /** Runs on the host that owns the command. Returned text is shown to the user. */
-  run(argument: string): Promise<string | undefined> | string | undefined;
+/** Text is shown to the user; a `prompt` is sent as the user's next message. */
+export type CommandResult = string | CommandPrompt | undefined;
+
+export interface CommandPrompt {
+  readonly prompt: string;
 }
 
-export interface SettingChoice {
-  readonly id: string;
-  readonly label: string;
-  readonly description?: string;
-  /** Badge a client shows while this choice is current. A choice without one contributes nothing. */
-  readonly status?: string;
+export function isCommandPrompt(result: NonNullable<CommandResult>): result is CommandPrompt {
+  return typeof result !== "string";
+}
+
+export interface Command {
+  readonly description: string;
+  /** Runs on the host that owns the command, at once: a command never waits in the composer. */
+  run(argument: string): Promise<CommandResult> | CommandResult;
 }
 
 /**
  * A session policy a plugin declares to clients: a label, the choices it can
- * take, and the storage key holding the current one. The harness resolves the
+ * take, and the storage key holding the current one. The host resolves the
  * value and performs the write, so listing settings is one storage scan and
  * applying one is a fact append any host can make. Clients render settings
  * generically; nothing about a specific plugin leaks into them.
@@ -130,17 +136,6 @@ export interface PluginSetting {
   readonly key: string;
   /** Choice used when storage holds nothing or a choice that no longer exists. Defaults to the first. */
   readonly fallback?: string;
-}
-
-/** A declared setting with its owner and current choice resolved. What a client renders. */
-export interface SettingInfo {
-  readonly id: string;
-  /** Plugin that contributed the setting's current shape. */
-  readonly owner: string;
-  readonly label: string;
-  readonly choices: readonly [SettingChoice, ...SettingChoice[]];
-  /** Choice id, read from plugin storage at list time. */
-  readonly current: string;
 }
 
 export type ApplySettingOutcome =
@@ -171,8 +166,29 @@ export interface PluginEnv {
   readonly cwd: string;
 }
 
+/** Something the user should see outside the conversation; the client decides how. */
+export interface Notification {
+  readonly title?: string;
+  readonly message: string;
+  /** Ring the terminal bell, or the client's equivalent. */
+  readonly sound?: boolean;
+}
+
 export interface Diagnostics {
   warn(message: string): void;
+  notify(notification: Notification): void;
+}
+
+/** One word or phrase a client shows beside the model: what a plugin knows right now. */
+export interface StatusItem {
+  readonly text: string;
+  /** Lower shows first. Default 100. */
+  readonly order?: number;
+}
+
+/** The session's own event stream, the same one a client folds. Observation only: nothing returned is read. */
+export interface PluginEvents {
+  subscribe(listener: (event: SessionEvent) => void): Disposer;
 }
 
 export interface SessionApi {
@@ -185,19 +201,38 @@ export interface SessionApi {
   readonly resources: Registry<Draft<Skill>>;
   readonly settings: Registry<Draft<PluginSetting>>;
   readonly agents: AgentRegistry;
+  readonly status: Registry<Draft<StatusItem>>;
 
   // 2. hook: intercept a live operation and return a typed result
   hook<TName extends HookName>(name: TName, handler: HookHandler<TName>): Disposer;
 
+  // 3. observe and act on the session the plugin is bound to
+  readonly events: PluginEvents;
+  readonly session: PluginSession;
+
   readonly storage: PluginStorage;
   readonly diagnostics: Diagnostics;
+}
+
+/** Reads and writes on the session itself, as opposed to the plugin's own storage. */
+export interface PluginSession {
+  /** The name, if any, and whether this session is a child another session spawned. */
+  info(): Promise<{ readonly name?: string; readonly child: boolean }>;
+  rename(name: string): Promise<void>;
+  /** The main branch as the model would see it next: the prompt and the messages. */
+  context(): Promise<PluginContext>;
+}
+
+export interface PluginContext {
+  readonly systemPrompt: string;
+  readonly messages: readonly Message[];
 }
 
 export function definePlugin(plugin: Plugin): Plugin {
   return plugin;
 }
 
-/** Wrap a plugin object for `AgentHarness.create({ plugins })` without a loader. */
+/** Wrap a plugin object as a loaded plugin without a loader. */
 export function inlinePlugin(plugin: Plugin, options: { version?: string } = {}): LoadedPlugin {
   return { id: plugin.id, version: options.version ?? "inline", source: "inline", module: plugin };
 }

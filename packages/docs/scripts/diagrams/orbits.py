@@ -1,10 +1,10 @@
 """
 Architecture — one direction, four shells.
 
-Client, harness, loop, provider. Each shell holds a body that travels one way
-around it, and the shells never exchange bodies: a client talks to a harness,
-the harness drives the loop, the loop reaches a provider through a function it
-was handed, and nothing calls back up.
+Client, step, turn, provider. Each shell holds a body that travels one way
+around it, and the shells never exchange bodies: a client submits to the store,
+an attached runner's step drives the turn, the turn reaches a provider through a
+function it was handed, and nothing calls back up.
 
 The inner shells run faster, as they would under a real central force: the
 period goes as the radius to the three-halves, so the ratios in the figure are
@@ -19,8 +19,8 @@ from _canvas import ACCENT, CX, CY, CYAN, INK, VIOLET, Canvas, emit, fmt
 
 SHELLS = [
     {"r": 22.0, "colour": ACCENT, "label": "provider"},
-    {"r": 40.0, "colour": CYAN, "label": "loop"},
-    {"r": 58.0, "colour": VIOLET, "label": "harness"},
+    {"r": 40.0, "colour": CYAN, "label": "turn"},
+    {"r": 58.0, "colour": VIOLET, "label": "step"},
     {"r": 76.0, "colour": INK, "label": "client"},
 ]
 
@@ -49,7 +49,7 @@ def build() -> Canvas:
             ellipse_d(radius, radius * SQUASH),
             stroke=colour,
             opacity=0.3 if not outermost else 0.22,
-            # The client shell is dashed: it is the one seam Uji names but has
+            # The client shell is dashed: it is the one seam Nyte names but has
             # not written a wire for yet.
             dash="3 4" if outermost else None,
         )

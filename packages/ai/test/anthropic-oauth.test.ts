@@ -3,7 +3,7 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test } from "vitest";
 import { anthropicOAuth } from "../src/auth/oauth/anthropic.ts";
 import type { AuthEvent, AuthPrompt } from "../src/auth/types.ts";
 
@@ -50,12 +50,12 @@ function stubFetch(impl: (input: unknown, init?: RequestInit) => Promise<Respons
   return state;
 }
 
-void describe("Anthropic OAuth", () => {
+describe("Anthropic OAuth", () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
   });
 
-  void test("keeps the localhost redirect_uri for manual callback login", async () => {
+  test("keeps the localhost redirect_uri for manual callback login", async () => {
     let authUrl = "";
     const fetchMock = stubFetch(async (input, init) => {
       assert.equal(getUrl(input), "https://platform.claude.com/v1/oauth/token");
@@ -92,7 +92,7 @@ void describe("Anthropic OAuth", () => {
     assert.equal(fetchMock.calls, 1);
   });
 
-  void test("omits scope from refresh token requests", async () => {
+  test("omits scope from refresh token requests", async () => {
     const fetchMock = stubFetch(async (input, init) => {
       assert.equal(getUrl(input), "https://platform.claude.com/v1/oauth/token");
       assert.equal(init?.method, "POST");
@@ -123,7 +123,7 @@ void describe("Anthropic OAuth", () => {
     assert.equal(fetchMock.calls, 1);
   });
 
-  void test("anthropicOAuth.login resolves through the manual_code prompt and aborts it after settling", async () => {
+  test("anthropicOAuth.login resolves through the manual_code prompt and aborts it after settling", async () => {
     stubFetch(async (input) => {
       const url = typeof input === "string" ? input : String(input);
       if (url.includes("/oauth/token")) {

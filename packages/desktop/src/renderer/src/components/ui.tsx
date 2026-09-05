@@ -1,6 +1,9 @@
 /** Small shared controls, styled on the palette. */
+import { Button as BaseButton, Toggle, Tooltip } from "@nyte-ai/ui/primitives";
 import * as stylex from "@stylexjs/stylex";
+import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
+import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon, type IconName } from "./icons";
 
@@ -23,6 +26,23 @@ export const focus = stylex.create({
     outlineOffset: -2,
   },
 });
+
+/** Visually hidden, still announced: labels a control that reads by shape alone. */
+const hidden = stylex.create({
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    borderWidth: 0,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+  },
+});
+
+export const srOnly = hidden.srOnly;
 
 const styles = stylex.create({
   buttonBase: {
@@ -74,6 +94,7 @@ const styles = stylex.create({
       default: t.fillDanger,
       ":hover:not(:disabled)": t.fillDangerHover,
     },
+    opacity: { ":disabled": 0.5 },
   },
   iconButton: {
     width: 28,
@@ -103,21 +124,92 @@ const styles = stylex.create({
     animationIterationCount: "infinite",
     "@media (prefers-reduced-motion: reduce)": { animationName: "none" },
   },
-  statusIdle: { backgroundColor: t.borderStrong },
+  statusIdle: {
+    backgroundColor: "transparent",
+    boxShadow: `inset 0 0 0 1.5px ${t.iconTertiary}`,
+  },
   kbd: {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 17,
-    height: 17,
+    gap: 2,
+    flexShrink: 0,
+    minHeight: 18,
+    paddingBlock: 1,
     paddingInline: 4,
-    borderRadius: t.radiusSm,
+    borderRadius: t.radiusBase,
     backgroundColor: t.fillSecondary,
-    color: t.textTertiary,
+    color: t.textSecondary,
+    fontSize: t.fontSm,
+    fontFamily: t.fontMono,
+    fontWeight: 400,
+    fontVariantLigatures: "none",
+    letterSpacing: 0,
+    lineHeight: t.leadingSm,
+    whiteSpace: "nowrap",
+  },
+  kbdPlain: { padding: 0, backgroundColor: "transparent" },
+  tooltipPositioner: { zIndex: layer.tooltip, outline: "none" },
+  tooltipPopup: {
+    maxWidth: 260,
+    paddingBlock: 4,
+    paddingInline: 7,
+    borderRadius: t.radiusBase,
+    backgroundColor: t.bgElevated,
+    boxShadow: `${t.shadowPopover}, inset 0 0 0 1px ${t.strokeSecondary}`,
+    color: t.textSecondary,
     fontSize: t.fontXs,
-    fontFamily: t.fontSans,
+    lineHeight: t.leadingXs,
+    whiteSpace: "pre-line",
+    transformOrigin: "var(--transform-origin)",
+    opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
+    scale: {
+      default: 1,
+      "[data-starting-style]": 0.98,
+      "[data-ending-style]": 0.98,
+      "@media (prefers-reduced-motion: reduce)": 1,
+    },
+    transitionProperty: "opacity, scale",
+    transitionDuration: {
+      default: t.durationFast,
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: t.easeOut,
   },
 });
+
+type HintSide = Tooltip.Positioner.Props["side"];
+type HintAlign = Tooltip.Positioner.Props["align"];
+
+export function Hint({
+  content,
+  trigger,
+  side = "bottom",
+  align = "center",
+}: {
+  readonly content: ReactNode;
+  readonly trigger: ReactElement;
+  readonly side?: HintSide;
+  readonly align?: HintAlign;
+}): ReactElement {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger render={trigger} />
+      <Tooltip.Portal>
+        <Tooltip.Positioner
+          positionMethod="fixed"
+          side={side}
+          align={align}
+          sideOffset={6}
+          collisionPadding={8}
+          {...stylex.props(styles.tooltipPositioner)}
+        >
+          <Tooltip.Popup {...stylex.props(styles.tooltipPopup)}>{content}</Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -132,44 +224,142 @@ export function Button({
   icon,
   children,
   type = "button",
+  disabled,
   ...rest
 }: ButtonProps): ReactElement {
   return (
-    <button type={type} {...stylex.props(styles.buttonBase, focus.ring, styles[variant])} {...rest}>
+    <BaseButton
+      disabled={disabled}
+      render={<button type={type} {...rest} />}
+      {...stylex.props(styles.buttonBase, focus.ring, styles[variant])}
+    >
       {icon !== undefined && <Icon name={icon} size={14} />}
       {children}
-    </button>
+    </BaseButton>
   );
 }
 
 interface IconButtonProps extends Omit<JSX.IntrinsicElements["button"], "className" | "style"> {
-  icon: IconName;
+  icon: IconName | ReactElement;
   label: string;
   size?: number;
 }
 
-export function IconButton({ icon, label, size = 15, ...rest }: IconButtonProps): ReactElement {
+interface ToggleIconButtonProps extends Omit<IconButtonProps, "aria-pressed" | "onClick"> {
+  readonly pressed: boolean;
+  readonly onPressedChange: (pressed: boolean) => void;
+}
+
+export function IconButton({
+  icon,
+  label,
+  size = 15,
+  type = "button",
+  disabled,
+  ...rest
+}: IconButtonProps): ReactElement {
   return (
-    <button
-      type="button"
+    <BaseButton
+      disabled={disabled}
+      render={<button type={type} {...rest} />}
       aria-label={label}
       title={label}
       {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
-      {...rest}
     >
-      <Icon name={icon} size={size} />
-    </button>
+      {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
+    </BaseButton>
+  );
+}
+
+export function ToggleIconButton({
+  icon,
+  label,
+  size = 15,
+  pressed,
+  onPressedChange,
+  type = "button",
+  disabled,
+  ...rest
+}: ToggleIconButtonProps): ReactElement {
+  return (
+    <Toggle
+      pressed={pressed}
+      disabled={disabled}
+      onPressedChange={onPressedChange}
+      render={<button type={type} {...rest} />}
+      aria-label={label}
+      title={label}
+      {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
+    >
+      {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
+    </Toggle>
+  );
+}
+
+export function HintIconButton({
+  hint,
+  hintSide,
+  hintAlign,
+  ...button
+}: IconButtonProps & {
+  readonly hint?: ReactNode;
+  readonly hintSide?: HintSide;
+  readonly hintAlign?: HintAlign;
+}): ReactElement {
+  return (
+    <Hint
+      content={hint ?? button.label}
+      side={hintSide}
+      align={hintAlign}
+      trigger={<IconButton {...button} title={undefined} />}
+    />
+  );
+}
+
+export function HintToggleIconButton({
+  hint,
+  hintSide,
+  hintAlign,
+  ...button
+}: ToggleIconButtonProps & {
+  readonly hint?: ReactNode;
+  readonly hintSide?: HintSide;
+  readonly hintAlign?: HintAlign;
+}): ReactElement {
+  return (
+    <Hint
+      content={hint ?? button.label}
+      side={hintSide}
+      align={hintAlign}
+      trigger={<ToggleIconButton {...button} title={undefined} />}
+    />
   );
 }
 
 export function StatusDot({ working }: { working: boolean }): ReactElement {
   return (
-    <span {...stylex.props(styles.statusDot, working ? styles.statusWorking : styles.statusIdle)} />
+    <span
+      role="img"
+      aria-label={working ? "Running" : "Idle"}
+      {...stylex.props(styles.statusDot, working ? styles.statusWorking : styles.statusIdle)}
+    />
   );
 }
 
-export function Kbd({ children }: { children: ReactNode }): ReactElement {
-  return <kbd {...stylex.props(styles.kbd)}>{children}</kbd>;
+export function Kbd({
+  keys,
+  plain = false,
+}: {
+  readonly keys: readonly string[];
+  readonly plain?: boolean;
+}): ReactElement {
+  return (
+    <kbd {...stylex.props(styles.kbd, plain && styles.kbdPlain)}>
+      {keys.map((key) => (
+        <span key={key}>{key}</span>
+      ))}
+    </kbd>
+  );
 }
 
 /** "2m ago" for lists; bare clock time within today. */

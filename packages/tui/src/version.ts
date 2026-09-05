@@ -1,21 +1,21 @@
 /** Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/utils/version-check.ts */
 import process from "node:process";
 import { gt, valid } from "semver";
+import { toJsonValue } from "@nyte-ai/core/store";
 import packageMetadata from "../package.json" with { type: "json" };
+import { isJsonObject, isJsonString } from "./json.ts";
 
-export const REPO = "Itsnotaka/uji";
+export const REPO = "interfaces-lab/nyte";
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
 export const VERSION = packageMetadata.version;
 
-interface ReleaseInfo {
+export interface ReleaseInfo {
   /** Semver without the leading `v`. */
-  version: string;
-  url: string;
+  readonly version: string;
+  readonly url: string;
 }
-
-type UpdateNotice = ReleaseInfo;
 
 export function isNewerVersion(candidate: string, current: string): boolean {
   const candidateVersion = valid(candidate.trim());
@@ -25,10 +25,10 @@ export function isNewerVersion(candidate: string, current: string): boolean {
   );
 }
 
-function githubHeaders(): Record<string, string> {
+function githubHeaders(): Record<"accept" | "User-Agent" | "X-GitHub-Api-Version", string> {
   return {
     accept: "application/vnd.github+json",
-    "User-Agent": `uji/${VERSION}`,
+    "User-Agent": `nyte/${VERSION}`,
     "X-GitHub-Api-Version": "2022-11-28",
   };
 }
@@ -43,22 +43,16 @@ export async function fetchLatestRelease(
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) return undefined;
-    const data: unknown = await response.json();
-    if (
-      typeof data !== "object" ||
-      data === null ||
-      !("tag_name" in data) ||
-      typeof data.tag_name !== "string"
-    ) {
-      return undefined;
-    }
-    const version = valid(data.tag_name.trim().replace(/^v/u, ""));
+    const data = toJsonValue(await response.json());
+    if (!isJsonObject(data)) return undefined;
+    const tag = data["tag_name"];
+    if (!isJsonString(tag)) return undefined;
+    const version = valid(tag.trim().replace(/^v/u, ""));
     if (version === null) return undefined;
+    const html = data["html_url"];
     const url =
-      "html_url" in data &&
-      typeof data.html_url === "string" &&
-      data.html_url.startsWith(`https://github.com/${REPO}/releases/`)
-        ? data.html_url
+      isJsonString(html) && html.startsWith(`https://github.com/${REPO}/releases/`)
+        ? html
         : RELEASES_URL;
     return { version, url };
   } catch {
@@ -69,8 +63,11 @@ export async function fetchLatestRelease(
 /** A newer release than the running build, unless the user opted out of network checks. */
 export async function checkForUpdate(
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
-): Promise<UpdateNotice | undefined> {
-  if (process.env.UJI_OFFLINE !== undefined || process.env.UJI_SKIP_VERSION_CHECK !== undefined) {
+): Promise<ReleaseInfo | undefined> {
+  if (
+    process.env["NYTE_OFFLINE"] !== undefined ||
+    process.env["NYTE_SKIP_VERSION_CHECK"] !== undefined
+  ) {
     return undefined;
   }
   const latest = await fetchLatestRelease(fetchFn);

@@ -1,17 +1,18 @@
 /**
- * The rail's seat in the stage: it owns the show/hide animation and the
- * resize handle, so the rail itself only ever renders at its full width.
+ * The rail's seat in the stage owns visibility and the resize handle, so the
+ * rail itself only ever renders at its full width.
  *
- * Hiding animates the seat's width to zero while the rail fades; the rail
- * stays mounted so its scroll position, search text, and in-progress rename
- * survive a toggle. Resizing writes the width straight to the root variable
- * on every pointer move and commits to the store on release, so the drag
- * never waits for React.
+ * Hiding changes geometry immediately and keeps the rail mounted so scroll
+ * position, search text, and in-progress rename survive a toggle without an
+ * intermediate flickering state. Resizing writes the width straight to the
+ * root variable on every pointer move and commits to the store on release,
+ * so the drag never waits for React.
  *
- * Geometry follows Cursor's practical sidebar bounds: 260 default, 210 to
+ * Geometry follows Cursor's Agents sidebar: 220 default, 190 to
  * 400, an 8px pointer target on the trailing edge, and 8px keyboard steps.
  */
 import * as stylex from "@stylexjs/stylex";
+import { useMatch } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import { sidebar } from "../theme/schema.stylex.ts";
@@ -34,16 +35,11 @@ const styles = stylex.create({
     minHeight: 0,
     flexShrink: 0,
     overflow: "hidden",
-    transitionProperty: "width",
-    transitionDuration: t.durationSlow,
-    transitionTimingFunction: t.easeOutQuint,
-    "@media (prefers-reduced-motion: reduce)": { transitionDuration: "0s" },
   },
   seatHidden: {
     width: 0,
     pointerEvents: "none",
   },
-  seatResizing: { transitionDuration: "0s" },
   rail: {
     display: "flex",
     width: sidebar.width,
@@ -51,10 +47,6 @@ const styles = stylex.create({
     minHeight: 0,
     flexShrink: 0,
     opacity: 1,
-    transitionProperty: "opacity",
-    transitionDuration: t.durationNormal,
-    transitionTimingFunction: t.easeOut,
-    "@media (prefers-reduced-motion: reduce)": { transitionDuration: "0s" },
   },
   railHidden: { opacity: 0 },
   handle: {
@@ -71,15 +63,16 @@ const styles = stylex.create({
       position: "absolute",
       insetBlock: 0,
       insetInlineEnd: 0,
-      width: 1,
+      width: { default: 1, ":focus-visible": 2 },
       borderRadius: t.radiusFull,
       backgroundColor: {
         default: t.borderSubtle,
         ":hover": t.strokeSecondary,
         ":focus-visible": t.strokeFocused,
       },
-      transitionProperty: "background-color",
+      transitionProperty: "background-color, width",
       transitionDuration: t.durationFast,
+      transitionTimingFunction: t.easeOut,
     },
   },
   handleActive: { "::after": { backgroundColor: t.strokeFocused } },
@@ -92,14 +85,16 @@ interface ResizeState {
   nextWidth: number;
 }
 
+function applyWidth(width: number): void {
+  document.documentElement.style.setProperty("--nyte-sidebar-width", `${String(width)}px`);
+}
+
 export function SidebarPane({ children }: { readonly children: ReactNode }): ReactElement {
   const { sidebarVisible, sidebarWidth } = useShellState();
+  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
+  const visible = sidebarVisible || settings !== undefined;
   const [resizing, setResizing] = useState(false);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
-
-  const applyWidth = (width: number): void => {
-    document.documentElement.style.setProperty("--uji-sidebar-width", `${String(width)}px`);
-  };
 
   const beginResize = (event: PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
@@ -153,21 +148,15 @@ export function SidebarPane({ children }: { readonly children: ReactNode }): Rea
   };
 
   return (
-    <div
-      {...stylex.props(
-        styles.seat,
-        !sidebarVisible && styles.seatHidden,
-        resizing && styles.seatResizing,
-      )}
-    >
+    <div {...stylex.props(styles.seat, !visible && styles.seatHidden)}>
       <div
-        aria-hidden={!sidebarVisible}
-        inert={sidebarVisible ? undefined : true}
-        {...stylex.props(styles.rail, !sidebarVisible && styles.railHidden)}
+        aria-hidden={!visible}
+        inert={visible ? undefined : true}
+        {...stylex.props(styles.rail, !visible && styles.railHidden)}
       >
         {children}
       </div>
-      {sidebarVisible && (
+      {visible && (
         <div
           role="separator"
           tabIndex={0}

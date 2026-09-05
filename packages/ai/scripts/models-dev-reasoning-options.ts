@@ -1,4 +1,4 @@
-import { MODEL_THINKING_LEVELS } from "@uji-ai/schema";
+import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { ThinkingLevelMap } from "../src/types.ts";
 
 export type ModelsDevReasoningOption =

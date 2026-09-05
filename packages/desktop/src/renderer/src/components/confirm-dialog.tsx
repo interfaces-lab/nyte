@@ -1,7 +1,8 @@
-import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { AlertDialog } from "@nyte-ai/ui/primitives";
 import * as stylex from "@stylexjs/stylex";
 import { useRef } from "react";
-import type { ReactElement, RefObject } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Button } from "./ui.tsx";
 
@@ -9,14 +10,14 @@ const styles = stylex.create({
   backdrop: {
     position: "fixed",
     inset: 0,
-    zIndex: 70,
+    zIndex: layer.dialogBackdrop,
     backgroundColor: t.bgScrim,
   },
   popup: {
     position: "fixed",
     top: "50%",
     left: "50%",
-    zIndex: 71,
+    zIndex: layer.dialog,
     display: "flex",
     flexDirection: "column",
     gap: 16,
@@ -57,6 +58,10 @@ interface ConfirmDialogProps {
   readonly pending: boolean;
   readonly error: string | undefined;
   readonly returnFocusRef: RefObject<HTMLButtonElement | null>;
+  readonly title?: string;
+  readonly description?: ReactNode;
+  readonly confirmLabel?: string;
+  readonly pendingLabel?: string;
   readonly onOpenChange: (open: boolean) => void;
   readonly onConfirm: () => void;
 }
@@ -66,6 +71,10 @@ export function ConfirmDialog({
   pending,
   error,
   returnFocusRef,
+  title = "Delete chat?",
+  description = <>This permanently deletes the chat and its history. This can&rsquo;t be undone.</>,
+  confirmLabel = "Delete",
+  pendingLabel = "Deleting…",
   onOpenChange,
   onConfirm,
 }: ConfirmDialogProps): ReactElement {
@@ -87,10 +96,9 @@ export function ConfirmDialog({
           {...stylex.props(styles.popup)}
         >
           <div {...stylex.props(styles.copy)}>
-            <AlertDialog.Title {...stylex.props(styles.title)}>Delete session?</AlertDialog.Title>
+            <AlertDialog.Title {...stylex.props(styles.title)}>{title}</AlertDialog.Title>
             <AlertDialog.Description {...stylex.props(styles.description)}>
-              This permanently deletes the session and its conversation history. This action cannot
-              be undone.
+              {description}
             </AlertDialog.Description>
           </div>
           {error !== undefined && (
@@ -107,7 +115,7 @@ export function ConfirmDialog({
               Cancel
             </AlertDialog.Close>
             <Button variant="danger" disabled={pending} onClick={onConfirm}>
-              {pending ? "Deleting…" : "Delete"}
+              {pending ? pendingLabel : confirmLabel}
             </Button>
           </div>
         </AlertDialog.Popup>

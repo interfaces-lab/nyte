@@ -13,12 +13,27 @@ const budgets = {
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const rendererRoot = join(desktopRoot, "out", "renderer");
 const html = await readFile(join(rendererRoot, "index.html"), "utf8");
+const preloadPath = join(desktopRoot, "out", "preload", "index.js");
+const preloadSource = await readFile(preloadPath, "utf8");
 const rendererEntry = html.match(/<script[^>]+src="([^"]+)"/)?.[1];
 if (rendererEntry === undefined) throw new Error("Cannot find the renderer entry in index.html");
 
+// Electron's sandboxed preload only exposes its limited `require` polyfill.
+// Catch dependency externalization here instead of shipping another blank UI.
+const unsupportedPreloadRequires = [
+  ...new Set(
+    [...preloadSource.matchAll(/\brequire\(["']([^"']+)["']\)/g)].map((match) => match[1]),
+  ),
+].filter((specifier) => specifier !== "electron");
+if (unsupportedPreloadRequires.length > 0) {
+  throw new Error(
+    `sandboxed preload contains external requires: ${unsupportedPreloadRequires.join(", ")}`,
+  );
+}
+
 const sizes = {
   main: (await stat(join(desktopRoot, "out", "main", "index.js"))).size,
-  preload: (await stat(join(desktopRoot, "out", "preload", "index.js"))).size,
+  preload: (await stat(preloadPath)).size,
   rendererEntry: (await stat(join(rendererRoot, rendererEntry))).size,
 };
 

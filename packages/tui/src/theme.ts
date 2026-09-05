@@ -2,53 +2,58 @@ import process from "node:process";
 
 export type ThemeMode = "dark" | "light";
 
+/** What the user picks: a mode, or `auto` to follow the terminal's own color scheme. */
+export type ThemeChoice = "auto" | ThemeMode;
+
+export function isThemeChoice(value: string): value is ThemeChoice {
+  return value === "auto" || value === "dark" || value === "light";
+}
+
 /**
  * Semantic colors for every OpenTUI surface. Components consume roles from
  * this object; they do not own palettes or choose colors independently.
  */
-export type CliTheme = Readonly<{
-  mode: ThemeMode;
-  transparent: "transparent";
-  terminal: string;
-  background: string;
-  hover: string;
-  codeBackground: string;
-  foreground: string;
-  dim: string;
-  muted: string;
-  accent: string;
-  user: string;
-  thinking: string;
-  tool: string;
-  error: string;
-  warning: string;
-  ok: string;
-  command: string;
-  running: string;
-  link: string;
-  path: string;
-  code: string;
-  number: string;
-  string: string;
-  type: string;
-  operator: string;
-  promptBorder: string;
-  promptBorderFocused: string;
-  selectionBackground: string;
-  selectionForeground: string;
-  userBackground: string;
-  pasteBackground: string;
-  pasteForeground: string;
-  scrollbarTrack: string;
-  scrollbarThumb: string;
-  diffAddedBackground: string;
-  diffRemovedBackground: string;
-}>;
+export interface CliTheme {
+  readonly mode: ThemeMode;
+  readonly transparent: "transparent";
+  readonly terminal: string;
+  readonly background: string;
+  readonly hover: string;
+  readonly codeBackground: string;
+  readonly foreground: string;
+  readonly dim: string;
+  readonly muted: string;
+  readonly accent: string;
+  readonly user: string;
+  readonly thinking: string;
+  readonly tool: string;
+  readonly error: string;
+  readonly warning: string;
+  readonly ok: string;
+  readonly running: string;
+  readonly link: string;
+  readonly path: string;
+  readonly code: string;
+  readonly number: string;
+  readonly string: string;
+  readonly type: string;
+  readonly operator: string;
+  readonly promptBorder: string;
+  readonly promptBorderFocused: string;
+  readonly selectionBackground: string;
+  readonly selectionForeground: string;
+  readonly userBackground: string;
+  readonly pasteBackground: string;
+  readonly pasteForeground: string;
+  readonly scrollbarTrack: string;
+  readonly scrollbarThumb: string;
+  readonly diffAddedBackground: string;
+  readonly diffRemovedBackground: string;
+}
 
 /** A stable object lets long-lived renderers see a palette change in place. */
-type ActiveCliTheme = { -readonly [Role in keyof CliTheme]: CliTheme[Role] };
+export type ActiveCliTheme = { -readonly [Role in keyof CliTheme]: CliTheme[Role] };
 
-/** Copy a frozen palette into the stable object shared by every TUI component. */
 export function createActiveTheme(theme: CliTheme): ActiveCliTheme {
   return { ...theme };
 }
@@ -59,93 +64,94 @@ export function updateActiveTheme(target: ActiveCliTheme, theme: CliTheme): void
 }
 
 /**
- * Neutral gray base with cool accents for dark terminals.
+ * Pierre's dark roles. Diff rows are `codeBackground` mixed 80% in CIELAB
+ * with Pierre's added and removed bases, fixed here because terminals
+ * cannot mix.
  *
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/groknight.rs
+ * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/dark.ts
+ * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
  */
 export const DARK_THEME: CliTheme = Object.freeze({
   mode: "dark",
   transparent: "transparent",
-  terminal: "#0a0a0a",
-  background: "#141414",
-  hover: "#2c2c2c",
-  codeBackground: "#1c1c1c",
-  foreground: "#e1e1e1",
-  dim: "#6c6c6c",
-  muted: "#585858",
-  accent: "#7aa2f7",
-  user: "#c8c8c8",
-  thinking: "#bb9af7",
-  tool: "#787878",
-  error: "#f7768e",
-  warning: "#e0af68",
-  ok: "#9ece6a",
-  command: "#e0af68",
-  running: "#7dcfff",
-  link: "#7aa6da",
-  path: "#ff9e64",
-  code: "#3a95ab",
-  number: "#ff9e64",
-  string: "#9ece6a",
-  type: "#7dcfff",
-  operator: "#f7768e",
-  promptBorder: "#323237",
-  promptBorderFocused: "#505058",
-  selectionBackground: "#363636",
-  selectionForeground: "#e1e1e1",
-  userBackground: "#242424",
-  pasteBackground: "#111111",
-  pasteForeground: "#c8c8c8",
-  scrollbarTrack: "#111111",
-  scrollbarThumb: "#242424",
-  diffAddedBackground: "#063806",
-  diffRemovedBackground: "#420e14",
+  terminal: "#171717",
+  background: "#0a0a0a",
+  hover: "#262626",
+  codeBackground: "#171717",
+  foreground: "#fafafa",
+  dim: "#737373",
+  muted: "#525252",
+  accent: "#009fff",
+  user: "#d4d4d4",
+  thinking: "#9d6afb",
+  tool: "#a3a3a3",
+  error: "#ff2e3f",
+  warning: "#ffca00",
+  ok: "#07c480",
+  running: "#08c0ef",
+  link: "#009fff",
+  path: "#ffa359",
+  code: "#ff678d",
+  number: "#68cdf2",
+  string: "#5ecc71",
+  type: "#d568ea",
+  operator: "#08c0ef",
+  promptBorder: "#2c2c2c",
+  promptBorderFocused: "#525252",
+  selectionBackground: "#19283c",
+  selectionForeground: "#fafafa",
+  userBackground: "#1d1d1d",
+  pasteBackground: "#101010",
+  pasteForeground: "#d4d4d4",
+  scrollbarTrack: "#101010",
+  scrollbarThumb: "#262626",
+  diffAddedBackground: "#273628",
+  diffRemovedBackground: "#402725",
 });
 
 /**
- * Neutral gray base with deeper accents for light terminals.
+ * Pierre's light roles, with the diff mix at 88%. Text takes the 600 shade
+ * where Pierre's light roles use 500, as its `ansi` roles do.
  *
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/grokday.rs
+ * Based on https://github.com/pierrecomputer/pierre/blob/main/packages/theme/src/roles/light.ts
+ * and https://github.com/pierrecomputer/pierre/blob/main/packages/diffs/src/style.css
  */
 export const LIGHT_THEME: CliTheme = Object.freeze({
   mode: "light",
   transparent: "transparent",
   terminal: "#f5f5f5",
-  background: "#eeeeee",
-  hover: "#d0d0d0",
-  codeBackground: "#e4e4e4",
-  foreground: "#262626",
-  dim: "#767676",
-  muted: "#a5a5a5",
-  accent: "#2f64d2",
-  user: "#444444",
-  thinking: "#7d4bc6",
-  tool: "#626262",
-  error: "#cd3048",
-  warning: "#a27612",
-  ok: "#378e23",
-  command: "#a27612",
-  running: "#0082aa",
-  link: "#2f64d2",
-  path: "#c3691e",
-  code: "#0f87a2",
-  number: "#c3691e",
-  string: "#378e23",
-  type: "#0082aa",
-  operator: "#cd3048",
-  promptBorder: "#c8c8cd",
-  promptBorderFocused: "#a5a5af",
-  selectionBackground: "#2f64d2",
-  selectionForeground: "#f5f5f5",
-  userBackground: "#dedede",
-  // Use the highlight gray here. The darker chrome gray reads as a code block
-  // on a light base.
-  pasteBackground: "#dedede",
-  pasteForeground: "#444444",
-  scrollbarTrack: "#eaeaea",
-  scrollbarThumb: "#dedede",
-  diffAddedBackground: "#daf2dc",
-  diffRemovedBackground: "#f5dade",
+  background: "#ffffff",
+  hover: "#e5e5e5",
+  codeBackground: "#f5f5f5",
+  foreground: "#0a0a0a",
+  dim: "#737373",
+  muted: "#a3a3a3",
+  accent: "#1a85d4",
+  user: "#404040",
+  thinking: "#693acf",
+  tool: "#525252",
+  error: "#d52c36",
+  warning: "#d5a910",
+  ok: "#18a46c",
+  running: "#1ca1c7",
+  link: "#1a85d4",
+  path: "#d47628",
+  code: "#d32a61",
+  number: "#1ca1c7",
+  string: "#199f43",
+  type: "#a631be",
+  operator: "#08c0ef",
+  promptBorder: "#d4d4d4",
+  promptBorderFocused: "#a3a3a3",
+  selectionBackground: "#dfebff",
+  selectionForeground: "#0a0a0a",
+  userBackground: "#ededed",
+  pasteBackground: "#e5e5e5",
+  pasteForeground: "#404040",
+  scrollbarTrack: "#f5f5f5",
+  scrollbarThumb: "#d4d4d4",
+  diffAddedBackground: "#e0efe1",
+  diffRemovedBackground: "#fce1dd",
 });
 
 /** `dark`/`light`, plus the `night`/`day` aliases. Anything else is no answer. */
@@ -158,9 +164,7 @@ function byName(raw: string | undefined): ThemeMode | undefined {
 
 /**
  * Vim's `COLORFGBG` heuristic: background `0-6` and `8` are dark, `7` and
- * `9-15` are light. The background is the last field, and a non-numeric one
- * (`15;default`) means the terminal declined to say -- reading the foreground
- * instead would invert the answer.
+ * `9-15` are light. The background is the last field.
  */
 function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
   const field = raw?.split(";").at(-1)?.trim();
@@ -171,22 +175,23 @@ function byColorFgBg(raw: string | undefined): ThemeMode | undefined {
 }
 
 /**
- * The palette to build the UI with, read once at startup.
+ * The mode to draw with. A pinned choice wins; `auto` follows what the
+ * terminal reports about its color scheme, then `NYTE_THEME` (and its
+ * SSH-surviving alias `LC_NYTE_THEME`), then `COLORFGBG`, then dark.
  *
- * `UJI_THEME` is the explicit choice and `LC_UJI_THEME` its SSH-surviving
- * alias for setups configured to forward `LC_*` variables. `COLORFGBG` only
- * decides when neither is set. It is stamped once at shell start and inherited
- * unchanged, so it is a guess, not a live reading. An unset or unrecognized
- * source falls through to the next one, then to dark.
- *
- * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager-render/src/theme/env_appearance.rs
+ * Based on opencode v2, where a locked mode beats the terminal's and the
+ * terminal's beats the default: https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/context/theme.tsx
  */
 export function resolveThemeMode(
-  env: Readonly<Record<string, string | undefined>> = process.env,
+  choice: ThemeChoice,
+  terminal: ThemeMode | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): ThemeMode {
+  if (choice !== "auto") return choice;
   return (
-    byName(env["UJI_THEME"]) ??
-    byName(env["LC_UJI_THEME"]) ??
+    terminal ??
+    byName(env["NYTE_THEME"]) ??
+    byName(env["LC_NYTE_THEME"]) ??
     byColorFgBg(env["COLORFGBG"]) ??
     "dark"
   );

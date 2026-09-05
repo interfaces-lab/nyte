@@ -8,45 +8,38 @@
  * start/stop pair around a push channel, cursor semantics unchanged.
  */
 import type {
-  ApplyOutcome,
-  CancelOutcome,
-  ConfigureOutcome,
   Disposer,
-  EntryId,
-  FileChange,
-  HeadName,
-  ModelInfo,
-  Page,
-  PluginInfo,
-  RedeliverOutcome,
-  RunId,
-  SendReceipt,
+  MentionFile,
+  Nyte,
   Seq,
   SessionEvent,
   SessionId,
-  SessionInfo,
-  SessionSnapshot,
-  SettingInfo,
   ThinkingLevel,
   WorkspaceInfo,
-  VcsDiff,
   VcsStatus,
-} from "@uji-ai/core";
-import type { Skill, UserMessage } from "@uji-ai/schema";
+} from "@nyte-ai/core";
+import type { Verb } from "@nyte-ai/protocol";
+import type { ModelCostRates } from "@nyte-ai/schema";
 
-export const CALL_CHANNEL = "uji:call";
-export const WATCH_START_CHANNEL = "uji:watch-start";
-export const WATCH_STOP_CHANNEL = "uji:watch-stop";
-export const WATCH_EVENT_CHANNEL = "uji:watch-event";
-export const HOST_EVENT_CHANNEL = "uji:host-event";
+export const CALL_CHANNEL = "nyte:call";
+export const WATCH_START_CHANNEL = "nyte:watch-start";
+export const WATCH_STOP_CHANNEL = "nyte:watch-stop";
+export const WATCH_EVENT_CHANNEL = "nyte:watch-event";
+export const HOST_EVENT_CHANNEL = "nyte:host-event";
+export const THEME_PREFERENCE_CHANNEL = "nyte:theme-preference";
+export const BROWSER_BOUNDS_CHANNEL = "nyte:browser-bounds";
 
-/** Every SDK verb the bridge carries, one path per verb. */
+export type ThemePreference = "system" | "light" | "dark";
+
+/** Every SDK verb the bridge carries, one path per verb. Each is a wire-protocol verb. */
 export const SDK_VERB_PATHS = [
   "sessions.create",
   "sessions.get",
   "sessions.snapshot",
   "sessions.list",
   "sessions.rename",
+  "sessions.setPinned",
+  "sessions.setArchived",
   "sessions.delete",
   "sessions.configure",
   "messages.send",
@@ -54,35 +47,51 @@ export const SDK_VERB_PATHS = [
   "messages.redeliver",
   "runs.abort",
   "runs.changes",
+  "heads.move",
   "workspace.list",
   "workspace.forget",
   "workspace.vcs.diff",
   "provider.models.default",
+  "plugins.catalog",
   "plugins.list",
+  "plugins.commands.list",
+  "plugins.commands.run",
   "plugins.settings.list",
   "plugins.settings.apply",
   "plugins.resources.list",
-] as const;
+] as const satisfies readonly Verb[];
 
 export type SdkVerbPath = (typeof SDK_VERB_PATHS)[number];
 
 /** Host verbs beside the SDK: workspace lifecycle and provider auth. */
 export const HOST_VERB_PATHS = [
   "host.state",
+  "host.fonts",
   "host.openWorkspace",
   "host.pickWorkspace",
   "host.trustWorkspace",
   "host.closeWorkspace",
-  "host.providers",
+  "host.catalog",
   "host.login",
   "host.logout",
-  "host.models",
+  "host.setPreference",
   "host.vcs.snapshot",
+  "host.files.list",
   "host.github.state",
   "host.github.refresh",
   "host.github.signIn",
   "host.github.signOut",
   "host.openExternal",
+  "host.browser.open",
+  "host.browser.navigate",
+  "host.browser.menu",
+  "host.browser.perform",
+  "host.browser.close",
+  "host.terminal.create",
+  "host.terminal.write",
+  "host.terminal.resize",
+  "host.terminal.acknowledge",
+  "host.terminal.close",
 ] as const;
 
 export type HostVerbPath = (typeof HOST_VERB_PATHS)[number];
@@ -107,8 +116,15 @@ export type WatchEnvelope =
 // ---------------------------------------------------------------------------
 
 export interface HostState {
+  /** Absent is Cursor's id-only Home target, not the operating-system home folder. */
   readonly workspace: WorkspaceInfo | undefined;
   readonly platform: NodeJS.Platform;
+}
+
+/** CSS family names discovered by the native host; font-file paths never cross IPC. */
+export interface LocalFontCatalog {
+  readonly sans: readonly string[];
+  readonly monospace: readonly string[];
 }
 
 export type OpenWorkspaceOutcome =
@@ -117,14 +133,22 @@ export type OpenWorkspaceOutcome =
   | { kind: "cancelled" }
   | { kind: "failed"; message: string };
 
+/** A way to connect a provider from the desktop. */
+export type SignInMethod =
+  | { readonly kind: "browser"; readonly label: string; readonly subscription: string }
+  | { readonly kind: "api_key"; readonly label: string };
+
 export interface ProviderStatus {
   readonly id: string;
   readonly name: string;
-  readonly authenticated: boolean;
-  /** e.g. "OAuth" or "API key" when authenticated. */
-  readonly detail?: string;
-  /** Present when the provider supports browser login. */
-  readonly loginLabel?: string;
+  /** Off keeps the provider's models out of the picker and out of the default. */
+  readonly enabled: boolean;
+  /** `env` names the variable when the key came from the environment rather than the store. */
+  readonly connection:
+    | { readonly kind: "disconnected" }
+    | { readonly kind: "oauth" }
+    | { readonly kind: "api_key"; readonly env: string | undefined };
+  readonly signIn: readonly SignInMethod[];
 }
 
 /** Desktop-local repository identity and cache revision. Core remains provider-neutral. */
@@ -194,16 +218,106 @@ export interface DesktopModelOption {
   readonly id: string;
   readonly name: string;
   readonly contextWindow: number;
-  readonly reasoning: boolean;
+  /** Base rates in dollars per million tokens; the picker compares models by them. */
+  readonly cost: ModelCostRates;
+  readonly fastMode:
+    | { readonly kind: "unavailable" }
+    | { readonly kind: "available"; readonly settingId: string };
   readonly thinkingLevels: readonly ThinkingLevel[];
+  /** Switched off in Settings › Models. */
+  readonly hidden: boolean;
+  /** In the picker: the provider is on and connected, and the model is not hidden. */
+  readonly listed: boolean;
+}
+
+/** Everything the picker and Settings › Models draw from, read in one call. */
+export interface DesktopCatalog {
+  readonly providers: readonly ProviderStatus[];
+  readonly models: readonly DesktopModelOption[];
+  /** What a new chat starts with. */
+  readonly defaults: {
+    readonly model: { readonly provider: string; readonly id: string };
+    readonly thinkingLevel: ThinkingLevel;
+  };
+}
+
+export type PreferenceChange =
+  | { readonly kind: "provider"; readonly provider: string; readonly enabled: boolean }
+  | {
+      readonly kind: "models";
+      readonly provider: string;
+      readonly ids: readonly string[];
+      readonly hidden: boolean;
+    }
+  | {
+      readonly kind: "defaults";
+      readonly model?: { readonly provider: string; readonly id: string };
+      readonly thinkingLevel?: ThinkingLevel;
+    };
+
+// ---------------------------------------------------------------------------
+// browser surfaces
+// ---------------------------------------------------------------------------
+
+/** One embedded page. The surface id is the workbench view key. */
+export interface BrowserSurfaceState {
+  readonly url: string;
+  readonly title: string;
+  readonly loading: boolean;
+  readonly canGoBack: boolean;
+  readonly canGoForward: boolean;
+  readonly secure: "https" | "http" | "none";
+  /** False when no filter lists are bundled in this build. */
+  readonly blocking: boolean;
+  /** Requests blocked since the current page started loading. */
+  readonly blocked: number;
+  readonly error: { readonly code: number; readonly description: string } | undefined;
+}
+
+export const BROWSER_ACTIONS = [
+  "screenshot",
+  "hard-reload",
+  "copy-url",
+  "clear-history",
+  "clear-cookies",
+  "clear-cache",
+] as const;
+export type BrowserAction = (typeof BROWSER_ACTIONS)[number];
+export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
+
+export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
+
+export interface BrowserBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface BrowserBoundsMessage {
+  readonly surface: string;
+  readonly bounds: BrowserBounds;
+  readonly visible: boolean;
+}
+
+export interface TerminalInfo {
+  readonly id: string;
+  readonly title: string;
+  readonly cwd: string;
 }
 
 export type HostEvent =
+  | { kind: "terminal_data"; id: string; data: string }
+  | { kind: "terminal_exit"; id: string; exitCode: number }
   | { kind: "workspace_opened"; workspace: WorkspaceInfo }
+  | { kind: "workspace_trust_required"; path: string }
   | { kind: "workspace_closed" }
-  | { kind: "auth_changed" }
+  /** A sign-in, sign-out, or preference change; re-read the catalog. */
+  | { kind: "catalog_changed" }
   | { kind: "github_changed" }
-  | { kind: "status"; message: string };
+  | { kind: "status"; message: string }
+  | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
+  | { kind: "browser_download_refused"; surface: string; url: string };
 
 // ---------------------------------------------------------------------------
 // the renderer-facing bridge, the SDK interfaces verbatim
@@ -216,98 +330,76 @@ export function asSessionId(value: string): SessionId {
   return value as SessionId;
 }
 
-export interface SessionsBridge {
-  create(input?: { sessionId?: SessionId; name?: string }): Promise<SessionInfo>;
-  get(input: { sessionId: SessionId }): Promise<SessionInfo | undefined>;
-  snapshot(input: { sessionId: SessionId; head?: HeadName }): Promise<SessionSnapshot | undefined>;
-  list(input?: { search?: string; limit?: number; cursor?: string }): Promise<Page<SessionInfo>>;
-  rename(input: { sessionId: SessionId; name: string }): Promise<void>;
-  delete(input: { sessionId: SessionId }): Promise<void>;
-  configure(input: {
-    sessionId: SessionId;
-    model?: { provider: string; id: string };
-    thinkingLevel?: ThinkingLevel;
-  }): Promise<ConfigureOutcome>;
-}
+export type SessionsBridge = Pick<
+  Nyte["sessions"],
+  | "create"
+  | "get"
+  | "snapshot"
+  | "list"
+  | "rename"
+  | "setPinned"
+  | "setArchived"
+  | "delete"
+  | "configure"
+>;
 
-export interface MessagesBridge {
-  send(input: {
-    sessionId: SessionId;
-    entryId?: EntryId;
-    content: UserMessage["content"];
-    delivery?: "steer" | "queue";
-    head?: HeadName;
-  }): Promise<SendReceipt>;
-  cancel(input: { sessionId: SessionId; entryId: EntryId }): Promise<CancelOutcome>;
-  redeliver(input: {
-    sessionId: SessionId;
-    entryId: EntryId;
-    delivery: "steer" | "queue";
-  }): Promise<RedeliverOutcome>;
-}
+export type MessagesBridge = Pick<Nyte["messages"], "send" | "cancel" | "redeliver">;
 
-export interface RunsBridge {
-  abort(input: {
-    sessionId: SessionId;
-    runId?: RunId;
-    continue?: boolean;
-  }): Promise<{ kind: "requested"; runId: RunId } | { kind: "not_running" }>;
-  changes(input: {
-    sessionId: SessionId;
-    head?: HeadName;
-    runId?: RunId;
-  }): Promise<readonly FileChange[]>;
-}
+export type RunsBridge = Pick<Nyte["runs"], "abort" | "changes">;
 
-/**
- * `workspace.list` and `workspace.forget` answer from the registry whether or
- * not a workspace is open, so the no-workspace stage speaks the same verbs as
- * everything else.
- */
-export interface WorkspaceBridge {
-  list(): Promise<readonly WorkspaceInfo[]>;
-  forget(input: { path: string }): Promise<void>;
-  vcs: {
-    diff(input?: { paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
-  };
-}
+export type HeadsBridge = Pick<Nyte["heads"], "move">;
 
-export interface ProviderBridge {
-  models: {
-    default(): Promise<ModelInfo | undefined>;
-  };
-}
+/** `workspace.list` and `workspace.forget` answer from the registry even when no workspace is open. */
+export type WorkspaceBridge = Pick<Nyte["workspace"], "list" | "forget"> & {
+  readonly vcs: Pick<Nyte["workspace"]["vcs"], "diff">;
+};
 
-export interface PluginsBridge {
-  list(input: { sessionId: SessionId }): Promise<readonly PluginInfo[]>;
-  settings: {
-    list(input: { sessionId: SessionId }): Promise<readonly SettingInfo[]>;
-    apply(input: { sessionId: SessionId; id: string; choiceId: string }): Promise<ApplyOutcome>;
-  };
-  resources: { list(input: { sessionId: SessionId }): Promise<readonly Skill[]> };
-}
+export type ProviderBridge = {
+  readonly models: Pick<Nyte["provider"]["models"], "default">;
+};
+
+export type PluginsBridge = Pick<Nyte["plugins"], "catalog" | "list"> & {
+  readonly commands: Pick<Nyte["plugins"]["commands"], "list" | "run">;
+  readonly settings: Pick<Nyte["plugins"]["settings"], "list" | "apply">;
+  readonly resources: Pick<Nyte["plugins"]["resources"], "list">;
+};
 
 export type WatchInput =
   | { sessionId: SessionId; afterSeq?: Seq }
   | { sessionId: SessionId; live: true };
 
 export interface HostBridge {
+  /** Keep Electron's native material and controls in the renderer's appearance mode. */
+  setThemePreference(preference: ThemePreference): void;
   state(): Promise<HostState>;
-  /** Open a workspace by path; `needs_trust` sends the renderer to the trust gate. */
+  /** Installed UI and fixed-pitch families, discovered without renderer font permissions. */
+  fonts(): Promise<LocalFontCatalog>;
+  /** Select local history by path, even when the folder is unavailable. */
   openWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
   /** Native folder picker, then open. */
   pickWorkspace(): Promise<OpenWorkspaceOutcome>;
   /** Grant trust and open in one step; the renderer's trust dialog confirms first. */
   trustWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
-  providers(): Promise<readonly ProviderStatus[]>;
-  login(input: { provider: string }): Promise<void>;
+  catalog(): Promise<DesktopCatalog>;
+  /**
+   * Browser sign-in needs a user gesture. An API key crosses IPC once and is
+   * never read back; the provider's own login flow stores it.
+   */
+  login(input: {
+    provider: string;
+    method: { kind: "browser" } | { kind: "api_key"; key: string };
+  }): Promise<void>;
   logout(input: { provider: string }): Promise<void>;
-  /** The full catalog with thinking levels, for the model picker. */
-  models(): Promise<readonly DesktopModelOption[]>;
+  /** Apply one preference change and answer with the catalog as it now stands. */
+  setPreference(change: PreferenceChange): Promise<DesktopCatalog>;
   vcs: {
     /** Revision is desktop cache identity; status still comes from the generic VCS backend. */
     snapshot(): Promise<DesktopVcsSnapshot>;
+  };
+  files: {
+    /** The open workspace's files and folders for `@` mentions; generated trees are skipped. */
+    list(): Promise<readonly MentionFile[]>;
   };
   github: {
     state(): Promise<GitHubProviderState>;
@@ -317,14 +409,36 @@ export interface HostBridge {
     signOut(): Promise<GitHubProviderState>;
   };
   openExternal(input: { url: string }): Promise<void>;
+  terminal: {
+    create(input: { id: string; workspacePath: string | null }): Promise<TerminalInfo>;
+    write(input: { id: string; data: string }): Promise<void>;
+    resize(input: { id: string; cols: number; rows: number }): Promise<void>;
+    acknowledge(input: { id: string; length: number }): Promise<void>;
+    close(input: { id: string }): Promise<void>;
+  };
+  browser: {
+    open(input: { surface: string; url: string }): Promise<BrowserSurfaceState>;
+    navigate(input: { surface: string; action: BrowserNavigationAction }): Promise<void>;
+    menu(input: {
+      surface: string;
+      bookmarksVisible: boolean;
+      x: number;
+      y: number;
+    }): Promise<BrowserMenuAction | undefined>;
+    perform(input: { surface: string; action: BrowserAction }): Promise<void>;
+    close(input: { surface: string }): Promise<void>;
+    setBounds(message: BrowserBoundsMessage): void;
+  };
   onEvent(listener: (event: HostEvent) => void): Disposer;
 }
 
-/** What `window.uji` is: the SDK verbatim, plus watch-over-push and the host. */
-export interface UjiBridge {
+/** What `window.nyte` is: the SDK verbatim, plus watch-over-push and the host. */
+export interface NyteBridge {
+  readonly landing: Nyte["landing"];
   readonly sessions: SessionsBridge;
   readonly messages: MessagesBridge;
   readonly runs: RunsBridge;
+  readonly heads: HeadsBridge;
   readonly workspace: WorkspaceBridge;
   readonly provider: ProviderBridge;
   readonly plugins: PluginsBridge;
@@ -343,41 +457,59 @@ export interface UjiBridge {
 
 /** The authoritative path-to-method relationship carried by Electron IPC. */
 export interface CallMethodByPath {
-  readonly "sessions.create": UjiBridge["sessions"]["create"];
-  readonly "sessions.get": UjiBridge["sessions"]["get"];
-  readonly "sessions.snapshot": UjiBridge["sessions"]["snapshot"];
-  readonly "sessions.list": UjiBridge["sessions"]["list"];
-  readonly "sessions.rename": UjiBridge["sessions"]["rename"];
-  readonly "sessions.delete": UjiBridge["sessions"]["delete"];
-  readonly "sessions.configure": UjiBridge["sessions"]["configure"];
-  readonly "messages.send": UjiBridge["messages"]["send"];
-  readonly "messages.cancel": UjiBridge["messages"]["cancel"];
-  readonly "messages.redeliver": UjiBridge["messages"]["redeliver"];
-  readonly "runs.abort": UjiBridge["runs"]["abort"];
-  readonly "runs.changes": UjiBridge["runs"]["changes"];
-  readonly "workspace.list": UjiBridge["workspace"]["list"];
-  readonly "workspace.forget": UjiBridge["workspace"]["forget"];
-  readonly "workspace.vcs.diff": UjiBridge["workspace"]["vcs"]["diff"];
-  readonly "provider.models.default": UjiBridge["provider"]["models"]["default"];
-  readonly "plugins.list": UjiBridge["plugins"]["list"];
-  readonly "plugins.settings.list": UjiBridge["plugins"]["settings"]["list"];
-  readonly "plugins.settings.apply": UjiBridge["plugins"]["settings"]["apply"];
-  readonly "plugins.resources.list": UjiBridge["plugins"]["resources"]["list"];
-  readonly "host.state": UjiBridge["host"]["state"];
-  readonly "host.openWorkspace": UjiBridge["host"]["openWorkspace"];
-  readonly "host.pickWorkspace": UjiBridge["host"]["pickWorkspace"];
-  readonly "host.trustWorkspace": UjiBridge["host"]["trustWorkspace"];
-  readonly "host.closeWorkspace": UjiBridge["host"]["closeWorkspace"];
-  readonly "host.providers": UjiBridge["host"]["providers"];
-  readonly "host.login": UjiBridge["host"]["login"];
-  readonly "host.logout": UjiBridge["host"]["logout"];
-  readonly "host.models": UjiBridge["host"]["models"];
-  readonly "host.vcs.snapshot": UjiBridge["host"]["vcs"]["snapshot"];
-  readonly "host.github.state": UjiBridge["host"]["github"]["state"];
-  readonly "host.github.refresh": UjiBridge["host"]["github"]["refresh"];
-  readonly "host.github.signIn": UjiBridge["host"]["github"]["signIn"];
-  readonly "host.github.signOut": UjiBridge["host"]["github"]["signOut"];
-  readonly "host.openExternal": UjiBridge["host"]["openExternal"];
+  readonly "sessions.create": NyteBridge["sessions"]["create"];
+  readonly "sessions.get": NyteBridge["sessions"]["get"];
+  readonly "sessions.snapshot": NyteBridge["sessions"]["snapshot"];
+  readonly "sessions.list": NyteBridge["sessions"]["list"];
+  readonly "sessions.rename": NyteBridge["sessions"]["rename"];
+  readonly "sessions.setPinned": NyteBridge["sessions"]["setPinned"];
+  readonly "sessions.setArchived": NyteBridge["sessions"]["setArchived"];
+  readonly "sessions.delete": NyteBridge["sessions"]["delete"];
+  readonly "sessions.configure": NyteBridge["sessions"]["configure"];
+  readonly "messages.send": NyteBridge["messages"]["send"];
+  readonly "messages.cancel": NyteBridge["messages"]["cancel"];
+  readonly "messages.redeliver": NyteBridge["messages"]["redeliver"];
+  readonly "runs.abort": NyteBridge["runs"]["abort"];
+  readonly "runs.changes": NyteBridge["runs"]["changes"];
+  readonly "heads.move": NyteBridge["heads"]["move"];
+  readonly "workspace.list": NyteBridge["workspace"]["list"];
+  readonly "workspace.forget": NyteBridge["workspace"]["forget"];
+  readonly "workspace.vcs.diff": NyteBridge["workspace"]["vcs"]["diff"];
+  readonly "provider.models.default": NyteBridge["provider"]["models"]["default"];
+  readonly "plugins.catalog": NyteBridge["plugins"]["catalog"];
+  readonly "plugins.list": NyteBridge["plugins"]["list"];
+  readonly "plugins.commands.list": NyteBridge["plugins"]["commands"]["list"];
+  readonly "plugins.commands.run": NyteBridge["plugins"]["commands"]["run"];
+  readonly "plugins.settings.list": NyteBridge["plugins"]["settings"]["list"];
+  readonly "plugins.settings.apply": NyteBridge["plugins"]["settings"]["apply"];
+  readonly "plugins.resources.list": NyteBridge["plugins"]["resources"]["list"];
+  readonly "host.state": NyteBridge["host"]["state"];
+  readonly "host.fonts": NyteBridge["host"]["fonts"];
+  readonly "host.openWorkspace": NyteBridge["host"]["openWorkspace"];
+  readonly "host.pickWorkspace": NyteBridge["host"]["pickWorkspace"];
+  readonly "host.trustWorkspace": NyteBridge["host"]["trustWorkspace"];
+  readonly "host.closeWorkspace": NyteBridge["host"]["closeWorkspace"];
+  readonly "host.catalog": NyteBridge["host"]["catalog"];
+  readonly "host.login": NyteBridge["host"]["login"];
+  readonly "host.logout": NyteBridge["host"]["logout"];
+  readonly "host.setPreference": NyteBridge["host"]["setPreference"];
+  readonly "host.vcs.snapshot": NyteBridge["host"]["vcs"]["snapshot"];
+  readonly "host.files.list": NyteBridge["host"]["files"]["list"];
+  readonly "host.github.state": NyteBridge["host"]["github"]["state"];
+  readonly "host.github.refresh": NyteBridge["host"]["github"]["refresh"];
+  readonly "host.github.signIn": NyteBridge["host"]["github"]["signIn"];
+  readonly "host.github.signOut": NyteBridge["host"]["github"]["signOut"];
+  readonly "host.openExternal": NyteBridge["host"]["openExternal"];
+  readonly "host.browser.open": NyteBridge["host"]["browser"]["open"];
+  readonly "host.browser.navigate": NyteBridge["host"]["browser"]["navigate"];
+  readonly "host.browser.menu": NyteBridge["host"]["browser"]["menu"];
+  readonly "host.browser.perform": NyteBridge["host"]["browser"]["perform"];
+  readonly "host.browser.close": NyteBridge["host"]["browser"]["close"];
+  readonly "host.terminal.create": NyteBridge["host"]["terminal"]["create"];
+  readonly "host.terminal.write": NyteBridge["host"]["terminal"]["write"];
+  readonly "host.terminal.resize": NyteBridge["host"]["terminal"]["resize"];
+  readonly "host.terminal.acknowledge": NyteBridge["host"]["terminal"]["acknowledge"];
+  readonly "host.terminal.close": NyteBridge["host"]["terminal"]["close"];
 }
 
 export type CallInput<P extends CallPath> =

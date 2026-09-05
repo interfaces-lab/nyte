@@ -9,13 +9,13 @@ import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
 import { clampThinkingLevel } from "../models.ts";
+import { getServiceTierCostMultiplier } from "../model-pricing.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
   AccountLimits,
   Api,
   AssistantMessage,
   Context,
-  JsonValue,
   Model,
   ProviderEnv,
   ProviderHeaders,
@@ -35,10 +35,11 @@ import { formatProviderError, normalizeProviderError } from "../utils/error-body
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { resolveHttpProxyUrlForTarget } from "../utils/node-http-proxy.ts";
-import { getUjiUserAgent } from "../utils/uji-user-agent.ts";
+import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { uuidv7 } from "../utils/uuid.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
+import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
 import {
   convertResponsesMessages,
   convertResponsesTools,
@@ -101,20 +102,6 @@ function numberOf(value: unknown): number | undefined {
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
   return Value.Check(JsonObjectJson, value) ? value : undefined;
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
-    return true;
-  }
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  const record = recordOf(value);
-  return record !== undefined && Object.values(record).every(isJsonValue);
 }
 
 /** Returns the frame when its payload decodes, or `undefined` for frames without an event type. */
@@ -511,7 +498,7 @@ export const stream: StreamFunction<"openai-codex-responses", OpenAICodexRespons
             response = await (options?.fetch ?? globalThis.fetch)(resolveCodexUrl(model.baseUrl), {
               method: "POST",
               headers: sseHeaders,
-              // SAFETY: a zstd-compressed Uint8Array is valid BodyInit at runtime; TS 5.7+ types Buffer as Uint8Array<ArrayBufferLike>, which DOM's BodyInit rejects (Uji divergence).
+              // SAFETY: a zstd-compressed Uint8Array is valid BodyInit at runtime; TS 5.7+ types Buffer as Uint8Array<ArrayBufferLike>, which DOM's BodyInit rejects (Nyte divergence).
               body: sseBody as NonNullable<Parameters<typeof fetch>[1]>["body"],
               signal: combinedSignal.signal,
             });
@@ -710,10 +697,7 @@ function buildRequestBody(
   return body;
 }
 
-export interface OpenAICodexCompactResult {
-  /** Responses input items returned by `responses/compact`. */
-  data: JsonValue;
-}
+export type OpenAICodexCompactResult = OpenAICompactResult;
 
 /**
  * Call Codex's native unary compaction endpoint. The caller decides whether
@@ -805,12 +789,7 @@ export async function compactOpenAICodexContext(
       throw new Error(info.friendlyMessage || info.message);
     }
 
-    const decoded: unknown = await response.json();
-    const output = recordOf(decoded)?.["output"];
-    if (!Array.isArray(output) || !isJsonValue(output)) {
-      throw new Error("Codex compact response did not contain output items");
-    }
-    return { data: output };
+    return readOpenAICompactResponse(response, model);
   }
 }
 
@@ -890,26 +869,12 @@ export async function fetchOpenAICodexAccountLimits(
   };
 }
 
-function getServiceTierCostMultiplier(
-  model: Pick<Model<"openai-codex-responses">, "id">,
-  serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
-): number {
-  switch (serviceTier) {
-    case "flex":
-      return 0.5;
-    case "priority":
-      return model.id === "gpt-5.5" ? 2.5 : 2;
-    default:
-      return 1;
-  }
-}
-
 function applyServiceTierPricing(
   usage: Usage,
   serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
   model: Pick<Model<"openai-codex-responses">, "id">,
 ) {
-  const multiplier = getServiceTierCostMultiplier(model, serviceTier);
+  const multiplier = getServiceTierCostMultiplier(model, serviceTier ?? undefined);
   if (multiplier === 1) return;
 
   usage.cost.input *= multiplier;
@@ -1929,8 +1894,8 @@ function buildBaseCodexHeaders(
   }
   headers.set("Authorization", `Bearer ${token}`);
   headers.set("chatgpt-account-id", accountId);
-  headers.set("originator", "uji");
-  headers.set("User-Agent", getUjiUserAgent());
+  headers.set("originator", "nyte");
+  headers.set("User-Agent", getNyteUserAgent());
   return headers;
 }
 

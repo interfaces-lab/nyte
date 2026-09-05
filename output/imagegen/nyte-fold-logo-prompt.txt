@@ -1,0 +1,19 @@
+Generated with the built-in image generation tool.
+Output: nyte-fold-logo-concept.png
+Status: raster logo concept presentation.
+
+Initial prompt
+
+Use case: logo-brand.
+Design a completely fresh original logo for "nyte", a developer tool for persistent AI agent conversations.
+The prior concept used a lavender crescent n; the user rejected it because it was too close to the inspiration website. This new identity must have entirely different artwork and colors. No moon, crescent, cloud, stars, night-sky imagery, lavender, purple or blue.
+
+Create one considered logo concept, as a polished flat graphic design presentation on a solid warm ivory background #F3EFE6. Main horizontal logo lockup centered with generous whitespace. At left an original bold abstract folded-strip emblem suggesting a capital N through two offset vertical blocks and one clean diagonal connection. Use purposeful asymmetry and strong negative space, with a single intriguing cut that makes it distinctive. Compact square-ish silhouette, sturdy enough to remain recognizable at 24px. Not a literal origami drawing; a very economical solid graphic shape. Emblem in rich burnt orange #D6532F. At right the exact lowercase word "nyte" in deep warm charcoal #26251F. Typography: confident contemporary grotesk, substantial weight, crisp squared terminals, restrained distinctive detailing and excellent optical kerning. No bubbly letters. Emblem visually matches wordmark height.
+
+One large lockup occupying about 65 percent of canvas width. Beneath it two small subordinate examples of the exact same emblem: one pure charcoal silhouette on ivory, one ivory silhouette inside a charcoal square. Both are the identical logo, not variations. Keep lots of blank space. No other text except "nyte". Landscape canvas.
+
+This must look like immaculate flat vector artwork. Strictly solid flat fills, clean sharp edges. No texture, gradient, shading, glow, lighting, 3D, paper mockup, presentation props, watermarks, captions, badges, decorative lines, arrows, infinity symbol, robot, brain, circuitry, crescent or cloud. Prioritize an ownable simple silhouette and beautifully drawn letterforms.
+
+Refinement prompt
+
+Correct the rendering of this logo presentation. Keep the exact existing N symbol shape, nyte letterforms and layout. Replace the entire black background with solid bright warm ivory #F3EFE6. Make the large N symbol a flat opaque burnt orange #D6532F with crisp visible negative-space cuts showing ivory. Make the word nyte solid dark charcoal #26251F, clearly legible with high contrast on the ivory background. Small lower left N solid charcoal. Small lower right square solid charcoal and its N ivory. Remove every glow, bloom, shadow, gradient, texture and lighting effect. These are flat solid ink shapes on a bright ivory field. Preserve the shape design and composition. The background MUST be light ivory, not black or dark. Clean 2D vector style logo graphic.

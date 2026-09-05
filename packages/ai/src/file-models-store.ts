@@ -7,10 +7,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ModelsStore, ModelsStoreEntry, ModelsStoreOperationOptions } from "./models-store.ts";
-import { defaultUjiHome } from "./utils/uji-home.ts";
+import { defaultNyteHome } from "./utils/nyte-home.ts";
 
 export function defaultModelsStorePath(): string {
-  return join(defaultUjiHome(), "models-store.json");
+  return join(defaultNyteHome(), "models-store.json");
 }
 
 /**

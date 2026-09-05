@@ -1,10 +1,8 @@
 /**
- * The session tree as a picker: every turn on every branch, the head's path
- * marked, one row highlighted. Enter hands the highlighted entry back to the
- * shell, which decides what a move to it means.
- *
- * Layout and filtering follow pi's tree selector; the chrome is the inline
- * menu's, so opening the tree is the same gesture as picking a model.
+ * The session tree as a picker: every commit on every branch, the head's path
+ * marked, one row highlighted. Enter hands the highlighted commit back to the
+ * shell, which decides what a move to it means. It takes the composer's place
+ * while it is open, the way pi's does.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/components/tree-selector.ts
  */
@@ -30,74 +28,118 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
-import type { SessionTree, SessionTreeNode } from "@uji-ai/core";
+import type { Oid, SessionTree, SessionTreeNode } from "@nyte-ai/core";
+import type { JsonValue } from "@nyte-ai/schema";
 import { GLYPHS } from "./constants.ts";
-import { PickerCancelled } from "./picker.ts";
+import { userText } from "./format.ts";
+import { isJsonObject, isJsonString } from "./json.ts";
 import type { CliTheme } from "./theme.ts";
-import { setHints } from "./tui.ts";
-import type { Ui } from "./tui.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
-import type { Entry } from "@uji-ai/core/store";
 
-export type TreeFilter = "default" | "users" | "all";
+/**
+ * `default` hides bookkeeping and text-less assistant steps; `no-tools` also
+ * hides tool results; `users` keeps only what you sent; `all` hides nothing.
+ */
+export type TreeFilter = "default" | "no-tools" | "users" | "all";
+
+const FILTER_CYCLE: readonly TreeFilter[] = ["default", "no-tools", "users", "all"];
+
+type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary" | "config" | "note";
 
 /** One drawn row of the tree. */
-interface TreeRow {
-  readonly id: string;
-  readonly entry: Entry;
-  /** Gutters and connectors, three cells per level. */
+export interface TreeRow {
+  readonly oid: Oid;
+  readonly node: SessionTreeNode;
+  /** Gutters, connectors, and the fold glyph, three cells per level. */
   readonly prefix: string;
-  /** On the path from the root to the head's leaf. */
+  /** Drawn with a connector: the first row of a branch. */
+  readonly connector: boolean;
+  /** Has rows under it that a fold would hide. */
+  readonly foldable: boolean;
+  readonly folded: boolean;
+  /** On the path from the root to the head's tip. */
   readonly active: boolean;
-  readonly role:
-    | "user"
-    | "assistant"
-    | "tool"
-    | "compaction"
-    | "branch_summary"
-    | "model"
-    | "thinking"
-    | "custom";
+  /** Head names whose tip is this commit. */
+  readonly heads: readonly string[];
+  readonly role: TreeRole;
   /** The role word before the text, e.g. `user:`. */
   readonly label: string;
   readonly text: string;
 }
 
 interface Gutter {
-  position: number;
-  show: boolean;
+  readonly position: number;
+  readonly show: boolean;
 }
 
 interface VisibleNode {
-  node: SessionTreeNode;
-  children: VisibleNode[];
+  readonly node: SessionTreeNode;
+  readonly children: VisibleNode[];
 }
+
+interface Described {
+  readonly role: TreeRole;
+  readonly label: string;
+  readonly text: string;
+}
+
+/** The call a tool result answers, so its row can say what was asked. */
+interface ToolCallSummary {
+  readonly name: string;
+  readonly args: JsonValue;
+}
+
+const MAX_TEXT_CHARS = 200;
+const MAX_CALL_CHARS = 50;
 
 function oneLine(text: string): string {
-  return text.replace(/\s+/gu, " ").trim();
+  return text.replace(/\s+/gu, " ").trim().slice(0, MAX_TEXT_CHARS);
 }
 
-function contentText(content: string | readonly { type: string; text?: string }[]): string {
-  if (typeof content === "string") return content;
-  return content
-    .map((part) => (part.type === "text" ? (part.text ?? "") : `[${part.type}]`))
+function assistantText(node: SessionTreeNode): string {
+  const { body } = node.commit;
+  if (body.kind !== "message" || body.message.role !== "assistant") return "";
+  return body.message.content
+    .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join(" ");
 }
 
-function assistantText(message: Extract<Entry, { type: "message" }>["message"]): string {
-  if (message.role !== "assistant") return "";
-  return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join(" ");
+/** The argument worth showing for a call: a path, a command, a pattern, a query, a prompt, else the first string. */
+function callSummary(call: ToolCallSummary): string {
+  const args = call.args;
+  if (!isJsonObject(args)) return "";
+  const preferred = ["path", "file_path", "command", "pattern", "query", "prompt", "url"];
+  const value =
+    preferred.map((key) => args[key]).find(isJsonString) ?? Object.values(args).find(isJsonString);
+  return value === undefined ? "" : oneLine(value).slice(0, MAX_CALL_CHARS);
 }
 
-function describe(entry: Entry): Pick<TreeRow, "role" | "label" | "text"> {
-  switch (entry.type) {
+/** Every tool call in the tree by id, from the assistant messages that made them. */
+export function toolCalls(tree: SessionTree): ReadonlyMap<string, ToolCallSummary> {
+  const calls = new Map<string, ToolCallSummary>();
+  const visit = (node: SessionTreeNode): void => {
+    const { body } = node.commit;
+    if (body.kind === "message" && body.message.role === "assistant") {
+      for (const part of body.message.content) {
+        if (part.type === "toolCall") calls.set(part.id, { name: part.name, args: part.arguments });
+      }
+    }
+    for (const child of node.children) visit(child);
+  };
+  for (const root of tree.roots) visit(root);
+  return calls;
+}
+
+function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSummary>): Described {
+  const { body } = node.commit;
+  switch (body.kind) {
     case "message": {
-      const { message } = entry;
+      const { message } = body;
       switch (message.role) {
         case "user":
-          return { role: "user", label: "user:", text: oneLine(contentText(message.content)) };
+          return { role: "user", label: "user:", text: oneLine(userText(message.content)) };
         case "assistant": {
-          const text = oneLine(assistantText(message));
+          const text = oneLine(assistantText(node));
           if (text !== "") return { role: "assistant", label: "assistant:", text };
           if (message.stopReason === "aborted") {
             return { role: "assistant", label: "assistant:", text: "(aborted)" };
@@ -105,64 +147,66 @@ function describe(entry: Entry): Pick<TreeRow, "role" | "label" | "text"> {
           if (message.errorMessage !== undefined) {
             return { role: "assistant", label: "assistant:", text: oneLine(message.errorMessage) };
           }
-          return { role: "assistant", label: "assistant:", text: "(tool calls)" };
+          return { role: "assistant", label: "assistant:", text: "(no content)" };
         }
-        case "toolResult":
-          return { role: "tool", label: `[${message.toolName}]`, text: "" };
+        case "toolResult": {
+          const call = calls.get(message.toolCallId);
+          const summary = call === undefined ? "" : callSummary(call);
+          return {
+            role: "tool",
+            label: summary === "" ? `[${message.toolName}]` : `[${message.toolName}: ${summary}]`,
+            text: "",
+          };
+        }
         default: {
           const _exhaustive: never = message;
           return _exhaustive;
         }
       }
     }
-    case "compaction":
+    case "checkpoint":
       return {
-        role: "compaction",
-        label: `[compaction: ${String(Math.round(entry.tokensBefore / 1000))}k tokens]`,
+        role: "checkpoint",
+        label: `[compaction: ${String(Math.round(body.tokensBefore / 1000))}k tokens]`,
         text: "",
       };
-    case "branch_summary":
-      return { role: "branch_summary", label: "[branch summary]", text: oneLine(entry.summary) };
-    case "model_change":
-      return { role: "model", label: `[model: ${entry.modelId}]`, text: "" };
-    case "thinking_level_change":
-      return { role: "thinking", label: `[thinking: ${entry.thinkingLevel}]`, text: "" };
-    case "agent_change":
-      return { role: "model", label: `[agent: ${entry.agentId}]`, text: "" };
-    case "custom":
-      return { role: "custom", label: `[${entry.customType}]`, text: "" };
+    case "summary":
+      return { role: "summary", label: "[branch summary]:", text: oneLine(body.text) };
+    case "config":
+      return {
+        role: "config",
+        label: `[config: ${body.model?.id ?? body.thinkingLevel ?? body.agent ?? ""}]`,
+        text: "",
+      };
+    case "note":
+      return { role: "note", label: `[${body.type}]`, text: "" };
     default: {
-      const _exhaustive: never = entry;
+      const _exhaustive: never = body;
       return _exhaustive;
     }
   }
 }
 
-function hasAssistantText(entry: Entry): boolean {
-  if (entry.type !== "message" || entry.message.role !== "assistant") return false;
-  return assistantText(entry.message).trim() !== "";
-}
-
-/** Whether a node shows under a filter; the head's leaf always does. */
-function passes(node: SessionTreeNode, filter: TreeFilter, leafId: string | null): boolean {
-  const { entry } = node;
-  if (entry.id === leafId) return true;
+/** Whether a node shows under a filter; the head's tip always does. */
+function passes(node: SessionTreeNode, filter: TreeFilter, tip: Oid | null): boolean {
+  if (node.oid === tip) return true;
+  const { body } = node.commit;
+  if (filter === "all") return true;
+  if (body.kind === "message" && body.message.role === "assistant") {
+    // A step that only called tools is its tool rows; it earns no row of its own.
+    const { message } = body;
+    const failed = message.stopReason === "aborted" || message.errorMessage !== undefined;
+    if (assistantText(node).trim() === "" && !failed) return false;
+  }
   switch (filter) {
-    case "all":
-      return true;
     case "users":
-      return entry.type === "message" && entry.message.role === "user";
+      return body.kind === "message" && body.message.role === "user";
+    case "no-tools":
+      return body.kind === "message"
+        ? body.message.role !== "toolResult"
+        : body.kind === "checkpoint" || body.kind === "summary";
     case "default":
-      if (entry.type === "message") {
-        if (entry.message.role === "toolResult") return false;
-        if (entry.message.role === "assistant") {
-          const aborted =
-            entry.message.stopReason === "aborted" || entry.message.stopReason === "error";
-          return hasAssistantText(entry) || aborted || entry.message.errorMessage !== undefined;
-        }
-        return true;
-      }
-      return entry.type === "compaction" || entry.type === "branch_summary";
+      return body.kind === "message" || body.kind === "checkpoint" || body.kind === "summary";
     default: {
       const _exhaustive: never = filter;
       return _exhaustive;
@@ -170,18 +214,14 @@ function passes(node: SessionTreeNode, filter: TreeFilter, leafId: string | null
   }
 }
 
-function matches(node: SessionTreeNode, query: string): boolean {
+function matches(described: Described, query: string): boolean {
   const terms = query.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
   if (terms.length === 0) return true;
-  const described = describe(node.entry);
-  const haystack = `${described.label} ${described.text} ${node.entry.id}`.toLocaleLowerCase();
+  const haystack = `${described.label} ${described.text}`.toLocaleLowerCase();
   return terms.every((term) => haystack.includes(term));
 }
 
-/**
- * The visible tree: hidden nodes drop out and their children attach to the
- * nearest visible ancestor, so a filtered view keeps its branch points.
- */
+/** Hidden nodes drop out and their children attach to the nearest visible ancestor. */
 function visibleForest(
   roots: readonly SessionTreeNode[],
   keep: (node: SessionTreeNode) => boolean,
@@ -197,20 +237,35 @@ function containsActive(node: VisibleNode): boolean {
   return node.node.active || node.children.some(containsActive);
 }
 
+export interface TreeLayoutOptions {
+  readonly filter?: TreeFilter;
+  readonly query?: string;
+  /** Rows whose descendants are hidden. */
+  readonly folded?: ReadonlySet<Oid>;
+}
+
 /**
  * Flatten with pi's indentation: a branch point indents its children, the
  * first generation after a branch indents once more for grouping, and a
- * single-child chain stays flat.
+ * single-child chain stays flat. A folded branch row keeps its glyph and
+ * drops everything under it.
  */
-export function layoutTree(
-  tree: SessionTree,
-  options: { filter?: TreeFilter; query?: string } = {},
-): TreeRow[] {
+export function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow[] {
   const filter = options.filter ?? "default";
   const query = options.query ?? "";
+  const folded = options.folded ?? new Set<Oid>();
+  const calls = toolCalls(tree);
+  const described = new Map<Oid, Described>();
+  const describeOnce = (node: SessionTreeNode): Described => {
+    const found = described.get(node.oid);
+    if (found !== undefined) return found;
+    const value = describe(node, calls);
+    described.set(node.oid, value);
+    return value;
+  };
   const forest = visibleForest(
     tree.roots,
-    (node) => passes(node, filter, tree.leafId) && matches(node, query),
+    (node) => passes(node, filter, tree.tip) && matches(describeOnce(node), query),
   );
   const multipleRoots = forest.length > 1;
   const rows: TreeRow[] = [];
@@ -227,6 +282,8 @@ export function layoutTree(
     const displayIndent = multipleRoots ? Math.max(0, indent - 1) : indent;
     const connector = showConnector && !isRoot;
     const connectorPosition = connector ? displayIndent - 1 : -1;
+    const foldable = connector && item.children.length > 0;
+    const isFolded = foldable && folded.has(item.node.oid);
     const cells: string[] = [];
     for (let cell = 0; cell < displayIndent * 3; cell++) {
       const level = Math.floor(cell / 3);
@@ -235,21 +292,28 @@ export function layoutTree(
       if (gutter !== undefined) {
         cells.push(offset === 0 && gutter.show ? "│" : " ");
       } else if (connector && level === connectorPosition) {
-        cells.push(offset === 0 ? (isLast ? "└" : "├") : offset === 1 ? "─" : " ");
+        cells.push(
+          offset === 0 ? (isLast ? "└" : "├") : offset === 1 ? foldGlyph(foldable, isFolded) : " ",
+        );
       } else {
         cells.push(" ");
       }
     }
-    const { entry } = item.node;
     rows.push({
-      id: entry.id,
-      entry,
+      oid: item.node.oid,
+      node: item.node,
       prefix: cells.join(""),
+      connector,
+      foldable,
+      folded: isFolded,
       active: item.node.active,
-      ...describe(entry),
+      // The current head sits at the tip, which the marker already says.
+      heads: item.node.oid === tree.tip ? [] : item.node.heads,
+      ...describeOnce(item.node),
     });
+    if (isFolded) return;
 
-    const ordered = [...item.children].sort(
+    const ordered = item.children.toSorted(
       (left, right) => Number(containsActive(right)) - Number(containsActive(left)),
     );
     const multiple = ordered.length > 1;
@@ -270,7 +334,7 @@ export function layoutTree(
     }
   };
 
-  const orderedRoots = [...forest].sort(
+  const orderedRoots = forest.toSorted(
     (left, right) => Number(containsActive(right)) - Number(containsActive(left)),
   );
   for (const [index, root] of orderedRoots.entries()) {
@@ -287,44 +351,42 @@ export function layoutTree(
   return rows;
 }
 
-/** The row's plain text, as drawn: prefix, path marker, label, text. */
-export function treeRowText(row: TreeRow): string {
-  const marker = row.active ? "• " : "";
-  return `${row.prefix}${marker}${row.label}${row.text === "" ? "" : ` ${row.text}`}`;
+function foldGlyph(foldable: boolean, folded: boolean): string {
+  if (!foldable) return "─";
+  return folded ? "⊞" : "⊟";
 }
 
-/** Index of `id`, else of its nearest ancestor with a row, else the last row. */
+/** Index of `oid`, else of its nearest ancestor with a row, else the last row. */
 export function nearestRowIndex(
   rows: readonly TreeRow[],
-  byId: ReadonlyMap<string, Entry>,
-  id: string | null,
+  parents: ReadonlyMap<Oid, Oid | null>,
+  oid: Oid | null,
 ): number {
-  const index = new Map(rows.map((row, position) => [row.id, position]));
-  let current = id;
-  const seen = new Set<string>();
+  const index = new Map(rows.map((row, position) => [row.oid, position]));
+  let current = oid;
+  const seen = new Set<Oid>();
   while (current !== null && !seen.has(current)) {
     seen.add(current);
     const found = index.get(current);
     if (found !== undefined) return found;
-    current = byId.get(current)?.parentId ?? null;
+    current = parents.get(current) ?? null;
   }
   return Math.max(0, rows.length - 1);
 }
 
 const PREFIX_WIDTH = 2;
-const MAX_ROWS = 12;
-const CHROME_ROWS = 7;
-/** Padding rows plus the query row: what the panel adds around its list. */
-const PANEL_CHROME_ROWS = 3;
+const MIN_ROWS = 5;
+/** Title, help, search, footer, and a padding row above and below. */
+const PANEL_CHROME_ROWS = 6;
 const PADDING_LEFT = 2;
 const PADDING_RIGHT = 1;
 
 interface TreeRowsOptions extends RenderableOptions<TreeRows> {
-  theme: CliTheme;
-  onSelectionChanged: (index: number) => void;
+  readonly theme: CliTheme;
+  readonly onSelectionChanged: (index: number) => void;
 }
 
-/** Rows drawn straight onto the buffer, one per tree entry, as tall as the list. */
+/** Rows drawn straight onto the buffer, one per commit, as tall as the list. */
 class TreeRows extends Renderable {
   private rows: readonly TreeRow[] = [];
   private selected = 0;
@@ -351,7 +413,6 @@ class TreeRows extends Renderable {
     this.height = Math.max(1, rows.length);
     this.selected = -1;
     this.setSelectedIndex(selectedIndex);
-    this.requestRender();
   }
 
   getSelectedIndex(): number {
@@ -366,6 +427,7 @@ class TreeRows extends Renderable {
     this.notifySelectionChanged(next);
   }
 
+  /** Step with wrap-around, as pi's list does. */
   moveBy(steps: number): void {
     const count = this.rows.length;
     if (count > 0) this.setSelectedIndex((((this.selected + steps) % count) + count) % count);
@@ -387,14 +449,13 @@ class TreeRows extends Renderable {
       case "user":
         return this.theme.accent;
       case "assistant":
-        return this.theme.ok;
-      case "branch_summary":
-      case "compaction":
+        return row.text === "(aborted)" ? this.theme.warning : this.theme.ok;
+      case "summary":
+      case "checkpoint":
         return this.theme.warning;
       case "tool":
-      case "model":
-      case "thinking":
-      case "custom":
+      case "config":
+      case "note":
         return this.theme.muted;
       default: {
         const _exhaustive: never = row.role;
@@ -403,7 +464,7 @@ class TreeRows extends Renderable {
     }
   }
 
-  protected override renderSelf(buffer: OptimizedBuffer, _deltaTime: number): void {
+  protected override renderSelf(buffer: OptimizedBuffer): void {
     if (!this.visible) return;
     const left = this.x;
     const top = this.y;
@@ -421,7 +482,7 @@ class TreeRows extends Renderable {
         selected ? `${GLYPHS.prompt} ` : "  ",
         left,
         top + index,
-        parseColor(selected ? this.theme.selectionForeground : this.theme.foreground),
+        parseColor(selected ? this.theme.selectionForeground : this.theme.accent),
         background,
       );
       if (textWidth <= 0) continue;
@@ -439,29 +500,28 @@ class TreeRows extends Renderable {
       };
       draw(row.prefix, this.theme.dim);
       if (row.active) draw("• ", this.theme.accent);
+      for (const head of row.heads) draw(`[${head}] `, this.theme.warning);
       draw(row.label, this.roleColor(row));
       if (row.text !== "") draw(` ${row.text}`, this.theme.foreground);
     }
   }
 }
 
-interface TreeSelectorOptions {
+export interface TreeSelectorOptions {
   readonly tree: SessionTree;
-  /** Initial highlight; defaults to the head's leaf. */
-  readonly selectedId?: string | null;
-  /** Rows to show first; `default` hides tool results and bookkeeping. */
+  /** Initial highlight; defaults to the head's tip. */
+  readonly selectedOid?: Oid | null;
+  /** Rows to show first. */
   readonly filter?: TreeFilter;
-  readonly signal?: AbortSignal;
 }
 
-interface TreeSelectorShell {
-  renderer: CliRenderer;
-  theme: CliTheme;
-  nextId: (prefix?: string) => string;
-  /** The panel's row count changed; the shell resizes the slot it borrows. */
-  onRows?: (rows: number) => void;
-  onSelect: (id: string) => void;
-  onCancel: () => void;
+export interface TreeSelectorShell {
+  readonly renderer: CliRenderer;
+  readonly theme: CliTheme;
+  readonly nextId: (prefix?: string) => string;
+  readonly onRows: (rows: number) => void;
+  readonly onSelect: (oid: Oid) => void;
+  readonly onCancel: () => void;
 }
 
 function consume(key: KeyEvent): void {
@@ -469,48 +529,47 @@ function consume(key: KeyEvent): void {
   key.stopPropagation();
 }
 
-/** The tree picker itself: query row, rows, and the keys that move through them. */
-class TreeSelector {
+/** The tree picker itself: title, help, search, rows, and a count. */
+export class TreeSelector {
   readonly container: BoxRenderable;
   readonly queryInput: InputRenderable;
 
   private readonly renderer: CliRenderer;
-  private readonly theme: CliTheme;
   private readonly tree: SessionTree;
-  private readonly byId: ReadonlyMap<string, Entry>;
-  private readonly title: TextRenderable;
-  private readonly count: TextRenderable;
+  private readonly parents: ReadonlyMap<Oid, Oid | null>;
+  private readonly footer: TextRenderable;
   private readonly empty: TextRenderable;
   private readonly scroll: ScrollBoxRenderable;
   private readonly list: TreeRows;
-  private readonly onSelect: (id: string) => void;
+  private readonly onSelect: (oid: Oid) => void;
   private readonly onCancel: () => void;
   private readonly onRows: (rows: number) => void;
+  private readonly theme: CliTheme;
+  private readonly folded = new Set<Oid>();
   private layout: TreeRow[] = [];
   private filter: TreeFilter;
   private query = "";
   private filtering = true;
-  private maxVisible = MAX_ROWS;
-  private lastSelectedId: string | null;
+  private maxVisible = MIN_ROWS;
+  private lastSelected: Oid | null;
   private destroyed = false;
 
   constructor(shell: TreeSelectorShell, options: TreeSelectorOptions) {
     this.renderer = shell.renderer;
-    this.theme = shell.theme;
     this.tree = options.tree;
     this.onSelect = shell.onSelect;
     this.onCancel = shell.onCancel;
-    this.onRows = shell.onRows ?? (() => undefined);
+    this.onRows = shell.onRows;
+    this.theme = shell.theme;
     this.filter = options.filter ?? "default";
-    this.lastSelectedId =
-      options.selectedId === undefined ? options.tree.leafId : options.selectedId;
-    const byId = new Map<string, Entry>();
+    this.lastSelected = options.selectedOid === undefined ? options.tree.tip : options.selectedOid;
+    const parents = new Map<Oid, Oid | null>();
     const index = (node: SessionTreeNode): void => {
-      byId.set(node.entry.id, node.entry);
+      parents.set(node.oid, node.commit.parent);
       for (const child of node.children) index(child);
     };
     for (const root of options.tree.roots) index(root);
-    this.byId = byId;
+    this.parents = parents;
     const { theme, nextId } = shell;
 
     this.container = new BoxRenderable(shell.renderer, {
@@ -525,29 +584,39 @@ class TreeSelector {
       paddingTop: 1,
       paddingBottom: 1,
     });
-    const queryRow = new BoxRenderable(shell.renderer, {
-      id: nextId("tree-query-row"),
+    const line = (id: string, content: StyledText | string): TextRenderable =>
+      new TextRenderable(shell.renderer, {
+        id: nextId(id),
+        content,
+        height: 1,
+        flexShrink: 0,
+        wrapMode: "none",
+      });
+    this.container.add(
+      line("tree-title", new StyledText([bold(fg(theme.accent)("Session Tree"))])),
+    );
+    this.container.add(
+      line(
+        "tree-help",
+        new StyledText([
+          fg(theme.dim)(
+            "↑/↓ move · ←/→ page · alt+←/→ fold · enter select · ctrl+x copy · esc close · ctrl+t/u/a/d filter · ctrl+o cycle",
+          ),
+        ]),
+      ),
+    );
+    const searchRow = new BoxRenderable(shell.renderer, {
+      id: nextId("tree-search-row"),
       height: 1,
       flexShrink: 0,
       flexDirection: "row",
     });
-    this.title = new TextRenderable(shell.renderer, {
-      id: nextId("tree-title"),
-      content: new StyledText([
-        bold(fg(theme.accent)("Session tree")),
-        fg(theme.muted)(`  ${GLYPHS.separator} `),
-      ]),
-      wrapMode: "none",
-      flexShrink: 0,
-    });
-    queryRow.add(this.title);
+    searchRow.add(line("tree-search-label", new StyledText([fg(theme.dim)("Type to search: ")])));
     this.queryInput = new InputRenderable(shell.renderer, {
       id: nextId("tree-query"),
       flexGrow: 1,
       flexBasis: 0,
       minWidth: 1,
-      placeholder: "type to filter",
-      placeholderColor: theme.muted,
       backgroundColor: theme.transparent,
       focusedBackgroundColor: theme.transparent,
       textColor: theme.foreground,
@@ -556,15 +625,8 @@ class TreeSelector {
       selectionBg: theme.selectionBackground,
       selectionFg: theme.selectionForeground,
     });
-    queryRow.add(this.queryInput);
-    this.count = new TextRenderable(shell.renderer, {
-      id: nextId("tree-count"),
-      content: "",
-      fg: theme.dim,
-      wrapMode: "none",
-      flexShrink: 0,
-    });
-    queryRow.add(this.count);
+    searchRow.add(this.queryInput);
+    this.container.add(searchRow);
 
     this.scroll = new ScrollBoxRenderable(shell.renderer, {
       id: nextId("tree-scroll"),
@@ -582,23 +644,23 @@ class TreeSelector {
       theme,
       onSelectionChanged: (selected) => {
         this.scrollIntoView(selected);
-        this.lastSelectedId = this.layout[selected]?.id ?? this.lastSelectedId;
+        this.lastSelected = this.layout[selected]?.oid ?? this.lastSelected;
+        this.paintFooter();
       },
+      // The scroll box clamps offsets to 0 until it is laid out; scroll again once it is.
+      onSizeChange: () => this.scrollIntoView(this.list.getSelectedIndex()),
       onMouseDown: (event: MouseEvent) => this.onMouseDown(event),
       onMouseMove: (event: MouseEvent) => this.list.setHovered(this.list.indexAt(event.y)),
       onMouseOut: () => this.list.setHovered(undefined),
     });
     this.scroll.add(this.list);
-    this.empty = new TextRenderable(shell.renderer, {
-      id: nextId("tree-empty"),
-      content: "no matches",
-      fg: theme.dim,
-      visible: false,
-    });
+    this.empty = line("tree-empty", new StyledText([fg(theme.dim)("  No entries found")]));
+    this.empty.visible = false;
+    this.footer = line("tree-footer", "");
 
-    this.container.add(queryRow);
     this.container.add(this.scroll);
     this.container.add(this.empty);
+    this.container.add(this.footer);
 
     this.maxVisible = this.maxVisibleForHeight(shell.renderer.height);
     shell.renderer.keyInput.on("keypress", this.onKeyPress);
@@ -608,21 +670,15 @@ class TreeSelector {
   }
 
   get hints(): string {
-    return "enter select · ↑↓ move · ctrl+u users · ctrl+a all · esc close";
+    return "enter select · ↑↓ move · esc close";
   }
 
-  /** Rows the panel needs right now: declared, not measured. */
   get rows(): number {
     return PANEL_CHROME_ROWS + Math.max(1, Math.min(this.layout.length, this.maxVisible));
   }
 
-  /** The highlighted entry id, or undefined when nothing matches. */
-  get selectedId(): string | undefined {
-    return this.layout[this.list.getSelectedIndex()]?.id;
-  }
-
-  get rowsShown(): readonly TreeRow[] {
-    return this.layout;
+  get selectedOid(): Oid | undefined {
+    return this.layout[this.list.getSelectedIndex()]?.oid;
   }
 
   focus(): void {
@@ -643,27 +699,40 @@ class TreeSelector {
     this.container.destroyRecursively();
   }
 
-  setFilter(filter: TreeFilter): void {
+  private setFilter(filter: TreeFilter): void {
     this.filter = filter;
     this.relayout();
   }
 
   private relayout(): void {
-    this.layout = layoutTree(this.tree, { filter: this.filter, query: this.query });
-    const selected = nearestRowIndex(this.layout, this.byId, this.lastSelectedId);
+    this.layout = layoutTree(this.tree, {
+      filter: this.filter,
+      query: this.query,
+      folded: this.folded,
+    });
+    const selected = nearestRowIndex(this.layout, this.parents, this.lastSelected);
     this.list.setRows(this.layout, selected);
-    if (this.layout.length > 0) this.lastSelectedId = this.layout[selected]?.id ?? null;
+    if (this.layout.length > 0) this.lastSelected = this.layout[selected]?.oid ?? null;
     this.scroll.height = Math.max(1, Math.min(this.layout.length, this.maxVisible));
     this.scroll.visible = this.layout.length > 0;
     this.empty.visible = this.layout.length === 0;
-    const mode = this.filter === "default" ? "" : ` ${GLYPHS.separator} ${this.filter}`;
-    this.count.content = ` ${String(this.layout.length)}${mode}`;
     this.scroll.scrollTo(0);
     this.scrollIntoView(selected);
+    this.paintFooter();
     this.onRows(this.rows);
-    this.renderer.requestRender();
   }
 
+  /** `(selected/total) [filter]`, the way pi's footer reads. */
+  private paintFooter(): void {
+    const total = this.layout.length;
+    const position = total === 0 ? 0 : this.list.getSelectedIndex() + 1;
+    const mode = this.filter === "default" ? "" : ` [${this.filter}]`;
+    this.footer.content = new StyledText([
+      fg(this.theme.dim)(`  (${String(position)}/${String(total)})${mode}`),
+    ]);
+  }
+
+  /** Scroll the least that brings the selection into the window. */
   private scrollIntoView(index: number): void {
     const top = this.scroll.scrollTop;
     if (index < top) this.scroll.scrollTo(index);
@@ -671,7 +740,7 @@ class TreeSelector {
   }
 
   private maxVisibleForHeight(height: number): number {
-    return Math.max(1, Math.min(MAX_ROWS, height - CHROME_ROWS));
+    return Math.max(MIN_ROWS, Math.floor(height / 2) - PANEL_CHROME_ROWS);
   }
 
   private onMouseDown(event: MouseEvent): void {
@@ -681,8 +750,8 @@ class TreeSelector {
     event.preventDefault();
     event.stopPropagation();
     this.list.setSelectedIndex(index);
-    const id = this.selectedId;
-    if (id !== undefined) this.onSelect(id);
+    const oid = this.selectedOid;
+    if (oid !== undefined) this.onSelect(oid);
   }
 
   private readonly onResize = (_width: number, height: number): void => {
@@ -693,6 +762,8 @@ class TreeSelector {
   private readonly onInput = (value: string): void => {
     if (!this.filtering) return;
     this.query = value;
+    // A search shows everything it matches; folds would hide matches.
+    this.folded.clear();
     this.relayout();
   };
 
@@ -703,9 +774,58 @@ class TreeSelector {
     this.query = value;
   }
 
+  /** Fold the selected branch, or jump to the row that starts the branch it is in. */
+  private foldOrUp(): void {
+    const index = this.list.getSelectedIndex();
+    const row = this.layout[index];
+    if (row === undefined) return;
+    if (row.foldable && !row.folded) {
+      this.folded.add(row.oid);
+      this.relayout();
+      return;
+    }
+    const start = this.layout.findLast(
+      (candidate, position) => position < index && candidate.connector,
+    );
+    this.list.setSelectedIndex(start === undefined ? 0 : this.layout.indexOf(start));
+  }
+
+  /** Unfold the selected branch, or jump to the next branch start below. */
+  private unfoldOrDown(): void {
+    const index = this.list.getSelectedIndex();
+    const row = this.layout[index];
+    if (row === undefined) return;
+    if (row.folded) {
+      this.folded.delete(row.oid);
+      this.relayout();
+      return;
+    }
+    const next = this.layout.findIndex(
+      (candidate, position) => position > index && candidate.connector,
+    );
+    if (next !== -1) this.list.setSelectedIndex(next);
+  }
+
+  private cycleFilter(step: 1 | -1): void {
+    const at = FILTER_CYCLE.indexOf(this.filter);
+    const next = FILTER_CYCLE[(at + step + FILTER_CYCLE.length) % FILTER_CYCLE.length];
+    if (next !== undefined) this.setFilter(next);
+  }
+
+  private toggleFilter(filter: TreeFilter): void {
+    this.setFilter(this.filter === filter ? "default" : filter);
+  }
+
+  private copySelected(): void {
+    const row = this.layout[this.list.getSelectedIndex()];
+    if (row === undefined) return;
+    const text = row.text === "" ? row.label : row.text;
+    this.renderer.copyToClipboardOSC52(text);
+  }
+
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || key.defaultPrevented) return;
-    if (key.name === "escape") {
+    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
       consume(key);
       if (this.query === "") this.onCancel();
       else {
@@ -714,35 +834,57 @@ class TreeSelector {
       }
       return;
     }
-    if (key.ctrl && key.name === "u") {
+    if (key.ctrl) {
+      switch (key.name) {
+        case "d":
+          this.setFilter("default");
+          break;
+        case "t":
+          this.toggleFilter("no-tools");
+          break;
+        case "u":
+          this.toggleFilter("users");
+          break;
+        case "a":
+          this.toggleFilter("all");
+          break;
+        case "o":
+          this.cycleFilter(key.shift ? -1 : 1);
+          break;
+        case "x":
+          this.copySelected();
+          break;
+        case "p":
+          this.list.moveBy(-1);
+          break;
+        case "n":
+          this.list.moveBy(1);
+          break;
+        default:
+          return;
+      }
       consume(key);
-      this.setFilter(this.filter === "users" ? "default" : "users");
-      return;
-    }
-    if (key.ctrl && key.name === "a") {
-      consume(key);
-      this.setFilter(this.filter === "all" ? "default" : "all");
       return;
     }
     if (this.layout.length === 0) return;
     if (key.name === "return") {
       consume(key);
-      const id = this.selectedId;
-      if (id !== undefined) this.onSelect(id);
+      const oid = this.selectedOid;
+      if (oid !== undefined) this.onSelect(oid);
       return;
     }
-    const page = Math.max(1, this.maxVisible - 1);
-    if (key.name === "up" || (key.ctrl && key.name === "p") || (key.shift && key.name === "tab")) {
+    const page = Math.max(1, this.maxVisible);
+    if (key.name === "up" || (key.shift && key.name === "tab")) {
       this.list.moveBy(-1);
-    } else if (
-      key.name === "down" ||
-      (key.ctrl && key.name === "n") ||
-      (key.name === "tab" && !key.shift)
-    ) {
+    } else if (key.name === "down" || (key.name === "tab" && !key.shift)) {
       this.list.moveBy(1);
-    } else if (key.name === "pageup") {
+    } else if (key.name === "left" && (key.meta || key.option)) {
+      this.foldOrUp();
+    } else if (key.name === "right" && (key.meta || key.option)) {
+      this.unfoldOrDown();
+    } else if (key.name === "left" || key.name === "pageup") {
       this.list.setSelectedIndex(Math.max(0, this.list.getSelectedIndex() - page));
-    } else if (key.name === "pagedown") {
+    } else if (key.name === "right" || key.name === "pagedown") {
       this.list.setSelectedIndex(
         Math.min(this.layout.length - 1, this.list.getSelectedIndex() + page),
       );
@@ -751,45 +893,4 @@ class TreeSelector {
     }
     consume(key);
   };
-}
-
-/** One-shot tree picker over the composer: resolves with the chosen entry id. */
-export function selectTreeEntry(ui: Ui, options: TreeSelectorOptions): Promise<string> {
-  if (ui.selecting) return Promise.reject(new Error("Another menu is already open"));
-  if (options.signal?.aborted === true) return Promise.reject(new PickerCancelled());
-  const restoredHints = ui.hintText;
-  return new Promise<string>((resolve, reject) => {
-    let settled = false;
-    let selector: TreeSelector | undefined;
-    const settle = (finish: () => void): void => {
-      if (settled) return;
-      settled = true;
-      options.signal?.removeEventListener("abort", onAbort);
-      ui.ephemeral.clear();
-      selector?.destroy();
-      ui.selecting = false;
-      ui.focus.reset();
-      setHints(ui, restoredHints);
-      ui.renderer.requestRender();
-      finish();
-    };
-    const onAbort = (): void => settle(() => reject(new PickerCancelled()));
-    selector = new TreeSelector(
-      {
-        renderer: ui.renderer,
-        theme: ui.transcript.theme,
-        nextId: ui.nextId,
-        onRows: (rows) => ui.ephemeral.setRows(rows),
-        onSelect: (id) => settle(() => resolve(id)),
-        onCancel: () => settle(() => reject(new PickerCancelled())),
-      },
-      options,
-    );
-    ui.closeInlineMenus?.();
-    ui.ephemeral.mount(selector.container, selector.rows);
-    setHints(ui, selector.hints);
-    ui.selecting = true;
-    ui.focus.use(selector);
-    options.signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

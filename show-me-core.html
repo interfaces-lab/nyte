@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="description" content="A plain-language guide to how Nyte core saves messages, runs an agent, and resumes after a crash." />
+  <title>What Nyte core does</title>
+  <style>
+    :root {
+      --bg: #ffffff; --surface: #f5f5f5; --fg: #171717; --dim: #595959;
+      --border: #d4d4d4; --accent: #0867ad; --tint: #edf6ff;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --mono: "Berkeley Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0a0a0a; --surface: #171717; --fg: #f5f5f5; --dim: #b3b3b3;
+        --border: #3d3d3d; --accent: #73c2ff; --tint: #102435;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+    main { max-width: 1000px; margin: 0 auto; padding: 64px 32px 80px; }
+    h1, h2, h3 { text-wrap: balance; }
+    h1 { max-width: 780px; margin: 14px 0 20px; font-size: clamp(32px, 4.5vw, 46px); line-height: 1.14; letter-spacing: -.035em; font-weight: 650; }
+    h2 { margin: 0 0 14px; font-size: clamp(25px, 3vw, 30px); line-height: 1.25; letter-spacing: -.02em; font-weight: 600; }
+    h3 { margin: 0 0 8px; font-size: 18px; line-height: 1.4; font-weight: 600; }
+    p { max-width: 70ch; margin: 0 0 16px; }
+    p:last-child { margin-bottom: 0; }
+    a { color: var(--accent); text-underline-offset: 4px; }
+    a, summary { touch-action: manipulation; }
+    a:focus-visible, summary:focus-visible, pre:focus-visible { outline: 2px solid var(--fg); outline-offset: 5px; border-radius: 3px; }
+    .diagram { margin: 24px 0; padding: 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .diagram pre { margin: 0; padding: 0; border: 0; background: transparent; white-space: pre; overflow-x: auto; overflow-wrap: normal; }
+    .diagram figcaption { max-width: 74ch; }
+    .context-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px; }
+    .context-row span { padding: 9px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-size: 15px; }
+    .context-row .checkpoint { background: var(--tint); border-color: var(--accent); }
+    .source { margin-top: 18px; font-size: 14px; color: var(--dim); }
+    .package { color: var(--dim); font: 14px/1.5 var(--mono); }
+    .lede { max-width: 64ch; font-size: 20px; line-height: 1.6; }
+    .muted { color: var(--dim); }
+    nav { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-top: 26px; }
+    nav a { display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
+    section { margin-top: 52px; padding-top: 34px; border-top: 1px solid var(--border); scroll-margin-top: 24px; }
+    .section-label { margin-bottom: 10px; color: var(--accent); font-size: 14px; font-weight: 600; }
+    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; margin: 26px 0 20px; padding: 0; list-style: none; }
+    .flow > li { position: relative; padding: 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .flow > li + li::before { content: "→"; position: absolute; left: -23px; top: 40px; color: var(--dim); }
+    .flow .step-number { display: block; margin-bottom: 14px; color: var(--accent); font: 14px/1 var(--mono); }
+    .flow p { font-size: 16px; line-height: 1.55; color: var(--dim); }
+    .callout { padding: 18px 22px; background: var(--tint); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; }
+    .callout p { max-width: 74ch; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 24px; }
+    .pair p { color: var(--dim); }
+    figure { margin: 24px 0; }
+    figcaption { margin-top: 12px; color: var(--dim); font-size: 15px; }
+    .queue { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; list-style: none; margin: 0; }
+    .queue li { padding: 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); }
+    .queue .next { border-color: var(--accent); background: var(--tint); }
+    .queue strong { display: block; margin-bottom: 5px; font-weight: 600; }
+    .queue span { color: var(--dim); font-size: 15px; }
+    .queue .next span { color: var(--accent); }
+    .recovery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+    .recovery article { padding: 22px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+    .recovery p { font-size: 16px; }
+    .recovery .example { color: var(--dim); }
+    code { font: .88em/1.5 var(--mono); overflow-wrap: anywhere; }
+    p code, dd code, td code, h3 code, li code { background: var(--surface); padding: 2px 4px; border-radius: 4px; }
+    pre { margin: 16px 0 0; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    pre code { font-size: 14px; line-height: 1.7; }
+    .comment { color: var(--dim); }
+    details { margin-top: 24px; border: 1px solid var(--border); border-radius: 8px; }
+    summary { min-height: 52px; padding: 13px 18px; cursor: pointer; font-size: 16px; font-weight: 550; }
+    summary::marker { color: var(--accent); }
+    details[open] summary { border-bottom: 1px solid var(--border); }
+    .detail-body { padding: 20px; }
+    .detail-body > :first-child { margin-top: 0; }
+    .detail-body .pair { margin-top: 0; }
+    .detail-body p, .detail-body li { font-size: 16px; }
+    .detail-body ul { padding-left: 22px; margin-bottom: 0; }
+    .detail-body li + li { margin-top: 10px; }
+    .terms { margin: 24px 0 0; }
+    .terms > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 24px; padding: 20px 0; border-top: 1px solid var(--border); }
+    .terms dt { font-weight: 600; }
+    .terms dt code { display: block; margin-top: 4px; color: var(--dim); font-weight: 400; }
+    .terms dd { margin: 0; max-width: 65ch; }
+    table { width: 100%; border-collapse: collapse; font-size: 16px; }
+    th, td { padding: 12px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+    th { color: var(--dim); font-size: 14px; font-weight: 600; }
+    th:first-child, td:first-child { padding-left: 0; width: 40%; }
+    th:last-child, td:last-child { padding-right: 0; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .reconnect { margin: 22px 0; padding: 18px 22px 18px 44px; background: var(--surface); border-radius: 8px; }
+    .reconnect li { padding-left: 4px; }
+    .reconnect li + li { margin-top: 8px; }
+    .responsibilities { padding-left: 22px; margin: 20px 0; }
+    .responsibilities li { padding-left: 4px; margin-top: 10px; max-width: 70ch; }
+    footer { margin-top: 52px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--dim); font-size: 14px; }
+    footer a { display: inline-flex; align-items: center; min-height: 44px; }
+    footer p { margin-bottom: 0; }
+    @media (hover: hover) and (pointer: fine) { summary:hover { background: var(--surface); } }
+    @media (max-width: 760px) {
+      main { padding: 36px 22px 56px; }
+      .flow { grid-template-columns: 1fr; gap: 25px; }
+      .flow > li { padding: 18px 20px 18px 58px; }
+      .flow .step-number { position: absolute; left: 20px; top: 24px; }
+      .flow > li + li::before { content: "↓"; left: 24px; top: -28px; }
+      .flow h3 { margin-bottom: 4px; }
+      .pair, .recovery { grid-template-columns: 1fr; gap: 22px; }
+      .queue { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; }
+      nav { gap: 2px 20px; }
+      section { margin-top: 40px; padding-top: 28px; }
+    }
+    @media (max-width: 440px) {
+      main { padding-inline: 18px; }
+      .lede { font-size: 19px; }
+      .terms > div { grid-template-columns: 1fr; gap: 8px; }
+      .terms dt code { display: inline; margin-left: 8px; }
+      .detail-body { padding: 16px; }
+      pre { padding: 14px; }
+      th, td { padding-inline: 6px; font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="package">@nyte-ai/core</div>
+    <h1>Core saves the conversation and runs the agent.</h1>
+    <p class="lede">Your app shows the chat. Core stores the messages, asks the model for a reply, and runs the tools the model requests.</p>
+    <p class="muted">It saves completed steps so another process can continue later. Several apps can send messages to the same conversation without overwriting each other's input.</p>
+    <p class="source">Checked against the local source on <time datetime="2026-09-04">September 4, 2026</time>, including uncommitted changes.</p>
+    <nav aria-label="On this page">
+      <a href="#message">Send a message</a>
+      <a href="#writers">Message queues</a>
+      <a href="#crash">After a crash</a>
+      <a href="#storage">What gets saved</a>
+      <a href="#updates">Live updates</a>
+      <a href="#context">Long conversations</a>
+      <a href="#app">App and server</a>
+      <a href="#code">Where to read next</a>
+    </nav>
+  </header>
+
+  <section id="message" aria-labelledby="message-title">
+    <p class="section-label">01 · Sending</p>
+    <h2 id="message-title">What happens when you send a message</h2>
+    <p>Say you ask the agent to explain a file. The message takes this path.</p>
+    <ol class="flow" aria-label="A message, from sending to reply">
+      <li><span class="step-number" aria-hidden="true">1</span><h3>You send it</h3><p>The app submits your message to core.</p></li>
+      <li><span class="step-number" aria-hidden="true">2</span><h3>Core saves it</h3><p>Your message waits in a queue until the agent can use it.</p></li>
+      <li><span class="step-number" aria-hidden="true">3</span><h3>The agent works</h3><p>A runner asks the model, runs its tools, and saves the results.</p></li>
+      <li><span class="step-number" aria-hidden="true">4</span><h3>The app shows it</h3><p>The app receives updates as the reply comes in.</p></li>
+    </ol>
+    <div class="callout"><p>A <strong>runner</strong> is the code that does the next bit of agent work. A saved message can wait for a runner to become available. The host calls <code>nyte.attach()</code> to volunteer this process to run work. Sending alone does not start it.</p></div>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>Host creates the SDK
+├── messages.send → save input → return receipt
+└── attach → watch for work → acquire branch lease
+    └── drive
+        └── step → read saved state → act → save progress
+            └── repeat until idle, waiting, or stopped</code></pre>
+      <figcaption>The send receipt confirms storage. A runner still has to process the message.</figcaption>
+    </figure>
+    <details>
+      <summary>See how a run moves forward</summary>
+      <div class="detail-body">
+        <p>Inside the kernel, <code>step</code> reads saved progress and performs one action. <code>drive</code> repeats those steps under a lease. Apps use <code>attach</code> through the public SDK. Calling individual steps requires an integration with kernel internals.</p>
+        <pre tabindex="0" aria-label="Code or flow diagram"><code>Add a queued message to the conversation
+  → ask the model for a reply
+  → if it requests tools, run them and save their results
+  → ask the model again
+  → finish when there is nothing more to do</code></pre>
+        <p style="margin-top:16px">The saved run records whether to respond, run tools, wait for input, or retry at a given time. It also records when the run finishes, stops, or fails. A context summary is another saved conversation entry.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="writers" aria-labelledby="writers-title">
+    <p class="section-label">02 · Sharing a conversation</p>
+    <h2 id="writers-title">Many apps can send. One runner saves the next step.</h2>
+    <p>Apps add messages to a queue. The runner takes them from that queue and adds them to the conversation. Sending a message does not require the runner's permission.</p>
+    <figure>
+      <ol class="queue" aria-label="Example queue, in saved order">
+        <li><strong>Earlier message</strong><span>Already added</span></li>
+        <li class="next"><strong>Phone A</strong><span>Next to be added</span></li>
+        <li><strong>Phone B</strong><span>Waiting</span></li>
+        <li><strong>Phone C</strong><span>Waiting</span></li>
+      </ol>
+      <figcaption>If three phones send at once, core puts their messages in an order. Each message waits its turn within that queue.</figcaption>
+    </figure>
+    <div class="pair">
+      <div><h3>Messages do not overwrite each other</h3><p>Before saving a queue update, core checks that the queue has not changed. If another app got there first, it reads the new queue and tries again.</p></div>
+      <div><h3>An old runner cannot save over a new one</h3><p>A runner needs temporary permission for its branch of the conversation. If another runner takes over, core rejects further writes from the old one.</p></div>
+    </div>
+    <details>
+      <summary>See the send and run steps in code</summary>
+      <div class="detail-body">
+        <div class="pair">
+          <div><h3>App sends a message</h3><pre tabindex="0" aria-label="Code or flow diagram"><code>read the queue's latest message
+save the new message linked to it
+update the queue if it has not changed
+
+<span class="comment">If it changed, read it and retry.</span>
+<span class="comment">If the send key already exists,
+return the original receipt.</span></code></pre></div>
+          <div><h3>Runner does a step</h3><pre tabindex="0" aria-label="Code or flow diagram"><code>get permission for this branch
+read the saved conversation and run
+do the next action
+save if permission and state still match
+
+<span class="comment">If another runner took over, stop.</span>
+<span class="comment">If state changed, read it again.</span></code></pre></div>
+        </div>
+        <ul>
+          <li>The check before saving is called <code>compare-and-swap</code>, or <code>CAS</code>. Related changes all save together, or none do.</li>
+          <li>A <code>lease</code> is the runner's temporary permission. Its <code>fence</code> is a number that changes when another runner takes over.</li>
+          <li>Each queue is called a <code>lane</code>. The default <code>steer</code> lane adds messages before the next model response. The <code>queue</code> lane waits until the current run ends.</li>
+          <li>The default policy handles one message at a time and checks <code>steer</code> before <code>queue</code>. A host can choose other lanes, priorities, or drain all pending input at once.</li>
+          <li>Each lane tracks its newest submission and its last added message. Messages newer than the last added one are pending. Cancelling marks a message as withdrawn. It cannot both be cancelled and added.</li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section id="crash" aria-labelledby="crash-title">
+    <p class="section-label">03 · Recovering</p>
+    <h2 id="crash-title">After a crash, core checks what was saved.</h2>
+    <p>A new runner reads the saved conversation and run. Queued messages are still there. For a tool call, the hard case is a crash after the tool acts but before core saves its result.</p>
+    <div class="recovery">
+      <article><h3>If the tool is safe to repeat</h3><p>Its author can mark it <code>safe</code>. A new runner may run it again if no result was saved.</p><p class="example">Reading a file is a common example.</p></article>
+      <article><h3>If repeating it could cause trouble</h3><p>The default is <code>never</code>. Core reports an interrupted call when it cannot tell whether the tool finished.</p><p class="example">Sending an email twice could send a duplicate.</p></article>
+    </div>
+    <div class="callout"><p>If a result is already saved, core reuses it. It does not run that tool call again.</p></div>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>Read the saved tool call
+├── result  → reuse it
+├── waiting → wait for a reply or stop request
+├── signal  → resume with the accepted reply
+└── intent  → no result was saved
+    ├── safe  → run again
+    └── never → report an interrupted call</code></pre>
+      <figcaption>A lease protects saved progress. It cannot undo an outside action that already happened.</figcaption>
+    </figure>
+    <details>
+      <summary>See what core saves around a tool call</summary>
+      <div class="detail-body">
+        <table>
+          <thead><tr><th scope="col">Saved state</th><th scope="col">What the next runner does</th></tr></thead>
+          <tbody>
+            <tr><td><code>intent</code></td><td>The planned call is saved, but no result is known. Repeat it only if it is marked safe.</td></tr>
+            <tr><td><code>waiting</code></td><td>Keep waiting for a reply or a request to stop. No process needs to stay running.</td></tr>
+            <tr><td><code>signal</code></td><td>Pass the first accepted reply to the tool's resume handler.</td></tr>
+            <tr><td><code>result</code></td><td>Reuse the saved result.</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:16px">A call can go straight from intent to result. Waiting is optional. If the host exits while a tool waits, a phone can reply an hour later. The next runner uses that reply to continue.</p>
+        <p>These records are called <code>effects</code>. They let core recover without promising that every outside action happens exactly once.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="storage" aria-labelledby="storage-title">
+    <p class="section-label">04 · Storage</p>
+    <h2 id="storage-title">Four things keep the conversation working.</h2>
+    <p>The shipped backend is <code>SqliteStore</code>, exported from <code>@nyte-ai/core/store</code>. Within each session, it stores these four kinds of data.</p>
+    <dl class="terms">
+      <div><dt>Saved records <code>objects</code></dt><dd>Messages, run progress, and tool results. Core writes new records instead of changing old ones.</dd></div>
+      <div><dt>Current positions <code>refs</code></dt><dd>Labels that point to saved records, such as the latest message or current run. Core moves these labels when it saves progress.</dd></div>
+      <div><dt>Runner permission <code>leases</code></dt><dd>Who may save the next step on a branch. Another runner can take over after this permission expires.</dd></div>
+      <div><dt>Updates for apps <code>events</code></dt><dd>A numbered feed of changes, reply fragments, tool progress, and notices. Apps use it to keep the screen up to date.</dd></div>
+    </dl>
+    <details>
+      <summary>See the storage names used in the code</summary>
+      <div class="detail-body">
+        <p>An object ID, or <code>oid</code>, comes from hashing its contents. The same contents get the same ID. Core saves the object before pointing a ref at it. If the ref update fails, the unused object can be cleaned up later.</p>
+        <p>The six object kinds are <code>commit</code>, <code>change</code>, <code>run</code>, <code>effect</code>, <code>stack</code>, and <code>blob</code>. A commit is a saved conversation entry. A change is an entry waiting to be added.</p>
+        <table>
+          <thead><tr><th scope="col">Ref name</th><th scope="col">What it tracks</th></tr></thead>
+          <tbody>
+            <tr><td><code>refs/heads/&lt;head&gt;</code></td><td>The latest entry on a branch.</td></tr>
+            <tr><td><code>refs/stacks/&lt;head&gt;</code></td><td>The parent branch and the point where a child branch started or last caught up.</td></tr>
+            <tr><td><code>refs/queues/&lt;head&gt;/&lt;lane&gt;/tip</code></td><td>The newest message submitted to this queue.</td></tr>
+            <tr><td><code>refs/queues/&lt;head&gt;/&lt;lane&gt;/base</code></td><td>The last message added from this queue.</td></tr>
+            <tr><td><code>refs/runs/&lt;head&gt;</code></td><td>The current run and what it should do next.</td></tr>
+            <tr><td><code>refs/effects/&lt;run&gt;/&lt;call&gt;</code></td><td>The saved state of a tool call.</td></tr>
+            <tr><td><code>refs/keys/&lt;key&gt;</code></td><td>A receipt that prevents a retried send from adding the same message twice.</td></tr>
+            <tr><td><code>refs/facts/&lt;key&gt;</code></td><td>Small values such as the session name or plugin data.</td></tr>
+            <tr><td><code>refs/cancelled/&lt;change&gt;</code></td><td>A marker for a withdrawn message.</td></tr>
+            <tr><td><code>refs/deleted</code></td><td>A marker that session deletion has begun.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section id="updates" aria-labelledby="updates-title">
+    <p class="section-label">05 · Keeping the screen current</p>
+    <h2 id="updates-title">An app can disconnect and catch up later.</h2>
+    <p>While the model writes, core sends reply fragments to the app. When the reply finishes, core saves it as a conversation entry.</p>
+    <ol class="reconnect">
+      <li>The app remembers the number of the last update it received.</li>
+      <li>When it reconnects, it asks for updates after that number.</li>
+      <li>If those updates are too old, it loads the current conversation and starts watching from there.</li>
+    </ol>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>App opens the conversation
+├── sessions.snapshot → saved state + seq
+└── watch after that seq → apply each update
+    ├── connection breaks → reopen after last applied seq
+    └── cursor expires   → take a new snapshot → watch again</code></pre>
+      <figcaption>The app owns this recovery loop. <code>@nyte-ai/client</code> throws on failure; it does not retry calls or reopen a watch.</figcaption>
+    </figure>
+    <details>
+      <summary>See how streaming and reconnecting work in code</summary>
+      <div class="detail-body">
+        <p>A reply has no final object ID until its full contents are known. While it streams, fragments use the run ID, attempt number, and content index.</p>
+        <pre tabindex="0" aria-label="Code or flow diagram"><code>Reply fragment: "The "
+Reply fragment: "answer is..."
+Finished reply: save the full message and its object ID</code></pre>
+        <p style="margin-top:16px">The update number is <code>seq</code>. If the app's saved number is older than the retained events, the local SDK throws <code>CursorExpired</code>. The remote client reports <code>cursor_expired</code> in a <code>NyteWireError</code>. It calls <code>sessions.snapshot</code>, then watches after the snapshot's <code>seq</code>.</p>
+        <p>The product chooses how long to keep old events and unused objects. Undo works only while the required history is still saved.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="context" aria-labelledby="context-title">
+    <p class="section-label">06 · Long conversations</p>
+    <h2 id="context-title">The model can read a checkpoint instead of the full history.</h2>
+    <p>As a conversation fills the model's context window, core can save a checkpoint. With the portable summarizer, the next request contains a summary and recent messages.</p>
+    <figure class="diagram">
+      <h3>Before portable compaction</h3>
+      <div class="context-row" aria-label="Before compaction, the model reads older and recent messages"><span>Older messages</span><span>Older tool results</span><span>Recent messages</span></div>
+      <h3>Next model request</h3>
+      <div class="context-row" aria-label="After compaction, the model reads a summary and recent messages"><span class="checkpoint">Summary of older context</span><span>Recent messages</span></div>
+      <figcaption>Core adds a checkpoint commit. It does not rewrite the old conversation entries.</figcaption>
+    </figure>
+    <details>
+      <summary>See when compaction happens</summary>
+      <div class="detail-body">
+        <p>Automatic compaction is enabled by default. Core checks whether context leaves fewer than <code>16,384</code> tokens free and can also compact after a context-overflow response. Portable compaction aims to keep about <code>20,000</code> recent tokens. The host can change these settings.</p>
+        <p>A plugin can supply provider-native compaction through <code>before_compaction</code>. When it succeeds, core saves that provider's compacted output. Otherwise it uses the portable summarizer. Native checkpoints also keep portable history for a model switch.</p>
+        <p>The local SDK exposes <code>runs.compact</code> for a manual checkpoint. It returns <code>busy</code> while a run is live or <code>nothing_to_compact</code> for empty context. The current HTTP protocol does not expose this method.</p>
+      </div>
+    </details>
+    <h3 style="margin-top:28px">A branch keeps a different path through the conversation.</h3>
+    <p>Each conversation entry has one context parent, or none at the start. A branch head points to its latest entry. Moving the head changes which path the model reads next.</p>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>Shared start
+├── Original reply → more work     ← main
+└── Different reply → more work    ← alternate head</code></pre>
+      <figcaption>Both paths can remain saved. A model request follows one path of context parents.</figcaption>
+    </figure>
+    <p>With <code>heads.move({ summary })</code>, core can summarize the path you leave and add that summary after the target entry. If summarization fails, the head stays where it was.</p>
+    <p class="source">Source: <a href="packages/core/src/kernel/compaction.ts">compaction</a>, <a href="packages/core/src/kernel/stacks.ts">branch operations</a>, and <a href="packages/core/src/kernel/sdk/nyte.ts">SDK</a>.</p>
+  </section>
+
+  <section id="app" aria-labelledby="app-title">
+    <p class="section-label">07 · The rest of the app</p>
+    <h2 id="app-title">The app supplies the screen, models, and tools.</h2>
+    <p>The desktop app, terminal app, or server hosting core still has work to do.</p>
+    <ul class="responsibilities">
+      <li>Choose the model connection and load the plugins that provide tools and other behavior.</li>
+      <li>Build the chat screen from saved conversation data and incoming updates.</li>
+      <li>Keep an outgoing message locally until core confirms it was saved. Retry a failed send with the same key to avoid duplicates.</li>
+      <li>Attach a runner for the sessions this process should serve. The host also controls workspace trust before it loads workspace plugins.</li>
+    </ul>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>Desktop renderer                  Remote app
+    │ Electron IPC                    │ @nyte-ai/client
+    ▼                                 ▼ HTTP + event stream
+Desktop main process              @nyte-ai/server
+    │                                 │
+    └──────────────┬──────────────────┘
+                   ▼
+             createNyte SDK
+             ├── messages, sessions, snapshots
+             ├── attached runner → model + tools
+             └── kernel → SQLite store</code></pre>
+      <figcaption>These are two ways to host core. A remote app talks to a host that owns the store and execution.</figcaption>
+    </figure>
+    <details>
+      <summary>See what the server and client provide</summary>
+      <div class="detail-body">
+        <p><code>@nyte-ai/server</code> is a request handler. It accepts SDK calls at <code>POST /v1/call/{verb}</code> and streams session events at <code>GET /v1/watch</code>. The host supplies authentication, starts the HTTP listener, and attaches a runner.</p>
+        <p><code>@nyte-ai/client</code> calls those routes with <code>fetch</code>. Both packages use the schemas and verb table in <code>@nyte-ai/protocol</code>. The remote API currently exposes a subset of the local SDK, including send, cancel, snapshot, abort, and head moves.</p>
+        <p>The desktop and terminal hosts run core locally. A custom host that executes one kernel step per request still needs its own scheduling and storage integration.</p>
+      </div>
+    </details>
+  </section>
+
+  <section id="code" aria-labelledby="code-title">
+    <p class="section-label">08 · Reading the implementation</p>
+    <h2 id="code-title">Start with the SDK, then follow one message.</h2>
+    <figure class="diagram">
+      <pre tabindex="0" aria-label="Code or flow diagram"><code>packages/
+├── core/src/
+│   ├── kernel/
+│   │   ├── sdk/nyte.ts   SDK methods and runner attachment
+│   │   ├── queue.ts     submit and cancel pending input
+│   │   ├── step.ts      advance one saved run
+│   │   ├── turn.ts      model calls and durable tools
+│   │   ├── effects.ts   save and recover tool-call state
+│   │   ├── sqlite.ts    storage and atomic updates
+│   │   └── views/       transcript, tree, usage projections
+│   ├── agent-loop.ts    model and tool execution loop
+│   └── plugins/         plugin loading, tools, hooks
+├── protocol/src/        shared data and HTTP verb schemas
+├── server/src/          HTTP calls and event streams
+└── client/src/          remote calls through fetch</code></pre>
+      <figcaption>The public SDK is <code>@nyte-ai/core</code>. Host storage, plugin authoring, and browser-safe views have separate exports.</figcaption>
+    </figure>
+    <p><a href="packages/core/src/kernel/sdk/nyte.ts">Open the SDK</a>, then follow <a href="packages/core/src/kernel/queue.ts">message submission</a> into <a href="packages/core/src/kernel/step.ts">the next step</a>. For network clients, read <a href="packages/protocol/src/verbs.ts">the supported verbs</a> alongside <a href="packages/client/src/index.ts">the client</a> and <a href="packages/server/src/index.ts">the server</a>.</p>
+  </section>
+
+  <footer>
+    <p>Verified against the local implementation. The <a href="packages/docs/content/docs/design.mdx">design document</a> explains the broader design.</p>
+    <p>Implementation in <a href="packages/core/src/kernel/README.md"><code>packages/core/src/kernel</code></a>.</p>
+  </footer>
+</main>
+</body>
+</html>

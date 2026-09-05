@@ -1,0 +1,18 @@
+Generated using the built-in image generation tool.
+Output: nyte-owl-logo-concept.png
+Status: raster logo concept.
+
+Initial prompt
+
+Use case: logo-brand.
+Design a new original logo concept for "nyte", an AI developer tool whose name means NIGHT. The user does NOT want an N monogram, burnt orange, or the lavender moon-cloud identity of the inspiration site. They want a meaningful standalone symbol/icon.
+
+Creative direction: a watchful owl at night. Draw an exceptionally simple, memorable abstract owl mask in silver, built from one cohesive broad silhouette with two precisely cut dark almond-shaped eye openings and a subtle central beak notch. Calm, alert, intelligent expression, not angry, not cute. Smooth sculptural curves and restrained pointed upper corners, balanced proportions. Make it recognizable and bold at favicon size with only a few shapes. No letter N hidden in it. No literal feathers, wings, claws, perch, outer badge or circle. No moon, cloud or stars. No generic esport owl, angry mascot, cartoon character, stock clipart or tribal pattern.
+
+Palette: deep evergreen background #102B26, soft silver-white icon and lettering #DFE5DD. Strictly two solid colors. This fresh night palette should feel quiet and nocturnal. Main horizontal lockup centered: owl mask symbol at left, exact lowercase "nyte" at right in refined medium-weight contemporary sans serif with open spacing and slightly softened edges. Symbol should feel like the visual signature, not overwhelm the name. Excellent optical kerning and generous whitespace. Landscape canvas. Below main lockup, one small icon-only rendition of the SAME owl silhouette at about 1/5 main icon size, centered, to show how it works small. Only text in image is "nyte".
+
+Render as flat vector-style graphic design. Uniform deep evergreen background fills the entire canvas. Every logo shape is solid silver-white. Clean sharp contours. ZERO glow, ZERO gradients, ZERO bloom, ZERO shadows, ZERO texture, ZERO lighting, ZERO 3D, ZERO vignette. No presentation props, captions or watermarks. Do not use orange, purple, lavender or blue.
+
+Refinement prompt
+
+Clean up this logo image into a finished flat graphic. Fill the ENTIRE canvas with a solid opaque DEEP FOREST GREEN background, color #102B26, including all empty regions. Keep the owl mask icon and lowercase nyte wordmark layout. Redraw all their edges perfectly clean and smooth, remove every speckle, stray mark, highlight and outline. Owl eyes must be two clean symmetrical almond cutouts filled entirely with the same forest green as background, with no white flecks or pupils. Icon and wordmark must have a single perfectly flat silver-white fill #DFE5DD. Remove the stray shape between the owl and the wordmark. Small icon below must also be clean and match the large owl. No gradients, no texture, no glow, no shadows, no lighting or 3D. Exactly two colors, silver-white artwork and opaque forest-green background. Keep only the text nyte. Finished precise vector-style logo.

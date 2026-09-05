@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { bold, BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer, KeyEvent, TextChunk } from "@opentui/core";
-import { WorkspaceTrustStore } from "@uji-ai/core";
+import { WorkspaceTrustStore } from "@nyte-ai/core";
 import {
   WORKSPACE_TRUST_MESSAGE,
   WORKSPACE_TRUST_QUESTION,
@@ -12,11 +12,13 @@ import {
 import type { CliTheme } from "./theme.ts";
 
 export type WorkspaceTrustDecision = "trust" | "decline";
-export type WorkspaceTrustDeclineAction = "quit" | "cancel";
+
+export function nyteHome(): string {
+  return resolve(process.env["NYTE_HOME"] ?? join(homedir(), ".nyte"));
+}
 
 export function createWorkspaceTrustStore(): WorkspaceTrustStore {
-  const ujiHome = resolve(process.env["UJI_HOME"] ?? join(homedir(), ".uji"));
-  return new WorkspaceTrustStore(join(ujiHome, "trust.json"));
+  return new WorkspaceTrustStore(join(nyteHome(), "trust.json"));
 }
 
 function consume(key: KeyEvent): void {
@@ -24,13 +26,12 @@ function consume(key: KeyEvent): void {
   key.stopPropagation();
 }
 
-interface WorkspaceTrustDialogOptions {
-  renderer: CliRenderer;
-  theme: CliTheme;
-  cwd: string;
-  declineAction: WorkspaceTrustDeclineAction;
-  signal?: AbortSignal;
-  nextId?: (prefix?: string) => string;
+export interface WorkspaceTrustDialogOptions {
+  readonly renderer: CliRenderer;
+  readonly theme: CliTheme;
+  readonly cwd: string;
+  readonly signal?: AbortSignal;
+  readonly nextId: (prefix?: string) => string;
 }
 
 /** The single pre-workspace gate. It deliberately has no "allow once" path. */
@@ -42,7 +43,6 @@ class WorkspaceTrustDialog {
   private readonly trustRow: TextRenderable;
   private readonly declineRow: TextRenderable;
   private readonly theme: CliTheme;
-  private readonly declineAction: WorkspaceTrustDeclineAction;
   private readonly signal: AbortSignal | undefined;
   private resolveResult: ((decision: WorkspaceTrustDecision) => void) | undefined;
   private selected: WorkspaceTrustDecision = "decline";
@@ -51,9 +51,8 @@ class WorkspaceTrustDialog {
   constructor(options: WorkspaceTrustDialogOptions) {
     this.renderer = options.renderer;
     this.theme = options.theme;
-    this.declineAction = options.declineAction;
     this.signal = options.signal;
-    const nextId = options.nextId ?? ((prefix = "trust") => `${prefix}-${crypto.randomUUID()}`);
+    const { nextId, theme } = options;
 
     this.overlay = new BoxRenderable(options.renderer, {
       id: nextId("trust-overlay"),
@@ -65,7 +64,7 @@ class WorkspaceTrustDialog {
       zIndex: 100,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: options.theme.terminal,
+      backgroundColor: theme.terminal,
     });
     const window = new BoxRenderable(options.renderer, {
       id: nextId("trust-window"),
@@ -80,8 +79,8 @@ class WorkspaceTrustDialog {
       paddingRight: 2,
       border: true,
       borderStyle: "rounded",
-      borderColor: options.theme.path,
-      backgroundColor: options.theme.background,
+      borderColor: theme.path,
+      backgroundColor: theme.transparent,
     });
     const details = new BoxRenderable(options.renderer, {
       id: nextId("trust-details"),
@@ -95,8 +94,8 @@ class WorkspaceTrustDialog {
       new TextRenderable(options.renderer, {
         id: nextId("trust-title"),
         content: new StyledText([
-          fg(options.theme.warning)("⚠ "),
-          bold(fg(options.theme.foreground)(WORKSPACE_TRUST_TITLE)),
+          fg(theme.warning)("⚠ "),
+          bold(fg(theme.foreground)(WORKSPACE_TRUST_TITLE)),
         ]),
       }),
     );
@@ -105,7 +104,7 @@ class WorkspaceTrustDialog {
         id: nextId("trust-path"),
         marginTop: 1,
         content: `  ${options.cwd}`,
-        fg: options.theme.path,
+        fg: theme.path,
       }),
     );
     details.add(
@@ -113,7 +112,7 @@ class WorkspaceTrustDialog {
         id: nextId("trust-message"),
         marginTop: 1,
         content: WORKSPACE_TRUST_MESSAGE,
-        fg: options.theme.foreground,
+        fg: theme.foreground,
       }),
     );
     details.add(
@@ -122,7 +121,7 @@ class WorkspaceTrustDialog {
         marginTop: 1,
         marginBottom: 2,
         content: WORKSPACE_TRUST_QUESTION,
-        fg: options.theme.foreground,
+        fg: theme.foreground,
       }),
     );
     window.add(details);
@@ -148,7 +147,7 @@ class WorkspaceTrustDialog {
         id: nextId("trust-footer"),
         marginTop: 1,
         content: "↑↓ move · enter · a/q choose",
-        fg: options.theme.dim,
+        fg: theme.dim,
         flexShrink: 0,
         wrapMode: "none",
       }),
@@ -177,11 +176,7 @@ class WorkspaceTrustDialog {
 
   private paintRows(): void {
     this.trustRow.content = this.row("trust", "a", "Trust this workspace");
-    this.declineRow.content = this.row(
-      "decline",
-      "q",
-      this.declineAction === "quit" ? "Quit" : "Cancel",
-    );
+    this.declineRow.content = this.row("decline", "q", "Quit");
   }
 
   private readonly onAbort = (): void => this.select("decline");
@@ -215,14 +210,12 @@ class WorkspaceTrustDialog {
     this.settled = true;
     this.signal?.removeEventListener("abort", this.onAbort);
     this.renderer.keyInput.off("keypress", this.onKeyPress);
-    if (decision === "decline" && this.declineAction === "quit") {
-      // The renderer owns the overlay from here. Removing it would queue a
-      // frame immediately before runTui destroys the renderer.
-      this.resolveResult?.(decision);
-      return;
+    if (decision === "trust") {
+      this.renderer.root.remove(this.overlay);
+      this.overlay.destroyRecursively();
     }
-    this.renderer.root.remove(this.overlay);
-    this.overlay.destroyRecursively();
+    // On decline the renderer owns the overlay: the caller destroys it next,
+    // and removing the box first would queue a frame under that teardown.
     this.resolveResult?.(decision);
   }
 }

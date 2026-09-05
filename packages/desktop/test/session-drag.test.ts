@@ -1,35 +1,22 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
-import { sessionId } from "@uji-ai/core";
+import { describe, test } from "vitest";
 import {
-  createSessionDragSource,
-  endSessionDrag,
-  hasReachedSessionDragActivation,
+  placementInRect,
   SESSION_DRAG_ACTIVATION_DISTANCE,
-} from "../src/renderer/src/layout/session-drag.ts";
+} from "../src/renderer/src/layout/session-dnd-geometry.ts";
 
-afterEach(() => endSessionDrag());
-
-void describe("session pointer drag", () => {
-  test("activates only after Cursor's eight-pixel movement threshold", () => {
-    const origin = { clientX: 20, clientY: 30 };
-
+describe("session drag geometry", () => {
+  test("uses Cursor's eight-pixel pointer activation threshold", () => {
     assert.equal(SESSION_DRAG_ACTIVATION_DISTANCE, 8);
-    assert.equal(hasReachedSessionDragActivation(origin, { clientX: 27.99, clientY: 30 }), false);
-    assert.equal(hasReachedSessionDragActivation(origin, { clientX: 28, clientY: 30 }), true);
-    assert.equal(hasReachedSessionDragActivation(origin, { clientX: 26, clientY: 36 }), true);
   });
 
-  test("disables the browser's native drag path", () => {
-    const source = createSessionDragSource(sessionId("session-1"));
-    let prevented = false;
-
-    assert.equal(source.draggable, false);
-    source.onDragStart({
-      preventDefault() {
-        prevented = true;
-      },
-    });
-    assert.equal(prevented, true);
+  test("reserves the central quarter only when an existing split can accept it", () => {
+    const rect = { top: 0, left: 0, right: 400, bottom: 200, width: 400, height: 200 };
+    assert.equal(placementInRect(rect, { x: 200, y: 100 }, true), "center");
+    assert.equal(placementInRect(rect, { x: 200, y: 100 }, false), "left");
+    assert.equal(placementInRect(rect, { x: 20, y: 100 }, true), "left");
+    assert.equal(placementInRect(rect, { x: 380, y: 100 }, true), "right");
+    assert.equal(placementInRect(rect, { x: 200, y: 10 }, true), "top");
+    assert.equal(placementInRect(rect, { x: 200, y: 190 }, true), "bottom");
   });
 });

@@ -1,9 +1,9 @@
 /**
  * The system prompt as a plugin. Hosts that pass text replace the default
- * body. Other plugins add sections through `api.prompt` and the harness joins
+ * body. Other plugins add sections through `api.prompt` and the host joins
  * them by `order`.
  *
- * Default body follows pi-coding-agent's prompt shape, with "uji" in place of
+ * Default body follows pi-coding-agent's prompt structure, with "nyte" in place of
  * "pi". Project context and skills stay in their own plugins. The pi docs
  * block and guideline bullets are omitted: none are shipped.
  *
@@ -27,7 +27,7 @@ const TOOL_SNIPPETS = [
 /** Build the default coding-agent system prompt, without project context or skills. */
 export function buildSystemPrompt(cwd: string): string {
   const toolsList = TOOL_SNIPPETS.map(([name, snippet]) => `- ${name}: ${snippet}`).join("\n");
-  return `You are an expert coding assistant operating inside uji, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+  return `You are an expert coding assistant operating inside nyte, a coding agent. You help users by reading files, executing commands, editing code, and writing new files.
 
 Available tools:
 ${toolsList}

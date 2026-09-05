@@ -1,5 +1,5 @@
 /**
- * Edit tool ported from pi's harness edit tool, adapted to Uji's AgentTool
+ * Edit tool ported from pi's edit tool, bound to Nyte's AgentTool
  * contract and direct filesystem access (pi routes file access through its
  * ExecutionEnv effects boundary). The matching logic lives in edit-diff.ts
  * and is unchanged.
@@ -64,59 +64,99 @@ export interface EditToolInput {
 
 export type EditToolDetails = FileMutationDetails;
 
-function editAccessError(path: string, error: unknown): Error {
-  const code =
-    typeof error === "object" && error !== null && "code" in error
-      ? String((error as { code: unknown }).code)
-      : String(error);
+interface ErrorWithCode {
+  readonly code: unknown;
+}
+
+function hasErrorCode(value: unknown): value is ErrorWithCode {
+  return typeof value === "object" && value !== null && "code" in value;
+}
+
+function editAccessError(path: string, cause: unknown): Error {
+  const code = hasErrorCode(cause) ? String(cause.code) : String(cause);
   return new Error(`Could not edit file: ${path}. Error code: ${code}.`, {
-    cause: error instanceof Error ? error : undefined,
+    cause: cause instanceof Error ? cause : undefined,
   });
 }
 
-function parseEditInput(input: unknown): EditToolInput {
-  if (typeof input !== "object" || input === null) {
+interface EditInputFields {
+  readonly path?: unknown;
+  readonly edits?: unknown;
+  readonly oldText?: unknown;
+  readonly newText?: unknown;
+}
+
+function isEditInputObject(value: unknown): value is EditInputFields {
+  return typeof value === "object" && value !== null;
+}
+
+function hasEditPath(
+  value: EditInputFields,
+): value is EditInputFields & Pick<EditToolInput, "path"> {
+  return typeof value.path === "string";
+}
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isEditValue(value: unknown): value is Edit {
+  return (
+    isEditInputObject(value) &&
+    typeof value.oldText === "string" &&
+    typeof value.newText === "string"
+  );
+}
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+type EditArgumentPreparer = NonNullable<
+  AgentTool<typeof editParametersSchema, EditToolDetails>["prepareArguments"]
+>;
+
+const parseEditInput: EditArgumentPreparer = (input) => {
+  if (!isEditInputObject(input)) {
     throw new Error("Edit tool input is invalid. Expected an object.");
   }
 
-  const record = input as Record<string, unknown>;
-  if (typeof record.path !== "string") {
+  if (!hasEditPath(input)) {
     throw new Error("Edit tool input is invalid. path must be a string.");
   }
 
-  let editsValue = record.edits;
-  if (typeof editsValue === "string") {
+  let editsValue = input.edits;
+  if (isStringValue(editsValue)) {
     try {
-      editsValue = JSON.parse(editsValue) as unknown;
+      editsValue = JSON.parse(editsValue);
     } catch {
       // The validation below reports one stable error for malformed and non-array values.
     }
   }
 
-  const edits = Array.isArray(editsValue) ? [...editsValue] : [];
-  if (typeof record.oldText === "string" && typeof record.newText === "string") {
-    edits.push({ oldText: record.oldText, newText: record.newText });
+  const edits = isUnknownArray(editsValue) ? [...editsValue] : [];
+  if (isEditValue(input)) {
+    edits.push({ oldText: input.oldText, newText: input.newText });
   }
   if (edits.length === 0) {
     throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
   }
 
   return {
-    path: record.path,
+    path: input.path,
     edits: edits.map((edit, index) => {
-      if (typeof edit !== "object" || edit === null) {
+      if (!isEditInputObject(edit)) {
         throw new Error(`Edit tool input is invalid. edits[${index}] must be an object.`);
       }
-      const replacement = edit as Record<string, unknown>;
-      if (typeof replacement.oldText !== "string" || typeof replacement.newText !== "string") {
+      if (!isEditValue(edit)) {
         throw new Error(
           `Edit tool input is invalid. edits[${index}] must contain string oldText and newText.`,
         );
       }
-      return { oldText: replacement.oldText, newText: replacement.newText };
+      return { oldText: edit.oldText, newText: edit.newText };
     }),
   };
-}
+};
 
 export function createEditTool(
   cwd: string,

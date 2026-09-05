@@ -5,15 +5,13 @@
  * are left alone. A plugin whose factory throws is recorded as failed and its
  * previous version, if any, is put back.
  *
- * Shape from opencode v2 `Plugin.activate` (packages/core/src/plugin.ts).
+ * Modeled on opencode v2 `Plugin.activate` (packages/core/src/plugin.ts).
  */
-import type { Skill } from "@uji-ai/schema";
-import type { HarnessTool } from "../harness/agent-harness.ts";
-import type { Hooks } from "../harness/hooks.ts";
-import type { SessionStorage } from "../harness/session/types.ts";
-import { Result, type Result as ResultValue } from "../harness/result.ts";
-import type { EphemeralEvent } from "../sdk/types.ts";
-import { bindSessionApi } from "./api.ts";
+import type { Skill } from "@nyte-ai/schema";
+import { Result, type Result as ResultValue } from "../kernel/result.ts";
+import type { AgentTool } from "../types.ts";
+import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
+import type { Hooks } from "./hooks.ts";
 import {
   ContributionRegistry,
   MapDraft,
@@ -26,22 +24,26 @@ import type {
   Command,
   Disposer,
   LoadedPlugin,
+  Notification,
   PluginEnv,
+  PluginEvents,
   PluginInfo,
   PluginSetting,
   PromptSection,
+  StatusItem,
 } from "./types.ts";
 
-export interface HarnessRegistries {
+export interface PluginRegistries {
   readonly agents: ContributionRegistry<Agent, MapDraft<Agent>>;
-  readonly tools: ContributionRegistry<HarnessTool, ToolDraftImpl>;
+  readonly tools: ContributionRegistry<AgentTool, ToolDraftImpl>;
   readonly commands: ContributionRegistry<Command, MapDraft<Command>>;
   readonly prompt: ContributionRegistry<PromptSection, MapDraft<PromptSection>>;
   readonly resources: ContributionRegistry<Skill, MapDraft<Skill>>;
   readonly settings: ContributionRegistry<PluginSetting, MapDraft<PluginSetting>>;
+  readonly status: ContributionRegistry<StatusItem, MapDraft<StatusItem>>;
 }
 
-export function createRegistries(): HarnessRegistries {
+export function createRegistries(): PluginRegistries {
   return {
     agents: new ContributionRegistry(() => new MapDraft<Agent>()),
     tools: new ContributionRegistry(() => new ToolMapDraft()),
@@ -49,20 +51,36 @@ export function createRegistries(): HarnessRegistries {
     prompt: new ContributionRegistry(() => new MapDraft<PromptSection>()),
     resources: new ContributionRegistry(() => new MapDraft<Skill>()),
     settings: new ContributionRegistry(() => new MapDraft<PluginSetting>()),
+    status: new ContributionRegistry(() => new MapDraft<StatusItem>()),
   };
 }
 
-/** What the host needs from the harness. `AgentHarness` satisfies it structurally. */
+/** Process-local notices emitted by plugin activation and diagnostics. */
+export type PluginNotice =
+  | {
+      readonly kind: "diagnostic";
+      readonly owner: string;
+      readonly level: "warn" | "error";
+      readonly message: string;
+    }
+  | { readonly kind: "plugins_changed"; readonly plugins: readonly PluginInfo[] }
+  | ({ readonly kind: "notification"; readonly owner: string } & Notification)
+  | { readonly kind: "status_changed"; readonly items: readonly string[] };
+
+/** What the host needs from one session activation. */
 export interface PluginHostTarget {
   readonly hooks: Hooks;
-  readonly registries: HarnessRegistries;
-  readonly session: SessionStorage;
+  readonly registries: PluginRegistries;
+  readonly session: PluginSessionStorage;
+  readonly events: PluginEvents;
   readonly env: PluginEnv;
-  subscribe(listener: (event: EphemeralEvent) => void | Promise<void>): Disposer;
+  subscribe(listener: (event: PluginNotice) => void | Promise<void>): Disposer;
   /** Replay every registry; a contribution that throws is reported as a diagnostic. */
   rebuildAll(): void;
-  emit(event: EphemeralEvent): Promise<void>;
+  emit(event: PluginNotice): Promise<void>;
 }
+
+export type PluginHostApiTarget = Omit<PluginHostTarget, "subscribe">;
 
 interface ActivePlugin {
   plugin: LoadedPlugin;

@@ -29,7 +29,7 @@ export interface SessionTree {
 }
 
 /** Ids from `leafId` up to the root, following parent links through `byId`. */
-function activePathIds(
+export function activePathIds(
   byId: ReadonlyMap<string, Pick<Entry, "id" | "parentId">>,
   leafId: string | null,
 ): Set<string> {
@@ -71,6 +71,17 @@ export function projectSessionTree(entries: readonly Entry[], leafId: string | n
     leafId,
     activePath,
   };
+}
+
+/** Every node of a tree, depth first, siblings oldest first. */
+export function flattenSessionTree(tree: SessionTree): SessionTreeNode[] {
+  const out: SessionTreeNode[] = [];
+  const visit = (node: SessionTreeNode): void => {
+    out.push(node);
+    for (const child of node.children) visit(child);
+  };
+  for (const root of tree.roots) visit(root);
+  return out;
 }
 
 export type NavigationTarget =

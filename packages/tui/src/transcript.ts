@@ -1,7 +1,9 @@
 /**
- * Transcript blocks: the OpenTUI vocabulary for user, assistant, thinking, and
- * tool content. Live events and restored sessions both render through these,
- * so a resumed session looks like the one that was just typed.
+ * The transcript as OpenTUI blocks, reconciled from `SessionState`: one block
+ * per turn keyed by the turn's id, one part block per settled part keyed by
+ * `turnPartId`, and live blocks for the streaming overlay keyed by
+ * `livePartKey`. A restore and a live stream both land here, so a resumed
+ * session looks like the one that was just typed.
  */
 import {
   BoxRenderable,
@@ -9,7 +11,6 @@ import {
   DiffRenderable,
   fg,
   LineNumberRenderable,
-  link,
   MarkdownRenderable,
   pathToFiletype,
   RenderableEvents,
@@ -21,18 +22,21 @@ import type {
   BoxOptions,
   CliRenderer,
   LineColorConfig,
-  OnChunksCallback,
   Renderable,
+  ScrollBoxRenderable,
+  TextChunk,
 } from "@opentui/core";
+import { presentNote, presentTool, projectToolView, turnPartId } from "@nyte-ai/core";
 import type {
-  AssistantMessage,
-  AssistantMessageEvent,
-  ImageContent,
-  JsonValue,
-  UserMessage,
-} from "@uji-ai/schema";
-import { patchOf } from "@uji-ai/core";
-import type { Turn, TurnOutcome, TurnPart } from "@uji-ai/core";
+  RunInfo,
+  ToolLive,
+  ToolPresentation,
+  ToolTurnPart,
+  Turn,
+  TurnOutcome,
+  TurnPart,
+} from "@nyte-ai/core";
+import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -41,34 +45,16 @@ import {
   PASTE_COLLAPSE_LINES,
   pasteLineCount,
 } from "./composer.ts";
-import { renderDiagramFences } from "./diagram.ts";
-import { extractSkillInvocations } from "./slash.ts";
-import {
-  patchPath,
-  toolHeading,
-  diffFromOutput,
-  diffSections,
-  diffStat,
-  earlierCallsLabel,
-  formatDuration,
-  omittedLabel,
-  previewLines,
-  resultSummary,
-  spinnerFrame,
-  toolCallCounts,
-  toolCallVerbs,
-  unchangedLinesLabel,
-  type OutputDiff,
-} from "./format.ts";
 import {
   ACTIVITY_FAILED_LABEL,
+  ACTIVITY_RETRY_LABEL,
   ACTIVITY_STOPPED_LABEL,
   ACTIVITY_THINKING_LABEL,
   ACTIVITY_THOUGHT_LABEL,
+  ACTIVITY_WAITING_LABEL,
   ACTIVITY_WORKED_LABEL,
   ACTIVITY_WORKING_LABEL,
   GLYPHS,
-  GROUP_TAIL_CALLS,
   keycap,
   MIN_REPORTED_DURATION_MS,
   RESULT_PREVIEW_LINES,
@@ -76,14 +62,24 @@ import {
   SPACING,
   TOOL_INLINE_PREVIEW_LENGTH,
 } from "./constants.ts";
-import type { ToolCallDisplay } from "./constants.ts";
-import { presenter } from "./presenters.ts";
+import {
+  diffFromOutput,
+  diffSections,
+  formatDuration,
+  omittedLabel,
+  previewLines,
+  resultSummary,
+  spinnerFrame,
+  toolHeading,
+  unchangedLinesLabel,
+  type OutputDiff,
+} from "./format.ts";
+import { isJsonObject, isJsonString } from "./json.ts";
+import type { LabelSyntax } from "./label-syntax.ts";
+import { livePartKey, type LivePart, type SessionState } from "./session-state.ts";
+import { extractSkillInvocations } from "./slash.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth } from "./width.ts";
-import { collapsedImagePreview, collapsedTag } from "./collapsed-tag.ts";
-import { syntaxHighlightedChunks } from "./highlight.ts";
-import { bindSemantics } from "./semantics.ts";
-import type { CustomEntry, ProvisionedEntry } from "@uji-ai/core/store";
 
 /**
  * OpenTUI's line background fill rejects rows above the screen instead of
@@ -97,10 +93,7 @@ function clipOffscreenDiffLineColors(diff: DiffRenderable): void {
     const lines = new Set([...colors.gutter.keys(), ...colors.content.keys()]);
     const lineColors = new Map<number, LineColorConfig>();
     for (const line of lines) {
-      lineColors.set(line, {
-        gutter: colors.gutter.get(line),
-        content: colors.content.get(line),
-      });
+      lineColors.set(line, { gutter: colors.gutter.get(line), content: colors.content.get(line) });
     }
     let appliedFirstSafeLine: number | undefined;
     const onSizeChange = child.onSizeChange;
@@ -147,6 +140,9 @@ function syncDiffGutters(diffs: readonly DiffRenderable[]): void {
   }
 }
 
+/** Tools whose title is source rather than prose, named by the grammar it speaks. */
+const HEADING_FILETYPES = new Map([["bash", "bash"]]);
+
 function inlineToolPreview(text: string): string | undefined {
   const value = text.trim();
   if (value === "" || value.includes("\n") || displayWidth(value) > TOOL_INLINE_PREVIEW_LENGTH) {
@@ -158,7 +154,6 @@ function inlineToolPreview(text: string): string | undefined {
 function toolOutputPreview(text: string, expanded: boolean): ReturnType<typeof previewLines> {
   const trimmed = text.replace(/\n+$/u, "");
   if (expanded || trimmed === "") return { text: trimmed, omitted: 0 };
-
   const preview = previewLines(text, RESULT_PREVIEW_LINES, RESULT_TAIL_LINES);
   const hidden = Math.max(0, trimmed.split("\n").length - RESULT_PREVIEW_LINES - RESULT_TAIL_LINES);
   if (hidden === 0) return preview;
@@ -169,27 +164,7 @@ function toolOutputPreview(text: string, expanded: boolean): ReturnType<typeof p
   };
 }
 
-function shikiChunks(theme: CliTheme): OnChunksCallback {
-  return async (chunks, context) =>
-    (await syntaxHighlightedChunks(context.content, context.filetype, theme)) ?? chunks;
-}
-
-function applyShikiToCodeChildren(root: Renderable, theme: CliTheme): void {
-  const transform = shikiChunks(theme);
-  const visit = (parent: Renderable): void => {
-    for (const child of parent.getChildren()) {
-      if (child instanceof CodeRenderable) child.onChunks = transform;
-      visit(child);
-    }
-  };
-  visit(root);
-}
-
-/**
- * Highlight groups, named as the shipped grammars emit them: markdown uses
- * `markup.strong`, and unlisted dotted names fall back to their first segment,
- * so `markup` has to carry headings, links, and fenced blocks.
- */
+/** Highlight groups, named as the shipped grammars emit them. */
 function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
   const color = (value: string): string => (subtle ? theme.dim : value);
   return SyntaxStyle.fromStyles({
@@ -204,6 +179,17 @@ function syntaxStyle(theme: CliTheme, subtle: boolean): SyntaxStyle {
     variable: { fg: color(theme.foreground) },
     operator: { fg: color(theme.operator) },
     punctuation: { fg: color(theme.dim) },
+    // Base scopes the non-bundled grammars lean on; a dotted group falls back
+    // to the name before its first dot.
+    constant: { fg: color(theme.number) },
+    boolean: { fg: color(theme.number) },
+    character: { fg: color(theme.string) },
+    constructor: { fg: color(theme.type) },
+    module: { fg: color(theme.type) },
+    property: { fg: color(theme.foreground) },
+    attribute: { fg: color(theme.type) },
+    label: { fg: color(theme.code) },
+    tag: { fg: color(theme.code) },
     "markup.heading": { fg: color(theme.foreground), bold: true },
     "markup.strong": { fg: color(theme.foreground), bold: true },
     "markup.italic": { italic: true },
@@ -230,8 +216,7 @@ interface ExpandableToolOutput {
 }
 
 /**
- * One expansion state for the transcript and every tool card in it. New cards
- * inherit the state, while destroyed cards unregister themselves.
+ * One expansion state for the transcript and every tool card in it.
  *
  * Based on pi's global tool-output toggle:
  * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/modes/interactive/interactive-mode.ts
@@ -250,36 +235,28 @@ export class ToolOutputExpansion {
     return () => this.cards.delete(card);
   }
 
-  setExpanded(expanded: boolean): void {
-    if (expanded === this.current) return;
-    this.current = expanded;
-    for (const card of this.cards) card.setExpanded(expanded);
-  }
-
   toggle(): boolean {
-    this.setExpanded(!this.current);
+    this.current = !this.current;
+    for (const card of this.cards) card.setExpanded(this.current);
     return this.current;
   }
 }
 
+/** What every block draws with. */
 export interface Transcript {
-  renderer: CliRenderer;
-  container: Renderable;
+  readonly renderer: CliRenderer;
+  readonly container: ScrollBoxRenderable;
   syntaxStyle: SyntaxStyle;
   subtleSyntaxStyle: SyntaxStyle;
-  theme: CliTheme;
-  toolOutput: ToolOutputExpansion;
-  /** How consecutive tool calls are drawn. Settings own the value. */
-  toolCalls: ToolCallDisplay;
-  /** Working directory of the harness whose entries are being rendered. */
-  cwd?: string;
-  nextId: (prefix?: string) => string;
-  openPath?: (path: string) => void;
-  /** Keeps nested user cards at the visible transcript width. */
-  userLayout?: {
-    readonly blocks: Set<BoxRenderable>;
-    width(): number;
-  };
+  readonly theme: CliTheme;
+  /** Highlights for one-line labels, such as the command on a shell call. */
+  readonly labelSyntax: LabelSyntax;
+  readonly toolOutput: ToolOutputExpansion;
+  readonly nextId: (prefix?: string) => string;
+  readonly openPath: (path: string) => void;
+  /** Width for user cards, which sit inside the scroll padding. */
+  readonly userBlocks: Set<BoxRenderable>;
+  readonly userBlockWidth: () => number;
 }
 
 type SectionOptions = Pick<
@@ -334,27 +311,33 @@ function hasIncompleteHeadingPrefix(text: string): boolean {
   return /^\s{0,3}#{1,6}\s*$/.test(line);
 }
 
-/** A file the turn carried, with its body when the composer inlined one. */
+// ---------------------------------------------------------------------------
+// User turns
+// ---------------------------------------------------------------------------
+
 interface PresentedFile {
-  path: string;
-  text?: string;
+  readonly path: string;
+  readonly text?: string;
 }
 
-/** A skill the turn invoked, shown as the token that invoked it. */
 interface PresentedSkill {
-  name: string;
-  path: string;
+  readonly name: string;
+  readonly path: string;
 }
 
-function userPresentation(content: UserMessage["content"]) {
-  let text =
-    typeof content === "string"
-      ? content
-      : content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-  // An attached body is the file, not the prompt. It folds back into its tag so
-  // the turn reads as what the user typed, and the tag can open it on demand.
-  // Instructions the prompt pulled in are the skill, not the prompt: they fold
-  // to the same short token the composer showed while the message was drafted.
+interface UserPresentation {
+  readonly text: string;
+  readonly files: readonly PresentedFile[];
+  readonly skills: readonly PresentedSkill[];
+  readonly images: readonly ImageContent[];
+}
+
+function userPresentation(content: UserMessage["content"]): UserPresentation {
+  let text = Array.isArray(content)
+    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+    : content;
+  // Instructions the prompt pulled in are the skill, not the prompt; an
+  // attached body is the file, not the prompt. Both fold back to their tag.
   const skills: PresentedSkill[] = [];
   for (const invocation of extractSkillInvocations(text)) {
     skills.push({ name: invocation.name, path: invocation.path });
@@ -369,9 +352,9 @@ function userPresentation(content: UserMessage["content"]) {
     files.push({ path: mention.path });
     text = text.replace(mention.source, "");
   }
-  const images = typeof content === "string" ? [] : content.filter((part) => part.type === "image");
-  // Older TUI messages stored image placeholders in their text. Image parts
-  // are the durable source of truth now, so keep those markers presentation-only.
+  const images = Array.isArray(content)
+    ? content.flatMap((part) => (part.type === "image" ? [part] : []))
+    : [];
   if (images.length > 0) text = text.replace(/\[Image \d+\]/g, "");
   return {
     text: text
@@ -384,14 +367,56 @@ function userPresentation(content: UserMessage["content"]) {
   };
 }
 
-/** Lines kept visible when a user message is folded. */
 const PASTE_PREVIEW_LINES = 3;
 
-/**
- * A pasted wall of text is a fact about the turn, not the turn itself, so
- * anything past the composer's paste threshold arrives folded to a preview
- * with a tag that toggles the rest. Same click, same tag chrome as an image.
- */
+/** A clickable tag that folds or opens what a user turn carried. */
+function collapsedTag(
+  transcript: Transcript,
+  parent: BoxRenderable,
+  options: {
+    readonly label: () => string;
+    readonly url?: string;
+    readonly marginTop?: number;
+    readonly onToggle: () => void;
+  },
+): TextRenderable {
+  const { renderer, theme } = transcript;
+  let hovered = false;
+  const tag = new TextRenderable(renderer, {
+    id: transcript.nextId("tag"),
+    content: "",
+    fg: theme.pasteForeground,
+    bg: theme.pasteBackground,
+    wrapMode: "none",
+    marginTop: options.marginTop ?? 0,
+  });
+  const paint = (): void => {
+    tag.content = new StyledText([fg(theme.pasteForeground)(options.label())]);
+    tag.bg = hovered ? theme.hover : theme.pasteBackground;
+  };
+  tag.onMouseOver = () => {
+    hovered = true;
+    paint();
+  };
+  tag.onMouseOut = () => {
+    hovered = false;
+    paint();
+  };
+  tag.onMouseUp = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const selected = renderer.getSelection()?.getSelectedText() ?? "";
+    renderer.clearSelection();
+    if (selected !== "") return;
+    options.onToggle();
+    paint();
+  };
+  paint();
+  parent.add(tag);
+  return tag;
+}
+
 function addUserText(transcript: Transcript, block: BoxRenderable, text: string): void {
   const lines = text.split("\n");
   const folded = lines.length > PASTE_COLLAPSE_LINES;
@@ -406,11 +431,9 @@ function addUserText(transcript: Transcript, block: BoxRenderable, text: string)
   });
   block.add(body);
   if (!folded) return;
-
   const hidden = lines.length - PASTE_PREVIEW_LINES;
   let expanded = false;
   collapsedTag(transcript, block, {
-    id: "user-paste-toggle",
     marginTop: 1,
     label: () => (expanded ? " fewer lines " : ` +${String(hidden)} lines `),
     onToggle: () => {
@@ -420,11 +443,6 @@ function addUserText(transcript: Transcript, block: BoxRenderable, text: string)
   });
 }
 
-/**
- * A file the turn carried. When the composer inlined the body, the tag opens
- * it in place, the same gesture as an image or a fold; without a body there
- * is nothing to show, so the click falls back to opening the real file.
- */
 function addFileTag(
   transcript: Transcript,
   block: BoxRenderable,
@@ -434,10 +452,9 @@ function addFileTag(
   const { path, text } = file;
   if (text === undefined) {
     collapsedTag(transcript, tags, {
-      id: "file-tag",
       url: pathToFileURL(path).href,
       label: () => ` File ${basename(path)} `,
-      onToggle: () => transcript.openPath?.(path),
+      onToggle: () => transcript.openPath(path),
     });
     return;
   }
@@ -446,7 +463,7 @@ function addFileTag(
     content: text,
     filetype: pathToFiletype(path) ?? undefined,
     syntaxStyle: transcript.syntaxStyle,
-    onChunks: shikiChunks(transcript.theme),
+    fg: transcript.theme.foreground,
     visible: false,
     marginTop: 1,
     selectionBg: transcript.theme.selectionBackground,
@@ -454,7 +471,6 @@ function addFileTag(
   });
   let open = false;
   collapsedTag(transcript, tags, {
-    id: "file-tag",
     url: pathToFileURL(path).href,
     label: () => ` File ${basename(path)}${open ? "" : ` +${String(pasteLineCount(text))} lines`} `,
     onToggle: () => {
@@ -465,67 +481,31 @@ function addFileTag(
   block.add(body);
 }
 
-/** A skill the turn invoked. The tag opens its SKILL.md, the way a file tag does. */
-function addSkillTag(transcript: Transcript, tags: BoxRenderable, skill: PresentedSkill): void {
-  collapsedTag(transcript, tags, {
-    id: "skill-tag",
-    url: pathToFileURL(skill.path).href,
-    label: () => ` Skill ${skill.name} `,
-    onToggle: () => transcript.openPath?.(skill.path),
-  });
-}
-
-function addImageTag(
-  transcript: Transcript,
-  block: BoxRenderable,
-  tags: BoxRenderable,
-  image: ImageContent,
-  index: number,
-): void {
-  const preview = collapsedImagePreview(transcript, image);
-  collapsedTag(transcript, tags, {
-    id: "image-tag",
-    label: () => ` Image ${String(index)} `,
-    onToggle: () => {
-      preview.visible = !preview.visible;
-      if (preview.visible) preview.onSizeChange?.();
-    },
-  });
-  block.add(preview);
-}
-
-/**
- * A user turn: what was typed, then a row of tags for what it carried. Those
- * tags are the only mouse targets. The message itself does nothing on a click,
- * because taking a turn back is `esc esc` and moving the head is `/tree`, and a
- * pointer that happens to rest on a message is neither request.
- */
-export function appendUser(
+function appendUser(
   transcript: Transcript,
   content: UserMessage["content"],
-  parent?: Renderable,
+  parent: Renderable,
+  before?: Renderable,
 ): BoxRenderable {
   const presentation = userPresentation(content);
-  const userLayout = transcript.userLayout;
   const block = section(
     transcript,
     "user",
     {
       backgroundColor: transcript.theme.userBackground,
-      marginTop: parent === undefined ? SPACING.block : 0,
+      marginTop: 0,
       marginLeft: 1,
       marginRight: 1,
       paddingTop: 1,
       paddingBottom: 1,
       paddingLeft: 3,
-      width: userLayout?.width() ?? "100%",
+      width: transcript.userBlockWidth(),
     },
     parent,
+    before,
   );
-  if (userLayout !== undefined) {
-    userLayout.blocks.add(block);
-    block.once(RenderableEvents.DESTROYED, () => userLayout.blocks.delete(block));
-  }
+  transcript.userBlocks.add(block);
+  block.once(RenderableEvents.DESTROYED, () => transcript.userBlocks.delete(block));
   if (presentation.text !== "") addUserText(transcript, block, presentation.text);
 
   const tags = new BoxRenderable(transcript.renderer, {
@@ -538,20 +518,32 @@ export function appendUser(
     marginTop: presentation.text === "" ? 0 : 1,
   });
   block.add(tags);
-  for (const skill of presentation.skills) addSkillTag(transcript, tags, skill);
+  for (const skill of presentation.skills) {
+    collapsedTag(transcript, tags, {
+      url: pathToFileURL(skill.path).href,
+      label: () => ` Skill ${skill.name} `,
+      onToggle: () => transcript.openPath(skill.path),
+    });
+  }
   for (const file of presentation.files) addFileTag(transcript, block, tags, file);
   for (const [index, image] of presentation.images.entries()) {
-    addImageTag(transcript, block, tags, image, index + 1);
+    collapsedTag(transcript, tags, {
+      label: () => ` Image ${String(index + 1)} (${image.mimeType}) `,
+      onToggle: () => undefined,
+    });
   }
   return block;
 }
 
-/** A short one-line note: session info, command output, errors. */
+// ---------------------------------------------------------------------------
+// Markers between turns
+// ---------------------------------------------------------------------------
+
 function appendNote(
   transcript: Transcript,
   text: string,
-  color?: string,
-  parent?: Renderable,
+  color: string | undefined,
+  parent: Renderable,
   before?: Renderable,
 ): BoxRenderable {
   const box = section(transcript, "note", {}, parent, before);
@@ -566,18 +558,13 @@ function appendNote(
   return box;
 }
 
-/** A compaction checkpoint, kept dim so old context reads as history. */
-function appendCompaction(
-  transcript: Transcript,
-  summary: string,
-  tokensBefore: number,
-): void {
+function appendCard(transcript: Transcript, heading: string, summary: string): BoxRenderable {
   const { theme } = transcript;
   const preview = previewLines(summary, 40);
   const visibleSummary =
     preview.omitted === 0 ? preview.text : `${preview.text}\n${omittedLabel(preview.omitted)}`;
   const card = new BoxRenderable(transcript.renderer, {
-    id: transcript.nextId("compaction"),
+    id: transcript.nextId("card"),
     flexDirection: "column",
     border: true,
     borderStyle: "rounded",
@@ -589,17 +576,15 @@ function appendCompaction(
   });
   card.add(
     new TextRenderable(transcript.renderer, {
-      id: transcript.nextId("compaction-heading"),
-      content: new StyledText([
-        fg(theme.dim)(`context compacted · ${String(tokensBefore)} tokens before`),
-      ]),
+      id: transcript.nextId("card-heading"),
+      content: new StyledText([fg(theme.dim)(heading)]),
       wrapMode: "word",
     }),
   );
   if (visibleSummary !== "") {
     card.add(
       new TextRenderable(transcript.renderer, {
-        id: transcript.nextId("compaction-summary"),
+        id: transcript.nextId("card-summary"),
         content: visibleSummary,
         fg: theme.dim,
         wrapMode: "word",
@@ -607,76 +592,48 @@ function appendCompaction(
     );
   }
   transcript.container.add(card);
+  return card;
 }
 
-/** A branch summary left at a fork: what the abandoned branch was about. */
-function appendBranchSummary(transcript: Transcript, summary: string, fromId: string): void {
-  const { theme } = transcript;
-  const preview = previewLines(summary, 40);
-  const visibleSummary =
-    preview.omitted === 0 ? preview.text : `${preview.text}\n${omittedLabel(preview.omitted)}`;
-  const card = new BoxRenderable(transcript.renderer, {
-    id: transcript.nextId("branch-summary"),
-    flexDirection: "column",
-    border: true,
-    borderStyle: "rounded",
-    borderColor: theme.promptBorder,
-    paddingLeft: 2,
-    paddingRight: 2,
-    marginTop: SPACING.block,
-    width: "100%",
-  });
-  card.add(
-    new TextRenderable(transcript.renderer, {
-      id: transcript.nextId("branch-summary-heading"),
-      content: new StyledText([fg(theme.dim)(`branch summary · from ${fromId.slice(0, 10)}`)]),
-      wrapMode: "word",
-    }),
-  );
-  if (visibleSummary !== "") {
-    card.add(
-      new TextRenderable(transcript.renderer, {
-        id: transcript.nextId("branch-summary-text"),
-        content: visibleSummary,
-        fg: theme.dim,
-        wrapMode: "word",
-      }),
-    );
+/** One non-turn item: a checkpoint card, a branch summary, a config line, a note. */
+function appendMarker(transcript: Transcript, item: Exclude<Turn, { kind: "turn" }>): Renderable {
+  switch (item.kind) {
+    case "checkpoint":
+      return appendCard(
+        transcript,
+        `context compacted · ${String(item.body.tokensBefore)} tokens before`,
+        item.body.summary,
+      );
+    case "summary":
+      return appendCard(transcript, "branch summary", item.body.text);
+    case "config": {
+      const parts: string[] = [];
+      if (item.body.model !== undefined) {
+        const { provider, id } = item.body.model;
+        parts.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
+      }
+      if (item.body.thinkingLevel !== undefined)
+        parts.push(`Thinking → ${item.body.thinkingLevel}`);
+      if (item.body.agent !== undefined) parts.push(`Agent → ${item.body.agent}`);
+      return appendNote(transcript, parts.join(" · "), undefined, transcript.container);
+    }
+    case "note":
+      return appendNote(
+        transcript,
+        presentNote({ commit: item.commit, at: item.at, body: item.body }).text,
+        undefined,
+        transcript.container,
+      );
+    default: {
+      const _exhaustive: never = item;
+      return _exhaustive;
+    }
   }
-  transcript.container.add(card);
 }
 
-export function authUrlText(url: string, color: string, prefix = ""): StyledText {
-  const linkedUrl = link(url)(fg(color)(url));
-  return new StyledText(prefix === "" ? [linkedUrl] : [fg(color)(prefix), linkedUrl]);
-}
-
-/** Keep the auth URL complete, open a click, and leave a drag available for selection. */
-export function appendAuthUrl(
-  transcript: Transcript,
-  { url, openUrl, prefix = "" }: { url: string; openUrl: (url: string) => void; prefix?: string },
-): TextRenderable {
-  let pressedAt: { x: number; y: number } | undefined;
-  const text = new TextRenderable(transcript.renderer, {
-    id: transcript.nextId("auth-url"),
-    content: authUrlText(url, transcript.theme.user, prefix),
-    wrapMode: "char",
-    onMouseDown(event) {
-      if (event.button === 0) pressedAt = { x: event.x, y: event.y };
-    },
-    onMouseUp(event) {
-      const clicked = event.button === 0 && pressedAt?.x === event.x && pressedAt.y === event.y;
-      pressedAt = undefined;
-      if (!clicked) return;
-      event.preventDefault();
-      event.stopPropagation();
-      transcript.renderer.clearSelection();
-      openUrl(url);
-    },
-  });
-  transcript.container.add(text);
-  return text;
-}
+// ---------------------------------------------------------------------------
+// Turn blocks
+// ---------------------------------------------------------------------------
 
 /** Top-level turn owner; animation stays here because nested live boxes break layout. */
 class TurnSection extends BoxRenderable {
@@ -685,9 +642,9 @@ class TurnSection extends BoxRenderable {
     { elapsed: number; line: TextRenderable; draw: (elapsedMs: number) => StyledText }
   >();
 
-  constructor(transcript: Transcript, id?: string) {
+  constructor(transcript: Transcript, id: string) {
     super(transcript.renderer, {
-      id: id === undefined ? transcript.nextId("turn") : `turn:${id}`,
+      id: `turn:${id}`,
       flexDirection: "column",
       paddingLeft: 0,
       paddingRight: 0,
@@ -695,8 +652,6 @@ class TurnSection extends BoxRenderable {
       width: "100%",
       live: false,
     });
-    bindSemantics(this, () => ({ role: "message", id: id ?? this.id }));
-    transcript.container.add(this);
   }
 
   protected override onUpdate(deltaTime: number): void {
@@ -729,164 +684,66 @@ class TurnSection extends BoxRenderable {
   }
 }
 
-/** Streamed assistant markdown owned by one conversation turn. */
+/**
+ * Streamed assistant markdown owned by one conversation turn. The content only
+ * ever grows at its tail, so OpenTUI re-parses the last blocks and nothing
+ * above them, the way opencode v2 feeds its markdown part.
+ *
+ * Based on https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/routes/session/index.tsx (text part)
+ */
 class AssistantPartBlock {
-  private readonly box: BoxRenderable;
+  readonly box: BoxRenderable;
   private readonly markdown: MarkdownRenderable;
-  private readonly renderer: CliRenderer;
   private buffer = "";
-  private settled = false;
-  private renderedWidth = 0;
 
-  constructor(
-    transcript: Transcript,
-    parent: Renderable,
-    initial = "",
-    streaming = true,
-    before?: Renderable,
-  ) {
+  constructor(transcript: Transcript, parent: Renderable, before: Renderable | undefined) {
     this.box = section(transcript, "assistant", {}, parent, before);
-    this.buffer = initial;
-    this.renderer = transcript.renderer;
     this.markdown = new MarkdownRenderable(transcript.renderer, {
       id: transcript.nextId("assistant-md"),
-      content: initial,
+      content: "",
       syntaxStyle: transcript.syntaxStyle,
-      streaming,
+      streaming: true,
       internalBlockMode: "top-level",
+      // A fenced block whose language has no grammar (`text`, `mermaid`, none)
+      // is drawn as plain text in this color. OpenTUI's own default is white,
+      // which vanishes on the light theme.
+      fg: transcript.theme.foreground,
     });
-    this.markdown.onSizeChange = () => {
-      if (this.settled) this.renderDiagram();
-    };
     this.box.add(this.markdown);
-    this.showWhenFilled();
+    this.box.visible = false;
   }
 
-  append(delta: string): void {
-    this.buffer += delta;
-    this.showWhenFilled();
-    if (!hasIncompleteHeadingPrefix(this.buffer)) this.markdown.content = this.buffer;
-  }
-
+  /** The whole text so far; the overlay carries the accumulated stream. */
   set(text: string): void {
+    if (text === this.buffer) return;
     this.buffer = text;
-    this.showWhenFilled();
-    this.renderDiagram(true);
+    this.box.visible = text.trim() !== "";
+    if (!hasIncompleteHeadingPrefix(text)) this.markdown.content = text;
   }
 
-  /**
-   * Mermaid fences become drawings only once the turn settles: a half-streamed
-   * fence has no shape yet, and redrawing one per delta would flicker.
-   */
-  finish(): void {
-    this.settled = true;
-    this.showWhenFilled();
-    this.renderDiagram(true);
+  finish(text: string): void {
+    this.buffer = text;
+    this.box.visible = text.trim() !== "";
+    this.markdown.content = text;
     this.markdown.streaming = false;
   }
 
-  /**
-   * A part that carries only whitespace draws nothing but would still claim
-   * its block margin, which breaks the one-blank-row rhythm between blocks.
-   * Hidden boxes leave the flex layout, so the gap stays even.
-   */
-  private showWhenFilled(): void {
-    this.box.visible = this.buffer.trim() !== "";
+  remove(): void {
+    this.box.parent?.remove(this.box);
+    this.box.destroyRecursively();
   }
-
-  private renderDiagram(force = false): void {
-    const width = this.contentWidth();
-    if (!force && width === this.renderedWidth) return;
-    this.renderedWidth = width;
-    this.markdown.content = renderDiagramFences(this.buffer, width);
-  }
-
-  private contentWidth(): number {
-    return Math.max(1, this.markdown.width || this.renderer.width - 4);
-  }
-}
-
-/** The turn's single live status row. It never competes with another spinner. */
-class ActivityBlock {
-  private readonly transcript: Transcript;
-  private readonly owner: TurnSection;
-  private readonly section: BoxRenderable;
-  private readonly line: TextRenderable;
-  private readonly animation: symbol;
-  /** The turn's span as the record has it. The row's own clock runs on top. */
-  private readonly durationMs: number;
-  private mode: "working" | "thinking" | "settled" = "working";
-
-  get anchor(): Renderable {
-    return this.section;
-  }
-
-  constructor(transcript: Transcript, parent: TurnSection, durationMs = 0) {
-    this.transcript = transcript;
-    this.owner = parent;
-    this.durationMs = durationMs;
-    this.section = section(transcript, "activity", {}, parent);
-    this.line = new TextRenderable(transcript.renderer, {
-      id: transcript.nextId("activity-line"),
-      content: "",
-      wrapMode: "none",
-    });
-    this.section.add(this.line);
-    this.animation = parent.animate(this.line, this.workingFrame);
-  }
-
-  beginThinking(): void {
-    if (this.mode !== "working") return;
-    const { theme } = this.transcript;
-    this.mode = "thinking";
-    this.owner.changeAnimation(
-      this.animation,
-      (elapsed) =>
-        new StyledText([
-          fg(theme.thinking)(spinnerFrame(elapsed)),
-          fg(theme.thinking)(ACTIVITY_THINKING_LABEL),
-        ]),
-    );
-  }
-
-  endThinking(): void {
-    if (this.mode !== "thinking") return;
-    this.mode = "working";
-    this.owner.changeAnimation(this.animation, this.workingFrame);
-  }
-
-  settle(outcome: TurnOutcome): void {
-    const { theme } = this.transcript;
-    const elapsed = this.durationMs + this.owner.stopAnimation(this.animation);
-    this.mode = "settled";
-    if (outcome === "completed") {
-      const duration = elapsed >= MIN_REPORTED_DURATION_MS ? ` for ${formatDuration(elapsed)}` : "";
-      this.line.content = new StyledText([fg(theme.dim)(`${ACTIVITY_WORKED_LABEL}${duration}`)]);
-    } else if (outcome === "aborted") {
-      this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_STOPPED_LABEL)]);
-    } else {
-      this.line.content = new StyledText([
-        fg(theme.error)(`${GLYPHS.cross}${ACTIVITY_FAILED_LABEL}`),
-      ]);
-    }
-  }
-
-  private readonly workingFrame = (elapsed: number): StyledText =>
-    new StyledText([
-      fg(this.transcript.theme.running)(spinnerFrame(elapsed)),
-      fg(this.transcript.theme.dim)(ACTIVITY_WORKING_LABEL),
-    ]);
 }
 
 /** Streamed reasoning content that settles to a static Thought block. */
 class ReasoningBlock {
-  private readonly box: BoxRenderable;
+  readonly box: BoxRenderable;
   private readonly heading: TextRenderable;
   private readonly markdown: MarkdownRenderable;
+  private readonly theme: CliTheme;
   private buffer = "";
-  private finished = false;
 
-  constructor(transcript: Transcript, parent: TurnSection, before?: Renderable) {
+  constructor(transcript: Transcript, parent: Renderable, before: Renderable | undefined) {
+    this.theme = transcript.theme;
     this.box = section(transcript, "thinking", {}, parent, before);
     this.box.visible = false;
     this.heading = new TextRenderable(transcript.renderer, {
@@ -907,34 +764,29 @@ class ReasoningBlock {
     this.box.add(this.markdown);
   }
 
-  append(delta: string): void {
-    this.buffer += delta;
-    this.showWhenFilled();
-    const content = this.preview();
-    if (!hasIncompleteHeadingPrefix(content)) this.markdown.content = content;
-  }
-
+  /** The whole thought so far. The preview cut waits for `finish`: a sliding tail would rebuild every block per delta. */
   set(text: string): void {
+    if (text === this.buffer) return;
     this.buffer = text;
-    this.showWhenFilled();
-    this.markdown.content = this.preview();
+    this.box.visible = text.trim() !== "";
+    if (!hasIncompleteHeadingPrefix(text)) this.markdown.content = text;
   }
 
   /** A blank thought earns neither a heading nor the row its block would take. */
-  finish(theme: CliTheme): void {
-    if (this.finished) return;
-    this.finished = true;
-    this.showWhenFilled();
+  finish(text: string): void {
+    this.buffer = text;
+    this.box.visible = text.trim() !== "";
     this.heading.content = new StyledText([
-      fg(theme.thinking)(`${GLYPHS.diamond}${ACTIVITY_THOUGHT_LABEL}`),
+      fg(this.theme.thinking)(`${GLYPHS.diamond}${ACTIVITY_THOUGHT_LABEL}`),
     ]);
     this.heading.visible = this.box.visible;
     this.markdown.content = this.preview();
     this.markdown.streaming = false;
   }
 
-  private showWhenFilled(): void {
-    this.box.visible = this.buffer.trim() !== "";
+  remove(): void {
+    this.box.parent?.remove(this.box);
+    this.box.destroyRecursively();
   }
 
   private preview(): string {
@@ -945,20 +797,121 @@ class ReasoningBlock {
   }
 }
 
-type ToolCardPresentation =
-  | { readonly kind: "called" }
-  | { readonly kind: "streaming"; readonly text: string }
-  | {
-      readonly kind: "complete";
-      readonly text: string;
-      readonly isError: boolean;
-      readonly details?: JsonValue;
-    };
+type ActivityMode = "working" | "thinking" | "waiting" | "retrying";
+
+/** The turn's single live status row. It never competes with another spinner. */
+class ActivityBlock {
+  private readonly transcript: Transcript;
+  private readonly owner: TurnSection;
+  private readonly section: BoxRenderable;
+  private readonly line: TextRenderable;
+  private readonly animation: symbol;
+  private readonly durationMs: number;
+  private mode: ActivityMode | "settled" = "working";
+
+  get anchor(): Renderable {
+    return this.section;
+  }
+
+  constructor(transcript: Transcript, parent: TurnSection, durationMs: number) {
+    this.transcript = transcript;
+    this.owner = parent;
+    this.durationMs = durationMs;
+    this.section = section(transcript, "activity", {}, parent);
+    this.line = new TextRenderable(transcript.renderer, {
+      id: transcript.nextId("activity-line"),
+      content: "",
+      wrapMode: "none",
+    });
+    this.section.add(this.line);
+    this.animation = parent.animate(this.line, this.frame("working"));
+  }
+
+  setMode(mode: ActivityMode): void {
+    if (this.mode === "settled" || this.mode === mode) return;
+    this.mode = mode;
+    this.owner.changeAnimation(this.animation, this.frame(mode));
+  }
+
+  settle(outcome: TurnOutcome): void {
+    if (this.mode === "settled") return;
+    const { theme } = this.transcript;
+    const elapsed = this.durationMs + this.owner.stopAnimation(this.animation);
+    this.mode = "settled";
+    switch (outcome) {
+      case "completed": {
+        const duration =
+          elapsed >= MIN_REPORTED_DURATION_MS ? ` for ${formatDuration(elapsed)}` : "";
+        this.line.content = new StyledText([fg(theme.dim)(`${ACTIVITY_WORKED_LABEL}${duration}`)]);
+        return;
+      }
+      case "aborted":
+        this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_STOPPED_LABEL)]);
+        return;
+      case "failed":
+        this.line.content = new StyledText([
+          fg(theme.error)(`${GLYPHS.cross}${ACTIVITY_FAILED_LABEL}`),
+        ]);
+        return;
+      default: {
+        const _exhaustive: never = outcome;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private frame(mode: ActivityMode): (elapsed: number) => StyledText {
+    const { theme } = this.transcript;
+    switch (mode) {
+      case "working":
+        return (elapsed) =>
+          new StyledText([
+            fg(theme.running)(spinnerFrame(elapsed)),
+            fg(theme.dim)(ACTIVITY_WORKING_LABEL),
+          ]);
+      case "thinking":
+        return (elapsed) =>
+          new StyledText([
+            fg(theme.thinking)(spinnerFrame(elapsed)),
+            fg(theme.thinking)(ACTIVITY_THINKING_LABEL),
+          ]);
+      case "waiting":
+        return () =>
+          new StyledText([
+            fg(theme.warning)(GLYPHS.bullet),
+            fg(theme.warning)(ACTIVITY_WAITING_LABEL),
+          ]);
+      case "retrying":
+        return (elapsed) =>
+          new StyledText([
+            fg(theme.warning)(spinnerFrame(elapsed)),
+            fg(theme.warning)(ACTIVITY_RETRY_LABEL),
+          ]);
+      default: {
+        const _exhaustive: never = mode;
+        return _exhaustive;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tool cards
+// ---------------------------------------------------------------------------
+
+function taskPreview(
+  part: ToolTurnPart,
+): { readonly title: string; readonly prompt: string } | undefined {
+  if (part.toolName !== "task" || !isJsonObject(part.args)) return undefined;
+  const { agent, prompt } = part.args;
+  if (!isJsonString(agent) || !isJsonString(prompt)) return undefined;
+  return { title: agent, prompt };
+}
 
 /**
- * One card per tool call, reused from start through partial updates and the
- * final result. Unified diffs from edit details or shell output render with
- * DiffRenderable; everything else shows a capped source-aware preview.
+ * One card per tool call, reused from the call through progress to the
+ * settled result. Unified diffs from edit details or shell output render
+ * with DiffRenderable; everything else shows a capped preview.
  */
 export class ToolCard {
   readonly container: BoxRenderable;
@@ -966,40 +919,26 @@ export class ToolCard {
   private readonly transcript: Transcript;
   private readonly detail: BoxRenderable;
   private readonly heading: TextRenderable;
-  readonly toolName: string;
-  private title: string | undefined;
   private readonly structuredBodies: Renderable[] = [];
-  private presentation: ToolCardPresentation = { kind: "called" };
+  private current: ToolTurnPart;
+  private live: ToolLive | undefined;
   private expanded = false;
-  private compact = false;
+  private destroyed = false;
   private textBody: CodeRenderable | undefined;
   private omitted: TextRenderable | undefined;
-  private readonly onStateChange: () => void;
-
-  private headingContent(icon: string, color: string, result?: string): StyledText {
-    const { theme } = this.transcript;
-    const chunks = [
-      fg(color)(icon),
-      fg(theme.foreground)(` ${toolHeading(this.toolName, this.title)}`),
-    ];
-    if (result !== undefined) chunks.push(fg(theme.dim)(`  ${result}`));
-    return new StyledText(chunks);
-  }
 
   constructor(
     transcript: Transcript,
-    toolName: string,
-    parent: Renderable = transcript.container,
-    before?: Renderable,
-    onStateChange: () => void = () => undefined,
+    part: ToolTurnPart,
+    parent: Renderable,
+    before: Renderable | undefined,
   ) {
     this.transcript = transcript;
-    this.toolName = toolName;
-    this.onStateChange = onStateChange;
+    this.current = part;
     this.container = section(transcript, "tool", {}, parent, before);
     this.heading = new TextRenderable(transcript.renderer, {
       id: transcript.nextId("tool-heading"),
-      content: this.headingContent(GLYPHS.bullet, transcript.theme.running),
+      content: "",
       wrapMode: "none",
       truncate: true,
     });
@@ -1014,133 +953,146 @@ export class ToolCard {
     });
     this.container.add(this.detail);
     const unregister = transcript.toolOutput.register(this);
-    this.container.once(RenderableEvents.DESTROYED, unregister);
+    this.container.once(RenderableEvents.DESTROYED, () => {
+      this.destroyed = true;
+      unregister();
+    });
+    this.render();
+  }
+
+  /** The part as last synced: the call, and its result once settled. */
+  get part(): ToolTurnPart {
+    return this.current;
+  }
+
+  get completed(): boolean {
+    return this.current.result !== undefined;
   }
 
   setExpanded(expanded: boolean): void {
     if (expanded === this.expanded) return;
     this.expanded = expanded;
-    this.renderPresentation();
+    this.render();
   }
 
-  /** A collapsed group draws the card as one row: heading kept, body dropped. */
-  setCompact(compact: boolean): void {
-    if (compact === this.compact) return;
-    this.compact = compact;
-    this.renderPresentation();
+  /** The settled part, or a fresh progress report while the call runs. */
+  sync(part: ToolTurnPart, live: ToolLive | undefined): void {
+    const changed =
+      part !== this.current || live?.text !== this.live?.text || live?.title !== this.live?.title;
+    this.current = part;
+    this.live = live;
+    if (changed) this.render();
   }
 
-  /** The card has drawn its final result; a folded repeat has nothing to add. */
-  get completed(): boolean {
-    return this.presentation.kind === "complete";
-  }
-
-  get failed(): boolean {
-    return this.presentation.kind === "complete" && this.presentation.isError;
-  }
-
-  update(text: string, title?: string): void {
-    if (title !== undefined) this.title = title;
-    this.presentation = { kind: "streaming", text };
-    this.renderPresentation();
-  }
-
-  complete(
-    text: string,
-    options: { isError?: boolean; details?: JsonValue; title?: string } = {},
-  ): void {
-    if (options.title !== undefined) this.title = options.title;
-    this.presentation = {
-      kind: "complete",
-      text,
-      isError: options.isError ?? false,
-      details: options.details,
-    };
-    this.renderPresentation();
-    this.onStateChange();
-  }
-
-  private renderPresentation(): void {
+  private headingContent(icon: string, color: string, result?: string): StyledText {
     const { theme } = this.transcript;
-    switch (this.presentation.kind) {
-      case "called":
-        this.heading.content = this.headingContent(GLYPHS.bullet, theme.running);
-        this.clearBody();
-        break;
-      case "streaming": {
-        const inline = inlineToolPreview(this.presentation.text);
+    const chunks = [fg(color)(icon), ...this.headingTitle()];
+    if (result !== undefined) chunks.push(fg(theme.dim)(`  ${result}`));
+    return new StyledText(chunks);
+  }
+
+  /**
+   * The tool name and its title. A shell call's title is a command, which
+   * reads as code, so it is highlighted as one once the grammar answers.
+   */
+  private headingTitle(): TextChunk[] {
+    const { theme, labelSyntax } = this.transcript;
+    const title = this.title();
+    const plain = fg(theme.foreground)(` ${toolHeading(this.current.toolName, title)}`);
+    const filetype = HEADING_FILETYPES.get(this.current.toolName);
+    if (filetype === undefined || title === undefined) return [plain];
+    const highlighted = labelSyntax.chunks(title, filetype, this.transcript.syntaxStyle, () => {
+      if (!this.destroyed) this.render();
+    });
+    if (highlighted === undefined) return [plain];
+    return [fg(theme.foreground)(` ${this.current.toolName} `), ...highlighted];
+  }
+
+  private title(): string | undefined {
+    return this.current.result?.title ?? this.live?.title ?? taskPreview(this.current)?.title;
+  }
+
+  private render(): void {
+    const { theme } = this.transcript;
+    const view = projectToolView(this.current, this.live);
+    const presentation = presentTool(view);
+    switch (presentation.status) {
+      case "running": {
+        const preview = taskPreview(this.current);
+        const text = this.live?.text ?? preview?.prompt ?? "";
+        const inline = inlineToolPreview(text);
         this.heading.content = this.headingContent(
           GLYPHS.bullet,
-          theme.user,
-          inline ?? resultSummary(this.presentation.text),
+          text === "" ? theme.running : theme.user,
+          inline ?? resultSummary(text),
         );
-        if (inline !== undefined || this.compact) this.clearBody();
-        else this.showPreview(this.presentation.text, theme.dim);
-        break;
+        if (inline !== undefined || text === "") this.clearBody();
+        else this.showPreview(text, theme.dim);
+        return;
       }
-      case "complete":
-        this.renderComplete(
-          this.presentation.text,
-          this.presentation.isError,
-          this.presentation.details,
-        );
-        break;
+      case "failed":
+        this.renderSettled(presentation, true);
+        return;
+      case "done":
+        this.renderSettled(presentation, false);
+        return;
       default: {
-        const _exhaustive: never = this.presentation;
+        const _exhaustive: never = presentation.status;
         return _exhaustive;
       }
     }
   }
 
-  private renderComplete(text: string, isError: boolean, details: JsonValue | undefined): void {
+  private renderSettled(presentation: ToolPresentation, isError: boolean): void {
     const { theme } = this.transcript;
-    const detailsDiff = patchOf(details);
-    const outputDiff = detailsDiff === undefined ? diffFromOutput(text) : undefined;
-    const presentedDiff =
-      detailsDiff === undefined
-        ? outputDiff
-        : { files: [{ patch: detailsDiff, path: patchPath(detailsDiff) }] };
-    if (presentedDiff !== undefined && !isError) {
-      const stat = diffStat(presentedDiff.files.map((file) => file.patch).join("\n"));
+    const output = this.current.result?.output ?? "";
+    if (presentation.body.kind === "diff" && !isError) {
+      const { patch, path, added, removed } = presentation.body;
       this.heading.content = this.headingContent(
         GLYPHS.check,
         theme.ok,
-        `+${String(stat.added)} -${String(stat.removed)}`,
+        `+${String(added)} -${String(removed)}`,
       );
-      if (this.compact) this.clearBody();
-      else this.showDiff(presentedDiff);
+      this.showDiff({ files: [path === undefined ? { patch } : { patch, path }] });
       return;
     }
-    const inline = inlineToolPreview(text);
-    const refined = presenter.tool({
-      toolName: this.toolName,
-      result: {
-        output: text,
-        isError,
-        ...(details === undefined ? {} : { details }),
-        ...(this.title === undefined ? {} : { title: this.title }),
-      },
-    });
-    const summary = refined.summary ?? inline ?? resultSummary(text);
+    const outputDiff = isError ? undefined : diffFromOutput(output);
+    if (outputDiff !== undefined) {
+      const stat = diffSections(outputDiff.files.map((file) => file.patch).join("\n"));
+      this.heading.content = this.headingContent(
+        GLYPHS.check,
+        theme.ok,
+        `${String(stat.length)} ${stat.length === 1 ? "hunk" : "hunks"}`,
+      );
+      this.showDiff(outputDiff);
+      return;
+    }
+    const inline = inlineToolPreview(output);
+    const summary = presentation.summary ?? inline ?? resultSummary(output);
+    // A collapsed read names the file and its size without repeating its body.
     const collapsedRead =
-      this.toolName === "read" && !isError && !this.expanded && inline === undefined;
-    const headingResult =
-      collapsedRead && !this.compact
-        ? [summary, `${keycap("chat.tools.toggle")} expand`]
-            .filter((value) => value !== undefined)
-            .join(" · ")
-        : summary;
+      this.current.toolName === "read" && !isError && !this.expanded && inline === undefined;
+    const headingResult = collapsedRead
+      ? [summary, `${keycap("chat.tools.toggle")} expand`]
+          .filter((value) => value !== undefined)
+          .join(" · ")
+      : summary;
     this.heading.content = this.headingContent(
       isError ? GLYPHS.cross : GLYPHS.check,
       isError ? theme.error : theme.ok,
       headingResult,
     );
-    // A collapsed read names the file and its size without repeating its body.
-    if (collapsedRead || this.compact) this.clearBody();
-    else if (inline === undefined) this.showPreview(text, isError ? theme.error : theme.dim);
-    else this.clearBody();
+    if (collapsedRead || inline !== undefined) this.clearBody();
+    else this.showPreview(output, isError ? theme.error : theme.dim);
   }
 
+  /**
+   * Running output is plain text; a settled read is highlighted for its file
+   * type. The body and its "more lines" label are made once and updated.
+   *
+   * Based on opencode v2, which highlights only settled tool bodies:
+   * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/routes/session/index.tsx
+   */
   private showPreview(text: string, color: string): void {
     const preview = toolOutputPreview(text, this.expanded);
     if (this.structuredBodies.length > 0) this.clearBody();
@@ -1150,16 +1102,16 @@ export class ToolCard {
     }
     this.detail.visible = true;
     this.detail.paddingLeft = 2;
+    const filetype =
+      this.completed && this.current.toolName === "read" && this.title() !== undefined
+        ? pathToFiletype(this.title() ?? "")
+        : undefined;
     if (this.textBody === undefined) {
       this.textBody = new CodeRenderable(this.transcript.renderer, {
         id: this.transcript.nextId("tool-body"),
         content: preview.text,
-        filetype:
-          this.toolName === "read" && this.title !== undefined
-            ? pathToFiletype(this.title)
-            : undefined,
+        filetype,
         syntaxStyle: this.transcript.syntaxStyle,
-        onChunks: shikiChunks(this.transcript.theme),
         conceal: false,
         fg: color,
         bg: this.transcript.theme.codeBackground,
@@ -1171,22 +1123,16 @@ export class ToolCard {
       });
       this.detail.add(this.textBody);
     } else {
+      if (filetype !== undefined && this.textBody.filetype !== filetype) {
+        this.textBody.filetype = filetype;
+      }
       this.textBody.content = preview.text;
       this.textBody.fg = color;
     }
-    if (this.omitted !== undefined) {
-      this.detail.remove(this.omitted);
-      this.omitted.destroy();
-      this.omitted = undefined;
-    }
-    if (preview.omitted > 0) {
-      this.omitted = label(
-        this.transcript,
-        omittedLabel(preview.omitted),
-        this.transcript.theme.dim,
-      );
-      this.detail.add(this.omitted);
-    }
+    this.omitted ??= label(this.transcript, "", this.transcript.theme.dim);
+    if (this.omitted.parent !== this.detail) this.detail.add(this.omitted);
+    this.omitted.content = omittedLabel(preview.omitted);
+    this.omitted.visible = preview.omitted > 0;
   }
 
   private showDiff(output: OutputDiff): void {
@@ -1196,11 +1142,11 @@ export class ToolCard {
     if (output.before !== undefined) this.addSupplementalPreview(output.before);
     const diffs: DiffRenderable[] = [];
     for (const file of output.files) {
-      for (const section of diffSections(file.patch)) {
-        if (section.omittedBefore > 0) {
+      for (const hunk of diffSections(file.patch)) {
+        if (hunk.omittedBefore > 0) {
           const omitted = label(
             this.transcript,
-            unchangedLinesLabel(section.omittedBefore),
+            unchangedLinesLabel(hunk.omittedBefore),
             this.transcript.theme.dim,
           );
           this.detail.add(omitted);
@@ -1208,12 +1154,13 @@ export class ToolCard {
         }
         const diff = new DiffRenderable(this.transcript.renderer, {
           id: this.transcript.nextId("tool-diff"),
-          diff: section.patch,
+          diff: hunk.patch,
           view: "unified",
           showLineNumbers: true,
           filetype: file.path === undefined ? undefined : pathToFiletype(file.path),
           syntaxStyle: this.transcript.syntaxStyle,
           wrapMode: "none",
+          fg: this.transcript.theme.foreground,
           addedBg: this.transcript.theme.diffAddedBackground,
           removedBg: this.transcript.theme.diffRemovedBackground,
           addedLineNumberBg: this.transcript.theme.diffAddedBackground,
@@ -1223,10 +1170,9 @@ export class ToolCard {
           lineNumberFg: this.transcript.theme.dim,
           selectionBg: this.transcript.theme.selectionBackground,
           selectionFg: this.transcript.theme.selectionForeground,
-          minHeight: section.rows > 0 ? section.rows : undefined,
+          minHeight: hunk.rows > 0 ? hunk.rows : undefined,
           width: "100%",
         });
-        applyShikiToCodeChildren(diff, this.transcript.theme);
         clipOffscreenDiffLineColors(diff);
         this.detail.add(diff);
         this.structuredBodies.push(diff);
@@ -1288,380 +1234,146 @@ export class ToolCard {
   }
 }
 
-/** Tools whose card never folds into a group under the `auto` display mode. */
-const DETAILED_TOOLS = new Set(["edit", "write"]);
+// ---------------------------------------------------------------------------
+// One turn
+// ---------------------------------------------------------------------------
 
 /**
- * Consecutive tool calls collapse into one block: a verb heading, the newest
- * calls as single rows, and everything older behind an "earlier calls" count.
- * The window follows the stream, so the running call is always the visible
- * tail. Expanding restores every call as a full card.
+ * What the status row shows: the run's phase while it is live, the record's
+ * outcome after. A request nothing has answered yet gets no row: the commit
+ * lands one event before its run starts, and "Worked" in that gap is a lie
+ * the block could never take back.
  */
-class ToolCallGroup implements ExpandableToolOutput {
-  readonly container: BoxRenderable;
-
-  private readonly transcript: Transcript;
-  private readonly heading: TextRenderable;
-  private readonly omitted: TextRenderable;
-  private readonly body: BoxRenderable;
-  private readonly cards: ToolCard[] = [];
-  private expanded = false;
-
-  constructor(transcript: Transcript, parent: Renderable, before?: Renderable) {
-    this.transcript = transcript;
-    this.container = section(
-      transcript,
-      "tool-group",
-      { paddingLeft: 0, paddingRight: 0 },
-      parent,
-      before,
-    );
-    this.heading = new TextRenderable(transcript.renderer, {
-      id: transcript.nextId("tool-group-heading"),
-      content: "",
-      visible: false,
-      marginLeft: SPACING.inset,
-      wrapMode: "none",
-      truncate: true,
-      onMouseUp: (event) => {
-        if (event.button !== 0) return;
-        if ((transcript.renderer.getSelection()?.getSelectedText() ?? "") !== "") return;
-        event.preventDefault();
-        event.stopPropagation();
-        this.setExpanded(!this.expanded);
-      },
-    });
-    // Sits at the cards' text column, under their icon-wide gutter.
-    this.omitted = new TextRenderable(transcript.renderer, {
-      id: transcript.nextId("tool-group-omitted"),
-      content: "",
-      visible: false,
-      fg: transcript.theme.dim,
-      marginLeft: SPACING.inset + 2,
-      wrapMode: "none",
-      truncate: true,
-    });
-    this.body = new BoxRenderable(transcript.renderer, {
-      id: transcript.nextId("tool-group-body"),
-      flexDirection: "column",
-      width: "100%",
-    });
-    this.container.add(this.heading);
-    this.container.add(this.omitted);
-    this.container.add(this.body);
-    bindSemantics(this.container, () => ({
-      role: "group",
-      label: "Tool calls",
-      expanded: this.cards.length < 2 || this.expanded,
-    }));
-    const unregister = transcript.toolOutput.register(this);
-    this.container.once(RenderableEvents.DESTROYED, unregister);
-  }
-
-  add(toolName: string): ToolCard {
-    const card = new ToolCard(this.transcript, toolName, this.body, undefined, () =>
-      this.repaint(),
-    );
-    card.container.marginTop = 0;
-    this.cards.push(card);
-    this.repaint();
-    return card;
-  }
-
-  setExpanded(expanded: boolean): void {
-    if (expanded === this.expanded) return;
-    this.expanded = expanded;
-    this.repaint();
-  }
-
-  private repaint(): void {
-    const grouped = this.cards.length > 1;
-    const complete = this.cards.every((card) => card.completed);
-    const failed = this.cards.some((card) => card.failed);
-    const icon = failed ? GLYPHS.cross : complete ? GLYPHS.check : GLYPHS.bullet;
-    const color = failed
-      ? this.transcript.theme.error
-      : complete
-        ? this.transcript.theme.ok
-        : this.transcript.theme.running;
-    const names = this.cards.map((card) => card.toolName);
-    this.heading.content = new StyledText([
-      fg(color)(icon),
-      fg(this.transcript.theme.foreground)(` ${toolCallVerbs(names)}`),
-      fg(this.transcript.theme.dim)(
-        `  ${toolCallCounts(names)} · ${keycap("chat.tools.toggle")} ${this.expanded ? "collapse" : "expand"}`,
-      ),
-    ]);
-    this.heading.visible = grouped;
-    // Collapsed, the newest calls stay on screen as one-line rows and the
-    // rest leave a count; a lone call renders exactly as it would ungrouped.
-    const collapsed = grouped && !this.expanded;
-    const hidden = collapsed ? Math.max(0, this.cards.length - GROUP_TAIL_CALLS) : 0;
-    for (const [index, card] of this.cards.entries()) {
-      card.container.visible = index >= hidden;
-      card.setCompact(collapsed);
+export type TurnStatus =
+  | {
+      readonly kind: "open";
+      readonly phase: RunInfo["phase"];
+      readonly live: readonly LivePart[];
+      readonly waitingForUser: boolean;
     }
-    this.omitted.content = earlierCallsLabel(hidden);
-    this.omitted.visible = hidden > 0;
-    this.transcript.renderer.requestRender();
-  }
-}
+  | { readonly kind: "unanswered" }
+  | { readonly kind: "settled"; readonly outcome: TurnOutcome };
 
-/** How a turn is drawn before its own events say otherwise. */
-interface TurnBlockOptions {
-  /** Core-owned identity of the semantic turn. */
-  readonly id?: string;
-  readonly outcome?: TurnOutcome;
-  /**
-   * The turn's span as the record has it. A turn drawn from stored entries
-   * carries its whole span; a turn opened by a live request carries zero and
-   * counts on the status row's clock.
-   */
-  readonly durationMs?: number;
+type PartBlock =
+  | { readonly kind: "text"; readonly block: AssistantPartBlock; readonly contentIndex: number }
+  | { readonly kind: "thinking"; readonly block: ReasoningBlock; readonly contentIndex: number };
+
+interface ToolLiveView {
+  readonly text: string;
+  readonly title?: string;
 }
 
 /** One visual owner for a user request and every assistant step it drives. */
-export class ConversationTurnBlock {
+export class TurnBlock {
   private readonly transcript: Transcript;
   private readonly root: TurnSection;
-  private readonly users = new Set<string>();
-  private readonly reasoning = new Map<string, ReasoningBlock>();
-  private readonly assistants = new Map<string, AssistantPartBlock>();
+  private readonly settled = new Set<string>();
   private readonly tools = new Map<string, ToolCard>();
-  /** Texts already noted, so the record's copy and the client's draw once. */
-  private readonly notes = new Set<string>();
-  private readonly durationMs: number;
-  /** Core-owned turn identity: the id of the entry that opened the turn. */
-  private id: string | undefined;
+  /** Streaming parts by `livePartKey`, until their commit lands or the run drops them. */
+  private readonly live = new Map<string, PartBlock>();
   private activity: ActivityBlock | undefined;
-  private group: ToolCallGroup | undefined;
-  private outcome: TurnOutcome = "completed";
-  /** Notes and compactions, which the three block maps do not hold. */
-  private appended = false;
-  /**
-   * A turn ends once, by settling or by leaving the screen. `activity` cannot
-   * carry this: it is also undefined on a turn that has drawn nothing yet, and
-   * a closed turn's root is destroyed, so anything built under it would attach
-   * to a dead renderable.
-   */
+  private durationMs: number;
   private closed = false;
 
-  constructor(transcript: Transcript, options: TurnBlockOptions = {}) {
+  constructor(transcript: Transcript, id: string, durationMs: number) {
     this.transcript = transcript;
-    this.id = options.id;
-    this.outcome = options.outcome ?? "completed";
-    this.durationMs = options.durationMs ?? 0;
-    this.root = new TurnSection(transcript, options.id);
+    this.durationMs = durationMs;
+    this.root = new TurnSection(transcript, id);
+    transcript.container.add(this.root);
   }
 
-  /**
-   * Adopt the record's identity for a turn the live stream opened without one,
-   * which happens when a resumed run draws before its entries commit. True
-   * when this block is the turn `id` names.
-   */
-  claim(id: string): boolean {
-    this.id ??= id;
-    return this.id === id;
-  }
-
-  /** How the turn's own events left it, before a caller overrides the settle. */
-  get result(): TurnOutcome {
-    return this.outcome;
-  }
-
-  /** The turn has settled or left the screen; nothing may reopen it. */
-  get isClosed(): boolean {
-    return this.closed;
-  }
-
-  /**
-   * The turn shows a request and nothing that answers it: no thought, no
-   * reply, no tool call, no note. The spinner does not count, since it is
-   * drawn the moment the request lands.
-   */
+  /** True when the turn has drawn no answer yet: nothing but the request and the spinner. */
   get unanswered(): boolean {
-    return (
-      !this.appended &&
-      this.reasoning.size === 0 &&
-      this.assistants.size === 0 &&
-      this.tools.size === 0
-    );
+    return this.settled.size <= 1 && this.tools.size === 0 && this.live.size === 0;
   }
 
-  addUser(content: UserMessage["content"], entryId?: string): void {
-    if (entryId !== undefined) {
-      const id = `user:${entryId}`;
-      if (this.users.has(id)) return;
-      this.users.add(id);
+  sync(turn: Extract<Turn, { kind: "turn" }> | undefined, status: TurnStatus): void {
+    if (turn !== undefined) {
+      this.durationMs = turn.durationMs;
+      for (const part of turn.parts) this.syncPart(part);
     }
-    this.group = undefined;
-    appendUser(this.transcript, content, this.root);
-    this.ensureWorking();
-  }
-
-  updateAssistant(event: AssistantMessageEvent, entryId?: string): void {
-    if (event.type === "start" || event.type === "done" || event.type === "error") return;
-    const key = this.partKey(event.contentIndex, entryId);
-    switch (event.type) {
-      case "thinking_start": {
-        break;
+    switch (status.kind) {
+      case "open": {
+        this.syncLive(status.live);
+        const activity = this.ensureActivity();
+        activity.setMode(activityMode(status));
+        return;
       }
-      case "thinking_delta": {
-        this.reasoningBlock(key).append(event.delta);
-        break;
+      case "unanswered":
+        this.syncLive([]);
+        return;
+      case "settled":
+        this.syncLive([]);
+        this.settle(status.outcome);
+        return;
+      default: {
+        const _exhaustive: never = status;
+        return _exhaustive;
       }
-      case "thinking_end": {
-        if (event.content === "" && !this.reasoning.has(key)) break;
-        const block = this.reasoningBlock(key);
-        block.set(event.content);
-        block.finish(this.transcript.theme);
-        this.activity?.endThinking();
-        break;
-      }
-      case "text_start": {
-        break;
-      }
-      case "text_delta": {
-        this.assistantBlock(key).append(event.delta);
-        break;
-      }
-      case "text_end": {
-        if (event.content === "" && !this.assistants.has(key)) break;
-        const block = this.assistantBlock(key);
-        block.set(event.content);
-        block.finish();
-        break;
-      }
-      case "toolcall_end": {
-        if (this.tools.has(event.toolCall.id)) break;
-        this.tools.set(event.toolCall.id, this.createToolCard(event.toolCall.name));
-        break;
-      }
-      case "toolcall_start":
-      case "toolcall_delta":
-        break;
     }
   }
 
-  /** Append a streamed text delta at its part identity, as `watch` overlays carry it. */
-  appendAssistantDelta(contentIndex: number, delta: string, entryId?: string): void {
-    this.assistantBlock(this.partKey(contentIndex, entryId)).append(delta);
+  remove(): void {
+    this.closed = true;
+    this.root.parent?.remove(this.root);
+    this.root.destroyRecursively();
   }
 
-  /** Append a streamed reasoning delta at its part identity. */
-  appendReasoningDelta(contentIndex: number, delta: string, entryId?: string): void {
-    this.reasoningBlock(this.partKey(contentIndex, entryId)).append(delta);
-  }
-
-  finishAssistant(message: AssistantMessage, entryId?: string): void {
-    let hasToolCall = false;
-    for (const [contentIndex, part] of message.content.entries()) {
-      const key = this.partKey(contentIndex, entryId);
-      if (part.type === "thinking") {
-        if (part.thinking === "") continue;
-        const block = this.reasoningBlock(key);
-        block.set(part.thinking);
-        block.finish(this.transcript.theme);
-        this.activity?.endThinking();
-      } else if (part.type === "text") {
-        if (part.text === "") continue;
-        const block = this.assistantBlock(key);
-        block.set(part.text);
-        block.finish();
-      } else {
-        hasToolCall = true;
-        if (!this.tools.has(part.id)) {
-          this.tools.set(part.id, this.createToolCard(part.name));
-        }
-      }
-    }
-    if (!hasToolCall) this.ensureWorking();
-    if (message.stopReason === "aborted") this.outcome = "aborted";
-    else if (message.stopReason === "error" || message.errorMessage !== undefined) {
-      this.outcome = "failed";
-    }
-  }
-
-  startTool(callId: string, toolName: string): void {
-    if (!this.tools.has(callId)) {
-      this.tools.set(callId, this.createToolCard(toolName));
-    }
-  }
-
-  updateTool(callId: string, text: string, title?: string): void {
-    this.tools.get(callId)?.update(text, title);
-  }
-
-  finishTool(
-    callId: string,
-    toolName: string,
-    text: string,
-    options: { isError?: boolean; details?: JsonValue; title?: string } = {},
-  ): void {
-    let card = this.tools.get(callId);
-    if (card === undefined) {
-      card = this.createToolCard(toolName);
-      this.tools.set(callId, card);
-    }
-    card.complete(text, options);
-  }
-
-  /**
-   * Draw one folded part. Every part is keyed by its core identity (entry id
-   * and content index, or the tool call id), so a part the live stream already
-   * drew is a no-op and repeating a sync never duplicates a block. Restore and
-   * live commits both land here: one projection, two arrival orders.
-   */
-  addStoredPart(part: TurnPart): void {
+  private syncPart(part: TurnPart): void {
+    const id = turnPartId(part);
     switch (part.kind) {
       case "user":
-        this.addUser(part.content, part.entryId);
-        break;
-      case "thinking": {
-        const key = this.partKey(part.contentIndex, part.entryId);
-        if (this.reasoning.has(key)) break;
-        this.appended = true;
-        this.group = undefined;
-        const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor());
-        this.reasoning.set(key, block);
-        block.set(part.text);
-        block.finish(this.transcript.theme);
-        break;
-      }
+        if (this.settled.has(id)) return;
+        this.settled.add(id);
+        appendUser(this.transcript, part.content, this.root, this.contentAnchor());
+        return;
       case "assistant": {
-        const key = this.partKey(part.contentIndex, part.entryId);
-        if (this.assistants.has(key)) break;
-        this.appended = true;
-        this.group = undefined;
-        const block = new AssistantPartBlock(
-          this.transcript,
-          this.root,
-          part.text,
-          false,
-          this.contentAnchor(),
-        );
-        this.assistants.set(key, block);
-        block.finish();
-        break;
+        if (this.settled.has(id)) return;
+        this.settled.add(id);
+        const adopted = this.adoptLive("text", part.contentIndex);
+        if (adopted?.kind === "text") {
+          adopted.block.finish(part.text);
+          return;
+        }
+        const block = new AssistantPartBlock(this.transcript, this.root, this.contentAnchor());
+        block.finish(part.text);
+        return;
+      }
+      case "thinking": {
+        if (this.settled.has(id)) return;
+        this.settled.add(id);
+        const adopted = this.adoptLive("thinking", part.contentIndex);
+        if (adopted?.kind === "thinking") {
+          adopted.block.finish(part.text);
+          return;
+        }
+        const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor());
+        block.finish(part.text);
+        return;
       }
       case "tool": {
-        let card = this.tools.get(part.callId);
+        const card = this.tools.get(part.callId);
         if (card === undefined) {
-          card = this.createToolCard(part.toolName);
-          this.tools.set(part.callId, card);
+          this.tools.set(
+            part.callId,
+            new ToolCard(this.transcript, part, this.root, this.contentAnchor()),
+          );
+          return;
         }
-        if (part.result !== undefined && !card.completed) {
-          card.complete(part.result.output, {
-            isError: part.result.isError,
-            details: part.result.details,
-            title: part.result.title,
-          });
-        }
-        break;
+        card.sync(part, undefined);
+        return;
       }
       case "note":
-        this.addNote(part.text);
-        break;
+        if (this.settled.has(id)) return;
+        this.settled.add(id);
+        appendNote(
+          this.transcript,
+          part.text,
+          part.text.startsWith("Error:") ? this.transcript.theme.error : undefined,
+          this.root,
+          this.contentAnchor(),
+        );
+        return;
       default: {
         const _exhaustive: never = part;
         return _exhaustive;
@@ -1670,187 +1382,341 @@ export class ConversationTurnBlock {
   }
 
   /**
-   * One line per distinct text within a turn. The run error is the text that
-   * arrives twice, once from the record's note part and once from the run
-   * outcome, in either order.
+   * A settled part at `contentIndex` takes over the live block that streamed
+   * it, so the text does not jump from one box to another. The overlay for
+   * the run was dropped in the same fold, which is why the block is free.
    */
-  addNote(text: string, color?: string): void {
-    if (this.notes.has(text)) return;
-    this.notes.add(text);
-    this.appended = true;
-    this.group = undefined;
-    appendNote(this.transcript, text, color, this.root, this.contentAnchor());
-  }
-
-  settle(outcome = this.outcome): void {
-    if (this.closed) return;
-    this.closed = true;
-    // A stream event that draws nothing, such as a message start or a done,
-    // still opens the block that owns whatever the message turns out to draw.
-    // When it draws nothing at all there is no request and no answer under the
-    // row, so the turn leaves rather than stamp a status line over nothing.
-    if (this.activity === undefined && this.root.getChildrenCount() === 0) {
-      this.discard();
-      return;
+  private adoptLive(kind: "text" | "thinking", contentIndex: number): PartBlock | undefined {
+    for (const [key, entry] of this.live) {
+      if (entry.kind !== kind || entry.contentIndex !== contentIndex) continue;
+      this.live.delete(key);
+      return entry;
     }
-    for (const block of this.reasoning.values()) block.finish(this.transcript.theme);
-    for (const block of this.assistants.values()) block.finish();
-    this.ensureWorking().settle(outcome);
-    this.activity = undefined;
+    return undefined;
   }
 
-  /**
-   * Take the turn off screen instead of settling it. Used when the message it
-   * carries goes back to the composer, where the record has to lose the turn
-   * too, so a settled line would only be a line the next reload contradicts.
-   */
-  discard(): void {
-    this.closed = true;
-    this.transcript.container.remove(this.root);
-    this.root.destroyRecursively();
-    this.activity = undefined;
-  }
-
-  private partKey(contentIndex: number, entryId?: string): string {
-    return `${entryId ?? "live"}:${String(contentIndex)}`;
-  }
-
-  private createToolCard(toolName: string): ToolCard {
-    const mode = this.transcript.toolCalls;
-    switch (mode) {
-      case "detailed":
-        break;
-      case "auto":
-        if (!DETAILED_TOOLS.has(toolName)) return this.groupedToolCard(toolName);
-        break;
-      case "compact":
-        return this.groupedToolCard(toolName);
-      default: {
-        const _exhaustive: never = mode;
-        return _exhaustive;
+  private syncLive(parts: readonly LivePart[]): void {
+    const keep = new Set<string>();
+    for (const part of parts) {
+      const key = livePartKey(part);
+      keep.add(key);
+      switch (part.kind) {
+        case "text": {
+          const existing = this.live.get(key);
+          if (existing?.kind === "text") {
+            existing.block.set(part.text);
+            break;
+          }
+          const block = new AssistantPartBlock(this.transcript, this.root, this.contentAnchor());
+          block.set(part.text);
+          this.live.set(key, { kind: "text", block, contentIndex: part.index });
+          break;
+        }
+        case "thinking": {
+          const existing = this.live.get(key);
+          if (existing?.kind === "thinking") {
+            existing.block.set(part.text);
+            break;
+          }
+          const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor());
+          block.set(part.text);
+          this.live.set(key, { kind: "thinking", block, contentIndex: part.index });
+          break;
+        }
+        case "tool": {
+          const card = this.tools.get(part.callId);
+          if (card === undefined) break;
+          const view: ToolLiveView = { text: part.progress.text };
+          card.sync(
+            this.toolPart(part.callId),
+            part.progress.title === undefined ? view : { ...view, title: part.progress.title },
+          );
+          break;
+        }
+        default: {
+          const _exhaustive: never = part;
+          return _exhaustive;
+        }
       }
     }
-    this.group = undefined;
-    return new ToolCard(this.transcript, toolName, this.root, this.contentAnchor());
+    for (const [key, entry] of this.live) {
+      if (keep.has(key)) continue;
+      this.live.delete(key);
+      entry.block.remove();
+    }
   }
 
-  private groupedToolCard(toolName: string): ToolCard {
-    this.group ??= new ToolCallGroup(this.transcript, this.root, this.contentAnchor());
-    return this.group.add(toolName);
+  private toolPart(callId: string): ToolTurnPart {
+    const card = this.tools.get(callId);
+    if (card === undefined) throw new Error(`No tool card for ${callId}`);
+    return card.part;
   }
 
-  private ensureWorking(): ActivityBlock {
+  private settle(outcome: TurnOutcome): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.ensureActivity().settle(outcome);
+  }
+
+  private ensureActivity(): ActivityBlock {
     this.activity ??= new ActivityBlock(this.transcript, this.root, this.durationMs);
     return this.activity;
   }
 
-  /**
-   * Where the next block goes. An open turn keeps its status row last, so
-   * content lands above it. A closed turn has no status row to raise again.
-   */
+  /** A turn with a status row keeps it last, so content lands above it; the row itself waits for a run. */
   private contentAnchor(): Renderable | undefined {
-    return this.closed ? undefined : this.ensureWorking().anchor;
-  }
-
-  private reasoningBlock(key: string): ReasoningBlock {
-    const existing = this.reasoning.get(key);
-    if (existing !== undefined) return existing;
-    this.group = undefined;
-    const block = new ReasoningBlock(this.transcript, this.root, this.contentAnchor());
-    this.activity?.beginThinking();
-    this.reasoning.set(key, block);
-    return block;
-  }
-
-  private assistantBlock(key: string): AssistantPartBlock {
-    const existing = this.assistants.get(key);
-    if (existing !== undefined) return existing;
-    this.group = undefined;
-    const block = new AssistantPartBlock(
-      this.transcript,
-      this.root,
-      "",
-      true,
-      this.contentAnchor(),
-    );
-    this.assistants.set(key, block);
-    return block;
+    return this.closed ? undefined : this.activity?.anchor;
   }
 }
 
-/** Append one non-turn item: a compaction card, a branch summary, or a marker note. */
-export function appendMarkerItem(
-  transcript: Transcript,
-  item: Exclude<Turn, { kind: "turn" }>,
-): void {
-  switch (item.kind) {
-    case "compaction":
-      appendCompaction(transcript, item.entry.summary, item.entry.tokensBefore);
-      break;
-    case "branch_summary":
-      appendBranchSummary(transcript, item.entry.summary, item.entry.fromId);
-      break;
-    case "model_change":
-    case "custom": {
-      const text = entryNote(item.entry);
-      if (text !== undefined) appendNote(transcript, text);
-      break;
-    }
+function activityMode(status: Extract<TurnStatus, { kind: "open" }>): ActivityMode {
+  switch (status.phase.kind) {
+    case "waiting":
+      return status.waitingForUser ? "waiting" : "working";
+    case "retry":
+      return "retrying";
+    case "respond":
+      return status.live.at(-1)?.kind === "thinking" ? "thinking" : "working";
+    case "tools":
+    case "done":
+    case "aborted":
+    case "failed":
+      return "working";
     default: {
-      const _exhaustive: never = item;
+      const _exhaustive: never = status.phase;
       return _exhaustive;
     }
   }
 }
 
-/** Render restored turns with the same owner the live path uses. */
-export function renderItems(
-  transcript: Transcript,
-  items: readonly Turn[],
-  options: {
-    openLastTurn?: boolean;
-    /** Reports each turn block by its core-owned id, for later commits to update. */
-    register?: (id: string, turn: ConversationTurnBlock) => void;
-  } = {},
-): ConversationTurnBlock | undefined {
-  let lastTurnIndex = -1;
-  if (options.openLastTurn === true) {
-    for (let index = items.length - 1; index >= 0; index--) {
-      if (items[index]?.kind === "turn") {
-        lastTurnIndex = index;
-        break;
-      }
-    }
-  }
-  let openTurn: ConversationTurnBlock | undefined;
-  for (const [index, item] of items.entries()) {
-    if (item.kind !== "turn") {
-      appendMarkerItem(transcript, item);
-      continue;
-    }
-    const turn = new ConversationTurnBlock(transcript, {
-      id: item.id,
-      outcome: item.outcome,
-      durationMs: item.durationMs,
-    });
-    for (const part of item.parts) turn.addStoredPart(part);
-    options.register?.(item.id, turn);
-    if (index === lastTurnIndex) openTurn = turn;
-    else turn.settle(item.outcome);
-  }
-  return openTurn;
+// ---------------------------------------------------------------------------
+// The whole transcript
+// ---------------------------------------------------------------------------
+
+function itemKey(item: Turn): string {
+  return item.kind === "turn" ? `turn:${item.id}` : `${item.kind}:${item.commit}`;
+}
+
+/** A turn that is nothing but its request. */
+function isRequestOnly(turn: Extract<Turn, { kind: "turn" }>): boolean {
+  return turn.parts.length === 1 && turn.parts[0]?.kind === "user";
 }
 
 /**
- * The line an entry draws on its own. A client that claims an entry before it
- * reaches the session draws the same text a reload would have produced.
+ * The status of a turn no run is streaming into: the record's outcome, or the
+ * run's when it is the run that answered it. A bare request that no run has
+ * answered stays unanswered; a run that ended on it (with nothing to say, or
+ * by stopping) settles it.
  */
-function entryNote(entry: ProvisionedEntry): string | undefined {
-  if (entry.type === "model_change") return `Model → ${entry.modelId}`;
-  if (entry.type === "custom") return customEntryNote(entry);
-  return undefined;
+function settledStatus(
+  turn: Extract<Turn, { kind: "turn" }>,
+  run: RunInfo | undefined,
+): Extract<TurnStatus, { kind: "unanswered" | "settled" }> {
+  const answered = run !== undefined && run.startedAt >= turn.startedAt;
+  if (!answered) {
+    return isRequestOnly(turn) && turn.outcome === "completed"
+      ? { kind: "unanswered" }
+      : { kind: "settled", outcome: turn.outcome };
+  }
+  switch (run.phase.kind) {
+    case "aborted":
+      return { kind: "settled", outcome: "aborted" };
+    case "failed":
+      return { kind: "settled", outcome: "failed" };
+    case "done":
+    case "respond":
+    case "tools":
+    case "waiting":
+    case "retry":
+      return { kind: "settled", outcome: turn.outcome };
+    default: {
+      const _exhaustive: never = run.phase;
+      return _exhaustive;
+    }
+  }
 }
 
-function customEntryNote(entry: ProvisionedEntry<CustomEntry>): string | undefined {
-  return presenter.custom(entry)?.text;
+type ConfigBody = Extract<Turn, { kind: "config" }>["body"];
+
+/** The merged body of a run of consecutive config commits, and the index it starts at. */
+interface ConfigRun {
+  readonly body: ConfigBody;
+  readonly start: number;
+}
+
+/**
+ * Consecutive config commits fold into one line: cycling a thinking level
+ * lands a commit per step, and the latest value of each field is the only one
+ * that still applies. Yields the merged body and where the run of commits begins.
+ */
+function configRun(items: readonly Turn[], index: number): ConfigRun {
+  let start = index;
+  while (start > 0 && items[start - 1]?.kind === "config") start -= 1;
+  let body: ConfigBody = { kind: "config" };
+  for (let cursor = start; cursor <= index; cursor += 1) {
+    const item = items[cursor];
+    if (item?.kind === "config") body = { ...body, ...item.body };
+  }
+  return { body, start };
+}
+
+/**
+ * Reconciles the scroll box with a `SessionState`. Items only ever grow at the
+ * tail while the head advances; anything else is a branch change, and the
+ * transcript is redrawn from scratch, which is what a go-back looks like.
+ */
+export class TranscriptView {
+  private readonly transcript: Transcript;
+  private readonly turns = new Map<string, TurnBlock>();
+  private readonly markers = new Map<string, Renderable>();
+  private order: string[] = [];
+  /** A run streaming with no turn of its own yet (after a checkpoint, before its first commit). */
+  private liveTurn: { readonly key: string; readonly block: TurnBlock } | undefined;
+
+  constructor(transcript: Transcript) {
+    this.transcript = transcript;
+  }
+
+  /** The block for the turn a live run is answering, when one is open. */
+  get openTurn(): TurnBlock | undefined {
+    const key = this.order.at(-1);
+    return key === undefined ? this.liveTurn?.block : (this.turns.get(key) ?? this.liveTurn?.block);
+  }
+
+  sync(state: SessionState, options: { readonly reset?: boolean } = {}): void {
+    const items = state.transcript.items;
+    const keys = items.map(itemKey);
+    const extending =
+      !options.reset &&
+      keys.length >= this.order.length &&
+      this.order.every((key, index) => key === keys[index]);
+    if (!extending) this.clear();
+
+    const running = isRunningPhase(state.run);
+    const lastIndex = items.length - 1;
+    // Settled items are immutable records: a delta only touches the open turn,
+    // so revisit the last known item (it may settle) and whatever is new.
+    const first = extending ? Math.max(0, this.order.length - 1) : 0;
+    for (let index = first; index < items.length; index += 1) {
+      const item = items[index];
+      const key = keys[index];
+      if (item === undefined || key === undefined) continue;
+      if (item.kind !== "turn") {
+        if (!this.markers.has(key)) {
+          this.liveTurn?.block.remove();
+          this.liveTurn = undefined;
+          this.markers.set(key, this.appendMarker(items, index, item));
+          this.order.push(key);
+        }
+        continue;
+      }
+      let block = this.turns.get(key);
+      if (block === undefined) {
+        // A run that streamed before its first commit drew into a live turn; the
+        // record's turn takes its place.
+        this.liveTurn?.block.remove();
+        this.liveTurn = undefined;
+        block = new TurnBlock(this.transcript, item.id, item.durationMs);
+        this.turns.set(key, block);
+        this.order.push(key);
+      }
+      const isLast = index === lastIndex;
+      const status: TurnStatus =
+        isLast && running && state.run !== undefined
+          ? {
+              kind: "open",
+              phase: state.run.phase,
+              live: state.overlay,
+              waitingForUser: state.waiting !== undefined,
+            }
+          : settledStatus(item, isLast ? state.run : undefined);
+      block.sync(item, status);
+    }
+
+    // Streaming with nothing to attach to: after a checkpoint, or on an empty branch.
+    const last = items.at(-1);
+    if (running && state.run !== undefined && last?.kind !== "turn") {
+      const key = `live:${state.run.runId}`;
+      if (this.liveTurn?.key !== key) {
+        this.liveTurn?.block.remove();
+        this.liveTurn = { key, block: new TurnBlock(this.transcript, key, 0) };
+      }
+      this.liveTurn.block.sync(undefined, {
+        kind: "open",
+        phase: state.run.phase,
+        live: state.overlay,
+        waitingForUser: state.waiting !== undefined,
+      });
+    } else if (this.liveTurn !== undefined && !running) {
+      this.liveTurn.block.remove();
+      this.liveTurn = undefined;
+    }
+    if (!extending) this.scrollToEnd();
+  }
+
+  /**
+   * Draw one marker. A config commit that follows other config commits takes
+   * over their line: the earlier ones come down and their keys point at the
+   * merged line, so the order stays aligned with the record.
+   */
+  private appendMarker(
+    items: readonly Turn[],
+    index: number,
+    item: Exclude<Turn, { kind: "turn" }>,
+  ): Renderable {
+    if (item.kind !== "config") return appendMarker(this.transcript, item);
+    const { body, start } = configRun(items, index);
+    const merged = appendMarker(this.transcript, { ...item, body });
+    for (let cursor = start; cursor < index; cursor += 1) {
+      const previous = items[cursor];
+      if (previous === undefined) continue;
+      const key = itemKey(previous);
+      const line = this.markers.get(key);
+      if (line !== undefined && line !== merged) {
+        line.parent?.remove(line);
+        line.destroyRecursively();
+      }
+      this.markers.set(key, merged);
+    }
+    return merged;
+  }
+
+  /** Drop every block; the next sync draws the branch again. */
+  clear(): void {
+    for (const block of this.turns.values()) block.remove();
+    this.turns.clear();
+    for (const marker of new Set(this.markers.values())) {
+      marker.parent?.remove(marker);
+      marker.destroyRecursively();
+    }
+    this.markers.clear();
+    this.liveTurn?.block.remove();
+    this.liveTurn = undefined;
+    this.order = [];
+  }
+
+  private scrollToEnd(): void {
+    const scroll = this.transcript.container;
+    scroll.stickyScroll = true;
+    scroll.scrollTo(scroll.scrollHeight);
+  }
+}
+
+function isRunningPhase(run: RunInfo | undefined): boolean {
+  if (run === undefined) return false;
+  switch (run.phase.kind) {
+    case "done":
+    case "aborted":
+    case "failed":
+      return false;
+    case "respond":
+    case "tools":
+    case "waiting":
+    case "retry":
+      return true;
+    default: {
+      const _exhaustive: never = run.phase;
+      return _exhaustive;
+    }
+  }
 }

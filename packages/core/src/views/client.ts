@@ -40,7 +40,9 @@ export {
   type UserTurnPart,
 } from "./transcript.ts";
 export {
+  activePathIds,
   collectAbandonedEntries,
+  flattenSessionTree,
   navigationTarget,
   projectSessionTree,
   type NavigationTarget,

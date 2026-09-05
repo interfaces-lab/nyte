@@ -1,0 +1,21 @@
+Generated using the built-in image generation tool.
+Output: nyte-macos-icon-grid.png
+Status: raster macOS app icon concept sheet, not a packaged app icon.
+
+Prompt
+
+Design a premium macOS APPLICATION ICON exploration sheet for an app named "nyte", whose name means NIGHT. The user wants NO ANIMALS and wants to see the idea as a macOS app icon. Evolve from flat logo symbols to beautiful native desktop app icon artwork. The brand should feel soft, calm, nocturnal and distinctive, with excellent icon craft.
+
+One landscape presentation, 3 columns by 2 rows, SIX clearly different app icon designs. All six icons use a consistent macOS-style superellipse rounded-square silhouette, identical size, front-facing with NO perspective tilt. Generous margins and even gutters on a neutral warm light-gray background. Small understated labels "01" to "06" below each icon. NO app names, NO wordmarks, no other text, no devices, no docks, no UI mockups.
+
+Sophisticated dimensional materials: very subtle bevels, controlled translucent glass or smooth ceramic, soft inner shadows, restrained highlights and tasteful depth. Each icon needs a simple recognizable composition and substantial rounded shapes. Strong enough to read at 32px. Do not make tiny illustrations with lots of details. No loud neon, excessive glossy jelly, plastic toys, bloom, cheap gradients or lens flare. No generic star sparkle AI logos.
+
+Six directions:
+01 NIGHT WINDOW — deep ink-blue rounded square containing one thick softly rounded arched window in warm ivory, with a pale butter-yellow moon visible inside the dark opening. The window is a sculptural inset, with one simple sill and no detailed panes. Warm light quietly touches the lower interior. Rounded crescent tips. Rich, cozy and minimal.
+02 ECLIPSE — graphite rounded square, one large circular frosted silver disc with an offset smaller graphite sphere covering most of it, leaving a soft substantial crescent rim. Very controlled pearly material and subtle depth, not glowing neon. Monochrome charcoal and silver.
+03 NIGHT PORTAL — deep burgundy rounded square with a recessed rounded arch doorway in muted rose glass, a single small pale peach orb suspended in the center. Simple, luminous material but no bloom. Keep the arch sculptural and the composition spacious.
+04 MOONLIT HORIZON — dark desaturated teal rounded square, a large pale mint moon hovering just above two broad curved overlapping glass bands that suggest quiet water. Three big shapes total besides the moon, calm geometry, gentle material transitions, no stars or scenery detail.
+05 LANTERN — warm charcoal rounded square with a single softly rounded compact ivory lantern, big warm pale-yellow oval light chamber and short substantial rounded handle. Sculptural frosted ceramic, clean silhouette, no fussy metalwork, no flame illustration. Soft restrained light only within the chamber.
+06 ORBIT — blue-gray rounded square containing two pillowy overlapping curved glass forms, one silver and one soft sky-blue, loosely enclosing a small cream sphere. Asymmetrical but balanced abstract composition. Rounded ends, generous negative space, not letters, not an infinity loop.
+
+Every design distinct in central artwork AND palette. Night is the concept; the name does not need to appear. All shapes are soft and rounded. ABSOLUTELY NO ANIMALS, birds, owls, moths, spiders, bats, cats, faces, eyes, ghosts, mascots, letters, N monograms, superhero shapes, sharp points, orange, lavender-purple branding. Crisp edges and believable subtle dimensional rendering. Entire grid fully visible. Professional app icon design study with six memorable candidate icons.

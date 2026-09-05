@@ -2,26 +2,22 @@
  * Durable registry of workspaces a user has opened, for pickers and welcome
  * screens. Follows `WorkspaceTrustStore`: core owns the file format, parsing,
  * and write serialization so hosts never hand-roll a recents store; callers
- * choose the file location, commonly `~/.uji/workspaces.json`.
+ * choose the file location, commonly `~/.nyte/workspaces.json`.
  *
  * One deliberate divergence from the trust store: reads tolerate bad rows
  * instead of throwing. Trust is a security gate, so a malformed file must
  * surface; recents are UX, and one corrupt row must not brick a welcome
  * screen. Invalid rows are dropped and rewritten away on the next `touch`.
  */
-import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import process from "node:process";
+import type { WorkspaceInfo } from "@nyte-ai/protocol";
 
-/** One known workspace. `name` is derived presentation, never stored. */
-export interface WorkspaceInfo {
-  readonly path: string;
-  /** The folder's basename, what a picker shows. */
-  readonly name: string;
-  readonly lastOpenedAt: number;
-}
+/** One known workspace, as clients read it; declared on the wire. */
+export type { WorkspaceInfo } from "@nyte-ai/protocol";
 
-/** The slice of `WorkspaceRegistry` the SDK reads (`UjiOptions.workspaces`). */
+/** The slice of `WorkspaceRegistry` the SDK reads (`NyteOptions.workspaces`). */
 export interface WorkspaceRegistryBackend {
   list(): Promise<readonly WorkspaceInfo[]>;
   touch(path: string, now?: number): Promise<void>;
@@ -30,15 +26,25 @@ export interface WorkspaceRegistryBackend {
 
 type RegistryFile = Record<string, number>;
 
-function parseRegistryFile(text: string): RegistryFile {
+function isRegistryObject(value: unknown): value is object {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isValidLastOpenedAt(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isMissingFileError(cause: unknown): cause is { readonly code: "ENOENT" } {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+}
+
+function parseRegistryFile(text: string) {
   const value: unknown = JSON.parse(text);
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  if (!isRegistryObject(value)) return {};
   const entries: RegistryFile = {};
   for (const [path, lastOpenedAt] of Object.entries(value)) {
     if (!isAbsolute(path)) continue;
-    if (typeof lastOpenedAt !== "number" || !Number.isFinite(lastOpenedAt) || lastOpenedAt < 0) {
-      continue;
-    }
+    if (!isValidLastOpenedAt(lastOpenedAt)) continue;
     entries[path] = lastOpenedAt;
   }
   return entries;
@@ -73,16 +79,26 @@ export class WorkspaceRegistry implements WorkspaceRegistryBackend {
   list(): Promise<WorkspaceInfo[]> {
     return this.serialized(async () => {
       const entries = Object.entries(await this.read());
-      return entries
-        .toSorted(([, a], [, b]) => b - a)
-        .map(([path, lastOpenedAt]) => ({ path, name: workspaceName(path), lastOpenedAt }));
+      return Promise.all(
+        entries
+          .toSorted(([, a], [, b]) => b - a)
+          .map(async ([path, lastOpenedAt]) => ({
+            path,
+            name: workspaceName(path),
+            lastOpenedAt,
+            available: await stat(path).then(
+              (info) => info.isDirectory(),
+              () => false,
+            ),
+          })),
+      );
     });
   }
 
-  /** Record an open. The path must exist; entries are realpaths, so symlinked duplicates collapse. */
+  /** Record a selection even when the folder is unavailable. Existing symlinks collapse. */
   touch(path: string, now = Date.now()): Promise<void> {
     return this.serialized(async () => {
-      const realPath = await realpath(resolve(path));
+      const realPath = await realpath(resolve(path)).catch(() => resolve(path));
       const entries = await this.read();
       entries[realPath] = now;
       const kept = Object.entries(entries)
@@ -118,16 +134,9 @@ export class WorkspaceRegistry implements WorkspaceRegistryBackend {
     let text: string;
     try {
       text = await readFile(this.path, "utf8");
-    } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "ENOENT"
-      ) {
-        return {};
-      }
-      throw error;
+    } catch (cause) {
+      if (isMissingFileError(cause)) return {};
+      throw cause;
     }
     try {
       return parseRegistryFile(text);

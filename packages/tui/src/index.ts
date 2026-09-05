@@ -1,6 +1,5 @@
 import process from "node:process";
-import { parseFlags, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
-import { VERSION } from "./version.ts";
+import { WorkspaceTrustRequired } from "@nyte-ai/core";
 import {
   alignedRows,
   ansiEnabled,
@@ -10,17 +9,20 @@ import {
   statusGlyph,
   updateSeverity,
 } from "./cli-style.ts";
+import { parseFlags, readStdin, resolveTuiResume, wantsPrint } from "./flags.ts";
+import type { RunFlags } from "./flags.ts";
 import type { UpdateProgress } from "./update.ts";
+import { VERSION } from "./version.ts";
 
 async function login(id: string | undefined): Promise<void> {
-  const { createCliModels, DEFAULT_PROVIDER_ID, loadProviderCatalog, requireProvider } =
-    await import("./catalog.ts");
+  const [{ createNyteModels }, { DEFAULT_PROVIDER_ID, loadProviderCatalog, requireProvider }] =
+    await Promise.all([import("@nyte-ai/ai"), import("./catalog.ts")]);
   const { cliInteraction } = await import("./interaction.ts");
-  const models = createCliModels();
+  const models = createNyteModels();
   const provider = requireProvider(models, id ?? DEFAULT_PROVIDER_ID);
   const controller = new AbortController();
   process.once("SIGINT", () => controller.abort());
-  const interaction = { ...cliInteraction(controller.signal), signal: controller.signal };
+  const interaction = cliInteraction(controller.signal);
   const { oauth, apiKey } = provider.auth;
   let mode: "oauth" | "api_key" = oauth !== undefined ? "oauth" : "api_key";
   if (oauth !== undefined && apiKey?.login !== undefined) {
@@ -32,20 +34,21 @@ async function login(id: string | undefined): Promise<void> {
         { id: "api_key", label: apiKey.name },
       ],
     });
-    if (picked !== "oauth" && picked !== "api_key") {
-      throw new Error("Invalid login method");
-    }
+    if (picked !== "oauth" && picked !== "api_key") throw new Error("Invalid login method");
     mode = picked;
   }
   await models.login(provider.id, mode, interaction);
   await loadProviderCatalog(models, provider.id);
   console.log(`${statusGlyph("ok", ansiEnabled())} Logged in to ${provider.name}.`);
-  console.log(`  ${dim("run `uji` to start")}`);
+  console.log(`  ${dim("run `nyte` to start")}`);
 }
 
 async function logout(id: string | undefined): Promise<void> {
-  const { createCliModels, DEFAULT_PROVIDER_ID, requireProvider } = await import("./catalog.ts");
-  const models = createCliModels();
+  const [{ createNyteModels }, { DEFAULT_PROVIDER_ID, requireProvider }] = await Promise.all([
+    import("@nyte-ai/ai"),
+    import("./catalog.ts"),
+  ]);
+  const models = createNyteModels();
   const provider = requireProvider(models, id ?? DEFAULT_PROVIDER_ID);
   await models.logout(provider.id);
   console.log(`${statusGlyph("ok", ansiEnabled())} Logged out of ${provider.name}.`);
@@ -59,13 +62,13 @@ async function update(args: readonly string[]): Promise<void> {
     const notice = await checkForUpdate();
     console.log(
       notice === undefined
-        ? `uji ${VERSION} is the latest release.`
-        : `Update available: ${notice.version}. Run: uji update`,
+        ? `nyte ${VERSION} is the latest release.`
+        : `Update available: ${notice.version}. Run: nyte update`,
     );
     return;
   }
   const version = args.find((arg) => !arg.startsWith("-"));
-  console.log(`${bold("uji")} ${dim(`${VERSION} → ${version ?? "latest"}`)}`);
+  console.log(`${bold("nyte")} ${dim(`${VERSION} → ${version ?? "latest"}`)}`);
 
   // On a terminal the percent rows overwrite one line; piped, they stay
   // discrete lines a log can read.
@@ -95,15 +98,12 @@ async function update(args: readonly string[]): Promise<void> {
         console.log(`${statusGlyph("ok", tty)} ${dim("checksum verified")}`);
         return;
       default: {
-        const exhaustive: never = event;
-        return exhaustive;
+        const _exhaustive: never = event;
+        return _exhaustive;
       }
     }
   };
-  const outcome = await selfUpdate({
-    ...(version === undefined ? {} : { version }),
-    report,
-  });
+  const outcome = await selfUpdate(version === undefined ? { report } : { version, report });
   endProgress();
 
   const severity = updateSeverity(outcome);
@@ -112,7 +112,7 @@ async function update(args: readonly string[]): Promise<void> {
 }
 
 async function status(): Promise<void> {
-  const { FileCredentialStore } = await import("@uji-ai/ai");
+  const { FileCredentialStore } = await import("@nyte-ai/ai");
   const stored = await new FileCredentialStore().list();
   if (stored.length === 0) {
     console.log(dim("no stored credentials"));
@@ -120,6 +120,93 @@ async function status(): Promise<void> {
   }
   const rows = stored.map((info) => ({ label: info.providerId, detail: info.type }));
   for (const row of alignedRows(rows, ansiEnabled())) console.log(row);
+}
+
+async function print(flags: RunFlags): Promise<void> {
+  const { createWorkspaceTrustStore } = await import("./workspace-trust.ts");
+  const { FileSettingsStore } = await import("./settings.ts");
+  const { hostFallbacks, openWorkspaceHost, resolveRuntime, targetSession } =
+    await import("./run.ts");
+  const { printRun, reportPrintOutcome } = await import("./print.ts");
+
+  const workspace = await createWorkspaceTrustStore()
+    .require(process.cwd())
+    .catch((cause: unknown) => {
+      if (cause instanceof WorkspaceTrustRequired) {
+        throw new Error(
+          `Workspace is not trusted: ${cause.cwd}. Run \`nyte\` interactively to trust it first.`,
+        );
+      }
+      throw cause;
+    });
+  const settingsStore = new FileSettingsStore();
+  const settings = await settingsStore.read(workspace.cwd);
+  const runtime = await resolveRuntime(flags, settings);
+  if (runtime === undefined)
+    throw new Error("Couldn't find a stored credential. Run `nyte login`.");
+  const { model, thinkingLevel } = hostFallbacks(runtime, settings, flags);
+  const host = await openWorkspaceHost({
+    workspace,
+    settings,
+    runtime,
+    model,
+    thinkingLevel,
+    report: (message) => process.stderr.write(`${message}\n`),
+  });
+  const controller = new AbortController();
+  const cancel = (): void => controller.abort();
+  process.on("SIGINT", cancel);
+  process.on("SIGTERM", cancel);
+  const detach = host.attach();
+  try {
+    const target = await targetSession(host.nyte, flags.resume);
+    // A model or effort named on the command line is an explicit choice worth
+    // recording in the tree; settings-derived defaults stay fallbacks.
+    if (flags.model !== undefined || process.env["NYTE_MODEL"] !== undefined) {
+      await host.nyte.sessions.configure({
+        sessionId: target.sessionId,
+        model: { provider: model.provider, id: model.id },
+      });
+    }
+    if (flags.effort !== undefined) {
+      await host.nyte.sessions.configure({ sessionId: target.sessionId, thinkingLevel });
+    }
+    controller.signal.addEventListener(
+      "abort",
+      () => void host.nyte.runs.abort({ sessionId: target.sessionId }).catch(() => undefined),
+      { once: true },
+    );
+    const output = {
+      write: (text: string): void => void process.stdout.write(text),
+      error: (text: string): void => void process.stderr.write(`${text}\n`),
+    };
+    const outcome = await printRun({
+      nyte: host.nyte,
+      sessionId: target.sessionId,
+      content: flags.rest.join(" "),
+      json: flags.json,
+      quiet: flags.quiet,
+      output,
+      signal: controller.signal,
+    });
+    if (outcome.kind === "completed") {
+      void settingsStore.updateGlobal({
+        defaultProvider: runtime.provider.id,
+        defaultModel: model.id,
+        defaultThinkingLevel: thinkingLevel,
+      });
+    }
+    process.exitCode = reportPrintOutcome(outcome, {
+      sessionId: target.sessionId,
+      json: flags.json,
+      output,
+    });
+  } finally {
+    process.off("SIGINT", cancel);
+    process.off("SIGTERM", cancel);
+    detach();
+    await host.close();
+  }
 }
 
 async function main(): Promise<void> {
@@ -150,8 +237,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const flags = parseFlags(args);
-  if (wantsPrint(flags, process.stdout.isTTY === true, process.stdin.isTTY === true)) {
+  let flags = parseFlags(args);
+  if (wantsPrint(flags, Boolean(process.stdout.isTTY), Boolean(process.stdin.isTTY))) {
     if (flags.rest.length === 0) {
       const stdin = await readStdin();
       if (stdin === "") {
@@ -159,10 +246,9 @@ async function main(): Promise<void> {
         process.exitCode = 1;
         return;
       }
-      flags.rest = [stdin];
+      flags = { ...flags, rest: [stdin] };
     }
-    const { runPrint } = await import("./print.ts");
-    await runPrint(flags);
+    await print(flags);
     return;
   }
   if (!process.stdout.isTTY) {
@@ -170,22 +256,17 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const [{ runTui }, { resumeSessionHint }] = await Promise.all([
-    import("./interactive.ts"),
-    import("./lifecycle.ts"),
-  ]);
-  const exit = await runTui(resolveTuiResume(flags), {
-    onSessionClosed: (sessionId) => {
-      process.stdout.write(`${resumeSessionHint(sessionId)}\n`);
-    },
-  });
+  const { runTui } = await import("./interactive.ts");
+  const exit = await runTui(resolveTuiResume(flags));
   if (exit.kind === "signal") process.kill(process.pid, exit.signal);
+  // Bun's watch mode stays alive when main returns, even after the TUI closes.
+  else process.exit(0);
 }
 
 try {
   await main();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
+} catch (cause) {
+  const message = cause instanceof Error ? cause.message : String(cause);
   const tty = ansiEnabled();
   console.error(tty ? `${statusGlyph("fail", tty)} ${message}` : message);
   process.exitCode = 1;

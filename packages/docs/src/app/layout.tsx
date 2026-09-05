@@ -1,8 +1,8 @@
 import { RootProvider } from "fumadocs-ui/provider/next";
 import "./global.css";
 import type { Metadata } from "next";
-import { Geist, Inter, Newsreader } from "next/font/google";
-import localFont from "next/font/local";
+import { Geist, Geist_Mono, Inter, Newsreader } from "next/font/google";
+import { SiteNav } from "@/components/site-nav";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,49 +21,45 @@ const geist = Geist({
   display: "swap",
 });
 
-/*
- * Berkeley Mono is licensed, not open. The .ttf files live in src/fonts/ and
- * are served from the build output, so the licence has to cover web embedding
- * for this domain before this ships publicly.
- */
-const berkeleyMono = localFont({
-  src: [
-    { path: "../fonts/BerkeleyMono-Regular.ttf", weight: "400", style: "normal" },
-    { path: "../fonts/BerkeleyMono-Bold.ttf", weight: "700", style: "normal" },
-  ],
-  variable: "--font-berkeley-mono",
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
   display: "swap",
 });
 
 /*
- * Newsreader sets marketing prose on / and /branding. The editorial pattern is
+ * Newsreader sets marketing prose on /. The editorial pattern is
  * restrained sans headings over serif paragraphs. The docs chrome never uses it.
  */
 const newsreader = Newsreader({
   subsets: ["latin"],
   variable: "--font-newsreader",
   display: "swap",
+  style: ["normal", "italic"],
   axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Uji — a handwritten core for agentic UI",
-    template: "%s — Uji",
+    default: "Nyte — a handwritten core for agentic UI",
+    template: "%s — Nyte",
   },
   description:
-    "Uji is an independent, handwritten core for building cross-platform agentic UI: a durable agent harness plus a standalone agent loop.",
+    "Nyte is an independent, handwritten core for building cross-platform agentic UI: a durable kernel plus a standalone agent loop.",
 };
 
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geist.variable} ${berkeleyMono.variable} ${newsreader.variable} ${inter.className}`}
+      className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${newsreader.variable} ${inter.className}`}
       suppressHydrationWarning
     >
       <body className="flex min-h-screen flex-col">
-        <RootProvider>{children}</RootProvider>
+        <RootProvider>
+          <SiteNav />
+          {children}
+        </RootProvider>
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 /**
- * Bash tool ported from pi's harness bash tool, adapted to Uji's AgentTool
+ * Bash tool ported from pi's bash tool, bound to Nyte's AgentTool
  * contract. The BashOperations seam stands in for pi's ExecutionEnv shell
- * boundary (env.executeShell) until Uji grows an execution-env abstraction,
+ * boundary (env.executeShell) until Nyte grows an execution-env abstraction,
  * so command execution can be delegated to remote systems (for example SSH).
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/bash.ts
@@ -59,24 +59,48 @@ export interface BashToolInput {
   timeout?: number;
 }
 
-function parseBashToolInput(params: unknown): BashToolInput {
-  if (typeof params !== "object" || params === null) {
-    throw new Error("Invalid arguments: expected an object with a command string");
-  }
-  const { command, timeout } = params as Record<string, unknown>;
-  if (typeof command !== "string") {
-    throw new Error("Invalid arguments: command must be a string");
-  }
-  if (timeout !== undefined && typeof timeout !== "number") {
-    throw new Error("Invalid arguments: timeout must be a number of seconds");
-  }
-  return { command, timeout };
-}
-
 export interface BashToolDetails {
   truncation?: TruncationResult;
   fullOutputPath?: string;
 }
+
+interface BashInputFields {
+  readonly command?: unknown;
+  readonly timeout?: unknown;
+}
+
+function isBashInputObject(value: unknown): value is BashInputFields {
+  return typeof value === "object" && value !== null;
+}
+
+function hasBashCommand(
+  value: BashInputFields,
+): value is BashInputFields & Pick<BashToolInput, "command"> {
+  return typeof value.command === "string";
+}
+
+function hasValidBashTimeout(
+  value: BashInputFields,
+): value is BashInputFields & Pick<BashToolInput, "timeout"> {
+  return value.timeout === undefined || typeof value.timeout === "number";
+}
+
+type BashArgumentPreparer = NonNullable<
+  AgentTool<typeof bashParameters, BashToolDetails | undefined>["prepareArguments"]
+>;
+
+const parseBashToolInput: BashArgumentPreparer = (params) => {
+  if (!isBashInputObject(params)) {
+    throw new Error("Invalid arguments: expected an object with a command string");
+  }
+  if (!hasBashCommand(params)) {
+    throw new Error("Invalid arguments: command must be a string");
+  }
+  if (!hasValidBashTimeout(params)) {
+    throw new Error("Invalid arguments: timeout must be a number of seconds");
+  }
+  return { command: params.command, timeout: params.timeout };
+};
 
 /**
  * Pluggable operations for the bash tool.
@@ -230,7 +254,7 @@ export function createBashTool(
     ): Promise<AgentToolResult<BashToolDetails | undefined>> {
       const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
       const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
-      const output = new OutputAccumulator({ tempFilePrefix: "uji-bash" });
+      const output = new OutputAccumulator({ tempFilePrefix: "nyte-bash" });
       let acceptingOutput = true;
       let updateTimer: NodeJS.Timeout | undefined;
       let updateDirty = false;

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { ANTHROPIC_MODELS } from "../src/providers/anthropic.models.ts";
 import { OPENAI_CODEX_MODELS } from "../src/providers/openai-codex.models.ts";
 import { OPENAI_MODELS } from "../src/providers/openai.models.ts";

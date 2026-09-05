@@ -40,15 +40,15 @@ const OPENAI_CODEX_BROWSER_LOGIN_METHOD = "browser";
 const OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD = "device_code";
 const SCOPE = "openid profile email offline_access";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth";
-// Uji divergence: exported for Uji's legacy api/responses.ts, which stamps
+// Nyte divergence: exported for Nyte's legacy api/responses.ts, which stamps
 // the same originator on Codex requests; pi inlines "pi" at the call sites.
-export const ORIGINATOR = "uji";
+export const ORIGINATOR = "nyte";
 
 type OAuthToken = { access: string; refresh: string; expires: number };
 type TokenOperation = "exchange" | "refresh";
 
 function getCallbackHost(): string {
-  return getProviderEnvValue("UJI_OAUTH_CALLBACK_HOST") || "127.0.0.1";
+  return getProviderEnvValue("NYTE_OAUTH_CALLBACK_HOST") || "127.0.0.1";
 }
 
 type DeviceAuthInfo = {
@@ -357,30 +357,46 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
       if (url.pathname !== "/auth/callback") {
         res.statusCode = 404;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(oauthErrorHtml("Callback route not found."));
+        res.end(
+          oauthErrorHtml(
+            "Nyte is not listening on this path. Run the login command again to retry.",
+          ),
+        );
         return;
       }
       if (url.searchParams.get("state") !== state) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(oauthErrorHtml("State mismatch."));
+        res.end(
+          oauthErrorHtml(
+            "The callback's state did not match this login attempt, so Nyte ignored it.",
+          ),
+        );
         return;
       }
       const code = url.searchParams.get("code");
       if (!code) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.end(oauthErrorHtml("Missing authorization code."));
+        res.end(
+          oauthErrorHtml(
+            "The callback arrived without an authorization code, so Nyte could not finish sign-in.",
+          ),
+        );
         return;
       }
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.end(oauthSuccessHtml("OpenAI authentication completed. You can close this window."));
+      res.end(oauthSuccessHtml({ provider: "OpenAI" }));
       settleWait?.({ code });
     } catch {
       res.statusCode = 500;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
-      res.end(oauthErrorHtml("Internal error while processing OAuth callback."));
+      res.end(
+        oauthErrorHtml(
+          "Nyte hit an internal error while handling the callback. Run the login command again to retry.",
+        ),
+      );
     }
   });
 
@@ -412,8 +428,8 @@ function startLocalOAuthServer(state: string): Promise<OAuthServerInfo> {
   });
 }
 
-// Uji divergence: exported (pi keeps it module-private) because Uji's legacy
-// index.ts re-exports it for @uji-ai/core until core migrates.
+// Nyte divergence: exported (pi keeps it module-private) because Nyte's legacy
+// index.ts re-exports it for @nyte-ai/core until core migrates.
 export function getAccountId(accessToken: string): string | null {
   const payload = decodeJwt(accessToken);
   const auth = payload?.[JWT_CLAIM_PATH];
@@ -571,8 +587,8 @@ export const openaiCodexOAuth: OAuthAuth = {
   refresh: (credential, signal) => refreshOpenAICodexToken(credential.refresh, signal),
 
   async toAuth(credential) {
-    // Uji divergence: pi's codex provider reads accountId off the credential
-    // itself; Uji's legacy Responses adapter only sees ModelAuth, so the
+    // Nyte divergence: pi's codex provider reads accountId off the credential
+    // itself; Nyte's legacy Responses adapter only sees ModelAuth, so the
     // ChatGPT account header rides along here until core migrates.
     const accountId =
       typeof credential["accountId"] === "string"

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { streamSimple as streamAnthropic } from "../src/api/anthropic-messages.ts";
 import { ANTHROPIC_MODELS } from "../src/providers/anthropic.models.ts";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "../src/types.ts";
@@ -131,8 +131,8 @@ async function runRequest(
   return { captured, message };
 }
 
-void describe("Anthropic fast mode", () => {
-  void test("maps fast mode for every first-party catalog model that advertises it", async () => {
+describe("Anthropic fast mode", () => {
+  test("maps fast mode for every first-party catalog model that advertises it", async () => {
     const modelIds = fastAnthropicModelIds();
     assert.ok(modelIds.length > 0);
     for (const modelId of modelIds) {
@@ -151,14 +151,14 @@ void describe("Anthropic fast mode", () => {
     }
   });
 
-  void test("prices from the response speed instead of the request", async () => {
+  test("prices from the response speed instead of the request", async () => {
     const { message } = await runRequest(createModel("claude-opus-5"), { fast: true }, "standard");
 
     assert.equal(message.stopReason, "stop");
     assert.equal(message.usage.cost.total, 30);
   });
 
-  void test("rejects unsupported and Anthropic-compatible models before sending", async () => {
+  test("rejects unsupported and Anthropic-compatible models before sending", async () => {
     for (const model of [
       createModel("claude-opus-4-7"),
       createModel("claude-opus-5", "anthropic-compatible-test"),

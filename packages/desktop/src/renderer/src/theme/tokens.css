@@ -2,8 +2,8 @@
  * The desktop palette. Two tiers, following the Grok Bot 0.18 token system as
  * a design reference (values only; no code is ported from it):
  *
- * - `--cursor-*`: the core palette per mode plus derived text/icon/bg/stroke
- *   steps mixed from `--cursor-base`, so the whole surface re-tints from a
+ * - `--nyte-*`: the core palette per mode plus derived text/icon/bg/stroke
+ *   steps mixed from `--nyte-base`, so the whole surface re-tints from a
  *   handful of anchors.
  * - `--sand-*`: semantic fills, borders, and text the components name.
  *
@@ -12,44 +12,49 @@
 
 :root {
   /* ── core palette (light) ── */
-  --cursor-accent: #1084fe;
-  --cursor-base: #141414;
-  --cursor-chrome: #ebebed;
-  --cursor-editor: #fcfcfc;
-  --cursor-focus: #459ffe;
-  --cursor-red: #ff263c;
-  --cursor-green: #00c972;
-  --cursor-yellow: #ff9800;
-  --cursor-orange: #ff6700;
-  --cursor-purple: #9159fe;
-  --cursor-cyan: #00bca6;
-  --cursor-magenta: #ff309b;
-  --cursor-danger: #c21d2e;
-  --cursor-warn: #ff9800;
-  --cursor-success: #00c972;
-  --cursor-added: #00c972;
-  --cursor-removed: #c21d2e;
-  --cursor-modified: #ff9800;
-  --cursor-diff-added-line-background: #00c97217;
-  --cursor-diff-added-text-background: #00c97210;
-  --cursor-diff-removed-line-background: #ff263c17;
-  --cursor-diff-removed-text-background: #ff263c10;
-  --cursor-shadow-primary: color-mix(in srgb, #000000 6%, transparent);
+  --nyte-accent-base: #1084fe;
+  --nyte-base: #141414;
+  --nyte-chrome-base: #ebebed;
+  --nyte-editor-base: #fcfcfc;
+  --nyte-sidebar-base: #f3f3f3;
+  --nyte-sidebar-material-opacity: 42%;
+  --nyte-red: #ff263c;
+  --nyte-green: #00c972;
+  --nyte-yellow: #ff9800;
+  --nyte-orange: #ff6700;
+  --nyte-purple: #9159fe;
+  --nyte-cyan: #00bca6;
+  --nyte-text-cyan-primary: #087f73;
+  --nyte-magenta: #ff309b;
+  --nyte-danger: #c21d2e;
+  --nyte-warn: #ff9800;
+  --nyte-success: #00c972;
+  --nyte-added: #00c972;
+  --nyte-removed: #c21d2e;
+  --nyte-modified: #ff9800;
+  --nyte-diff-added-line-background: oklch(0.663 0.162 155.537 / 0.141);
+  --nyte-diff-added-text-background: oklch(0.666 0.162 155.968 / 0.22);
+  --nyte-diff-removed-line-background: oklch(0.703 0.192 13.697 / 0.22);
+  --nyte-diff-removed-text-background: oklch(0.703 0.192 13.697 / 0.341);
+  --nyte-shadow-primary: #00000033;
+  --nyte-image-outline: oklch(0 0 0 / 0.1);
+  --nyte-switch-active-background: oklch(0.479 0.116 156.327);
+  --nyte-switch-thumb-background: #ffffff;
 
   /* ── sand semantic tier (light) ── */
-  --sand-bg-base: #f5f5f6;
+  --sand-bg-base: #f4f4f5;
   --sand-bg-subtle: #ebebed;
   --sand-bg-elevated: #fcfcfc;
-  --sand-bg-scrim: #14141480;
+  --sand-bg-scrim: rgba(0, 0, 0, 0.4);
   --sand-text-primary: #141414;
   --sand-text-secondary: #14141499;
   --sand-text-tertiary: #14141466;
   --sand-text-disabled: #1414144d;
   --sand-text-on-primary: #fcfcfc;
   --sand-text-on-color: #fcfcfc;
-  --sand-text-accent: #0c64c1;
-  --sand-text-success: #009957;
-  --sand-text-warning: #c27400;
+  --sand-text-accent: #0b5cb0;
+  --sand-text-success: #00804a;
+  --sand-text-warning: #a35f00;
   --sand-text-danger: #c21d2e;
   --sand-text-shimmer-base: #14141466;
   --sand-text-shimmer-highlight: #141414;
@@ -64,11 +69,11 @@
   --sand-fill-primary: #070707;
   --sand-fill-primary-hover: #2f2f2f;
   --sand-fill-primary-disabled: #14141426;
-  --sand-fill-secondary: #77777717;
-  --sand-fill-secondary-hover: #7777772b;
+  --sand-fill-secondary: #1414140a;
+  --sand-fill-secondary-hover: #14141412;
   --sand-fill-secondary-solid: #f3f3f3;
-  --sand-fill-ghost-hover: #77777717;
-  --sand-fill-ghost-selected: #7777772b;
+  --sand-fill-ghost-hover: #1414140a;
+  --sand-fill-ghost-selected: #14141412;
   --sand-fill-elevated: #fcfcfc;
   --sand-fill-bubble-agent: #eeeeee;
   --sand-fill-bubble-user: #070707;
@@ -84,45 +89,36 @@
   --sand-fill-danger: #ff263c;
   --sand-fill-danger-hover: #c21d2e;
   --sand-fill-danger-subtle: #ff263c17;
-  --sand-shadow-control: #0000001f;
-  --sand-shadow-popover: 0 8px 24px #0000001a, 0 2px 8px #0000001a;
-  --sand-shadow-modal: 0 16px 48px #00000029, 0 4px 12px #0000001a;
-
   /* conversation */
-  --uji-conversation-user-background: #14141408;
-  --uji-conversation-user-ring: #14141412;
-  --uji-conversation-technical-background: #14141405;
-  --uji-conversation-technical-ring: #14141414;
-  --uji-conversation-guide: #1414141f;
-  --uji-conversation-error-background: #ff263c0d;
-  --uji-conversation-error-ring: #ff263c2b;
-  --uji-composer-background: #fcfcfc;
-  --uji-composer-ring: #14141424;
-  --uji-composer-ring-active: #14141452;
-  --uji-composer-shadow: 0 8px 24px #0000000a, 0 2px 8px #0000000d;
-
+  --nyte-conversation-technical-background: #14141405;
+  --nyte-conversation-technical-ring: #14141414;
+  --nyte-conversation-guide: #1414141f;
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
+  --nyte-image-outline: oklch(1 0 0 / 0.1);
   /* ── core palette (dark) ── */
-  --cursor-base: #fcfcfc;
-  --cursor-chrome: #111111;
-  --cursor-editor: #141414;
-  --cursor-focus: #0c64c1;
-  --cursor-danger: #ff5667;
-  --cursor-removed: #ff5667;
-  --cursor-diff-added-line-background: #00c9722c;
-  --cursor-diff-added-text-background: #00c97224;
-  --cursor-diff-removed-line-background: #ff263c2c;
-  --cursor-diff-removed-text-background: #ff263c24;
-  --cursor-shadow-primary: color-mix(in srgb, #000000 20%, transparent);
+  --nyte-base: #fcfcfc;
+  --nyte-chrome-base: #111111;
+  --nyte-editor-base: #141414;
+  --nyte-sidebar-base: #141414;
+  --nyte-sidebar-material-opacity: 36%;
+  --nyte-danger: #ff5667;
+  --nyte-text-cyan-primary: #4bd8c6;
+  --nyte-removed: #ff5667;
+  --nyte-diff-added-line-background: oklch(0.638 0.129 153.739 / 0.2);
+  --nyte-diff-added-text-background: oklch(0.638 0.129 153.739 / 0.133);
+  --nyte-diff-removed-line-background: oklch(0.5 0.2 9.842 / 0.2);
+  --nyte-diff-removed-text-background: oklch(0.5 0.2 9.842 / 0.133);
+  --nyte-shadow-primary: #00000033;
+  --nyte-switch-active-background: oklch(0.638 0.129 153.739);
 
   /* ── sand semantic tier (dark) ── */
-  --sand-bg-base: #070707;
-  --sand-bg-subtle: #111111;
-  --sand-bg-elevated: #181818;
-  --sand-bg-scrim: #141414b2;
+  --sand-bg-base: #131417;
+  --sand-bg-subtle: #16161a;
+  --sand-bg-elevated: #1f1f24;
+  --sand-bg-scrim: rgba(0, 0, 0, 0.4);
   --sand-text-primary: #fcfcfc;
   --sand-text-secondary: #fcfcfc99;
   --sand-text-tertiary: #fcfcfc66;
@@ -146,11 +142,11 @@
   --sand-fill-primary: #fafafa;
   --sand-fill-primary-hover: #d5d5d5;
   --sand-fill-primary-disabled: #fcfcfc26;
-  --sand-fill-secondary: #7777772c;
-  --sand-fill-secondary-hover: #77777752;
-  --sand-fill-secondary-solid: #151515;
-  --sand-fill-ghost-hover: #7777772c;
-  --sand-fill-ghost-selected: #77777752;
+  --sand-fill-secondary: #ffffff0a;
+  --sand-fill-secondary-hover: #ffffff12;
+  --sand-fill-secondary-solid: #1f1f24;
+  --sand-fill-ghost-hover: #ffffff0d;
+  --sand-fill-ghost-selected: #ffffff12;
   --sand-fill-elevated: #2f2f2f;
   --sand-fill-bubble-agent: #262626;
   --sand-fill-bubble-user: #5a5a5a;
@@ -161,119 +157,219 @@
   --sand-fill-warning-subtle: #ff98002c;
   --sand-fill-danger-hover: #ff5667;
   --sand-fill-danger-subtle: #ff263c2c;
-  --sand-shadow-control: #00000066;
-  --sand-shadow-popover: 0 8px 24px #00000059, 0 2px 8px #00000040;
-  --sand-shadow-modal: 0 16px 48px #00000073, 0 4px 12px #00000040;
-
   /* conversation */
-  --uji-conversation-user-background: #f0f0f00a;
-  --uji-conversation-user-ring: #f0f0f018;
-  --uji-conversation-technical-background: #f0f0f007;
-  --uji-conversation-technical-ring: #f0f0f01c;
-  --uji-conversation-guide: #f0f0f026;
-  --uji-conversation-error-background: #ff263c14;
-  --uji-conversation-error-ring: #ff566747;
-  --uji-composer-background: #151515;
-  --uji-composer-ring: #f0f0f024;
-  --uji-composer-ring-active: #f0f0f052;
-  --uji-composer-shadow: 0 12px 32px #00000038, 0 2px 8px #00000040;
-
+  --nyte-conversation-technical-background: #f0f0f007;
+  --nyte-conversation-technical-ring: #f0f0f01c;
+  --nyte-conversation-guide: #f0f0f026;
   color-scheme: dark;
 }
 
+:root[data-nyte-themed-diff-backgrounds="false"] {
+  --nyte-diff-added-line-background: #00c97217;
+  --nyte-diff-added-text-background: #00c97210;
+  --nyte-diff-removed-line-background: #ff263c17;
+  --nyte-diff-removed-text-background: #ff263c10;
+}
+
+:root[data-theme="dark"][data-nyte-themed-diff-backgrounds="false"] {
+  --nyte-diff-added-line-background: #00c9722c;
+  --nyte-diff-added-text-background: #00c97224;
+  --nyte-diff-removed-line-background: #ff263c2c;
+  --nyte-diff-removed-text-background: #ff263c24;
+}
+
 :root {
-  /* ── derived tier: everything re-tints from --cursor-base ── */
-  --cursor-text-primary: var(--cursor-base);
-  --cursor-text-secondary: color-mix(in srgb, var(--cursor-base) 74%, transparent);
-  --cursor-text-tertiary: color-mix(in srgb, var(--cursor-base) 60%, transparent);
-  --cursor-text-quaternary: color-mix(in srgb, var(--cursor-base) 36%, transparent);
-  --cursor-text-invert: var(--cursor-editor);
-  --cursor-text-accent: var(--cursor-accent);
-  --cursor-icon-primary: var(--cursor-base);
-  --cursor-icon-secondary: color-mix(in srgb, var(--cursor-base) 66%, transparent);
-  --cursor-icon-tertiary: color-mix(in srgb, var(--cursor-base) 52%, transparent);
-  --cursor-icon-quaternary: color-mix(in srgb, var(--cursor-base) 28%, transparent);
-  --cursor-bg-primary: color-mix(in srgb, var(--cursor-base) 20%, transparent);
-  --cursor-bg-secondary: color-mix(in srgb, var(--cursor-base) 14%, transparent);
-  --cursor-bg-tertiary: color-mix(in srgb, var(--cursor-base) 8%, transparent);
-  --cursor-bg-quaternary: color-mix(in srgb, var(--cursor-base) 6%, transparent);
-  --cursor-bg-quinary: color-mix(in srgb, var(--cursor-base) 4%, transparent);
-  --cursor-bg-elevated: var(--cursor-editor);
-  --cursor-bg-chrome: var(--cursor-chrome);
-  --cursor-bg-card: var(--cursor-bg-quaternary);
-  --cursor-bg-editor: var(--cursor-editor);
-  --cursor-bg-accent: var(--cursor-accent);
-  --cursor-stroke-primary: color-mix(in srgb, var(--cursor-base) 20%, transparent);
-  --cursor-stroke-secondary: color-mix(in srgb, var(--cursor-base) 12%, transparent);
-  --cursor-stroke-tertiary: color-mix(in srgb, var(--cursor-base) 8%, transparent);
-  --cursor-stroke-quaternary: color-mix(in srgb, var(--cursor-base) 4%, transparent);
-  --cursor-stroke-focused: color-mix(in srgb, var(--cursor-focus) 40%, transparent);
-  --cursor-scrollbar-thumb: color-mix(in srgb, var(--cursor-base) 14%, transparent);
-  --cursor-scrollbar-thumb-hover: color-mix(in srgb, var(--cursor-base) 22%, transparent);
+  /* The tint keeps each surface's lightness. Sidebar receives the full
+     intensity; chrome and editor receive half. */
+  --nyte-tint-hue: 210deg;
+  --nyte-tint-intensity: 0%;
+  --nyte-accent: var(--nyte-accent-base);
+  --nyte-chrome: var(--nyte-chrome-base);
+  --nyte-editor: var(--nyte-editor-base);
+  --nyte-sidebar: var(--nyte-sidebar-base);
+
+  /* ── derived tier: everything re-tints from --nyte-base ── */
+  --nyte-text-primary: var(--nyte-base);
+  --nyte-text-secondary: color-mix(in srgb, var(--nyte-base) 74%, transparent);
+  --nyte-text-tertiary: color-mix(in srgb, var(--nyte-base) 60%, transparent);
+  --nyte-text-quaternary: color-mix(in srgb, var(--nyte-base) 36%, transparent);
+  --nyte-text-invert: var(--nyte-editor);
+  --nyte-text-accent: var(--nyte-accent);
+  --nyte-icon-primary: var(--nyte-base);
+  --nyte-icon-secondary: color-mix(in srgb, var(--nyte-base) 66%, transparent);
+  --nyte-icon-tertiary: color-mix(in srgb, var(--nyte-base) 52%, transparent);
+  --nyte-icon-quaternary: color-mix(in srgb, var(--nyte-base) 28%, transparent);
+  --nyte-bg-primary: color-mix(in srgb, var(--nyte-base) 20%, transparent);
+  --nyte-bg-secondary: color-mix(in srgb, var(--nyte-base) 14%, transparent);
+  --nyte-bg-tertiary: color-mix(in srgb, var(--nyte-base) 8%, transparent);
+  --nyte-bg-quaternary: color-mix(in srgb, var(--nyte-base) 6%, transparent);
+  --nyte-bg-quinary: color-mix(in srgb, var(--nyte-base) 4%, transparent);
+  --nyte-bg-elevated: var(--nyte-editor);
+  --nyte-bg-chrome: var(--nyte-chrome);
+  --nyte-bg-sidebar: var(--nyte-sidebar);
+  --nyte-bg-card: var(--nyte-bg-quaternary);
+  --nyte-bg-editor: var(--nyte-editor);
+  --nyte-bg-accent: var(--nyte-accent);
+  --nyte-conversation-user-shell-background: color-mix(
+    in srgb,
+    var(--nyte-sidebar) 60%,
+    transparent
+  );
+  --nyte-conversation-user-background: color-mix(
+    in srgb,
+    var(--nyte-editor) 90%,
+    var(--nyte-sidebar)
+  );
+  --nyte-conversation-user-background-hover: color-mix(
+    in srgb,
+    var(--nyte-conversation-user-background) 96%,
+    var(--nyte-editor)
+  );
+  --nyte-conversation-user-ring: var(--nyte-stroke-secondary);
+  --nyte-stroke-primary: color-mix(in srgb, var(--nyte-base) 20%, transparent);
+  --nyte-stroke-secondary: color-mix(in srgb, var(--nyte-base) 12%, transparent);
+  --nyte-stroke-tertiary: color-mix(in srgb, var(--nyte-base) 8%, transparent);
+  --nyte-stroke-quaternary: color-mix(in srgb, var(--nyte-base) 4%, transparent);
+  --nyte-stroke-focused: var(--nyte-accent);
+  --nyte-shadow-secondary: color-mix(in srgb, var(--nyte-shadow-primary) 60%, transparent);
+  --nyte-shadow-tertiary: color-mix(in srgb, var(--nyte-shadow-primary) 30%, transparent);
+  --nyte-box-shadow-popup:
+    0 3px 8px var(--nyte-shadow-secondary), 0 2px 5px var(--nyte-shadow-secondary),
+    0 1px 1px var(--nyte-shadow-secondary);
+  --nyte-box-shadow-lg:
+    inset 0 0 4px #ffffff0d, 0 0 3px var(--nyte-shadow-secondary),
+    0 16px 24px var(--nyte-shadow-tertiary);
+  --nyte-shadow-workbench: 0 0 8px 2px
+    color-mix(in srgb, var(--nyte-shadow-primary) 40%, transparent);
+  --nyte-scrollbar-thumb: color-mix(in srgb, var(--nyte-base) 14%, transparent);
+  --nyte-scrollbar-thumb-hover: color-mix(in srgb, var(--nyte-base) 22%, transparent);
+  --sand-shadow-control: var(--nyte-shadow-secondary);
+  /* Menus float on one soft layer; the surface's inset hairline draws the edge. */
+  --sand-shadow-popover:
+    0 4px 16px var(--nyte-shadow-tertiary), 0 1px 2px var(--nyte-shadow-tertiary);
+  --sand-shadow-modal: var(--nyte-box-shadow-lg);
+  --sand-shadow-workbench: var(--nyte-shadow-workbench);
+  --nyte-composer-background: var(--nyte-bg-editor);
+  --nyte-composer-ring: var(--nyte-stroke-tertiary);
+  --nyte-composer-ring-active: var(--nyte-stroke-secondary);
+  --nyte-sidebar-background: color-mix(
+    in srgb,
+    var(--nyte-bg-sidebar) var(--nyte-sidebar-material-opacity),
+    transparent
+  );
+
+  /* ── type ──
+     Appearance settings override the four inputs inline on <html> before
+     first paint; everything else derives from them here, so the scale has one
+     owner. Each named stack resolves to the same face on macOS and Linux:
+     Inter and JetBrains Mono ship with the app, `system-ui` / `ui-monospace`
+     are whatever the OS has. */
+  --nyte-ui-font-inter: "Inter Variable", system-ui, sans-serif;
+  --nyte-ui-font-system: system-ui, sans-serif;
+  --nyte-code-font-jetbrains-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --nyte-code-font-system:
+    ui-monospace, Menlo, "DejaVu Sans Mono", "Liberation Mono", Consolas, monospace;
+
+  --nyte-font-family-sans: var(--nyte-ui-font-inter);
+  --nyte-font-family-mono: var(--nyte-code-font-system);
+  --nyte-font-size-base: 13px;
+  --nyte-font-size-code: 12px;
+
+  --nyte-font-size-xs: max(11px, calc(var(--nyte-font-size-base) - 2px));
+  --nyte-font-size-sm: calc(var(--nyte-font-size-base) - 1px);
+  --nyte-font-size-lg: calc(var(--nyte-font-size-base) + 1px);
+  --nyte-font-size-xl: calc(var(--nyte-font-size-base) + 3px);
+  --nyte-font-size-2xl: calc(var(--nyte-font-size-base) + 6px);
+  --nyte-line-height-xs: calc(var(--nyte-font-size-base) + 1px);
+  --nyte-line-height-sm: calc(var(--nyte-font-size-base) + 3px);
+  --nyte-line-height-base: calc(var(--nyte-font-size-base) + 5px);
+  --nyte-line-height-lg: calc(var(--nyte-font-size-base) + 9px);
+  --nyte-letter-spacing-base: -0.08px;
+  --nyte-letter-spacing-lg: -0.15px;
 
   /* ── scales ── */
-  --cursor-font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --cursor-font-family-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
-  --cursor-font-size-xs: 11px;
-  --cursor-font-size-sm: 12px;
-  --cursor-font-size-base: 13px;
-  --cursor-font-size-lg: 14px;
-  --cursor-font-size-code: 12px;
-  --cursor-line-height-xs: 14px;
-  --cursor-line-height-sm: 16px;
-  --cursor-line-height-base: 18px;
-  --cursor-line-height-lg: 22px;
-  --cursor-radius-xs: 2px;
-  --cursor-radius-sm: 4px;
-  --cursor-radius-base: 6px;
-  --cursor-radius-lg: 8px;
-  --cursor-radius-xl: 12px;
-  --cursor-radius-2xl: 14px;
-  --cursor-radius-3xl: 16px;
-  --cursor-radius-full: 9999px;
-  --cursor-duration-instant: 50ms;
-  --cursor-duration-fast: 100ms;
-  --cursor-duration-normal: 150ms;
-  --cursor-duration-slow: 200ms;
-  --cursor-easing-out: ease-out;
-  --cursor-easing-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
-  --cursor-easing-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --nyte-radius-xs: 2px;
+  --nyte-radius-sm: 4px;
+  --nyte-radius-base: 6px;
+  --nyte-radius-lg: 8px;
+  --nyte-radius-xl: 12px;
+  --nyte-radius-2xl: 14px;
+  --nyte-radius-3xl: 16px;
+  --nyte-radius-4xl: 18px;
+  --nyte-radius-full: 9999px;
+  --nyte-duration-instant: 50ms;
+  --nyte-duration-fast: 100ms;
+  --nyte-duration-normal: 150ms;
+  --nyte-duration-slow: 200ms;
+  --nyte-easing-out: ease-out;
+  --nyte-easing-out-quint: cubic-bezier(0.16, 1, 0.3, 1);
+  --nyte-easing-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 
   /* ── desktop layout schema ── */
-  --uji-titlebar-height: 35px;
-  --uji-sidebar-width: 260px;
-  --uji-sidebar-handle-width: 8px;
-  --uji-compact-row-height: 28px;
-  --uji-sidebar-gutter: 8px;
-  --uji-sidebar-row-padding-inline: 6px;
-  --uji-sidebar-section-gap: 8px;
-  --uji-sidebar-list-gap: 1px;
-  --uji-sidebar-icon-slot: 16px;
-  --uji-sidebar-action-size: 20px;
+  --nyte-titlebar-height: 35px;
+  --nyte-sidebar-width: 220px;
+  --nyte-sidebar-handle-width: 8px;
+  --nyte-compact-row-height: 28px;
+  --nyte-sidebar-gutter: 8px;
+  --nyte-sidebar-row-padding-inline: 4px;
+  --nyte-sidebar-row-gap: 6px;
+  --nyte-sidebar-section-gap: 8px;
+  --nyte-sidebar-list-gap: 1px;
+  --nyte-sidebar-icon-slot: 20px;
+  --nyte-sidebar-action-size: 24px;
   /* One trailing column for shortcuts, timestamps, and hover actions, so every
      row label ends on the same edge. */
-  --uji-sidebar-trailing-width: 44px;
-  --uji-scrollbar-lane: 12px;
-  --uji-control-compact-height: 26px;
-  --uji-control-regular-height: 30px;
-  --uji-menu-width: 190px;
-  --uji-model-menu-width: 260px;
-  --uji-menu-max-height: min(336px, calc(100vh - 32px));
-  --uji-section-gap: 16px;
-  --uji-conversation-measure: 808px;
-  --uji-prose-measure: 608px;
-  --uji-conversation-gutter: clamp(12px, 2.25%, 18px);
-  --uji-conversation-header-height: 35px;
-  --uji-conversation-turn-gap: 18px;
-  --uji-conversation-row-gap: 7px;
-  --uji-conversation-row-min-height: 26px;
-  --uji-composer-inset: 14px;
-  --uji-workbench-rail-width: 40px;
-  --uji-workbench-panel-width: 384px;
-  --uji-workbench-header-height: 35px;
-  --uji-workbench-file-list-width: 164px;
-  --uji-diff-line-height: 20px;
-  --uji-diff-preview-max-height: 320px;
+  --nyte-sidebar-trailing-width: 44px;
+  --nyte-settings-content-width: 680px;
+  --nyte-settings-content-gutter: 16px;
+  --nyte-settings-row-min-height: 61px;
+  --nyte-settings-slider-row-min-height: 76px;
+  --nyte-settings-section-gap: 28px;
+  --nyte-settings-card-gap: 8px;
+  --nyte-settings-row-padding: 12px;
+  --nyte-settings-control-height: 24px;
+  --nyte-settings-control-max-width: 160px;
+  --nyte-settings-page-title-size: calc(var(--nyte-font-size-base) + 4px);
+  --nyte-settings-page-title-line-height: calc(var(--nyte-font-size-base) + 8px);
+  --nyte-scrollbar-lane: 12px;
+  --nyte-control-compact-height: 26px;
+  --nyte-control-regular-height: 30px;
+  --nyte-menu-width: 200px;
+  --nyte-model-menu-width: 230px;
+  --nyte-parameter-menu-width: 220px;
+  --nyte-menu-max-height: min(320px, calc(100vh - 32px));
+  --nyte-section-gap: 16px;
+  --nyte-conversation-measure: 640px;
+  --nyte-prose-measure: 640px;
+  --nyte-conversation-gutter: 16px;
+  --nyte-conversation-header-height: 35px;
+  --nyte-conversation-turn-gap: 14px;
+  --nyte-conversation-row-gap: 8px;
+  --nyte-conversation-row-min-height: 22px;
+  --nyte-composer-inset: 14px;
+  --nyte-composer-new-chat-radius: 22px;
+  --nyte-composer-expanded-radius: 18px;
+  --nyte-workbench-rail-width: 210px;
+  --nyte-workbench-panel-width: 384px;
+  --nyte-workbench-header-height: 35px;
+  --nyte-workbench-file-list-width: 164px;
+  --nyte-diff-line-height: 20px;
+  --nyte-diff-preview-max-height: min(480px, 60vh);
+}
+
+:root[data-tint-active="true"] {
+  --nyte-accent: hsl(from var(--nyte-accent-base) var(--nyte-tint-hue) s l);
+  --nyte-chrome: hsl(
+    from var(--nyte-chrome-base) var(--nyte-tint-hue) calc(var(--nyte-tint-intensity) * 0.5) l
+  );
+  --nyte-editor: hsl(
+    from var(--nyte-editor-base) var(--nyte-tint-hue) calc(var(--nyte-tint-intensity) * 0.5) l
+  );
+  --nyte-sidebar: hsl(
+    from var(--nyte-sidebar-base) var(--nyte-tint-hue) var(--nyte-tint-intensity) l
+  );
+}
+
+:root[data-reduce-transparency="true"] {
+  --nyte-sidebar-background: var(--nyte-bg-sidebar);
 }

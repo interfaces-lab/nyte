@@ -1,5 +1,5 @@
 {
-  "name": "@uji-ai/schema",
+  "name": "@nyte-ai/schema",
   "private": true,
   "type": "module",
   "exports": {
@@ -13,7 +13,7 @@
     "typebox": "1.3.7"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "typescript": "^7.0.2"
   }
 }

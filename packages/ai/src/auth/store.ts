@@ -1,6 +1,6 @@
 /**
  * File-backed `CredentialStore` (auth.json, one credential per provider id).
- * Uji-owned persistent store; the queueing and cancellation semantics follow
+ * Nyte-owned persistent store; the queueing and cancellation semantics follow
  * pi's InMemoryCredentialStore so `resolveProviderAuth` behaves identically
  * against either.
  *
@@ -10,11 +10,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { operationSignal, raceWithAbortSignal } from "../utils/abort.ts";
-import { defaultUjiHome } from "../utils/uji-home.ts";
+import { defaultNyteHome } from "../utils/nyte-home.ts";
 import type { AuthOperationOptions, Credential, CredentialInfo, CredentialStore } from "./types.ts";
 
 export function defaultAuthPath(): string {
-  return join(defaultUjiHome(), "auth.json");
+  return join(defaultNyteHome(), "auth.json");
 }
 
 /**

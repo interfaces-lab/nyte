@@ -72,7 +72,7 @@ def build() -> Canvas:
         # Each ring arrives after the one inside it and stays. The cycle is long
         # enough that the figure reads as still until you look twice.
         canvas.css(
-            f".{cls}{{animation:ring-in 18s var(--ease-uji, ease-out) {fmt(index * 0.18)}s infinite}}"
+            f".{cls}{{animation:ring-in 18s var(--ease-nyte, ease-out) {fmt(index * 0.18)}s infinite}}"
         )
 
     canvas.css(

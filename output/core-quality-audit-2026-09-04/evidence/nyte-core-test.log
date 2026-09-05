@@ -1,0 +1,102 @@
+
+ RUN  v5.0.0 /Users/workgyver/Developer/nyte/packages/core
+
+ ❯ test/tree-navigation.test.ts (0 test)
+ ❯ test/workspace-registry.test.ts (0 test)
+ ❯ test/sdk.test.ts (0 test)
+ ❯ test/harness-retry.test.ts (0 test)
+ ❯ test/tool-result.test.ts (0 test)
+▶ modern MCP tools
+  ✖ builds stable provider-safe tool names (1.957417ms)
+  ✖ discovers once, registers a stable tool, and calls without a legacy handshake (2.947875ms)
+  ✖ turns remote tool failures into structured ToolError values (0.206041ms)
+  ✖ rejects a legacy server without initialize, GET, or transport fallback (0.144416ms)
+  ✖ rejects conflicting names from one server instead of using order-based suffixes (0.106084ms)
+✖ modern MCP tools (6.3565ms)
+ ❯ test/mcp.test.ts (0 test)
+ℹ tests 5
+ℹ suites 1
+ℹ pass 0
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20.952208
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/harness-retry.test.ts [ test/harness-retry.test.ts ]
+Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/harness-retry.test.ts
+ ❯ test/harness-retry.test.ts:12:1
+     10| import { afterEach, describe, test } from "node:test";
+     11| import type { AssistantMessage, AssistantMessageEvent, Message, Model,…
+     12| import { EventStream } from "@uji-ai/ai";
+       | ^
+     13| import type { StreamFn } from "../src/types.ts";
+     14| import { AgentHarness, type RetryEvent } from "../src/harness/agent-ha…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  test/mcp.test.ts [ test/mcp.test.ts ]
+Error: No test suite found in file /Users/workgyver/Developer/nyte/packages/core/test/mcp.test.ts
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  test/sdk.test.ts [ test/sdk.test.ts ]
+Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/sdk.test.ts
+ ❯ test/sdk.test.ts:12:1
+     10| import { afterEach, describe, test } from "node:test";
+     11| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+     12| import { contentText, EventStream } from "@uji-ai/ai";
+       | ^
+     13| import {
+     14|   createUji,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  test/tool-result.test.ts [ test/tool-result.test.ts ]
+Error: Cannot find module '../harness/session/types.ts' imported from /Users/workgyver/Developer/nyte/packages/core/src/sdk/events.ts
+ ❯ src/sdk/events.ts:14:1
+     12|  */
+     13| import type { HarnessEvent } from "../harness/agent-harness.ts";
+     14| import { toJsonValue } from "../harness/session/types.ts";
+       | ^
+     15| import type { Entry, JsonValue, LogItem } from "../harness/session/typ…
+     16| import { transcriptFromEntries } from "../views/transcript.ts";
+ ❯ test/tool-result.test.ts:9:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  test/tree-navigation.test.ts [ test/tree-navigation.test.ts ]
+Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/tree-navigation.test.ts
+ ❯ test/tree-navigation.test.ts:8:1
+      6| import { afterEach, describe, test } from "node:test";
+      7| import type { Context as AiContext } from "@uji-ai/ai/types";
+      8| import {
+       | ^
+      9|   createAssistantMessageEventStream,
+     10|   type AssistantMessage,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  test/workspace-registry.test.ts [ test/workspace-registry.test.ts ]
+Error: Cannot find package '@uji-ai/ai' imported from /Users/workgyver/Developer/nyte/packages/core/test/workspace-registry.test.ts
+ ❯ test/workspace-registry.test.ts:14:1
+     12| import { afterEach, describe, test } from "node:test";
+     13| import type { AssistantMessage, AssistantMessageEvent, Model, Usage } …
+     14| import { EventStream } from "@uji-ai/ai";
+       | ^
+     15| import { createUji, WorkspaceRegistry } from "../src/index.ts";
+     16| import { SqliteSessionRepo } from "../src/store.ts";
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  6 failed | 23 passed (29)
+      Tests  157 passed (157)
+   Start at  17:23:42
+   Duration  2.46s (transform 49%, tests 26%, import 25%, worker 1%)
+
+  Transform  transforming modules took 8.32s · 49% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

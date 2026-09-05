@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import { describe, test } from "vitest";
+import type { TurnPart } from "@nyte-ai/core";
+import {
+  displayTranscriptParts,
+  formatRunDuration,
+  presentTranscriptNotice,
+  userDisplayText,
+  userTextSegments,
+} from "./transcript-presentation.ts";
+
+const assistant = (commit: string, contentIndex: number, text: string): TurnPart => ({
+  kind: "assistant",
+  commit,
+  contentIndex,
+  text,
+});
+
+describe("transcript presentation", () => {
+  test("compact mode folds intermediate narration, reasoning, and tools into one work episode", () => {
+    const user: TurnPart = { kind: "user", commit: "u", parent: null, content: "Please fix it" };
+    const thought: TurnPart = { kind: "thinking", commit: "a", contentIndex: 0, text: "Looking" };
+    const commentary = assistant("a", 1, "I am checking the files.");
+    const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
+    const response = assistant("b", 0, "Fixed it.");
+
+    assert.deepEqual(displayTranscriptParts([user, thought, commentary, tool, response]), [
+      { kind: "part", part: user },
+      { kind: "work", parts: [thought, commentary, tool] },
+      { kind: "response", parts: [response] },
+    ]);
+  });
+
+  test("a tool-ending failed turn does not promote commentary to a final response", () => {
+    const commentary = assistant("a", 0, "Checking one more thing.");
+    const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
+    assert.deepEqual(displayTranscriptParts([commentary, tool]), [
+      { kind: "work", parts: [commentary, tool] },
+    ]);
+  });
+
+  test("assistant-only turns remain one response", () => {
+    const first = assistant("a", 0, "One");
+    const second = assistant("a", 1, "Two");
+    assert.deepEqual(displayTranscriptParts([first, second]), [
+      { kind: "response", parts: [first, second] },
+    ]);
+  });
+
+  test("skill references keep their label and hide their persisted path", () => {
+    const source =
+      "Use [$principle-laziness-protocol](/Users/me/.agents/skills/principle-laziness-protocol/SKILL.md) now";
+    assert.equal(userDisplayText(source), "Use /principle-laziness-protocol now");
+    assert.deepEqual(userTextSegments(source), [
+      { kind: "text", text: "Use " },
+      {
+        kind: "reference",
+        label: "/principle-laziness-protocol",
+        target: "/Users/me/.agents/skills/principle-laziness-protocol/SKILL.md",
+      },
+      { kind: "text", text: " now" },
+    ]);
+  });
+
+  test("provider errors become concise product copy while retaining diagnostics", () => {
+    const source =
+      'Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"Try later"},"request_id":"req_secret"}';
+    assert.deepEqual(presentTranscriptNotice(source), {
+      text: "Rate limit reached. Try again shortly.",
+      tone: "danger",
+      detail: source,
+    });
+    assert.deepEqual(presentTranscriptNotice("Error: The operation was aborted."), {
+      text: "Run stopped.",
+      tone: "neutral",
+      detail: "Error: The operation was aborted.",
+    });
+  });
+
+  test("durations use compact stable labels", () => {
+    assert.equal(formatRunDuration(0), undefined);
+    assert.equal(formatRunDuration(37_000), "37s");
+    assert.equal(formatRunDuration(637_000), "10m 37s");
+    assert.equal(formatRunDuration(3_660_000), "1h 1m");
+  });
+});

@@ -1,7 +1,7 @@
 """
 Tools — a seed head.
 
-`@uji-ai/core` has no tool registry. Tools are plain objects in an array, and the
+`@nyte-ai/core` has no tool registry. Tools are plain objects in an array, and the
 array is handed to the loop at the composition site. A sunflower head packs its
 seeds the same way: no seed is told where to go, and the arrangement falls out
 of one rule applied to every seed in turn.

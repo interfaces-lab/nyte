@@ -19,19 +19,20 @@ import {
   transcriptFromEntries,
 } from "../src/index.ts";
 import type { StreamFn } from "../src/types.ts";
-import { AgentHarness } from "../src/harness/agent-harness.ts";
+import {
+  AgentHarness,
+  NothingToResume,
+  type NavigationResult,
+} from "../src/harness/agent-harness.ts";
 import { SUMMARIZATION_SYSTEM_PROMPT } from "../src/harness/compaction/compaction.ts";
 import { inlinePlugin, systemPromptPlugin } from "../src/plugins/index.ts";
-import type { MoveOutcome } from "../src/sdk/types.ts";
 import {
   BRANCH_SUMMARY_PREFIX,
   SqliteSessionRepo,
   buildSessionContext,
-  type BranchSummaryEntry,
   type Entry,
   type SessionStorage,
 } from "../src/store.ts";
-import { pendingQueue, prompt as promptHarness, submit, waitForIdle } from "./harness-driver.ts";
 
 const directories: string[] = [];
 const repositories: SqliteSessionRepo[] = [];
@@ -180,22 +181,21 @@ async function openSession(): Promise<{ session: SessionStorage; path: string }>
 }
 
 async function createHarness(session: SessionStorage, streamFn: StreamFn): Promise<AgentHarness> {
-  const harness = await AgentHarness.create({
+  const { harness } = await AgentHarness.create({
     session,
     streamFn,
     plugins: [inlinePlugin(systemPromptPlugin("system"))],
     env: { cwd: "/" },
     model,
   });
-  harness.attach();
   harnesses.push(harness);
   return harness;
 }
 
 /** u1 → a1 → u2 → a2 on main; returns the four entries oldest first. */
 async function twoTurns(harness: AgentHarness): Promise<Entry[]> {
-  assert.equal((await promptHarness(harness, "u1")).outcome.kind, "completed");
-  assert.equal((await promptHarness(harness, "u2")).outcome.kind, "completed");
+  assert.equal((await harness.prompt("u1")).ok, true);
+  assert.equal((await harness.prompt("u2")).ok, true);
   const branch = await harness.session.getBranch("main");
   assert.deepEqual(
     branch.map((entry) => (entry.type === "message" ? entry.message.role : entry.type)),
@@ -209,32 +209,14 @@ function userText(entry: Entry | undefined): string | undefined {
   return typeof entry.message.content === "string" ? entry.message.content : undefined;
 }
 
-function restoredText(result: Extract<MoveOutcome, { kind: "moved" }>): string | undefined {
-  const content = result.restored?.content;
-  return typeof content === "string" ? content : undefined;
-}
-
-function completed(result: MoveOutcome): Extract<MoveOutcome, { kind: "moved" }> {
-  assert.equal(result.kind, "moved", JSON.stringify(result));
-  if (result.kind !== "moved") throw new Error("unreachable");
-  return result;
-}
-
-/** The summary the latest navigation appended: the newest branch_summary entry on the log. */
-async function latestSummary(session: SessionStorage): Promise<BranchSummaryEntry | undefined> {
-  const summaries = await summaryEntries(session);
-  const last = summaries.at(-1);
-  return last?.type === "branch_summary" ? last : undefined;
-}
-
-/** The id of the most recent navigation operation. */
-async function latestNavigationRunId(session: SessionStorage): Promise<string> {
-  const started = (await session.findRecords({ type: "operation_started" })).filter(
-    (record) => record.intent.kind === "navigation",
-  );
-  const last = started.at(-1);
-  assert.ok(last);
-  return last.id;
+function completed(
+  result: NavigationResult,
+): Extract<Extract<NavigationResult, { ok: true }>["value"], { kind: "completed" }> {
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.value.kind, "completed", JSON.stringify(result.value));
+  if (result.value.kind !== "completed") throw new Error("unreachable");
+  return result.value;
 }
 
 function promptText(context: AiContext): string {
@@ -255,7 +237,7 @@ void describe("tree projection", () => {
     const [u1, a1, u2, a2] = await twoTurns(harness);
     assert.ok(u1 && a1 && u2 && a2);
     completed(await harness.navigate({ entryId: a1.id }));
-    assert.equal((await promptHarness(harness, "u3")).outcome.kind, "completed");
+    assert.equal((await harness.prompt("u3")).ok, true);
     const branch = await session.getBranch("main");
     const u3 = branch[2];
     const a3 = branch[3];
@@ -332,9 +314,9 @@ void describe("navigation operation", () => {
     assert.ok(u1 && a1 && u2 && a2);
 
     const result = completed(await harness.navigate({ entryId: a1.id }));
-    assert.equal(await session.getLeafId("main"), a1.id);
-    assert.equal(result.restored, undefined);
-    assert.equal(await latestSummary(session), undefined);
+    assert.equal(result.leafId, a1.id);
+    assert.equal(result.restore, undefined);
+    assert.equal(result.summaryEntry, undefined);
     assert.deepEqual(
       (await session.getBranch("main")).map((entry) => entry.id),
       [u1.id, a1.id],
@@ -346,11 +328,11 @@ void describe("navigation operation", () => {
     assert.equal(all.find((entry) => entry.id === a2.id)?.parentId, u2.id);
     assert.deepEqual(await session.findOpenOperations("main"), []);
     assert.equal(stream.summaries.length, 0);
+    assert.equal(harness.state.isNavigating, false);
 
-    // Already there: the asked-for state holds, so the move is a no-op success.
-    const before = (await session.getLog()).length;
-    assert.equal((await harness.navigate({ entryId: a1.id })).kind, "moved");
-    assert.equal((await session.getLog()).length, before);
+    const again = await harness.navigate({ entryId: a1.id });
+    assert.equal(again.ok, false);
+    if (!again.ok) assert.equal(again.error.message, "already at that point");
   });
 
   void test("hands a selected user turn back and parks the head on its parent", async () => {
@@ -361,12 +343,13 @@ void describe("navigation operation", () => {
     assert.ok(u1 && a1 && u2);
 
     const result = completed(await harness.navigate({ entryId: u2.id }));
-    assert.equal(result.restored?.entryId, u2.id);
-    assert.equal(restoredText(result), "u2");
+    assert.equal(result.leafId, a1.id);
+    assert.equal(userText(result.restore), "u2");
     assert.equal(await session.getLeafId("main"), a1.id);
 
     const root = completed(await harness.navigate({ entryId: u1.id }));
-    assert.equal(restoredText(root), "u1");
+    assert.equal(root.leafId, null);
+    assert.equal(userText(root.restore), "u1");
     assert.equal(await session.getLeafId("main"), null);
     assert.equal((await session.findEntries()).length, 4);
   });
@@ -378,10 +361,10 @@ void describe("navigation operation", () => {
     const [u1, a1, u2, a2] = await twoTurns(harness);
     assert.ok(u1 && a1 && u2 && a2);
 
-    completed(
+    const result = completed(
       await harness.navigate({ entryId: a1.id, summary: { customInstructions: "focus on math" } }),
     );
-    const summary = await latestSummary(session);
+    const summary = result.summaryEntry;
     assert.ok(summary);
     assert.equal(summary.type, "branch_summary");
     assert.equal(summary.parentId, a1.id);
@@ -391,6 +374,7 @@ void describe("navigation operation", () => {
     assert.equal(summary.summary.includes("summary-1"), true);
     assert.deepEqual(summary.details, { readFiles: [], modifiedFiles: [] });
     assert.deepEqual(summary.usage, usage);
+    assert.equal(result.leafId, summary.id);
     assert.equal(await session.getLeafId("main"), summary.id);
 
     // The prompt saw the abandoned turns, serialized rather than continued, plus the focus.
@@ -420,17 +404,14 @@ void describe("navigation operation", () => {
       transcriptFromEntries(branch).map((turn) => turn.kind),
       ["turn", "branch_summary"],
     );
-    const usageRecords = await session.findRecords({
-      type: "usage",
-      runId: await latestNavigationRunId(session),
-    });
+    const usageRecords = await session.findRecords({ type: "usage", runId: result.runId });
     assert.deepEqual(
       usageRecords.map((record) => record.cause),
       ["branch_summary"],
     );
 
     // The next send parents on the summary.
-    assert.equal((await promptHarness(harness, "u3")).outcome.kind, "completed");
+    assert.equal((await harness.prompt("u3")).ok, true);
     const next = await session.getBranch("main");
     assert.equal(next[3]?.parentId, summary.id);
     assert.equal(stream.chats.at(-1)?.messages.length, 4);
@@ -444,8 +425,8 @@ void describe("navigation operation", () => {
     assert.ok(a1 && u2 && a2);
 
     const result = completed(await harness.navigate({ entryId: u2.id, summary: {} }));
-    assert.equal(restoredText(result), "u2");
-    const summary = await latestSummary(session);
+    assert.equal(userText(result.restore), "u2");
+    const summary = result.summaryEntry;
     assert.ok(summary);
     assert.equal(summary.parentId, a1.id);
     assert.equal(summary.selectedId, u2.id);
@@ -463,7 +444,8 @@ void describe("navigation operation", () => {
     assert.ok(u2);
     completed(await harness.navigate({ entryId: u2.id }));
     // Selecting the same user turn again from its parent abandons nothing.
-    completed(await harness.navigate({ entryId: u2.id, summary: {} }));
+    const result = completed(await harness.navigate({ entryId: u2.id, summary: {} }));
+    assert.equal(result.summaryEntry, undefined);
     assert.equal(stream.summaries.length, 0);
     assert.equal((await summaryEntries(session)).length, 0);
   });
@@ -477,8 +459,12 @@ void describe("navigation operation", () => {
     stream.failNextSummary("provider unavailable");
 
     const result = await harness.navigate({ entryId: a1.id, summary: {} });
-    assert.equal(result.kind, "failed");
-    if (result.kind === "failed") assert.match(result.message, /provider unavailable/u);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.kind, "failed");
+    if (result.value.kind === "failed") {
+      assert.match(result.value.error.message, /provider unavailable/u);
+    }
     assert.equal(await session.getLeafId("main"), a2.id);
     assert.equal((await summaryEntries(session)).length, 0);
     assert.deepEqual(await session.findOpenOperations("main"), []);
@@ -495,13 +481,17 @@ void describe("navigation operation", () => {
     const entered = stream.hold();
     const navigation = harness.navigate({ entryId: a1.id, summary: {} });
     await entered;
-    assert.equal((await harness.abort()).kind, "requested");
+    assert.equal(harness.state.isNavigating, true);
+    assert.equal(harness.state.isBusy, true);
+    assert.equal((await harness.abort()).ok, true);
     const result = await navigation;
-    assert.equal(result.kind, "aborted");
+    assert.equal(result.ok, true);
+    if (result.ok) assert.equal(result.value.kind, "aborted");
 
     assert.equal(await session.getLeafId("main"), a2.id);
     assert.equal((await summaryEntries(session)).length, 0);
     assert.deepEqual(await session.findOpenOperations("main"), []);
+    assert.equal(harness.state.isNavigating, false);
     // Only bookkeeping records were added; no entry and no head move.
     const added = (await session.getLog()).slice(before);
     assert.deepEqual(
@@ -536,7 +526,7 @@ void describe("navigation operation", () => {
     });
     await claimed.writer.release();
 
-    const harness = await AgentHarness.create({
+    const { harness, suspended } = await AgentHarness.create({
       session,
       streamFn: stream.streamFn,
       plugins: [inlinePlugin(systemPromptPlugin("system"))],
@@ -544,13 +534,17 @@ void describe("navigation operation", () => {
       model,
     });
     harnesses.push(harness);
+    assert.deepEqual(
+      suspended.map((operation) => operation.kind),
+      ["navigation"],
+    );
     const resumed = await harness.resume();
-    assert.equal(resumed?.kind, "finished");
-    if (resumed?.kind !== "finished") return;
-    assert.equal(resumed.operation, "navigation");
-    assert.equal(resumed.outcome.kind, "completed");
-    if (resumed.operation === "navigation" && resumed.outcome.kind === "completed") {
-      assert.equal(resumed.outcome.summaryEntry?.id, "summary-provisioned");
+    assert.equal(resumed.ok, true);
+    if (!resumed.ok) return;
+    assert.equal(resumed.value.operation, "navigation");
+    assert.equal(resumed.value.kind, "completed");
+    if (resumed.value.operation === "navigation" && resumed.value.kind === "completed") {
+      assert.equal(resumed.value.summaryEntry?.id, "summary-provisioned");
     }
     assert.equal(await session.getLeafId("main"), "summary-provisioned");
     const summaries = await summaryEntries(session);
@@ -558,8 +552,9 @@ void describe("navigation operation", () => {
     assert.equal(summaries[0]?.parentId, a1.id);
     assert.equal(stream.summaries.length, 1);
 
-    // Nothing is open any more: resume has nothing to pick up.
-    assert.equal(await harness.resume(), undefined);
+    const again = await harness.resume();
+    assert.equal(again.ok, false);
+    if (!again.ok) assert.ok(again.error instanceof NothingToResume);
   });
 
   void test("a crash after the summary landed settles without a second model call", async () => {
@@ -600,8 +595,8 @@ void describe("navigation operation", () => {
       throw new Error("the model must not be called again");
     });
     const resumed = await harness.resume();
-    assert.equal(resumed?.kind, "finished");
-    if (resumed?.kind === "finished") assert.equal(resumed.outcome.kind, "completed");
+    assert.equal(resumed.ok, true);
+    if (resumed.ok) assert.equal(resumed.value.kind, "completed");
     assert.equal(await session.getLeafId("main"), "summary-landed");
     assert.equal((await summaryEntries(session)).length, 1);
     assert.equal(
@@ -659,7 +654,7 @@ void describe("navigation operation", () => {
       throw new Error("the model must not be called again");
     });
     const resumed = await harness.resume();
-    assert.equal(resumed?.kind, "finished");
+    assert.equal(resumed.ok, true);
     assert.equal(
       (await session.findRecords({ type: "usage", runId: "nav-usage-landed" })).filter(
         (record) => record.cause === "branch_summary",
@@ -678,20 +673,21 @@ void describe("navigation operation", () => {
     const entered = stream.hold();
     const navigation = harness.navigate({ entryId: a1.id, summary: {} });
     await entered;
-    const submitted = await submit(harness, "u3");
-    assert.equal(submitted.disposition, "queued");
-    assert.equal((await pendingQueue(harness)).length, 1);
+    const submitted = await harness.submit("u3");
+    assert.equal(submitted.ok, true);
+    if (submitted.ok) assert.equal(submitted.value.disposition, "queued");
+    assert.equal((await harness.pendingQueue()).length, 1);
 
     stream.release();
-    completed(await navigation);
-    const summary = await latestSummary(session);
+    const result = completed(await navigation);
+    const summary = result.summaryEntry;
     assert.ok(summary);
 
     // The navigation woke the queued steer; it runs from the new leaf.
-    await waitForIdle(harness);
-    for (let attempt = 0; attempt < 50 && (await pendingQueue(harness)).length > 0; attempt++) {
+    await harness.waitForIdle();
+    for (let attempt = 0; attempt < 50 && (await harness.pendingQueue()).length > 0; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      await waitForIdle(harness);
+      await harness.waitForIdle();
     }
     const branch = await session.getBranch("main");
     assert.deepEqual(
@@ -700,6 +696,6 @@ void describe("navigation operation", () => {
     );
     assert.equal(userText(branch[3]), "u3");
     assert.equal(branch[3]?.parentId, summary.id);
-    assert.equal((await pendingQueue(harness)).length, 0);
+    assert.equal((await harness.pendingQueue()).length, 0);
   });
 });

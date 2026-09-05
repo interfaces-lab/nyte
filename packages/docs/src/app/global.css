@@ -3,78 +3,123 @@
 @import "fumadocs-ui/css/preset.css";
 
 /*
- * Native Fumadocs 16 theme for /docs. Surfaces, borders, and primary come from
- * fumadocs-ui/css/neutral.css — do not remap --color-fd-* here.
- *
- * Landing (/) keeps its own palette and page system below. Those tokens never
- * override Fumadocs chrome.
+ * One palette for the whole site. The Nyte scale is declared in @theme and
+ * .dark below; every Fumadocs --color-fd-* token is then remapped onto it, the
+ * way @vercel/geistdocs points fd tokens at the Geist scale. neutral.css is
+ * imported for its structure only. Its greys never reach the page.
  */
 
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-berkeley-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
 
-  --color-uji-paper: #fcfcfc;
-  --color-uji-surface: #f7f7f7;
-  --color-uji-elevated: #fcfcfc;
-  --color-uji-fill: #77777717;
-  --color-uji-selection: #7777772b;
-  --color-uji-rule: #14141426;
-  --color-uji-faint: #14141466;
-  --color-uji-muted: #14141499;
-  --color-uji-ink: #141414;
-  --color-uji-signal: #0c64c1;
-  --color-uji-signal-fill: #1084fe;
+  --color-nyte-paper: #fcfcfc;
+  --color-nyte-surface: #f7f7f7;
+  --color-nyte-elevated: #fcfcfc;
+  --color-nyte-fill: #77777717;
+  --color-nyte-selection: #7777772b;
+  --color-nyte-rule: #14141426;
+  --color-nyte-faint: #14141466;
+  --color-nyte-muted: #14141499;
+  --color-nyte-ink: #141414;
+  --color-nyte-signal: #0c64c1;
+  --color-nyte-signal-fill: #1084fe;
 
-  --color-cog-bg: #eeeeee;
-  --color-cog-menu: #dedede;
-  --color-cog-hover: #d0d0d0;
-  --color-cog-ink: #262626;
-  --color-cog-dim: #767676;
-  --color-cog-rule: #a5a5a533;
-  --color-cog-rule-tick: #a5a5a5;
-  --color-cog-accent: #2f64d2;
-  --color-cog-wash: #26262608;
-  --color-cog-mark: #26262614;
-  --color-cog-green: #378e23;
-  --color-cog-amber: #c3691e;
-  --color-cog-violet: #7d4bc6;
-  --color-cog-cyan: #0082aa;
-  --color-cog-gold: #a27612;
+  /* landing figures (scripts/diagrams/_canvas.py) paint with these */
+  --color-fig-accent: #0c64c1;
+  --color-fig-green: #378e23;
+  --color-fig-amber: #c3691e;
+  --color-fig-violet: #7d4bc6;
+  --color-fig-cyan: #0082aa;
+  --color-fig-gold: #a27612;
 
-  --cog-page: 1440px;
-  --cog-gutter: 20px;
-  --cog-section: 96px;
+  /*
+   * /hero-2. A fixed dark surface, no theme switch. Two signal colours only:
+   * intent (pending, not yet true) and result (landed, durable). Every other
+   * colour on the page is a tint of the ink.
+   */
+  --color-cut-bg: #090817;
+  --color-cut-panel: #0e0d1f;
+  --color-cut-raised: #14132a;
+  --color-cut-ink: #ecebe6;
+  --color-cut-dim: #8b8aa3;
+  --color-cut-faint: #55546b;
+  --color-cut-rule: #ecebe614;
+  --color-cut-rule-strong: #ecebe630;
+  --color-cut-result: #a3fead;
+  --color-cut-intent: #ed4da7;
+
+  --font-cut-serif: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-cut-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
 }
 
 .dark {
-  --color-uji-paper: #070707;
-  --color-uji-surface: #111111;
-  --color-uji-elevated: #181818;
-  --color-uji-fill: #7777772c;
-  --color-uji-selection: #77777752;
-  --color-uji-rule: #fcfcfc26;
-  --color-uji-faint: #fcfcfc66;
-  --color-uji-muted: #fcfcfc99;
-  --color-uji-ink: #fcfcfc;
-  --color-uji-signal: #80befe;
-  --color-uji-signal-fill: #1084fe;
+  --color-nyte-paper: #070707;
+  --color-nyte-surface: #111111;
+  --color-nyte-elevated: #181818;
+  --color-nyte-fill: #7777772c;
+  --color-nyte-selection: #77777752;
+  --color-nyte-rule: #fcfcfc26;
+  --color-nyte-faint: #fcfcfc66;
+  --color-nyte-muted: #fcfcfc99;
+  --color-nyte-ink: #fcfcfc;
+  --color-nyte-signal: #80befe;
+  --color-nyte-signal-fill: #1084fe;
 
-  --color-cog-bg: #141414;
-  --color-cog-menu: #242424;
-  --color-cog-hover: #2c2c2c;
-  --color-cog-ink: #e1e1e1;
-  --color-cog-dim: #6c6c6c;
-  --color-cog-rule: #58585899;
-  --color-cog-rule-tick: #585858;
-  --color-cog-accent: #7aa2f7;
-  --color-cog-wash: #e1e1e10a;
-  --color-cog-mark: #e1e1e114;
-  --color-cog-green: #9ece6a;
-  --color-cog-amber: #ff9e64;
-  --color-cog-violet: #bb9af7;
-  --color-cog-cyan: #7dcfff;
-  --color-cog-gold: #e0af68;
+  --color-fig-accent: #80befe;
+  --color-fig-green: #9ece6a;
+  --color-fig-amber: #ff9e64;
+  --color-fig-violet: #bb9af7;
+  --color-fig-cyan: #7dcfff;
+  --color-fig-gold: #e0af68;
+}
+
+/* ------------------------------------------------ fumadocs tokens --- */
+
+/*
+ * Fumadocs utilities (bg-fd-card, text-fd-muted-foreground, …) read these
+ * variables, so remapping them here restyles the docs chrome without touching
+ * the layout. Listed for :root and .dark together so the rule wins over
+ * neutral.css in both modes by source order at equal specificity.
+ */
+:root,
+.dark {
+  --color-fd-background: var(--color-nyte-paper);
+  --color-fd-foreground: var(--color-nyte-ink);
+  --color-fd-muted: var(--color-nyte-fill);
+  --color-fd-muted-foreground: var(--color-nyte-muted);
+  --color-fd-popover: var(--color-nyte-elevated);
+  --color-fd-popover-foreground: var(--color-nyte-ink);
+  --color-fd-card: var(--color-nyte-elevated);
+  --color-fd-card-foreground: var(--color-nyte-ink);
+  --color-fd-border: var(--color-nyte-rule);
+  --color-fd-primary: var(--color-nyte-ink);
+  --color-fd-primary-foreground: var(--color-nyte-paper);
+  --color-fd-secondary: var(--color-nyte-fill);
+  --color-fd-secondary-foreground: var(--color-nyte-ink);
+  --color-fd-accent: var(--color-nyte-selection);
+  --color-fd-accent-foreground: var(--color-nyte-ink);
+  --color-fd-ring: var(--color-nyte-signal);
+}
+
+/*
+ * neutral.css gives the dark sidebar its own muted, secondary, and
+ * muted-foreground values, so the sidebar drifted from the page. Pin every
+ * token the sidebar reads back to the shared scale and sit it on the surface
+ * tone, one step below the paper the page uses. The `.dark #nd-sidebar` form
+ * is needed to match the specificity of the rule it replaces.
+ */
+#nd-sidebar,
+.dark #nd-sidebar {
+  --color-fd-muted: var(--color-nyte-fill);
+  --color-fd-secondary: var(--color-nyte-fill);
+  --color-fd-muted-foreground: var(--color-nyte-muted);
+  --color-fd-accent: var(--color-nyte-selection);
+  --color-fd-accent-foreground: var(--color-nyte-ink);
+  --color-fd-primary-foreground: var(--color-nyte-surface);
+  color: var(--color-nyte-ink);
+  background-color: var(--color-nyte-surface);
+  border-color: var(--color-nyte-rule);
 }
 
 html {
@@ -100,7 +145,7 @@ html > body[data-scroll-locked] {
   font-family: var(--font-mono);
 }
 
-.uji-mono {
+.nyte-mono {
   font-family: var(--font-mono);
   font-variant-ligatures: none;
 }
@@ -149,215 +194,1090 @@ html > body[data-scroll-locked] {
   color: var(--color-fd-muted-foreground);
 }
 
-/* ------------------------------------------------------- landing page --- */
+/* ---------------------------------------------------------- site nav --- */
 
-.cog-page {
-  background-color: var(--color-cog-bg);
-  color: var(--color-cog-ink);
-  font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+/*
+ * The one navbar, from app/layout.tsx. Fumadocs reads --fd-banner-height as
+ * the offset for its sticky sidebar and TOC, so the bar's height is declared
+ * once here and the docs layout follows it.
+ */
+:root {
+  --fd-banner-height: 56px;
 }
 
-@media (min-width: 768px) {
-  .cog-page {
-    --cog-gutter: 64px;
-    --cog-section: 180px;
-  }
-}
-
-.cog-container {
-  margin-inline: auto;
-  width: 100%;
-  max-width: var(--cog-page);
-  padding-inline: var(--cog-gutter);
-}
-
-.cog-grid {
-  display: grid;
-  grid-template-columns: repeat(15, minmax(0, 1fr));
-  gap: 0;
-}
-
-.cog-line {
-  position: relative;
-  border-left: 1px solid var(--color-cog-rule);
-}
-
-.cog-line-end {
-  border-right: 1px solid var(--color-cog-rule);
-}
-
-.cog-line::before,
-.cog-line-end::after {
-  content: "";
-  position: absolute;
+.site-nav {
+  position: sticky;
   top: 0;
-  width: 1px;
-  height: 14px;
-  background-color: var(--color-cog-rule-tick);
+  z-index: 40;
+  height: var(--fd-banner-height);
+  background-color: color-mix(in srgb, var(--color-fd-background) 80%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.cog-line::before {
-  left: -1px;
-}
-
-.cog-line-end::after {
-  right: -1px;
-}
-
-.cog-subgrid {
+.site-nav-inner {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 0;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 100%;
+  width: 100%;
+  max-width: 96rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.site-nav-brand {
+  justify-self: start;
+  color: var(--color-fd-foreground);
+  transition: opacity 150ms;
+}
+
+.site-nav-brand:hover {
+  opacity: 0.6;
+}
+
+.site-nav-links {
+  display: flex;
+  gap: 4px;
+}
+
+.site-nav-links a {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--color-fd-muted-foreground);
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.site-nav-links a:hover {
+  color: var(--color-fd-accent-foreground);
+  background-color: var(--color-fd-accent);
+}
+
+.site-nav-links a[aria-current="page"] {
+  color: var(--color-fd-primary);
+}
+
+.site-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: end;
+}
+
+/* Fumadocs' full search trigger is sidebar-shaped; here it is a pill. */
+.site-nav .site-nav-search {
+  width: auto;
+  height: 32px;
+  border-radius: 9999px;
+  padding-inline: 12px 6px;
+  gap: 8px;
+}
+
+.site-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: var(--color-fd-muted-foreground);
+  transition:
+    color 150ms,
+    background-color 150ms;
+}
+
+.site-nav-icon:hover {
+  color: var(--color-fd-accent-foreground);
+  background-color: var(--color-fd-accent);
 }
 
 @media (max-width: 767px) {
-  .cog-line:not(.cog-line-edge) {
-    border-left-color: transparent;
-  }
-
-  .cog-line:not(.cog-line-edge)::before {
+  .site-nav-links,
+  .site-nav .site-nav-search {
     display: none;
   }
 }
 
-.cog-display {
-  font-size: clamp(1.75rem, 1.1rem + 2.2vw, 2.25rem);
-  line-height: 1.1;
+/* ------------------------------------------------------- landing page --- */
+
+/*
+ * The landing runs on Fumadocs' neutral palette with one accent, the brand
+ * signal. Inter is used throughout, except for the monospace terminal demo.
+ *
+ * Screenshot palettes below are the hosts' own tokens
+ * (packages/desktop theme/tokens.css, packages/tui theme.ts) and do not
+ * follow the site theme where the host has none: the terminal is always dark.
+ */
+.landing {
+  --app-chrome: #ebebed;
+  --app-sidebar: #f3f3f3;
+  --app-editor: #fcfcfc;
+  --app-base: #f4f4f5;
+  --app-ink: #141414;
+  --app-fail: #c21d2e;
+  --app-add: #00804a;
+  --app-rem: #c21d2e;
+
+  --tui-bg: #0a0a0a;
+  --tui-terminal: #171717;
+  --tui-fg: #fafafa;
+  --tui-dim: #737373;
+  --tui-muted: #525252;
+  --tui-user-bg: #1d1d1d;
+  --tui-thinking: #9d6afb;
+  --tui-ok: #07c480;
+  --tui-error: #ff2e3f;
+  --tui-running: #08c0ef;
+  --tui-accent: #009fff;
+  --tui-path: #ffa359;
+  --tui-code: #ff678d;
+  --tui-prompt-border: #2c2c2c;
+  --tui-diff-add: #273628;
+  --tui-diff-del: #402725;
+
+  background-color: var(--color-fd-background);
+  color: var(--color-fd-foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.landing :where(code, pre, kbd, samp) {
+  font-family: var(--font-sans);
+}
+
+.dark .landing {
+  --app-chrome: #111111;
+  --app-sidebar: #141414;
+  --app-editor: #141414;
+  --app-base: #131417;
+  --app-ink: #fcfcfc;
+  --app-fail: #ff5667;
+  --app-add: #38d591;
+  --app-rem: #ff5667;
+}
+
+.site-container {
+  width: 100%;
+  max-width: 96rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.section {
+  padding-block: 64px;
+}
+
+.section + .section {
+  padding-top: 0;
+}
+
+@media (min-width: 768px) {
+  .section {
+    padding-block: 96px;
+  }
+}
+
+.t-display {
+  margin: 0;
+  max-width: 22ch;
+  font-size: clamp(32px, 1.5rem + 1.5vw, 48px);
+  line-height: 1.12;
   font-weight: 400;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.024em;
   text-wrap: balance;
 }
 
-.cog-heading {
-  font-size: 1.25rem;
-  line-height: 1.3;
+.t-section {
+  margin: 0 0 12px;
+  font-size: 24px;
+  line-height: 1.25;
   font-weight: 400;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.022em;
 }
 
-.cog-ui {
-  font-size: 0.9375rem;
-  line-height: 1.3;
-  font-weight: 400;
+.t-prose {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.65;
 }
 
-.cog-prose {
-  font-family: var(--font-newsreader), Georgia, serif;
-  font-size: 0.9375rem;
-  line-height: 1.5;
-}
-
-.cog-copy > p + p {
-  margin-top: 1.5rem;
-}
-
-.cog-num {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  line-height: 1.5;
-  letter-spacing: 0.04em;
-  color: var(--color-cog-dim);
+.t-label {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-fd-muted-foreground);
+  font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
 
-.cog-mono {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+.t-code {
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-variant-ligatures: none;
 }
 
-.cog-cite {
-  background-color: var(--color-cog-mark);
+.cite {
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
-  box-decoration-break: clone;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   transition: color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.cog-cite:hover {
-  color: var(--color-cog-accent);
+.cite:hover {
+  color: var(--color-nyte-signal);
 }
 
-.cog-btn {
+/* square, 1px, no radius */
+.btn,
+.btn-solid {
   display: inline-flex;
   align-items: center;
+  height: 34px;
+  padding: 0 0.75rem;
   border: 1px solid currentColor;
-  padding: 0.25rem 0.5rem 0.3125rem;
+  font-size: 0.9375rem;
+  line-height: 1.3;
   user-select: none;
   transition:
     background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
     color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.cog-btn:hover {
-  background-color: var(--color-cog-ink);
-  color: var(--color-cog-bg);
+.btn:hover {
+  background-color: var(--color-fd-foreground);
+  color: var(--color-fd-background);
 }
 
-.cog-btn-solid {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--color-cog-ink);
-  background-color: var(--color-cog-ink);
-  color: var(--color-cog-bg);
-  padding: 0.25rem 0.625rem 0.3125rem;
-  transition:
-    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+.btn-solid {
+  border-color: var(--color-fd-foreground);
+  background-color: var(--color-fd-foreground);
+  color: var(--color-fd-background);
 }
 
-.cog-btn-solid:hover {
+.btn-solid:hover {
   background-color: transparent;
-  color: var(--color-cog-ink);
+  color: var(--color-fd-foreground);
 }
 
-.cog-page :focus-visible {
-  outline: 2px solid var(--color-cog-accent);
+.landing :focus-visible {
+  outline: 2px solid var(--color-nyte-signal);
   outline-offset: 2px;
 }
 
-@media (min-width: 768px) {
-  .cog-bleed-left {
-    margin-left: -25%;
-    width: 125%;
+/* 01 */
+.hero {
+  display: grid;
+  gap: 24px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 02: two hosts, one run. Same height, same timeline. */
+.twin {
+  display: grid;
+  gap: 8px;
+}
+
+@media (min-width: 900px) {
+  .twin {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-.cog-rail {
-  display: flex;
-  gap: 0;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
+.host {
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  height: clamp(400px, 34vw, 480px);
+  border: 1px solid var(--color-fd-border);
 }
 
-.cog-rail::-webkit-scrollbar {
+@media (max-width: 899px) {
+  .host {
+    height: 440px;
+  }
+}
+
+.twin-cap {
+  margin: 12px 0 0;
+  max-width: 62ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-fd-muted-foreground);
+}
+
+.lights {
+  display: flex;
+  gap: 8px;
+  margin-right: 6px;
+}
+
+.lights i {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+/* desktop client */
+.shot {
+  background-color: var(--app-base);
+  color: var(--app-ink);
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: -0.08px;
+}
+
+.shot svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.app-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 35px;
+  padding-inline: 12px;
+  background-color: var(--app-chrome);
+  border-bottom: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+}
+
+.app-titlebar .lights i {
+  background-color: color-mix(in srgb, var(--app-ink) 14%, transparent);
+}
+
+.app-titlebar .t {
+  flex: 1;
+  text-align: center;
+}
+
+/*
+ * sidebar.stylex.ts + theme/tokens.css:
+ * width 220 · compact row 28 · gutter 8 · row padding-inline 4 · row gap 6
+ * icon slot 20 · trailing 44 · list gap 1 · nav radius-lg 8 · row radius-base 6
+ * text secondary 74% · tertiary 60% · icon tertiary 52% · ghost-selected 7%
+ */
+.app-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  height: calc(100% - 35px);
+}
+
+.app-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+  background-color: var(--app-sidebar);
+  border-right: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
+}
+
+.app-sidebar .primary,
+.app-sidebar .scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.app-sidebar .primary {
+  padding-block-start: 6px;
+}
+
+.app-sidebar .nav,
+.app-sidebar .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding-inline: 4px;
+  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+}
+
+.app-sidebar .nav {
+  border-radius: 8px;
+}
+
+.app-sidebar .row {
+  border-radius: 6px;
+}
+
+.app-sidebar .ic {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+}
+
+.app-sidebar .nav .ic {
+  color: inherit;
+}
+
+.app-sidebar .l {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-sidebar .tr {
+  min-width: 44px;
+  text-align: right;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-sidebar .row.on {
+  background-color: color-mix(in srgb, var(--app-ink) 7%, transparent);
+  color: var(--app-ink);
+}
+
+/* sectionHeader: 28 tall, tertiary, base size; chevron hidden until hover */
+.app-sidebar .sh {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-inline-start: 4px;
+  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+}
+
+/* components/ui.tsx StatusDot: 8px, fill accent, 1.6s ease-in-out pulse */
+.app-sidebar .dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #1084fe;
+  animation: status-working 1.6s ease-in-out infinite;
+}
+
+@keyframes status-working {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.app-sidebar .sp {
+  flex: 1;
+}
+
+.app-sidebar .gear {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+}
+
+/* the desktop thickens Central Icons to 1.875 units (theme/global.css) */
+.shot [data-nyte-icon] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.shot [data-nyte-icon] svg [stroke]:not([stroke="none"]) {
+  stroke-width: 1.875;
+}
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* both transcripts scroll and are pinned to the newest row, like the hosts */
+.tx,
+.term-tx {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.tx::-webkit-scrollbar,
+.term-tx::-webkit-scrollbar {
   display: none;
 }
 
-.cog-rail-card {
-  flex: 0 0 83.333%;
-  scroll-snap-align: start;
-  margin-right: 0.5rem;
+.tx > *,
+.term-tx > * {
+  flex-shrink: 0;
 }
 
-@media (min-width: 768px) {
-  .cog-rail-card {
-    flex: 0 0 calc(4 / 15 * 100%);
+.tx {
+  width: 100%;
+  padding: 16px 16px 8px;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 22px;
+  letter-spacing: -0.15px;
+  min-width: 0;
+}
+
+.tx p {
+  margin: 0;
+}
+
+.tx code {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 1.5px 2px;
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--app-ink) 8%, transparent);
+  font-variant-ligatures: none;
+}
+
+.ucard {
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border: 1px solid color-mix(in srgb, var(--app-ink) 12%, transparent);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--app-editor) 90%, var(--app-sidebar));
+}
+
+.ln {
+  display: flex;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ln .v {
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+}
+
+.ln .d {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+}
+
+.ln .st {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ln .chev {
+  display: inline-flex;
+  align-items: center;
+  width: 16px;
+  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+}
+
+.ln[data-state="failed"] .v,
+.ln[data-state="failed"] .d {
+  color: var(--app-fail);
+}
+
+.add {
+  color: var(--app-add);
+}
+
+.rem {
+  color: var(--app-rem);
+}
+
+/* running verbs shimmer (conversation/styles.stylex.ts activityStyles.shimmer) */
+.ln[data-state="running"] .v {
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--app-ink) 45%, transparent) 0%,
+    color-mix(in srgb, var(--app-ink) 45%, transparent) 28%,
+    var(--app-ink) 58%,
+    color-mix(in srgb, var(--app-ink) 45%, transparent) 76%,
+    color-mix(in srgb, var(--app-ink) 45%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: activity-shine 2.4s linear infinite;
+}
+
+@keyframes activity-shine {
+  from {
+    background-position: 100% 0;
   }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.meta {
+  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+}
+
+/* composer: 28px round controls, plus at 17, arrow-up at 15 (composer.tsx) */
+.composer {
+  width: 100%;
+  padding: 8px 16px 14px;
+}
+
+.composer .frame {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 5px 8px 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
+  border-radius: 9999px;
+  background-color: var(--app-editor);
+  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  font-size: 14px;
+}
+
+.composer .frame .ph {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer .frame i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--app-ink) 4%, transparent);
+  color: color-mix(in srgb, var(--app-ink) 66%, transparent);
+}
+
+.composer .frame i.send {
+  background-color: var(--app-ink);
+  color: var(--app-editor);
+}
+
+@media (max-width: 1100px) {
+  .app-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+}
+
+/* terminal client */
+.term {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--tui-bg);
+  color: var(--tui-fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  font-variant-ligatures: none;
+}
+
+.term-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 35px;
+  padding-inline: 12px;
+  background-color: var(--tui-terminal);
+  border-bottom: 1px solid #222;
+  color: var(--tui-dim);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.term-titlebar .lights i {
+  background-color: #333;
+}
+
+.term-titlebar .t {
+  flex: 1;
+  text-align: center;
+}
+
+.term-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 1lh 1ch 0;
+}
+
+.term .u {
+  padding: 1lh 3ch;
+  margin-inline: 1ch;
+  margin-bottom: 1lh;
+  background-color: var(--tui-user-bg);
+  color: #d4d4d4;
+  white-space: pre-wrap;
+}
+
+.term .row {
+  display: flex;
+  padding-inline: 2ch 1ch;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.term .g {
+  flex-shrink: 0;
+  width: 2ch;
+}
+
+.term .row .n {
+  color: var(--tui-fg);
+}
+
+.term .row .s {
+  color: var(--tui-dim);
+}
+
+.term .row[data-state="running"] .g {
+  color: var(--tui-running);
+}
+
+.term .row[data-state="done"] .g {
+  color: var(--tui-ok);
+}
+
+.term .row[data-state="failed"] .g,
+.term .row[data-state="failed"] .s {
+  color: var(--tui-error);
+}
+
+.term .row.think .g,
+.term .row.think .n {
+  color: var(--tui-thinking);
+}
+
+.term .diff {
+  margin: 0 1ch 1lh 4ch;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.term .diff .del {
+  background-color: var(--tui-diff-del);
+}
+
+.term .diff .ins {
+  background-color: var(--tui-diff-add);
+}
+
+.term .diff .ln-no {
+  display: inline-block;
+  width: 4ch;
+  color: var(--tui-muted);
+}
+
+.term .ans {
+  margin-top: 1lh;
+  padding-inline: 2ch 1ch;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.term .ans code {
+  font: inherit;
+  color: var(--tui-code);
+}
+
+.term .act {
+  display: flex;
+  margin-top: 1lh;
+  padding-inline: 2ch 1ch;
+  color: var(--tui-dim);
+}
+
+.term .act[data-state="working"] .g {
+  color: var(--tui-running);
+}
+
+.term .act[data-state="thinking"] {
+  color: var(--tui-thinking);
+}
+
+/* composer frame: prompt border #2c2c2c, status labels ride the bottom rule */
+.term-composer {
+  position: relative;
+  margin: 1lh 1ch 0;
+  padding: 0.5lh 1.5ch;
+  border: 1px solid var(--tui-prompt-border);
+  border-radius: 0.5ch / 0.25lh;
+  color: var(--tui-dim);
+}
+
+.term-composer .p {
+  margin-right: 1ch;
+  color: #d4d4d4;
+}
+
+.term-status {
+  position: absolute;
+  left: 1.5ch;
+  bottom: -0.5lh;
+  max-width: calc(100% - 3ch);
+  overflow: hidden;
+  display: flex;
+  padding-inline: 1ch;
+  background-color: var(--tui-bg);
+  white-space: pre;
+}
+
+.term-status .sep {
+  color: var(--tui-prompt-border);
+}
+
+.term-status .ws {
+  color: var(--tui-path);
+}
+
+.term-status .model {
+  color: var(--tui-accent);
+}
+
+.term-status .lvl {
+  color: var(--tui-thinking);
+}
+
+.term-hints {
+  margin-top: 0.5lh;
+  padding-inline: 2ch;
+  color: var(--tui-dim);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.term-hints b {
+  font-weight: 400;
+  color: var(--tui-fg);
+}
+
+.term :where(code, pre, kbd, samp) {
+  font-family: inherit;
+}
+
+/* 03: the package wall — a small generated figure beside a name and a role */
+.two {
+  display: grid;
+  gap: 24px 64px;
+}
+
+@media (min-width: 900px) {
+  .two {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    align-items: start;
+  }
+}
+
+.wall {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-fd-border);
+  background-color: var(--color-fd-popover);
+}
+
+@media (min-width: 640px) {
+  .wall {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wall li {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 18px 22px;
+  outline: 1px solid var(--color-fd-border);
+  outline-offset: -0.5px;
+}
+
+/* Transparent technical assemblies sit directly beside the package descriptions. */
+.wall .fig {
+  width: 112px;
+  aspect-ratio: 180 / 156;
+  color: var(--color-fig-accent);
+}
+
+.wall .fig svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wall .n {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.wall .role {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-fd-muted-foreground);
+  text-wrap: pretty;
+}
+
+/* 04 */
+.three {
+  max-width: 62ch;
+}
+
+.three .t-prose {
+  margin-bottom: 24px;
+}
+
+/* footer */
+.foot {
+  border-top: 1px solid var(--color-fd-border);
+  padding-block: 40px;
+  color: var(--color-fd-muted-foreground);
+}
+
+.foot-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px 48px;
+  align-items: flex-start;
+}
+
+.foot-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-variant-ligatures: none;
+}
+
+.foot-col h2 {
+  margin: 0 0 4px;
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--color-fd-foreground);
+}
+
+.foot-col a {
+  transition: color 150ms;
+}
+
+.foot-col a:hover {
+  color: var(--color-fd-foreground);
+}
+
+.foot-brand {
+  margin-left: auto;
+  color: var(--color-fd-foreground);
+}
+
+/* ------------------------------------------------------------ /hero-2 --- */
+
+.cut-page {
+  background-color: var(--color-cut-bg);
+  color: var(--color-cut-ink);
+  font-family: var(--font-cut-sans);
+  color-scheme: dark;
+}
+
+/*
+ * The display face is the serif, run at its largest optical size so the
+ * descenders and the italic get room. Hierarchy comes from the change of
+ * face, not from weight; nothing on the page is bolder than 500.
+ */
+.cut-display {
+  font-family: var(--font-cut-serif);
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 72;
+  font-size: clamp(2.5rem, 1.4rem + 4.2vw, 4.75rem);
+  line-height: 1.02;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.cut-title {
+  font-family: var(--font-cut-serif);
+  font-variation-settings: "opsz" 36;
+  font-size: clamp(1.625rem, 1.2rem + 1.4vw, 2.25rem);
+  line-height: 1.12;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.cut-mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.cut-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.cut-page :focus-visible {
+  outline: 2px solid var(--color-cut-result);
+  outline-offset: 3px;
+}
+
+.cut-page ::selection {
+  background-color: var(--color-cut-intent);
+  color: var(--color-cut-bg);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cog-rail {
-    scroll-behavior: auto;
+  .cite,
+  .btn,
+  .btn-solid {
+    transition: none;
   }
 
-  .cog-cite,
-  .cog-btn,
-  .cog-btn-solid {
-    transition: none;
+  .ln[data-state="running"] .v {
+    animation: none;
   }
 }

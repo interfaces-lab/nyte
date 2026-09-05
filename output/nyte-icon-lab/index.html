@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4f1">
+  <title>Nyte · Cloud studies</title>
+  <style>
+    :root { color-scheme: light; --paper:#f5f4f1; --ink:#252729; --muted:#737773; --line:#dedfda; --card:#fbfaf8; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
+    button,input,select { font:inherit; }
+    button { cursor:pointer; color:inherit; }
+    button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible { outline:2px solid #555; outline-offset:4px; }
+    button { border:0; background:none; }
+    header { max-width:1480px; margin:auto; padding:28px 40px 23px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); }
+    .brand { font-size:25px; font-weight:650; letter-spacing:-1.2px; }
+    .brand span { font-size:13px; font-weight:400; color:var(--muted); letter-spacing:0; margin-left:19px; }
+    .tag { color:var(--muted); font:11px/1.5 ui-monospace,monospace; letter-spacing:1px; }
+    main { max-width:1480px; margin:auto; padding:32px 40px 50px; }
+    .intro { display:flex; align-items:end; justify-content:space-between; margin-bottom:28px; gap:24px; }
+    h1 { margin:0 0 5px; font-size:32px; font-weight:550; letter-spacing:-1.3px; }
+    p { margin:0; color:var(--muted); }
+    .workbench { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:28px; align-items:start; }
+    .wordmark-card { margin-bottom:14px; }
+    .wordmark-card svg { display:block;width:100%;height:auto; }
+    .wordmark-caption { display:flex;justify-content:space-between;align-items:center;padding:10px 2px;font-size:12px; }
+    .wordmark-caption button { min-height:36px;padding:6px 12px;border:1px solid var(--line);border-radius:7px; }
+    .wordmark-controls { display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;padding:18px;background:var(--card);border:1px solid var(--line);border-radius:12px; }
+    .wordmark-controls label { display:block;margin-bottom:6px; }
+    .gallery { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    [hidden] { display:none !important; }
+    .collections { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+    .collections button { min-height:44px; padding:8px 14px; border:1px solid var(--line); border-radius:8px; font-size:12px; }
+    .collections button[aria-pressed="true"] { background:#303731; color:white; border-color:#303731; }
+    .study { padding:18px 15px 15px; min-width:0; border-radius:14px; text-align:left; border:1px solid transparent; background:#eaeae5; position:relative; }
+    .study[aria-pressed="true"] { border-color:#777e76; background:#fdfcf9; box-shadow:0 0 0 2px #777e7614; }
+    .study svg { display:block; width:min(100%,195px); height:auto; margin:0 auto 12px; }
+    .study-label { display:flex; gap:10px; align-items:baseline; }
+    .study-label span { font-size:10px; color:var(--muted); font-family:ui-monospace,monospace; }
+    .study-label strong { font-weight:550; font-size:13px; }
+    .study .dot { position:absolute; top:11px; right:12px; width:5px; height:5px; background:#555e52; border-radius:50%; opacity:0; }
+    .study[aria-pressed="true"] .dot { opacity:1; }
+    .stage { margin-top:20px; border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#e8e9e6; }
+    .stage-top { padding:15px 19px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .eyebrow { font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--muted); }
+    .segmented { display:flex; border:1px solid #bfc2bc; border-radius:8px; padding:2px; }
+    .segmented button { min-height:32px; padding:3px 11px; font-size:11px; border-radius:5px; }
+    .segmented button[aria-pressed="true"] { background:#fff; box-shadow:0 1px 2px #0000000d; }
+    .preview-body { padding:12px 26px 26px; display:flex; align-items:center; justify-content:center; gap:45px; min-height:330px; }
+    #hero { width:285px; flex-shrink:0; }
+    #hero svg { width:100%; height:auto; display:block; }
+    .size-list { display:flex; gap:20px; align-items:end; flex-wrap:wrap; max-width:280px; }
+    .size-sample { display:flex; align-items:center; flex-direction:column; gap:12px; }
+    .size-sample span { color:#737773; font:10px ui-monospace,monospace; }
+    .size-sample svg { display:block; }
+    .stage[data-bg="dark"] { background:#202123; border-color:#202123; }
+    .stage[data-bg="dark"] .eyebrow,.stage[data-bg="dark"] .size-sample span { color:#b9bdb6; }
+    .stage[data-bg="dark"] .segmented { background:#353638; color:#ddd; border-color:#555; }
+    .stage[data-bg="dark"] .segmented button[aria-pressed="true"] { background:#666; }
+    .stage[data-bg="wallpaper"] { background:linear-gradient(145deg,#d4dce4 0%,#a5b2b4 50%,#7c918b 100%); }
+    aside { border:1px solid var(--line); background:var(--card); border-radius:15px; overflow:hidden; }
+    .inspector-head { padding:21px 22px 18px; border-bottom:1px solid var(--line); }
+    h2 { margin:4px 0 5px; font-size:21px; letter-spacing:-.6px; font-weight:550; }
+    #note { font-size:12px; min-height:36px; }
+    .controls { padding:18px 22px; }
+    .control { margin-bottom:17px; }
+    .control-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; gap:10px; }
+    label,.control-title { font-size:12px; }
+    output { font:11px ui-monospace,monospace; color:var(--muted); font-variant-numeric:tabular-nums; }
+    input[type="range"] { width:100%; margin:0; height:24px; accent-color:#535c54; cursor:pointer; }
+    select { width:100%; min-height:39px; padding:6px 9px; background:#f3f3ef; border:1px solid var(--line); border-radius:6px; font-size:13px; color:var(--ink); }
+    .palettes { display:flex; gap:7px; flex-wrap:wrap; }
+    .swatch { width:48px; height:44px; border:1px solid transparent; border-radius:8px; padding:5px; }
+    .swatch[aria-pressed="true"] { border-color:#787f76; }
+    .swatch i { display:block; width:100%; height:100%; border-radius:4px; border:1px solid #0000000d; }
+    .palette-label { font-size:11px; color:var(--muted); margin-top:6px; }
+    .divider { height:1px; background:var(--line); margin:18px 0; }
+    .export { display:grid; gap:8px; }
+    .primary,.secondary { min-height:42px; border-radius:7px; font-size:12px; font-weight:500; }
+    .primary { background:#303731; color:#fff; }
+    .secondary { background:#edeee8; border:1px solid #dedfd8; }
+    .reset { width:100%; min-height:38px; margin-top:7px; color:var(--muted); font-size:11px; }
+    #status { min-height:32px; font-size:11px; padding-top:10px; }
+    footer { padding-top:18px; display:flex; justify-content:space-between; gap:16px; font-size:11px; color:var(--muted); }
+    footer a { color:inherit; text-underline-offset:3px; }
+    @media(hover:hover) { .study:hover { background:#f8f7f3; } .primary:hover { background:#424c44; } .secondary:hover { background:#e2e5dc; } }
+    @media(min-width:1450px) { .study svg { width:205px; } }
+    @media(max-width:1050px) { header { padding:22px 24px; } main { padding:28px 24px; } .workbench { gap:18px; grid-template-columns:minmax(0,1fr) 270px; } .preview-body { gap:20px; } #hero { width:210px; } .size-list { gap:12px; } .study { padding:16px 10px 12px; } }
+    @media(max-width:800px) { .workbench { grid-template-columns:1fr; } .controls { display:grid; grid-template-columns:1fr 1fr; column-gap:26px; } .controls .divider { display:none; } .export,#status,.reset { grid-column:1/-1; } .preview-body { min-height:310px; } #hero { width:240px; } .tag { display:none; } }
+    @media(max-width:480px) { header { padding:18px; } main { padding:24px 16px; } h1 { font-size:28px; } .intro { align-items:start; } .intro>p { display:none; } .gallery { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } .study svg { width:155px; } .preview-body { flex-direction:column; gap:20px; padding:15px; } .size-list { flex-wrap:nowrap; max-width:none; align-items:end; } .size-sample svg { max-width:90px; height:auto; } .controls { display:block; } footer { flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <header><div class="brand">nyte<span>Icon studio</span></div><div class="tag">CLOUD STUDIES / 01</div></header>
+  <main>
+    <div class="intro"><div><h1>A little closer to the cloud.</h1><p>Explore the crop, shape an N, or put it into print.</p></div><p class="eyebrow">A little cloud play</p></div>
+    <div class="workbench">
+      <section aria-label="Icon studies and preview">
+        <div class="collections" aria-label="Study collection"><button data-family="cloud" aria-pressed="true">Cloud studies · 6</button><button data-family="letter" aria-pressed="false">N explorations · 3</button><button data-family="print" aria-pressed="false">Print studies · 5</button><button data-family="composition" aria-pressed="false">Cloud compositions · 6</button><button data-family="play" aria-pressed="false">Cloud play · 4</button><button data-family="diagonal" aria-pressed="false">Diagonal light · 6</button><button data-family="more" aria-pressed="false">Further out · 8</button><button data-family="moon" aria-pressed="false">Moon + cloud · 4</button><button data-family="moonplay" aria-pressed="false">Moon play · 8</button></div>
+        <div class="collections" aria-label="Preview mode"><button id="icon-view" aria-pressed="true">Icon editor</button><button id="wordmark-view" aria-pressed="false">Icon + nyte</button></div>
+        <section id="wordmark-panel" aria-label="Nyte wordmark pairings" hidden>
+          <div class="wordmark-controls">
+            <div><label for="word-weight">Letter weight <output id="word-weight-out">13</output></label><input id="word-weight" type="range" min="8" max="19" value="13"></div>
+            <div><label for="word-spacing">Letter spacing <output id="word-spacing-out">4</output></label><input id="word-spacing" type="range" min="0" max="16" value="4"></div>
+            <div><label for="word-gap">Icon spacing <output id="word-gap-out">22</output></label><input id="word-gap" type="range" min="10" max="48" value="22"></div>
+            <div><label for="word-surface">Background</label><select id="word-surface"><option value="dark">Navy</option><option value="light">Paper</option></select></div>
+          </div>
+          <div id="wordmark-previews"></div>
+        </section>
+        <div class="gallery" id="gallery"></div>
+        <div class="stage" id="stage" data-bg="light">
+          <div class="stage-top"><span class="eyebrow">Actual-size check</span><div class="segmented" aria-label="Preview background"><button data-bg="light" aria-pressed="true">Light</button><button data-bg="dark" aria-pressed="false">Dark</button><button data-bg="wallpaper" aria-pressed="false">Wallpaper</button></div></div>
+          <div class="preview-body"><div id="hero"></div><div class="size-list" id="sizes"></div></div>
+        </div>
+        <footer><span>Edits save in this browser. SVG and PNG use the same artwork.</span><a href="../imagegen/nyte-playful-cloud-grid.png" target="_blank" rel="noopener">Original cloud sheet ↗</a></footer>
+      </section>
+      <aside aria-label="Icon settings">
+        <div class="inspector-head"><div class="eyebrow" id="study-number">Study 01</div><h2 id="study-name">Soft cut</h2><p id="note">The starting point. Two broad peaks.</p></div>
+        <div class="controls">
+          <div class="control"><div class="control-head"><span class="control-title">Palette</span></div><div id="palettes" class="palettes" aria-label="Palette"></div><div id="palette-label" class="palette-label"></div></div>
+          <div class="control"><div class="control-head"><label for="shape">Cloud contour</label></div><select id="shape"><option value="valley">Two peaks</option><option value="round">Rounded valley</option><option value="billow">Soft billows</option><option value="wide">Wide shoulder</option><option value="stamp">Cloud stamp</option><option value="arches">Separated arches</option><option value="banks">Cloud layers</option><option value="play">Playful puffs</option></select></div>
+          <div class="control"><div class="control-head"><label for="letter">N treatment</label></div><select id="letter"><option value="none">Cloud only</option><option value="cloud">Cloud becomes N</option><option value="slanted">Slanted cloud N</option><option value="cut">N cutout</option><option value="inset">Inset signature</option></select></div>
+          <div class="control"><div class="control-head"><label for="footprint">Icon footprint</label><output id="footprint-out" for="footprint"></output></div><input id="footprint" type="range" min="75" max="100" step="1"></div>
+          <div class="control"><div class="control-head"><label for="elevation">Surface elevation</label><output id="elevation-out" for="elevation"></output></div><input id="elevation" type="range" min="0" max="24" step="1"></div>
+          <div class="control"><div class="control-head"><label for="moon">Moon element</label></div><select id="moon"><option value="none">No moon</option><option value="crescent">Crescent</option><option value="full">Full moon</option></select></div>
+          <div id="moon-controls"><div class="control"><div class="control-head"><label for="moonSize">Moon radius</label><output id="moonSize-out" for="moonSize"></output></div><input id="moonSize" type="range" min="20" max="140" step="1"></div><div class="control"><div class="control-head"><label for="moonX">Moon horizontal</label><output id="moonX-out" for="moonX"></output></div><input id="moonX" type="range" min="40" max="472" step="1"></div><div class="control"><div class="control-head"><label for="moonY">Moon vertical</label><output id="moonY-out" for="moonY"></output></div><input id="moonY" type="range" min="40" max="472" step="1"></div><div class="control"><div class="control-head"><label for="moonTurn">Moon rotation</label><output id="moonTurn-out" for="moonTurn"></output></div><input id="moonTurn" type="range" min="-180" max="180" step="1"></div></div>
+          <div class="control" id="puff-control"><div class="control-head"><label for="puff">Puffiness</label><output id="puff-out" for="puff"></output></div><input id="puff" type="range" min="0" max="100" step="1"></div>
+          <div class="control"><div class="control-head"><label for="tilt">Cloud tilt</label><output id="tilt-out" for="tilt"></output></div><input id="tilt" type="range" min="-180" max="180" step="1"></div>
+          <div class="control"><div class="control-head"><label for="squash">Squish & stretch</label><output id="squash-out" for="squash"></output></div><input id="squash" type="range" min="55" max="140" step="1"></div>
+          <button type="button" id="surprise" class="secondary" style="width:100%;margin-bottom:22px">Surprise me ↗</button>
+          <div class="control" id="slant-control" hidden><div class="control-head"><label for="slant">N slant</label><output for="slant" id="slant-out"></output></div><input id="slant" type="range" min="-45" max="0" step="1"></div>
+          <div class="control"><div class="control-head"><label for="finish">Finish</label></div><select id="finish"><option value="smooth">Soft matte</option><option value="press">Halftone print</option></select></div>
+          <div class="control print-control" hidden><div class="control-head"><label for="halftone">Halftone ink</label><output for="halftone" id="halftone-out"></output></div><input id="halftone" type="range" min="0" max="100" step="1"></div>
+          <div class="control print-control" hidden><div class="control-head"><label for="registration">Ink offset</label><output for="registration" id="registration-out"></output></div><input id="registration" type="range" min="0" max="12" step="1"></div>
+          <div class="control print-control" hidden><div class="control-head"><label for="wear">Print wear</label><output for="wear" id="wear-out"></output></div><input id="wear" type="range" min="0" max="80" step="1"></div>
+          <div class="control"><div class="control-head"><label for="scale">Zoom</label><output for="scale" id="scale-out"></output></div><input id="scale" type="range" min="85" max="145" step="1"></div>
+          <div class="control"><div class="control-head"><label for="crop">Vertical crop</label><output for="crop" id="crop-out"></output></div><input id="crop" type="range" min="-85" max="110" step="1"></div>
+          <div class="control"><div class="control-head"><label for="offset">Horizontal crop</label><output for="offset" id="offset-out"></output></div><input id="offset" type="range" min="-130" max="130" step="1"></div>
+          <div class="divider"></div>
+          <div class="control"><div class="control-head"><label for="blend">Color shading</label><output for="blend" id="blend-out"></output></div><input id="blend" type="range" min="0" max="100" step="1"></div>
+          <div class="control"><div class="control-head"><label for="grain">Grain</label><output for="grain" id="grain-out"></output></div><input id="grain" type="range" min="0" max="8" step=".5"></div>
+          <div class="control"><div class="control-head"><label for="depth">Edge shadow</label><output for="depth" id="depth-out"></output></div><input id="depth" type="range" min="0" max="40" step="1"></div>
+          <div class="control"><div class="control-head"><label for="lighting">Lighting style</label></div><select id="lighting"><option value="print">Original print shadow</option><option value="directional">Follow the light</option></select></div>
+          <div class="control" id="softness-control"><div class="control-head"><label for="softness">Light softness</label><output id="softness-out" for="softness"></output></div><input id="softness" type="range" min="0" max="100" step="1"></div>
+          <div class="control"><div class="control-head"><label for="light">Light direction</label><output for="light" id="light-out"></output></div><input id="light" type="range" min="0" max="360" step="15"></div>
+          <div class="divider"></div>
+          <div class="export"><button class="primary" id="save-svg">Download SVG</button><button class="secondary" id="save-png">Download PNG · 1024 px</button><button class="secondary" id="save-settings">Download settings</button></div>
+          <button class="reset" id="reset">Reset this study</button><p id="status" role="status" aria-live="polite"></p>
+        </div>
+      </aside>
+    </div>
+  </main>
+  <script type="module">
+    import { renderIcon, studies, palettes } from './icon.mjs';
+    import { renderLockup } from './wordmark.mjs';
+    const $ = id => document.getElementById(id);
+    const key = 'nyte-cloud-studio-v1';
+    const controls = ['footprint','elevation','moonSize','moonX','moonY','moonTurn','softness','puff','tilt','squash','scale','crop','offset','blend','grain','depth','light','halftone','registration','wear','slant'];
+    const limits = { footprint:[75,100], elevation:[0,24], moonSize:[20,140], moonX:[40,472], moonY:[40,472], moonTurn:[-180,180], softness:[0,100], puff:[0,100], tilt:[-180,180], squash:[55,140], scale:[85,145], crop:[-85,110], offset:[-130,130], blend:[0,100], grain:[0,8], depth:[0,40], light:[0,360], halftone:[0,100], registration:[0,12], wear:[0,80], slant:[-45,0] };
+    let variants = studies.map(s => ({...s}));
+    let selected = 0;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key));
+      if (saved && Array.isArray(saved.variants)) {
+        variants = studies.map((base,i) => {
+          const v = saved.variants[i] || {}, next = {...base};
+          for (const [k,[min,max]] of Object.entries(limits)) if (Number.isFinite(v[k])) next[k] = Math.max(min,Math.min(max,v[k]));
+          if (Object.hasOwn(palettes,v.palette)) next.palette = v.palette;
+          if (['valley','round','wide','billow','stamp','arches','banks','play'].includes(v.shape)) next.shape = v.shape;
+          if (['none','cloud','slanted','cut','inset'].includes(v.letter)) next.letter = v.letter;
+          if (['smooth','press'].includes(v.finish)) next.finish = v.finish;
+          if (['none','crescent','full'].includes(v.moon)) next.moon = v.moon;
+          if (['print','directional'].includes(v.lighting)) next.lighting = v.lighting;
+          return next;
+        });
+        if (Number.isInteger(saved.selected) && saved.selected >= 0 && saved.selected < studies.length) selected = saved.selected;
+      }
+    } catch {}
+    const studyFamily = i => i >= 42 ? 'moonplay' : i >= 38 ? 'moon' : i >= 30 ? 'more' : i >= 24 ? 'diagonal' : i >= 20 ? 'play' : i >= 14 ? 'composition' : i >= 9 ? 'print' : i >= 6 ? 'letter' : 'cloud';
+    const firstStudy = { cloud:0, letter:6, print:9, composition:14, play:20, diagonal:24, more:30, moon:38, moonplay:42 };
+    const requestedFamily = location.hash.slice(1);
+    if (Object.hasOwn(firstStudy,requestedFamily) && studyFamily(selected) !== requestedFamily) selected = firstStudy[requestedFamily];
+    let family = studyFamily(selected);
+    function persist() { try { localStorage.setItem(key,JSON.stringify({variants,selected})); } catch { $('status').textContent = 'Browser storage unavailable. Download settings to keep your edits.'; } }
+    function updateLabel(k) { $(k+'-out').textContent = variants[selected][k] + (['scale','blend','grain','halftone','puff','squash','softness','footprint'].includes(k) ? '%' : ['light','slant','tilt','moonTurn'].includes(k) ? '°' : ''); }
+    function renderCard(i) {
+      const button = $('gallery').children[i];
+      button.innerHTML = `<span class="dot"></span>${renderIcon(variants[i],`card-${i}`)}<div class="study-label"><span>${String(i+1).padStart(2,'0')}</span><strong>${studies[i].name}</strong></div>`;
+      button.setAttribute('aria-pressed',String(selected===i));
+    }
+    function renderPreview() {
+      const current = variants[selected];
+      $('moon-controls').hidden = current.moon === 'none';
+      $('softness-control').hidden = current.lighting !== 'directional';
+      $('puff-control').hidden = current.shape !== 'play' || current.letter !== 'none';
+      $('slant-control').hidden = current.letter !== 'slanted';
+      document.querySelectorAll('.print-control').forEach(control => { control.hidden = current.finish !== 'press'; });
+      $('hero').innerHTML = renderIcon(current,'hero');
+      $('sizes').innerHTML = [128,64,32,16].map(n => `<div class="size-sample">${renderIcon(current,`size-${n}`,n)}<span>${n} px</span></div>`).join('');
+      renderCard(selected);
+      $('palettes').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.palette===current.palette)));
+      $('palette-label').textContent = palettes[current.palette].name;
+      renderWordmarks();
+      persist();
+    }
+    const lockups = [['side','01 · Beside the name'],['stack','02 · Above the name'],['brackets','03 · Cloud brackets']];
+    function wordmarkOptions() { return {weight:Number($('word-weight').value),spacing:Number($('word-spacing').value),gap:Number($('word-gap').value),light:$('word-surface').value==='light'}; }
+    function renderWordmarks() {
+      $('wordmark-previews').innerHTML = lockups.map(([layout,name]) => `<div class="wordmark-card">${renderLockup(variants[selected],layout,wordmarkOptions(),'word-'+layout)}<div class="wordmark-caption"><span>${name}</span><button data-lockup="${layout}">Download SVG</button></div></div>`).join('');
+    }
+    for (const id of ['word-weight','word-spacing','word-gap']) $(id).addEventListener('input',()=>{$(id+'-out').textContent=$(id).value;renderWordmarks();});
+    $('word-surface').addEventListener('change',renderWordmarks);
+    $('wordmark-previews').addEventListener('click',event=>{const button=event.target.closest('[data-lockup]');if(!button)return;download(new Blob([renderLockup(variants[selected],button.dataset.lockup,wordmarkOptions(),'nyte')],{type:'image/svg+xml'}),'nyte-'+button.dataset.lockup+'.svg');});
+    function setPreviewMode(wordmarks) {
+      $('wordmark-panel').hidden=!wordmarks;
+      $('gallery').hidden=wordmarks;
+      $('stage').hidden=wordmarks;
+      $('icon-view').setAttribute('aria-pressed',String(!wordmarks));
+      $('wordmark-view').setAttribute('aria-pressed',String(wordmarks));
+    }
+    $('wordmark-view').addEventListener('click',()=>setPreviewMode(true));
+    $('icon-view').addEventListener('click',()=>setPreviewMode(false));
+    function selectStudy(i) {
+      const previous = selected;
+      selected = i;
+      renderCard(previous);
+      $('study-number').textContent = `Study ${String(i+1).padStart(2,'0')}`;
+      $('study-name').textContent = studies[i].name;
+      $('note').textContent = studies[i].note;
+      for (const k of controls) { $(k).value = variants[i][k]; updateLabel(k); }
+      $('shape').value = variants[i].shape;
+      $('shape').disabled = ['cloud','slanted'].includes(variants[i].letter);
+      $('letter').value = variants[i].letter;
+      $('finish').value = variants[i].finish;
+      $('moon').value = variants[i].moon;
+      $('lighting').value = variants[i].lighting;
+      $('status').textContent = '';
+      renderPreview();
+    }
+    studies.forEach((s,i) => {
+      const button = document.createElement('button');
+      button.className = 'study';
+      button.setAttribute('aria-label',`Study ${i+1}: ${s.name}`);
+      button.addEventListener('click',() => selectStudy(i));
+      $('gallery').append(button); renderCard(i);
+    });
+    function showFamily(next) {
+      family = next;
+      [...$('gallery').children].forEach((card,i) => { card.hidden = studyFamily(i) !== family; });
+      document.querySelectorAll('button[data-family]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.family === family)));
+    }
+    document.querySelectorAll('button[data-family]').forEach(button => button.addEventListener('click',() => {
+      showFamily(button.dataset.family);
+      history.replaceState(null,'','#'+family);
+      selectStudy(firstStudy[family]);
+    }));
+    Object.entries(palettes).forEach(([name,p]) => {
+      const button = document.createElement('button');
+      button.className = 'swatch'; button.dataset.palette = name;
+      button.setAttribute('aria-label',p.name); button.title = p.name;
+      button.innerHTML = `<i style="background:linear-gradient(140deg,${p.base} 0 48%,${p.top} 49% 100%)"></i>`;
+      button.addEventListener('click',() => { variants[selected].palette = name; renderPreview(); });
+      $('palettes').append(button);
+    });
+    for (const k of controls) $(k).addEventListener('input',() => { variants[selected][k] = Number($(k).value); updateLabel(k); renderPreview(); });
+    $('shape').addEventListener('change',() => { variants[selected].shape = $('shape').value; renderPreview(); });
+    $('letter').addEventListener('change',() => { variants[selected].letter = $('letter').value; $('shape').disabled = ['cloud','slanted'].includes(variants[selected].letter); renderPreview(); });
+    $('moon').addEventListener('change',()=>{variants[selected].moon=$('moon').value;renderPreview();});
+    $('lighting').addEventListener('change',() => { variants[selected].lighting = $('lighting').value; renderPreview(); });
+    $('finish').addEventListener('change',() => { variants[selected].finish = $('finish').value; renderPreview(); });
+    document.querySelectorAll('button[data-bg]').forEach(button => button.addEventListener('click',() => {
+      $('stage').dataset.bg = button.dataset.bg;
+      document.querySelectorAll('button[data-bg]').forEach(b => b.setAttribute('aria-pressed',String(b===button)));
+    }));
+    $('surprise').addEventListener('click', () => {
+      const between = (min,max) => Math.round(min+Math.random()*(max-min));
+      Object.assign(variants[selected], { shape:'play', letter:'none', puff:between(25,100), tilt:between(-30,30), squash:between(65,130), crop:between(10,100), offset:between(-60,100) });
+      selectStudy(selected);
+    });
+    $('reset').addEventListener('click',() => { variants[selected] = {...studies[selected]}; selectStudy(selected); });
+    function download(blob,name) {
+      const url = URL.createObjectURL(blob), anchor = document.createElement('a');
+      anchor.href = url; anchor.download = name; document.body.append(anchor); anchor.click(); anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url),2000);
+    }
+    function filename(ext) { return `nyte-cloud-${String(selected+1).padStart(2,'0')}.${ext}`; }
+    $('save-svg').addEventListener('click',() => {
+      download(new Blob([renderIcon(variants[selected],'nyte',1024)],{type:'image/svg+xml'}),filename('svg'));
+      $('status').textContent = 'SVG exported with your current settings.';
+    });
+    $('save-settings').addEventListener('click',() => {
+      download(new Blob([JSON.stringify(variants[selected],null,2)],{type:'application/json'}),filename('json'));
+      $('status').textContent = 'Settings exported.';
+    });
+    $('save-png').addEventListener('click',async () => {
+      const button = $('save-png'); button.disabled = true;
+      const name = filename('png');
+      const url = URL.createObjectURL(new Blob([renderIcon(variants[selected],'nyte',1024)],{type:'image/svg+xml'}));
+      try {
+        const image = new Image(); image.src = url; await image.decode();
+        const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 1024;
+        canvas.getContext('2d').drawImage(image,0,0,1024,1024);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve,'image/png'));
+        if (!blob) throw new Error('PNG encoding failed');
+        download(blob,name); $('status').textContent = '1024 px PNG exported with transparent corners.';
+      } catch { $('status').textContent = 'PNG export failed. You can still download the SVG.'; }
+      finally { URL.revokeObjectURL(url); button.disabled = false; }
+    });
+    showFamily(family);
+    selectStudy(selected);
+  </script>
+</body>
+</html>

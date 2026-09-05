@@ -80,7 +80,7 @@ export type TitleSession = Pick<
   "getBranch" | "getMetadata" | "getName" | "setNameIfCurrent"
 >;
 
-interface ChatNamerDeps {
+export interface ChatNamerDeps {
   /** Read together with the session so a host switch cannot retarget queued work. */
   readonly runtime: () => { readonly models: TitleModels; readonly primary: Model<Api> };
   readonly session: () => TitleSession;

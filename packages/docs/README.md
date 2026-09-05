@@ -1,6 +1,6 @@
 # docs
 
-The Uji documentation site. Content lives in `content/docs`. The [design record](content/docs/design.mdx)
+The Nyte documentation site. Content lives in `content/docs`. The [design record](content/docs/design.mdx)
 is the contract; other pages describe what shipped.
 
 ```bash
@@ -30,17 +30,17 @@ Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
 
 ## Deploying
 
-Vercel project: `interface-co/uji-docs`, with **Root Directory** set to
-`packages/docs`. Vercel detects the Turborepo monorepo and the Next.js app from
-that project root, so there is no checked-in `vercel.json` overriding its
-install, build, output, or ignored-build settings.
+Create or link the Vercel project under `interface-co`, attach `nyte.sh`, and set
+**Root Directory** to `packages/docs`. Vercel detects the Turborepo monorepo and
+the Next.js app from that project root, so there is no checked-in `vercel.json`
+overriding its install, build, output, or ignored-build settings.
 
 The root `.vercelignore` excludes sibling workspaces, generated binaries, and
-local Uji state. A root `vercel` command uploads only `packages/docs` plus the
+local Nyte state. A root `vercel` command uploads only `packages/docs` plus the
 root pnpm and Turborepo metadata required to identify and install that
 workspace.
 
-`@uji-ai/core` cannot reach the client bundle because it is not in this
+`@nyte-ai/core` cannot reach the client bundle because it is not in this
 package's dependency graph.
 
 ## Learn More

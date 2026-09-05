@@ -32,9 +32,9 @@ export function truncateDisplay(text: string, width: number, ellipsis = ""): str
 }
 
 /**
- * The offset OpenTUI's cursor and extmarks count in: terminal cells, with each
- * newline counting as one. Composer code moves between this space and plain
- * string indices constantly, so both directions live here.
+ * The offset OpenTUI's cursor counts in: terminal cells, with each newline
+ * counting as one. Composer code moves between this space and plain string
+ * indices constantly, so both directions live here.
  */
 export function cellOffset(text: string, index: number): number {
   const lines = text.slice(0, index).split("\n");

@@ -31,7 +31,7 @@ export class PluginScope {
 
   track<T extends Disposer | AsyncDisposer>(disposer: T): T {
     if (this.disposed) {
-      void Promise.resolve(disposer()).catch((error: unknown) => this.report(normalize(error)));
+      void Promise.resolve(disposer()).catch((cause: unknown) => this.report(normalize(cause)));
       return disposer;
     }
     this.disposers.push(disposer);
@@ -45,7 +45,7 @@ export class PluginScope {
       .then((disposer) => {
         if (disposer) this.track(disposer);
       })
-      .catch((error: unknown) => this.report(normalize(error)));
+      .catch((cause: unknown) => this.report(normalize(cause)));
   }
 
   async dispose(): Promise<void> {
@@ -64,8 +64,8 @@ export class PluginScope {
   }
 }
 
-function normalize(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
+function normalize(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(String(cause));
 }
 
 function withBudget(promise: Promise<void>, ms: number): Promise<void> {
@@ -76,9 +76,9 @@ function withBudget(promise: Promise<void>, ms: number): Promise<void> {
         clearTimeout(timer);
         resolve();
       },
-      (error: unknown) => {
+      (cause: unknown) => {
         clearTimeout(timer);
-        reject(error);
+        reject(cause);
       },
     );
   });

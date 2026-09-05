@@ -7,7 +7,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "@uji-ai/ui/*": ["./src/*"]
+      "@nyte-ai/ui/*": ["./src/*"]
     }
   },
   "include": ["src"]

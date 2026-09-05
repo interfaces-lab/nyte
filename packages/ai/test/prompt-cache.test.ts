@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import {
   anthropicProvider,
   openaiCodexProvider,
@@ -8,14 +8,14 @@ import {
   resolveCacheRetention,
 } from "../src/index.ts";
 
-void describe("prompt cache policy", () => {
-  void test("resolves explicit and provider-scoped retention", () => {
+describe("prompt cache policy", () => {
+  test("resolves explicit and provider-scoped retention", () => {
     assert.equal(resolveCacheRetention("none", { PI_CACHE_RETENTION: "long" }), "none");
     assert.equal(resolveCacheRetention(undefined, { PI_CACHE_RETENTION: "long" }), "long");
     assert.equal(resolveCacheRetention(undefined, { PI_CACHE_RETENTION: "short" }), "short");
   });
 
-  void test("publishes the built-in providers' minimum warm windows", () => {
+  test("publishes the built-in providers' minimum warm windows", () => {
     const anthropic = anthropicProvider().promptCache;
     const openai = openaiProvider().promptCache;
     const codex = openaiCodexProvider().promptCache;

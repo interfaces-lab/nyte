@@ -22,7 +22,7 @@ export function opencodeProvider(options: OpenCodeCatalogOptions = {}): Provider
   return createProvider({
     id: "opencode",
     name: "OpenCode Zen",
-    // Uji-only field, no pi counterpart. Models route to several upstream APIs
+    // Nyte-only field, no pi counterpart. Models route to several upstream APIs
     // whose long-retention windows differ (1h on Anthropic, 24h on OpenAI) and
     // some catalog entries do not support long retention at all, so publish
     // only the floor every route guarantees.

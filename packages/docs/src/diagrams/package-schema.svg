@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 8 180 156" fill="none" stroke="var(--color-fig-accent, #0c64c1)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<path d="M65.00,42.00 L65.00,29.00 L158.00,29.00 L158.00,129.00 L145.00,129.00" fill="none" stroke-width="1.25" opacity="0.4"/>
+<path d="M52.00,42.00 L145.00,42.00 L145.00,142.00 L52.00,142.00 L52.00,42.00" fill="none" stroke-width="1.25" opacity="1"/>
+<path d="M64.00,58.00 L70.00,58.00 L70.00,64.00 L64.00,64.00 L64.00,58.00" fill="none" stroke-width="1.25" opacity="0.65"/>
+<path d="M79.00,61.00 L127.00,61.00" fill="none" stroke-width="1.25" opacity="0.75"/>
+<path d="M64.00,79.00 L70.00,79.00 L70.00,85.00 L64.00,85.00 L64.00,79.00" fill="none" stroke-width="1.25" opacity="0.65"/>
+<path d="M79.00,82.00 L139.00,82.00" fill="none" stroke-width="1.25" opacity="0.75"/>
+<path d="M64.00,98.00 L70.00,98.00 L70.00,104.00 L64.00,104.00 L64.00,98.00" fill="none" stroke-width="1.25" opacity="0.65"/>
+<path d="M79.00,101.00 L121.00,101.00" fill="none" stroke-width="1.25" opacity="0.75"/>
+<path d="M64.00,117.00 L70.00,117.00 L70.00,123.00 L64.00,123.00 L64.00,117.00" fill="none" stroke-width="1.25" opacity="0.65"/>
+<path d="M79.00,120.00 L132.00,120.00" fill="none" stroke-width="1.25" opacity="0.75"/>
+</svg>

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Build bin/uji from packages/tui and stage release artifacts in dist/.
+# Build bin/nyte from packages/tui and stage release artifacts in dist/.
 # Produces dist/<name>/<name>.tar.gz plus a .sha256 beside it, where
-# <name> is uji-v<version>-<os>-<arch>.
+# <name> is nyte-v<version>-<os>-<arch>.
 #
 # Upload the pair with:
 #   gh release create vX.Y.Z --target main dist/*.tar.gz dist/*.sha256
@@ -22,16 +22,16 @@ case "$platform" in
 		;;
 esac
 
-name="uji-v${version}-${target}"
+name="nyte-v${version}-${target}"
 
 pnpm build:cli
 
 rm -rf "dist/${name}"
 mkdir -p "dist/${name}"
-cp bin/uji "dist/${name}/uji"
+cp bin/nyte "dist/${name}/nyte"
 
 # COPYFILE_DISABLE keeps macOS tar from adding AppleDouble ._ entries.
-COPYFILE_DISABLE=1 tar -czf "dist/${name}.tar.gz" -C "dist/${name}" uji
+COPYFILE_DISABLE=1 tar -czf "dist/${name}.tar.gz" -C "dist/${name}" nyte
 (cd dist && shasum -a 256 "${name}.tar.gz" >"${name}.tar.gz.sha256")
 
 echo "Staged:"

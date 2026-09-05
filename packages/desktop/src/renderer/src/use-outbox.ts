@@ -1,0 +1,35 @@
+/**
+ * The renderer's one outbox over the bridge. A receipt is followed by one
+ * coherent snapshot read, so the durable pending row is on screen before the
+ * local row leaves and the gutter never blinks.
+ */
+import { useSyncExternalStore } from "react";
+import type { SessionId } from "@nyte-ai/core";
+import {
+  createOutbox,
+  HOME_WORKSPACE_PARTITION,
+  type OutboxRow,
+  workspacePartition,
+} from "./outbox.ts";
+import { createIndexedDbOutboxStorage } from "./outbox-storage.ts";
+import { loadThread } from "./queries.ts";
+import { nyte } from "./nyte.ts";
+
+export const outbox = createOutbox({
+  storage: createIndexedDbOutboxStorage(),
+  send: (input) => nyte.messages.send(input),
+  settled: async (sessionId) => {
+    await loadThread(sessionId);
+  },
+});
+
+export function activateOutbox(workspacePath: string | undefined): Promise<void> {
+  return outbox.activate(
+    workspacePath === undefined ? HOME_WORKSPACE_PARTITION : workspacePartition(workspacePath),
+  );
+}
+
+export function useOutboxRows(sessionId: SessionId): readonly OutboxRow[] {
+  const rows = useSyncExternalStore(outbox.subscribe, outbox.rows);
+  return rows.filter((row) => row.sessionId === sessionId);
+}

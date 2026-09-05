@@ -9,6 +9,12 @@ export type XStyle = stylex.StyleXArray<
   | readonly [stylex.CompiledStyles, stylex.InlineStyles]
 >;
 
+export type StyledProps<Props> = Omit<Props, "className" | "style"> & {
+  className?: string;
+  style?: React.CSSProperties;
+  xstyle?: XStyle;
+};
+
 export function mergeStyleProps(
   base: ReturnType<typeof stylex.props>,
   className?: string,

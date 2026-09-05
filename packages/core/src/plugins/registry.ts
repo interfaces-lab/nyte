@@ -3,7 +3,7 @@
  * replays every contribution over a fresh draft in plugin order; removing a
  * plugin means dropping its contributions and rebuilding. There is no undo.
  */
-import type { HarnessTool } from "../harness/agent-harness.ts";
+import type { AgentTool } from "../types.ts";
 import type { Disposer, Draft, RegistryDiff, ToolDraft } from "./types.ts";
 
 interface Contribution<D> {
@@ -55,8 +55,8 @@ export class MapDraft<T> implements Draft<T> {
   }
 }
 
-export class ToolMapDraft extends MapDraft<HarnessTool> implements ToolDraft {
-  wrap(id: string, wrap: (inner: HarnessTool["execute"]) => HarnessTool["execute"]): void {
+export class ToolMapDraft extends MapDraft<AgentTool> implements ToolDraft {
+  wrap(id: string, wrap: (inner: AgentTool["execute"]) => AgentTool["execute"]): void {
     this.update(id, (tool) => ({ ...tool, execute: wrap(tool.execute) }));
   }
 }

@@ -9,6 +9,7 @@ import type {
   RefusalStopDetails,
 } from "@anthropic-ai/sdk/resources/messages.js";
 import { calculateCost } from "../models.ts";
+import { ANTHROPIC_FAST_MODE_COST_MULTIPLIER } from "../model-pricing.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
   AnthropicMessagesCompat,
@@ -38,7 +39,7 @@ import { splitDeferredTools } from "../utils/deferred-tools.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { parseJsonWithRepair, parseStreamingJson } from "../utils/json-parse.ts";
-import { getUjiUserAgent } from "../utils/uji-user-agent.ts";
+import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { sanitizeSurrogates } from "../utils/sanitize-unicode.ts";
 
@@ -72,7 +73,7 @@ function getCacheControl(
 }
 
 // Stealth mode: Mimic Claude Code's tool naming exactly
-const claudeCodeVersion = "2.1.75";
+const claudeCodeVersion = "2.1.260";
 
 // Claude Code 2.x tool names (PascalCase as Claude Code sends them)
 // Source: https://cchistory.mariozechner.at/data/prompts-2.1.11.md
@@ -175,7 +176,6 @@ const FINE_GRAINED_TOOL_STREAMING_BETA = "fine-grained-tool-streaming-2025-05-14
 const FAST_MODE_BETA = "fast-mode-2026-02-01";
 const INTERLEAVED_THINKING_BETA = "interleaved-thinking-2025-05-14";
 const SERVER_SIDE_FALLBACK_BETA = "server-side-fallback-2026-07-01";
-const ANTHROPIC_FAST_MODE_COST_MULTIPLIER = 2;
 
 function supportsAnthropicFastMode(model: Model<"anthropic-messages">): boolean {
   return model.provider === "anthropic" && model.modes?.includes("fast") === true;
@@ -325,7 +325,7 @@ function appendAnthropicBeta(headers: ProviderHeaders, beta: string | undefined)
 }
 
 function mergeClientHeaders(...headerSources: (ProviderHeaders | undefined)[]): ProviderHeaders {
-  return mergeHeaders({ "User-Agent": getUjiUserAgent() }, ...headerSources);
+  return mergeHeaders({ "User-Agent": getNyteUserAgent() }, ...headerSources);
 }
 
 function hasHeader(headers: ProviderHeaders | undefined, name: string): boolean {

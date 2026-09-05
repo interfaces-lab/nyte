@@ -7,5 +7,6 @@ export default defineConfig({
     "**/routeTree.gen.ts",
     "packages/ai/src/providers/data/**",
     "packages/ai/src/providers/snapshots/**",
+    "tools/oxlint/anti-slop/**",
   ],
 });

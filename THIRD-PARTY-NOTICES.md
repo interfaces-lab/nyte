@@ -4,8 +4,9 @@ Parts of this repository are ported from or derived from other projects. Every
 ported file carries a `Based on <link>` header naming its exact source; those
 headers are the authoritative per-file provenance. This file lists the upstream
 projects and their licenses. The dependencies below include MIT, Apache-2.0,
-the MCP client's licensing-transition notice, and the proprietary Iconists
-license used by Central Icons.
+the MCP client's licensing-transition notice, the SIL Open Font License for
+the bundled typefaces, and the proprietary Iconists license used by Central
+Icons.
 
 MIT notices are reproduced in full under each entry. The Apache License 2.0
 covers several entries, so its full text appears once in the appendix at the
@@ -54,9 +55,11 @@ SOFTWARE.
   diff renderer.
 - What: the desktop app uses `@pierre/diffs` as a lazy leaf renderer for
   unified patches and uses `@pierre/trees` only for its complete file-icon
-  resolver and sprite. Uji core remains the source of change, VCS, file, and
-  session identity; Pierre does not own application state or the workbench
-  composition.
+  resolver and sprite. The TUI's palettes (`packages/tui/src/theme.ts`) take
+  their colors from `@pierre/theme`'s roles and their diff row fills from
+  `@pierre/diffs`' stylesheet. Nyte core remains the source of change, VCS,
+  file, and session identity; Pierre does not own application state or the
+  workbench composition.
 
 License: Apache License 2.0, reproduced in the appendix below. Copyright 2025
 Pierre Computer Company. The license text is also distributed in each package.
@@ -98,20 +101,55 @@ SOFTWARE.
 ## Central Icons
 
 - Homepage: https://iconists.co/central
-- Package: `@central-icons-react/round-outlined-radius-2-stroke-1.5` 1.1.315
-- What: the desktop icon leaf maps Uji semantic icon names to Central's React
-  glyphs. No icon SVG source is copied into Uji source files.
+- Packages: `@central-icons-react/round-outlined-radius-2-stroke-1.5` and
+  `@central-icons-react/round-filled-radius-2-stroke-1.5` 1.1.318
+- What: the desktop icon leaf maps Nyte semantic icon names to Central's React
+  glyphs. No icon SVG source is copied into Nyte source files.
 
 License: the proprietary Iconists License Agreement distributed as the
 package's `LICENSE.md` and published at https://iconists.co/license. Its seat,
 redistribution, extraction, and 300-icons-per-style terms apply.
+
+## dnd kit
+
+- Repository: https://github.com/clauderic/dnd-kit
+- Package: `@dnd-kit/core` 6.3.1
+- What: the desktop sidebar uses dnd kit for accessible session dragging,
+  drag overlays, and pane drop targets. Nyte retains ownership of pane layout
+  and drop-placement semantics.
+
+License: MIT, with the following notice:
+
+```text
+MIT License
+
+Copyright (c) 2021, Claudéric Demers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Model Context Protocol TypeScript SDK
 
 - Repository: https://github.com/modelcontextprotocol/typescript-sdk
 - Package: `@modelcontextprotocol/client` 2.0.0
 - What: the modern stateless HTTP MCP integration in `packages/core/src/mcp.ts`
-  uses this client. No source is ported into Uji.
+  uses this client. No source is ported into Nyte.
 
 License: the package declares MIT in `package.json`. Its distributed `LICENSE`
 records the MCP project's transition to Apache License 2.0, with contributions
@@ -142,11 +180,13 @@ no `NOTICE` file, so no additional attribution text is carried.
   (`packages/core/src/harness/agent-harness.ts`) is OpenCode v2's inbox
   `steer`/`queue`/`cancel` trio, and enter on an empty composer sending the
   front of the queue (`packages/tui/src/pending-gutter.ts`,
-  `packages/tui/src/interactive.ts`) is its `onEmptySubmit`. Session-title
-  triggering, context construction, prompt, model fallback, and output cleanup
-  (`packages/tui/src/session-title.ts`) port OpenCode v2. The default demo
-  web-search plugin (`packages/plugin/examples/web-search.ts`) ports its Exa,
-  Parallel, and Firecrawl MCP adapters and automatic fallback from OpenCode v2.
+  `packages/tui/src/interactive.ts`) is its `onEmptySubmit`. The rename
+  plugin's context construction, prompt, model fallback, and output cleanup
+  (`packages/plugin/examples/rename.ts`) port OpenCode v2. The web-search
+  plugin set (`packages/plugin/examples/web-search/`) ports its Exa, Firecrawl,
+  Parallel, and Tavily adapters, its stateless MCP `tools/call` transport and
+  response bounds, its result and error vocabulary, and its arrangement of one
+  plugin per provider from OpenCode v2.
 
 License: MIT, with the following notice:
 
@@ -211,9 +251,8 @@ SOFTWARE.
 ## Grok Build (`xai-org/grok-build`)
 
 - Repository: https://github.com/xai-org/grok-build
-- What: the TUI's dark and light palettes and the startup appearance detection
-  (`packages/tui/src/theme.ts`) port the `groknight`, `grokday`, and
-  `env_appearance` modules of `xai-grok-pager-render`; the spinner and
+- What: the TUI's startup appearance detection (`packages/tui/src/theme.ts`)
+  ports the `env_appearance` module of `xai-grok-pager-render`; the spinner and
   status glyphs (`packages/tui/src/constants.ts`) port its `glyphs`. The slash
   dropdown's layout and selection behavior
   (`packages/tui/src/slash-autocomplete.ts`, `packages/tui/src/menu-list.ts`,
@@ -222,7 +261,7 @@ SOFTWARE.
   (`packages/demo/cli/src/tui.ts`) uses a reduced dark palette.
 - All of the above are adaptations rather than copies: they are rewritten in
   TypeScript against OpenTUI, and the semantic roles, detection order, and
-  fallbacks differ from upstream where Uji's structure differs.
+  fallbacks differ from upstream where Nyte's structure differs.
 
 License: Apache License 2.0, reproduced in the appendix below. Copyright
 2023-2026 SpaceXAI. Upstream ships no `NOTICE` file, so no additional
@@ -234,7 +273,7 @@ attribution text is carried.
 - What: the desktop app's dense vertical sidebar, model-selection structure,
   work-detail controls, quiet grouped-work presentation, shared scrollport
   styling, StyleX layout schema, and right-side Changes workbench adapt Honk's
-  interface structure to Uji's SDK and TanStack Query projections.
+  interface structure to Nyte's SDK and TanStack Query projections.
 
 License: MIT, with the following notice:
 
@@ -262,6 +301,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## EasyList and EasyPrivacy
+
+- Homepage: https://easylist.to
+- What: `packages/desktop/scripts/build-adblock.mjs` fetches both lists at build
+  time and serializes them into `resources/adblock.bin`, which the desktop app
+  bundles as an extra resource for the browser panel. No list text is copied
+  into Nyte source files. The engine that reads them is `@ghostery/adblocker`
+  (MPL-2.0), used as an ordinary dependency.
+
+License: dual-licensed under the GNU General Public License version 3 and the
+Creative Commons Attribution-ShareAlike 3.0 Unported license, at the user's
+choice. Nyte redistributes the lists under CC BY-SA 3.0.
+
+## Inter (`rsms/inter`) and JetBrains Mono (`JetBrains/JetBrainsMono`)
+
+- Repositories: https://github.com/rsms/inter,
+  https://github.com/JetBrains/JetBrainsMono
+- What: the desktop app bundles both as variable WOFF2 files through
+  `@fontsource-variable/inter` and `@fontsource-variable/jetbrains-mono`,
+  loaded from `packages/desktop/src/renderer/src/main.tsx`. Inter is the
+  default interface face; JetBrains Mono is a selectable code face. The font
+  files are redistributed unmodified.
+
+License: SIL Open Font License, Version 1.1. Copyright 2016 The Inter Project
+Authors; Copyright 2020 The JetBrains Mono Project Authors. The full license
+text ships alongside each package as `LICENSE`.
 
 ## Fumadocs (`fuma-nama/fumadocs`)
 

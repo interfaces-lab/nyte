@@ -8,7 +8,7 @@
  */
 import type { Renderable } from "@opentui/core";
 
-type RenderableSemantics =
+export type RenderableSemantics =
   | { readonly role: "dialog"; readonly label: string }
   | { readonly role: "group"; readonly label: string; readonly expanded: boolean }
   | { readonly role: "message"; readonly id: string }

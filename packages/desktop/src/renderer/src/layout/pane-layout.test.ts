@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import type { SessionId } from "@uji-ai/core";
+import { describe, test } from "vitest";
+import type { SessionId } from "@nyte-ai/core";
 import { asSessionId } from "../../../shared/ipc.ts";
 import {
   DEFAULT_SPLIT_RATIO,

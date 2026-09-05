@@ -1,0 +1,6 @@
+{
+  "live_corpus": "/private/tmp/nyte-change-detector-input",
+  "scratch_corpus": "/private/tmp/nyte-change-detector-review/corpus",
+  "evidence": "/Users/workgyver/Developer/nyte/output/core-quality-audit-2026-09-04/evidence/change-detector-tests",
+  "skill_root": "/Users/workgyver/.agents/skills/change-detector-tests"
+}

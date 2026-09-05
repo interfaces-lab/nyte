@@ -1,6 +1,7 @@
-import type { SessionId } from "@uji-ai/core";
-import { asSessionId } from "../../../shared/ipc.ts";
-import { z } from "../schemas/zod.ts";
+import type { SessionId } from "@nyte-ai/core";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { sessionId } from "../../../shared/schemas.ts";
 
 export type PaneId = "primary" | "secondary";
 export type SplitDirection = "right" | "down";
@@ -47,6 +48,11 @@ export const BLANK_SELECTION: PaneSelection = { kind: "blank" };
 export const DEFAULT_SPLIT_RATIO = 0.5;
 export const MIN_SPLIT_RATIO = 0.2;
 export const MAX_SPLIT_RATIO = 0.8;
+/**
+ * A ratio alone lets the composer, the model chip, and the header actions
+ * collide on a narrow window. Below this the pane clips, so the sash stops.
+ */
+export const MIN_PANE_WIDTH = 320;
 
 export function createSinglePane(
   paneId: PaneId = "primary",
@@ -91,6 +97,17 @@ export function activeSelection(layout: PaneLayout): PaneSelection {
 export function clampSplitRatio(ratio: number): number {
   if (!Number.isFinite(ratio)) return DEFAULT_SPLIT_RATIO;
   return Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));
+}
+
+/**
+ * The ratio clamp plus a pixel floor, measured against the split container.
+ * A container too narrow to hold two full panes keeps the ratio clamp alone.
+ */
+export function clampSplitRatioForSize(ratio: number, size: number): number {
+  const clamped = clampSplitRatio(ratio);
+  if (!Number.isFinite(size) || size < 2 * MIN_PANE_WIDTH) return clamped;
+  const floor = MIN_PANE_WIDTH / size;
+  return Math.min(1 - floor, Math.max(floor, clamped));
 }
 
 function otherPaneId(paneId: PaneId): PaneId {
@@ -214,24 +231,18 @@ function dropInCenter(layout: PaneLayout, sessionId: SessionId, targetPaneId: Pa
   return selectInPane(layout, targetPaneId, { kind: "session", sessionId });
 }
 
-function edgeGeometry(placement: EdgeDropPlacement): {
-  readonly direction: SplitDirection;
-  readonly draggedFirst: boolean;
-} {
-  switch (placement) {
-    case "left":
-      return { direction: "right", draggedFirst: true };
-    case "right":
-      return { direction: "right", draggedFirst: false };
-    case "top":
-      return { direction: "down", draggedFirst: true };
-    case "bottom":
-      return { direction: "down", draggedFirst: false };
-    default: {
-      const _exhaustive: never = placement;
-      return _exhaustive;
-    }
-  }
+const EDGE_GEOMETRY = {
+  left: { direction: "right", draggedFirst: true },
+  right: { direction: "right", draggedFirst: false },
+  top: { direction: "down", draggedFirst: true },
+  bottom: { direction: "down", draggedFirst: false },
+} satisfies Record<
+  EdgeDropPlacement,
+  { readonly direction: SplitDirection; readonly draggedFirst: boolean }
+>;
+
+function edgeGeometry(placement: EdgeDropPlacement) {
+  return EDGE_GEOMETRY[placement];
 }
 
 function sameOrder(current: readonly [PaneId, PaneId], next: readonly [PaneId, PaneId]): boolean {
@@ -329,40 +340,41 @@ export function reducePaneLayout(layout: PaneLayout, action: PaneLayoutAction): 
   }
 }
 
-const paneIdSchema = z.enum(["primary", "secondary"]);
-const paneSelectionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("blank") }),
-  z.strictObject({
-    kind: z.literal("session"),
-    sessionId: z.string().min(1).transform(asSessionId),
-  }),
+const strict = { additionalProperties: false };
+const paneIdSchema = Type.Enum(["primary", "secondary"]);
+const paneSelectionSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("blank") }, strict),
+  Type.Object({ kind: Type.Literal("session"), sessionId }, strict),
 ]);
-const paneStateSchema = z.strictObject({ id: paneIdSchema, selection: paneSelectionSchema });
-const paneOrderSchema = z.tuple([paneIdSchema, paneIdSchema]);
-const persistedPaneLayoutSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ version: z.literal(1), kind: z.literal("single"), pane: paneStateSchema }),
-  z.strictObject({
-    version: z.literal(1),
-    kind: z.literal("split"),
-    direction: z.enum(["right", "down"]),
-    ratio: z.number().finite().min(MIN_SPLIT_RATIO).max(MAX_SPLIT_RATIO),
-    order: paneOrderSchema,
-    primary: paneStateSchema,
-    secondary: paneStateSchema,
-    activePaneId: paneIdSchema,
-  }),
+const paneStateSchema = Type.Object({ id: paneIdSchema, selection: paneSelectionSchema }, strict);
+const persistedPaneLayoutSchema = Type.Union([
+  Type.Object(
+    { version: Type.Literal(1), kind: Type.Literal("single"), pane: paneStateSchema },
+    strict,
+  ),
+  Type.Object(
+    {
+      version: Type.Literal(1),
+      kind: Type.Literal("split"),
+      direction: Type.Enum(["right", "down"]),
+      ratio: Type.Number({ minimum: MIN_SPLIT_RATIO, maximum: MAX_SPLIT_RATIO }),
+      order: Type.Tuple([paneIdSchema, paneIdSchema]),
+      primary: paneStateSchema,
+      secondary: paneStateSchema,
+      activePaneId: paneIdSchema,
+    },
+    strict,
+  ),
 ]);
 
 export function parsePersistedPaneLayout(value: string | null): PaneLayout {
   if (value === null) return createSinglePane();
   try {
-    const parsedJson: unknown = JSON.parse(value);
-    const decoded = persistedPaneLayoutSchema.safeParse(parsedJson);
-    if (!decoded.success) return createSinglePane();
-    const persisted = decoded.data;
+    const persisted: unknown = JSON.parse(value);
+    if (!Value.Check(persistedPaneLayoutSchema, persisted)) return createSinglePane();
     if (persisted.kind === "single") return { kind: "single", pane: persisted.pane };
     const { primary, secondary, order, activePaneId, direction, ratio } = persisted;
-    if (primary?.id !== "primary" || secondary?.id !== "secondary" || order[0] === order[1]) {
+    if (primary.id !== "primary" || secondary.id !== "secondary" || order[0] === order[1]) {
       return createSinglePane();
     }
     if (

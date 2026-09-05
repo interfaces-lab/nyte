@@ -9,50 +9,87 @@
 import * as stylex from "@stylexjs/stylex";
 
 export const shell = stylex.defineConsts({
-  titlebarHeight: "var(--uji-titlebar-height)",
+  titlebarHeight: "var(--nyte-titlebar-height)",
 });
 
 export const conversation = stylex.defineConsts({
-  measure: "var(--uji-conversation-measure)",
-  proseMeasure: "var(--uji-prose-measure)",
-  gutter: "var(--uji-conversation-gutter)",
-  headerHeight: "var(--uji-conversation-header-height)",
-  turnGap: "var(--uji-conversation-turn-gap)",
-  rowGap: "var(--uji-conversation-row-gap)",
-  rowMinHeight: "var(--uji-conversation-row-min-height)",
-  composerInset: "var(--uji-composer-inset)",
+  measure: "var(--nyte-conversation-measure)",
+  proseMeasure: "var(--nyte-prose-measure)",
+  gutter: "var(--nyte-conversation-gutter)",
+  headerHeight: "var(--nyte-conversation-header-height)",
+  turnGap: "var(--nyte-conversation-turn-gap)",
+  rowGap: "var(--nyte-conversation-row-gap)",
+  rowMinHeight: "var(--nyte-conversation-row-min-height)",
+  composerInset: "var(--nyte-composer-inset)",
+  composerNewChatRadius: "var(--nyte-composer-new-chat-radius)",
+  composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
 });
 
 export const sidebar = stylex.defineConsts({
-  width: "var(--uji-sidebar-width)",
-  handleWidth: "var(--uji-sidebar-handle-width)",
-  rowHeight: "var(--uji-compact-row-height)",
-  gutter: "var(--uji-sidebar-gutter)",
-  rowPaddingInline: "var(--uji-sidebar-row-padding-inline)",
-  sectionGap: "var(--uji-sidebar-section-gap)",
-  listGap: "var(--uji-sidebar-list-gap)",
-  iconSlot: "var(--uji-sidebar-icon-slot)",
-  actionSize: "var(--uji-sidebar-action-size)",
-  trailingWidth: "var(--uji-sidebar-trailing-width)",
+  width: "var(--nyte-sidebar-width)",
+  handleWidth: "var(--nyte-sidebar-handle-width)",
+  rowHeight: "var(--nyte-compact-row-height)",
+  gutter: "var(--nyte-sidebar-gutter)",
+  rowPaddingInline: "var(--nyte-sidebar-row-padding-inline)",
+  rowGap: "var(--nyte-sidebar-row-gap)",
+  sectionGap: "var(--nyte-sidebar-section-gap)",
+  listGap: "var(--nyte-sidebar-list-gap)",
+  iconSlot: "var(--nyte-sidebar-icon-slot)",
+  actionSize: "var(--nyte-sidebar-action-size)",
+  trailingWidth: "var(--nyte-sidebar-trailing-width)",
+});
+
+export const settings = stylex.defineConsts({
+  contentWidth: "var(--nyte-settings-content-width)",
+  contentGutter: "var(--nyte-settings-content-gutter)",
+  rowMinHeight: "var(--nyte-settings-row-min-height)",
+  sliderRowMinHeight: "var(--nyte-settings-slider-row-min-height)",
+  sectionGap: "var(--nyte-settings-section-gap)",
+  cardGap: "var(--nyte-settings-card-gap)",
+  rowPadding: "var(--nyte-settings-row-padding)",
+  controlHeight: "var(--nyte-settings-control-height)",
+  controlMaxWidth: "var(--nyte-settings-control-max-width)",
+  pageTitleSize: "var(--nyte-settings-page-title-size)",
+  pageTitleLineHeight: "var(--nyte-settings-page-title-line-height)",
 });
 
 export const workbench = stylex.defineConsts({
-  railWidth: "var(--uji-workbench-rail-width)",
-  panelWidth: "var(--uji-workbench-panel-width)",
-  headerHeight: "var(--uji-workbench-header-height)",
-  fileListWidth: "var(--uji-workbench-file-list-width)",
+  railWidth: "var(--nyte-workbench-rail-width)",
+  panelWidth: "var(--nyte-workbench-panel-width)",
+  headerHeight: "var(--nyte-workbench-header-height)",
+  fileListWidth: "var(--nyte-workbench-file-list-width)",
 });
 
 export const diffView = stylex.defineConsts({
-  lineHeight: "var(--uji-diff-line-height)",
-  previewMaxHeight: "var(--uji-diff-preview-max-height)",
+  lineHeight: "var(--nyte-diff-line-height)",
+  previewMaxHeight: "var(--nyte-diff-preview-max-height)",
 });
 
 export const control = stylex.defineConsts({
-  compactHeight: "var(--uji-control-compact-height)",
-  regularHeight: "var(--uji-control-regular-height)",
-  menuWidth: "var(--uji-menu-width)",
-  modelMenuWidth: "var(--uji-model-menu-width)",
-  menuMaxHeight: "var(--uji-menu-max-height)",
-  sectionGap: "var(--uji-section-gap)",
+  compactHeight: "var(--nyte-control-compact-height)",
+  regularHeight: "var(--nyte-control-regular-height)",
+  menuWidth: "var(--nyte-menu-width)",
+  modelMenuWidth: "var(--nyte-model-menu-width)",
+  parameterMenuWidth: "var(--nyte-parameter-menu-width)",
+  menuMaxHeight: "var(--nyte-menu-max-height)",
+  sectionGap: "var(--nyte-section-gap)",
+});
+
+/**
+ * Global paint order. Ordinary component-local stacking contexts stay local;
+ * only surfaces that cross feature boundaries belong here.
+ */
+export const layer = stylex.defineConsts({
+  stickyContent: 10,
+  workbench: 20,
+  chrome: 30,
+  menu: 60,
+  submenu: 61,
+  tooltip: 70,
+  dialogBackdrop: 70,
+  dialog: 71,
+  toast: 75,
+  commandBackdrop: 80,
+  command: 81,
+  dragPreview: 1000,
 });

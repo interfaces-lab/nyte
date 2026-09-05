@@ -9,10 +9,9 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { CliRenderer, KeyEvent } from "@opentui/core";
+import { GLYPHS } from "./constants.ts";
 import { MenuList } from "./menu-list.ts";
 import type { MenuItem } from "./menu-list.ts";
-import { GLYPHS } from "./constants.ts";
-import { bindSemantics } from "./semantics.ts";
 import type { CliTheme } from "./theme.ts";
 
 export type Choice = MenuItem;
@@ -20,13 +19,11 @@ export type Choice = MenuItem;
 export class PickerCancelled extends Error {
   constructor() {
     super("Selection cancelled");
+    this.name = "PickerCancelled";
   }
 }
 
-/**
- * An extra key bound to the highlighted row. It acts on that row and closes
- * the menu, so a queue can be edited or emptied without reaching for a mouse.
- */
+/** An extra key bound to the highlighted row. It acts on that row and closes the menu. */
 export interface ChoiceAction {
   /** Key name as OpenTUI reports it, e.g. `"e"` or `"delete"`. */
   readonly key: string;
@@ -36,9 +33,8 @@ export interface ChoiceAction {
 }
 
 /**
- * One list the menu shows. Screens swap in place, so stepping from settings
- * into the model list costs no rebuild, and `load` lets a screen paint what is
- * already known and fill in the slow source behind the frame.
+ * One list the menu shows. Screens swap in place, and `load` lets a screen
+ * paint cached choices before its slower source finishes.
  */
 export interface MenuScreen {
   readonly title: string;
@@ -51,28 +47,34 @@ export interface MenuScreen {
   readonly selectLabel?: string;
   /** Verb on the escape keycap; sub-screens go "back", top screens "close". */
   readonly cancelLabel?: string;
+  /**
+   * The text field takes an answer of its own instead of a filter: typing
+   * leaves the rows alone, and Enter with text submits it in place of a row.
+   */
+  readonly typed?: {
+    readonly placeholder: string;
+    readonly onSubmit: (text: string) => void | Promise<void>;
+  };
   readonly onSelect: (id: string) => void | Promise<void>;
   readonly onCancel: () => void;
   readonly onHighlight?: (id: string) => void;
 }
 
-interface InlineMenuOptions {
-  renderer: CliRenderer;
-  theme: CliTheme;
-  nextId?: (prefix?: string) => string;
-  onError?: (error: unknown) => void;
-  /**
-   * The panel's row count, whenever filtering or a new screen changes it. The
-   * shell borrows exactly this many rows from the transcript, so the number
-   * has to arrive with the change rather than a layout pass later.
-   */
-  onRows?: (rows: number) => void;
+export interface InlineMenuOptions {
+  readonly renderer: CliRenderer;
+  readonly theme: CliTheme;
+  readonly nextId: (prefix?: string) => string;
+  readonly onError: (cause: unknown) => void;
+  /** The panel's row count, whenever filtering or a new screen changes it. */
+  readonly onRows: (rows: number) => void;
 }
 
 function consume(key: KeyEvent): void {
   key.preventDefault();
   key.stopPropagation();
 }
+
+const FILTER_PLACEHOLDER = "type to filter";
 
 function actionKeyLabel(action: ChoiceAction): string {
   return action.ctrl ? `ctrl+${action.key}` : action.key;
@@ -89,28 +91,17 @@ function filterChoices(choices: readonly Choice[], value: string): readonly Choi
 }
 
 const MAX_ROWS = 10;
-// Composer, powerline, panel padding, the search row, and the global hint row
-// take six terminal rows before the list gets any.
 const CHROME_ROWS = 7;
 /** The panel's own rows: padding above, the search row, padding below. */
 const PANEL_CHROME_ROWS = 3;
 const COUNT_MIN_WIDTH = 48;
 const TITLE_MIN_WIDTH = 32;
-/**
- * The composer spends a border column and a padding column on each side, so
- * matching its inner span means two columns on the left, under the prompt
- * glyph, and one on the right.
- */
 const PADDING_LEFT = 2;
 const PADDING_RIGHT = 1;
 
 /**
- * The one menu behind every inline choice: borderless, under the composer, on
- * the composer's rail. Picking a model, a thinking level, a setting or a slash
- * command is the same gesture, so all of them take the same chrome instead of
- * a window over the chat.
- *
- * It mounts in the ephemeral slot, which is why it declares `rows`.
+ * Searchable choices under the composer. Settings, thinking levels, and
+ * slash commands share this menu; model configuration has its own panel.
  *
  * Based on https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/src/views/slash_dropdown.rs
  */
@@ -124,7 +115,7 @@ export class InlineMenu {
   private readonly list: MenuList;
   private readonly count: TextRenderable;
   private readonly empty: TextRenderable;
-  private readonly onError: (error: unknown) => void;
+  private readonly onError: (cause: unknown) => void;
   private readonly onRows: (rows: number) => void;
   private screen: MenuScreen;
   private choices: readonly Choice[];
@@ -137,20 +128,17 @@ export class InlineMenu {
   constructor(options: InlineMenuOptions, screen: MenuScreen) {
     this.renderer = options.renderer;
     this.theme = options.theme;
-    this.onError = options.onError ?? (() => undefined);
-    this.onRows = options.onRows ?? (() => undefined);
+    this.onError = options.onError;
+    this.onRows = options.onRows;
     this.screen = screen;
     this.choices = screen.choices;
     this.matches = screen.choices;
-    const { theme } = options;
-    const nextId = options.nextId ?? ((prefix = "menu") => `${prefix}-${crypto.randomUUID()}`);
+    const { theme, nextId } = options;
 
     this.container = new BoxRenderable(options.renderer, {
       id: nextId("menu-panel"),
       flexShrink: 0,
       flexDirection: "column",
-      // The ephemeral slot paints the opaque fill; only the selected row adds
-      // a background of its own.
       backgroundColor: theme.transparent,
       marginLeft: 1,
       marginRight: 1,
@@ -159,7 +147,6 @@ export class InlineMenu {
       paddingTop: 1,
       paddingBottom: 1,
     });
-    bindSemantics(this.container, () => ({ role: "dialog", label: this.screen.title }));
 
     const queryRow = new BoxRenderable(options.renderer, {
       id: nextId("menu-query-row"),
@@ -179,7 +166,7 @@ export class InlineMenu {
       flexGrow: 1,
       flexBasis: 0,
       minWidth: 1,
-      placeholder: "type to filter",
+      placeholder: screen.typed?.placeholder ?? FILTER_PLACEHOLDER,
       placeholderColor: theme.muted,
       backgroundColor: theme.transparent,
       focusedBackgroundColor: theme.transparent,
@@ -229,11 +216,7 @@ export class InlineMenu {
     this.startLoad();
   }
 
-  /**
-   * Rows the panel needs right now. The shell sizes the ephemeral slot from
-   * this in the same tick the list changes, so it is declared rather than
-   * read back from a layout pass.
-   */
+  /** Rows the panel needs right now: declared, never measured. */
   get rows(): number {
     return (
       PANEL_CHROME_ROWS +
@@ -256,12 +239,23 @@ export class InlineMenu {
     this.screen = screen;
     this.choices = screen.choices;
     this.title.content = this.titleText(screen.title);
+    this.queryInput.placeholder = screen.typed?.placeholder ?? FILTER_PLACEHOLDER;
     this.setQuery("");
     this.matches = screen.choices;
     this.list.setMaxVisible(this.maxVisibleForHeight(this.renderer.height));
     this.list.setItems(this.matches, this.indexOf(screen.selectedId));
     this.repaintStatus();
     this.startLoad();
+  }
+
+  /** Refresh a live list without throwing away its filter or highlighted item. */
+  setChoices(choices: readonly Choice[]): void {
+    if (this.destroyed) return;
+    const selected = this.list.selectedItem?.id;
+    this.choices = choices;
+    this.matches = filterChoices(choices, this.queryInput.value);
+    this.list.setItems(this.matches, this.indexOf(selected));
+    this.repaintStatus();
   }
 
   focus(): void {
@@ -336,6 +330,8 @@ export class InlineMenu {
 
   private repaintStatus(): void {
     this.count.content = this.countText();
+    // A match count describes a filter; a typed answer has nothing to count.
+    this.count.visible = this.screen.typed === undefined && this.renderer.width >= COUNT_MIN_WIDTH;
     this.empty.content = this.loading ? "loading" : "no matches";
     this.list.container.visible = this.matches.length > 0;
     this.empty.visible = this.matches.length === 0;
@@ -347,10 +343,9 @@ export class InlineMenu {
     return Math.max(1, Math.min(cap, height - CHROME_ROWS));
   }
 
-  /** Give narrow menus to the filter first, then the title, then the count. */
   private applyWidth(width: number): void {
     this.title.visible = width >= TITLE_MIN_WIDTH;
-    this.count.visible = width >= COUNT_MIN_WIDTH;
+    this.count.visible = this.screen.typed === undefined && width >= COUNT_MIN_WIDTH;
   }
 
   private readonly onResize = (width: number, height: number): void => {
@@ -360,7 +355,7 @@ export class InlineMenu {
   };
 
   private readonly onInput = (value: string): void => {
-    if (!this.filtering) return;
+    if (!this.filtering || this.screen.typed !== undefined) return;
     this.matches = filterChoices(this.choices, value);
     this.list.setItems(this.matches);
     const top = this.list.selectedItem;
@@ -369,38 +364,46 @@ export class InlineMenu {
   };
 
   /**
-   * Runs the selection in the dispatch that picked it. A terminal can deliver
-   * enter and the next typed character in one stdin chunk, so a deferred
-   * handler would leave the menu open to swallow that character; a synchronous
-   * one lets the shell close the menu and refocus the composer first. Only an
-   * async handler holds the menu busy while it applies.
+   * Runs the selection in the dispatch that picked it, so the shell can close
+   * the menu and refocus the composer before the next typed character lands.
+   * Only an async handler holds the menu busy while it applies.
    */
   private activate(id: string): void {
+    this.run(() => this.screen.onSelect(id));
+  }
+
+  private run(handler: () => void | Promise<void>): void {
     if (this.busy) return;
     try {
-      const applied = this.screen.onSelect(id);
+      const applied = handler();
       if (applied instanceof Promise) {
         this.busy = true;
         void applied.catch(this.onError).finally(() => {
           this.busy = false;
         });
       }
-    } catch (error) {
-      this.onError(error);
+    } catch (cause) {
+      this.onError(cause);
     }
   }
 
   private readonly onKeyPress = (key: KeyEvent): void => {
-    if (this.destroyed || key.defaultPrevented) return;
-    // A choice mid-apply owns the menu: swallow keys instead of racing it.
-    if (this.busy) {
-      consume(key);
-      return;
-    }
+    if (this.destroyed || !this.container.visible || key.defaultPrevented) return;
     if (key.name === "escape") {
       consume(key);
       if (this.queryInput.value === "") this.screen.onCancel();
       else this.queryInput.value = "";
+      return;
+    }
+    if (this.busy) {
+      consume(key);
+      return;
+    }
+    const { typed } = this.screen;
+    const text = this.queryInput.value;
+    if (key.name === "return" && typed !== undefined && text.trim() !== "") {
+      consume(key);
+      this.run(() => typed.onSubmit(text));
       return;
     }
     if (this.matches.length === 0) return;

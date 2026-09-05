@@ -1,4 +1,4 @@
-import type { SessionId } from "@uji-ai/core";
+import type { SessionId } from "@nyte-ai/core";
 import { useRouter } from "@tanstack/react-router";
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -30,7 +30,7 @@ function controllerForWorkspace(workspaceKey: string): PaneController {
   if (existing !== undefined) return existing;
   const controller = new PaneController({
     storage: browserStorage(),
-    storageKey: `uji.desktop.panes.v1:${workspaceKey}`,
+    storageKey: `nyte.desktop.panes.v1:${workspaceKey}`,
   });
   controllerCache.set(workspaceKey, controller);
   return controller;

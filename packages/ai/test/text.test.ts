@@ -3,8 +3,8 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
-import type { AssistantMessage, ToolResultMessage } from "@uji-ai/schema";
+import { describe, test } from "vitest";
+import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/schema";
 import { contentText } from "../src/utils/text.ts";
 
 const content: AssistantMessage["content"] = [
@@ -14,20 +14,20 @@ const content: AssistantMessage["content"] = [
   { type: "text", text: "second" },
 ];
 
-void describe("contentText", () => {
-  void test("extracts assistant text blocks", () => {
+describe("contentText", () => {
+  test("extracts assistant text blocks", () => {
     assert.equal(contentText(content), "first\nsecond");
   });
 
-  void test("supports custom separators", () => {
+  test("supports custom separators", () => {
     assert.equal(contentText(content, ""), "firstsecond");
   });
 
-  void test("passes string content through", () => {
+  test("passes string content through", () => {
     assert.equal(contentText("hello"), "hello");
   });
 
-  void test("extracts text from tool-result content", () => {
+  test("extracts text from tool-result content", () => {
     const toolResultContent: ToolResultMessage["content"] = [
       { type: "text", text: "first" },
       { type: "image", data: "...", mimeType: "image/png" },

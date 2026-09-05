@@ -1,6 +1,6 @@
 /**
  * Coding tool set ported from pi. read/bash/edit/write follow pi-agent-core's
- * harness tools; ls comes from pi-coding-agent, which is the only pi package
+ * tools; ls comes from pi-coding-agent, which is the only pi package
  * that has it. There is no grep or find tool; agents can run search commands
  * through bash.
  *

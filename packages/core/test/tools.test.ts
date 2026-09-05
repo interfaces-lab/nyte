@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, test } from "node:test";
+import { describe, test } from "vitest";
 import { createLocalBashOperations } from "../src/tools/bash.ts";
 import { createEditTool } from "../src/tools/edit.ts";
 import { createAllTools } from "../src/tools/index.ts";
@@ -10,15 +10,15 @@ import { createLsTool } from "../src/tools/ls.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { toolResultText } from "../src/utils/tool-result.ts";
 
-void describe("createAllTools", () => {
-  void test("composes exactly the five coding tools, in order", () => {
+describe("createAllTools", () => {
+  test("composes exactly the five coding tools, in order", () => {
     const names = createAllTools("/tmp").map((tool) => tool.name);
     assert.deepEqual(names, ["read", "bash", "edit", "write", "ls"]);
   });
 });
 
-void describe("ls tool", () => {
-  void test("sorts entries and marks directories", async () => {
+describe("ls tool", () => {
+  test("sorts entries and marks directories", async () => {
     const tool = createLsTool("/workspace", {
       operations: {
         exists: () => true,
@@ -31,7 +31,7 @@ void describe("ls tool", () => {
     assert.equal(toolResultText(result.content), "folder/\nz.txt");
   });
 
-  void test("observes aborts while an operation is in flight", async () => {
+  test("observes aborts while an operation is in flight", async () => {
     let finishRead: ((entries: string[]) => void) | undefined;
     const entries = new Promise<string[]>((resolve) => {
       finishRead = resolve;
@@ -53,9 +53,9 @@ void describe("ls tool", () => {
   });
 });
 
-void describe("file mutation tools", () => {
-  void test("write returns a patch for creates and overwrites", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "uji-write-tool-"));
+describe("file mutation tools", () => {
+  test("write returns a patch for creates and overwrites", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nyte-write-tool-"));
     const path = "nested/example.ts";
     const absolutePath = join(directory, path);
     const tool = createWriteTool(directory);
@@ -76,8 +76,8 @@ void describe("file mutation tools", () => {
     }
   });
 
-  void test("edit returns the shared patch details", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "uji-edit-tool-"));
+  test("edit returns the shared patch details", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "nyte-edit-tool-"));
     const path = "example.ts";
 
     try {
@@ -96,8 +96,8 @@ void describe("file mutation tools", () => {
   });
 });
 
-void describe("local bash lifecycle", () => {
-  void test(
+describe("local bash lifecycle", () => {
+  test(
     "abort kills the active shell process group",
     { skip: process.platform === "win32" },
     async () => {

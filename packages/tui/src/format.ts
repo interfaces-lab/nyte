@@ -1,82 +1,16 @@
 /**
- * Pure formatting and parsing helpers shared by the TUI and print mode.
- * Nothing here touches a renderer, so every function is unit-testable.
+ * Pure formatting helpers shared by the TUI and print mode. Nothing here
+ * touches a renderer.
  */
-import type { ThinkingLevel } from "@uji-ai/core";
-import type { Message } from "@uji-ai/schema";
+import type { ThinkingLevel } from "@nyte-ai/core";
+import type { UserMessage } from "@nyte-ai/schema";
 import { parsePatch, type StructuredPatch } from "diff";
 import { GLYPHS, SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
-export interface ParsedSlashCommand {
-  name: string;
-  argument: string;
-}
-
-type ComposerSubmission =
-  | { kind: "empty" }
-  | { kind: "command"; command: ParsedSlashCommand }
-  | { kind: "prompt"; text: string };
-
-function isAsciiLetter(character: string | undefined): boolean {
-  if (character === undefined) return false;
-  const code = character.charCodeAt(0);
-  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-}
-
-function isSlashCommandNameCharacter(character: string): boolean {
-  const code = character.charCodeAt(0);
-  return isAsciiLetter(character) || (code >= 48 && code <= 57) || character === "-";
-}
-
-/** Parse one slash command while preserving spaces inside its argument. */
-function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
-  const value = input.trim();
-  const first = value[1];
-  if (
-    !value.startsWith("/") ||
-    first === undefined ||
-    first === "-" ||
-    !isSlashCommandNameCharacter(first)
-  ) {
-    return undefined;
-  }
-  if (value.includes("\n") || value.includes("\r")) return undefined;
-
-  let nameEnd = 2;
-  while (nameEnd < value.length) {
-    const character = value[nameEnd];
-    if (character === undefined || character.trim() === "") break;
-    if (!isSlashCommandNameCharacter(character)) return undefined;
-    nameEnd += 1;
-  }
-
-  return {
-    name: value.slice(1, nameEnd).toLowerCase(),
-    argument: value.slice(nameEnd).trim(),
-  };
-}
-
-/** Classify composer text once at the chat-or-command boundary. */
-export function parseComposerSubmission(input: string): ComposerSubmission {
-  const text = input.trim();
-  if (text === "") return { kind: "empty" };
-  const command = parseSlashCommand(text);
-  return command === undefined ? { kind: "prompt", text } : { kind: "command", command };
-}
-
 /** One heading per tool call: the tool's own title after its name, else the name alone. */
 export function toolHeading(toolName: string, title: string | undefined): string {
   return title === undefined ? toolName : `${toolName} ${title}`;
-}
-
-/** The file a unified patch names, so its diff can be syntax highlighted. */
-export function patchPath(patch: string): string | undefined {
-  try {
-    return parsePatch(patch)[0]?.newFileName;
-  } catch {
-    return undefined;
-  }
 }
 
 /** How long an operation took, read as a duration rather than a clock. */
@@ -103,15 +37,14 @@ export function resultSummary(text: string): string | undefined {
   return lines === 1 ? undefined : `${String(lines)} lines`;
 }
 
-interface Preview {
-  text: string;
-  omitted: number;
+export interface Preview {
+  readonly text: string;
+  readonly omitted: number;
 }
 
 /**
- * A capped view of `text`: the first `max` lines, or — when `tail` is given —
- * the first `max` and the last `tail` with the middle dropped, so the end of a
- * command's output stays visible.
+ * A capped view of `text`: the first `max` lines, or, when `tail` is given,
+ * the first `max` and the last `tail` with the middle dropped.
  */
 export function previewLines(text: string, max: number, tail = 0): Preview {
   const trimmed = text.replace(/\n+$/, "");
@@ -133,60 +66,13 @@ export function omittedLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} more lines`;
 }
 
-/** Calls a collapsed tool group scrolled out of its tail window. */
-export function earlierCallsLabel(hidden: number): string {
-  return hidden === 1
-    ? `${GLYPHS.ellipsis} 1 earlier call`
-    : `${GLYPHS.ellipsis} ${String(hidden)} earlier calls`;
-}
-
-/** Verbs for the lead of a tool group heading. Unlisted tools read as "used <name>". */
-const TOOL_CALL_VERBS: Readonly<Record<string, string>> = {
-  read: "read",
-  ls: "listed",
-  bash: "ran",
-  websearch: "searched",
-  edit: "edited",
-  write: "wrote",
-};
-
-/** Lead of a tool group heading: verbs in first-call order, capped at three. */
-export function toolCallVerbs(toolNames: readonly string[]): string {
-  const verbs: string[] = [];
-  for (const name of toolNames) {
-    const verb = TOOL_CALL_VERBS[name] ?? `used ${name}`;
-    if (!verbs.includes(verb)) verbs.push(verb);
-  }
-  const lead = verbs.slice(0, 3).join(", ");
-  return lead.charAt(0).toUpperCase() + lead.slice(1);
-}
-
-/** Dim tail of a tool group heading: per-tool call counts in first-call order. */
-export function toolCallCounts(toolNames: readonly string[]): string {
-  const counts = new Map<string, number>();
-  for (const name of toolNames) counts.set(name, (counts.get(name) ?? 0) + 1);
-  return [...counts].map(([name, count]) => `${String(count)} ${name}`).join(" · ");
-}
-
 export function unchangedLinesLabel(omitted: number): string {
   return omitted === 1
     ? `${GLYPHS.ellipsis} 1 unchanged line`
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
 }
 
-/** `+added -removed` line counts from a unified patch, for a tool heading. */
-export function diffStat(patch: string): { added: number; removed: number } {
-  let added = 0;
-  let removed = 0;
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue;
-    if (line.startsWith("+")) added += 1;
-    else if (line.startsWith("-")) removed += 1;
-  }
-  return { added, removed };
-}
-
-interface DiffSection {
+export interface DiffSection {
   readonly patch: string;
   readonly omittedBefore: number;
   readonly rows: number;
@@ -205,27 +91,23 @@ function hunkRows(hunk: string): number {
 
 /**
  * Split a patch into independently sized hunks and count the unchanged lines
- * before each one. The transcript can then use one scroller for the whole
+ * before each one, so the transcript uses one scroller for the whole
  * conversation instead of clipping a tall diff into a nested viewport.
  *
  * Based on OpenCode's patch-hunk presentation:
  * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/util/diff.ts
  */
 export function diffSections(patch: string): DiffSection[] {
-  const starts: HunkStart[] = [
-    ...patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@.*$/gmu),
-  ].flatMap((match) => {
-    const index = match.index;
+  const starts: HunkStart[] = [];
+  for (const match of patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@.*$/gmu)) {
     const newStart = match[1];
-    if (index === undefined || newStart === undefined) return [];
-    return [
-      {
-        index,
-        newStart: Number(newStart),
-        newLines: Number(match[2] ?? "1"),
-      },
-    ];
-  });
+    if (newStart === undefined) continue;
+    starts.push({
+      index: match.index,
+      newStart: Number(newStart),
+      newLines: Number(match[2] ?? "1"),
+    });
+  }
   if (starts.length === 0) return [{ patch, omittedBefore: 0, rows: 0 }];
 
   const prefix = patch.slice(0, starts[0]?.index);
@@ -235,23 +117,19 @@ export function diffSections(patch: string): DiffSection[] {
     const hunk = patch.slice(start.index, end);
     const omittedBefore = Math.max(0, start.newStart - previousEnd);
     previousEnd = start.newStart + start.newLines;
-    return {
-      patch: prefix + hunk,
-      omittedBefore,
-      rows: hunkRows(hunk),
-    };
+    return { patch: prefix + hunk, omittedBefore, rows: hunkRows(hunk) };
   });
 }
 
-interface OutputDiffFile {
-  patch: string;
-  path?: string;
+export interface OutputDiffFile {
+  readonly patch: string;
+  readonly path?: string;
 }
 
 export interface OutputDiff {
-  files: OutputDiffFile[];
-  before?: string;
-  after?: string;
+  readonly files: readonly OutputDiffFile[];
+  readonly before?: string;
+  readonly after?: string;
 }
 
 function substantivePatch(patch: StructuredPatch): boolean {
@@ -284,18 +162,23 @@ function diffPath(patch: StructuredPatch): string | undefined {
   return patch.isGit === true && /^[ab]\//.test(named) ? named.slice(2) : named;
 }
 
+function withPath(patch: string, path: string | undefined): OutputDiffFile {
+  return path === undefined ? { patch } : { patch, path };
+}
+
 function outputDiffFiles(patch: string, parsed: readonly StructuredPatch[]): OutputDiffFile[] {
-  const starts = [...patch.matchAll(/^diff --git [^\n]+/gm)].flatMap((match) =>
-    match.index === undefined ? [] : [match.index],
-  );
+  const starts = [...patch.matchAll(/^diff --git [^\n]+/gm)].map((match) => match.index);
   if (starts.length !== parsed.length || starts.length === 0) {
-    const path = parsed.length === 1 && parsed[0] !== undefined ? diffPath(parsed[0]) : undefined;
-    return [{ patch, path }];
+    const only = parsed.length === 1 ? parsed[0] : undefined;
+    return [withPath(patch, only === undefined ? undefined : diffPath(only))];
   }
   return starts.map((start, index) => {
     const end = starts[index + 1] ?? patch.length;
-    const path = parsed[index] === undefined ? undefined : diffPath(parsed[index]);
-    return { patch: patch.slice(start, end).replace(/\n+$/, ""), path };
+    const file = parsed[index];
+    return withPath(
+      patch.slice(start, end).replace(/\n+$/, ""),
+      file === undefined ? undefined : diffPath(file),
+    );
   });
 }
 
@@ -324,24 +207,29 @@ export function diffFromOutput(text: string): OutputDiff | undefined {
     }
     if (parsed.length === 0 || !parsed.some(substantivePatch)) continue;
     const after = trimSection(lines.slice(end).join("\n"));
-    const diff: OutputDiff = { files: outputDiffFiles(patch, parsed) };
-    if (before !== undefined) diff.before = before;
-    if (after !== undefined) diff.after = after;
+    let diff: OutputDiff = { files: outputDiffFiles(patch, parsed) };
+    if (before !== undefined) diff = { ...diff, before };
+    if (after !== undefined) diff = { ...diff, after };
     return diff;
   }
   return undefined;
 }
 
-/** Flatten wire content parts to display text; images become a marker. */
-export function partsText(content: Message["content"] | undefined): string {
-  if (content === undefined) return "";
-  if (typeof content === "string") return content;
+/** Flatten user content parts to display text; images become a marker. */
+export function userText(content: UserMessage["content"]): string {
+  if (!Array.isArray(content)) return content;
   return content
     .map((part) => {
-      if (part.type === "image") return "[image]";
-      if (part.type === "text") return part.text;
-      if (part.type === "thinking") return part.thinking;
-      return "";
+      switch (part.type) {
+        case "text":
+          return part.text;
+        case "image":
+          return "[image]";
+        default: {
+          const _exhaustive: never = part;
+          return _exhaustive;
+        }
+      }
     })
     .join("");
 }
@@ -353,10 +241,7 @@ export function oneLine(text: string): string {
 
 const MAX_RETRY_CAUSE_CHARS = 80;
 
-/**
- * A provider error trimmed to fit one transcript line and punctuated, so the retry
- * clause that follows it reads as a second sentence rather than a run-on.
- */
+/** A provider error trimmed to one transcript line and punctuated. */
 export function retryCause(errorMessage: string): string {
   const collapsed = errorMessage.replaceAll(/\s+/gu, " ").trim();
   if (collapsed === "") return "Request failed.";
@@ -369,24 +254,27 @@ export function retryCause(errorMessage: string): string {
 
 /** Composer metadata. */
 export interface PowerlineState {
-  workspace: string;
-  branch?: string;
-  dirty: boolean;
-  provider: string;
-  model: string;
-  effort?: ThinkingLevel;
-  /** Status badges from plugin settings (e.g. "fast"), rendered beside the thinking level. */
-  statuses: readonly string[];
-  queued: number;
+  readonly workspace: string;
+  readonly branch?: string;
+  readonly dirty: boolean;
+  readonly provider: string;
+  readonly model: string;
+  readonly effort?: ThinkingLevel;
+  /** Status badges from plugin settings (e.g. "fast"), beside the thinking level. */
+  /** Badges from plugin settings and the plugin status items, in that order. */
+  readonly statuses: readonly string[];
+  readonly queued: number;
   /** Tokens reported by the last settled assistant turn. */
-  tokens?: number;
+  readonly tokens?: number;
   /** Estimated share of the model's context window in use, whole percent. */
-  pct?: number;
+  readonly pct?: number;
 }
 
+export type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
+
 export interface PowerlineSegment {
-  text: string;
-  tone: "workspace" | "model" | "effort" | "queue" | "usage";
+  readonly text: string;
+  readonly tone: PowerlineTone;
 }
 
 /** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
@@ -408,8 +296,6 @@ export function clockDuration(ms: number): string {
 }
 
 export function shortId(id: string): string {
-  const durableSuffix = /-(s_[a-zA-Z0-9]+)$/.exec(id)?.[1];
-  if (durableSuffix !== undefined) return durableSuffix;
   return id.length > 12 ? id.slice(0, 12) : id;
 }
 
@@ -423,24 +309,18 @@ export function formatTokens(tokens: number): string {
 export function powerlineSegments(state: PowerlineState): PowerlineSegment[] {
   const branch = state.branch === undefined ? "" : ` ${state.branch}${state.dirty ? "*" : ""}`;
   const badges = [...(state.effort === undefined ? [] : [state.effort]), ...state.statuses];
-  const effort: PowerlineSegment[] =
-    badges.length === 0 ? [] : [{ text: badges.join(" "), tone: "effort" }];
-  const usage: PowerlineSegment[] = [];
+  const segments: PowerlineSegment[] = [
+    { text: `${state.workspace}${branch}`, tone: "workspace" },
+    { text: state.model, tone: "model" },
+  ];
+  if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
   if (state.tokens !== undefined && state.tokens > 0) {
-    usage.push({
+    segments.push({
       text: `${formatTokens(state.tokens)} tokens${state.pct === undefined ? "" : ` · ${String(state.pct)}% context`}`,
       tone: "usage",
     });
   }
-  const segments: PowerlineSegment[] = [
-    { text: `${state.workspace}${branch}`, tone: "workspace" },
-    { text: state.model, tone: "model" },
-    ...effort,
-    ...usage,
-  ];
-  if (state.queued > 0) {
-    segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
-  }
+  if (state.queued > 0) segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });
   return segments;
 }
 
@@ -454,7 +334,7 @@ export function fitPowerlineSegments(
   maxWidth: number,
 ): PowerlineSegment[] {
   let kept = [...segments];
-  const droppable: PowerlineSegment["tone"][] = ["usage", "workspace", "queue", "effort"];
+  const droppable: readonly PowerlineTone[] = ["usage", "workspace", "queue", "effort"];
   for (const tone of droppable) {
     if (displayWidth(joinSegments(kept)) <= maxWidth) break;
     kept = kept.filter((segment) => segment.tone !== tone);
@@ -462,19 +342,17 @@ export function fitPowerlineSegments(
   return kept;
 }
 
-interface HintGroup {
-  key: string;
-  label: string;
+export interface HintGroup {
+  readonly key: string;
+  readonly label: string;
 }
 
-/** Hint rows join their groups with a spaced middle dot. */
-const HINT_SEPARATOR = " \u00b7 ";
+const HINT_SEPARATOR = " · ";
 
 /**
  * Split a hint row into keycaps and what they do. Every hint string is written
  * `<keycap> <what it does>`, so the first token is the cap and the rest is the
- * description — that lets the renderer give the two different weights without
- * the constants carrying markup.
+ * description.
  */
 export function hintGroups(text: string): HintGroup[] {
   const groups: HintGroup[] = [];
@@ -488,20 +366,12 @@ export function hintGroups(text: string): HintGroup[] {
   return groups;
 }
 
-/** What the terminal title says before a chat has a name. */
-export const TERMINAL_TITLE_BASE = "uji";
-
-/** Long titles are dropped or scrolled by the terminal; cut before it does. */
-export const TERMINAL_TITLE_MAX_CHARS = 72;
-
+export const TERMINAL_TITLE_BASE = "nyte";
+const TERMINAL_TITLE_MAX_CHARS = 72;
 /** C0 and C1, which is where the OSC terminator and the bell live. */
 const CONTROL_CHARACTERS = /\p{Cc}/gu;
 
-/**
- * `uji` until the chat has a name, then `uji - <name>`. A name reaches this
- * through a model and through the composer, so it is untrusted text on the
- * way to an OSC sequence: the escape that ends the sequence is stripped here.
- */
+/** `nyte` until the chat has a name, then `nyte - <name>`, with control characters stripped. */
 export function terminalTitle(name: string | undefined): string {
   const clean = (name ?? "").replaceAll(CONTROL_CHARACTERS, " ").replaceAll(/\s+/gu, " ").trim();
   if (clean === "") return TERMINAL_TITLE_BASE;

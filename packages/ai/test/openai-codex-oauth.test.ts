@@ -3,7 +3,7 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, mock, test } from "node:test";
+import { afterEach, describe, vi, test } from "vitest";
 import { openaiCodexOAuth } from "../src/auth/oauth/openai-codex.ts";
 
 const neverAbortedSignal = new AbortController().signal;
@@ -93,25 +93,16 @@ function headerValue(
   return new Headers(headers).get(name) ?? undefined;
 }
 
-async function flush(): Promise<void> {
-  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
-}
-
-async function advance(ms: number): Promise<void> {
-  mock.timers.tick(ms);
-  await flush();
-}
-
-void describe("OpenAI Codex OAuth", () => {
+describe("OpenAI Codex OAuth", () => {
   afterEach(() => {
-    mock.restoreAll();
-    mock.timers.reset();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
     globalThis.fetch = realFetch;
   });
 
-  void test("logs in with the OpenAI Codex device code flow", async () => {
+  test("logs in with the OpenAI Codex device code flow", async () => {
     const startTime = new Date("2026-05-20T00:00:00Z").getTime();
-    mock.timers.enable({ apis: ["setTimeout", "Date"], now: startTime });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"], now: startTime });
 
     const accessToken = createAccessToken("account-123");
     const deviceInfos: DeviceInfo[] = [];
@@ -183,7 +174,7 @@ void describe("OpenAI Codex OAuth", () => {
     });
 
     for (let i = 0; i < 5 && pollTimes.length === 0; i++) {
-      await advance(0);
+      await vi.advanceTimersByTimeAsync(0);
     }
     assert.deepEqual(deviceInfos, [
       {
@@ -195,10 +186,10 @@ void describe("OpenAI Codex OAuth", () => {
     ]);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(4999);
+    await vi.advanceTimersByTimeAsync(4999);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(1);
+    await vi.advanceTimersByTimeAsync(1);
     const credentials = await credentialsPromise;
     assert.equal(credentials.access, accessToken);
     assert.equal(credentials.refresh, "refresh-token");
@@ -207,7 +198,7 @@ void describe("OpenAI Codex OAuth", () => {
     assert.deepEqual(pollTimes, [startTime, startTime + 5000]);
   });
 
-  void test("offers browser login first and uses the selected OpenAI Codex device code flow", async () => {
+  test("offers browser login first and uses the selected OpenAI Codex device code flow", async () => {
     const accessToken = createAccessToken("account-456");
     const selectPrompts: Array<{
       message: string;
@@ -284,7 +275,7 @@ void describe("OpenAI Codex OAuth", () => {
     ]);
   });
 
-  void test("cancels when OpenAI Codex login method selection is cancelled", async () => {
+  test("cancels when OpenAI Codex login method selection is cancelled", async () => {
     await assert.rejects(
       openaiCodexOAuth.login({
         signal: neverAbortedSignal,
@@ -297,8 +288,8 @@ void describe("OpenAI Codex OAuth", () => {
     );
   });
 
-  void test("cancels the OpenAI Codex device code flow while waiting", async () => {
-    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  test("cancels the OpenAI Codex device code flow while waiting", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const controller = new AbortController();
     const pollTimes: number[] = [];
 
@@ -331,7 +322,7 @@ void describe("OpenAI Codex OAuth", () => {
     );
 
     for (let i = 0; i < 5 && pollTimes.length === 0; i++) {
-      await advance(0);
+      await vi.advanceTimersByTimeAsync(0);
     }
     assert.equal(pollTimes.length, 1);
 
@@ -341,8 +332,8 @@ void describe("OpenAI Codex OAuth", () => {
     assert.equal(rejection.message, "Login cancelled");
   });
 
-  void test("times out the OpenAI Codex device code flow after 15 minutes", async () => {
-    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  test("times out the OpenAI Codex device code flow after 15 minutes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const pollTimes: number[] = [];
 
     stubFetch(async (input, init) => {
@@ -373,18 +364,18 @@ void describe("OpenAI Codex OAuth", () => {
     );
 
     for (let i = 0; i < 5 && pollTimes.length === 0; i++) {
-      await advance(0);
+      await vi.advanceTimersByTimeAsync(0);
     }
     assert.equal(pollTimes.length, 1);
 
-    await advance(15 * 60 * 1000);
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
     const rejection = await rejectionPromise;
     assert.ok(rejection instanceof Error);
     assert.equal(rejection.message, "Device flow timed out");
   });
 
-  void test("treats OpenAI Codex device auth 403 and 404 responses as pending", async () => {
-    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  test("treats OpenAI Codex device auth 403 and 404 responses as pending", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const accessToken = createAccessToken("account-403-404");
     const pollTimes: number[] = [];
     const pollResponses = [
@@ -429,10 +420,10 @@ void describe("OpenAI Codex OAuth", () => {
     });
 
     for (let i = 0; i < 5 && pollTimes.length === 0; i++) {
-      await advance(0);
+      await vi.advanceTimersByTimeAsync(0);
     }
-    await advance(1000);
-    await advance(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
 
     const credentials = await credentialsPromise;
     assert.equal(credentials.access, accessToken);
@@ -441,7 +432,7 @@ void describe("OpenAI Codex OAuth", () => {
     assert.equal(pollTimes.length, 3);
   });
 
-  void test("includes the response body in OpenAI Codex device auth poll failures", async () => {
+  test("includes the response body in OpenAI Codex device auth poll failures", async () => {
     stubFetch(async (input) => {
       const url = getUrl(input);
       if (url === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
@@ -468,8 +459,8 @@ void describe("OpenAI Codex OAuth", () => {
     );
   });
 
-  void test("does not write token refresh failures to stderr", async () => {
-    const consoleError = mock.method(console, "error", () => {});
+  test("does not write token refresh failures to stderr", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     stubFetch(async () => {
       return new Response(
         JSON.stringify({
@@ -498,6 +489,6 @@ void describe("OpenAI Codex OAuth", () => {
       ),
       /OpenAI Codex token refresh failed \(401\).*Could not validate your token/,
     );
-    assert.equal(consoleError.mock.callCount(), 0);
+    assert.equal(consoleError.mock.calls.length, 0);
   });
 });

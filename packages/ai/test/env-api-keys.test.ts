@@ -2,10 +2,10 @@
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/ai/test/env-api-keys.test.ts
  * Synced with pi 7ebf9087e.
  *
- * Uji divergence: the GitHub Copilot and ZAI cases are dropped with those providers.
+ * Nyte divergence: the GitHub Copilot and ZAI cases are dropped with those providers.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test } from "vitest";
 import {
   ANTHROPIC_API_KEY_ENV,
   ANTHROPIC_AUTH_TOKEN_ENV,
@@ -33,8 +33,8 @@ afterEach(() => {
   }
 });
 
-void describe("environment API keys", () => {
-  void test("reports ANTHROPIC_AUTH_TOKEN but preserves OAuth token API key lookup", () => {
+describe("environment API keys", () => {
+  test("reports ANTHROPIC_AUTH_TOKEN but preserves OAuth token API key lookup", () => {
     process.env[ANTHROPIC_AUTH_TOKEN_ENV] = "auth-token";
     process.env[ANTHROPIC_OAUTH_TOKEN_ENV] = "oauth-token";
     process.env[ANTHROPIC_API_KEY_ENV] = "api-key";
@@ -43,7 +43,7 @@ void describe("environment API keys", () => {
     assert.equal(getEnvApiKey("anthropic"), "oauth-token");
   });
 
-  void test("does not return ANTHROPIC_AUTH_TOKEN as an API key", () => {
+  test("does not return ANTHROPIC_AUTH_TOKEN as an API key", () => {
     process.env[ANTHROPIC_AUTH_TOKEN_ENV] = "auth-token";
     delete process.env[ANTHROPIC_OAUTH_TOKEN_ENV];
     delete process.env[ANTHROPIC_API_KEY_ENV];
@@ -52,7 +52,7 @@ void describe("environment API keys", () => {
     assert.equal(getEnvApiKey("anthropic"), undefined);
   });
 
-  void test("preserves ANTHROPIC_OAUTH_TOKEN as an API key", () => {
+  test("preserves ANTHROPIC_OAUTH_TOKEN as an API key", () => {
     delete process.env[ANTHROPIC_AUTH_TOKEN_ENV];
     process.env[ANTHROPIC_OAUTH_TOKEN_ENV] = "oauth-token";
     delete process.env[ANTHROPIC_API_KEY_ENV];
@@ -61,7 +61,7 @@ void describe("environment API keys", () => {
     assert.equal(getEnvApiKey("anthropic"), "oauth-token");
   });
 
-  void test("falls back to ANTHROPIC_API_KEY for API key lookup", () => {
+  test("falls back to ANTHROPIC_API_KEY for API key lookup", () => {
     delete process.env[ANTHROPIC_AUTH_TOKEN_ENV];
     delete process.env[ANTHROPIC_OAUTH_TOKEN_ENV];
     process.env[ANTHROPIC_API_KEY_ENV] = "api-key";
@@ -69,7 +69,7 @@ void describe("environment API keys", () => {
     assert.equal(getEnvApiKey("anthropic"), "api-key");
   });
 
-  void test("resolves OpenAI credentials from OPENAI_API_KEY and nothing for OAuth-only providers", () => {
+  test("resolves OpenAI credentials from OPENAI_API_KEY and nothing for OAuth-only providers", () => {
     const original = process.env.OPENAI_API_KEY;
     try {
       assert.deepEqual(findEnvKeys("openai", { OPENAI_API_KEY: "openai-key" }), ["OPENAI_API_KEY"]);

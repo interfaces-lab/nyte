@@ -22,10 +22,10 @@ const importOAuthModule = async (specifier: string): Promise<unknown> => {
   try {
     return await import(runtimeSpecifier);
   } catch (error) {
-    // In a standalone binary the opaque specifier has no file to resolve, so
-    // reaching this import means the entry never registered the bundled flows.
+    // A bundled host has no source module to resolve, so reaching this import
+    // means its entry did not register the statically included flows.
     throw new Error(
-      `OAuth flow module ${specifier} is not loadable at runtime. Standalone binaries must register flows up front with registerBundledOAuthFlowLoaders from their entry (see packages/tui/src/binary.ts).`,
+      `OAuth flow module ${specifier} is not loadable at runtime. Bundled hosts must register flows up front with registerBunOAuthFlows.`,
       { cause: error },
     );
   }
@@ -38,7 +38,7 @@ type OAuthFlowLoaders = {
 
 let bundledLoaders: OAuthFlowLoaders | undefined;
 
-/** Registers statically bundled OAuth flows for standalone Bun binaries. */
+/** Registers statically bundled OAuth flows. */
 export function registerBundledOAuthFlowLoaders(loaders: OAuthFlowLoaders): void {
   bundledLoaders = loaders;
 }

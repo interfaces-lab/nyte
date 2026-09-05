@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId, SessionInfo } from "@uji-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/core";
 
-const STARTUP_DESTINATION_KEY = "uji:startup-destination:v1";
+const STARTUP_DESTINATION_KEY = "nyte:startup-destination:v1";
 
 export type StartupDestination = "new-chat" | "last-session";
 
@@ -22,13 +22,13 @@ function localPreferenceStorage(): PreferenceStorage | undefined {
   }
 }
 
-export function parseStartupDestination(value: unknown): StartupDestination {
+export function parseStartupDestination(value: string | null): StartupDestination {
   return value === "last-session" ? "last-session" : DEFAULT_STARTUP_DESTINATION;
 }
 
 export function readStartupDestination(storage?: PreferenceStorage): StartupDestination {
   try {
-    return parseStartupDestination(storage?.getItem(STARTUP_DESTINATION_KEY));
+    return parseStartupDestination(storage?.getItem(STARTUP_DESTINATION_KEY) ?? null);
   } catch {
     return DEFAULT_STARTUP_DESTINATION;
   }

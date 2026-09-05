@@ -3,28 +3,19 @@
  * Synced with pi 7ebf9087e.
  */
 import assert from "node:assert/strict";
-import { afterEach, describe, mock, test } from "node:test";
+import { afterEach, describe, vi, test } from "vitest";
 import { pollOAuthDeviceCodeFlow } from "../src/auth/oauth/device-code.ts";
 
 const neverAbortedSignal = new AbortController().signal;
 
-async function flush(): Promise<void> {
-  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
-}
-
-async function advance(ms: number): Promise<void> {
-  mock.timers.tick(ms);
-  await flush();
-}
-
-void describe("OAuth device-code polling", () => {
+describe("OAuth device-code polling", () => {
   afterEach(() => {
-    mock.timers.reset();
+    vi.useRealTimers();
   });
 
-  void test("polls immediately and returns the completed value", async () => {
+  test("polls immediately and returns the completed value", async () => {
     const start = new Date("2026-03-09T00:00:00Z").getTime();
-    mock.timers.enable({ apis: ["setTimeout", "Date"], now: start });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"], now: start });
 
     const pollTimes: number[] = [];
     const poll = async () => {
@@ -41,20 +32,20 @@ void describe("OAuth device-code polling", () => {
       signal: neverAbortedSignal,
     });
 
-    await advance(0);
+    await vi.advanceTimersByTimeAsync(0);
     assert.deepEqual(pollTimes, [start]);
 
-    await advance(1999);
+    await vi.advanceTimersByTimeAsync(1999);
     assert.deepEqual(pollTimes, [start]);
 
-    await advance(1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(await resultPromise, "token");
     assert.deepEqual(pollTimes, [start, start + 2000]);
   });
 
-  void test("can wait before the first poll", async () => {
+  test("can wait before the first poll", async () => {
     const start = new Date("2026-03-09T00:00:00Z").getTime();
-    mock.timers.enable({ apis: ["setTimeout", "Date"], now: start });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"], now: start });
 
     const pollTimes: number[] = [];
     const resultPromise = pollOAuthDeviceCodeFlow({
@@ -68,17 +59,17 @@ void describe("OAuth device-code polling", () => {
       signal: neverAbortedSignal,
     });
 
-    await advance(1999);
+    await vi.advanceTimersByTimeAsync(1999);
     assert.deepEqual(pollTimes, []);
 
-    await advance(1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(await resultPromise, "token");
     assert.deepEqual(pollTimes, [start + 2000]);
   });
 
-  void test("increases the interval by 5 seconds after slow_down without a server interval", async () => {
+  test("increases the interval by 5 seconds after slow_down without a server interval", async () => {
     const startTime = new Date("2026-03-09T00:00:00Z").getTime();
-    mock.timers.enable({ apis: ["setTimeout", "Date"], now: startTime });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"], now: startTime });
 
     const pollTimes: number[] = [];
     const results = [
@@ -97,20 +88,20 @@ void describe("OAuth device-code polling", () => {
       signal: neverAbortedSignal,
     });
 
-    await advance(0);
+    await vi.advanceTimersByTimeAsync(0);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(6999);
+    await vi.advanceTimersByTimeAsync(6999);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(await resultPromise, "token");
     assert.deepEqual(pollTimes, [startTime, startTime + 7000]);
   });
 
-  void test("honors a server-provided slow_down interval", async () => {
+  test("honors a server-provided slow_down interval", async () => {
     const startTime = new Date("2026-03-09T00:00:00Z").getTime();
-    mock.timers.enable({ apis: ["setTimeout", "Date"], now: startTime });
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"], now: startTime });
 
     const pollTimes: number[] = [];
     const results = [
@@ -129,19 +120,19 @@ void describe("OAuth device-code polling", () => {
       signal: neverAbortedSignal,
     });
 
-    await advance(0);
+    await vi.advanceTimersByTimeAsync(0);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(29999);
+    await vi.advanceTimersByTimeAsync(29999);
     assert.deepEqual(pollTimes, [startTime]);
 
-    await advance(1);
+    await vi.advanceTimersByTimeAsync(1);
     assert.equal(await resultPromise, "token");
     assert.deepEqual(pollTimes, [startTime, startTime + 30000]);
   });
 
-  void test("cancels an in-flight wait", async () => {
-    mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  test("cancels an in-flight wait", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
     const controller = new AbortController();
 
     const resultPromise = pollOAuthDeviceCodeFlow({

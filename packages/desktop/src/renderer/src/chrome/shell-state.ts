@@ -1,35 +1,38 @@
 /**
  * Window-lifetime chrome state that more than one surface reads: whether the
- * rail is shown and how wide it is, and which Settings section is open. It
+ * rail is shown and how wide it is, and which non-route stage is active. It
  * lives outside the component tree so the titlebar, the rail, and keyboard
- * chords all steer the same values, and so Settings still opens while the
- * rail is hidden. The rail width is also written to the root as a CSS
+ * chords all steer the same values. The rail width is also written to the root as a CSS
  * variable, so the static boot shell and the mounted rail share one number.
  */
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@uji-ai/core";
+import type { SessionId } from "@nyte-ai/core";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
-export type SettingsSection = "general" | "appearance" | "accounts" | "customize";
+type WorkspaceStage = { readonly kind: "workspace" };
+type CustomizeStage = { readonly kind: "customize"; readonly sessionId: SessionId | undefined };
 
-export interface SettingsRequest {
-  readonly section: SettingsSection;
-  readonly sessionId: SessionId | undefined;
-  /** Returned focus target once the dialog closes. */
-  readonly trigger: HTMLElement | null;
-}
+export type ShellStage = WorkspaceStage | CustomizeStage;
 
-export const SIDEBAR_WIDTH_DEFAULT = 260;
-export const SIDEBAR_WIDTH_MIN = 210;
+export const SIDEBAR_WIDTH_DEFAULT = 220;
+export const SIDEBAR_WIDTH_MIN = 190;
 export const SIDEBAR_WIDTH_MAX = 400;
 export const SIDEBAR_WIDTH_STEP = 8;
 
-const SIDEBAR_KEY = "uji.desktop.sidebar.v2";
-const SIDEBAR_WIDTH_VARIABLE = "--uji-sidebar-width";
+const SIDEBAR_KEY = "nyte.desktop.sidebar.v3";
+const SIDEBAR_WIDTH_VARIABLE = "--nyte-sidebar-width";
+/** A field of the wrong type reads as unset; the record survives. */
+const persistedSidebarSchema = Type.Object({
+  visible: Type.Optional(Type.Unknown()),
+  width: Type.Optional(Type.Unknown()),
+});
+const widthSchema = Type.Number();
 
 interface ShellState {
   readonly sidebarVisible: boolean;
   readonly sidebarWidth: number;
-  readonly settings: SettingsRequest | undefined;
+  readonly stage: ShellStage;
 }
 
 export function clampSidebarWidth(width: number): number {
@@ -51,12 +54,13 @@ function readPersisted(): Pick<ShellState, "sidebarVisible" | "sidebarWidth"> {
     const raw = storage()?.getItem(SIDEBAR_KEY);
     if (raw === null || raw === undefined) return fallback;
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return fallback;
-    const visible = "visible" in parsed ? parsed.visible : undefined;
-    const width = "width" in parsed ? parsed.width : undefined;
+    if (!Value.Check(persistedSidebarSchema, parsed)) return fallback;
+    const { visible, width } = parsed;
     return {
       sidebarVisible: visible !== false,
-      sidebarWidth: typeof width === "number" ? clampSidebarWidth(width) : SIDEBAR_WIDTH_DEFAULT,
+      sidebarWidth: Value.Check(widthSchema, width)
+        ? clampSidebarWidth(width)
+        : SIDEBAR_WIDTH_DEFAULT,
     };
   } catch {
     return fallback;
@@ -78,7 +82,10 @@ function applyWidth(width: number): void {
   document.documentElement.style.setProperty(SIDEBAR_WIDTH_VARIABLE, `${String(width)}px`);
 }
 
-let state: ShellState = { ...readPersisted(), settings: undefined };
+let state: ShellState = {
+  ...readPersisted(),
+  stage: { kind: "workspace" },
+};
 applyWidth(state.sidebarWidth);
 const listeners = new Set<() => void>();
 
@@ -116,24 +123,13 @@ export const shellActions = Object.freeze({
     persist(next);
     publish(next);
   },
-  openSettings(
-    section: SettingsSection = "general",
-    options: { readonly sessionId?: SessionId; readonly trigger?: HTMLElement | null } = {},
-  ): void {
-    publish({
-      ...state,
-      settings: {
-        section,
-        sessionId: options.sessionId,
-        trigger: options.trigger ?? null,
-      },
-    });
+  openCustomize(sessionId: SessionId | undefined): void {
+    if (state.stage.kind === "customize" && state.stage.sessionId === sessionId) return;
+    publish({ ...state, stage: { kind: "customize", sessionId } });
   },
-  closeSettings(): void {
-    if (state.settings === undefined) return;
-    const { trigger } = state.settings;
-    publish({ ...state, settings: undefined });
-    if (trigger !== null) window.requestAnimationFrame(() => trigger.focus());
+  showWorkspace(): void {
+    if (state.stage.kind === "workspace") return;
+    publish({ ...state, stage: { kind: "workspace" } });
   },
 });
 
