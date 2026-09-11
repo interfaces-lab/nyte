@@ -143,7 +143,12 @@ esac
     const installDir = join(fixture, "custom prefix/bin");
     const installed = execFileSync(
       "sh",
-      [join(repo, "install.sh"), "--version", metadata.version, "--no-modify-path"],
+      [
+        join(repo, "packages/docs/public/install"),
+        "--version",
+        metadata.version,
+        "--no-modify-path",
+      ],
       {
         env: {
           ...process.env,
@@ -164,7 +169,12 @@ esac
     await writeFile(join(output, `${asset}.tar.gz.sha256`), `${"0".repeat(64)}  ${asset}.tar.gz\n`);
     const rejected = spawnSync(
       "sh",
-      [join(repo, "install.sh"), "--version", metadata.version, "--no-modify-path"],
+      [
+        join(repo, "packages/docs/public/install"),
+        "--version",
+        metadata.version,
+        "--no-modify-path",
+      ],
       {
         env: {
           ...process.env,
@@ -214,21 +224,25 @@ esac
     docs: join(home, ".local/share/nyte", metadata.version, "docs"),
     rc: join(home, ".bashrc"),
     run: (...args) =>
-      spawnSync("sh", [join(repo, "install.sh"), "--version", metadata.version, ...args], {
-        env: {
-          ...process.env,
-          HOME: home,
-          SHELL: "/bin/bash",
-          XDG_CONFIG_HOME: join(home, ".config"),
-          ZDOTDIR: home,
-          PATH: `${fakeBin}:${process.env.PATH}`,
-          FIXTURE_RELEASE: output,
-          NYTE_INSTALL_DIR: installDir,
-          NYTE_NO_MODIFY_PATH: "",
-          GITHUB_ACTIONS: "false",
+      spawnSync(
+        "sh",
+        [join(repo, "packages/docs/public/install"), "--version", metadata.version, ...args],
+        {
+          env: {
+            ...process.env,
+            HOME: home,
+            SHELL: "/bin/bash",
+            XDG_CONFIG_HOME: join(home, ".config"),
+            ZDOTDIR: home,
+            PATH: `${fakeBin}:${process.env.PATH}`,
+            FIXTURE_RELEASE: output,
+            NYTE_INSTALL_DIR: installDir,
+            NYTE_NO_MODIFY_PATH: "",
+            GITHUB_ACTIONS: "false",
+          },
+          encoding: "utf8",
         },
-        encoding: "utf8",
-      }),
+      ),
   };
 }
 

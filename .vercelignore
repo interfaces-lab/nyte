@@ -1,8 +1,7 @@
-# The Vercel project deploys only the docs workspace. Keep the root pnpm and
-# Turborepo metadata, but exclude every sibling workspace and local artifact.
+# The Vercel project deploys the docs workspace. Keep root workspace metadata
+# and packages used by the site, but exclude unrelated apps and artifacts.
 /bin
 /dist
-/install.sh
 /scripts
 /.nyte
 
@@ -15,7 +14,6 @@
 /packages/schema
 /packages/telemetry
 /packages/tui
-/packages/ui
 
 **/.next
 **/.turbo

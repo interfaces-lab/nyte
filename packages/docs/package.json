@@ -1,5 +1,5 @@
 {
-  "name": "docs",
+  "name": "@nyte-ai/web",
   "version": "0.0.14",
   "private": true,
   "scripts": {

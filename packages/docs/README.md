@@ -1,4 +1,4 @@
-# docs
+# @nyte-ai/web
 
 The Nyte documentation site. Content lives in `content/docs`. The [design record](content/docs/design.mdx)
 is the contract; other pages describe what shipped.
@@ -36,15 +36,14 @@ Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
 
 ## Deploying
 
-Create or link the Vercel project under `interface-co`, attach `nyte.sh`, and set
+Create or link the `nyte-web` Vercel project under `interface-co`, attach `nyte.sh`, and set
 **Root Directory** to `packages/docs`. Vercel detects the Turborepo monorepo and
 the Next.js app from that project root, so there is no checked-in `vercel.json`
 overriding its install, build, output, or ignored-build settings.
 
-The root `.vercelignore` excludes sibling workspaces, generated binaries, and
-local Nyte state. A root `vercel` command uploads only `packages/docs` plus the
-root pnpm and Turborepo metadata required to identify and install that
-workspace.
+The root `.vercelignore` excludes unrelated workspaces, generated binaries,
+and local Nyte state. A root `vercel` command uploads `packages/docs`, its
+`@nyte-ai/ui` workspace dependency, and the root metadata needed to install it.
 
 `@nyte-ai/core` cannot reach the client bundle because it is not in this
 package's dependency graph.
