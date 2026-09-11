@@ -159,26 +159,21 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
 
   return (
     <figure ref={figure} {...stylex.props(codeBlockStyles.figure)}>
-      <div {...stylex.props(codeBlockStyles.toolbar)}>
-        <span {...stylex.props(codeBlockStyles.language)}>
-          {language === "" ? "code" : language}
-        </span>
-        <Button
-          unstyled
-          type="button"
-          aria-label={copied ? "Code copied" : "Copy code"}
-          title={copied ? "Copied" : "Copy code"}
-          onClick={() => {
-            navigator.clipboard
-              .writeText(code)
-              .then(() => setCopiedCode(code))
-              .catch(() => undefined);
-          }}
-          {...stylex.props(codeBlockStyles.copy, focus.ringInset)}
-        >
-          <Icon name={copied ? "checkmark" : "copy"} size={13} />
-        </Button>
-      </div>
+      <Button
+        unstyled
+        type="button"
+        aria-label={copied ? "Code copied" : "Copy code"}
+        title={copied ? "Copied" : "Copy code"}
+        onClick={() => {
+          navigator.clipboard
+            .writeText(code)
+            .then(() => setCopiedCode(code))
+            .catch(() => undefined);
+        }}
+        {...stylex.props(codeBlockStyles.copy, focus.ringInset)}
+      >
+        <Icon name={copied ? "checkmark" : "copy"} size={13} />
+      </Button>
       <div data-nyte-scrollport {...stylex.props(codeBlockStyles.scroll)}>
         {html === undefined ? (
           <pre {...stylex.props(codeBlockStyles.pre)}>

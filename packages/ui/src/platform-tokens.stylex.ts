@@ -22,6 +22,10 @@ const colorDefaults = {
   "--nyte-color-border-strong": "light-dark(#1414144d, #fcfcfc4d)",
   "--nyte-color-field-background": "light-dark(#fcfcfc, #2f2f2f)",
   "--nyte-color-ring": "light-dark(#14141466, #fcfcfc66)",
+  // Chromium matches `:focus-visible` on every text field focus, pointer included,
+  // so the color gates the ring where the selector cannot. index.css drops this to
+  // transparent while the host marks the document `data-nyte-focus-modality="pointer"`.
+  "--nyte-color-focus-ring": "var(--nyte-color-ring)",
   "--nyte-color-scrim": "light-dark(#14141480, #141414b2)",
   "--nyte-color-sidebar": "light-dark(#f7f7f7, #141414)",
   "--nyte-color-bubble-agent": "light-dark(#eeeeee, #262626)",
@@ -143,6 +147,10 @@ export const motionVars = stylex.defineVars(motionDefaults);
 export const elevationVars = stylex.defineVars(elevationDefaults);
 export const overlayVars = stylex.defineVars(overlayDefaults);
 
+// Components read the group exports above, not this object. StyleX resolves
+// `--nyte-*` keys to literal names only through a direct `defineVars` import;
+// reading through a plain object hashes them into names nothing defines. The
+// object remains for consumers that want one typed handle.
 export const tokens = {
   color: colorVars,
   font: fontVars,

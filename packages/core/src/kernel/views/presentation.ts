@@ -1,6 +1,7 @@
 import { isJsonObject, type JsonValue } from "../json.ts";
 import type { CommitBody, Oid } from "../model.ts";
-import { diffStat, patchedPath, readPatch } from "./changes.ts";
+import { readPatch } from "./changes.ts";
+import { parsePatchFacts, type ParsedPatch } from "./patch.ts";
 import type { ToolTurnPart } from "./transcript.ts";
 
 export type ToolStatus = "running" | "done" | "failed";
@@ -8,13 +9,10 @@ export type ToolStatus = "running" | "done" | "failed";
 export type ToolBody =
   | { readonly kind: "none" }
   | { readonly kind: "text"; readonly text: string }
-  | {
+  | (ParsedPatch & {
       readonly kind: "diff";
-      readonly patch: string;
       readonly path?: string;
-      readonly added: number;
-      readonly removed: number;
-    };
+    });
 
 export interface ToolPresentation {
   readonly name: string;
@@ -74,9 +72,38 @@ const DETAIL_ARGS = new Map([
   ["edit", "path"],
   ["ls", "path"],
   ["bash", "command"],
+  ["task", "model"],
 ]);
 
 const DETAIL_LIMIT = 80;
+
+/**
+ * What a run is doing while a stock tool is in flight. A status row reads
+ * it, so the wording names the wait rather than the tool.
+ */
+const ACTIVITY = new Map([
+  ["read", "Reading files"],
+  ["ls", "Reading files"],
+  ["bash", "Running shell command"],
+  ["edit", "Editing files"],
+  ["write", "Editing files"],
+  ["task", "Waiting for subagent"],
+  ["websearch", "Searching the web"],
+]);
+
+/**
+ * The status for the tools currently running, oldest first. Subagent waits
+ * win because they are the ones a reader wonders about; otherwise the newest
+ * tool names the activity. Undefined for tools this table does not know.
+ */
+export function runActivityLabel(runningToolNames: readonly string[]): string | undefined {
+  const newest = runningToolNames.at(-1);
+  if (newest === undefined) return undefined;
+  const subagents = runningToolNames.filter((name) => name === "task").length;
+  if (subagents > 1) return "Waiting for subagents";
+  if (subagents === 1) return ACTIVITY.get("task");
+  return ACTIVITY.get(newest);
+}
 
 function isNonEmptyString(value: JsonValue | undefined): value is string {
   return typeof value === "string" && value !== "";
@@ -153,13 +180,12 @@ export function presentTool(view: ToolView): ToolPresentation {
     return { ...base, status: "failed", body: textBody(result.output) };
   }
   const patch = readPatch(result.details);
-  if (patch !== undefined) {
-    const path = patchedPath(patch);
-    const stat = diffStat(patch);
+  const facts = patch === undefined ? undefined : parsePatchFacts(patch);
+  if (facts !== undefined && (facts.added > 0 || facts.removed > 0)) {
+    // A multi-file patch has no single path for clients to apply to every hunk.
+    const path = facts.files.length === 1 ? facts.files[0]?.path : undefined;
     const body: ToolBody =
-      path === undefined
-        ? { kind: "diff", patch, ...stat }
-        : { kind: "diff", patch, path, ...stat };
+      path === undefined ? { kind: "diff", ...facts } : { kind: "diff", ...facts, path };
     return {
       ...base,
       status: "done",
@@ -184,7 +210,7 @@ export function createPresenter(options: PresenterOptions = {}): Presenter {
   return {
     tool(view) {
       const base = presentTool(view);
-      const refine = tools[view.toolName];
+      const refine = Object.hasOwn(tools, view.toolName) ? tools[view.toolName] : undefined;
       if (refine === undefined) return base;
       try {
         return refine(view, base);
@@ -194,7 +220,7 @@ export function createPresenter(options: PresenterOptions = {}): Presenter {
     },
     note(note) {
       const base = presentNote(note);
-      const refine = notes[note.body.type];
+      const refine = Object.hasOwn(notes, note.body.type) ? notes[note.body.type] : undefined;
       if (refine === undefined) return base;
       try {
         return refine(note, base);

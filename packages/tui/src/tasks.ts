@@ -1,20 +1,27 @@
-/** Task rows are views of sessions and shell calls, never another execution registry. */
-import type { Nyte, SessionEvent, SessionId, ToolTurnPart, Turn } from "@nyte-ai/core";
+/** Task rows join session-owned jobs with their full child transcripts. */
+import {
+  sessionId,
+  type JobInfo,
+  type Nyte,
+  type RunInfo,
+  type SessionEvent,
+  type SessionId,
+  isTerminalPhase,
+} from "@nyte-ai/core";
+import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
-import { SessionFollower } from "./session-follow.ts";
-import type { SessionState } from "./session-state.ts";
+import { SessionFollower } from "@nyte-ai/core/client";
+import type { SessionState } from "@nyte-ai/core/client";
 
-type Conversation = Extract<Turn, { kind: "turn" }>;
 export type Task =
-  | { readonly kind: "agent"; readonly id: string; readonly state: SessionState }
   | {
-      readonly kind: "shell";
+      readonly kind: "agent";
       readonly id: string;
       readonly state: SessionState;
-      readonly turn: Conversation;
-      readonly part: ToolTurnPart;
-    };
+      readonly job?: JobInfo;
+    }
+  | { readonly kind: "job"; readonly id: string; readonly job: JobInfo };
 
 export type TaskStatus =
   | "queued"
@@ -26,8 +33,51 @@ export type TaskStatus =
   | "done"
   | "failed";
 
+/**
+ * How a status looks, everywhere it is shown: a glyph and the theme role that
+ * colors it. Cancellation the user asked for stays muted; the states a
+ * participant can act on (waiting, retrying) take the warning role.
+ */
+export function statusMark(status: TaskStatus): {
+  readonly glyph: string;
+  readonly tone: "muted" | "running" | "warning" | "ok" | "error";
+} {
+  switch (status) {
+    case "queued":
+      return { glyph: GLYPHS.diamond, tone: "muted" };
+    case "running":
+      return { glyph: GLYPHS.bullet, tone: "running" };
+    case "waiting":
+    case "retrying":
+      return { glyph: GLYPHS.bullet, tone: "warning" };
+    case "stopping":
+      return { glyph: GLYPHS.bullet, tone: "muted" };
+    case "stopped":
+      return { glyph: GLYPHS.cross, tone: "muted" };
+    case "done":
+      return { glyph: GLYPHS.check, tone: "ok" };
+    case "failed":
+      return { glyph: GLYPHS.cross, tone: "error" };
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
+
 export function taskStatus(task: Task): TaskStatus {
-  const run = task.state.run;
+  if (task.job !== undefined && task.job.state !== "running") {
+    return task.job.state === "completed"
+      ? "done"
+      : task.job.state === "failed"
+        ? "failed"
+        : "stopped";
+  }
+  if (task.kind === "job") return "running";
+  return runStatus(task.state.run);
+}
+
+export function runStatus(run: RunInfo | undefined): TaskStatus {
   if (run === undefined) return "queued";
   switch (run.phase.kind) {
     case "respond":
@@ -38,7 +88,7 @@ export function taskStatus(task: Task): TaskStatus {
     case "retry":
       return run.abortRequested ? "stopping" : "retrying";
     case "done":
-      return task.kind === "shell" ? "stopped" : "done";
+      return "done";
     case "aborted":
       return "stopped";
     case "failed":
@@ -51,18 +101,23 @@ export function taskStatus(task: Task): TaskStatus {
 }
 
 export function canStopTask(task: Task): boolean {
+  if (task.job !== undefined) return task.job.state === "running";
+  if (task.kind === "job") return false;
   return (
     task.state.run !== undefined &&
-    !["done", "aborted", "failed"].includes(task.state.run.phase.kind) &&
+    !isTerminalPhase(task.state.run.phase) &&
     task.state.run.abortRequested !== true
   );
 }
 
+/** Whether the task runs a child session or a command. */
+export function taskAgent(task: Task): string {
+  return task.kind === "agent" ? "subagent" : task.job.kind;
+}
+
 export function taskLabel(task: Task): string {
-  if (task.kind === "shell") {
-    const args = task.part.args;
-    return isJsonObject(args) && isJsonString(args.command) ? args.command : "bash";
-  }
+  if (task.kind === "job") return task.job.title;
+  if (task.job !== undefined) return task.job.title;
   const info = task.state.info;
   if (info.name !== undefined) return info.name;
   for (const item of task.state.transcript.items) {
@@ -70,7 +125,7 @@ export function taskLabel(task: Task): string {
     const user = item.parts.find((part) => part.kind === "user");
     if (user !== undefined) return oneLine(userText(user.content));
   }
-  return info.preview ?? info.parent?.agent ?? info.sessionId;
+  return info.preview ?? info.sessionId;
 }
 
 function oneLine(text: string): string {
@@ -78,34 +133,84 @@ function oneLine(text: string): string {
 }
 
 export function taskActivity(task: Task): string {
-  const { state } = task;
-  const progress = state.overlay.findLast(
-    (part) => part.kind === "tool" && (task.kind === "agent" || part.callId === task.part.callId),
-  );
-  if (progress?.kind === "tool") return oneLine(progress.progress.title ?? progress.progress.text);
-  if (task.kind === "shell") return "";
-  if (state.run?.phase.kind === "failed" || state.run?.phase.kind === "retry")
-    return state.run.phase.error;
-  const last = state.transcript.items.findLast((item) => item.kind === "turn");
-  const part = last?.parts.findLast((item) => item.kind !== "thinking");
-  if (part?.kind === "tool") return `${part.toolName} ${part.result?.title ?? ""}`.trim();
-  if (part?.kind === "assistant") return oneLine(part.text);
-  return "";
+  if (task.kind === "job") return oneLine(task.job.output);
+  const phase = task.state.run?.phase;
+  if (phase?.kind === "failed" || phase?.kind === "retry") return phase.error;
+  return taskSteps(task.state).at(-1)?.text ?? "";
 }
 
-export function projectTasks(parent: SessionState, children: readonly SessionState[]): Task[] {
-  const tasks: Task[] = [];
-  for (const state of [parent, ...children]) {
-    if (state !== parent) tasks.push({ kind: "agent", id: state.sessionId, state });
-    // Keep only shell calls still running in the latest turn; finished commands are
-    // transcript history, not work to track.
-    const turn = state.transcript.items.findLast((item) => item.kind === "turn");
-    if (turn === undefined) continue;
-    for (const part of turn.parts) {
-      if (part.kind === "tool" && part.toolName === "bash" && part.result === undefined) {
-        tasks.push({ kind: "shell", id: `${state.sessionId}:${part.callId}`, state, turn, part });
+export interface TaskStep {
+  readonly status: TaskStatus;
+  readonly text: string;
+}
+
+/**
+ * What a child did, oldest first: each tool call and each assistant message.
+ * Thinking is not a step. Live progress for a call replaces that call's row,
+ * so a running call is never listed twice.
+ */
+export function taskSteps(state: SessionState): TaskStep[] {
+  const steps: TaskStep[] = [];
+  const calls = new Map<string, number>();
+  for (const item of state.transcript.items) {
+    if (item.kind !== "turn") continue;
+    for (const part of item.parts) {
+      if (part.kind === "tool") {
+        calls.set(part.callId, steps.length);
+        steps.push({
+          status: part.result === undefined ? "running" : part.result.isError ? "failed" : "done",
+          text: oneLine(`${part.toolName} ${part.result?.title ?? ""}`),
+        });
+      } else if (part.kind === "assistant") {
+        steps.push({ status: "done", text: oneLine(part.text) });
       }
     }
+  }
+  for (const part of state.overlay) {
+    if (part.kind === "thinking") continue;
+    const text = oneLine(
+      part.kind === "text" ? part.text : (part.progress.title ?? part.progress.text),
+    );
+    const index = part.kind === "tool" ? calls.get(part.callId) : undefined;
+    if (index !== undefined) {
+      if (text !== "") steps[index] = { status: "running", text };
+    } else if (text !== "") {
+      steps.push({ status: "running", text });
+    }
+  }
+  return steps;
+}
+
+/** Time on the task so far, or the time it took. */
+export function taskElapsedMs(task: Task, now: number): number | undefined {
+  if (task.job !== undefined)
+    return (unfinishedTask(task) ? now : task.job.updatedAt) - task.job.startedAt;
+  if (task.kind === "job") return undefined;
+  if (unfinishedTask(task) && task.state.run !== undefined) return now - task.state.run.startedAt;
+  return task.state.transcript.items.findLast((item) => item.kind === "turn")?.durationMs;
+}
+
+export function unfinishedTask(task: Task): boolean {
+  return task.job === undefined
+    ? !["done", "failed", "stopped"].includes(taskStatus(task))
+    : task.job.state === "running";
+}
+
+export function projectTasks(
+  children: readonly SessionState[],
+  jobs: readonly JobInfo[] = [],
+): Task[] {
+  const tasks: Task[] = children.map((state) => {
+    const job = jobs.find(
+      (candidate) => candidate.kind === "subagent" && candidate.childSessionId === state.sessionId,
+    );
+    return { kind: "agent", id: job?.id ?? state.sessionId, state, job };
+  });
+  for (const job of jobs) {
+    if (job.kind === "command" && job.mode !== "background") continue;
+    if (job.kind === "subagent" && children.some((state) => state.sessionId === job.childSessionId))
+      continue;
+    tasks.push({ kind: "job", id: job.id, job });
   }
   return tasks;
 }
@@ -116,7 +221,13 @@ interface TaskIndexOptions {
   readonly onError: (error: Error) => void;
 }
 
-/** One follower per child. Parent links recover children whose progress event was missed. */
+/**
+ * One follower per child. The task tool's progress names a spawned child only
+ * after its setup finished, so that signal follows it directly; the session
+ * listing runs only at deliberate boundaries (initial load, reconnect,
+ * opening Tasks) to recover children with no live progress. Job events carry
+ * the task rows themselves and never open a child mid-setup.
+ */
 export class TaskIndex {
   private parent: SessionState | undefined;
   private readonly followers = new Map<SessionId, SessionFollower>();
@@ -131,31 +242,35 @@ export class TaskIndex {
     this.options = options;
   }
 
-  get tasks(): readonly Task[] {
+  get states(): readonly SessionState[] {
     if (this.parent === undefined) return [];
-    return projectTasks(
-      this.parent,
-      [...this.children.values()].toSorted(
-        (a, b) => a.info.createdAt - b.info.createdAt || a.sessionId.localeCompare(b.sessionId),
-      ),
+    return [...this.children.values()].toSorted(
+      (a, b) => a.info.createdAt - b.info.createdAt || a.sessionId.localeCompare(b.sessionId),
     );
   }
 
   update(state: SessionState, event?: SessionEvent): void {
     if (this.closed) return;
+    // TaskBrowser handles parent changes; this index notifies when children change.
     this.parent = state;
-    this.options.onChange();
     if (
-      event === undefined ||
-      event.kind === "commit" ||
-      event.kind === "effect" ||
-      (event.kind === "tool_progress" &&
-        isJsonObject(event.progress.details) &&
-        isJsonString(event.progress.details.childSessionId))
+      event?.kind === "tool_progress" &&
+      isJsonObject(event.progress.details) &&
+      isJsonString(event.progress.details.childSessionId) &&
+      // Progress details are tool output; an empty id must not throw here.
+      event.progress.details.childSessionId !== ""
     ) {
-      this.dirty = true;
-      void this.discover();
+      void this.follow(sessionId(event.progress.details.childSessionId));
+      return;
     }
+    if (event === undefined || event.kind === "synced") this.discover();
+  }
+
+  /** Look for children the parent links but no job names. A store scan, so boundaries only. */
+  discover(): void {
+    if (this.closed) return;
+    this.dirty = true;
+    void this.list();
   }
 
   close(): void {
@@ -165,12 +280,50 @@ export class TaskIndex {
     this.children.clear();
   }
 
-  private async discover(): Promise<void> {
+  private async follow(id: SessionId): Promise<void> {
+    if (this.closed || this.followers.has(id)) return;
+    try {
+      // A replayed progress event may name a deleted child, and progress
+      // details are tool output: only a session linked to this parent counts.
+      const info = await this.options.nyte.sessions.get({ sessionId: id });
+      if (info?.parent?.sessionId !== this.parent?.sessionId) return;
+      if (this.closed || this.followers.has(id)) return;
+      await this.start(id);
+    } catch (error) {
+      if (!this.closed)
+        this.options.onError(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private async start(id: SessionId): Promise<void> {
+    const follower = new SessionFollower(this.options.nyte, {
+      sessionId: id,
+      onUpdate: ({ state }) => {
+        if (this.closed || this.followers.get(id) !== follower) return;
+        this.children.set(id, state);
+        this.options.onChange();
+      },
+      onError: this.options.onError,
+    });
+    this.followers.set(id, follower);
+    try {
+      await follower.start();
+    } catch (error) {
+      follower.close();
+      this.followers.delete(id);
+      throw error;
+    }
+  }
+
+  private async list(): Promise<void> {
     if (this.listing || this.closed || this.parent === undefined) return;
     this.listing = true;
     try {
       while (this.dirty && !this.closed) {
         this.dirty = false;
+        // A follower that joins mid-listing is newer than this listing's
+        // pages; only followers that predate it may be pruned by its result.
+        const eligible = new Set(this.followers.keys());
         let cursor: string | undefined;
         const found = new Set<SessionId>();
         do {
@@ -182,21 +335,9 @@ export class TaskIndex {
           for (const info of page.items) {
             found.add(info.sessionId);
             if (this.followers.has(info.sessionId)) continue;
-            const follower = new SessionFollower(this.options.nyte, {
-              sessionId: info.sessionId,
-              onUpdate: ({ state }) => {
-                if (this.closed || this.followers.get(info.sessionId) !== follower) return;
-                this.children.set(info.sessionId, state);
-                this.options.onChange();
-              },
-              onError: this.options.onError,
-            });
-            this.followers.set(info.sessionId, follower);
             try {
-              await follower.start();
+              await this.start(info.sessionId);
             } catch (error) {
-              follower.close();
-              this.followers.delete(info.sessionId);
               if (!this.closed)
                 this.options.onError(error instanceof Error ? error : new Error(String(error)));
             }
@@ -204,7 +345,7 @@ export class TaskIndex {
           cursor = page.next;
         } while (cursor !== undefined && !this.closed);
         for (const [id, follower] of this.followers) {
-          if (found.has(id)) continue;
+          if (found.has(id) || !eligible.has(id)) continue;
           follower.close();
           this.followers.delete(id);
           this.children.delete(id);

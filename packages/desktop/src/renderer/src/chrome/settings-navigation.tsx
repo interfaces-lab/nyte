@@ -8,9 +8,11 @@ import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex
 
 export const SETTINGS_SECTIONS = [
   ["general", "settings"],
-  ["appearance", "sparkle"],
-  ["models", "layers"],
-  ["accounts", "user"],
+  ["appearance", "canvas-grid"],
+  ["models", "box-3d"],
+  ["usage", "trending"],
+  ["accounts", "user-key"],
+  ["server", "cloud"],
 ] as const satisfies readonly (readonly [string, IconName])[];
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number][0];
@@ -29,8 +31,12 @@ export function settingsTitle(section: SettingsSection): string {
       return "Appearance";
     case "models":
       return "Models";
+    case "usage":
+      return "Usage";
     case "accounts":
       return "Accounts";
+    case "server":
+      return "Server";
     default: {
       const _exhaustive: never = section;
       return _exhaustive;
@@ -53,7 +59,9 @@ const SECTION_ALIASES: Readonly<Record<SettingsSection, readonly string[]>> = {
     "reasoning",
     "fast",
   ],
+  usage: ["usage", "tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
   accounts: ["accounts", "github"],
+  server: ["server", "cloud", "remote", "deploy", "token", "vercel", "cloudflare"],
 };
 
 function sectionMatches(section: SettingsSection, query: string): boolean {

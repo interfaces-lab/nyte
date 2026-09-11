@@ -2,13 +2,13 @@ import type { SessionsBridge } from "../../shared/ipc.ts";
 
 export type SessionPage = Awaited<ReturnType<SessionsBridge["list"]>>;
 
-/** Read the complete local directory before publishing a workspace change. */
+/** Read every root session before publishing a workspace change; children live under their parent's task call. */
 export async function loadSessionDirectory(list: SessionsBridge["list"]): Promise<SessionPage> {
-  const first = await list({ includeArchived: true });
+  const first = await list({ parent: null, includeArchived: true });
   const items = [...first.items];
   let cursor = first.next;
   while (cursor !== undefined) {
-    const page = await list({ cursor, includeArchived: true });
+    const page = await list({ cursor, parent: null, includeArchived: true });
     items.push(...page.items);
     cursor = page.next;
   }

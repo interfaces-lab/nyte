@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nyte cross-platform selection</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #090b10;
+        --panel: #11141c;
+        --panel-2: #171b25;
+        --line: #292f3d;
+        --line-strong: #3d465a;
+        --text: #edf1f7;
+        --muted: #929caf;
+        --violet: #9b87f5;
+        --violet-soft: #292342;
+        --cyan: #6dd7e3;
+        --green: #72d69b;
+        --amber: #e8bd6a;
+        --red: #f18484;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        --sans:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 20% -10%, rgba(155, 135, 245, 0.16), transparent 33rem),
+          radial-gradient(circle at 95% 20%, rgba(109, 215, 227, 0.09), transparent 28rem),
+          var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+      button {
+        color: inherit;
+      }
+
+      .page {
+        width: min(1440px, 100%);
+        margin: 0 auto;
+        padding: 48px 28px 72px;
+      }
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--violet);
+        font: 600 12px/1 var(--mono);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      h1 {
+        max-width: 860px;
+        margin: 0;
+        font-size: clamp(34px, 5vw, 64px);
+        line-height: 0.98;
+        letter-spacing: -0.045em;
+        text-wrap: balance;
+      }
+      .lede {
+        max-width: 760px;
+        margin: 20px 0 0;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.55;
+        text-wrap: pretty;
+      }
+      .lede strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: 1fr 28px 1.15fr 28px 1fr 28px 0.9fr;
+        align-items: stretch;
+        margin-top: 38px;
+      }
+      .flow-card {
+        min-width: 0;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(17, 20, 28, 0.88);
+      }
+      .flow-card.core {
+        border-color: rgba(155, 135, 245, 0.58);
+        background: linear-gradient(145deg, rgba(41, 35, 66, 0.88), rgba(17, 20, 28, 0.92));
+      }
+      .flow-label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .flow-label strong {
+        font-size: 14px;
+      }
+      .owner {
+        padding: 4px 7px;
+        border-radius: 999px;
+        color: var(--muted);
+        background: var(--panel-2);
+        font: 600 10px/1 var(--mono);
+        text-transform: uppercase;
+      }
+      .core .owner {
+        color: #c8bcff;
+        background: rgba(155, 135, 245, 0.14);
+      }
+      .flow-card code {
+        color: var(--cyan);
+        font: 12px/1.6 var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .flow-card p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .arrow {
+        display: grid;
+        place-items: center;
+        color: var(--line-strong);
+        font: 18px var(--mono);
+      }
+
+      .demo {
+        margin-top: 48px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        overflow: hidden;
+        background: rgba(13, 16, 23, 0.88);
+        box-shadow: 0 26px 70px rgba(0, 0, 0, 0.3);
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px 22px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(23, 27, 37, 0.72);
+      }
+      .toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .toolbar-label {
+        margin-right: 3px;
+        color: var(--muted);
+        font: 11px var(--mono);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .segmented {
+        display: inline-flex;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--bg);
+      }
+      .segmented button,
+      .reset {
+        min-height: 30px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .segmented button:hover,
+      .reset:hover {
+        color: var(--text);
+        background: var(--panel-2);
+      }
+      .segmented button.active {
+        color: var(--text);
+        background: var(--violet-soft);
+        box-shadow: inset 0 0 0 1px rgba(155, 135, 245, 0.3);
+      }
+      .reset {
+        margin-left: auto;
+        border: 1px solid var(--line);
+      }
+
+      .demo-grid {
+        display: grid;
+        grid-template-columns: minmax(260px, 0.76fr) minmax(0, 1.4fr);
+        min-height: 620px;
+      }
+      .data-panel {
+        padding: 20px;
+        border-right: 1px solid var(--line);
+        background: rgba(9, 11, 16, 0.55);
+      }
+      .data-panel h2,
+      .clients h2 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      .caption {
+        margin: 6px 0 16px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .code-block {
+        margin: 0 0 12px;
+        padding: 14px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #080a0f;
+        color: #cbd5e5;
+        font: 12px/1.55 var(--mono);
+        white-space: pre-wrap;
+      }
+      .code-title {
+        display: flex;
+        justify-content: space-between;
+        margin: 18px 0 8px;
+        color: var(--muted);
+        font: 11px var(--mono);
+      }
+      .code-title span:last-child {
+        color: var(--green);
+      }
+      .reply-empty {
+        color: #687286;
+      }
+      .truth {
+        display: grid;
+        gap: 8px;
+        margin-top: 18px;
+      }
+      .truth-row {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .truth-row b {
+        color: var(--green);
+        font-family: var(--mono);
+      }
+
+      .clients {
+        padding: 20px;
+        min-width: 0;
+      }
+      .client-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .client-shell {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--panel);
+      }
+      .client-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 40px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+        font: 11px var(--mono);
+      }
+      .client-bar strong {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .live::before {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--amber);
+        content: "";
+        box-shadow: 0 0 12px rgba(232, 189, 106, 0.6);
+      }
+      .client-body {
+        min-height: 420px;
+        padding: 16px;
+      }
+
+      .desktop-question {
+        display: grid;
+        gap: 10px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel-2);
+      }
+      .question-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .question-head h3 {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.35;
+        text-wrap: balance;
+      }
+      .countdown {
+        flex: none;
+        color: var(--amber);
+        font: 11px var(--mono);
+        font-variant-numeric: tabular-nums;
+      }
+      .option-list {
+        display: grid;
+        gap: 7px;
+      }
+      .option {
+        display: grid;
+        grid-template-columns: 18px 1fr;
+        gap: 9px;
+        min-height: 48px;
+        padding: 9px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: #202532;
+        text-align: left;
+        cursor: pointer;
+      }
+      .option:hover {
+        background: #252b39;
+      }
+      .option.selected {
+        border-color: var(--violet);
+        background: var(--violet-soft);
+      }
+      .check {
+        display: grid;
+        place-items: center;
+        width: 17px;
+        height: 17px;
+        margin-top: 1px;
+        border: 1px solid var(--line-strong);
+        border-radius: 5px;
+        color: transparent;
+        font: 12px var(--mono);
+      }
+      .option.selected .check {
+        border-color: var(--violet);
+        color: white;
+        background: var(--violet);
+      }
+      .option-copy strong {
+        display: block;
+        font-size: 12px;
+      }
+      .option-copy small {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .answer-row {
+        display: flex;
+        gap: 7px;
+      }
+      .answer-row input {
+        min-width: 0;
+        width: 100%;
+        min-height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        outline: 0;
+        background: #0d1017;
+        color: var(--text);
+      }
+      .answer-row input:focus {
+        border-color: var(--violet);
+      }
+      .send {
+        min-height: 36px;
+        padding: 0 12px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--violet);
+        color: #0d0a16;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .send:disabled {
+        opacity: 0.38;
+        cursor: default;
+      }
+
+      .terminal {
+        min-height: 388px;
+        padding: 14px;
+        border-radius: 8px;
+        background: #080a0e;
+        color: #cbd5e5;
+        font: 12px/1.55 var(--mono);
+      }
+      .terminal-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: var(--violet);
+      }
+      .terminal-title span:last-child {
+        color: var(--amber);
+        font-variant-numeric: tabular-nums;
+      }
+      .terminal-rule {
+        height: 1px;
+        margin: 8px 0;
+        background: #232936;
+      }
+      .terminal-option {
+        display: grid;
+        grid-template-columns: 18px 18px 1fr;
+        padding: 5px 4px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .terminal-option:hover,
+      .terminal-option.focused {
+        background: #202532;
+        color: white;
+      }
+      .terminal-option .pointer {
+        color: var(--violet);
+      }
+      .terminal-option .terminal-check {
+        color: var(--green);
+      }
+      .terminal-desc {
+        padding-left: 36px;
+        color: #758095;
+        font-size: 11px;
+      }
+      .terminal-input {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 7px 8px;
+        border: 1px solid #293142;
+        border-radius: 5px;
+        color: var(--violet);
+      }
+      .terminal-input input {
+        min-width: 0;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: white;
+        font: inherit;
+      }
+      .terminal-hint {
+        margin-top: 11px;
+        color: #758095;
+        font-size: 10px;
+      }
+      .key {
+        color: #dce3ee;
+      }
+      .terminal-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .terminal-actions button {
+        min-height: 31px;
+        padding: 0 9px;
+        border: 1px solid #30384a;
+        border-radius: 5px;
+        background: #151923;
+        color: #dce3ee;
+        font: 11px var(--mono);
+        cursor: pointer;
+      }
+
+      .closed {
+        display: grid;
+        place-items: center;
+        min-height: 360px;
+        padding: 24px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .closed strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--text);
+        font-size: 15px;
+      }
+      .closed .state-icon {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        margin: 0 auto 14px;
+        border-radius: 50%;
+        background: rgba(114, 214, 155, 0.12);
+        color: var(--green);
+        font: 20px var(--mono);
+      }
+      .closed.expired .state-icon {
+        color: var(--amber);
+        background: rgba(232, 189, 106, 0.12);
+      }
+
+      .result-flow {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .result-step {
+        position: relative;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        background: var(--panel-2);
+      }
+      .result-step:not(:last-child)::after {
+        position: absolute;
+        top: 50%;
+        right: -8px;
+        z-index: 2;
+        color: var(--line-strong);
+        content: "›";
+        transform: translate(50%, -50%);
+      }
+      .result-step span {
+        display: block;
+        color: var(--muted);
+        font: 10px var(--mono);
+        text-transform: uppercase;
+      }
+      .result-step strong {
+        display: block;
+        margin-top: 5px;
+        font-size: 11px;
+      }
+      .result-step.active {
+        border-color: rgba(114, 214, 155, 0.55);
+      }
+
+      @media (max-width: 1000px) {
+        .flow {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .arrow {
+          height: 20px;
+          transform: rotate(90deg);
+        }
+        .demo-grid {
+          grid-template-columns: 1fr;
+        }
+        .data-panel {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+      @media (max-width: 720px) {
+        .page {
+          padding: 32px 14px 52px;
+        }
+        .client-grid {
+          grid-template-columns: 1fr;
+        }
+        .toolbar {
+          align-items: flex-start;
+        }
+        .reset {
+          margin-left: 0;
+        }
+        .result-flow {
+          grid-template-columns: 1fr;
+        }
+        .result-step:not(:last-child)::after {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <p class="eyebrow">Nyte extension model</p>
+      <h1>The plugin owns the question. Core only owns waiting and shared UI data.</h1>
+      <p class="lede">
+        One <strong>Selection</strong> is stored on the waiting effect. Desktop and TUI read the
+        same data, draw different controls, and return one <strong>SelectionReply</strong>. Try both
+        clients below.
+      </p>
+
+      <section class="flow" aria-label="Architecture flow">
+        <article class="flow-card">
+          <div class="flow-label">
+            <strong>Question plugin</strong><span class="owner">owns meaning</span>
+          </div>
+          <code>Tool&lt;QuestionInput&gt;<br />throw new ToolWait({ selection, until })</code>
+          <p>Defines the tool arguments, labels, answer semantics, and timeout setting.</p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="flow-card core">
+          <div class="flow-label"><strong>Nyte core</strong><span class="owner">generic</span></div>
+          <code
+            >intent → waiting → signal/expired → result<br />Selection · SelectionReply · waitId ·
+            until</code
+          >
+          <p>Persists and validates plain data. It has no built-in question or question event.</p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="flow-card">
+          <div class="flow-label">
+            <strong>Any client</strong><span class="owner">owns rendering</span>
+          </div>
+          <code>snapshot.parked[]<br />event.kind === "effect"</code>
+          <p>
+            Desktop can use buttons. TUI can use a keyboard picker. A phone can use native controls.
+          </p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="flow-card">
+          <div class="flow-label"><strong>Runner</strong><span class="owner">resumes</span></div>
+          <code>wake({ reply })<br />wake({ expired: true })</code>
+          <p>A reply and the deadline race through one durable compare-and-swap.</p>
+        </article>
+      </section>
+
+      <section class="demo">
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Selection</span>
+            <div class="segmented" id="mode-control">
+              <button type="button" data-mode="single" class="active">Single</button>
+              <button type="button" data-mode="multiple">Multiple</button>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Custom response</span>
+            <div class="segmented" id="custom-control">
+              <button type="button" data-custom="on" class="active">Allowed</button>
+              <button type="button" data-custom="off">Choices only</button>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Plugin setting</span>
+            <div class="segmented" id="timeout-control">
+              <button type="button" data-timeout="0">Never</button>
+              <button type="button" data-timeout="30" class="active">30s</button>
+              <button type="button" data-timeout="120">2m</button>
+            </div>
+          </div>
+          <button class="reset" type="button" id="reset">Restart wait</button>
+        </div>
+
+        <div class="demo-grid">
+          <aside class="data-panel">
+            <h2>Durable waiting effect</h2>
+            <p class="caption">
+              This is all a restored client needs. The plugin module may be absent.
+            </p>
+            <div class="code-title"><span>refs/effects/run-7/call-3</span><span>waiting</span></div>
+            <pre class="code-block" id="effect-json"></pre>
+            <div class="code-title">
+              <span>runs.reply payload</span><span id="reply-status">not sent</span>
+            </div>
+            <pre class="code-block reply-empty" id="reply-json">No reply yet</pre>
+            <div class="truth">
+              <div class="truth-row">
+                <b>✓</b
+                ><span
+                  >Choice ids are separate from custom text, so typed "1" is never mistaken for
+                  choice id "1".</span
+                >
+              </div>
+              <div class="truth-row">
+                <b>✓</b
+                ><span
+                  >The client closes at <code>until</code>, but only a runner settles the
+                  effect.</span
+                >
+              </div>
+              <div class="truth-row">
+                <b>✓</b
+                ><span
+                  >Core decides "participant input" by the presence of <code>selection</code>, never
+                  by tool name.</span
+                >
+              </div>
+            </div>
+          </aside>
+
+          <section class="clients">
+            <h2>Two projections of the same Selection</h2>
+            <p class="caption">
+              They do not share components or layout. They only share the protocol value.
+            </p>
+            <div class="client-grid">
+              <article class="client-shell">
+                <div class="client-bar">
+                  <strong>Desktop</strong><span class="live">waiting effect</span>
+                </div>
+                <div class="client-body" id="desktop"></div>
+              </article>
+              <article class="client-shell">
+                <div class="client-bar">
+                  <strong>TUI</strong><span class="live">waiting effect</span>
+                </div>
+                <div class="client-body" id="tui"></div>
+              </article>
+            </div>
+            <div class="result-flow">
+              <div class="result-step active">
+                <span>1 · plugin</span><strong>parks with Selection</strong>
+              </div>
+              <div class="result-step" id="signal-step">
+                <span>2 · client</span><strong>waits to reply</strong>
+              </div>
+              <div class="result-step" id="resume-step">
+                <span>3 · runner</span><strong>loop is parked</strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const choices = [
+        {
+          id: "1",
+          label: "Small patch",
+          description: "Change one owner and keep the current shape.",
+        },
+        {
+          id: "2",
+          label: "Build the shared foundation",
+          description: "Let every host render the same durable request.",
+        },
+        {
+          id: "3",
+          label: "Pause and investigate",
+          description: "Gather more evidence before changing the API.",
+        },
+      ];
+
+      const state = {
+        multiple: false,
+        custom: true,
+        timeout: 30,
+        deadline: 0,
+        generation: 0,
+        settled: null,
+        reply: null,
+        desktop: { selected: new Set(), other: "" },
+        tui: { selected: new Set(), other: "", focus: 0 },
+      };
+
+      const effectJson = document.querySelector("#effect-json");
+      const replyJson = document.querySelector("#reply-json");
+      const replyStatus = document.querySelector("#reply-status");
+      const desktop = document.querySelector("#desktop");
+      const tui = document.querySelector("#tui");
+      const signalStep = document.querySelector("#signal-step");
+      const resumeStep = document.querySelector("#resume-step");
+
+      function selectedIds(client) {
+        return choices
+          .filter((choice) => client.selected.has(choice.id))
+          .map((choice) => choice.id);
+      }
+
+      function restart() {
+        state.generation += 1;
+        state.settled = null;
+        state.reply = null;
+        state.desktop = { selected: new Set(), other: "" };
+        state.tui = { selected: new Set(), other: "", focus: 0 };
+        state.deadline = state.timeout === 0 ? 0 : Date.now() + state.timeout * 1000;
+        render();
+      }
+
+      function setMode(multiple) {
+        state.multiple = multiple;
+        restart();
+      }
+
+      function pick(clientName, id) {
+        if (state.settled) return;
+        const client = state[clientName];
+        if (state.multiple) {
+          if (client.selected.has(id)) client.selected.delete(id);
+          else client.selected.add(id);
+          render();
+          return;
+        }
+        client.selected = new Set([id]);
+        submit(clientName);
+      }
+
+      function submit(clientName) {
+        if (state.settled) return;
+        const client = state[clientName];
+        const picked = selectedIds(client);
+        const other = client.other.trim();
+        if (picked.length === 0 && other === "") return;
+        if (!state.multiple && picked.length + (other === "" ? 0 : 1) !== 1) return;
+        state.reply = other === "" ? { choices: picked } : { choices: picked, other };
+        state.settled = "answered";
+        render();
+      }
+
+      function expire() {
+        if (state.settled || state.deadline === 0 || Date.now() < state.deadline) return;
+        state.settled = "expired";
+        state.reply = { expired: true };
+        render();
+      }
+
+      function timeLeft() {
+        if (state.deadline === 0) return "no deadline";
+        const seconds = Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000));
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const rest = seconds % 60;
+        return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+      }
+
+      function selectionValue() {
+        const selection = { title: "How should we implement plugin questions?", choices };
+        if (state.multiple) selection.multiple = true;
+        if (state.custom) selection.other = "Or type your own answer";
+        return selection;
+      }
+
+      function renderEffect() {
+        const effect = {
+          kind: "effect",
+          state: state.settled ? "result" : "waiting",
+          intent: "oid_intent_4c9…",
+        };
+        if (!state.settled) {
+          effect.waitId = `oid_wait_${state.generation}`;
+          effect.selection = selectionValue();
+          if (state.deadline !== 0) effect.until = state.deadline;
+        }
+        effectJson.textContent = JSON.stringify(effect, null, 2);
+        if (state.reply === null) {
+          replyJson.textContent = "No reply yet";
+          replyJson.classList.add("reply-empty");
+          replyStatus.textContent = "not sent";
+        } else {
+          replyJson.textContent = JSON.stringify(state.reply, null, 2);
+          replyJson.classList.remove("reply-empty");
+          replyStatus.textContent = state.settled === "expired" ? "runner wake" : "signalled";
+        }
+      }
+
+      function closedMarkup(kind) {
+        const expired = kind === "expired";
+        return `<div class="closed ${expired ? "expired" : ""}">
+          <div><span class="state-icon">${expired ? "↻" : "✓"}</span>
+          <strong>${expired ? "Panel closed at the durable deadline" : "The first durable reply won"}</strong>
+          <span>${expired ? "The runner calls wake({ expired: true }) and continues." : "The other client sees the effect settle and closes too."}</span></div>
+        </div>`;
+      }
+
+      function optionMarkup(clientName, terminalMode) {
+        const client = state[clientName];
+        return choices
+          .map((choice, index) => {
+            const selected = client.selected.has(choice.id);
+            if (terminalMode) {
+              return `<div class="terminal-option ${index === client.focus ? "focused" : ""}" data-pick="${clientName}:${choice.id}">
+              <span class="pointer">${index === client.focus ? "❯" : ""}</span>
+              <span class="terminal-check">${state.multiple ? (selected ? "✓" : "·") : choice.id}</span>
+              <span>${choice.label}</span>
+            </div><div class="terminal-desc">${choice.description}</div>`;
+            }
+            return `<button type="button" class="option ${selected ? "selected" : ""}" data-pick="${clientName}:${choice.id}" aria-pressed="${selected}">
+            <span class="check">✓</span><span class="option-copy"><strong>${choice.label}</strong><small>${choice.description}</small></span>
+          </button>`;
+          })
+          .join("");
+      }
+
+      function renderDesktop() {
+        if (state.settled) {
+          desktop.innerHTML = closedMarkup(state.settled);
+          return;
+        }
+        const client = state.desktop;
+        const picked = selectedIds(client);
+        const valid = picked.length > 0 || (state.custom && client.other.trim() !== "");
+        desktop.innerHTML = `<div class="desktop-question">
+          <div class="question-head"><h3>How should we implement plugin questions?</h3><span class="countdown">${timeLeft()}</span></div>
+          <div class="option-list">${optionMarkup("desktop", false)}</div>
+          ${state.custom ? `<div class="answer-row"><input id="desktop-other" value="" placeholder="Or type your own answer" /><button class="send" data-submit="desktop" ${valid ? "" : "disabled"}>Answer</button></div>` : state.multiple ? `<div class="answer-row"><button class="send" data-submit="desktop" ${valid ? "" : "disabled"}>Answer</button></div>` : ""}
+        </div>`;
+        const input = document.querySelector("#desktop-other");
+        if (input) {
+          input.value = client.other;
+          input.addEventListener("input", (event) => {
+            client.other = event.target.value;
+            renderDesktop();
+          });
+          input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") submit("desktop");
+          });
+        }
+      }
+
+      function renderTui() {
+        if (state.settled) {
+          tui.innerHTML = closedMarkup(state.settled);
+          return;
+        }
+        const client = state.tui;
+        const valid =
+          selectedIds(client).length > 0 || (state.custom && client.other.trim() !== "");
+        tui.innerHTML = `<div class="terminal">
+          <div class="terminal-title"><span>How should we implement plugin questions?</span><span>${timeLeft()}</span></div>
+          <div class="terminal-rule"></div>
+          ${optionMarkup("tui", true)}
+          ${state.custom ? `<div class="terminal-input"><span>›</span><input id="tui-other" value="" placeholder="Or type your own answer" /></div>` : ""}
+          <div class="terminal-hint"><span class="key">enter</span> ${state.multiple ? "toggle" : "answer"} · ${state.multiple ? '<span class="key">ctrl+enter</span> answer · ' : ""}<span class="key">esc</span> later</div>
+          ${state.multiple ? `<div class="terminal-actions"><button data-submit="tui" ${valid ? "" : "disabled"}>ctrl+enter · answer</button></div>` : ""}
+        </div>`;
+        const input = document.querySelector("#tui-other");
+        if (input) {
+          input.value = client.other;
+          input.addEventListener("input", (event) => {
+            client.other = event.target.value;
+            renderTui();
+          });
+          input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") submit("tui");
+          });
+        }
+      }
+
+      function renderSteps() {
+        signalStep.classList.toggle("active", state.settled === "answered");
+        resumeStep.classList.toggle("active", state.settled !== null);
+        signalStep.querySelector("strong").textContent =
+          state.settled === "answered"
+            ? "SelectionReply signalled"
+            : state.settled === "expired"
+              ? "deadline passes"
+              : "waits to reply";
+        resumeStep.querySelector("strong").textContent = state.settled
+          ? "wake settles; loop continues"
+          : "loop is parked";
+      }
+
+      function renderControls() {
+        document
+          .querySelectorAll("[data-mode]")
+          .forEach((button) =>
+            button.classList.toggle(
+              "active",
+              (button.dataset.mode === "multiple") === state.multiple,
+            ),
+          );
+        document
+          .querySelectorAll("[data-custom]")
+          .forEach((button) =>
+            button.classList.toggle("active", (button.dataset.custom === "on") === state.custom),
+          );
+        document
+          .querySelectorAll("[data-timeout]")
+          .forEach((button) =>
+            button.classList.toggle("active", Number(button.dataset.timeout) === state.timeout),
+          );
+      }
+
+      function bindActions() {
+        document.querySelectorAll("[data-pick]").forEach((element) => {
+          element.addEventListener("click", () => {
+            const [client, id] = element.dataset.pick.split(":");
+            pick(client, id);
+          });
+        });
+        document
+          .querySelectorAll("[data-submit]")
+          .forEach((element) =>
+            element.addEventListener("click", () => submit(element.dataset.submit)),
+          );
+      }
+
+      function render() {
+        renderControls();
+        renderEffect();
+        renderDesktop();
+        renderTui();
+        renderSteps();
+        bindActions();
+      }
+
+      document
+        .querySelectorAll("[data-mode]")
+        .forEach((button) =>
+          button.addEventListener("click", () => setMode(button.dataset.mode === "multiple")),
+        );
+      document.querySelectorAll("[data-custom]").forEach((button) =>
+        button.addEventListener("click", () => {
+          state.custom = button.dataset.custom === "on";
+          restart();
+        }),
+      );
+      document.querySelectorAll("[data-timeout]").forEach((button) =>
+        button.addEventListener("click", () => {
+          state.timeout = Number(button.dataset.timeout);
+          restart();
+        }),
+      );
+      document.querySelector("#reset").addEventListener("click", restart);
+
+      restart();
+      setInterval(() => {
+        expire();
+        if (!state.settled && state.deadline !== 0) {
+          document
+            .querySelectorAll(".countdown, .terminal-title span:last-child")
+            .forEach((element) => {
+              element.textContent = timeLeft();
+            });
+        }
+      }, 250);
+    </script>
+  </body>
+</html>

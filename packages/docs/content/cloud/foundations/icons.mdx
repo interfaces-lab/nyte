@@ -1,0 +1,55 @@
+---
+title: Icons
+description: "Central Icons in two stroke geometries, and the 16px IconBox that keeps a glyph on the grid"
+---
+
+Nyte draws every glyph from [Central Icons](https://centralicons.com). Two packages are installed,
+aliased to the same import name in different workspaces:
+
+| Alias                   | Package                                                   | Used by             |
+| ----------------------- | --------------------------------------------------------- | ------------------- |
+| `central-icons`         | `@central-icons-react/round-outlined-radius-1-stroke-1.5` | `@nyte-ai/ui`, docs |
+| `central-icons-desktop` | `@central-icons-react/round-outlined-radius-2-stroke-1.5` | desktop             |
+
+Both are round-outlined at stroke 1.5. The desktop set has the larger corner radius, which reads
+better at the desktop's slightly heavier weight (the desktop thickens icons to 1.875 units in its
+global CSS). Do not mix the two sets on one surface.
+
+Central Icons requires a license key at install time (`CENTRAL_LICENSE_KEY`). The build fails
+without it, so the key is part of the environment contract, not an optional dependency.
+
+## Usage
+
+```tsx
+import { IconPlusSmall } from "central-icons";
+
+<Button size="icon-sm" aria-label="Add">
+  <IconPlusSmall size={14} />
+</Button>;
+```
+
+- An icon-only control **must** carry `aria-label`. The glyph is decorative.
+- Decorative icons beside text are hidden from assistive tech. `IconBox` does this by default.
+- Sizes are 12 or 14 inside controls. A 16px box holds either.
+
+## IconBox
+
+`packages/ui/src/components/ui/icon-box.tsx` is an internal helper, not exported from the package
+index, used by the dropdown menu's indicators. It is documented because a new wrapper that places a
+glyph should use it rather than re-deriving the box.
+
+| Prop          | Type                              | Default | Description                                               |
+| ------------- | --------------------------------- | ------- | --------------------------------------------------------- |
+| `children`    | `ReactElement<{ size?: number }>` |         | One icon element; `size` is overwritten with `glyphSize`. |
+| `glyphSize`   | `12 \| 14`                        | `14`    | Rendered glyph size inside the 16px box.                  |
+| `aria-hidden` | `boolean`                         | `true`  | Decorative by default.                                    |
+| `xstyle`      | `XStyle`                          |         | StyleX override.                                          |
+
+It renders an `inline-grid` 16×16 span with `place-items: center` and `line-height: 0`, and sets
+`data-slot="icon-box"`.
+
+## Desktop icons
+
+The desktop wraps its set behind `desktop/src/renderer/src/components/icons.tsx` (`Icon`,
+`IconName`) and adds `file-type-icon.tsx` for file rows. See
+[Desktop › Icons](/cloud/desktop/icons).

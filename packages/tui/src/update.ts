@@ -10,9 +10,21 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { chmod, copyFile, mkdtemp, rename, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -115,7 +127,9 @@ async function downloadTo(
 ): Promise<string> {
   const response = await fetchFn(url, { signal: AbortSignal.timeout(10 * 60_000) });
   if (!response.ok || response.body === null) {
-    throw new Error(`Failed to download ${url} (HTTP ${String(response.status)}).`);
+    throw new UpdateError(
+      `Release download failed (HTTP ${String(response.status)}). Check that the release exists and try again.`,
+    );
   }
   const length = response.headers.get("content-length");
   const total = length === null ? undefined : Number(length);
@@ -133,17 +147,127 @@ async function downloadTo(
 
 async function fetchText(fetchFn: typeof globalThis.fetch, url: string): Promise<string> {
   const response = await fetchFn(url, { signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Failed to download ${url} (HTTP ${String(response.status)}).`);
+  if (!response.ok) {
+    throw new UpdateError(
+      `Release download failed (HTTP ${String(response.status)}). Check that the release exists and try again.`,
+    );
+  }
   return response.text();
 }
 
-function isPermissionError(cause: unknown): cause is { readonly code: "EACCES" | "EPERM" } {
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    (cause.code === "EACCES" || cause.code === "EPERM")
-  );
+class UpdateError extends Error {}
+
+/** Inspect the archive before tar is allowed to write anything. Tar resolves PAX
+ * names for both listings; only regular files and directories may be extracted. */
+async function planArchive(archive: string) {
+  const listing = await execFileAsync("tar", ["-tzf", archive]);
+  const verbose = await execFileAsync("tar", ["-tvzf", archive]);
+  const names = listing.stdout.trimEnd().split("\n");
+  const entries = verbose.stdout.trimEnd().split("\n");
+  if (names.length !== entries.length) throw new UpdateError("The release archive is malformed.");
+  const files: string[] = [];
+  const seen = new Set<string>();
+  for (const [index, raw] of names.entries()) {
+    const name = raw.replace(/^\.\//u, "").replace(/\/$/u, "");
+    const type = entries[index]?.[0];
+    if (
+      !/^[a-zA-Z0-9._/-]+$/u.test(name) ||
+      name.split("/").some((part) => part === ".." || part === "." || part === "") ||
+      (name !== "nyte" && name !== "VERSION" && name !== "docs" && !name.startsWith("docs/")) ||
+      (type !== "-" && type !== "d") ||
+      (type === "d" && name !== "docs" && !name.startsWith("docs/")) ||
+      seen.has(name)
+    ) {
+      throw new UpdateError("The release archive contains unsafe or unsupported entries.");
+    }
+    seen.add(name);
+    if (type === "-") files.push(name);
+  }
+  if (!files.includes("nyte")) {
+    throw new UpdateError("The release archive does not contain a nyte binary.");
+  }
+  const docs = names.some((name) => name.replace(/^\.\//u, "").startsWith("docs"));
+  if (docs && (!files.includes("docs/README.md") || !files.includes("VERSION"))) {
+    throw new UpdateError("The release archive is missing its documentation index or version.");
+  }
+  return { files, docs };
+}
+
+async function pathStat(path: string) {
+  try {
+    return await lstat(path);
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
+    throw cause;
+  }
+}
+
+/** The existing install root is trusted and canonicalized, including system aliases.
+ * Below it, docs directories must be plain directories. The install root must
+ * not be renamed or modified by another writer during an update. */
+async function checkDestination(path: string, root: string): Promise<void> {
+  if (path === root) return;
+  const parent = dirname(path);
+  if (parent === path) throw new UpdateError("The docs destination is outside the install root.");
+  await checkDestination(parent, root);
+  const entry = await pathStat(path);
+  if (entry?.isSymbolicLink() || (entry !== undefined && !entry.isDirectory())) {
+    throw new UpdateError("The update destination is not a plain directory.");
+  }
+}
+
+async function checkMatchingDocs(source: string, destination: string): Promise<void> {
+  const entry = await pathStat(destination);
+  if (!entry?.isDirectory() || entry.isSymbolicLink()) {
+    throw new UpdateError("Existing documentation conflicts with this release.");
+  }
+  const sourceNames = (await readdir(source)).toSorted();
+  const destinationNames = (await readdir(destination)).toSorted();
+  if (sourceNames.join("\n") !== destinationNames.join("\n")) {
+    throw new UpdateError("Existing documentation conflicts with this release.");
+  }
+  for (const name of sourceNames) {
+    const from = join(source, name);
+    const to = join(destination, name);
+    if ((await lstat(from)).isDirectory()) {
+      await checkMatchingDocs(from, to);
+      continue;
+    }
+    const existing = await lstat(to);
+    if (!existing.isFile() || !(await readFile(from)).equals(await readFile(to))) {
+      throw new UpdateError("Existing documentation conflicts with this release.");
+    }
+  }
+}
+
+async function stageDocs(source: string, binaryPath: string, version: string) {
+  const parent = resolve(dirname(binaryPath), "../share/nyte");
+  const destination = join(parent, version);
+  await checkDestination(destination, dirname(dirname(binaryPath)));
+  if (await pathStat(destination)) {
+    await checkMatchingDocs(source, join(destination, "docs"));
+    return;
+  }
+  await mkdir(parent, { recursive: true });
+  const stage = await mkdtemp(join(parent, ".nyte-update-"));
+  try {
+    await cp(source, join(stage, "docs"), { recursive: true, errorOnExist: true, force: false });
+    // mkdir reserves this version exclusively. rename alone can replace an
+    // existing empty directory, including one created by a concurrent publisher.
+    await checkDestination(destination, dirname(dirname(binaryPath)));
+    try {
+      await mkdir(destination, { mode: 0o700 });
+    } catch (cause) {
+      if (!(cause instanceof Error && "code" in cause && cause.code === "EEXIST")) throw cause;
+      await checkDestination(destination, dirname(dirname(binaryPath)));
+      await checkMatchingDocs(source, join(destination, "docs"));
+      return;
+    }
+    await rename(join(stage, "docs"), join(destination, "docs"));
+    await chmod(destination, 0o755);
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
 }
 
 export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOutcome> {
@@ -168,9 +292,16 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
   }
 
   const base = `https://github.com/${REPO}/releases/download/v${target.version}`;
-  const workDir = await mkdtemp(join(tmpdir(), "nyte-update-"));
-  const staged = join(dirname(binaryPath), `.nyte-update-${String(process.pid)}`);
+  let workDir: string | undefined;
+  let adjacent: string | undefined;
   try {
+    const installDir = await realpath(dirname(binaryPath));
+    const installed = join(installDir, basename(binaryPath));
+    const binary = await pathStat(installed);
+    if (!binary?.isFile() || binary.isSymbolicLink()) {
+      throw new UpdateError("The update target is not a plain binary file.");
+    }
+    workDir = await mkdtemp(join(tmpdir(), "nyte-update-"));
     report({ kind: "downloading", asset: `${asset}.tar.gz` });
     const expected = parseSha256(await fetchText(fetchFn, `${base}/${asset}.tar.gz.sha256`));
     if (expected === undefined) {
@@ -194,26 +325,60 @@ export async function selfUpdate(options: UpdateOptions = {}): Promise<UpdateOut
     }
     report({ kind: "verified" });
 
-    await execFileAsync("tar", ["-xzf", archive, "-C", workDir]);
-    const extracted = join(workDir, "nyte");
-    if (!(await stat(extracted).catch(() => undefined))?.isFile()) {
-      return { kind: "failed", message: `${asset}.tar.gz does not contain a nyte binary.` };
+    const plan = await planArchive(archive);
+    const extracted = join(workDir, "extracted");
+    await mkdir(extracted);
+    await execFileAsync("tar", [
+      "-xzf",
+      archive,
+      "-C",
+      extracted,
+      "--no-same-owner",
+      "--no-same-permissions",
+    ]);
+    for (const file of plan.files) {
+      if (!(await lstat(join(extracted, file))).isFile()) {
+        throw new UpdateError("The release archive contains an invalid file.");
+      }
     }
-    await copyFile(extracted, staged);
+    if (
+      plan.files.includes("VERSION") &&
+      (await readFile(join(extracted, "VERSION"), "utf8")).trim() !== target.version
+    ) {
+      throw new UpdateError(
+        "The release documentation version does not match the requested release.",
+      );
+    }
+    adjacent = await mkdtemp(join(installDir, ".nyte-update-"));
+    const staged = join(adjacent, "nyte");
+    await copyFile(join(extracted, "nyte"), staged);
     await chmod(staged, 0o755);
-    // Same directory, so the rename is atomic. The running process keeps its
-    // old inode mapped; the next launch gets the new file.
-    await rename(staged, binaryPath);
+    if (plan.docs) await stageDocs(join(extracted, "docs"), installed, target.version);
+    // The private staging directory shares the binary's filesystem. Docs are
+    // complete before this atomic swap; older versioned docs remain untouched.
+    await rename(staged, installed);
     return { kind: "updated", from: VERSION, to: target.version, path: binaryPath };
   } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    const hint = isPermissionError(cause)
-      ? ` Can't write ${binaryPath}; rerun with permission to that directory.`
-      : "";
+    const message =
+      cause instanceof UpdateError
+        ? cause.message
+        : "Update download or installation failed. Check your connection and available disk space, then try again.";
+    const hint =
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      (cause.code === "EACCES" || cause.code === "EPERM")
+        ? ` Can't write ${binaryPath}; rerun with permission to that directory.`
+        : "";
     return { kind: "failed", message: `${message}${hint}` };
   } finally {
-    await rm(workDir, { recursive: true, force: true });
-    await rm(staged, { force: true });
+    // Cleanup failure must not turn a completed atomic swap into a failed result.
+    if (workDir !== undefined) {
+      await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+    if (adjacent !== undefined) {
+      await rm(adjacent, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }
 

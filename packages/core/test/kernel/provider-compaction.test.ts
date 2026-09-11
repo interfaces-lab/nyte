@@ -3,18 +3,27 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { Context, ProviderCheckpointMaterial } from "@nyte-ai/schema";
-import { activate, turnFor } from "../../src/kernel/sdk/activation.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import { sessionId } from "../../src/kernel/sdk/types.ts";
+import { sessionId, type SessionEvent } from "../../src/kernel/sdk/types.ts";
 import { modelContext } from "../../src/kernel/context.ts";
 import { writeCheckpoint } from "../../src/kernel/compaction.ts";
-import { contextCommits } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
-import type { Commit, Run } from "../../src/kernel/model.ts";
+import type { Commit } from "../../src/kernel/model.ts";
+import type { Session } from "../../src/kernel/store.ts";
+import { projectUsage } from "../../src/kernel/views/usage.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/types.ts";
 import type { HookInvocation } from "../../src/plugins/hooks.ts";
-import type { StreamFn } from "../../src/types.ts";
-import { assistant, lease, message, openStore, seedHead, user, usage } from "./helpers.ts";
+import {
+  assistant,
+  lease,
+  message,
+  openStore,
+  seedHead,
+  storePath,
+  user,
+  usage,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "native-model",
@@ -28,8 +37,12 @@ const model: Model<Api> = {
   contextWindow: 2_000,
   maxTokens: 50,
 };
+const models = {
+  getModels: () => [model],
+  getModel: () => model,
+  getAvailable: async () => [model],
+};
 const settings = { enabled: true, reserveTokens: 20, keepRecentTokens: 1 };
-const heavyUsage = { ...usage, input: 2_000, totalTokens: 2_000 };
 const material: ProviderCheckpointMaterial = {
   type: "provider",
   provider: model.provider,
@@ -41,284 +54,255 @@ const material: ProviderCheckpointMaterial = {
   ],
 };
 
-test.each(["native", "fallback", "cancelled", "cancelled-during-fallback"] as const)(
-  "automatic compaction handles %s without mixing assistant and summarizer prompts",
-  async (mode) => {
-    const controller = new AbortController();
-    const requests: Context[] = [];
-    const steps: string[] = [];
-    const providerRequests: HookInvocation<"before_compaction">[] = [];
-    const plugin = inlinePlugin(
-      definePlugin({
-        id: "compaction-test",
-        session(api) {
-          api.prompt.add((draft) => draft.set("persona", { text: "NORMAL AGENT PERSONA" }));
-          api.hook("before_request", (event) => {
-            steps.push(event.step);
-            if (mode === "cancelled-during-fallback") controller.abort();
-            return undefined;
-          });
-          api.hook("before_compaction", (event) => {
-            providerRequests.push(event);
-            if (mode === "fallback") throw new Error("provider compaction unavailable");
-            if (mode === "cancelled") controller.abort();
-            if (mode === "cancelled-during-fallback") return undefined;
-            return { material, usage };
-          });
-        },
-      }),
-    );
-    const active = await activate({
-      target: { kind: "new-session" },
-      plugins: [plugin],
-      env: { cwd: "/tmp" },
+async function nextCompactionEvent(
+  iterator: AsyncIterator<SessionEvent>,
+): Promise<Extract<SessionEvent, { readonly kind: "compaction" }>> {
+  for (;;) {
+    const result = await within(iterator.next());
+    if (result.done) assert.fail("event stream ended early");
+    if (result.value.kind === "compaction") return result.value;
+  }
+}
+
+async function storedCommits(session: Session): Promise<Commit[]> {
+  const commits: Commit[] = [];
+  for (const entry of await session.objects.list()) {
+    const object = await session.objects.get(entry.oid);
+    if (object?.kind === "commit") commits.push(object);
+  }
+  return commits;
+}
+
+/** Compaction usage as the usage view reads it back from every stored commit. */
+async function storedCompactionTokens(session: Session): Promise<number> {
+  return projectUsage(await storedCommits(session)).compaction.totalTokens;
+}
+
+test("native compaction serves manual and automatic checkpoints without a local summary, and other models read the portable history", async () => {
+  const store = openStore();
+  const session = await store.create({ id: "native-lifecycle" });
+  await seedHead(session, "main", [
+    message(user("original")),
+    message(assistant("answer")),
+    message(user("latest")),
+  ]);
+  const started = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const hookCalls: HookInvocation<"before_compaction">[] = [];
+  const requests: Context[] = [];
+  const nyte = await createNyte({
+    store,
+    model,
+    env: { cwd: "/tmp" },
+    models,
+    compaction: settings,
+    plugins: [
+      inlinePlugin(
+        definePlugin({
+          id: "native-lifecycle",
+          session(api) {
+            api.prompt.add((draft) => draft.set("persona", { text: "NORMAL AGENT PERSONA" }));
+            api.hook("before_compaction", async (event) => {
+              hookCalls.push(event);
+              if (hookCalls.length === 1) {
+                started.resolve();
+                await finish.promise;
+              }
+              return { material, usage };
+            });
+          },
+        }),
+      ),
+    ],
+    streamFn: (_model, context) => {
+      requests.push(context);
+      const stream = createAssistantMessageEventStream();
+      stream.push({
+        type: "done",
+        reason: "stop",
+        message: { ...assistant("answer after checkpoint"), model: model.id },
+      });
+      return stream;
+    },
+  });
+  const id = sessionId(session.id);
+  const iterator = nyte.watch({ sessionId: id, afterSeq: 0 })[Symbol.asyncIterator]();
+  const detach = nyte.attach({ sessions: [id] });
+  try {
+    const compacting = nyte.runs.compact({
+      sessionId: id,
+      customInstructions: "Preserve the constraints",
     });
-    const store = openStore();
-    const session = await store.create();
-    await seedHead(session, "main", [
-      message(user("original")),
-      message({ ...assistant("answer", { usage: heavyUsage }), model: model.id }),
-      message(user("latest")),
-    ]);
-    const held = await lease(session, "main");
-    const run: Run = {
-      kind: "run",
-      id: "run",
-      head: "main",
-      phase: { kind: "respond" },
-      startedAt: 0,
-      attempts: 1,
-      config: {},
-    };
-    const streamFn: StreamFn = (_model, context) => {
+    const start = await nextCompactionEvent(iterator);
+    assert.equal(start.compaction?.reason, "manual");
+    await started.promise;
+    assert.deepEqual(
+      (await nyte.sessions.snapshot({ sessionId: id }))?.compaction,
+      start.compaction,
+    );
+    finish.resolve();
+    assert.equal((await compacting).kind, "compacted");
+    assert.equal((await nextCompactionEvent(iterator)).compaction, null);
+    assert.equal((await nyte.sessions.snapshot({ sessionId: id }))?.compaction, undefined);
+    assert.equal(hookCalls[0]?.reason, "manual");
+    assert.equal(hookCalls[0]?.customInstructions, "Preserve the constraints");
+    assert.equal(hookCalls[0]?.context.systemPrompt, "NORMAL AGENT PERSONA");
+    assert.equal(requests.length, 0);
+
+    const tip = await session.refs.read(headRef("main"));
+    const checkpoint = tip === null ? undefined : await session.objects.get(tip);
+    assert.ok(checkpoint?.kind === "commit" && checkpoint.body.kind === "checkpoint");
+    assert.deepEqual(checkpoint.body.material, material);
+    const target = { provider: model.provider, api: model.api, model: model.id };
+    assert.deepEqual(modelContext([checkpoint], target), { checkpoint: material, messages: [] });
+    const portable = modelContext([checkpoint], { ...target, model: "different-model" });
+    assert.equal(portable.checkpoint, undefined);
+    assert.deepEqual(
+      portable.messages.map((item) => item.content),
+      ["original", assistant("answer").content, "latest"],
+    );
+
+    // Context after a native checkpoint is sized from the provider's output plus
+    // the new messages; an oversized follow-up compacts again before the answer,
+    // handing the provider its opaque state plus only the messages after it.
+    const oversized = `constraint ${"detail ".repeat(3_000)}`;
+    await nyte.messages.send({ sessionId: id, content: oversized });
+    assert.equal((await nyte.runs.wait({ sessionId: id })).kind, "idle");
+    assert.equal(hookCalls.length, 2);
+    assert.equal(hookCalls[1]?.reason, "threshold");
+    assert.deepEqual(hookCalls[1]?.context.checkpoint, material);
+    assert.deepEqual(
+      hookCalls[1]?.context.messages.map((item) => item.content),
+      [oversized],
+    );
+    assert.equal(requests.length, 1);
+    assert.ok(requests.every((request) => request.systemPrompt === "NORMAL AGENT PERSONA"));
+    const commits = await storedCommits(session);
+    assert.equal(commits.filter((commit) => commit.body.kind === "checkpoint").length, 2);
+    assert.equal(projectUsage(commits).compaction.totalTokens, usage.totalTokens * 2);
+  } finally {
+    finish.resolve();
+    detach();
+    await iterator.return?.();
+    await nyte.close();
+  }
+});
+
+test("a rejected native request falls back to a portable summary under the summarizer prompt", async () => {
+  const store = openStore();
+  const session = await store.create({ id: "manual-native" });
+  await seedHead(session, "main", [
+    message(user("original")),
+    message(assistant("answer")),
+    message(user("latest")),
+  ]);
+  const requests: Context[] = [];
+  const steps: string[] = [];
+  const nyte = await createNyte({
+    store,
+    model,
+    models,
+    env: { cwd: "/tmp" },
+    compaction: settings,
+    plugins: [
+      inlinePlugin(
+        definePlugin({
+          id: "manual-provider",
+          session(api) {
+            api.hook("before_compaction", () => {
+              throw new Error("native endpoint rejected request");
+            });
+            api.hook("before_request", (event) => {
+              steps.push(event.step);
+              return undefined;
+            });
+          },
+        }),
+      ),
+    ],
+    streamFn: (_model, context) => {
       requests.push(context);
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "done", reason: "stop", message: assistant("portable summary") });
       return stream;
-    };
-    const bound = turnFor(active, { model, streamFn, compaction: settings });
-    const signal = controller.signal;
-    try {
-      const commits = await contextCommits(
-        session.objects,
-        await session.refs.read(headRef("main")),
-      );
-      const outcome = await bound.turn.respond({
-        session,
-        lease: held,
-        run,
-        attempt: 2,
-        commits,
-        signal,
-        emit: () => undefined,
-      });
-      if (mode === "cancelled" || mode === "cancelled-during-fallback") {
-        assert.equal(outcome.kind, "aborted");
-        assert.equal(requests.length, 0);
-        return;
-      }
-      assert.equal(outcome.kind, "checkpoint");
-      if (outcome.kind !== "checkpoint") assert.fail("expected checkpoint");
-      assert.equal(providerRequests[0]?.reason, "threshold");
-      assert.equal(providerRequests[0]?.context.systemPrompt, "NORMAL AGENT PERSONA");
-      if (mode === "fallback") {
-        assert.equal(outcome.body.material, undefined);
-        assert.match(outcome.body.summary, /portable summary/);
-        assert.ok(requests.length > 0);
-        assert.ok(
-          requests.every((request) => request.systemPrompt?.includes("summarization assistant")),
-        );
-        assert.ok(steps.every((step) => step === "compaction"));
-        return;
-      }
-      assert.equal(requests.length, 0);
-      assert.deepEqual(outcome.body.material, material);
-      assert.deepEqual(outcome.body.usage, usage);
-      const checkpoint: Commit = { kind: "commit", parent: null, body: outcome.body, at: 1 };
-      const target = { provider: model.provider, api: model.api, model: model.id };
-      assert.deepEqual(modelContext([checkpoint], target), { checkpoint: material, messages: [] });
-      const portable = modelContext([checkpoint], { ...target, model: "different-model" });
-      assert.equal(portable.checkpoint, undefined);
-      assert.deepEqual(
-        portable.messages.map((item) => item.content),
-        ["original", assistant("answer").content, "latest"],
-      );
+    },
+  });
+  try {
+    const result = await nyte.runs.compact({ sessionId: sessionId(session.id) });
+    assert.equal(result.kind, "compacted");
+    assert.ok(requests.length > 0);
+    assert.ok(
+      requests.every((request) => request.systemPrompt?.includes("summarization assistant")),
+    );
+    assert.ok(steps.every((step) => step === "compaction"));
+    const tip = await session.refs.read(headRef("main"));
+    const checkpoint = tip === null ? undefined : await session.objects.get(tip);
+    assert.ok(checkpoint?.kind === "commit" && checkpoint.body.kind === "checkpoint");
+    assert.equal(checkpoint.body.material, undefined);
+    assert.match(checkpoint.body.summary, /portable summary/);
+  } finally {
+    await nyte.close();
+  }
+});
 
-      // Another native checkpoint receives opaque state plus only the new messages.
-      const next: Commit = {
-        kind: "commit",
-        parent: null,
-        body: message({ ...assistant("new answer", { usage: heavyUsage }), model: model.id }),
-        at: 2,
-      };
-      const second = await bound.turn.respond({
-        session,
-        lease: held,
-        run,
-        attempt: 3,
-        commits: [
-          { oid: "checkpoint", commit: checkpoint },
-          { oid: "next", commit: next },
-        ],
-        signal,
-        emit: () => undefined,
-      });
-      assert.equal(second.kind, "checkpoint");
-      assert.deepEqual(providerRequests[1]?.context.checkpoint, material);
-      assert.deepEqual(
-        providerRequests[1]?.context.messages.map((item) => item.content),
-        [next.body.kind === "message" ? next.body.message.content : []],
-      );
-      assert.equal(requests.length, 0);
-    } finally {
-      await active.close();
-    }
-  },
-);
-
-test.each(["native", "fallback"] as const)(
-  "manual compaction invokes the provider hook before %s publication",
-  async (mode) => {
-    const store = openStore();
-    const session = await store.create({ id: "manual-native" });
-    await seedHead(session, "main", [
-      message(user("original")),
-      message(assistant("answer")),
-      message(user("latest")),
-    ]);
-    const calls: HookInvocation<"before_compaction">[] = [];
-    const requests: Context[] = [];
-    const steps: string[] = [];
-    const nyte = await createNyte({
-      store,
-      model,
-      models: { getModels: () => [model], getModel: () => model },
-      env: { cwd: "/tmp" },
-      compaction: settings,
-      plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "manual-provider",
-            session(api) {
-              api.hook("before_compaction", (event) => {
-                calls.push(event);
-                if (mode === "fallback") throw new Error("native endpoint rejected request");
-                return { material };
+test("cancelling a native compaction preserves the head, releases its lease, skips fallback, and keeps reported usage", async () => {
+  const store = openStore();
+  const session = await store.create({ id: "cancel-compaction" });
+  await seedHead(session, "main", [
+    message(user("original")),
+    message(assistant("answer")),
+    message(user("latest")),
+  ]);
+  const original = await session.refs.read(headRef("main"));
+  const started = Promise.withResolvers<void>();
+  const controller = new AbortController();
+  const nyte = await createNyte({
+    store,
+    model,
+    env: { cwd: "/tmp" },
+    models,
+    compaction: settings,
+    plugins: [
+      inlinePlugin(
+        definePlugin({
+          id: "cancel-provider",
+          session(api) {
+            api.hook("before_compaction", async (_event, signal) => {
+              assert.ok(signal);
+              const stopped = new Promise<void>((resolve) => {
+                signal.addEventListener("abort", () => resolve(), { once: true });
               });
-              api.hook("before_request", (event) => {
-                steps.push(event.step);
-                return undefined;
-              });
-            },
-          }),
-        ),
-      ],
-      streamFn: (_model, context) => {
-        requests.push(context);
-        const stream = createAssistantMessageEventStream();
-        stream.push({ type: "done", reason: "stop", message: assistant("portable summary") });
-        return stream;
-      },
-    });
-    try {
-      const result = await nyte.runs.compact({
-        sessionId: sessionId(session.id),
-        customInstructions: "Preserve the constraints",
-      });
-      assert.equal(result.kind, "compacted");
-      assert.equal(calls.length, 1);
-      assert.equal(calls[0]?.reason, "manual");
-      assert.equal(calls[0]?.customInstructions, "Preserve the constraints");
-      if (mode === "native") assert.equal(requests.length, 0);
-      else {
-        assert.ok(requests.length > 0);
-        assert.ok(
-          requests.every((request) => request.systemPrompt?.includes("summarization assistant")),
-        );
-        assert.ok(steps.every((step) => step === "compaction"));
-      }
-    } finally {
-      await nyte.close();
-    }
-  },
-);
-
-test.each(["native", "portable"] as const)(
-  "cancelling manual %s compaction preserves the head and releases its lease",
-  async (mode) => {
-    const store = openStore();
-    const session = await store.create({ id: "cancel-compaction" });
-    await seedHead(session, "main", [
-      message(user("original")),
-      message(assistant("answer")),
-      message(user("latest")),
-    ]);
-    const original = await session.refs.read(headRef("main"));
-    const started = Promise.withResolvers<void>();
-    const controller = new AbortController();
-    let requests = 0;
-    const nyte = await createNyte({
-      store,
-      model,
-      env: { cwd: "/tmp" },
-      models: { getModels: () => [model], getModel: () => model },
-      compaction: settings,
-      plugins: [
-        inlinePlugin(
-          definePlugin({
-            id: "cancel-provider",
-            session(api) {
-              api.hook("before_compaction", async (_event, signal) => {
-                if (mode === "portable") return undefined;
-                assert.ok(signal);
-                const stopped = new Promise<void>((resolve) => {
-                  signal.addEventListener("abort", () => resolve(), { once: true });
-                });
-                started.resolve();
-                await stopped;
-                // Even a provider finishing after cancellation cannot publish.
-                return { material };
-              });
-            },
-          }),
-        ),
-      ],
-      streamFn: (_model, _context, options) => {
-        requests += 1;
-        const stream = createAssistantMessageEventStream();
-        assert.ok(options?.signal);
-        options.signal.addEventListener(
-          "abort",
-          () => {
-            stream.push({
-              type: "error",
-              reason: "aborted",
-              error: assistant("", { stop: "aborted" }),
+              started.resolve();
+              await stopped;
+              // Even a provider finishing after cancellation cannot publish, but its usage is kept.
+              return { material, usage };
             });
           },
-          { once: true },
-        );
-        started.resolve();
-        return stream;
-      },
-    });
-    try {
-      const compacting = nyte.runs.compact({
-        sessionId: sessionId(session.id),
-        signal: controller.signal,
-      });
-      await started.promise;
-      controller.abort();
-      assert.deepEqual(await compacting, { kind: "aborted" });
-      assert.equal(await session.refs.read(headRef("main")), original);
-      assert.equal(await session.leases.read(headRef("main")), undefined);
-      assert.equal(requests, mode === "native" ? 0 : 1);
-    } finally {
-      controller.abort();
-      await nyte.close();
-    }
-  },
-);
+        }),
+      ),
+    ],
+    streamFn: () => assert.fail("a cancelled native request must not fall back"),
+  });
+  const id = sessionId(session.id);
+  const iterator = nyte.watch({ sessionId: id, afterSeq: 0 })[Symbol.asyncIterator]();
+  try {
+    const compacting = nyte.runs.compact({ sessionId: id, signal: controller.signal });
+    const start = await nextCompactionEvent(iterator);
+    assert.equal(start.compaction?.reason, "manual");
+    await started.promise;
+    controller.abort();
+    assert.deepEqual(await compacting, { kind: "aborted" });
+    assert.equal((await nextCompactionEvent(iterator)).compaction, null);
+    assert.equal((await nyte.sessions.snapshot({ sessionId: id }))?.compaction, undefined);
+    assert.equal(await session.refs.read(headRef("main")), original);
+    assert.equal(await session.leases.read(headRef("main")), undefined);
+    assert.equal(await storedCompactionTokens(session), usage.totalTokens);
+  } finally {
+    controller.abort();
+    await iterator.return?.();
+    await nyte.close();
+  }
+});
 
 test("a slow native compaction keeps its lease until checkpoint publication", async () => {
   const store = openStore();
@@ -351,8 +335,9 @@ test("a slow native compaction keeps its lease until checkpoint publication", as
   assert.equal(await session.leases.read(headRef("main")), undefined);
 });
 
-test("losing a compaction lease aborts the provider and cannot publish stale context", async () => {
-  const store = openStore();
+test("losing a compaction lease aborts the provider, cannot publish stale context, and keeps reported usage", async () => {
+  const path = storePath();
+  const store = openStore(path);
   const session = await store.create();
   await seedHead(session, "main", [message(user("original")), message(user("latest"))]);
   const original = await session.refs.read(headRef("main"));
@@ -375,7 +360,7 @@ test("losing a compaction lease aborts the provider and cannot publish stale con
       started.resolve();
       await stopped;
       aborted = signal.aborted;
-      return { material };
+      return { material, usage };
     },
   });
   await started.promise;
@@ -387,66 +372,25 @@ test("losing a compaction lease aborts the provider and cannot publish stale con
     assert.equal(aborted, true);
     assert.equal(await session.refs.read(headRef("main")), original);
     assert.equal((await session.leases.read(headRef("main")))?.owner, successor.lease.owner);
+    assert.equal(await storedCompactionTokens(session), usage.totalTokens);
+    assert.ok((await storedCommits(session)).every((commit) => commit.body.kind !== "checkpoint"));
+    const reader = await createNyte({
+      store: openStore(path),
+      model,
+      env: { cwd: "/tmp" },
+      models,
+      plugins: [],
+      streamFn: () => assert.fail("snapshot recovery must not request a model"),
+    });
+    try {
+      assert.equal(
+        (await reader.sessions.snapshot({ sessionId: sessionId(session.id) }))?.compaction,
+        undefined,
+      );
+    } finally {
+      await reader.close();
+    }
   } finally {
     await session.leases.release(successor.lease);
-  }
-});
-
-test("switching models compacts oversized portable history before the next assistant request", async () => {
-  const active = await activate({
-    target: { kind: "new-session" },
-    plugins: [],
-    env: { cwd: "/tmp" },
-  });
-  const store = openStore();
-  const session = await store.create();
-  await seedHead(session, "main", [
-    {
-      kind: "checkpoint",
-      summary: "",
-      retainedTail: [user("early project constraint ".repeat(1_000))],
-      material: { ...material, model: "previous-model" },
-      tokensBefore: 8_000,
-      usage,
-    },
-    message(user("continue with the new model")),
-  ]);
-  const held = await lease(session, "main");
-  const bound = turnFor(active, {
-    model,
-    compaction: settings,
-    streamFn: (_model, context) => {
-      assert.match(context.systemPrompt ?? "", /summarization assistant/);
-      const stream = createAssistantMessageEventStream();
-      stream.push({ type: "done", reason: "stop", message: assistant("recovered constraint") });
-      return stream;
-    },
-  });
-  try {
-    const outcome = await bound.turn.respond({
-      session,
-      lease: held,
-      run: {
-        kind: "run",
-        id: "new-model-run",
-        head: "main",
-        phase: { kind: "respond" },
-        startedAt: 0,
-        attempts: 0,
-        config: {},
-      },
-      attempt: 1,
-      commits: await contextCommits(session.objects, await session.refs.read(headRef("main"))),
-      signal: new AbortController().signal,
-      emit: () => undefined,
-    });
-    assert.equal(outcome.kind, "checkpoint");
-    if (outcome.kind !== "checkpoint") assert.fail("expected portable checkpoint");
-    assert.equal(outcome.body.material, undefined);
-    assert.match(outcome.body.summary, /recovered constraint/);
-    assert.equal(outcome.body.retainedTail.at(-1)?.content, "continue with the new model");
-  } finally {
-    await session.leases.release(held);
-    await active.close();
   }
 });

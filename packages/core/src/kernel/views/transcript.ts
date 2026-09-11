@@ -13,6 +13,11 @@ export type { ToolTurnPart, Turn, TurnOutcome, TurnPart, UserTurnPart } from "@n
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 type CommitItem = { readonly oid: Oid; readonly commit: Commit };
 
+interface TranscriptBuilder {
+  readonly items: Turn[];
+  readonly sharedTail?: Turn;
+}
+
 /** Stable semantic identity for one part, independent of any renderer. */
 export function turnPartId(part: TurnPart): string {
   switch (part.kind) {
@@ -85,30 +90,27 @@ function hasVisibleAssistantContent(message: AssistantMessage): boolean {
 }
 
 /**
- * The turn this commit lands in: a fresh copy of the open tail, replaced in
- * `items`, or a new turn pushed onto it. `items` is the caller's own copy, so
- * writing into it here keeps the fold pure from the outside. Every commit that
- * lands in a turn also dates it, and a host clock can step backwards mid-turn,
- * so the span only ever grows.
+ * Full projection owns its turns; incremental append copies the shared tail
+ * only when writing to it. A host clock can step backwards mid-turn, so the
+ * span only ever grows.
  */
-function landingTurn(items: Turn[], item: CommitItem): ConversationTurn {
-  const last = items.at(-1);
-  const turn: ConversationTurn =
-    last?.kind === "turn"
-      ? {
-          ...last,
-          parts: [...last.parts],
-          durationMs: Math.max(last.durationMs, item.commit.at - last.startedAt),
-        }
-      : {
-          kind: "turn",
-          id: item.oid,
-          parts: [],
-          outcome: "completed",
-          startedAt: item.commit.at,
-          durationMs: 0,
-        };
-  items[last?.kind === "turn" ? items.length - 1 : items.length] = turn;
+function landingTurn(builder: TranscriptBuilder, item: CommitItem): ConversationTurn {
+  const last = builder.items.at(-1);
+  if (last?.kind === "turn") {
+    const turn = last === builder.sharedTail ? { ...last, parts: [...last.parts] } : last;
+    turn.durationMs = Math.max(turn.durationMs, item.commit.at - turn.startedAt);
+    builder.items[builder.items.length - 1] = turn;
+    return turn;
+  }
+  const turn: ConversationTurn = {
+    kind: "turn",
+    id: item.oid,
+    parts: [],
+    outcome: "completed",
+    startedAt: item.commit.at,
+    durationMs: 0,
+  };
+  builder.items.push(turn);
   return turn;
 }
 
@@ -126,10 +128,14 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
   });
 }
 
-function appendAssistant(items: Turn[], item: CommitItem, message: AssistantMessage): void {
+function appendAssistant(
+  builder: TranscriptBuilder,
+  item: CommitItem,
+  message: AssistantMessage,
+): void {
   const outcome = outcomeFrom(message);
   if (!hasVisibleAssistantContent(message) && outcome === "completed") return;
-  const turn = landingTurn(items, item);
+  const turn = landingTurn(builder, item);
   turn.outcome = outcome;
   for (const [contentIndex, part] of message.content.entries()) {
     switch (part.type) {
@@ -168,8 +174,12 @@ function appendAssistant(items: Turn[], item: CommitItem, message: AssistantMess
 }
 
 /** A result settles the call it answers, or stands alone when the call is not on this branch. */
-function appendToolResult(items: Turn[], item: CommitItem, message: ToolResultMessage): void {
-  const turn = landingTurn(items, item);
+function appendToolResult(
+  builder: TranscriptBuilder,
+  item: CommitItem,
+  message: ToolResultMessage,
+): void {
+  const turn = landingTurn(builder, item);
   const result = {
     commit: item.oid,
     output: toolResultText(message),
@@ -210,6 +220,13 @@ export function appendTranscriptCommit(
   if (item.commit.parent !== state.tip) return undefined;
 
   const items = [...state.items];
+  appendTranscriptItem({ items, sharedTail: state.items.at(-1) }, item);
+  return { items, tip: item.oid };
+}
+
+/** Mutate only the builder's owned items, copying a shared turn at its first write. */
+function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): void {
+  const items = builder.items;
   const { body } = item.commit;
   switch (body.kind) {
     case "message": {
@@ -219,10 +236,10 @@ export function appendTranscriptCommit(
           appendUser(items, item, message);
           break;
         case "assistant":
-          appendAssistant(items, item, message);
+          appendAssistant(builder, item, message);
           break;
         case "toolResult":
-          appendToolResult(items, item, message);
+          appendToolResult(builder, item, message);
           break;
         default: {
           const _exhaustive: never = message;
@@ -231,6 +248,19 @@ export function appendTranscriptCommit(
       }
       break;
     }
+    case "completion":
+      // A background result answers the model, not the user. It opens its own
+      // turn, with nothing to draw, so the response it triggers does not graft
+      // onto an earlier request's turn or stretch that turn's duration.
+      items.push({
+        kind: "turn",
+        id: item.oid,
+        outcome: "completed",
+        startedAt: item.commit.at,
+        durationMs: 0,
+        parts: [],
+      });
+      break;
     case "checkpoint":
       items.push({ kind: "checkpoint", commit: item.oid, at: item.commit.at, body });
       break;
@@ -248,18 +278,21 @@ export function appendTranscriptCommit(
       return _exhaustive;
     }
   }
-  return { items, tip: item.oid };
 }
 
 /** Project one branch, oldest first, into the conversation items a client renders. */
 export function transcriptFromCommits(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
 ): Turn[] {
-  let state = EMPTY_TRANSCRIPT;
+  const builder: TranscriptBuilder = { items: [] };
+  let tip: Oid | null = null;
   for (const item of commits) {
-    const next = appendTranscriptCommit(state, item);
-    if (next === undefined) throw new Error("Commits do not form an oldest-first branch");
-    state = next;
+    if (item.oid === tip) continue;
+    if (item.commit.parent !== tip) {
+      throw new Error("Commits do not form an oldest-first branch");
+    }
+    appendTranscriptItem(builder, item);
+    tip = item.oid;
   }
-  return [...state.items];
+  return builder.items;
 }

@@ -40,13 +40,13 @@ Summary of that exploration:
 BRANCH WORK`;
 
 function catalog(models: readonly Model<Api>[]): ModelCatalog {
+  const getModels = (provider?: string) =>
+    provider === undefined ? models : models.filter((candidate) => candidate.provider === provider);
   return {
-    getModels: (provider) =>
-      provider === undefined
-        ? models
-        : models.filter((candidate) => candidate.provider === provider),
+    getModels,
     getModel: (provider, id) =>
       models.find((candidate) => candidate.provider === provider && candidate.id === id),
+    getAvailable: async (provider) => getModels(provider),
   };
 }
 
@@ -392,10 +392,13 @@ test("a failed branch summary leaves the head at its source tip", async () => {
   const nyte = await openNyte({ store, streamFn: modelScript.streamFn });
   try {
     const id = sessionId("failed-summary");
-    assert.deepEqual(await nyte.heads.move({ sessionId: id, to: selected, summary: {} }), {
-      kind: "failed",
-      message: "Branch summarization failed: provider down",
-    });
+    const outcome = await nyte.heads.move({ sessionId: id, to: selected, summary: {} });
+    assert.equal(outcome.kind, "failed");
+    if (outcome.kind === "failed") {
+      assert.ok(outcome.code === "internal");
+      assert.equal(outcome.message, "Internal error");
+      assert.ok(outcome.correlationId);
+    }
     assert.equal((await nyte.heads.list({ sessionId: id }))[0]?.tip, sourceTip);
   } finally {
     await nyte.close();

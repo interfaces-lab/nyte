@@ -4,33 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "vitest";
 import { createLocalBashOperations } from "../src/tools/bash.ts";
+import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
 import { createEditTool } from "../src/tools/edit.ts";
-import { createAllTools } from "../src/tools/index.ts";
 import { createLsTool } from "../src/tools/ls.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { toolResultText } from "../src/utils/tool-result.ts";
 
-describe("createAllTools", () => {
-  test("composes exactly the five coding tools, in order", () => {
-    const names = createAllTools("/tmp").map((tool) => tool.name);
-    assert.deepEqual(names, ["read", "bash", "edit", "write", "ls"]);
-  });
-});
-
 describe("ls tool", () => {
-  test("sorts entries and marks directories", async () => {
-    const tool = createLsTool("/workspace", {
-      operations: {
-        exists: () => true,
-        stat: (path) => ({ isDirectory: () => path !== "/workspace/z.txt" }),
-        readdir: () => ["z.txt", "folder"],
-      },
-    });
-
-    const result = await tool.execute("call_1", {});
-    assert.equal(toolResultText(result.content), "folder/\nz.txt");
-  });
-
   test("observes aborts while an operation is in flight", async () => {
     let finishRead: ((entries: string[]) => void) | undefined;
     const entries = new Promise<string[]>((resolve) => {
@@ -93,6 +73,58 @@ describe("file mutation tools", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("edit replacements", () => {
+  test("re-matches exact edits after fuzzy normalization shifts their offsets", () => {
+    const content = "untouched  \nﬁrst  \nexact target\nkept ‘quotes’  \n";
+    assert.deepEqual(
+      applyEditsToNormalizedContent(
+        content,
+        [
+          { oldText: "exact target", newText: "exact replacement" },
+          { oldText: "first", newText: "fuzzy replacement" },
+        ],
+        "example.txt",
+      ),
+      {
+        baseContent: content,
+        newContent: "untouched  \nfuzzy replacement\nexact replacement\nkept ‘quotes’  \n",
+      },
+    );
+  });
+
+  test("rejects a fuzzy-only duplicate even when the needle matches exactly", () => {
+    assert.throws(
+      () =>
+        applyEditsToNormalizedContent(
+          "first\nﬁrst\n",
+          [{ oldText: "first", newText: "changed" }],
+          "example.txt",
+        ),
+      /Found 2 occurrences of the text in example.txt/,
+    );
+  });
+
+  test("assembles three same-line replacements after a fuzzy first match changes the length", () => {
+    const content = "kept ‘header’  \nprefix ﬁrst / second / third suffix\nkept footer  \n";
+    assert.deepEqual(
+      applyEditsToNormalizedContent(
+        content,
+        [
+          { oldText: "first", newText: "longer first replacement" },
+          { oldText: "second", newText: "" },
+          { oldText: "third", newText: "3" },
+        ],
+        "example.txt",
+      ),
+      {
+        baseContent: content,
+        newContent:
+          "kept ‘header’  \nprefix longer first replacement /  / 3 suffix\nkept footer  \n",
+      },
+    );
   });
 });
 

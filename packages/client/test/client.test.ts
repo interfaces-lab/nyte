@@ -97,7 +97,7 @@ test("a call is one POST with the bearer token, the caller's headers, and an exp
   assert.deepEqual(JSON.parse(call.body ?? ""), { input: { sessionId: "s1" } });
 });
 
-test("a verb without input sends an empty envelope, not an input key", async () => {
+test("an operation without input sends an empty envelope, not an input key", async () => {
   const { seen, fetchFn } = scripted(() =>
     json(200, { ok: true, defined: true, value: { lanes: [], drain: "one" } }),
   );
@@ -106,7 +106,33 @@ test("a verb without input sends an empty envelope, not an input key", async () 
   assert.deepEqual(JSON.parse(seen[0]?.body ?? ""), {});
 });
 
-test("a value that does not match the verb's output schema is a transport failure, not a value", async () => {
+test("info is one GET with the bearer token, and any wire version but this one is malformed", async () => {
+  const { seen, fetchFn } = scripted(() =>
+    json(200, { ok: true, defined: true, value: { version: "1.2.3", wireVersion: 1 } }),
+  );
+  const client = createNyteClient({
+    baseUrl: "http://h.test",
+    token: "t".repeat(16),
+    fetch: fetchFn,
+  });
+  assert.deepEqual(await client.info(), { version: "1.2.3", wireVersion: 1 });
+  assert.equal(seen[0]?.url, "http://h.test/v1/info");
+  assert.equal(seen[0]?.method, "GET");
+  assert.equal(seen[0]?.headers.get("authorization"), `Bearer ${"t".repeat(16)}`);
+  assert.equal(seen[0]?.body, undefined);
+
+  for (const value of [{ version: "9.0.0", wireVersion: 2 }, { version: 3 }]) {
+    const malformed = createNyteClient({
+      baseUrl: "http://h.test",
+      fetch: scripted(() => json(200, { ok: true, defined: true, value })).fetchFn,
+    });
+    const bad = await caught(malformed.info());
+    assert.ok(bad instanceof NyteTransportError);
+    assert.equal(bad.failure.kind, "bad_body");
+  }
+});
+
+test("a value that does not match the operation's output schema is a transport failure, not a value", async () => {
   const { fetchFn } = scripted(() =>
     json(200, { ok: true, defined: true, value: { sessionId: "s1", bogus: true } }),
   );
@@ -116,7 +142,24 @@ test("a value that does not match the verb's output schema is a transport failur
   assert.equal(error.failure.kind, "bad_body");
 });
 
-test("an undefined reply to a verb whose output is required is refused", async () => {
+test("job calls reject malformed lists and action outcomes", async () => {
+  const client = createNyteClient({
+    baseUrl: "http://h.test",
+    fetch: scripted(() => json(200, { ok: true, defined: true, value: { kind: "cancelled" } }))
+      .fetchFn,
+  });
+  for (const call of [
+    () => client.jobs.list({ sessionId: sid }),
+    () => client.jobs.background({ sessionId: sid, jobId: "j" }),
+    () => client.jobs.cancel({ sessionId: sid, jobId: "j" }),
+  ]) {
+    const error = await caught(call());
+    assert.ok(error instanceof NyteTransportError);
+    assert.equal(error.failure.kind, "bad_body");
+  }
+});
+
+test("an undefined reply to an operation whose output is required is refused", async () => {
   const { fetchFn } = scripted(() => json(200, { ok: true, defined: false }));
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
   const error = await caught(client.plugins.catalog());

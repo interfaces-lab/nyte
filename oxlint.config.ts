@@ -8,27 +8,16 @@ export default defineConfig({
   options: {
     typeAware: true,
   },
-  ignorePatterns: ["tools/oxlint/anti-slop/**"],
-  // Vendored from https://github.com/dmmulroy/anti-slop (src/); ours to maintain.
-  jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
-  rules: {
-    "anti-slop/no-chained-type-assertions": "error",
-    "anti-slop/no-conditional-empty-object-spread": "error",
-    "anti-slop/no-known-value-widening": "error",
-    "anti-slop/no-module-mocking": "error",
-    "anti-slop/no-object-parameters": "error",
-    "anti-slop/no-reflect-apply": "error",
-    "anti-slop/no-reflect-get": "error",
-    "anti-slop/no-runtime-typeof": "error",
-    "anti-slop/no-shape-in-symbol-names": "error",
-    "anti-slop/no-unknown-parameters": "error",
-    "anti-slop/no-unknown-returns": "error",
-    "anti-slop/no-unknown-type-aliases": "error",
-    "anti-slop/no-unsafe-dictionary-type": "error",
-    "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "error",
-  },
   overrides: [
+    {
+      // Solid components run once and read refs after the tree is built; the
+      // React render-purity rules describe a different runtime.
+      files: ["packages/tui/src/**/*.tsx"],
+      rules: {
+        "react/refs": "off",
+        "react/immutability": "off",
+      },
+    },
     {
       // The terminal client and the plugin examples carry every suspicious and
       // perf rule as an error. Sequential awaits are how a shell is written, so

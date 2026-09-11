@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { RunInfo, RunPhase, SessionEvent } from "@nyte-ai/core";
 import type { AssistantMessage, UserMessage } from "@nyte-ai/schema";
-import { foldEvent, IDLE, livePartKey, resumeFrom } from "./live-fold.ts";
-import type { LiveSnapshot } from "./live-fold.ts";
+import { foldState, IDLE, livePartKey, projectLive, resumeFrom } from "./live-fold.ts";
+import type { LiveSnapshot, LiveState } from "./live-fold.ts";
 
 type CommitItem = Extract<SessionEvent, { readonly kind: "commit" }>["item"];
 
@@ -66,8 +66,17 @@ function userCommit(seq: number): SessionEvent {
   };
 }
 
+function foldEvent(snapshot: LiveSnapshot, event: SessionEvent) {
+  const result = foldState(snapshot, event);
+  return { ...result, snapshot: projectLive(snapshot, result.snapshot) };
+}
+
 function foldAll(events: readonly SessionEvent[], from: LiveSnapshot = IDLE): LiveSnapshot {
-  return events.reduce((snapshot, event) => foldEvent(snapshot, event).snapshot, from);
+  const state = events.reduce<LiveState>(
+    (snapshot, event) => foldState(snapshot, event).snapshot,
+    from,
+  );
+  return projectLive(from, state);
 }
 
 describe("live fold: streaming buffers", () => {
@@ -200,6 +209,13 @@ describe("live fold: durable events and effects", () => {
       { seq: 6, kind: "fact", key: "name", value: "x" },
       { seq: 7, kind: "stack", head: "side", parent: "main", base: null },
       { seq: 8, kind: "deleted" },
+      {
+        seq: 9,
+        kind: "compaction",
+        head: "main",
+        compaction: { id: "compact-1", reason: "threshold", startedAt: 1_000 },
+      },
+      { seq: 10, kind: "compaction", head: "main", compaction: null },
     ];
 
     for (const event of durable) {
@@ -209,23 +225,27 @@ describe("live fold: durable events and effects", () => {
     }
   });
 
-  test("a waiting effect parks the run; other effect states refresh", () => {
+  test("every effect state refreshes parked controls, including the first wait", () => {
     const working = foldEvent(IDLE, runEvent(1, { kind: "tools" })).snapshot;
-    const effect = (state: "intent" | "waiting" | "signal" | "result"): SessionEvent => ({
-      seq: 2,
-      kind: "effect",
-      runId: RUN,
-      callId: "call-1",
-      state,
-      tool: "ask",
-      args: {},
-    });
+    const effect = (
+      state: "intent" | "waiting" | "expired" | "signal" | "result",
+    ): SessionEvent => {
+      const event = {
+        seq: 2,
+        kind: "effect",
+        runId: RUN,
+        callId: "call-1",
+        tool: "ask",
+        args: {},
+      } as const;
+      return state === "waiting" ? { ...event, state, waitId: "wait-1" } : { ...event, state };
+    };
 
     const waiting = foldEvent(working, effect("waiting"));
     assert.equal(waiting.snapshot.runState, "idle");
-    assert.equal(waiting.refreshAt, undefined);
+    assert.equal(waiting.refreshAt, 2);
 
-    for (const state of ["intent", "signal", "result"] as const) {
+    for (const state of ["intent", "expired", "signal", "result"] as const) {
       const result = foldEvent(working, effect(state));
       assert.equal(result.refreshAt, 2, state);
       assert.equal(result.snapshot, working, state);
@@ -282,4 +302,117 @@ describe("live fold: resuming from a snapshot", () => {
     assert.equal(retrying.runState, "retrying");
     assert.deepEqual(retrying.retry, { at: 9, message: "e" });
   });
+});
+
+test("config refreshes preserve streamed text; reconnects discard it", () => {
+  const before = foldAll([textDelta(1, 1, 0, "first"), textDelta(1, 1, 0, " second")]);
+  const result = foldEvent(before, {
+    seq: 2,
+    kind: "commit",
+    head: "main",
+    item: {
+      oid: "config",
+      commit: {
+        kind: "commit",
+        parent: null,
+        at: 2,
+        body: { kind: "config", thinkingLevel: "high" },
+      },
+    },
+  });
+  assert.equal(result.refreshAt, 2);
+  assert.equal(result.snapshot.text.get(livePartKey(RUN, 1, 0)), "first second");
+  assert.equal(resumeFrom(result.snapshot, run({ kind: "respond" })).text.size, 0);
+  assert.equal(before.text.get(livePartKey(RUN, 1, 0)), "first second");
+});
+
+test("parallel progress settles call by call before a checkpoint clears the overlay", () => {
+  const progress = (callId: string, value: string): SessionEvent => ({
+    seq: 1,
+    kind: "tool_progress",
+    runId: RUN,
+    callId,
+    progress: { text: value },
+  });
+  const before = foldAll([
+    progress("c1", "old"),
+    progress("c2", "two"),
+    progress("c1", "new"),
+    textDelta(2, 2, 0, "partial"),
+  ]);
+  const result = foldEvent(before, {
+    seq: 3,
+    kind: "commit",
+    head: "main",
+    item: {
+      oid: "result",
+      commit: {
+        kind: "commit",
+        parent: null,
+        at: 3,
+        run: RUN,
+        body: {
+          kind: "message",
+          message: {
+            role: "toolResult",
+            toolCallId: "c1",
+            toolName: "read",
+            content: [{ type: "text", text: "done" }],
+            isError: false,
+            timestamp: 3,
+          },
+        },
+      },
+    },
+  });
+  assert.equal(result.refreshAt, 3);
+  assert.deepEqual([...result.snapshot.tools.keys()], ["c2"]);
+  assert.equal(before.tools.get("c1")?.progress.text, "new");
+  assert.equal(result.snapshot.text.get(livePartKey(RUN, 2, 0)), "partial");
+  const checkpoint = foldEvent(result.snapshot, {
+    seq: 4,
+    kind: "commit",
+    head: "main",
+    item: {
+      oid: "checkpoint",
+      commit: {
+        kind: "commit",
+        parent: "result",
+        at: 4,
+        body: { kind: "checkpoint", summary: "context", retainedTail: [], tokensBefore: 100 },
+      },
+    },
+  });
+  assert.equal(checkpoint.refreshAt, 4);
+  assert.equal(checkpoint.snapshot.text.size, 0);
+  assert.equal(checkpoint.snapshot.tools.size, 0);
+  assert.deepEqual(checkpoint.snapshot.order, []);
+});
+
+test("folding a burst does not read unrelated tool display values before projection", () => {
+  let progressReads = 0;
+  const progress = { text: "working" };
+  const initial: LiveState = {
+    ...IDLE,
+    parts: Array.from({ length: 50 }, (_, index) => ({
+      kind: "tool",
+      runId: RUN,
+      callId: `call-${String(index)}`,
+      get progress() {
+        progressReads += 1;
+        return progress;
+      },
+    })),
+  };
+  const events = Array.from({ length: 100 }, () => textDelta(1, 1, 0, "x"));
+  const state = events.reduce((current, event) => foldState(current, event).snapshot, initial);
+  assert.equal(progressReads, 0);
+  const displayed = projectLive(IDLE, state);
+  assert.equal(displayed.text.get(livePartKey(RUN, 1, 0)), "x".repeat(100));
+  assert.equal(displayed.tools.size, 50);
+  assert.deepEqual(
+    [...displayed.tools.values()].map((tool) => tool.progress),
+    Array.from({ length: 50 }, () => progress),
+  );
+  assert.deepEqual(displayed, foldAll(events, projectLive(IDLE, initial)));
 });

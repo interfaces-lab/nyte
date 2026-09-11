@@ -1,5 +1,5 @@
 import { create, props } from "@stylexjs/stylex";
-import { Dialog } from "@nyte-ai/ui/primitives";
+import { Dialog } from "@nyte-ai/ui/dialog";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
@@ -8,12 +8,14 @@ import { t } from "../theme/vars.stylex.ts";
 
 const styles = create({
   trigger: {
+    appearance: "none",
     display: "inline-flex",
     flexShrink: 0,
     padding: 0,
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: t.imageBg,
+    boxShadow: "none",
     cursor: "zoom-in",
     overflow: "hidden",
   },

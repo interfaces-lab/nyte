@@ -1,8 +1,10 @@
 # @nyte-ai/client
 
 The Nyte SDK namespaces over `fetch`, typed against `@nyte-ai/protocol`.
-Every verb is one `POST /v1/call/{verb}`; `watch` reads `GET /v1/watch` as
-server-sent events and yields an `AsyncIterable<SessionEvent>`.
+Every operation is one `POST /v1/call/{operation}`; `watch` reads `GET /v1/watch` as
+server-sent events and yields an `AsyncIterable<SessionEvent>`; `info()` reads
+`GET /v1/info` for the host's release. The wire version is the route prefix, so a
+server on another wire answers `info()` with a `not_found` wire error.
 
 Dependencies: `@nyte-ai/protocol` and `typebox`. No core, no Node. It runs wherever
 `fetch`, `Headers`, `ReadableStream`, and `TextDecoder` exist, and it never
@@ -56,7 +58,7 @@ server sees the disconnect and stops its SDK watch. The run keeps going.
 
 The client trusts nothing it did not check. A call's reply must be
 `application/json`, must be the protocol's envelope, and its value must
-match the verb's output schema; otherwise the call throws
+match the operation's output schema; otherwise the call throws
 `NyteTransportError` with `failure.kind` of `bad_content_type`, `bad_body`,
 `bad_status`, or `network`. A reply that is the envelope with `ok: false`
 throws `NyteWireError`, whose `code` is the stable protocol code and whose
@@ -99,7 +101,7 @@ snapshot's seq is the cursor the SDK guarantees.
 
 ## Limitations
 
-- The verb set is the desktop's SDK subset plus `landing`; see the protocol
+- The operation set is the desktop's SDK subset plus `landing`; see the protocol
   README. `runs.wait` and `runs.compact` are not available remotely.
 - No reconnect logic, no backoff, no queueing while offline. The caller owns
   those.

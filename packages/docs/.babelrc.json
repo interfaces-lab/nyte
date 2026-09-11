@@ -1,0 +1,12 @@
+{
+  "presets": ["next/babel"],
+  "plugins": [
+    [
+      "@stylexjs/babel-plugin",
+      {
+        "runtimeInjection": false,
+        "unstable_moduleResolution": { "type": "commonJS", "rootDir": "../.." }
+      }
+    ]
+  ]
+}

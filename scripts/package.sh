@@ -1,14 +1,12 @@
 #!/bin/sh
-# Build bin/nyte from packages/tui and stage release artifacts in dist/.
-# Produces dist/<name>/<name>.tar.gz plus a .sha256 beside it, where
+# `pnpm package` in packages/tui. Builds bin/nyte and stages release artifacts in dist/.
+# Produces dist/<name>.tar.gz plus a .sha256 beside it, where
 # <name> is nyte-v<version>-<os>-<arch>.
 #
 # Upload the pair with:
 #   gh release create vX.Y.Z --target main dist/*.tar.gz dist/*.sha256
 set -eu
 cd "$(dirname "$0")/.."
-
-version=$(node -p "require('./packages/tui/package.json').version")
 
 platform="$(uname -s)-$(uname -m)"
 case "$platform" in
@@ -22,17 +20,8 @@ case "$platform" in
 		;;
 esac
 
-name="nyte-v${version}-${target}"
-
-pnpm build:cli
-
-rm -rf "dist/${name}"
-mkdir -p "dist/${name}"
-cp bin/nyte "dist/${name}/nyte"
-
-# COPYFILE_DISABLE keeps macOS tar from adding AppleDouble ._ entries.
-COPYFILE_DISABLE=1 tar -czf "dist/${name}.tar.gz" -C "dist/${name}" nyte
-(cd dist && shasum -a 256 "${name}.tar.gz" >"${name}.tar.gz.sha256")
-
-echo "Staged:"
-ls -la "dist/${name}.tar.gz" "dist/${name}.tar.gz.sha256"
+# Under Turbo, package depends on build, so bin/nyte is already current.
+if [ -z "${TURBO_HASH:-}" ]; then
+	pnpm --filter @nyte-ai/tui build
+fi
+sh scripts/assemble-release.sh bin/nyte dist "$target"

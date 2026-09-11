@@ -1,11 +1,15 @@
+import type { JobInfo, SessionId } from "@nyte-ai/core";
 import * as stylex from "@stylexjs/stylex";
-import { useCallback, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../../shared/errors";
 import { Icon } from "../components/icons";
 import { Button } from "../components/ui";
+import { nyte } from "../nyte.ts";
+import { keys } from "../queries.ts";
 import { mountTerminal } from "./terminal-runtime";
-import { terminalActions, useTerminals } from "./terminal-store";
+import { isJobTerminal, terminalActions, useTerminals } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles as styles } from "./terminal.stylex";
 
@@ -33,6 +37,50 @@ function TerminalStatus({
   readonly tab: TerminalTab;
   readonly restart: () => void;
 }): ReactElement | null {
+  if (isJobTerminal(tab)) {
+    if (tab.rendering.kind === "failed") {
+      return (
+        <div role="alert" {...stylex.props(styles.state, styles.failure)}>
+          <span>{tab.rendering.message}</span>
+          <Button variant="secondary" onClick={() => terminalActions.retryRender(tab.id)}>
+            Try Again
+          </Button>
+        </div>
+      );
+    }
+    switch (tab.state.kind) {
+      case "running":
+        return <div {...stylex.props(styles.state)}>Agent command · read-only</div>;
+      case "completed":
+        return (
+          <div role="status" {...stylex.props(styles.state)}>
+            Command completed
+          </div>
+        );
+      case "failed":
+        return (
+          <div role="status" {...stylex.props(styles.state, styles.failure)}>
+            Command failed
+          </div>
+        );
+      case "cancelled":
+        return (
+          <div role="status" {...stylex.props(styles.state)}>
+            Command cancelled
+          </div>
+        );
+      case "interrupted":
+        return (
+          <div role="status" {...stylex.props(styles.state)}>
+            Command interrupted
+          </div>
+        );
+      default: {
+        const exhaustive: never = tab.state.kind;
+        return exhaustive;
+      }
+    }
+  }
   switch (tab.state.kind) {
     case "starting":
       return (
@@ -73,16 +121,36 @@ function TerminalStatus({
 
 export function TerminalPanel({
   owner,
+  sessionId,
   workspacePath,
   visible,
 }: {
   readonly owner: string;
+  readonly sessionId: SessionId | undefined;
   readonly workspacePath: string | null;
   readonly visible: boolean;
 }): ReactElement {
   const { tabs, activeId } = useTerminals(owner);
+  const observesJobs =
+    sessionId !== undefined &&
+    tabs.some((tab) => isJobTerminal(tab) && tab.source.sessionId === sessionId);
+  const jobs = useQuery({
+    queryKey: keys.jobs(sessionId),
+    queryFn: (): Promise<readonly JobInfo[]> => {
+      if (sessionId === undefined) return Promise.resolve([]);
+      return nyte.jobs.list({ sessionId });
+    },
+    enabled: observesJobs,
+    refetchInterval: observesJobs ? 2_000 : false,
+  });
   const selected = tabs.find((tab) => tab.id === activeId);
   const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    if (sessionId === undefined || jobs.data === undefined) return;
+    terminalActions.syncJobs(owner, sessionId, jobs.data);
+  }, [jobs.data, owner, sessionId]);
+
   const restart = async (tab: TerminalTab): Promise<void> => {
     setError(undefined);
     try {
@@ -121,11 +189,21 @@ export function TerminalPanel({
                   void restart(tab);
                 }}
               />
-              {tab.state.kind !== "failed" && (
+              {(isJobTerminal(tab)
+                ? tab.rendering.kind !== "failed"
+                : tab.state.kind !== "failed") && (
                 <TerminalCanvas id={tab.id} visible={visible && tab.id === activeId} />
               )}
             </div>
           ))}
+        </div>
+      )}
+      {jobs.isError && selected !== undefined && isJobTerminal(selected) && (
+        <div role="alert" {...stylex.props(styles.state, styles.failure)}>
+          <span>Couldn’t refresh command output. Showing the last received output.</span>
+          <Button variant="secondary" onClick={() => void jobs.refetch()}>
+            Try again
+          </Button>
         </div>
       )}
       {error !== undefined && (

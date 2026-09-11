@@ -1,0 +1,95 @@
+---
+title: Avatar
+description: "Image with initials fallback in four sizes, two shapes, and five tones"
+---
+
+```ts title="Import"
+import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui";
+```
+
+Implemented in `packages/ui/src/components/ui/avatar.tsx`, wrapping `@base-ui/react/avatar`
+(no dedicated headless subpath; the styled wrapper is the only export).
+
+## Usage
+
+- Always include `AvatarFallback`. The image can fail, and the fallback is what a screen reader
+  user and a slow network both get.
+- Fallback text is two characters. The font sizes are tuned for that and nothing longer fits at
+  `xs`.
+- `tone` is for identity (a participant, an agent), not for status. Do not use `green` to mean
+  online.
+- `AvatarImage` needs `alt`. If the avatar is decorative beside the participant's name, `alt=""`.
+
+## Anatomy
+
+```tsx
+<Avatar>
+  <AvatarImage />
+  <AvatarFallback />
+</Avatar>
+```
+
+`Avatar` renders a `<span>` with `data-slot="avatar"`, `data-size`, and `data-tone`. Image and
+fallback set `data-slot="avatar-image"` and `data-slot="avatar-fallback"`.
+
+## Examples
+
+### Sizes and shapes
+
+<Preview>
+  <AvatarDemo />
+</Preview>
+
+```tsx
+<Avatar size="lg">
+  <AvatarImage src="…" alt="interfaces-lab" />
+  <AvatarFallback>IL</AvatarFallback>
+</Avatar>
+<Avatar size="md"><AvatarFallback>NY</AvatarFallback></Avatar>
+<Avatar size="sm" shape="rounded"><AvatarFallback>SM</AvatarFallback></Avatar>
+<Avatar size="xs" shape="rounded"><AvatarFallback>XS</AvatarFallback></Avatar>
+```
+
+### Tones
+
+<Preview>
+  <AvatarTonesDemo />
+</Preview>
+
+## Props
+
+### Avatar
+
+| Prop                           | Type                                                     | Default     | Description                                  |
+| ------------------------------ | -------------------------------------------------------- | ----------- | -------------------------------------------- |
+| `size`                         | `"xs" \| "sm" \| "md" \| "lg"`                           | `"md"`      | 20, 24, 28, or 36px.                         |
+| `shape`                        | `"circle" \| "rounded"`                                  | `"circle"`  | Pill radius or `--nyte-radius-avatar` (42%). |
+| `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` | Background and foreground pair.              |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)                |             |                                              |
+
+<include>../../base-ui-reference/avatar/Root.md</include>
+
+### AvatarImage
+
+<include>../../base-ui-reference/avatar/Image.md</include>
+
+### AvatarFallback
+
+<include>../../base-ui-reference/avatar/Fallback.md</include>
+
+## Accessibility
+
+- The root is a `<span>`; it has no role. Meaning comes from the image's `alt` or from the text
+  around it.
+- Base UI tracks image loading status and swaps to the fallback on error or while loading;
+  `delay` on the fallback avoids a flash for fast loads.
+
+## Styling
+
+| Token                                              | Role                                  |
+| -------------------------------------------------- | ------------------------------------- |
+| `--nyte-avatar-size-*`, `--nyte-avatar-font-*`     | Per-size box and fallback font        |
+| `--nyte-avatar-ring-width`                         | 0.5px border in `--nyte-color-border` |
+| `--nyte-color-avatar-*-background` / `-foreground` | Per-tone pair                         |
+| `--nyte-radius-avatar`, `--nyte-radius-pill`       | Shapes                                |
+| `--nyte-font-weight-semibold`                      | Fallback weight                       |

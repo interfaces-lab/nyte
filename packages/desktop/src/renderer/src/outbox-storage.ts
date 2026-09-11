@@ -77,7 +77,6 @@ const storedRecord = Type.Object(
   strict,
 );
 
-// oxlint-disable-next-line anti-slop/no-unknown-parameters -- IndexedDB hands back `any`; the schema check below is the boundary
 function decodeRecord(value: unknown): PersistedOutboxRecordV1 | undefined {
   if (!Value.Check(storedRecord, value)) return undefined;
   try {

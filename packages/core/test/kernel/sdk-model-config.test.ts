@@ -34,6 +34,7 @@ const models = {
   getModels: () => [sol, luna],
   getModel: (provider: string, id: string) =>
     [sol, luna].find((model) => model.provider === provider && model.id === id),
+  getAvailable: async () => [sol, luna],
 };
 
 function host(options: Pick<NyteOptions, "store" | "model" | "thinkingLevel" | "streamFn">) {

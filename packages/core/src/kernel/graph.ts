@@ -1,12 +1,19 @@
-/** Commit graph walks over the kernel's content-addressed object store. */
+/**
+ * Commit graph walks over the kernel's content-addressed object store. A walk
+ * reads the parent chain through `objects.chain`, one store query per page,
+ * the way git reads its commit-graph instead of one object at a time.
+ */
 import type { Commit, Obj, Oid } from "./model.ts";
 import type { Objects } from "./store.ts";
+
+/** Commits per `objects.chain` query. Bounds what a walk that stops early has read. */
+const PAGE_SIZE = 64;
 
 function isCommit(object: Obj): object is Commit {
   return object.kind === "commit";
 }
 
-async function readCommit(objects: Objects, oid: Oid): Promise<Commit> {
+async function readCommit(objects: Pick<Objects, "get">, oid: Oid): Promise<Commit> {
   const object = await objects.get(oid);
   if (object === undefined || !isCommit(object)) {
     throw new Error(`Corrupt commit graph at ${oid}: missing or non-commit object`);
@@ -16,7 +23,7 @@ async function readCommit(objects: Objects, oid: Oid): Promise<Commit> {
 
 /** Walk from a tip toward the root, newest commit first. */
 export async function* history(
-  objects: Objects,
+  objects: Pick<Objects, "chain">,
   tip: Oid | null,
   options?: { readonly limit?: number },
 ): AsyncIterable<{ readonly oid: Oid; readonly commit: Commit }> {
@@ -25,19 +32,29 @@ export async function* history(
   let count = 0;
 
   while (oid !== null && (options?.limit === undefined || count < options.limit)) {
-    if (seen.has(oid)) throw new Error(`Commit graph cycle at ${oid}`);
-    seen.add(oid);
-
-    const commit = await readCommit(objects, oid);
-    yield { oid, commit };
-    oid = commit.parent;
-    count += 1;
+    const limit =
+      options?.limit === undefined ? PAGE_SIZE : Math.min(PAGE_SIZE, options.limit - count);
+    const page = await objects.chain(oid, { limit });
+    for (const entry of page) {
+      if (seen.has(entry.oid)) throw new Error(`Commit graph cycle at ${entry.oid}`);
+      seen.add(entry.oid);
+      if (!isCommit(entry.object)) {
+        throw new Error(`Corrupt commit graph at ${entry.oid}: missing or non-commit object`);
+      }
+      yield { oid: entry.oid, commit: entry.object };
+      oid = entry.object.parent;
+      count += 1;
+    }
+    // A short page means the store stopped: the next parent is not there.
+    if (page.length < limit && oid !== null) {
+      throw new Error(`Corrupt commit graph at ${oid}: missing or non-commit object`);
+    }
   }
 }
 
 /** Return the complete branch ending at `tip`, oldest commit first. */
 export async function branch(
-  objects: Objects,
+  objects: Pick<Objects, "chain">,
   tip: Oid | null,
 ): Promise<{ readonly oid: Oid; readonly commit: Commit }[]> {
   const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
@@ -52,7 +69,7 @@ export async function branch(
  * checkpoint, so a long history behind a checkpoint is never read.
  */
 export async function contextCommits(
-  objects: Objects,
+  objects: Pick<Objects, "chain">,
   tip: Oid | null,
 ): Promise<{ readonly oid: Oid; readonly commit: Commit }[]> {
   const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
@@ -66,7 +83,7 @@ export async function contextCommits(
 
 /** Whether `ancestor` occurs on the context-parent chain ending at `descendant`. */
 export async function isAncestor(
-  objects: Objects,
+  objects: Pick<Objects, "get" | "chain">,
   options: { readonly ancestor: Oid | null; readonly descendant: Oid | null },
 ): Promise<boolean> {
   if (options.ancestor === null) {

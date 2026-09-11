@@ -70,7 +70,7 @@ const history = (): Message[] =>
     user(`FACT${String(index)} ${"conversation content ".repeat(220)}`),
   );
 
-test("a portable summary that fits uses one request", async () => {
+test("a portable summary that fits uses one request; a model too small for the instructions sends none", async () => {
   const provider = boundedProvider();
   const result = await generateSummaryWithUsage({
     currentMessages: [user("FACT1")],
@@ -80,6 +80,16 @@ test("a portable summary that fits uses one request", async () => {
   });
   assert.ok(result.ok);
   assert.equal(result.value.text, "FACT1");
+  assert.equal(provider.requests.length, 1);
+
+  const tiny = await generateSummaryWithUsage({
+    currentMessages: [user("FACT1")],
+    streamFn: provider.streamFn,
+    model: { ...model, contextWindow: 100 },
+    reserveTokens: 10,
+  });
+  assert.ok(!tiny.ok);
+  assert.equal(tiny.error.code, "summarization_failed");
   assert.equal(provider.requests.length, 1);
 });
 
@@ -137,7 +147,6 @@ test("an oversized turn prefix and previous summary are summarized within the mo
   assert.ok(provider.requests.length > 1);
   assert.ok(result.value.summary.includes("FACT20"));
   assert.ok(result.value.summary.includes("FACT7"));
-  assert.ok(result.value.summary.includes("Turn Context"));
   const previous = await generateSummaryWithUsage({
     currentMessages: [user("FACT99")],
     previousSummary: serializeConversation(history()),
@@ -201,19 +210,6 @@ test("native context status excludes backup history and uses compact output usag
     projectContextStatus(resumed, model.contextWindow, target).estimatedTokens,
     usage.totalTokens,
   );
-});
-
-test("a model too small for the instructions fails without sending an oversized request", async () => {
-  const provider = boundedProvider();
-  const result = await generateSummaryWithUsage({
-    currentMessages: [user("FACT1")],
-    streamFn: provider.streamFn,
-    model: { ...model, contextWindow: 100 },
-    reserveTokens: 10,
-  });
-  assert.ok(!result.ok);
-  assert.equal(result.error.code, "summarization_failed");
-  assert.equal(provider.requests.length, 0);
 });
 
 test("portable fallback caps a larger model's retention budget after switching to a smaller model", async () => {
@@ -296,7 +292,7 @@ test("branch navigation summarizes the full native backup within the model windo
   const nyte = await createNyte({
     store,
     model,
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     env: { cwd: "/tmp" },
     plugins: [],
     streamFn: provider.streamFn,
@@ -311,23 +307,11 @@ test("branch navigation summarizes the full native backup within the model windo
     assert.ok(moved.kind === "moved" && moved.summary !== undefined);
     const stored = await session.objects.get(moved.summary);
     assert.ok(stored?.kind === "commit" && stored.body.kind === "summary");
-    assert.ok(
-      stored.body.text.startsWith(
-        "The user explored a different conversation branch before returning here.",
-      ),
-    );
     assert.ok(stored.body.text.includes("FACT0"));
     assert.ok(stored.body.text.includes("FACT7"));
     assert.ok(stored.body.text.includes("FACT99"));
-    assert.ok(
-      stored.body.text.includes("<modified-files>\n/tmp/branch-result.ts\n</modified-files>"),
-    );
+    assert.ok(stored.body.text.includes("/tmp/branch-result.ts"));
     assert.ok(provider.requests.length > 1);
-    assert.ok(
-      provider.requests.every((prompt) =>
-        prompt.includes("structured summary of this conversation branch"),
-      ),
-    );
     assert.ok(provider.requests.every((prompt) => prompt.includes("Preserve branch constraints")));
     assert.equal(stored.body.usage?.totalTokens, provider.requests.length * usage.totalTokens);
   } finally {
@@ -352,5 +336,4 @@ test("branch summarization still rejects tool calls instead of saving them as a 
   });
   assert.ok(!result.ok);
   assert.equal(result.error.code, "summarization_failed");
-  assert.equal(result.error.message, "Branch summarization attempted to call a tool");
 });

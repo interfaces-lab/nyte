@@ -1,8 +1,10 @@
 /**
- * `@nyte-ai/client`: the SDK namespaces over `fetch`. Each verb is one
- * `POST /v1/call/{verb}` whose reply is checked against the verb's output
+ * `@nyte-ai/client`: the SDK namespaces over `fetch`. Each operation is one
+ * `POST /v1/call/{operation}` whose reply is checked against the operation's output
  * schema before it is returned; `watch` is `GET /v1/watch` read as
- * server-sent events and yielded as an `AsyncIterable<SessionEvent>`.
+ * server-sent events and yielded as an `AsyncIterable<SessionEvent>`; `info`
+ * is `GET /v1/info`. A server on another wire version answers that route with
+ * `not_found`, because the wire version is the route prefix.
  *
  * Nothing here retries. A call that fails throws; a watch that ends without
  * the server's `ended` frame throws. The caller decides what to do next,
@@ -15,8 +17,10 @@ import {
   CALL_ROUTE_PREFIX,
   CallReplySchema,
   EVENT_STREAM_MEDIA_TYPE,
+  INFO_ROUTE,
   JSON_MEDIA_TYPE,
-  VERBS,
+  OPERATIONS,
+  ServerInfoSchema,
   WATCH_QUERY,
   WATCH_ROUTE,
   WatchEndedSchema,
@@ -24,6 +28,7 @@ import {
   WireErrorSchema,
   createSseParser,
   describeIssues,
+  mediaType,
   schemas,
   validationIssues,
   type CallReply,
@@ -31,12 +36,14 @@ import {
   type RemoteNyte,
   type RemoteWatchInput,
   type SessionEvent,
-  type Verb,
-  type VerbInput,
-  type VerbOutput,
+  type Operation,
+  type OperationInput,
+  type OperationOutput,
+  type ServerInfo,
   type WireError,
 } from "@nyte-ai/protocol";
 import { Value } from "typebox/value";
+import type { Static, TSchema } from "typebox";
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -70,7 +77,7 @@ export type TransportFailure =
       readonly status: number;
       readonly contentType: string | undefined;
     }
-  /** The body was not the envelope, or the value did not match the verb's output schema. */
+  /** The body was not the envelope, or the value did not match the operation's output schema. */
   | { readonly kind: "bad_body"; readonly detail: string; readonly issues: readonly Issue[] }
   /** The watch stream ended without an `ended` or `error` frame. */
   | { readonly kind: "disconnected" };
@@ -127,13 +134,10 @@ export interface NyteClientOptions {
   readonly maxFrameChars?: number;
 }
 
-export type NyteClient = RemoteNyte;
-
-function mediaType(header: string | null): string | undefined {
-  if (header === null) return undefined;
-  const semicolon = header.indexOf(";");
-  return (semicolon === -1 ? header : header.slice(0, semicolon)).trim().toLowerCase();
-}
+export type NyteClient = RemoteNyte & {
+  /** What is answering: the host's release and the wire version this client already speaks. */
+  info(): Promise<ServerInfo>;
+};
 
 export function createNyteClient(options: NyteClientOptions): NyteClient {
   const base = options.baseUrl.endsWith("/") ? options.baseUrl.slice(0, -1) : options.baseUrl;
@@ -185,32 +189,41 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     return parsed;
   };
 
-  /** `input` is optional here for verbs that take none; `RemoteNyte` requires it where the verb does. */
-  async function call<V extends Verb>(
-    verb: V,
-    input: VerbInput<V> | undefined,
-  ): Promise<VerbOutput<V>> {
-    const headers = headersFor(JSON_MEDIA_TYPE);
-    headers.set("content-type", JSON_MEDIA_TYPE);
-    const response = await send(`${base}${CALL_ROUTE_PREFIX}${verb}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(input === undefined ? {} : { input }),
-    });
+  /** The value a successful reply carries, once it fits `schema`. Every failure is one of the two errors. */
+  const checkedValue = async <S extends TSchema>(
+    response: Response,
+    schema: S,
+    label: string,
+  ): Promise<Static<S>> => {
     const reply = await readReply(response);
     if (!reply.ok) throw new NyteWireError(reply.error, response.status);
     if (!response.ok) throw new NyteTransportError({ kind: "bad_status", status: response.status });
     const value = reply.defined ? reply.value : undefined;
-    const schema: (typeof VERBS)[V]["output"] = VERBS[verb].output;
     if (!Value.Check(schema, value)) {
       const issues = validationIssues(Value.Errors(schema, value));
       throw new NyteTransportError({
         kind: "bad_body",
-        detail: `Reply to ${verb} did not match its schema: ${describeIssues(issues)}`,
+        detail: `Reply to ${label} did not match its schema: ${describeIssues(issues)}`,
         issues,
       });
     }
     return value;
+  };
+
+  /** `input` is optional here for operations that take none; `RemoteNyte` requires it where the operation does. */
+  async function call<V extends Operation>(
+    operation: V,
+    input: OperationInput<V> | undefined,
+  ): Promise<OperationOutput<V>> {
+    const headers = headersFor(JSON_MEDIA_TYPE);
+    headers.set("content-type", JSON_MEDIA_TYPE);
+    const response = await send(`${base}${CALL_ROUTE_PREFIX}${operation}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(input === undefined ? {} : { input }),
+    });
+    const schema: (typeof OPERATIONS)[V]["output"] = OPERATIONS[operation].output;
+    return checkedValue(response, schema, operation);
   }
 
   /** A refused watch carries a JSON error, never a successful call reply. */
@@ -220,10 +233,18 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     throw new NyteTransportError({ kind: "bad_status", status: response.status });
   };
 
-  const verb =
-    <V extends Verb>(name: V) =>
-    (input?: VerbInput<V>): Promise<VerbOutput<V>> =>
+  const operation =
+    <V extends Operation>(name: V) =>
+    (input?: OperationInput<V>): Promise<OperationOutput<V>> =>
       call(name, input);
+
+  const info = async (): Promise<ServerInfo> => {
+    const response = await send(`${base}${INFO_ROUTE}`, {
+      method: "GET",
+      headers: headersFor(JSON_MEDIA_TYPE),
+    });
+    return checkedValue(response, ServerInfoSchema, "info");
+  };
 
   const watch = (input: RemoteWatchInput): AsyncIterable<SessionEvent> => ({
     [Symbol.asyncIterator]: () =>
@@ -247,50 +268,60 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
   });
 
   return {
-    landing: verb("landing"),
+    info,
+    landing: operation("landing"),
     sessions: {
-      create: verb("sessions.create"),
-      get: verb("sessions.get"),
-      snapshot: verb("sessions.snapshot"),
-      list: verb("sessions.list"),
-      rename: verb("sessions.rename"),
-      setPinned: verb("sessions.setPinned"),
-      setArchived: verb("sessions.setArchived"),
-      delete: verb("sessions.delete"),
-      configure: verb("sessions.configure"),
+      create: operation("sessions.create"),
+      get: operation("sessions.get"),
+      snapshot: operation("sessions.snapshot"),
+      list: operation("sessions.list"),
+      rename: operation("sessions.rename"),
+      setPinned: operation("sessions.setPinned"),
+      setArchived: operation("sessions.setArchived"),
+      delete: operation("sessions.delete"),
+      configure: operation("sessions.configure"),
     },
     messages: {
-      send: verb("messages.send"),
-      cancel: verb("messages.cancel"),
-      redeliver: verb("messages.redeliver"),
+      send: operation("messages.send"),
+      cancel: operation("messages.cancel"),
+      redeliver: operation("messages.redeliver"),
     },
     runs: {
-      abort: verb("runs.abort"),
-      changes: verb("runs.changes"),
+      current: operation("runs.current"),
+      abort: operation("runs.abort"),
+      reply: operation("runs.reply"),
+      changes: operation("runs.changes"),
+    },
+    jobs: {
+      list: operation("jobs.list"),
+      start: operation("jobs.start"),
+      background: operation("jobs.background"),
+      cancel: operation("jobs.cancel"),
     },
     heads: {
-      move: verb("heads.move"),
+      move: operation("heads.move"),
     },
     workspace: {
-      list: verb("workspace.list"),
-      forget: verb("workspace.forget"),
-      vcs: { diff: verb("workspace.vcs.diff") },
+      list: operation("workspace.list"),
+      forget: operation("workspace.forget"),
+      vcs: { diff: operation("workspace.vcs.diff") },
     },
     provider: {
-      models: { default: verb("provider.models.default") },
+      models: { default: operation("provider.models.default") },
     },
     plugins: {
-      catalog: verb("plugins.catalog"),
-      list: verb("plugins.list"),
+      catalog: operation("plugins.catalog"),
+      list: operation("plugins.list"),
       commands: {
-        list: verb("plugins.commands.list"),
-        run: verb("plugins.commands.run"),
+        list: operation("plugins.commands.list"),
+        run: operation("plugins.commands.run"),
       },
       settings: {
-        list: verb("plugins.settings.list"),
-        apply: verb("plugins.settings.apply"),
+        list: operation("plugins.settings.list"),
+        apply: operation("plugins.settings.apply"),
       },
-      resources: { list: verb("plugins.resources.list") },
+      resources: { list: operation("plugins.resources.list") },
+      status: { list: operation("plugins.status.list") },
     },
     watch,
   };

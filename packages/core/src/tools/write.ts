@@ -11,72 +11,18 @@ import {
   writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { dirname, relative } from "node:path";
-import { Unsafe } from "typebox";
+import { Type } from "typebox";
 import type { AgentTool } from "../types.ts";
 import { toolResultContent } from "../utils/tool-result.ts";
 import { type FileMutationDetails, generateFileMutationDetails } from "./edit-diff.ts";
+import { argumentParser } from "./support/arguments.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
-export interface WriteToolInput {
-  /** Path to the file to write (relative or absolute) */
-  path: string;
-  /** Content to write to the file */
-  content: string;
-}
-
-const writeParameters = Unsafe<WriteToolInput>({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Path to the file to write (relative or absolute)",
-    },
-    content: {
-      type: "string",
-      description: "Content to write to the file",
-    },
-  },
-  required: ["path", "content"],
+const writeParameters = Type.Object({
+  path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
+  content: Type.String({ description: "Content to write to the file" }),
 });
-
-interface WriteInputFields {
-  readonly path?: unknown;
-  readonly content?: unknown;
-}
-
-function isWriteInputObject(value: unknown): value is WriteInputFields {
-  return typeof value === "object" && value !== null;
-}
-
-function hasWritePath(
-  value: WriteInputFields,
-): value is WriteInputFields & Pick<WriteToolInput, "path"> {
-  return typeof value.path === "string";
-}
-
-function hasWriteContent(
-  value: WriteInputFields,
-): value is WriteInputFields & Pick<WriteToolInput, "content"> {
-  return typeof value.content === "string";
-}
-
-type WriteArgumentPreparer = NonNullable<
-  AgentTool<typeof writeParameters, FileMutationDetails>["prepareArguments"]
->;
-
-const parseWriteParams: WriteArgumentPreparer = (params) => {
-  if (!isWriteInputObject(params)) {
-    throw new Error("Invalid arguments for write: expected an object");
-  }
-  if (!hasWritePath(params)) {
-    throw new Error('Invalid arguments for write: "path" must be a string');
-  }
-  if (!hasWriteContent(params)) {
-    throw new Error('Invalid arguments for write: "content" must be a string');
-  }
-  return { path: params.path, content: params.content };
-};
 
 interface MissingFileError extends Error {
   readonly code: "ENOENT";
@@ -96,7 +42,7 @@ export function createWriteTool(
     promptSnippet: "Create or overwrite files",
     promptGuidelines: ["Use write only for new files or complete rewrites."],
     parameters: writeParameters,
-    prepareArguments: parseWriteParams,
+    prepareArguments: argumentParser(writeParameters),
     async execute(_toolCallId, { path, content }, signal?, _onUpdate?) {
       const absolutePath = resolveToCwd(path, cwd);
       return withFileMutationQueue(absolutePath, async () => {

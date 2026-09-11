@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Nyte delegation card proposal</title>
+    <style>
+      :root {
+        --page: #f5f5f5;
+        --terminal: #ffffff;
+        --foreground: #0a0a0a;
+        --user: #404040;
+        --tool: #525252;
+        --dim: #737373;
+        --muted: #a3a3a3;
+        --running: #1ca1c7;
+        --ok: #18a46c;
+        --thinking: #693acf;
+        --accent: #1a85d4;
+        --line: #d4d4d4;
+        --line-soft: #e5e5e5;
+        --selection: #dfebff;
+        --cols: 112;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--page);
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background:
+          radial-gradient(circle at 50% -15%, #ffffff 0, transparent 40rem), var(--page);
+        color: var(--foreground);
+        font:
+          14px/1.5 ui-sans-serif,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      button {
+        min-height: 40px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #ffffff;
+        color: var(--dim);
+        font: inherit;
+        cursor: pointer;
+        transition-property: background-color, border-color, color, scale;
+        transition-duration: 120ms;
+        transition-timing-function: ease-out;
+      }
+
+      button:hover {
+        border-color: var(--muted);
+        color: var(--foreground);
+      }
+
+      button:active {
+        scale: 0.96;
+      }
+
+      button[aria-pressed="true"] {
+        border-color: #a9c9ee;
+        background: var(--selection);
+        color: #126ba9;
+      }
+
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      main {
+        width: min(1480px, 100%);
+        margin: 0 auto;
+        padding: 38px 28px 72px;
+      }
+
+      header {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 650;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(25px, 4vw, 38px);
+        font-weight: 650;
+        letter-spacing: -0.035em;
+        line-height: 1.1;
+        text-wrap: balance;
+      }
+
+      .lede {
+        max-width: 58ch;
+        margin: 10px 0 0;
+        color: var(--dim);
+        text-wrap: pretty;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: end;
+        gap: 7px;
+      }
+
+      .comparison {
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: color-mix(in srgb, white 78%, transparent);
+        box-shadow:
+          0 1px 2px rgb(0 0 0 / 0.04),
+          0 18px 48px -34px rgb(0 0 0 / 0.32);
+      }
+
+      .panel-heading {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 46px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .panel-heading strong {
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .panel-heading span {
+        color: var(--dim);
+        font-size: 12px;
+      }
+
+      .panel.proposed .panel-heading strong {
+        color: var(--accent);
+      }
+
+      .terminal-stage {
+        overflow-x: auto;
+        padding: 26px 18px 30px;
+        background:
+          linear-gradient(#ffffffeb, #ffffffeb),
+          repeating-linear-gradient(90deg, transparent 0 7px, #fafafa 7px 8px);
+      }
+
+      .terminal {
+        width: min(100%, calc(var(--cols) * 1ch + 4ch));
+        min-width: 42ch;
+        margin: 0 auto;
+        overflow: hidden;
+        background: var(--terminal);
+        color: var(--foreground);
+        font:
+          16px/1.72 ui-monospace,
+          "SFMono-Regular",
+          "Cascadia Code",
+          Menlo,
+          Consolas,
+          monospace;
+        font-variant-ligatures: none;
+        transition-property: width;
+        transition-duration: 160ms;
+        transition-timing-function: ease-out;
+      }
+
+      .terminal ::selection {
+        background: var(--selection);
+      }
+
+      .current-heading,
+      .proposed-heading,
+      .step {
+        min-width: 0;
+        height: 1.72em;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+
+      .current-heading {
+        text-overflow: clip;
+      }
+
+      .current-heading .meta {
+        margin-left: 1.2ch;
+        color: var(--dim);
+      }
+
+      .mark {
+        display: inline-block;
+        width: 2.2ch;
+        color: var(--running);
+      }
+
+      .task-word {
+        color: var(--foreground);
+      }
+
+      .current .body {
+        margin-left: 2.3ch;
+      }
+
+      .current .step {
+        display: grid;
+        grid-template-columns: 1.2ch 2.3ch minmax(0, 1fr);
+      }
+
+      .gutter {
+        color: var(--muted);
+      }
+
+      .ok {
+        color: var(--ok);
+      }
+
+      .running {
+        color: var(--running);
+      }
+
+      .current .step-text {
+        overflow: hidden;
+        color: var(--dim);
+        text-overflow: clip;
+      }
+
+      .proposed-heading {
+        display: grid;
+        grid-template-columns: 2.2ch max-content max-content minmax(8ch, 1fr) max-content;
+        align-items: baseline;
+        column-gap: 1ch;
+      }
+
+      .proposed-heading .mark {
+        width: auto;
+      }
+
+      .agent {
+        color: var(--tool);
+        font-weight: 600;
+      }
+
+      .title {
+        overflow: hidden;
+        color: var(--foreground);
+        font-weight: 600;
+        text-overflow: ellipsis;
+      }
+
+      .execution {
+        overflow: hidden;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+        text-overflow: ellipsis;
+      }
+
+      .effort {
+        color: var(--thinking);
+      }
+
+      .proposed .body {
+        margin-left: 2.3ch;
+      }
+
+      .proposed .step {
+        display: grid;
+        grid-template-columns: 2.3ch max-content minmax(0, 1fr);
+      }
+
+      .proposed .step-label {
+        margin-right: 1ch;
+        color: var(--tool);
+      }
+
+      .proposed .step-text {
+        overflow: hidden;
+        color: var(--dim);
+        text-overflow: ellipsis;
+      }
+
+      .proposed .response {
+        color: var(--foreground);
+      }
+
+      .proposed .continuation {
+        color: var(--foreground);
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .note {
+        padding: 17px 18px;
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        background: #ffffffb8;
+      }
+
+      .note h2 {
+        margin: 0 0 6px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .note p {
+        margin: 0;
+        color: var(--dim);
+        font-size: 13px;
+        text-wrap: pretty;
+      }
+
+      code {
+        color: var(--tool);
+        font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+        font-size: 0.94em;
+      }
+
+      .shape {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 5px 16px;
+      }
+
+      .shape code {
+        color: var(--accent);
+        white-space: nowrap;
+      }
+
+      .shape span {
+        color: var(--dim);
+        font-size: 13px;
+      }
+
+      body[data-cols="80"] .terminal {
+        --cols: 80;
+      }
+
+      body[data-cols="56"] .terminal {
+        --cols: 56;
+      }
+
+      body[data-cols="80"] .proposed-heading {
+        grid-template-columns: 2.2ch max-content max-content minmax(8ch, 1fr) max-content;
+      }
+
+      body[data-cols="80"] .model-long {
+        display: none;
+      }
+
+      body[data-cols="56"] .proposed-heading {
+        grid-template-columns: 2.2ch max-content minmax(8ch, 1fr) max-content;
+      }
+
+      body[data-cols="56"] .proposed-heading .task-word,
+      body[data-cols="56"] .model,
+      body[data-cols="56"] .separator {
+        display: none;
+      }
+
+      body[data-cols="56"] .proposed .step-label {
+        display: none;
+      }
+
+      body[data-cols="56"] .proposed .step {
+        grid-template-columns: 2.3ch minmax(0, 1fr);
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 24px 14px 48px;
+        }
+
+        header {
+          align-items: start;
+          flex-direction: column;
+        }
+
+        .controls {
+          justify-content: start;
+        }
+
+        .terminal-stage {
+          padding-inline: 12px;
+        }
+
+        .terminal {
+          font-size: 13px;
+        }
+
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .shape {
+          grid-column: auto;
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        button,
+        .terminal {
+          transition-duration: 0ms;
+        }
+      }
+    </style>
+  </head>
+  <body data-cols="112">
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Nyte TUI</p>
+          <h1>Make the report easier to find</h1>
+          <p class="lede">
+            The card already keeps a stable four-row footprint. The fix is information order, not
+            more chrome.
+          </p>
+        </div>
+        <div class="controls" aria-label="Terminal width">
+          <button type="button" data-width="112" aria-pressed="true">112 cols</button>
+          <button type="button" data-width="80" aria-pressed="false">80 cols</button>
+          <button type="button" data-width="56" aria-pressed="false">56 cols</button>
+        </div>
+      </header>
+
+      <section class="comparison" aria-label="Current and proposed delegation cards">
+        <article class="panel current">
+          <div class="panel-heading">
+            <strong>Current rendering</strong>
+            <span>faithful HTML reconstruction</span>
+          </div>
+          <div class="terminal-stage">
+            <div class="terminal" role="img" aria-label="Current task card">
+              <div class="current-heading">
+                <span class="mark">●</span><span class="task-word">task Map OpenCode v2 hot reload</span
+                ><span class="meta">claude-fable-5-1 high</span>
+              </div>
+              <div class="body">
+                <div class="step">
+                  <span class="gutter">┃</span><span class="ok">✓</span
+                  ><span class="step-text">read ../../../../tmp/opencode-v2/packages/core/src/mcp/index.ts</span>
+                </div>
+                <div class="step">
+                  <span class="gutter">┃</span><span class="ok">✓</span
+                  ><span class="step-text">read ../../../../tmp/opencode-v2/packages/core/src/session/runner/llm.ts</span>
+                </div>
+                <div class="step">
+                  <span class="gutter">┃</span><span class="running">●</span
+                  ><span class="step-text">I have everything needed. Here is the structured report: # OpenCode V2: live model reload, model-request.ts lines 195-215, 289-290, which is what tool/AGENTS.md means</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel proposed">
+          <div class="panel-heading">
+            <strong>Suggested rendering</strong>
+            <span>same height, clearer read order</span>
+          </div>
+          <div class="terminal-stage">
+            <div class="terminal" role="img" aria-label="Suggested task card">
+              <div class="proposed-heading">
+                <span class="mark">●</span>
+                <span class="task-word">task</span>
+                <span class="agent">general</span>
+                <span class="title">Map OpenCode v2 hot reload</span>
+                <span class="execution"
+                  ><span class="model model-long">claude-fable-5-1</span
+                  ><span class="separator"> · </span><span class="effort">high</span> · 42s</span
+                >
+              </div>
+              <div class="body">
+                <div class="step">
+                  <span class="ok">✓</span><span class="step-label">read 2 files</span
+                  ><span class="step-text">core/src/mcp/index.ts · session/runner/llm.ts</span>
+                </div>
+                <div class="step">
+                  <span class="running">●</span><span class="step-label">writing report</span
+                  ><span class="step-text response">OpenCode v2 hot reload maps the MCP and model</span>
+                </div>
+                <div class="step">
+                  <span></span><span class="step-label"></span
+                  ><span class="step-text continuation">request changes to a live model registry…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="notes" aria-label="Design rationale">
+        <article class="note">
+          <h2>Name the worker</h2>
+          <p>
+            Show <code>general</code>. The live task title currently replaces the agent name, so the
+            card says what is happening but not who is doing it.
+          </p>
+        </article>
+        <article class="note">
+          <h2>Separate metadata</h2>
+          <p>
+            Right-align model, effort, and elapsed time. Drop the model first as width shrinks. Do
+            not let execution settings read like part of the title.
+          </p>
+        </article>
+        <article class="note">
+          <h2>Spend rows on the result</h2>
+          <p>
+            Collapse consecutive reads into one event and give the streamed report two rows. Keep
+            all three body rows reserved so nothing below the task jumps.
+          </p>
+        </article>
+        <article class="note">
+          <h2>Drop the gutter</h2>
+          <p>
+            The vertical <code>┃</code> is decoration, not state. Indentation already groups these
+            rows. Keep the status glyphs and remove the line.
+          </p>
+        </article>
+        <article class="note shape">
+          <code>heading</code><span>status · tool · agent · title · model / effort / elapsed</span>
+          <code>body row 1</code><span>compressed completed activity</span>
+          <code>body rows 2-3</code><span>active or final answer preview</span>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const buttons = document.querySelectorAll("[data-width]");
+      for (const button of buttons) {
+        button.addEventListener("click", () => {
+          const width = button.getAttribute("data-width");
+          if (width === null) return;
+          document.body.dataset.cols = width;
+          for (const candidate of buttons) {
+            candidate.setAttribute("aria-pressed", String(candidate === button));
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

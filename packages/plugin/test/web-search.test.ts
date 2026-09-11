@@ -112,10 +112,29 @@ async function openSearch(
   return { sdk, sessionId: world.sessionId };
 }
 
+async function answer(
+  sdk: Nyte,
+  sessionId: SessionId,
+  callId: string,
+  reply: string,
+): Promise<void> {
+  const waiting = (await sdk.sessions.snapshot({ sessionId }))?.parked?.find(
+    (call) => call.callId === callId,
+  );
+  assert.ok(waiting);
+  await sdk.runs.reply({ sessionId, callId, waitId: waiting.waitId, reply });
+}
+
 /** Ask for a search and return what the transcript shows for it. */
 async function search(query: string, options: WebSearchPluginOptions) {
   const { sdk, sessionId } = await openSearch(query, options);
-  assert.deepEqual(await prompt(sdk, sessionId, "look this up"), { kind: "idle" });
+  const outcome = await prompt(sdk, sessionId, "look this up");
+  if (outcome.kind === "waiting") {
+    await answer(sdk, sessionId, "search-1", "auto");
+    assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
+  } else {
+    assert.deepEqual(outcome, { kind: "idle" });
+  }
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one search ran");
   assert.ok(part.result !== undefined, "the search settled");
@@ -169,6 +188,9 @@ describe("web search plugin", () => {
 
     assert.deepEqual(result.details, {
       provider: "exa",
+      mode: "auto",
+      credential: "saved key",
+      rateLimited: [],
       results: [
         {
           url: "https://example.com/effect",
@@ -178,14 +200,14 @@ describe("web search plugin", () => {
         },
       ],
     });
-    assert.equal(result.title, "Effect 4");
+    assert.equal(result.title, "Effect 4 · Exa");
     assert.match(result.output, /## \[Effect 4\]\(https:\/\/example.com\/effect\)/);
     assert.equal(result.isError, false);
 
     const progress = (await eventsSoFar(sdk, sessionId)).flatMap((event) =>
       event.kind === "tool_progress" ? [event.progress.text] : [],
     );
-    assert.deepEqual(progress, ["Searching with Exa…"]);
+    assert.deepEqual(progress, ["Searching with Auto · Exa · saved key…"]);
   });
 
   test("uses Parallel bearer auth and its structured results", async () => {
@@ -226,6 +248,9 @@ describe("web search plugin", () => {
     });
     assert.deepEqual(result.details, {
       provider: "parallel",
+      mode: "auto",
+      credential: "environment key",
+      rateLimited: [],
       results: [
         {
           url: "https://example.com/parallel",
@@ -276,6 +301,9 @@ describe("web search plugin", () => {
     });
     assert.deepEqual(result.details, {
       provider: "firecrawl",
+      mode: "auto",
+      credential: "environment key",
+      rateLimited: [],
       results: [
         {
           url: "https://example.com/fire",
@@ -312,7 +340,13 @@ describe("web search plugin", () => {
       model: testModel,
     });
     const { sessionId } = world;
-    assert.deepEqual(await prompt(sdk, sessionId, "look this up"), { kind: "idle" });
+    const outcome = await prompt(sdk, sessionId, "look this up");
+    if (outcome.kind === "waiting") {
+      await answer(sdk, sessionId, "search-1", "auto");
+      assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
+    } else {
+      assert.deepEqual(outcome, { kind: "idle" });
+    }
 
     const request = calls[0];
     assert.ok(request);
@@ -328,6 +362,9 @@ describe("web search plugin", () => {
     const [part] = await toolParts(sdk, sessionId);
     assert.deepEqual(part?.result?.details, {
       provider: "tavily",
+      mode: "auto",
+      credential: "anonymous",
+      rateLimited: [],
       results: [
         { url: "https://example.com/tavily", title: "Tavily result", content: "A page", time: {} },
       ],
@@ -355,7 +392,13 @@ describe("web search plugin", () => {
       calls.map((request) => new URL(request.url).hostname),
       ["mcp.firecrawl.dev"],
     );
-    assert.deepEqual(result.details, { provider: "firecrawl", results: [] });
+    assert.deepEqual(result.details, {
+      provider: "firecrawl",
+      mode: "auto",
+      credential: "environment key",
+      rateLimited: [],
+      results: [],
+    });
     assert.equal(result.output, "No search results found. Please try a different query.");
     assert.equal(result.isError, false);
   });
@@ -377,7 +420,13 @@ describe("web search plugin", () => {
       calls.map((request) => new URL(request.url).hostname),
       ["search.parallel.ai"],
     );
-    assert.deepEqual(result.details, { provider: "parallel", results: [] });
+    assert.deepEqual(result.details, {
+      provider: "parallel",
+      mode: "auto",
+      credential: "anonymous",
+      rateLimited: [],
+      results: [],
+    });
   });
 
   test("names the failures a user can act on and never retries a chosen provider", async () => {
@@ -389,7 +438,13 @@ describe("web search plugin", () => {
     assert.equal(calls.length, 1);
     assert.equal(rateLimited.result.isError, true);
     assert.equal(rateLimited.result.output, "Web search rate limited (HTTP 429)");
-    assert.deepEqual(rateLimited.result.details, { provider: "exa", results: [] });
+    assert.deepEqual(rateLimited.result.details, {
+      provider: "exa",
+      mode: "auto",
+      credential: "environment key",
+      rateLimited: [],
+      results: [],
+    });
 
     const unauthorized = await search("bad key", {
       ...onlyKeyed("EXA_API_KEY", "wrong"),
@@ -459,7 +514,9 @@ describe("web search plugin", () => {
 
     sdk = await open();
     assert.equal(await settingOf(sdk, sessionId, "websearch-provider"), "parallel");
-    assert.deepEqual(await prompt(sdk, sessionId, "search"), { kind: "idle" });
+    assert.equal((await prompt(sdk, sessionId, "search")).kind, "waiting");
+    await answer(sdk, sessionId, "search-1", "parallel");
+    assert.deepEqual(await sdk.runs.wait({ sessionId }), { kind: "idle" });
     assert.deepEqual(
       calls.map((request) => new URL(request.url).hostname),
       ["search.parallel.ai"],

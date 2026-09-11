@@ -3,7 +3,8 @@
 Git's object database with messages in place of files. This directory is the
 durable core of `@nyte-ai/core`: it decides what survives, who may write, and
 in what order everyone sees it. It imports `@nyte-ai/schema` (the pi-derived
-message types), `node:crypto`, and `node:sqlite`. Nothing else.
+message types), `@nyte-ai/telemetry` (the span contract), `node:crypto`, and
+`node:sqlite`. Nothing else.
 
 ## Four authorities
 
@@ -15,7 +16,7 @@ message types), `node:crypto`, and `node:sqlite`. Nothing else.
 | reflog                    | `events`: one ordered stream per session                |
 
 Everything else is a helper over those four. A feature that can be a ref is a
-ref. A verb that can be a CAS is a CAS.
+ref. An operation that can be a CAS is a CAS.
 
 ## Where git does not fit
 
@@ -38,7 +39,9 @@ refs/queues/<head>/<lane>/base last landed Change; pending = (base, tip]
                                a lane is a name the submitter chooses; the
                                runner's landing policy says when each lands
 refs/runs/<head>               Run: the branch's current run and phase
-refs/effects/<run>/<call>      Effect: intent -> waiting -> signal -> result
+refs/compactions/<head>        Blob: active checkpoint work fenced by the head lease
+refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
+refs/jobs/<job>                Blob: command or subagent job, output, result, delivery receipt
 refs/keys/<key>                idempotency receipt: the Change a key produced
 refs/cancelled/<change>        Blob: a submitted change withdrawn before it landed
 refs/facts/<key>               Blob: a small session value
@@ -50,12 +53,12 @@ refs/deleted                   Blob: the session is being deleted
 | File          | Owns                                                                   |
 | ------------- | ---------------------------------------------------------------------- |
 | `model.ts`    | The types. Objects, ref updates, leases, events.                       |
-| `store.ts`    | The store contract a backend implements.                               |
+| `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. |
 | `names.ts`    | Ref names and their rules.                                             |
 | `json.ts`     | Canonical JSON and the JSON boundary (`toJsonValue`).                  |
 | `hash.ts`     | `hashObject(object)`.                                                       |
 | `sqlite.ts`   | The SQLite backend: five tables, `BEGIN IMMEDIATE`, one seq per session. |
-| `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint.    |
+| `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint. Pages `objects.chain`, never one read per commit. |
 | `context.ts`  | Commits to model messages, and the branch's declared config.           |
 | `queue.ts`    | `submit`, `pending`, `cancel`: one change chain per lane, behind a tip and a base ref. |
 | `effects.ts`  | The effect sandwich for one tool call, and recovery.                   |
@@ -64,20 +67,39 @@ refs/deleted                   Blob: the session is being deleted
 | `lease.ts`    | Renews ownership during provider and tool calls; aborts work after takeover. |
 | `outbox.ts`   | Buffers a runner's deltas and progress into the event stream.          |
 | `turn.ts`     | Binds `agent-loop.ts` to `step.ts`: respond, tools, durable tools.     |
+| `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
 | `views/`      | Projections a client draws: transcript, tree, changes, usage, gauge.   |
-| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte`. |
+| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, changes). |
 
 `runs.compact` writes one manual checkpoint under the head lease using the branch's
-model (the host's default when unset). The `before_compaction` hook can provide
-native context. TUI and desktop install `@nyte-ai/plugin/openai-compaction` for
-OpenAI and OpenAI Codex; successful requests replay the complete provider output
-without a local summary request. Unsupported or failed requests use the portable
+model (the host's default when unset). While manual or automatic checkpoint work is
+live, `refs/compactions/<head>` points at the active compaction. Snapshots expose it
+only while the matching head lease is still held. SDK `compaction` events carry
+that activity or `null` when it ends. Successful publication clears the activity
+in the same update as the checkpoint; failure and cancellation clear it without
+a checkpoint. A successor clears abandoned activity before resuming work.
+The `before_compaction` hook can provide native context. TUI and desktop install `@nyte-ai/plugin/openai-compaction` for
+OpenAI and OpenAI Codex. Codex uses streaming compaction V2 on the Responses
+endpoint and stores an encrypted checkpoint with bounded retained user input;
+OpenAI API compaction stores the complete returned window. Neither successful
+path requests a local summary. Unsupported or failed requests use the portable
 summarizer, with bounded requests when recovery history exceeds the model window.
+A failed native attempt reports a fallback warning, not an unresolved hook error.
+Reported usage from rejected native checkpoints is included in fallback totals,
+or retained without publishing a checkpoint if fallback fails or is cancelled.
 Native checkpoints retain portable history for switching models. A live run answers
 `busy`; an empty context answers `nothing_to_compact`. Passing an aborted `signal`
 returns `aborted` without publishing a checkpoint.
+
+Summarization usage includes every provider-reported attempt, including retries
+and rejected chunks. Successful operations carry it on the checkpoint or summary.
+Failed or cancelled operations keep it on a loose, empty summary commit without
+moving a head or emitting a checkpoint event. The publishing caller owns this
+write; summarization itself remains store-independent. These objects follow the
+normal garbage-collection rules, so retained-history totals can decrease after
+collection. Missing provider usage cannot be reconstructed.
 
 `heads.move({ summary })` summarizes only the commits the
 move abandons into one `summary` commit whose parent is the navigation target,
@@ -92,10 +114,10 @@ model failure answers `failed` and leaves the head where it was.
 - A ref moves only through `refs.update`. Its options carry the lease for
   runner writes and the reflog `reason`. An update with `to === from` is an
   assertion: checked, never written, never logged. Objects, leases, and the
-  event floor have their own verbs; none of them changes what a ref points at.
+  event floor have their own operations; none of them changes what a ref points at.
 - No submission ever fails because a run is live. Submits retry the tip CAS
   internally. Contention exists only on leases, on a runner's publish, and on
-  structural verbs that refuse a held head (`deleteHead` answers `busy`).
+  structural operations that refuse a held head (`deleteHead` answers `busy`).
 - A runner keeps nothing in memory across a step. The next step reads refs.
 - The kernel knows no head and no lane by name. A runner hands `step` its
   landing policy (`Landing`): the lanes it serves, in priority order, each
@@ -114,15 +136,19 @@ model failure answers `failed` and leaves the head where it was.
 | ---------------- | -------------- | ------------------------------------------------------------------ | ------------------------------------------------- |
 | none / terminal  | none           | nothing: `idle`                                                    |                                                   |
 | none / terminal  | some           | land from the first policy lane; start in `respond` with a message, otherwise `done` | head, queue base, run                             |
-| `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only once the last landed message has its answer | head, queue base |
-| `respond`        | none           | `turn.respond` over the branch context                             | head (assistant commit), run -> tools / done / retry / failed / aborted |
-| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results             | head (result commits), run -> respond / waiting / failed / aborted |
-| `waiting`        | any            | if a signal or abort arrived: `turn.tools` again, else `waiting`   | as `tools`                                        |
+| `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only once the last landed message has its answer, or at once when an abort is flagged | head, queue base, run (flag cleared) |
+| `respond`        | none           | `turn.respond` over the branch context; with an abort flagged: end `aborted` instead | head (assistant commit), run -> tools / done / retry / failed / aborted |
+| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results             | head (result commits), run -> respond / waiting / failed |
+| `waiting`        | any            | after a signal, expiry, or abort: `turn.tools` again; otherwise `waiting` | as `tools`                                        |
 | `retry`          | any            | before `at`: `retry`; after: as `respond`                          |                                                   |
 
 Every publish also expects `refs/deleted` absent and carries the lease. A head
-moved by a participant, an abort flag, or a deletion makes the publish fail;
-the runner re-reads and ends the run instead of forcing its output.
+moved by a participant or a deletion makes the publish fail; the runner re-reads
+and ends the run instead of forcing its output. An abort flag set during a step
+also fails its publish; the runner keeps the step's output and carries the flag
+to the next response boundary (through the tool batch when one is due), where a
+queued boundary-lane message continues the run and an empty queue ends it
+`aborted`. The abort interrupts a step, not the run.
 
 ## A submitted message is never lost
 
@@ -158,6 +184,79 @@ An edit racing a landing cannot re-admit the landed message. Copies retain their
 original times; `pending` merges lanes chronologically while preserving each
 lane's delivery order. The queue event projection publishes every appended copy.
 
+## Background jobs
+
+The SDK wraps `bash` and `task` as jobs. Each `refs/jobs/<job>` points to an
+immutable blob containing `JobInfo`, an optional tool result, and a `delivered`
+flag. Job IDs derive from the originating run and call IDs. Updates use the same
+object-before-ref CAS as other durable state; there is no separate jobs table.
+The `job` event projects the ref's `JobInfo`, and `jobs.list` reads these refs.
+Output in `JobInfo` retains the last 50,000 characters.
+
+```text
+bash / task -> job ref + job lease -> work
+                  |
+                  +-> parked tool effect
+                        foreground: settle with the result when work ends
+                        background: settle with a receipt; work keeps its lease
+```
+
+Both modes park the originating tool effect first. The runner rechecks jobs after
+parking so fast completion cannot lose its wake. `jobs.background` switches
+running foreground work to background without restarting it. `jobs.cancel`
+cancels that job, not the whole parent run. Aborting the parent cancels every job
+that run owns, foreground or background, command or subagent; a run that ends on
+its own leaves its background work running.
+
+Execution holds a renewable, fenced lease on the job ref, independently of the
+head lease. Closing a UI panel or switching chats does not cancel the job.
+Closing the owning host interrupts its live jobs and stops their work. Recovery
+acquires an abandoned job's lease before marking it `interrupted`; it waits while
+another owner still holds the lease. Commands and child work are never rerun by
+job recovery. The wrapper uses `replay: "never"`. Durable output remains readable,
+but durable job metadata is not a promise that a process survives host shutdown.
+
+A terminal background job submits a typed `completion` containing its state and
+output to the originating head. The SDK's private `background` lane lands at
+response boundaries, including before an unanswered user input's response, without
+interrupting streaming or tool execution. Completions join model context but do
+not become transcript user messages or editable pending items; in the transcript
+a completion opens its own empty turn, so the response it triggers attaches
+there instead of an earlier request's turn. The lane is not
+part of `DEFAULT_LANDING` or the public `nyte.landing` policy. Delivery uses
+`background-<jobId>` as the admission key, then marks the job delivered.
+Recovery can repeat delivery after a crash between those writes without admitting
+a second completion. Completion includes failed, cancelled, and interrupted
+jobs, not just successful work; undelivered results survive host close.
+Foreground work returns its normal tool result and does not submit a completion.
+A job `jobs.start` runs for the user (`runId: "user"`, `isUserJob`) has no run:
+it is born delivered, signals no effect, survives `runs.abort`, and only
+`jobs.cancel` or host close ends it early; clients read it from `job` events.
+
+Child sessions inherit workspace trust. A background child is not offered tools marked `availability: "foreground"`, regardless of tool
+name. This is a host-placement filter in core, not knowledge of what a tool does or a client-side
+approval prompt.
+
+## Session location
+
+Host-only `sessionCwd({ sessionId })` reads `refs/facts/cwd`, falling back to
+that session's activation environment. `relocate({ sessionId, workspace, plugins })`
+accepts a trusted workspace and its resolved plugin set. It replaces only that
+session's activation and saves the directory in the original store. IDs, heads,
+queues, and conversation history do not move. Global `setPlugins` skips these
+session-scoped plugin sets; hosts reload one with `setPlugins(plugins, { sessionId })`.
+Scoped reload keeps the activation environment and supports hot reload during a run.
+
+Relocation returns `busy` while the session or a child has an active drive, run,
+head lease, queued input, running job, or job lease. Work is never cancelled to
+change directories. Restoring an inactive session to its already-saved directory
+allows persisted unfinished work, but still refuses live drives and leases.
+
+A saved path is not a trust decision. Reopening through a host composed for a
+different directory reports `requires/workspace_trust` and does not instantiate
+plugins or run tools. The host reads `sessionCwd`, validates trust, resolves that
+directory's plugins and skills, then calls `relocate` before attaching a runner.
+
 ## Acceptance
 
 The drills every backend and every runner must pass:
@@ -182,7 +281,7 @@ The drills every backend and every runner must pass:
   parameter properties, `import type`, `.ts` extensions on relative imports.
 - Discriminated unions over optional-field bags. No `as` casts; narrow instead.
   `const _exhaustive: never = x` in default arms.
-- Every verb takes one options object where it has more than two inputs.
+- Every operation takes one options object where it has more than two inputs.
 - Tests: vitest under `packages/core/test/kernel/*.test.ts`, against the
   SQLite backend on a temp file or `:memory:`. Real store, no mocks.
 - Lint and format: `pnpm lint`, `pnpm format` at the repo root (oxlint, oxfmt).

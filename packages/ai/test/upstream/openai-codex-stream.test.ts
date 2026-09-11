@@ -102,7 +102,7 @@ function buildSSEPayload({
 }
 
 describe("openai-codex streaming", () => {
-  it("streams SSE responses into AssistantMessageEventStream", async () => {
+  it("streams Daybreak Blue without selecting a Cyber access program", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "pi-codex-stream-"));
     process.env.PI_CODING_AGENT_DIR = tempDir;
 
@@ -174,6 +174,7 @@ describe("openai-codex streaming", () => {
         expect(headers?.get("User-Agent")).toBe(`nyte (${platform()} ${release()}; ${arch()})`);
         expect(headers?.get("accept")).toBe("text/event-stream");
         expect(headers?.has("x-api-key")).toBe(false);
+        expect(decodeCodexRequestBody(init?.body)).not.toHaveProperty("access_programs");
         return new Response(stream, {
           status: 200,
           headers: { "content-type": "text/event-stream" },
@@ -185,8 +186,8 @@ describe("openai-codex streaming", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const model: Model<"openai-codex-responses"> = {
-      id: "gpt-5.1-codex",
-      name: "GPT-5.1 Codex",
+      id: "gpt-daybreak-blue-latest",
+      name: "Daybreak Blue",
       api: "openai-codex-responses",
       provider: "openai-codex",
       baseUrl: "https://chatgpt.com/backend-api",

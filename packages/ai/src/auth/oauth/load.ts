@@ -14,7 +14,6 @@ import type { OAuthAuth } from "../types.ts";
  * `node:crypto` PKCE). The `.ts`/`.js` rewrite keeps the trick working from
  * both source and built output.
  */
-// oxlint-disable-next-line anti-slop/no-unknown-returns -- pi-ported: a variable-specifier dynamic import has no static module shape; the loaders below narrow to their flow's export
 const importOAuthModule = async (specifier: string): Promise<unknown> => {
   const runtimeSpecifier = import.meta.url.endsWith(".js")
     ? specifier.replace(/\.ts$/, ".js")

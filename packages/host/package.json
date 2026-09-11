@@ -1,0 +1,33 @@
+{
+  "name": "@nyte-ai/host",
+  "private": true,
+  "description": "Compose a Nyte host with models, storage, trusted plugins, and optional local telemetry export.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./otel": "./src/otel.ts",
+    "./usage": "./src/usage.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/schema": "workspace:*",
+    "@nyte-ai/telemetry": "workspace:*",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
+    "@opentelemetry/resources": "^2.11.0",
+    "@opentelemetry/sdk-trace": "^2.11.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "typebox": "1.3.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

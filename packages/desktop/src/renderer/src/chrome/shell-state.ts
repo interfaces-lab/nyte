@@ -9,6 +9,7 @@ import { useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/core";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import type { AppInfo } from "../../../shared/app-menu.ts";
 
 type WorkspaceStage = { readonly kind: "workspace" };
 type CustomizeStage = { readonly kind: "customize"; readonly sessionId: SessionId | undefined };
@@ -35,6 +36,7 @@ interface ShellState {
   readonly sidebarWidth: number;
   readonly homeVisible: boolean;
   readonly stage: ShellStage;
+  readonly about: AppInfo | undefined;
 }
 
 export function clampSidebarWidth(width: number): number {
@@ -92,6 +94,7 @@ function applyWidth(width: number): void {
 let state: ShellState = {
   ...readPersisted(),
   stage: { kind: "workspace" },
+  about: undefined,
 };
 applyWidth(state.sidebarWidth);
 const listeners = new Set<() => void>();
@@ -113,6 +116,9 @@ function snapshot(): ShellState {
 }
 
 export const shellActions = Object.freeze({
+  showAbout(about: AppInfo | undefined): void {
+    publish({ ...state, about });
+  },
   setSidebarVisible(visible: boolean): void {
     if (state.sidebarVisible === visible) return;
     const next = { ...state, sidebarVisible: visible };

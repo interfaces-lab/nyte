@@ -1,5 +1,5 @@
 /** Settings that affect the renderer's palette, typography, and conversation density. */
-import { Slider } from "@nyte-ai/ui/primitives";
+import { Slider } from "@nyte-ai/ui/slider";
 import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -21,6 +21,12 @@ import {
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { appearancePanelStyles as styles } from "./appearance-panel.stylex.ts";
+import { FontFamilySelect } from "./font-family-select.tsx";
+import {
+  CODE_FONT_CATALOG_TITLE,
+  fontSelectGroups,
+  UI_FONT_CATALOG_TITLE,
+} from "./font-select-groups.ts";
 import {
   SettingsRow,
   SettingsSelect,
@@ -63,27 +69,6 @@ const TOOL_CALL_DENSITY_LABELS = {
 
 function update(settings: AppearanceSettings, patch: Partial<AppearanceSettings>): void {
   setAppearanceSettings({ ...settings, ...patch });
-}
-
-function installedFontOptions<T extends UiFont | CodeFont>(
-  builtIn: readonly SettingsSelectOption<T>[],
-  families: readonly string[],
-  selected: T,
-  selectionForFamily: (family: string) => T,
-  stack: (selection: T) => string,
-): readonly SettingsSelectOption<T>[] {
-  const options: SettingsSelectOption<T>[] = [...builtIn];
-  const labels = new Set(options.map((option) => option.label.toLocaleLowerCase()));
-  const selectedFamily = localFontFamily(selected);
-  const candidates = selectedFamily === undefined ? families : [selectedFamily, ...families];
-  for (const family of candidates) {
-    const normalized = family.toLocaleLowerCase();
-    if (labels.has(normalized)) continue;
-    labels.add(normalized);
-    const value = selectionForFamily(family);
-    options.push({ value, label: family, fontFamily: stack(value) });
-  }
-  return options;
 }
 
 function CodeFontPreview(): ReactElement {
@@ -232,19 +217,21 @@ export function AppearanceSettings(): ReactElement {
   const systemTransparency = systemReducesTransparency();
   // `-webkit-font-smoothing` only does anything on macOS.
   const mac = macPlatform(undefined);
-  const uiFontOptions = installedFontOptions<UiFont>(
+  const uiFontGroups = fontSelectGroups(
     UI_FONT_OPTIONS,
     fonts.data?.sans ?? [],
-    settings.uiFont,
+    localFontFamily(settings.uiFont),
     localFontSelection,
     uiFontFamily,
+    UI_FONT_CATALOG_TITLE,
   );
-  const codeFontOptions = installedFontOptions<CodeFont>(
+  const codeFontGroups = fontSelectGroups(
     CODE_FONT_OPTIONS,
     fonts.data?.monospace ?? [],
-    settings.codeFont,
+    localFontFamily(settings.codeFont),
     localFontSelection,
     codeFontFamily,
+    CODE_FONT_CATALOG_TITLE,
   );
 
   return (
@@ -365,11 +352,11 @@ export function AppearanceSettings(): ReactElement {
             description="Override the Nyte user interface typeface"
             controlWidth="wide"
           >
-            <SettingsSelect<UiFont>
+            <FontFamilySelect<UiFont>
               label="UI Font Family"
               value={settings.uiFont}
-              options={uiFontOptions}
-              width="wide"
+              groups={uiFontGroups}
+              loading={fonts.isPending}
               onValueChange={(uiFont) => update(settings, { uiFont })}
             />
           </SettingsRow>
@@ -379,11 +366,11 @@ export function AppearanceSettings(): ReactElement {
             controlWidth="wide"
             detail={<CodeFontPreview />}
           >
-            <SettingsSelect<CodeFont>
+            <FontFamilySelect<CodeFont>
               label="Code Font Family"
               value={settings.codeFont}
-              options={codeFontOptions}
-              width="wide"
+              groups={codeFontGroups}
+              loading={fonts.isPending}
               onValueChange={(codeFont) => update(settings, { codeFont })}
             />
           </SettingsRow>

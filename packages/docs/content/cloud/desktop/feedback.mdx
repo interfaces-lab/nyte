@@ -1,0 +1,33 @@
+---
+title: Spinner and animated number
+description: "Two small motion primitives: a three-dot spinner and a tabular number that morphs on update"
+---
+
+## `Spinner`
+
+```ts
+import { Spinner } from "../components/spinner.tsx";
+```
+
+`packages/desktop/src/renderer/src/components/spinner.tsx`. No props. Adapted from opencode's
+spinner (the file cites the commit) to React and StyleX: an inline-block of dots on an
+ease-in-out infinite animation with `fill-mode: both`. It is purely decorative; the component that
+places it says what is happening (`StatusDot`'s label, the work group's "Working" text).
+
+Used by `StatusDot` (`working`, `retry`), `WorkGroupView`, and the jobs tray.
+
+## `AnimatedNumber`
+
+```ts
+import { AnimatedNumber } from "../components/animated-number.tsx";
+```
+
+`packages/desktop/src/renderer/src/components/animated-number.tsx`.
+
+| Prop    | Type     |
+| ------- | -------- |
+| `value` | `number` |
+
+"Mounts are static; only value updates morph." The first render shows the number as is; later
+values animate with `motion`. The box is `clip-path: inset(0)` with `tabular-nums` so the width
+does not jitter. Used for file-change counts and durations in the transcript.

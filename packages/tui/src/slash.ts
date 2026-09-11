@@ -2,8 +2,8 @@
  * Slash tokens, decided once here. A token is one of three kinds:
  *
  * - `action`: runs the moment Enter accepts it and leaves the composer empty,
- *   with whatever argument was typed after it. Built-in verbs and plugin
- *   commands.
+ *   with whatever argument was typed after it. Built-in operations and plugin
+ *   commands. `/cd` first completes its token so a directory can be entered.
  * - `setting`: `/name` opens the choice picker; `/name <choice>` applies the
  *   choice at once. The model, the thinking level, the theme, and every
  *   setting a plugin declares.
@@ -31,7 +31,9 @@ export interface ParsedSlashCommand {
 export type ComposerSubmission =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedSlashCommand }
-  | { readonly kind: "prompt"; readonly text: string };
+  | { readonly kind: "prompt"; readonly text: string }
+  /** `!cmd` runs in the chat's workspace; `retain` (`!`, not `!!`) sends its output with the next prompt. */
+  | { readonly kind: "shell"; readonly command: string; readonly retain: boolean };
 
 function isAsciiLetter(character: string | undefined): boolean {
   if (character === undefined) return false;
@@ -76,8 +78,19 @@ export function parseSlashCommand(input: string): ParsedSlashCommand | undefined
 export function parseComposerSubmission(input: string): ComposerSubmission {
   const text = input.trim();
   if (text === "") return { kind: "empty" };
+  // Shell execution is positional, unlike slash completion within a draft.
+  if (input.startsWith("!")) {
+    const retain = !input.startsWith("!!");
+    const command = input.slice(retain ? 1 : 2).trim();
+    if (command !== "") return { kind: "shell", command, retain };
+  }
   const command = parseSlashCommand(text);
   return command === undefined ? { kind: "prompt", text } : { kind: "command", command };
+}
+
+/** Recalling a conversation message must not turn it into shell execution. */
+export function promptDraft(text: string): string {
+  return text.startsWith("!") ? ` ${text}` : text;
 }
 
 export type SlashKind = "action" | "setting" | "prompt";
@@ -94,21 +107,22 @@ export const SLASH_COMMANDS = [
   { name: "settings", description: "Change settings", kind: "action" },
   { name: "login", description: "Sign in to a provider", kind: "action" },
   { name: "logout", description: "Sign out of a provider", kind: "action" },
-  { name: "quit", description: "Quit Nyte", kind: "action", aliases: ["exit"] },
+  { name: "quit", description: "Quit Nyte", kind: "action" },
   {
     name: "resume",
-    description: "Resume a chat or subagent",
+    description: "Resume a chat",
     kind: "action",
     aliases: ["sessions", "continue"],
   },
   { name: "new", description: "Start a new chat", kind: "action" },
+  { name: "cd", description: "Change this chat's working directory", kind: "action" },
   { name: "compact", description: "Compact conversation history", kind: "action" },
   { name: "usage", description: "Show token usage and cost", kind: "action" },
-  { name: "tasks", description: "Inspect subagents and shell output", kind: "action" },
+  { name: "tasks", description: "Inspect subagents and background commands", kind: "action" },
   { name: "tree", description: "Move to a session branch", kind: "action" },
   { name: "edit", description: "Edit a message you sent", kind: "action" },
   { name: "plugins", description: "List loaded plugins", kind: "action" },
-  { name: "reload", description: "Reload plugins and redraw the chat", kind: "action" },
+  { name: "reload", description: "Reload plugins and skills", kind: "action" },
   { name: "update", description: "Update nyte to the latest release", kind: "action" },
   { name: "skills", description: "Browse skills", kind: "action" },
 ] as const satisfies readonly SlashCommand[];
@@ -155,6 +169,8 @@ export function availableSlashCommands(
   return claimed;
 }
 
+// Namespace arrays are immutable snapshots. A new namespace gets a new array.
+const sortedCommands = new WeakMap<readonly SlashCommand[], SlashCommand[]>();
 const MAX_SUGGESTIONS = 10;
 /** Under this a description only matched by coincidence, the way `/usage` finds "Use for…". */
 const DESCRIPTION_MATCH = 0.5;
@@ -180,8 +196,12 @@ export function commandSuggestions(
   query: string,
   commands: readonly SlashCommand[],
 ): SlashCommand[] {
-  const sorted = commands.toSorted((left, right) => left.name.localeCompare(right.name));
-  if (query === "") return sorted;
+  let sorted = sortedCommands.get(commands);
+  if (sorted === undefined) {
+    sorted = commands.toSorted((left, right) => left.name.localeCompare(right.name));
+    sortedCommands.set(commands, sorted);
+  }
+  if (query === "") return [...sorted];
 
   const needle = query.toLowerCase();
   const prefixed: { command: SlashCommand; length: number }[] = [];
@@ -194,9 +214,12 @@ export function commandSuggestions(
   // Stable, so an exact match leads and equal-length names stay A–Z.
   prefixed.sort((left, right) => left.length - right.length);
 
+  if (prefixed.length >= MAX_SUGGESTIONS) {
+    return prefixed.slice(0, MAX_SUGGESTIONS).map((entry) => entry.command);
+  }
   const fuzzy = fuzzysort.go(needle, rest, {
     keys: [(command) => command.name, (command) => aliasesFor(command).join(" "), "description"],
-    limit: MAX_SUGGESTIONS,
+    limit: MAX_SUGGESTIONS - prefixed.length,
     threshold: 0.001,
     scoreFn(results) {
       const named = Math.max(results[0]?.score ?? 0, results[1]?.score ?? 0);
@@ -331,7 +354,8 @@ export type SlashAcceptance =
 
 /**
  * What accepting a highlighted command does. Enter runs an action or a
- * setting and leaves a prompt in the composer to be sent; Tab only completes.
+ * setting and leaves a prompt in the composer to be sent; `/cd` waits for its
+ * directory argument. Tab only completes.
  * Text drafted after the token survives as its argument, so with a `rest` the
  * token is completed rather than run.
  */
@@ -341,7 +365,7 @@ export function acceptSlashCommand(
   rest = "",
 ): SlashAcceptance {
   if (rest !== "") return { action: "complete", token: `/${command.name}` };
-  if (via === "tab" || command.kind === "prompt") {
+  if (via === "tab" || command.kind === "prompt" || command.name === "cd") {
     return { action: "complete", token: `/${command.name} ` };
   }
   return { action: "execute" };

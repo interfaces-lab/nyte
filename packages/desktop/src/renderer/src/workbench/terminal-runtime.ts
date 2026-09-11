@@ -4,7 +4,12 @@ import wasmUrl from "ghostty-web/ghostty-vt.wasm?url";
 import { toast } from "@nyte-ai/ui/sonner";
 import { nyte } from "../nyte.ts";
 import { errorMessage } from "../../../shared/errors.ts";
-import { attachTerminalOutput, getTerminal, terminalActions } from "./terminal-store.ts";
+import {
+  attachTerminalOutput,
+  getTerminal,
+  isShellTerminal,
+  terminalActions,
+} from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 
 interface TerminalView {
@@ -77,7 +82,10 @@ function terminalTheme(): ITheme {
 }
 
 function sendInput(id: string, data: string): Promise<void> {
-  if (getTerminal(id)?.state.kind !== "running") return Promise.resolve();
+  const tab = getTerminal(id);
+  if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") {
+    return Promise.resolve();
+  }
   const write = async (): Promise<void> => {
     for (let start = 0; start < data.length;) {
       let end = Math.min(start + 65536, data.length);
@@ -88,7 +96,8 @@ function sendInput(id: string, data: string): Promise<void> {
     }
   };
   return write().catch((cause: unknown) => {
-    if (getTerminal(id)?.state.kind === "running") {
+    const current = getTerminal(id);
+    if (current !== undefined && isShellTerminal(current) && current.state.kind === "running") {
       toast.error("Couldn't write to terminal", {
         id: "terminal-write-" + id,
         description: errorMessage(cause),
@@ -101,7 +110,9 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   const engine = await loadGhostty();
   const existing = views.get(id);
   if (existing !== undefined) return existing;
-  if (getTerminal(id) === undefined) return undefined;
+  const initialTab = getTerminal(id);
+  if (initialTab === undefined) return undefined;
+  const commandOutput = !isShellTerminal(initialTab);
   const root = document.documentElement;
   const css = getComputedStyle(root);
   const element = document.createElement("div");
@@ -120,12 +131,13 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     fontSize: Number.parseFloat(css.getPropertyValue("--nyte-font-size-code")),
     scrollback: 10000,
     smoothScrollDuration: 0,
-    convertEol: false,
-    disableStdin: getTerminal(id)?.state.kind !== "running",
+    convertEol: commandOutput,
+    disableStdin: commandOutput || initialTab.state.kind !== "running",
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(element);
+  if (commandOutput) terminal.write("\u001b[?25l");
   // Ghostty's compatibility container is editable; only its input should accept native text/IME.
   element.removeAttribute("contenteditable");
   element.removeAttribute("role");
@@ -134,7 +146,14 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   element.tabIndex = -1;
   const focusInput = (): void => terminal.textarea?.focus({ preventScroll: true });
   element.addEventListener("focus", focusInput);
-  terminal.textarea?.setAttribute("aria-label", "Terminal input");
+  terminal.textarea?.setAttribute(
+    "aria-label",
+    commandOutput ? "Command output" : "Terminal input",
+  );
+  if (commandOutput) terminal.textarea?.setAttribute("readonly", "");
+  if (!isShellTerminal(initialTab) && terminal.textarea !== undefined) {
+    terminal.textarea.value = initialTab.source.output;
+  }
   terminal.textarea?.setAttribute("spellcheck", "false");
   let disposed = false;
   let resizeFrame = 0;
@@ -143,7 +162,15 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return;
     fit.fit();
     const size = String(terminal.cols) + ":" + String(terminal.rows);
-    if (size === lastSize || getTerminal(id)?.state.kind !== "running") return;
+    const tab = getTerminal(id);
+    if (
+      size === lastSize ||
+      tab === undefined ||
+      !isShellTerminal(tab) ||
+      tab.state.kind !== "running"
+    ) {
+      return;
+    }
     lastSize = size;
     void nyte.host.terminal
       .resize({
@@ -163,7 +190,10 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     resizeFrame = requestAnimationFrame(fitVisible);
   };
   const update = (tab: TerminalTab): void => {
-    terminal.options.disableStdin = tab.state.kind !== "running";
+    terminal.options.disableStdin = !isShellTerminal(tab) || tab.state.kind !== "running";
+    if (!isShellTerminal(tab) && terminal.textarea !== undefined) {
+      terminal.textarea.value = tab.source.output;
+    }
     scheduleFit();
   };
   const resize = new ResizeObserver(scheduleFit);
@@ -204,6 +234,8 @@ async function createView(id: string): Promise<TerminalView | undefined> {
     if (text === undefined) return;
     event.preventDefault();
     event.stopPropagation();
+    const tab = getTerminal(id);
+    if (tab === undefined || !isShellTerminal(tab) || tab.state.kind !== "running") return;
     terminal.paste(text);
   };
   element.addEventListener("copy", copy, true);
@@ -220,10 +252,18 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   views.set(id, view);
   attachTerminalOutput(id, {
     write(value) {
-      terminal.write(value, () => {
-        if (!disposed)
+      terminal.write(commandOutput ? value + "\u001b[?25l" : value, () => {
+        const tab = getTerminal(id);
+        if (!disposed && tab !== undefined && isShellTerminal(tab)) {
           void nyte.host.terminal.acknowledge({ id, length: value.length }).catch(() => undefined);
+        }
       });
+    },
+    replace(value) {
+      // Clear through VT sequences: Ghostty.reset replaces WASM still held by its selection manager.
+      terminal.clearSelection();
+      terminal.scrollToBottom();
+      terminal.write("\u001b[3J\u001b[2J\u001b[H" + value + "\u001b[?25l");
     },
     update,
     dispose() {
@@ -264,6 +304,11 @@ export function mountTerminal(id: string, container: HTMLDivElement, focus: bool
     detached = true;
     element?.remove();
   };
+}
+
+export function focusTerminal(id: string): void {
+  const view = views.get(id);
+  if (view?.element.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
 }
 
 export function clearTerminal(id: string): void {

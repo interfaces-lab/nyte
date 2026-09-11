@@ -1,0 +1,98 @@
+---
+title: Session list and sidebar
+description: "The rail: workspaces, session rows, filters, previews, context menus, drag to split, and the resize handle"
+---
+
+<HostMatrix
+  primitive={{
+    label: "@nyte-ai/ui/collapsible, /toggle, /button, /preview-card, /context-menu",
+    href: "/cloud/headless",
+  }}
+  desktop={{
+    label: "chrome/sidebar.tsx",
+    note: "SidebarPane owns geometry; Sidebar owns rows; WorkspaceControls owns filters",
+  }}
+  terminal={{ label: "tree-selector.ts", note: "commit tree picker; no session list (later pass)" }}
+/>
+
+## Parts
+
+| Component            | File                                 | Pure? | Purpose                                                                                                                       |
+| -------------------- | ------------------------------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `SidebarPane`        | `chrome/sidebar-pane.tsx`            | no    | "The rail's seat in the stage owns visibility and the resize handle, so the rail itself only ever renders at its full width." |
+| `Sidebar`            | `chrome/sidebar.tsx`                 | no    | "The rail: new chat, search, and customize on top, then a persistent workspace collection."                                   |
+| `WorkspaceControls`  | `chrome/sidebar-filter.tsx`          | yes   | Filter menu (grouping, ordering, show, status, PR, environment, source) and folder actions.                                   |
+| `SessionPreviewCard` | `chrome/sidebar-session-preview.tsx` | yes   | Hover card with title and context, wrapping the row and its context menu.                                                     |
+| `SettingsNavigation` | `chrome/settings-navigation.tsx`     | no    | Replaces the rail on `/settings/$section`.                                                                                    |
+
+## Geometry
+
+From `sidebar-pane.tsx`: 220px by default, clamped 190–400px, an 8px pointer target on the
+trailing edge, 8px keyboard steps. The width is written to `--nyte-sidebar-width` on every
+pointer move and committed to the store on release; cancel restores the start width. Hidden, the
+rail stays mounted with `aria-hidden` and `inert`, so hiding "changes geometry immediately."
+
+Resize handle: `role="separator"`, `tabIndex=0`, `aria-label="Resize sidebar"`,
+`aria-orientation="vertical"`, `aria-valuemin/max/now`.
+
+| Key                    | Effect    |
+| ---------------------- | --------- |
+| ArrowLeft / ArrowRight | ±8px      |
+| Shift + arrow          | ±32px     |
+| Home / End             | min / max |
+
+## Rows
+
+`SessionRow` is an `@nyte-ai/ui/button` rendered as the row, with `aria-current="page"` when
+active, a `StatusDot`, and a hover-revealed action cluster (`data-nyte-session-row-actions`).
+`WorkspaceRow` is a `Collapsible` header with `aria-current="location"`.
+
+- Hover intent: 50ms after `pointerenter` the row calls `warmThread`; `pointerdown` and `focus`
+  warm immediately. "A short hover intent warms local thread data."
+- Rename: an input that commits on Enter, cancels on Escape, selects all on focus. Edit state
+  lives at the rail root "so a directory refetch cannot drop an in-progress rename."
+- Layout animation uses `motion`'s `LayoutGroup`; `layoutId="selected-session"` is set only when
+  the panel is visible, because "hidden panels must never become shared-layout destinations."
+  Duration and easing are read from `--_sidebar-motion-duration` / `--_sidebar-motion-easing`
+  and honor `prefers-reduced-motion` live.
+
+## Context menus
+
+Per session (`ContextMenu` from [Menu](/cloud/desktop/menu)): Pin/Unpin, Rename, Open to the
+side, Copy title, Archive/Restore, Delete (danger). Per workspace: New chat, Archive all chats,
+Remove from sidebar (danger). Delete and archive-all open a
+[ConfirmDialog](/cloud/desktop/confirm-dialog).
+
+"Open to the side" is the keyboard path to splitting: the drag source is pointer-only, from
+`layout/session-dnd.tsx`:
+
+> The row itself is the drag source, so only the pointer sensor is wired: a keyboard sensor would
+> claim Enter and Space before the row's click. Keyboard users split panes from the row's context
+> menu instead.
+
+## Drag to split
+
+`SessionDndProvider` wraps the stage with a `DndContext` (pointer sensor, activation distance
+`SESSION_DRAG_ACTIVATION_DISTANCE`, no auto-scroll). A custom collision detector maps the pointer
+to `center | top | bottom | left | right` per pane and refuses a drop onto the pane already
+showing the session. `DragOverlay` shows the title at `zIndex 10_000`; the wrapper sets
+`data-nyte-session-drag-active`. `useSessionPaneDropTarget(paneId)` registers five droppables on
+one element; `useSessionDropTarget()` drives the `DropPreview` in the thread screen.
+
+## Filters
+
+`WorkspaceControls` opens a `Menu` (`side="right"`) of `MenuSubmenu`s with
+`MenuRadioGroup`/`MenuRadioItem` (`closeOnClick={false}`) and `MenuCheckboxItem`s, plus a
+`MenuGroup` "Filters" with a Reset action when any filter is active. The trigger sets
+`data-nyte-active` in that case.
+
+## Preview card
+
+`SessionPreviewCard` wraps the row in [`@nyte-ai/ui/preview-card`](/cloud/headless/preview-card):
+`delay` 600, `closeDelay` 100, `side="right"`, `align="start"`, popup `aria-label="Details for {title}"`. If a `contextMenu` is provided the trigger is also wrapped in a `ContextMenu` labelled
+`Actions for {title}`.
+
+## Account footer
+
+`AccountFooterMenu`: a `Menu` with the GitHub account and settings entry; the settings toggle
+carries `aria-keyshortcuts` for ⌘,.

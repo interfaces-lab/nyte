@@ -1,4 +1,4 @@
-import { source } from "@/lib/source";
+import { cloudSource, source } from "~/lib/source";
 import { llms } from "fumadocs-core/source";
 
 /*
@@ -9,7 +9,7 @@ import { llms } from "fumadocs-core/source";
 async function index() {
   "use cache";
 
-  return llms(source).index();
+  return [llms(source).index(), llms(cloudSource).index()].join("\n\n");
 }
 
 export async function GET() {

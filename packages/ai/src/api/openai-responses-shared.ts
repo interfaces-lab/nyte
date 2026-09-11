@@ -13,6 +13,8 @@ import type {
   ResponseStreamEvent,
   ResponseToolSearchOutputItemParam,
 } from "openai/resources/responses/responses.js";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { calculateCost } from "../models.ts";
 import type {
   Api,
@@ -433,6 +435,35 @@ export function convertResponsesTools(
 // Stream processing
 // =============================================================================
 
+// Codex decodes its own wire frames, so terminal usage remains untrusted until
+// finalization rather than borrowing the SDK's unchecked numeric types.
+type ResponsesTerminalResponse = Omit<
+  Extract<ResponseStreamEvent, { type: "response.completed" }>["response"],
+  "usage"
+> & { usage?: unknown };
+
+export type ResponsesStreamEvent =
+  | Exclude<ResponseStreamEvent, { type: "response.completed" }>
+  | { type: "response.completed"; response: ResponsesTerminalResponse };
+
+export class ResponsesUsageError extends Error {}
+
+const tokenCount = Type.Integer({ minimum: 0 });
+const responseUsage = Type.Object({
+  input_tokens: Type.Optional(tokenCount),
+  output_tokens: Type.Optional(tokenCount),
+  total_tokens: Type.Optional(tokenCount),
+  input_tokens_details: Type.Optional(
+    Type.Object({
+      cached_tokens: Type.Optional(tokenCount),
+      cache_write_tokens: Type.Optional(tokenCount),
+    }),
+  ),
+  output_tokens_details: Type.Optional(
+    Type.Object({ reasoning_tokens: Type.Optional(tokenCount) }),
+  ),
+});
+
 type StreamingToolCall = ToolCall & {
   partialJson?: string;
   customInput?: {
@@ -485,7 +516,7 @@ type ResponsesOutputSlot =
 type ToolCallOutputSlot = Extract<ResponsesOutputSlot, { type: "toolCall" }>;
 
 export async function processResponsesStream<TApi extends Api>(
-  openaiStream: AsyncIterable<ResponseStreamEvent>,
+  openaiStream: AsyncIterable<ResponsesStreamEvent>,
   output: AssistantMessage,
   stream: AssistantMessageEventStream,
   model: Model<TApi>,
@@ -606,31 +637,29 @@ export async function processResponsesStream<TApi extends Api>(
       });
     }
   };
-  const finalizeResponse = (
-    response: Extract<
-      ResponseStreamEvent,
-      { type: "response.completed" | "response.incomplete" }
-    >["response"],
-  ): void => {
+  const finalizeResponse = (response: ResponsesTerminalResponse): void => {
     sawTerminalResponseEvent = true;
     backfillReasoningSignatures(response.output ?? []);
     if (response?.id) {
       output.responseId = response.id;
     }
-    if (response?.usage) {
-      const inputDetails = response.usage.input_tokens_details as
-        | { cached_tokens?: number; cache_write_tokens?: number }
-        | undefined;
-      const cachedTokens = inputDetails?.cached_tokens || 0;
-      const cacheWriteTokens = inputDetails?.cache_write_tokens || 0;
+    const usage = response.usage;
+    if (usage !== undefined && usage !== null) {
+      if (!Value.Check(responseUsage, usage)) {
+        throw new ResponsesUsageError(
+          "Invalid OpenAI Responses usage: expected finite non-negative integer token counts",
+        );
+      }
+      const cachedTokens = usage.input_tokens_details?.cached_tokens ?? 0;
+      const cacheWriteTokens = usage.input_tokens_details?.cache_write_tokens ?? 0;
       output.usage = {
         // OpenAI includes cached and cache-write tokens in input_tokens, so subtract both.
-        input: Math.max(0, (response.usage.input_tokens || 0) - cachedTokens - cacheWriteTokens),
-        output: response.usage.output_tokens || 0,
+        input: Math.max(0, (usage.input_tokens ?? 0) - cachedTokens - cacheWriteTokens),
+        output: usage.output_tokens ?? 0,
         cacheRead: cachedTokens,
         cacheWrite: cacheWriteTokens,
-        reasoning: response.usage.output_tokens_details?.reasoning_tokens || 0,
-        totalTokens: response.usage.total_tokens || 0,
+        reasoning: usage.output_tokens_details?.reasoning_tokens ?? 0,
+        totalTokens: usage.total_tokens ?? 0,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       };
     }
@@ -815,8 +844,7 @@ export async function processResponsesStream<TApi extends Api>(
     } else if (event.type === "error") {
       throw new Error(`Error Code ${event.code}: ${event.message}` || "Unknown error");
     } else if (event.type === "response.failed") {
-      sawTerminalResponseEvent = true;
-      output.rawStopReason = event.response?.status;
+      finalizeResponse(event.response);
       const error = event.response?.error;
       const details = event.response?.incomplete_details;
       const msg = error

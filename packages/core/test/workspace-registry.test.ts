@@ -29,22 +29,20 @@ function scratch(): string {
 }
 
 describe("WorkspaceRegistry", () => {
-  test("lists nothing before the file exists", async () => {
-    const registry = new WorkspaceRegistry(join(scratch(), "workspaces.json"));
-    assert.deepEqual(await registry.list(), []);
-  });
-
-  test("touch records realpaths newest-first and dedupes", async () => {
+  test("touch records realpaths newest-first, dedupes symlinked opens, and forget removes a vanished path", async () => {
     const base = scratch();
     const a = join(base, "alpha");
     const b = join(base, "beta");
+    const link = join(base, "link");
     mkdirSync(a);
     mkdirSync(b);
+    symlinkSync(a, link);
     const registry = new WorkspaceRegistry(join(base, "workspaces.json"));
+    assert.deepEqual(await registry.list(), []);
 
     await registry.touch(a, 100);
     await registry.touch(b, 200);
-    await registry.touch(a, 300);
+    await registry.touch(link, 300);
 
     const listed = await registry.list();
     assert.deepEqual(
@@ -54,37 +52,14 @@ describe("WorkspaceRegistry", () => {
         { path: await realpath(b), name: "beta", lastOpenedAt: 200 },
       ],
     );
-  });
 
-  test("a symlinked open collapses onto the real workspace", async () => {
-    const base = scratch();
-    const real = join(base, "project");
-    const link = join(base, "link");
-    mkdirSync(real);
-    symlinkSync(real, link);
-    const registry = new WorkspaceRegistry(join(base, "workspaces.json"));
-
-    await registry.touch(real, 100);
-    await registry.touch(link, 200);
-
-    const listed = await registry.list();
-    assert.equal(listed.length, 1);
-    assert.equal(listed[0]?.path, await realpath(real));
-    assert.equal(listed[0]?.lastOpenedAt, 200);
-  });
-
-  test("forget removes the listed path, including one that no longer exists", async () => {
-    const base = scratch();
-    const gone = join(base, "gone");
-    mkdirSync(gone);
-    const registry = new WorkspaceRegistry(join(base, "workspaces.json"));
-    await registry.touch(gone, 100);
-    rmSync(gone, { recursive: true });
-
+    rmSync(b, { recursive: true });
     // A client forgets what `list()` handed it: the stored realpath.
-    const listed = await registry.list();
-    await registry.forget(listed[0]?.path ?? "");
-    assert.deepEqual(await registry.list(), []);
+    await registry.forget(listed[1]?.path ?? "");
+    assert.deepEqual(
+      (await registry.list()).map((workspace) => workspace.name),
+      ["alpha"],
+    );
   });
 
   test("a corrupt file reads as empty and bad rows are dropped", async () => {
@@ -135,7 +110,7 @@ describe("WorkspaceRegistry", () => {
 });
 
 // ---------------------------------------------------------------------------
-// the SDK verbs over the registry
+// the SDK operations over the registry
 // ---------------------------------------------------------------------------
 
 const usage: Usage = {
@@ -182,11 +157,12 @@ const idleStream: StreamFn = () => {
 const catalog = {
   getModels: () => [model],
   getModel: (_provider: string, id: string) => (id === model.id ? model : undefined),
+  getAvailable: async () => [model],
   checkAuth: async (provider: string) => (provider === "openai" ? { type: "api_key" } : undefined),
   getProvider: (id: string) => (id === "openai" ? { id } : undefined),
 };
 
-describe("workspace verbs", () => {
+describe("workspace operations", () => {
   test("createNyte records env.cwd; list and forget ride the SDK", async () => {
     const cwd = scratch();
     const registry = new WorkspaceRegistry(join(cwd, "registry", "workspaces.json"));

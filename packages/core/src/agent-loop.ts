@@ -16,6 +16,7 @@ import type {
   AgentTool,
   AgentToolCall,
   AgentToolResult,
+  AgentToolUpdateCallback,
   StreamFn,
 } from "./types.ts";
 import { toolErrorResult } from "./utils/tool-result.ts";
@@ -174,24 +175,27 @@ export async function executeToolCalls(
 type PreparedToolCall = {
   kind: "prepared";
   toolCall: AgentToolCall;
-  tool: AgentTool<any>;
+  execute: (
+    signal: AbortSignal | undefined,
+    onUpdate: AgentToolUpdateCallback,
+  ) => Promise<AgentToolResult<unknown>>;
   args: unknown;
 };
 
 type ImmediateToolCallOutcome = {
   kind: "immediate";
-  result: AgentToolResult<any>;
+  result: AgentToolResult<unknown>;
   isError: boolean;
 };
 
 type ExecutedToolCallOutcome = {
-  result: AgentToolResult<any>;
+  result: AgentToolResult<unknown>;
   isError: boolean;
 };
 
 type FinalizedToolCallOutcome = {
   toolCall: AgentToolCall;
-  result: AgentToolResult<any>;
+  result: AgentToolResult<unknown>;
   isError: boolean;
 };
 
@@ -199,7 +203,7 @@ function isAgentToolArguments(value: unknown): value is AgentToolCall["arguments
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function prepareToolCallArguments(tool: AgentTool<any>, toolCall: AgentToolCall): AgentToolCall {
+function prepareToolCallArguments(tool: AgentTool, toolCall: AgentToolCall): AgentToolCall {
   if (!tool.prepareArguments) {
     return toolCall;
   }
@@ -276,7 +280,8 @@ async function prepareToolCall(
     return {
       kind: "prepared",
       toolCall,
-      tool,
+      execute: (executionSignal, onUpdate) =>
+        tool.execute(toolCall.id, validatedArgs, executionSignal, onUpdate),
       args: validatedArgs,
     };
   } catch (error) {
@@ -298,26 +303,21 @@ async function executePreparedToolCall(
   let lastPartial: AgentToolResult<unknown> | undefined;
 
   try {
-    const result = await prepared.tool.execute(
-      prepared.toolCall.id,
-      prepared.args,
-      signal,
-      (partialResult) => {
-        if (!acceptingUpdates) return;
-        lastPartial = partialResult;
-        updateEvents.push(
-          Promise.resolve(
-            emit({
-              type: "tool_execution_update",
-              toolCallId: prepared.toolCall.id,
-              toolName: prepared.toolCall.name,
-              args: prepared.toolCall.arguments,
-              partialResult,
-            }),
-          ),
-        );
-      },
-    );
+    const result = await prepared.execute(signal, (partialResult) => {
+      if (!acceptingUpdates) return;
+      lastPartial = partialResult;
+      updateEvents.push(
+        Promise.resolve(
+          emit({
+            type: "tool_execution_update",
+            toolCallId: prepared.toolCall.id,
+            toolName: prepared.toolCall.name,
+            args: prepared.toolCall.arguments,
+            partialResult,
+          }),
+        ),
+      );
+    });
     acceptingUpdates = false;
     await Promise.all(updateEvents);
     return { result, isError: false };
@@ -360,7 +360,7 @@ async function finalizeExecutedToolCall(
         result = {
           ...result,
           content: afterResult.content ?? result.content,
-          details: afterResult.details ?? result.details,
+          details: afterResult.details === undefined ? result.details : afterResult.details,
           usage: afterResult.usage ?? result.usage,
         };
         isError = afterResult.isError ?? isError;
@@ -378,7 +378,7 @@ async function finalizeExecutedToolCall(
   };
 }
 
-function createErrorToolResult(message: string): AgentToolResult<any> {
+function createErrorToolResult(message: string): AgentToolResult<unknown> {
   return {
     content: [{ type: "text", text: message }],
     details: {},

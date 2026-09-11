@@ -17,20 +17,17 @@
  *   policy. The first `reject` or `error` stops the chain. A throwing handler
  *   becomes `error` (fail-closed).
  * - `after_tool`: field-wise chained patch.
- * - `before_compaction`: first provider checkpoint wins; handler failures are
- *   contained and portable compaction still runs.
+ * - `before_compaction`: first provider checkpoint wins; failed attempts carry
+ *   usage into later handlers or portable compaction. Only exhausted failures
+ *   report a fallback warning.
  *
  * Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/agent-harness.ts (HookMap)
  * Synced with pi 7ebf9087e.
  */
-import type {
-  Context,
-  JsonValue,
-  Message,
-  ProviderCheckpointMaterial,
-  Usage,
-} from "@nyte-ai/schema";
+import type { Context, JsonValue, Message, Usage } from "@nyte-ai/schema";
+import type { ProviderCompaction } from "../kernel/compaction.ts";
 import { isJsonObject, toJsonValue, type JsonObject } from "../kernel/json.ts";
+import { addUsage } from "../kernel/views/usage.ts";
 import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../types.ts";
 
 /**
@@ -56,7 +53,7 @@ export interface HookMap {
       customInstructions?: string;
       tokensBefore: number;
     };
-    result: { material: ProviderCheckpointMaterial; usage?: Usage } | undefined;
+    result: Awaited<ReturnType<ProviderCompaction>>;
   };
   before_request: {
     event: {
@@ -195,7 +192,7 @@ type HookRunners = {
   ) => Promise<HookMap[TName]["result"]>;
 };
 
-/** Called with every handler failure before the combining rule decides what to do with it. */
+/** Reports hook failures. Compaction reports only after its providers are exhausted. */
 export type HookErrorReporter = (
   error: Error,
   hook: HookName,
@@ -290,15 +287,33 @@ export class HookRegistry implements Hooks {
     event: HookInvocation<"before_compaction">,
     signal: AbortSignal | undefined,
   ): Promise<HookMap["before_compaction"]["result"]> {
+    const failures: string[] = [];
+    let usage: Usage | undefined;
     for (const registration of this.registrationsFor("before_compaction")) {
+      if (signal?.aborted) break;
       try {
         const result = await registration.handler(event, signal);
-        if (result !== undefined) return result;
+        if (result === undefined) continue;
+        if (result.usage !== undefined) {
+          usage = usage === undefined ? result.usage : addUsage(usage, result.usage);
+        }
+        if ("material" in result) return { ...result, usage };
+        failures.push(result.error);
       } catch (error) {
-        await this.reportError(normalizeError(error), "before_compaction", event.head);
+        failures.push(normalizeError(error).message);
       }
     }
-    return undefined;
+    // A later handler may recover. Cancellation must not announce a fallback.
+    if (failures.length > 0 && !signal?.aborted) {
+      await this.reportError(
+        new Error(
+          `Native compaction failed; trying a portable text summary. ${failures.join("; ")}`,
+        ),
+        "before_compaction",
+        event.head,
+      );
+    }
+    return failures.length > 0 ? { error: failures.join("; "), usage } : undefined;
   }
 
   private async beforeRequest(

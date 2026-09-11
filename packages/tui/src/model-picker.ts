@@ -1,3 +1,4 @@
+import { matchesKey, matchesKeyName } from "./keymap.ts";
 import {
   clampThinkingLevel,
   getFastModeCostMultiplier,
@@ -17,8 +18,8 @@ import {
   TextRenderable,
 } from "@opentui/core";
 import type { CliRenderer, KeyEvent } from "@opentui/core";
-import type { EphemeralPanel } from "./shell.ts";
-import { GLYPHS } from "./constants.ts";
+import type { EphemeralPanel } from "./app/ui.ts";
+import { GLYPHS, keycap } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { padDisplay, truncateDisplay } from "./width.ts";
 
@@ -28,25 +29,29 @@ export interface ModelSelection {
   readonly fast: { readonly settingId: string; readonly enabled: boolean } | undefined;
 }
 
-interface ModelPickerOptions {
+interface ModelPickerBaseOptions {
   readonly renderer: CliRenderer;
   readonly theme: CliTheme;
   readonly nextId: (prefix?: string) => string;
   readonly models: readonly Model<Api>[];
-  readonly current: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
-  readonly fastModes: ReadonlyMap<string, boolean>;
   readonly load: () => Promise<readonly Model<Api>[]>;
-  readonly onSelect: (selection: ModelSelection) => void;
   readonly onCancel: () => void;
   readonly onRows: (rows: number) => void;
   readonly onHints: (hints: string) => void;
   readonly onError: (cause: unknown) => void;
 }
 
+interface ModelPickerOptions extends ModelPickerBaseOptions {
+  readonly kind: "session";
+  readonly current: Model<Api>;
+  readonly thinkingLevel: ThinkingLevel;
+  readonly fastModes: ReadonlyMap<string, boolean>;
+  readonly onSelect: (selection: ModelSelection) => void;
+}
+
 type Field = "effort" | "fast";
 
-function identity(model: Model<Api>): string {
+function identity(model: Pick<Model<Api>, "provider" | "id">): string {
   return `${model.provider}/${model.id}`;
 }
 
@@ -63,7 +68,7 @@ function truncate(text: string, width: number): string {
 }
 
 function arrows(text: string): string {
-  return `← ${text} →`;
+  return `${keycap("model.decrease", "symbol")} ${text} ${keycap("model.increase", "symbol")}`;
 }
 
 /** Model and request options are drafts until Enter accepts the highlighted row. */
@@ -80,6 +85,7 @@ export class ModelPicker implements EphemeralPanel {
   private readonly efforts = new Map<string, ThinkingLevel>();
   private readonly fastModes: Map<string, boolean>;
   private models: readonly Model<Api>[];
+  private costCeiling: number | undefined;
   private matches: readonly Model<Api>[];
   private selected = 0;
   private offset = 0;
@@ -91,10 +97,11 @@ export class ModelPicker implements EphemeralPanel {
     this.options = options;
     this.models = options.models;
     this.matches = options.models;
-    this.fastModes = new Map(options.fastModes);
+    this.fastModes = new Map(options.kind === "session" ? options.fastModes : []);
+    const current = identity(options.current);
     this.selected = Math.max(
       0,
-      this.matches.findIndex((model) => identity(model) === identity(options.current)),
+      this.matches.findIndex((model) => identity(model) === current),
     );
     const { renderer, theme, nextId } = options;
     this.container = new BoxRenderable(renderer, {
@@ -164,6 +171,7 @@ export class ModelPicker implements EphemeralPanel {
         event.preventDefault();
         event.stopPropagation();
         this.move(event.scroll.direction === "up" ? -1 : 1);
+        this.repaint();
       },
     });
     this.details = new TextRenderable(renderer, {
@@ -186,15 +194,13 @@ export class ModelPicker implements EphemeralPanel {
         if (this.destroyed) return;
         this.catalogStatus = "ready";
         this.models = models;
+        this.costCeiling = undefined;
         this.filter();
       })
       .catch((cause: unknown) => {
         if (this.destroyed) return;
         this.catalogStatus = "failed";
         options.onError(cause);
-      })
-      .finally(() => {
-        if (this.destroyed) return;
         this.repaint();
       });
   }
@@ -236,23 +242,31 @@ export class ModelPicker implements EphemeralPanel {
     const active = model === undefined ? undefined : this.activeField(model);
     if (this.options.renderer.width < 80) {
       return [
-        "↑↓",
-        ...(active === undefined ? [] : [`←→ ${active === "effort" ? "effort" : "fast"}`]),
-        ...(fields.length > 1 ? ["tab"] : []),
-        "↵ confirm",
-        "esc",
+        `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")}`,
+        ...(active === undefined
+          ? []
+          : [
+              `${keycap("model.decrease", "symbol")}${keycap("model.increase", "symbol")} ${active === "effort" ? "effort" : "fast"}`,
+            ]),
+        ...(fields.length > 1 ? [keycap("model.field.cycle")] : []),
+        `${keycap("picker.accept", "symbol")} confirm`,
+        keycap("picker.close"),
       ].join(" · ");
     }
     return [
-      "↑↓ select",
+      `${keycap("model.previous", "symbol")}${keycap("model.next", "symbol")} select`,
       ...(fields.length > 1
-        ? [`tab ${active === "effort" ? "fast mode" : "reasoning effort"}`]
+        ? [
+            `${keycap("model.field.cycle")} ${active === "effort" ? "fast mode" : "reasoning effort"}`,
+          ]
         : []),
       ...(active === undefined
         ? []
-        : [`←→ ${active === "effort" ? "reasoning effort" : "fast mode"}`]),
-      "enter confirm",
-      "esc cancel",
+        : [
+            `${keycap("model.decrease", "symbol")}${keycap("model.increase", "symbol")} ${active === "effort" ? "reasoning effort" : "fast mode"}`,
+          ]),
+      `${keycap("picker.accept")} confirm`,
+      `${keycap("picker.close")} cancel`,
     ].join(" · ");
   }
 
@@ -293,15 +307,16 @@ export class ModelPicker implements EphemeralPanel {
   }
 
   private readonly filter = (): void => {
-    const previous = this.selectedModel ?? this.options.current;
+    const previous = this.selectedModel;
     const terms = this.queryInput.value.toLocaleLowerCase().trim().split(/\s+/u).filter(Boolean);
     this.matches = this.models.filter((model) => {
       const text = `${model.name} ${identity(model)}`.toLocaleLowerCase();
       return terms.every((term) => text.includes(term));
     });
+    const current = identity(previous ?? this.options.current);
     this.selected = Math.max(
       0,
-      this.matches.findIndex((model) => identity(model) === identity(previous)),
+      this.matches.findIndex((model) => identity(model) === current),
     );
     this.offset = 0;
     this.repaint();
@@ -311,7 +326,6 @@ export class ModelPicker implements EphemeralPanel {
     const count = this.matches.length;
     if (count === 0) return;
     this.selected = (this.selected + delta + count) % count;
-    this.repaint();
   }
 
   private change(delta: -1 | 1): void {
@@ -328,7 +342,6 @@ export class ModelPicker implements EphemeralPanel {
         ];
       if (next !== undefined) this.efforts.set(identity(model), next);
     }
-    this.repaint();
   }
 
   private confirm(): void {
@@ -344,16 +357,18 @@ export class ModelPicker implements EphemeralPanel {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || key.defaultPrevented) return;
-    if (key.name === "escape") this.options.onCancel();
-    else if (key.name === "return") this.confirm();
-    else if (key.name === "up" || (key.ctrl && key.name === "p")) this.move(-1);
-    else if (key.name === "down" || (key.ctrl && key.name === "n")) this.move(1);
-    else if (key.name === "pageup") this.move(-Math.min(this.selected, this.visibleCount));
-    else if (key.name === "pagedown")
+    if (matchesKeyName("picker.close", key)) this.options.onCancel();
+    else if (matchesKeyName("picker.accept", key)) this.confirm();
+    else if (matchesKey("model.previous", key, "required")) this.move(-1);
+    else if (matchesKey("model.next", key, "required")) this.move(1);
+    else if (matchesKeyName("picker.page.up", key))
+      this.move(-Math.min(this.selected, this.visibleCount));
+    else if (matchesKeyName("picker.page.down", key))
       this.move(Math.min(this.matches.length - this.selected - 1, this.visibleCount));
-    else if (key.name === "left" && !key.ctrl && !key.meta) this.change(-1);
-    else if (key.name === "right" && !key.ctrl && !key.meta) this.change(1);
-    else if (key.name === "tab") this.field = this.field === "effort" ? "fast" : "effort";
+    else if (matchesKeyName("model.decrease", key) && !key.ctrl && !key.meta) this.change(-1);
+    else if (matchesKeyName("model.increase", key) && !key.ctrl && !key.meta) this.change(1);
+    else if (matchesKeyName("model.field.cycle", key))
+      this.field = this.field === "effort" ? "fast" : "effort";
     else return;
     key.preventDefault();
     key.stopPropagation();
@@ -396,6 +411,10 @@ export class ModelPicker implements EphemeralPanel {
     ]);
   }
 
+  private isCurrent(model: Model<Api>): boolean {
+    return identity(model) === identity(this.options.current);
+  }
+
   private detail(model: Model<Api>, width: number): StyledText {
     const { theme } = this.options;
     const level = effortLabel(this.effort(model));
@@ -410,12 +429,15 @@ export class ModelPicker implements EphemeralPanel {
       ]);
     const meterWidth = Math.min(34, width);
     const multiplier = this.fastEnabled(model) ? getFastModeCostMultiplier(model) : 1;
-    const totals = this.models.map(
-      (candidate) =>
-        (candidate.cost.input + candidate.cost.output) *
-        (getFastModeCostMultiplier(candidate) ?? 1),
-    );
-    const ceiling = Math.max(0, ...totals);
+    const ceiling = (this.costCeiling ??= this.models.reduce(
+      (maximum, candidate) =>
+        Math.max(
+          maximum,
+          (candidate.cost.input + candidate.cost.output) *
+            (getFastModeCostMultiplier(candidate) ?? 1),
+        ),
+      0,
+    ));
     const position =
       ceiling === 0
         ? 0
@@ -468,7 +490,7 @@ export class ModelPicker implements EphemeralPanel {
         flexShrink: 0,
         wrapMode: "none",
         onMouseDown: (event) => {
-          if (event.button !== 0 || this.matches[this.offset + index] === undefined) return;
+          if (event.button !== 0 || this.offset + index >= this.matches.length) return;
           event.preventDefault();
           event.stopPropagation();
           this.selected = this.offset + index;
@@ -482,7 +504,8 @@ export class ModelPicker implements EphemeralPanel {
     for (const [index, view] of this.rowViews.entries()) {
       view.visible = index < count;
       if (!view.visible) continue;
-      const model = this.matches[this.offset + index];
+      const item = this.offset + index;
+      const model = this.matches[item];
       const selected = this.offset + index === this.selected;
       view.bg = model !== undefined && selected ? theme.selectionBackground : theme.transparent;
       view.content =

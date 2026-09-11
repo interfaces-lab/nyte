@@ -4,7 +4,15 @@
  * in every Nyte client.
  */
 import { defaultModelPerProvider } from "@nyte-ai/ai";
-import type { Api, AuthCheck, Model, Models, Provider } from "@nyte-ai/ai";
+import type {
+  Api,
+  AuthCheck,
+  AuthOperationOptions,
+  Model,
+  Models,
+  ModelsRefreshOptions,
+  Provider,
+} from "@nyte-ai/ai";
 import type { ThinkingLevel } from "@nyte-ai/core";
 
 export const DEFAULT_PROVIDER_ID = "openai-codex";
@@ -23,10 +31,13 @@ export type ProviderAuthStatus =
   | { readonly kind: "unauthenticated"; readonly provider: Provider };
 
 /** Resolve provider status concurrently so pickers can mark logged-in providers. */
-export function providerAuthStatuses(models: Models): Promise<ProviderAuthStatus[]> {
+export function providerAuthStatuses(
+  models: Models,
+  options?: AuthOperationOptions,
+): Promise<ProviderAuthStatus[]> {
   return Promise.all(
     models.getProviders().map(async (provider): Promise<ProviderAuthStatus> => {
-      const auth = await models.checkAuth(provider.id);
+      const auth = await models.checkAuth(provider.id, options);
       return auth === undefined
         ? { kind: "unauthenticated", provider }
         : { kind: "authenticated", provider, auth };
@@ -36,15 +47,15 @@ export function providerAuthStatuses(models: Models): Promise<ProviderAuthStatus
 
 async function fetchAuthenticatedModels(
   models: Models,
-  force: boolean,
+  options: Pick<ModelsRefreshOptions, "force" | "allowNetwork" | "signal">,
 ): Promise<readonly Model<Api>[]> {
-  const statuses = await providerAuthStatuses(models);
+  const statuses = await providerAuthStatuses(models, { signal: options.signal });
   const providers = statuses.flatMap((status) =>
     status.kind === "authenticated" ? [status.provider] : [],
   );
-  await models.refresh({ providers: providers.map((provider) => provider.id), force });
+  await models.refresh({ providers: providers.map((provider) => provider.id), ...options });
   const available = await Promise.all(
-    providers.map((provider) => models.getAvailable(provider.id)),
+    providers.map((provider) => models.getAvailable(provider.id, { signal: options.signal })),
   );
   return available.flat();
 }
@@ -69,17 +80,24 @@ export function cachedAuthenticatedModels(models: Models): readonly Model<Api>[]
   return cacheFor(models).loaded;
 }
 
+/** A completed credential mutation makes both cached and in-flight auth snapshots obsolete. */
+export function invalidateAuthenticatedModels(models: Models): void {
+  const cache = cacheFor(models);
+  cache.loaded = undefined;
+  cache.loading = undefined;
+}
+
 /** One model catalog across every provider with configured auth. Concurrent callers share a refresh. */
 export function loadAuthenticatedModels(
   models: Models,
-  options: { readonly force?: boolean } = {},
+  options: Pick<ModelsRefreshOptions, "force" | "allowNetwork" | "signal"> = {},
 ): Promise<readonly Model<Api>[]> {
   const cache = cacheFor(models);
   const pending = cache.loading;
   if (pending !== undefined && options.force !== true) return pending;
-  const load = fetchAuthenticatedModels(models, options.force === true)
+  const load = fetchAuthenticatedModels(models, options)
     .then((available) => {
-      cache.loaded = available;
+      if (cache.loading === load) cache.loaded = available;
       return available;
     })
     .finally(() => {

@@ -8,11 +8,12 @@
  * version and `import()` with a changed query string gives Node a new module.
  */
 import { watch, type FSWatcher } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { readdir, realpath, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { JsonValue } from "@nyte-ai/schema";
-import type { LoadedPlugin, Plugin, PluginSource } from "./types.ts";
+import type { Disposer, LoadedPlugin, Plugin, PluginSource } from "./types.ts";
 
 type ManifestPluginRef = { id: string; options?: JsonValue };
 
@@ -46,7 +47,7 @@ export interface PluginDirectory {
   source: Exclude<PluginSource, "builtin" | "inline">;
 }
 
-export interface LoadFailure {
+interface LoadFailure {
   path: string;
   error: string;
 }
@@ -67,6 +68,7 @@ export interface ResolveOptions {
 }
 
 const ENTRY_EXTENSIONS = new Set([".ts", ".js", ".mts", ".mjs"]);
+const SOURCE_EXTENSIONS = new Set([...ENTRY_EXTENSIONS, ".tsx", ".jsx", ".cts", ".cjs", ".json"]);
 
 export async function resolvePlugins(options: ResolveOptions): Promise<ResolvedPlugins> {
   const byId = new Map<string, LoadedPlugin>();
@@ -126,15 +128,28 @@ async function listPluginEntries(directory: string): Promise<string[]> {
   return entries;
 }
 
-export async function loadPluginFile(
+async function loadPluginFile(
   path: string,
   source: Exclude<PluginSource, "builtin" | "inline">,
 ): Promise<LoadedPlugin | LoadFailure> {
   const absolute = resolve(path);
   const id = pluginIdForPath(absolute);
   try {
-    const info = await stat(absolute);
-    const version = `${info.mtimeMs}:${info.size}`;
+    const files = await pluginFiles(absolute);
+    const stats = await Promise.all(
+      files.map(async (file) => {
+        const info = await stat(file);
+        return `${info.mtimeMs}:${info.size}`;
+      }),
+    );
+    const version = createHash("sha256").update(stats.join(",")).digest("hex").slice(0, 16);
+    // A query string gives `import()` a fresh entry module. Helpers keep their
+    // plain URL, so Bun's module cache is evicted for the whole tree (it keys
+    // by real path); Node's ESM cache has no eviction, so helpers there stay
+    // as first loaded.
+    if (typeof require !== "undefined") {
+      for (const file of files) delete require.cache[await realpath(file).catch(() => file)];
+    }
     const url = pathToFileURL(absolute);
     url.searchParams.set("v", version);
     const loaded: unknown = await import(url.href);
@@ -155,19 +170,49 @@ export async function loadPluginFile(
 }
 
 /** `.../profile.ts` and `.../profile/index.ts` are both "profile". */
-export function pluginIdForPath(path: string): string {
+function pluginIdForPath(path: string): string {
   const file = basename(path, extname(path));
   if (file === "index") return basename(resolve(path, ".."));
   return file;
 }
 
+/**
+ * The files whose bytes decide a plugin's version: the entry alone for
+ * `foo.ts`, every source file under `foo/` for `foo/index.ts`. A plugin with
+ * helpers lives in a directory so an edit to a helper reloads it.
+ */
+async function pluginFiles(entry: string): Promise<string[]> {
+  if (basename(entry, extname(entry)) !== "index") return [entry];
+  const root = dirname(entry);
+  const names = await readdir(root, { recursive: true, withFileTypes: true });
+  const files = names
+    .filter((item) => item.isFile() && !item.parentPath.split(sep).includes("node_modules"))
+    .map((item) => join(item.parentPath, item.name))
+    .filter((file) => file !== entry && SOURCE_EXTENSIONS.has(extname(file)))
+    .sort();
+  return [entry, ...files];
+}
+
+export interface WatchTarget {
+  readonly path: string;
+  /** Default true. A shallow watch sees the directory's own entries only. */
+  readonly recursive?: boolean;
+  /** Entry names that count; others under this target are ignored. Default all. */
+  readonly names?: readonly string[];
+}
+
 export interface WatchOptions {
-  directories: readonly { path: string }[];
+  directories: readonly WatchTarget[];
   /** Called after a quiet period following any change under the directories. */
   onChange: () => void | Promise<void>;
   debounceMs?: number;
   /** Change handler failures land here instead of being lost. */
   onError?: (error: Error) => void;
+  /**
+   * Taken on the first raw event of a burst and released once `onChange` has
+   * run with nothing further pending, so work gated on it sees the reload.
+   */
+  hold?: () => Disposer;
 }
 
 /**
@@ -182,6 +227,7 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
   let running = false;
   let pending = false;
   let stopped = false;
+  let release: Disposer | undefined;
   const report = options.onError ?? (() => undefined);
 
   const fire = async (): Promise<void> => {
@@ -199,12 +245,16 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
       if (pending && !stopped) {
         pending = false;
         schedule();
+      } else {
+        release?.();
+        release = undefined;
       }
     }
   };
 
   const schedule = (): void => {
     if (stopped) return;
+    release ??= options.hold?.();
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
@@ -217,7 +267,16 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
     for (const directory of options.directories) {
       if (watchers.has(directory.path)) continue;
       try {
-        const watcher = watch(directory.path, { recursive: true }, () => schedule());
+        const names = directory.names === undefined ? undefined : new Set(directory.names);
+        const watcher = watch(
+          directory.path,
+          { recursive: directory.recursive ?? true },
+          (_event, filename) => {
+            // A null filename is platform-dependent and always counts.
+            if (names !== undefined && filename !== null && !names.has(filename.toString())) return;
+            schedule();
+          },
+        );
         watcher.on("error", () => {
           watchers.delete(directory.path);
           watcher.close();
@@ -240,6 +299,8 @@ export function watchPluginDirectories(options: WatchOptions): () => void {
     stopped = true;
     clearInterval(retry);
     if (timer !== undefined) clearTimeout(timer);
+    release?.();
+    release = undefined;
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
   };

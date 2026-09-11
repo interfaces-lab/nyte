@@ -4,12 +4,12 @@
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/result.ts
  */
 
-export interface Ok<TValue> {
+interface Ok<TValue> {
   ok: true;
   value: TValue;
 }
 
-export interface Err<TError> {
+interface Err<TError> {
   ok: false;
   error: TError;
 }

@@ -1,4 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
+import { createNyteModels } from "@nyte-ai/ai";
+import { createTrustStore, nyteHome } from "@nyte-ai/host";
+import { WorkspaceTrustRequired } from "@nyte-ai/core";
+import { createWorkspaceEditor } from "./workspace-files.ts";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
 import {
@@ -9,20 +13,26 @@ import {
   WATCH_EVENT_CHANNEL,
   WATCH_START_CHANNEL,
   WATCH_STOP_CHANNEL,
+  WORKSPACE_EDITOR_CHANNEL,
 } from "../shared/ipc.ts";
 import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
+import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
+import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
-import { errorMessage } from "../shared/errors.ts";
+import { ExpectedHostError, ipcResult } from "./errors.ts";
+import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
+import { UsageScanWorker } from "./usage-scan.ts";
 import { DesktopHost, type DesktopHostDependencies } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
+import { createShellEnvironmentRepair } from "./shell-environment.ts";
 
 import {
   decodeBrowserBounds,
-  decodeCallRequest,
   decodeWatchStart,
   decodeWatchStop,
+  decodeWorkspaceEditorRequest,
   themePreference,
 } from "./ipc-inputs.ts";
 
@@ -56,8 +66,17 @@ function windowBackgroundColor(): string {
   return "#00000000";
 }
 
-app.setName(app.isPackaged ? "Nyte" : "Nyte (Dev)");
-app.setPath("userData", join(app.getPath("appData"), app.isPackaged ? "Nyte" : "Nyte Dev"));
+const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
+app.setName(updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte (Dev)");
+app.setPath(
+  "userData",
+  join(
+    app.getPath("appData"),
+    updateTest ? "Nyte Update Test" : app.isPackaged ? "Nyte" : "Nyte Dev",
+  ),
+);
+// The packaged test must remain isolated after Sparkle relaunches without shell variables.
+if (updateTest) process.env["NYTE_HOME"] = join(app.getPath("userData"), "nyte");
 if (process.platform === "linux") app.commandLine.appendSwitch("gtk-version", "3");
 
 function send(channel: string, payload: HostEvent | WatchEnvelope): void {
@@ -75,6 +94,10 @@ const browserSurfaces = createBrowserSurfaces({
 });
 
 const hostDependencies = {
+  createModels: createNyteModels,
+  // A sibling entry of this bundle; see the main build's rollup inputs.
+  usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
+  storeWorker: new URL("./store-worker.js", import.meta.url),
   emitHostEvent: (event) => send(HOST_EVENT_CHANNEL, event),
   emitWatchEvent: (envelope) => send(WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
@@ -99,6 +122,25 @@ function getHost(): DesktopHost {
   return desktopHost;
 }
 
+const workspaceEditor = createWorkspaceEditor({
+  workspace: async () => {
+    const state = await getHost().call("host.state", undefined);
+    if (state.workspace === undefined)
+      throw new ExpectedHostError({ code: "not_found", message: "No project is open" });
+    return state.workspace.path;
+  },
+  requireTrust: async (path) => {
+    try {
+      await createTrustStore().require(path);
+    } catch (cause) {
+      if (cause instanceof WorkspaceTrustRequired) {
+        send(HOST_EVENT_CHANNEL, { kind: "workspace_trust_required", path: cause.cwd });
+      }
+      throw cause;
+    }
+  },
+});
+
 function assertMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): void {
   const window = mainWindow;
   if (
@@ -111,6 +153,11 @@ function assertMainFrame(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEv
 }
 
 function registerIpc(): void {
+  ipcMain.on(APP_MENU_READY_CHANNEL, (event) => {
+    assertMainFrame(event);
+    menuCommands.ready();
+  });
+
   ipcMain.on(THEME_PREFERENCE_CHANNEL, (event, value) => {
     assertMainFrame(event);
     if (!themePreference.Check(value)) return;
@@ -122,32 +169,24 @@ function registerIpc(): void {
     browserSurfaces.setBounds(decodeBrowserBounds(message));
   });
 
+  ipcMain.handle(WORKSPACE_EDITOR_CHANNEL, async (event, request) => {
+    assertMainFrame(event);
+    return ipcResult(() => workspaceEditor.call(decodeWorkspaceEditorRequest(request)));
+  });
+
   ipcMain.handle(CALL_CHANNEL, async (event, request) => {
     assertMainFrame(event);
-    const host = getHost();
-    const decoded = decodeCallRequest(request);
-    try {
-      const value = await host.call(decoded.path, decoded.input);
-      return { path: decoded.path, ok: true, value };
-    } catch (cause) {
-      return {
-        path: decoded.path,
-        ok: false,
-        message: errorMessage(cause),
-      };
-    }
+    return callIpc(getHost, request);
   });
 
   ipcMain.handle(WATCH_START_CHANNEL, async (event, input) => {
     assertMainFrame(event);
-    const host = getHost();
-    host.watchStart(decodeWatchStart(input));
+    return ipcResult(() => getHost().watchStart(decodeWatchStart(input)));
   });
 
   ipcMain.handle(WATCH_STOP_CHANNEL, async (event, input) => {
     assertMainFrame(event);
-    const host = getHost();
-    host.watchStop(decodeWatchStop(input));
+    return ipcResult(() => getHost().watchStop(decodeWatchStop(input)));
   });
 }
 
@@ -171,11 +210,15 @@ function createWindow(): void {
   const created = new BrowserWindow(options);
   mainWindow = created;
   const closeTerminals = (): void => {
+    workspaceEditor.dispose();
     void desktopHost?.closeTerminals().catch(() => undefined);
   };
   created.webContents.on("render-process-gone", closeTerminals);
   created.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
-    if (isMainFrame && !inPlace) closeTerminals();
+    if (isMainFrame && !inPlace) {
+      closeTerminals();
+      menuCommands.reset();
+    }
   });
 
   const updateWindowBackground = (): void => {
@@ -222,6 +265,7 @@ function createWindow(): void {
   else void created.loadURL(developmentUrl);
 
   created.on("closed", () => {
+    menuCommands.reset();
     closeTerminals();
     nativeTheme.off("updated", updateWindowBackground);
     browserSurfaces.dispose();
@@ -229,11 +273,22 @@ function createWindow(): void {
   });
 }
 
+const menuCommands = createMenuCommandDelivery({
+  openWindow: () => {
+    createWindow();
+    if (mainWindow?.isMinimized() === true) mainWindow.restore();
+    mainWindow?.show();
+    mainWindow?.focus();
+  },
+  send: (command) => mainWindow?.webContents.send(APP_MENU_COMMAND_CHANNEL, command),
+});
+
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  registerIpc();
+  const repairShellEnvironment = createShellEnvironmentRepair();
+  const environmentReady = repairShellEnvironment();
 
   app.on("second-instance", () => {
     if (mainWindow?.isMinimized() === true) mainWindow.restore();
@@ -241,7 +296,9 @@ if (!hasSingleInstanceLock) {
     mainWindow?.focus();
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    await environmentReady;
+    registerIpc();
     // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.
     if (!app.isPackaged && process.platform === "darwin") {
       app.dock?.setIcon(join(app.getAppPath(), "resources", "icon.png"));
@@ -250,7 +307,31 @@ if (!hasSingleInstanceLock) {
     void getHost()
       .prepare()
       .catch(() => undefined);
-    registerUpdates();
+    const menu = Menu.buildFromTemplate(
+      applicationMenuTemplate({
+        platform: process.platform,
+        name: app.getName(),
+        settings: () => menuCommands.dispatch({ kind: "settings" }),
+        about: () =>
+          menuCommands.dispatch({
+            kind: "about",
+            info: {
+              name: app.getName(),
+              version: app.getVersion(),
+              electron: process.versions.electron,
+              chrome: process.versions.chrome,
+              os: `${process.platform === "darwin" ? "macOS" : process.platform} ${process.getSystemVersion()}`,
+              arch: process.arch,
+            },
+          }),
+      }),
+    );
+    const updateItem = menu.getMenuItemById("check-for-updates");
+    if (updateItem !== null)
+      registerUpdates(updateItem, async () => {
+        await desktopHost?.close();
+      });
+    Menu.setApplicationMenu(menu);
   });
 
   app.on("before-quit", () => {
@@ -262,6 +343,9 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    void app.whenReady().then(async () => {
+      await environmentReady;
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
   });
 }

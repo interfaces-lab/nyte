@@ -8,19 +8,16 @@ import type { JsonValue, Message, ToolResultMessage, Usage, UserMessage } from "
 import { contextMessages, modelContext } from "../context.ts";
 import type { ContextStatus } from "@nyte-ai/protocol";
 import type { Commit } from "../model.ts";
+import { usageTokens } from "./usage.ts";
 
 export type { ContextStatus } from "@nyte-ai/protocol";
-
-export function calculateContextTokens(usage: Usage): number {
-  return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-}
 
 function assistantUsage(message: Message): Usage | undefined {
   switch (message.role) {
     case "assistant":
       return message.stopReason !== "aborted" &&
         message.stopReason !== "error" &&
-        calculateContextTokens(message.usage) > 0
+        usageTokens(message.usage) > 0
         ? message.usage
         : undefined;
     case "user":
@@ -108,13 +105,18 @@ export interface AssistantUsageInfo {
 export function lastAssistantUsageInfo(
   messages: readonly Message[],
 ): AssistantUsageInfo | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message === undefined) continue;
+  let latestPrefixTimestamp = Number.NEGATIVE_INFINITY;
+  let latest: AssistantUsageInfo | undefined;
+  for (const [index, message] of messages.entries()) {
     const usage = assistantUsage(message);
-    if (usage !== undefined) return { usage, index };
+    // A replacement prefix, such as a compaction summary, invalidates usage
+    // reported before that prefix existed.
+    if (usage !== undefined && message.timestamp >= latestPrefixTimestamp) {
+      latest = { usage, index };
+    }
+    latestPrefixTimestamp = Math.max(latestPrefixTimestamp, message.timestamp);
   }
-  return undefined;
+  return latest;
 }
 
 export interface ContextUsageEstimate {
@@ -125,21 +127,27 @@ export interface ContextUsageEstimate {
 }
 
 export function estimateContextTokens(messages: readonly Message[]): ContextUsageEstimate {
-  const usageInfo = lastAssistantUsageInfo(messages);
+  return estimateContextTokensFromUsage(messages, lastAssistantUsageInfo(messages));
+}
+
+function estimateContextTokensFromUsage(
+  messages: readonly Message[],
+  usageInfo: AssistantUsageInfo | undefined,
+): ContextUsageEstimate {
   if (usageInfo === undefined) {
     const tokens = messages.reduce((sum, message) => sum + estimateTokens(message), 0);
     return { tokens, usageTokens: 0, trailingTokens: tokens, lastUsageIndex: null };
   }
 
-  const usageTokens = calculateContextTokens(usageInfo.usage);
+  const measuredTokens = usageTokens(usageInfo.usage);
   let trailingTokens = 0;
   for (let index = usageInfo.index + 1; index < messages.length; index += 1) {
     const message = messages[index];
     if (message !== undefined) trailingTokens += estimateTokens(message);
   }
   return {
-    tokens: usageTokens + trailingTokens,
-    usageTokens,
+    tokens: measuredTokens + trailingTokens,
+    usageTokens: measuredTokens,
     trailingTokens,
     lastUsageIndex: usageInfo.index,
   };
@@ -151,12 +159,27 @@ export function estimateModelContextTokens(
   target: Parameters<typeof modelContext>[1],
 ): ContextUsageEstimate {
   const context = modelContext(commits, target);
+  return estimateProjectedModelContextTokens(commits, target, context, () =>
+    lastAssistantUsageInfo(context.messages),
+  );
+}
+
+function estimateProjectedModelContextTokens(
+  commits: readonly Commit[],
+  target: Parameters<typeof modelContext>[1],
+  context: ReturnType<typeof modelContext>,
+  getUsageInfo: () => AssistantUsageInfo | undefined,
+): ContextUsageEstimate {
   const first = commits[0];
   if (first?.body.kind !== "checkpoint" || first.body.material === undefined) {
-    return estimateContextTokens(context.messages);
+    return estimateContextTokensFromUsage(context.messages, getUsageInfo());
   }
-  const afterCheckpoint = contextMessages(commits.slice(1));
-  const latest = lastAssistantUsageInfo(afterCheckpoint);
+  // Native context already is the normalized post-checkpoint tail. Portable
+  // context includes backup history, whose usage must be checked separately.
+  const afterCheckpoint =
+    context.checkpoint === undefined ? contextMessages(commits.slice(1)) : context.messages;
+  const latest =
+    context.checkpoint === undefined ? lastAssistantUsageInfo(afterCheckpoint) : getUsageInfo();
   const assistant = latest === undefined ? undefined : afterCheckpoint[latest.index];
   if (
     assistant?.role === "assistant" &&
@@ -164,7 +187,10 @@ export function estimateModelContextTokens(
     assistant.api === target.api &&
     assistant.model === target.model
   ) {
-    return estimateContextTokens(context.messages);
+    return estimateContextTokensFromUsage(
+      context.messages,
+      context.checkpoint === undefined ? getUsageInfo() : latest,
+    );
   }
   const trailingTokens = context.messages.reduce(
     (sum, message) => sum + estimateTokens(message),
@@ -197,13 +223,14 @@ export function projectContextStatus(
   contextWindow: number,
   target?: Parameters<typeof modelContext>[1],
 ): ContextStatus {
-  const messages =
-    target === undefined ? contextMessages(commits) : modelContext(commits, target).messages;
+  const context =
+    target === undefined ? { messages: contextMessages(commits) } : modelContext(commits, target);
+  const usageInfo = lastAssistantUsageInfo(context.messages);
   const estimate =
     target === undefined
-      ? estimateContextTokens(messages)
-      : estimateModelContextTokens(commits, target);
-  const lastUsage = lastAssistantUsageInfo(messages)?.usage;
+      ? estimateContextTokensFromUsage(context.messages, usageInfo)
+      : estimateProjectedModelContextTokens(commits, target, context, () => usageInfo);
+  const lastUsage = usageInfo?.usage;
   const base: ContextStatus = {
     estimatedTokens: estimate.tokens,
     usageTokens: estimate.usageTokens,
@@ -211,7 +238,7 @@ export function projectContextStatus(
     contextWindow,
   };
   const withLastUsage: ContextStatus =
-    lastUsage === undefined ? base : { ...base, lastTurnTokens: calculateContextTokens(lastUsage) };
+    lastUsage === undefined ? base : { ...base, lastTurnTokens: usageTokens(lastUsage) };
   return contextWindow > 0
     ? { ...withLastUsage, percent: Math.round((estimate.tokens / contextWindow) * 100) }
     : withLastUsage;

@@ -18,6 +18,7 @@ import type {
   ModelRef,
   Oid,
   RunPhase,
+  Selection,
   Seq,
   ToolProgress,
 } from "@nyte-ai/protocol";
@@ -29,11 +30,13 @@ import type {
  */
 export type {
   Actor,
+  Choice,
   Commit,
   CommitBody,
   ModelRef,
   Oid,
   RunPhase,
+  Selection,
   Seq,
   ToolProgress,
 } from "@nyte-ai/protocol";
@@ -79,7 +82,7 @@ export interface Run {
   readonly abortRequested?: true;
 }
 
-/** A tool call's durable states, one ref per call: intent, waiting, signal, result. */
+/** A tool call's durable states, one ref per call: intent, waiting, expired, signal, result. */
 export type Effect =
   | {
       readonly kind: "effect";
@@ -95,6 +98,16 @@ export type Effect =
   | {
       readonly kind: "effect";
       readonly state: "waiting";
+      readonly intent: Oid;
+      readonly at: number;
+      /** What a participant is asked to pick. Absent, the call waits on something else, such as a child session. */
+      readonly selection?: Selection;
+      /** Epoch ms after which a runner wakes the call unanswered. Absent, it waits indefinitely. */
+      readonly until?: number;
+    }
+  | {
+      readonly kind: "effect";
+      readonly state: "expired";
       readonly intent: Oid;
       readonly at: number;
     }

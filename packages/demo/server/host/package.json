@@ -1,0 +1,24 @@
+{
+  "name": "@nyte-ai/demo-server-host",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The one host composition the server demos share: a chat-only Nyte over a store, provider keys from the deployment's secrets, served by @nyte-ai/server.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "clean": "rm -rf node_modules .turbo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/core": "workspace:*",
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "typescript": "^7.0.2"
+  }
+}

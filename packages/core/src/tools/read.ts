@@ -9,9 +9,10 @@
  */
 import { readFile as fsReadFile } from "node:fs/promises";
 import { relative } from "node:path";
-import { Unsafe } from "typebox";
+import { Type } from "typebox";
 import type { AgentTool, AgentToolResult } from "../types.ts";
 import { toolResultContent } from "../utils/tool-result.ts";
+import { argumentParser } from "./support/arguments.ts";
 import { detectSupportedImageMimeType } from "./support/image.ts";
 import { resolveReadPathAsync } from "./support/path-utils.ts";
 import {
@@ -22,85 +23,17 @@ import {
   type TruncationResult,
 } from "./support/truncate.ts";
 
-export interface ReadToolInput {
-  /** Path to the file to read (relative or absolute) */
-  path: string;
-  /** Line number to start reading from (1-indexed) */
-  offset?: number;
-  /** Maximum number of lines to read */
-  limit?: number;
-}
-
 export interface ReadToolDetails {
   truncation?: TruncationResult;
 }
 
-const readParameters = Unsafe<ReadToolInput>({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Path to the file to read (relative or absolute)",
-    },
-    offset: {
-      type: "number",
-      description: "Line number to start reading from (1-indexed)",
-    },
-    limit: {
-      type: "number",
-      description: "Maximum number of lines to read",
-    },
-  },
-  required: ["path"],
+const readParameters = Type.Object({
+  path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
+  offset: Type.Optional(
+    Type.Number({ description: "Line number to start reading from (1-indexed)" }),
+  ),
+  limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
 });
-
-interface ReadInputFields {
-  readonly path?: unknown;
-  readonly offset?: unknown;
-  readonly limit?: unknown;
-}
-
-function isReadInputObject(value: unknown): value is ReadInputFields {
-  return typeof value === "object" && value !== null;
-}
-
-function hasReadPath(
-  value: ReadInputFields,
-): value is ReadInputFields & Pick<ReadToolInput, "path"> {
-  return typeof value.path === "string";
-}
-
-function hasValidReadOffset(
-  value: ReadInputFields,
-): value is ReadInputFields & Pick<ReadToolInput, "offset"> {
-  return value.offset === undefined || typeof value.offset === "number";
-}
-
-function hasValidReadLimit(
-  value: ReadInputFields,
-): value is ReadInputFields & Pick<ReadToolInput, "limit"> {
-  return value.limit === undefined || typeof value.limit === "number";
-}
-
-type ReadArgumentPreparer = NonNullable<
-  AgentTool<typeof readParameters, ReadToolDetails | undefined>["prepareArguments"]
->;
-
-const parseReadParams: ReadArgumentPreparer = (params) => {
-  if (!isReadInputObject(params)) {
-    throw new Error("Invalid arguments for read: expected an object");
-  }
-  if (!hasReadPath(params)) {
-    throw new Error('Invalid arguments for read: "path" must be a string');
-  }
-  if (!hasValidReadOffset(params)) {
-    throw new Error('Invalid arguments for read: "offset" must be a number');
-  }
-  if (!hasValidReadLimit(params)) {
-    throw new Error('Invalid arguments for read: "limit" must be a number');
-  }
-  return { path: params.path, offset: params.offset, limit: params.limit };
-};
 
 export function createReadTool(
   cwd: string,
@@ -111,7 +44,7 @@ export function createReadTool(
     promptSnippet: "Read file contents",
     promptGuidelines: ["Use read to examine files instead of cat or sed."],
     parameters: readParameters,
-    prepareArguments: parseReadParams,
+    prepareArguments: argumentParser(readParameters),
     async execute(_toolCallId, { path, offset, limit }, signal?) {
       const throwIfAborted = (): void => {
         if (signal?.aborted) throw new Error("Operation aborted");

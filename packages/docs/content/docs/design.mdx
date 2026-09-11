@@ -11,7 +11,7 @@ kernel that exists today, checked against `packages/core/src/kernel` as of this 
 
 The yardstick for every section is the same. What is the smallest set of mechanisms that keeps
 the promises below? If a feature can be a projection, it is a projection. If it can be a ref, it
-is a ref. If a verb can be one compare-and-swap, it is one compare-and-swap. I have tried to be
+is a ref. If an operation can be one compare-and-swap, it is one compare-and-swap. I have tried to be
 ruthless about this, because every extra mechanism is another thing that can disagree with the
 others at 3am.
 
@@ -63,20 +63,25 @@ count down. One per fact, and a new mechanism needs a new fact behind it.
 | Clients may return after retained events have expired  | The event floor rejects the cursor and the client takes a snapshot           | [Events and views](#events-and-views)   |
 | A network client can fail between Enter and a receipt  | A local outbox retries one idempotency key                                   | [Admission](#admission-is-open)         |
 | Users change their minds                               | History is a tree and a head is a movable ref                                | [Heads](#heads-are-named-refs)          |
+| A participant may never answer a parked call           | An optional deadline lives on the waiting effect and wakes through the step  | [Runs](#runs)                           |
 
 ### Roles
 
 Six roles. One process can play several at once. The TUI plays all of them. A phone plays only
 client.
 
-| Role   | Is                                                                                                          |
-| ------ | ----------------------------------------------------------------------------------------------------------- |
-| store  | The four durable authorities: objects, refs, leases, and events. A session is one repository.               |
-| runner | Code that holds a fenced lease over one head and advances its run one durable step at a time.               |
-| host   | A process that opens the store, supplies models and plugins, and may volunteer runners.                     |
-| client | Code that calls SDK verbs, renders snapshots and events, and keeps a cursor plus a local submission outbox. |
-| plugin | Host-side code that contributes model context, tools, commands, settings, resources, and policy.            |
-| schema | The shared message and JSON types used at the object boundary, by the agent loop, and by clients.           |
+| Role   | Is                                                                                                               |
+| ------ | ---------------------------------------------------------------------------------------------------------------- |
+| store  | The four durable authorities: objects, refs, leases, and events. A session is one repository.                    |
+| runner | Code that holds a fenced lease over one head and advances its run one durable step at a time.                    |
+| host   | A process that opens the store, supplies models and plugins, and may volunteer runners.                          |
+| client | Code that calls SDK operations, renders snapshots and events, and keeps a cursor plus a local submission outbox. |
+| plugin | Host-side code that contributes model context, tools, commands, settings, resources, and policy.                 |
+| schema | The shared message and JSON types used at the object boundary, by the agent loop, and by clients.                |
+
+Protocol adds the shapes a client draws without knowing who produced them: `Choice` and
+`Selection` today, beside the setting, notification, and status shapes. They are data, never
+calls.
 
 ## The model, in git terms
 
@@ -136,7 +141,7 @@ There are six object kinds:
 | `commit` | One point in a conversation, with one parent, optional imports, provenance, and a body.                  |
 | `change` | A commit body waiting for a parent, linked to the prior change in the same lane.                         |
 | `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request. |
-| `effect` | One tool call's durable state: `intent`, `waiting`, `signal`, or `result`.                               |
+| `effect` | One tool call's durable state: `intent`, `waiting`, `expired`, `signal`, or `result`.                    |
 | `stack`  | The parent head and base commit for a stacked head.                                                      |
 | `blob`   | A small JSON value behind a fact, cancellation marker, or deletion marker.                               |
 
@@ -182,7 +187,7 @@ refs/stacks/<head>             Stack { parent, base }
 refs/queues/<head>/<lane>/tip  newest submitted Change in the lane
 refs/queues/<head>/<lane>/base last landed Change; pending is (base, tip]
 refs/runs/<head>               current Run object and phase
-refs/effects/<run>/<call>      Effect: intent -> waiting -> signal -> result
+refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
 refs/keys/<key>                idempotency receipt naming the Change
 refs/facts/<key>               Blob holding a small session value
 refs/cancelled/<change>        Blob tombstone for a withdrawn Change
@@ -233,7 +238,7 @@ throws `CursorExpired`.
 ## Heads are named refs
 
 A head is `refs/heads/<head>` pointing to a commit oid, or absent for an unborn branch. The head
-name supplied to a verb defaults to `main`. It is client state, not a stored current-checkout
+name supplied to an operation defaults to `main`. It is client state, not a stored current-checkout
 register. Two clients may use different heads in one session and neither has to know.
 
 ### Moves and live runs
@@ -352,7 +357,7 @@ The phases are:
 | --------- | --------------------------------------------------------------------------------- |
 | `respond` | The next step may land a boundary-lane change, then ask the model for an answer.  |
 | `tools`   | The assistant message has tool calls to recover or execute.                       |
-| `waiting` | At least one effect is parked until a signal or abort arrives.                    |
+| `waiting` | At least one effect is parked until a signal, deadline, or abort arrives.         |
 | `retry`   | A provider attempt failed transiently and may resume at the stored time.          |
 | `done`    | The run completed.                                                                |
 | `aborted` | The participant, host signal, deletion, or superseding head move stopped the run. |
@@ -375,7 +380,7 @@ Otherwise the step follows this table:
 | `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                    | head, lane base                                |
 | `respond`        | nothing landable      | call `turn.respond` over projected branch context                                    | assistant commit at head, next run phase       |
 | `tools`          | any                   | call `turn.tools`, commit settled results, or park                                   | result commits, effect cleanup, next run phase |
-| `waiting`        | any                   | call tools again after a signal or abort, otherwise return `waiting`                 | the same publish as `tools` when it wakes      |
+| `waiting`        | any                   | wake on a signal, deadline, or abort; otherwise return `waiting { until? }`          | the same publish as `tools` when it wakes      |
 | `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                             | none until responding                          |
 
 Two small rules sit inside the `respond` row. First, an abort request already on the run stores
@@ -397,9 +402,10 @@ lands it.
 Each tool call owns `refs/effects/<run>/<call>`. The ref moves through immutable effect objects:
 
 ```text
-intent -> waiting -> signal -> result
-   |                     |
-   +-------------------->+
+                   +-> signal --+
+intent -> waiting -|            +-> result
+   |               +-> expired -+
+   +------------------------------>
 ```
 
 The runner writes `intent` before executing the tool. The intent stores the run id, call id, tool,
@@ -408,7 +414,8 @@ JSON arguments, replay policy, and time. Recovery depends only on the ref state:
 | State     | Recovery                                                          |
 | --------- | ----------------------------------------------------------------- |
 | `intent`  | execute again for `safe`; settle an interrupted error for `never` |
-| `waiting` | remain blocked unless the run is aborted                          |
+| `waiting` | remain blocked unless the run is aborted or its deadline passes   |
+| `expired` | call the tool's wake handler with `expired: true`                 |
 | `signal`  | call the tool's wake handler with the first reply                 |
 | `result`  | reuse the stored tool-result message and never execute again      |
 
@@ -417,8 +424,9 @@ tool has to opt into being run twice, because the kernel cannot know whether "se
 idempotent.
 
 A tool parks by moving the effect ref to `waiting`. A participant replies by comparing that exact
-waiting oid and moving the ref to `signal`. The first signal wins. A later reply returns
-`not_waiting`. The wake handler may settle a result or park again.
+waiting oid and moving the ref to `signal`. At the deadline, a runner compares the same oid and
+moves the ref to `expired`. Those updates have one winner. Only then does the runner call the wake
+handler. A later reply returns `not_waiting`. The wake handler may settle a result or park again.
 
 When a tool batch completes, one runner CAS advances the conversation head with result commits,
 moves the run back to `respond`, and deletes the run's effect refs. A failed batch stores a failed
@@ -432,13 +440,42 @@ that for an HTTP call is lying.
 ### Wait and wake
 
 A waiting run needs no live process and no held lease. Its run ref and effect refs contain
-everything needed to resume. `runs.reply` targets a call id, optionally checks a run id, and uses
-the effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and `not_found`.
+everything needed to resume. `runs.reply` targets a call id and its exact `waitId`, optionally checks
+a run id, and uses the effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and
+`not_found`.
 
-On the next acquired step, a `waiting` run calls tools again if any effect has a signal or the run
-has an abort request. Otherwise the step returns `waiting`. Ordinary submitted messages stay in
-their lane while the run waits. A tool reply is a signal, not a conversation message, and the two
-never get confused for each other.
+On the next acquired step, a `waiting` run calls tools again if any effect has a signal or expiry,
+its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
+`waiting` with that nearest deadline so a hot host can schedule another step. Ordinary submitted messages
+stay in their lane while the run waits. A tool reply is a signal, not a conversation message, and
+the two never get confused for each other.
+
+A wait that needs a participant says so. The waiting effect may carry a `selection`: a `Selection`,
+which is a title, a non-empty list of `Choice`s with ids and labels, optional `multiple: true`, and
+optionally `other`, the placeholder under which the participant's own words are accepted. A client
+answers with a `SelectionReply` that keeps picked ids and own text in separate fields. Text that
+looks like an id therefore stays text. A selection is data, not a call into a client. It lives on
+the ref, rides the `effect` event, and appears on the snapshot's `parked` list with a `waitId`
+that identifies that exact waiting effect, so the phone in scene 3 renders it an hour later
+without the tool's schema or the plugin that parked it. Re-parking the same call produces a new
+`waitId`; clients use it to discard local picks and reopen the new wait. A client renders a
+selection generically. A wait without one is background work, such as a delegated child, and a
+client **must not** present it as a request for input. Core and clients decide this by the
+selection's presence, never by the tool's name. What a plugin parks with is checked against the
+`Selection` schema before it is written; a malformed one fails that call as a tool error.
+
+A waiting effect may also carry `until`, an epoch-ms deadline. The deadline is durable state, not a
+client timer. At or after it, a participant reply returns `not_waiting`. A runner first moves the
+exact waiting effect to `expired`, then calls the tool's wake handler with `expired: true` and no
+reply. A crash between those actions leaves an `expired` effect for the next runner to wake. The
+handler settles or parks again with a new `waitId` and deadline. Desktop and TUI may close their panels at the same time, but closing a panel
+never settles the effect. A host step does. Local timers are only wake-up hints and must re-check
+the epoch deadline, including when it exceeds the platform's maximum timer delay.
+
+`Choice`, `Selection`, and `SelectionReply` are protocol's first UI shapes: vocabulary a plugin
+fills, core carries, and any client draws. They deliberately do not grow toward a widget language. A plugin
+that needs a richer rendering than a list gets it from a client-side presenter keyed by tool name,
+the same way tool results do, never from a bigger shape in core.
 
 ### Retries
 
@@ -537,6 +574,10 @@ The only ways a pending change stops being visible are landing and an explicit c
 tombstone. A failed, aborted, or superseded run leaves pending changes in their chains. A
 reconnecting client asks the store for pending and sees the same set as every other client.
 
+An abort interrupts a step, not the run: the runner cancels the call in flight, keeps whatever
+it produced, and at the next response boundary lands a message waiting in a boundary lane into
+the same run, clearing the flag. Only an empty boundary queue ends the run as `aborted`.
+
 Each store transaction is atomic. If submit throws because the disk is full or the connection is
 lost, it may have written an unreachable loose object, but it has not half-applied a ref update.
 Core does not repair an unknown request. The client retries.
@@ -607,7 +648,7 @@ Three placements use the same store and step contract:
 
 - **Embedded.** The host process is also runner and client. The TUI and desktop use a local store
   and in-process watch.
-- **Server.** A long-lived host owns a store, attaches runners, and exposes SDK verbs over a wire.
+- **Server.** A long-lived host owns a store, attaches runners, and exposes SDK operations over a wire.
 - **Serverless.** A request or alarm opens a session, calls `step`, and exits. A remote backend
   supplies the same four authorities.
 
@@ -678,7 +719,7 @@ A command runs at once with the argument typed after it. It answers with text fo
 `prompt` the client sends as the user's next message, or with nothing. A plugin acts on its own
 session through `api.session`: `info` (the name, and whether the session is a child), `rename`,
 and `context` (the main branch as the model would see it next). A plugin that needs more asks for
-a new verb here. It does not reach for the store.
+a new operation here. It does not reach for the store.
 
 Hooks and events are two lists on purpose, the way a pre-commit hook and a post-receive hook are.
 A hook handler returns something the runner reads, so it can refuse or rewrite what is about to
@@ -686,10 +727,17 @@ happen. `api.events.subscribe` delivers the same `SessionEvent` stream a client 
 fact, and nothing a listener returns or throws reaches the run. Observers built on it, such as
 notifications and the footer's status items, cannot become interceptors by accident.
 
-Two more ways a plugin reaches the user without touching the conversation: `diagnostics.notify`
-asks for attention (a title, a message, and whether to make a sound), and the `status` registry
-holds short items a client shows beside the model. Both travel as events, `notification` and
-`status_changed`, so every client renders them the same way.
+Three more ways a plugin reaches the user without touching the conversation: `diagnostics.notify`
+asks for attention (a title, a message, and whether to make a sound), the `status` registry holds
+short items a client shows beside the model, and a tool that needs an answer parks with a
+`Selection` (`throw new ToolWait({ selection, until })`, or `{ kind: "wait", selection, until }`
+from its wake handler). All three travel as data, `notification` and `status_changed` events and
+the waiting effect, so every client renders them the same way and none of them names a plugin.
+There is no `ui` namespace of calls a plugin makes into a client, because there is no attached client to call:
+a phone that connects tomorrow must see the same thing, and only data on a ref or an event can
+promise that. A tool may declare `availability: "foreground"` when it cannot run after its session
+moves to background. That is host placement metadata. It says nothing about the tool's name or
+what selection it may create.
 
 Activation is per session and per host process. Handlers **must** be re-entrant. Cross-step state
 belongs behind session fact refs or in a host-owned service, never in a runner closure. Plugin
@@ -701,12 +749,19 @@ in the same event stream as every other domain ref.
 
 ## Agents
 
-An agent is a host-resolved plugin contribution, not a second runner type. A run stores the folded
-agent name in its `config`. A parent names an agent. It does not pass a model, prompt, or enlarged
-tool set through a tool call.
+An agent is a host-resolved session preset, not a second runner type. A run using a preset stores
+its name in `config`. Delegation does not require a preset: the parent supplies a prompt and an
+exact `provider/model` through `task`. Its tool schema lists available models across authenticated
+providers, refreshed for each request. The parent honors the user's requested model or chooses one
+suited to the task. There is no global model override or automatic model substitution.
+
+The child receives the shared session tools except `task` and `stop_task`, with its role and constraints
+supplied in the prompt. Its config records the exact model and the optional `task.thinkingLevel`
+override, or inherits the parent's thinking level when omitted. Availability is checked before child creation. A model lost from the catalog before execution fails the child
+rather than replacing the selected model with the host default.
 
 Child work is a child session with durable parent coordinates stored as a `parent` fact: parent
-session, run, call, agent, and depth. `sessions.create({ parent })` writes them, `sessions.list({
+session, run, call, and depth. `sessions.create({ parent })` writes them, `sessions.list({
 parent })` finds the children, and a plugin reads `session.info().child`. Durable child completion
 **must** travel through stored state, never through a process-local registry the model queries.
 
@@ -715,11 +770,17 @@ runs independently, so a tool batch may run several children at once and the par
 while it waits. Child completion signals the parent's effect; the wake handler reads the result from
 the child session rather than trusting process-local state. The SDK installs `task` only in root
 sessions, so delegation depth is 1. A client presents a parked task as background work rather than
-as a request for user input; it can expose the live child transcript through the child session.
+as a request for user input. Desktop exposes the live child transcript from the parent task or jobs
+panel, not as a separate sidebar thread.
+
+The parent can call `stop_task({ jobId })` with the ID returned by a background task. This cancels
+that child and its running work through the same durable cancellation used by clients. Only subagent
+jobs owned by the calling session can be stopped. Finished jobs stay unchanged; unknown job IDs
+return a tool error. Stopping a task does not abort the parent run.
 
 ## The SDK
 
-The kernel SDK is plain data and one options object per verb. `SessionId` is the only branded id.
+The kernel SDK is plain data and one options object per operation. `SessionId` is the only branded id.
 Run ids, head names, oids, and sequences use fields that name their meaning. `main` is the default
 head.
 
@@ -737,6 +798,7 @@ Nyte
   plugins    list · commands.list · commands.run · settings.list · settings.apply · resources.list · status.list
   watch({ sessionId, afterSeq? } | { sessionId, live: true })
   attach({ sessions? })
+  reactivate()
   setPlugins(plugins)
   close()
 ```
@@ -746,6 +808,10 @@ Nyte
 `compaction`, stream options, VCS, and a workspace registry. Static composition supplies `plugins`
 and `env`. Lazy composition supplies `resolveActivation` and must not also supply static plugins or
 env.
+
+`SessionInfo.activation` is host-local state. `activation_changed` is replayed once on every watch
+with the latest durable sequence, but it is not ordered by the snapshot's `seq` and does not enter
+the durable event stream. `reactivate()` asks the host resolver again for blocked sessions.
 
 `runs.compact` writes a manual checkpoint. `heads.move({ summary })` carries abandoned history to
 the navigation target with a summary commit. `runs.wait` resolves `idle` only once the run is
@@ -787,7 +853,8 @@ run              { head, run }
 queued           { head, item }
 landed           { head, change }
 queue_cancelled  { change }
-effect           { runId, callId, state: intent | waiting | signal | result, tool, args }
+effect           { runId, callId, state: intent | expired | signal | result, tool, args }
+effect           { runId, callId, state: waiting, waitId, tool, args, selection?, until? }
 stack            { head, parent, base }
 fact             { key, value }
 deleted
@@ -799,6 +866,7 @@ diagnostic       { level: info | warn | error, owner, message }
 plugins_changed  { plugins }
 notification     { owner, title?, message, sound }
 status_changed   { items }
+activation_changed { activation }
 ```
 
 The SDK event contract has no claim events, entry ids, retry overlay, compacting overlay, or
@@ -833,14 +901,14 @@ Leases and runs:
 9. Any runner may acquire an expired head lease and resume the run named by refs. It recovers an
    effect from its stored state and replay policy and never executes a stored result again.
 10. **Superseded.** Tools no longer provision a result entry id. An effect ref names immutable
-    intent, waiting, signal, and result objects, and result messages enter the branch at tool-batch
-    publish.
+    intent, waiting, expired, signal, and result objects, and result messages enter the branch at
+    tool-batch publish.
 11. **Superseded.** The kernel cannot promise eventual completion without a runner. A run remains
     durable in its current phase until some process advances it.
 12. A runner requires no in-memory state that outlives a step. The next step reads the head, run,
     queue, effect, and deletion refs.
-13. **Superseded.** Wake input is not ordinary message admission. A waiting run is woken by the
-    first CAS from an effect's waiting state to its signal state, or by abort.
+13. **Superseded.** Wake input is not ordinary message admission. A waiting run is woken by a
+    signal, a durable expiry claim, or abort.
 
 Turn and boundaries:
 
@@ -865,7 +933,7 @@ Policy:
 21. Extension failures are contained, extension capabilities may degrade across hosts, and project
     extension code **must not** load before trust.
 22. Core has no global mutable defaults. The stream function and model catalog are injected.
-23. No public SDK verb encodes a wall-clock execution budget. Lease TTL is failover metadata;
+23. No public SDK operation encodes a wall-clock execution budget. Lease TTL is failover metadata;
     hosts own execution budgets.
 
 Plugins:
@@ -881,8 +949,8 @@ Agents:
 
 27. An agent is one plugin registry contribution. There is no separate subagent runner type, and
     its mode never grants a capability.
-28. A parent selects an agent by name. It **must not** set the child's model, prompt, tools, or a
-    weaker policy through model-supplied arguments.
+28. A parent selects an agent by name. It **must not** set the child's model, system prompt, tools,
+    or a weaker policy through model-supplied arguments.
 29. **Superseded.** There is no `operation_started` record. The run object stores configuration
     folded from config commits when the run starts.
 30. A model-facing background job settles through durable session state, never through a
@@ -929,6 +997,19 @@ Kernel CAS, queues, retention, and streaming:
     exchange, so `Tool.parameters` crosses the wire without conversion, and hosts validate
     their own boundaries with the same library. Only Node-side code imports `typebox/compile`;
     a renderer under a no-eval CSP checks through `typebox/value`.
+45. A client **must** be able to render and answer any parked call that carries a `Selection`
+    from the snapshot alone, and **must not** present one without as a request for input. Core,
+    projections, and clients decide which is which by the selection's presence, never by the
+    tool's name. A selection is made durable JSON and checked before the ref is written, so no
+    plugin can leave an effect ref no reader can parse. Every parked call carries the waiting
+    effect oid as `waitId`; re-parking the same call changes it so clients reset generation-local
+    state.
+46. A waiting effect's optional `until` is the authority for timeout. At or after it, a runner
+    **must** claim the exact waiting oid by moving it to `expired` before it wakes the tool with
+    `expired: true`. A participant reply and that expiry claim race through the same ref CAS, so
+    only one wins. A client may close its panel but **must not** manufacture a reply or settle the
+    effect. Re-parking after expiry requires a new wait and, when it should expire again, a new
+    deadline.
 
 ## Open questions
 
@@ -960,6 +1041,6 @@ revision, with staleness as an equality check. The kernel does not copy their co
 Generated conversation text is not a patch you can reapply safely, and pretending otherwise is how
 you end up with a transcript the model never said.
 
-The plain-object, one-options-object-per-verb SDK form follows `code.storage`. Nyte keeps that
+The plain-object, one-options-object-per-operation SDK form follows `code.storage`. Nyte keeps that
 wire-friendly shape while exposing kernel oids, run phases, lane names, and the event cursor
 directly.

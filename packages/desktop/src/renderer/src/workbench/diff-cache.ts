@@ -2,7 +2,7 @@ import type { ParsedDiff } from "../conversation/tool-detail.ts";
 import { parseUnifiedPatch } from "../conversation/tool-detail.ts";
 import type { VcsDiffIdentity } from "../queries.ts";
 
-const MAX_PARSED_DIFFS = 96;
+const MAX_PARSED_DIFFS = 256;
 
 interface ParsedDiffCacheEntry {
   readonly patch: string;

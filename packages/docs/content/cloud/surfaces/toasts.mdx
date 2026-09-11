@@ -1,0 +1,42 @@
+---
+title: Toasts and notices
+description: "Where a message goes when it is not part of a form or a transcript"
+---
+
+<HostMatrix
+  primitive={{ label: "@nyte-ai/ui/sonner", href: "/cloud/headless" }}
+  desktop={{ label: "components/toaster.tsx", href: "/cloud/desktop/toaster" }}
+  terminal={{
+    label: "shell.ts notice()",
+    note: "the Ephemeral slot under the composer (later pass)",
+  }}
+/>
+
+## Decision table
+
+| The message is…                                     | Use                                          | Example                                         |
+| --------------------------------------------------- | -------------------------------------------- | ----------------------------------------------- |
+| An outcome of something the user just did, in place | Inline `role="status"` / `role="alert"` text | Saved / Unsaved changes in the file editor      |
+| An outcome of something in the background           | `toast(...)`                                 | Couldn't open folder                            |
+| A question the run is waiting on                    | Inline card                                  | [Consent](/cloud/surfaces/consent)              |
+| A question nothing can proceed without              | Alert dialog                                 | Delete chat?, Do you trust this folder?         |
+| A count or state the user watches                   | Live region, one stable node                 | Palette result count, customize inventory count |
+
+## Live regions
+
+- One node, mounted for the life of the surface. Replacing the node re-announces from scratch.
+- `role="status"` for progress and success; `role="alert"` for failure.
+- `aria-busy` on the container while a request is in flight.
+- `srOnly` text where the visual state is color or motion only ([tool calls](/cloud/surfaces/transcript#tool-calls-the-locked-law)).
+
+## Toasts
+
+Configuration and rules are on the [Toaster](/cloud/desktop/toaster) page. In short: give a
+repeatable toast an `id`, keep titles short, and let a failure that blocks the user stay until
+dismissed (`duration: Infinity`).
+
+## Session state
+
+Session rows and palette results show state through `StatusDot`, a labelled `role="img"`:
+Idle, Running, Needs attention, Retrying, Failed. See
+[Button and focus › StatusDot](/cloud/desktop/button#statusdot).

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, test } from "vitest";
 import { discoverMentionFiles } from "../src/mention-files.ts";
@@ -11,6 +11,15 @@ const roots: string[] = [];
 function scratch(): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "nyte-mentions-")));
   roots.push(root);
+  return root;
+}
+
+function fixture(files: Record<string, string>): string {
+  const root = scratch();
+  for (const [path, contents] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), contents);
+  }
   return root;
 }
 
@@ -40,20 +49,140 @@ describe("discoverMentionFiles", () => {
     assert.equal(folder?.url, pathToFileURL(join(root, "src")).href);
     const index = files.find((file) => file.label === "index.ts");
     assert.equal(index?.url, pathToFileURL(join(root, "src", "index.ts")).href);
+    assert.deepEqual(await discoverMentionFiles(join(root, "missing")), []);
   });
 
-  test("skips generated trees", async () => {
-    const root = scratch();
-    mkdirSync(join(root, "node_modules", "dep"), { recursive: true });
-    writeFileSync(join(root, "node_modules", "dep", "index.js"), "");
-    mkdirSync(join(root, ".git"));
-    writeFileSync(join(root, "app.ts"), "");
-
-    const files = await discoverMentionFiles(root);
+  test("applies Git patterns and directory-only rules case-sensitively, keeping nonignored hidden entries", async () => {
+    const root = fixture({
+      ".gitignore":
+        "# comment\n\\#secret\n\\!secret\n**/generated/*.js\ncache/\n*.LOG\nnode_modules/\n.cache/\n",
+      "#secret": "",
+      "!secret": "",
+      comment: "",
+      "cache/data": "",
+      "src/cache": "",
+      "src/generated/drop.js": "",
+      "src/generated/keep.ts": "",
+      "drop.LOG": "",
+      "debug.log": "",
+      "node_modules/dep/index.js": "",
+      ".cache/state": "",
+      ".env.example": "",
+      ".github/workflows/test.yml": "",
+    });
 
     assert.deepEqual(
-      files.map((file) => file.displayPath),
-      ["app.ts"],
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      [
+        ".env.example",
+        ".github/",
+        ".github/workflows/",
+        ".github/workflows/test.yml",
+        ".gitignore",
+        "comment",
+        "debug.log",
+        "src/",
+        "src/cache",
+        "src/generated/",
+        "src/generated/keep.ts",
+      ],
+    );
+  });
+
+  test("nested rules override ancestors without leaking into siblings", async () => {
+    const root = fixture({
+      ".gitignore": "*.log\n*.tmp\n/root-only.txt\n",
+      "root-only.txt": "",
+      "root.log": "",
+      "src/.gitignore": "!keep.log\n/local.txt\nprivate/\n",
+      "src/keep.log": "",
+      "src/drop.log": "",
+      "src/drop.tmp": "",
+      "src/local.txt": "",
+      "src/root-only.txt": "",
+      "src/private/secret.txt": "",
+      "src/deep/.gitignore": "keep.log\n!drop.tmp\n",
+      "src/deep/keep.log": "",
+      "src/deep/drop.tmp": "",
+      "src/deep/local.txt": "",
+      "other/keep.log": "",
+      "other/local.txt": "",
+    });
+
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      [
+        ".gitignore",
+        "other/",
+        "other/local.txt",
+        "src/",
+        "src/.gitignore",
+        "src/deep/",
+        "src/deep/.gitignore",
+        "src/deep/drop.tmp",
+        "src/deep/local.txt",
+        "src/keep.log",
+        "src/root-only.txt",
+      ],
+    );
+  });
+
+  test("negation restores files only when every parent directory is included", async () => {
+    const root = fixture({
+      ".gitignore": [
+        "blocked/",
+        "!blocked/keep.txt",
+        "opened/",
+        "!opened/",
+        "opened/*",
+        "!opened/keep.txt",
+        "!opened/nested/",
+        "opened/nested/*",
+        "!opened/nested/keep.txt",
+        "",
+      ].join("\n"),
+      "blocked/.gitignore": "!keep.txt\n",
+      "blocked/keep.txt": "",
+      "opened/keep.txt": "",
+      "opened/drop.txt": "",
+      "opened/nested/keep.txt": "",
+      "opened/nested/drop.txt": "",
+    });
+
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      [".gitignore", "opened/", "opened/keep.txt", "opened/nested/", "opened/nested/keep.txt"],
+    );
+  });
+
+  test("always excludes .git directories and worktree metadata files", async () => {
+    const root = fixture({
+      ".gitignore": "!.git/\n!.git\n",
+      ".git/config": "",
+      "nested/.git": "gitdir: /outside/worktree",
+      "nested/app.ts": "",
+    });
+
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      [".gitignore", "nested/", "nested/app.ts"],
+    );
+  });
+
+  test("does not follow file, directory, dangling, or .gitignore symlinks", async () => {
+    const outside = fixture({ "secret.txt": "", "ignore-rules": "*.ts\n" });
+    const root = fixture({ "app.ts": "", "src/index.ts": "" });
+    symlinkSync(outside, join(root, "outside"), "dir");
+    symlinkSync(root, join(root, "src", "cycle"), "dir");
+    symlinkSync(join(root, "src"), join(root, "linked-src"), "dir");
+    symlinkSync(join(outside, "secret.txt"), join(root, "linked-secret"), "file");
+    symlinkSync(join(root, "app.ts"), join(root, "linked-app"), "file");
+    symlinkSync(join(root, "missing"), join(root, "dangling"), "file");
+    symlinkSync(join(outside, "ignore-rules"), join(root, ".gitignore"), "file");
+
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      ["app.ts", "src/", "src/index.ts"],
     );
   });
 });

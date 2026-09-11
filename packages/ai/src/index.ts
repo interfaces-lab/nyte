@@ -8,26 +8,23 @@
 export type { Static, TSchema } from "typebox";
 export { Type } from "typebox";
 
-export {
-  fetchAnthropicAccountLimits,
-  type AnthropicEffort,
-  type AnthropicOptions,
-  type AnthropicThinkingDisplay,
+// Provider clients load on first use; only types and deferred calls are exported here.
+export type {
+  AnthropicEffort,
+  AnthropicOptions,
+  AnthropicThinkingDisplay,
 } from "./api/anthropic-messages.ts";
+export * from "./api/deferred.ts";
 export type { GoogleOptions } from "./api/google-generative-ai.ts";
 export * from "./api/lazy.ts";
-export {
-  compactOpenAICodexContext,
-  fetchOpenAICodexAccountLimits,
-  type OpenAICodexCompactResult,
-  type OpenAICodexResponsesOptions,
-  type OpenAICodexWebSocketDebugStats,
+export { OpenAICodexCompactionError } from "./api/openai-codex-compaction-error.ts";
+export type {
+  OpenAICodexCompactResult,
+  OpenAICodexResponsesOptions,
+  OpenAICodexWebSocketDebugStats,
 } from "./api/openai-codex-responses.ts";
 export type { OpenAICompletionsOptions } from "./api/openai-completions.ts";
-export {
-  compactOpenAIResponsesContext,
-  type OpenAIResponsesOptions,
-} from "./api/openai-responses.ts";
+export type { OpenAIResponsesOptions } from "./api/openai-responses.ts";
 export type { OpenAICompactResult } from "./api/openai-compact.ts";
 export * from "./auth/context.ts";
 export * from "./auth/credential-store.ts";

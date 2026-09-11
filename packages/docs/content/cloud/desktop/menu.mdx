@@ -1,0 +1,193 @@
+---
+title: Menu
+description: "components/menu.tsx: the one menu surface for pane headers, sidebar filters, model chip, context menus, and the command palette"
+---
+
+```ts title="Import"
+import {
+  CommandMenu,
+  ContextMenu,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  Menu,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSubmenu,
+  MenuSwitchItem,
+} from "../components/menu.tsx";
+```
+
+File: `packages/desktop/src/renderer/src/components/menu.tsx`, over
+[`@nyte-ai/ui/menu`](/cloud/headless/menu) and
+[`@nyte-ai/ui/context-menu`](/cloud/headless/context-menu). From its header:
+
+> The desktop's menu, over Base UI's Menu: positioning, focus, typeahead, dismissal, and roving
+> tab index are the library's job. This file decides geometry and colour once, so the pane header,
+> the sidebar filter, and the model chip all open the same surface.
+>
+> Every item reserves the leading icon slot and the trailing meta column whether or not it uses
+> them, so labels start and end on the same edges in every menu.
+
+## Anatomy
+
+```tsx
+<Menu label="Session" trigger={<button>…</button>}>
+  <MenuItem icon="pencil" meta={<Kbd keys={["⌘", "R"]} plain />} onSelect={rename}>Rename</MenuItem>
+  <MenuSeparator />
+  <MenuRadioGroup value={effort} onValueChange={setEffort}>
+    <MenuRadioItem value="low">Low</MenuRadioItem>
+  </MenuRadioGroup>
+  <MenuCheckboxItem checked={showAll} onCheckedChange={setShowAll}>Show all turns</MenuCheckboxItem>
+  <MenuSwitchItem tone="green" checked={wrap} onCheckedChange={setWrap}>Word wrap</MenuSwitchItem>
+  <MenuSubmenu label="Move to" value="Inbox">
+    <MenuItem onSelect={…}>Archive</MenuItem>
+  </MenuSubmenu>
+  <MenuGroup label="Filters" action={{ label: "Reset", onSelect: reset }}>…</MenuGroup>
+  <MenuItem danger onSelect={remove}>Delete</MenuItem>
+</Menu>
+```
+
+Every item body is three columns: leading (icon slot, 14px or 12px when `size="small"`), label,
+and meta. `layout="plain"` drops the leading slot for lists that never carry icons (thinking levels
+in the model picker).
+
+## `Menu`
+
+| Prop                   | Type                              | Default    | Description                                                         |
+| ---------------------- | --------------------------------- | ---------- | ------------------------------------------------------------------- |
+| `label`                | `string`                          |            | Required. `aria-label` on the popup.                                |
+| `id`                   | `string`                          |            | Popup DOM id, "so a combobox can point `aria-controls` at it."      |
+| `trigger`              | `ReactElement`                    |            | Required. "Base UI merges the trigger props into it."               |
+| `side`                 | `Menu.Positioner.Props["side"]`   | `"bottom"` |                                                                     |
+| `align`                | `Menu.Positioner.Props["align"]`  | `"start"`  |                                                                     |
+| `anchor`               | `Menu.Positioner.Props["anchor"]` |            | Position against something other than the trigger.                  |
+| `sideOffset`           | `number`                          | `4`        |                                                                     |
+| `alignOffset`          | `number`                          |            |                                                                     |
+| `collisionPadding`     | `number`                          | `8`        |                                                                     |
+| `popupStyle`           | `StyleXStyles`                    |            | "Popup overrides such as a wider surface for long lists."           |
+| `open`                 | `boolean`                         |            | Controlled open.                                                    |
+| `modal`                | `boolean`                         |            | Forwarded to Root.                                                  |
+| `loopFocus`            | `boolean`                         |            | Forwarded to Root.                                                  |
+| `highlightItemOnHover` | `boolean`                         |            | Forwarded to Root.                                                  |
+| `onOpenChange`         | `(open: boolean) => void`         |            |                                                                     |
+| `onOpenChangeComplete` | `(open: boolean) => void`         |            | After the exit transition; the model picker clears its search here. |
+
+Fixed decisions: `positionMethod="fixed"`, collision avoidance `{ side: "flip", align: "shift",
+fallbackAxisSide: "none" }`, popup width `min(max(control.menuWidth, --anchor-width),
+--available-width)` and max 320px, `overscroll-behavior: contain`, and a 2px slide + 0.98 scale
+enter/exit keyed on `data-side`.
+
+## `MenuItem`
+
+| Prop                  | Type                               | Default    | Description                                           |
+| --------------------- | ---------------------------------- | ---------- | ----------------------------------------------------- |
+| `onSelect`            | `() => void`                       |            | Required. Base UI `onClick`.                          |
+| `icon`                | `IconName`                         |            | Leading glyph.                                        |
+| `leading`             | `ReactNode`                        |            | Replaces `icon` (a `StatusDot`, a provider mark).     |
+| `meta`                | `ReactNode`                        |            | "Right column: a shortcut, a count, a provider name." |
+| `size`                | `"medium" \| "small" \| "compact"` | `"medium"` |                                                       |
+| `layout`              | `"menu" \| "plain"`                | `"menu"`   | `plain` removes the icon column.                      |
+| `disabled`            | `boolean`                          | `false`    |                                                       |
+| `danger`              | `boolean`                          | `false`    | Danger text color and highlight.                      |
+| `closeOnClick`        | `boolean`                          | `true`     |                                                       |
+| `textValue`           | `string`                           |            | Typeahead label when children are not plain text.     |
+| `selected`            | `boolean`                          | `false`    | Sets `data-nyte-selected`.                            |
+| `itemStyle`           | `StyleXStyles`                     |            | Per-item override (the palette's result rows).        |
+| `id`, `onPointerMove` |                                    |            | For combobox `aria-activedescendant` wiring.          |
+
+`ContextMenuItem` takes the same props over `ContextMenu.Item`.
+
+## `MenuRadioGroup`, `MenuRadioItem`
+
+`MenuRadioGroup` is `Menu.RadioGroup` unchanged. `MenuRadioItem` renders `Menu.RadioItem` with
+a check indicator in the leading slot.
+
+| Prop                         | Type         | Default | Description                                                              |
+| ---------------------------- | ------------ | ------- | ------------------------------------------------------------------------ |
+| `value`                      | `string`     |         | Required.                                                                |
+| `label`                      | `string`     |         | "Typeahead text when the body is more than a label."                     |
+| `onFocus`                    | `() => void` |         | "Base UI focuses the highlighted item, so this is the highlight signal." |
+| `closeOnClick`               | `boolean`    |         | Base UI default for radio items is `false`; sidebar filters keep it.     |
+| `disabled`, `id`, body props |              |         |                                                                          |
+
+## `MenuCheckboxItem`, `MenuSwitchItem`
+
+Both render `Menu.CheckboxItem` (`role="menuitemcheckbox"`, `aria-checked`). The checkbox item
+shows a check indicator in the leading slot; the switch item draws a track in the meta column and
+has no `meta` prop.
+
+| Prop              | Type                         | Component     |
+| ----------------- | ---------------------------- | ------------- |
+| `checked`         | `boolean`                    | both          |
+| `onCheckedChange` | `(checked: boolean) => void` | both          |
+| `disabled`        | `boolean`                    | both          |
+| `closeOnClick`    | `boolean`                    | checkbox only |
+| `tone`            | `"accent" \| "green"`        | switch only   |
+
+## `MenuSubmenu`
+
+Renders `Menu.SubmenuRoot › SubmenuTrigger › Portal › Positioner › Popup` with a trailing
+chevron and an optional current-value readout.
+
+| Prop                   | Type             | Description                                    |
+| ---------------------- | ---------------- | ---------------------------------------------- |
+| `label`                | `string`         | Required. Trigger text and popup `aria-label`. |
+| `value`                | `ReactNode`      | Current value shown before the chevron.        |
+| `disabled`             | `boolean`        |                                                |
+| `align`                | `MenuAlign`      |                                                |
+| `popupStyle`           | `StyleXStyles`   |                                                |
+| `onOpenChangeComplete` | `(open) => void` |                                                |
+
+Submenus sit on `layer.submenu`, one step above `layer.menu`.
+
+## `MenuGroup`
+
+`Menu.Group` with a `GroupLabel` and an optional trailing action rendered as a `Menu.Item`.
+
+| Prop     | Type                                      |
+| -------- | ----------------------------------------- |
+| `label`  | `ReactNode`                               |
+| `action` | `{ label: string; onSelect: () => void }` |
+
+## `MenuSeparator({ inset })`, `ContextMenuSeparator()`
+
+`inset` starts the rule after the icon column.
+
+## `ContextMenu`
+
+`ContextMenu.Root › Trigger(render) › Portal › Positioner › Popup` with the same popup styles as
+`Menu`. Props: `label`, `trigger`, `children`. Opens on right-click and on the context-menu key;
+Base UI positions it at the pointer.
+
+## `CommandMenu`
+
+"A modal Menu surface anchored to the viewport rather than its rail trigger." The base of the
+[search palette](/cloud/surfaces/command-palette).
+
+| Prop           | Type                      | Description                    |
+| -------------- | ------------------------- | ------------------------------ |
+| `label`        | `string`                  | Required.                      |
+| `trigger`      | `ReactElement`            | Required; gets a generated id. |
+| `open`         | `boolean`                 | Required, controlled.          |
+| `onOpenChange` | `(open: boolean) => void` | Required.                      |
+| `popupRef`     | `Ref<HTMLDivElement>`     |                                |
+
+Fixed decisions: `modal`, a `Menu.Backdrop`, a viewport anchor, `side="bottom"`,
+`align="center"`, collision `{ side: "shift", align: "shift" }` with 16px padding, and
+`floatingSurfaceStyles.modalPopup`.
+
+## Accessibility
+
+Base UI's menu model applies throughout; the wrapper adds labels and never intercepts keys:
+
+- Arrow keys move highlight (wrapping), Home/End jump, typeahead matches `textValue`/`label` or
+  the item text, Enter/Space activate, Escape closes and returns focus to the trigger.
+- Arrow Right opens a submenu, Arrow Left closes it; submenus also open on hover.
+- `danger` is color plus position (last, after a separator); it is not conveyed by ARIA, so the
+  label text must say what it does ("Delete", "Remove from sidebar").
+- Every popup has an `aria-label` because `label` is required.
+- Menu items use `focus.ringInset`.

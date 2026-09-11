@@ -14,7 +14,8 @@
  */
 import { CliRenderEvents } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
-import type { Command, Keymap, KeymapEvent } from "@opentui/keymap";
+import { stringifyKeyStroke } from "@opentui/keymap";
+import type { KeyStrokeInput, Command, Keymap, KeymapEvent } from "@opentui/keymap";
 import {
   registerCommaBindings,
   registerDefaultKeys,
@@ -24,7 +25,7 @@ import {
 import { registerBaseLayoutFallback } from "@opentui/keymap/addons/opentui";
 import { commandBindings } from "@opentui/keymap/extras";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
-import { CHAT_KEYBINDS, type ChatCommand } from "./constants.ts";
+import { CHAT_KEYBINDS, keyStrokes, type ChatCommand } from "./constants.ts";
 
 /**
  * A drag selection answers escape and copy itself, so its layer sits above the
@@ -35,6 +36,9 @@ const SELECTION_PRIORITY = 10;
 
 export interface ChatCommandSpec {
   readonly title: string;
+  readonly hint?: string;
+  readonly placement?: "secondary" | "help";
+  readonly unavailable?: () => string | undefined;
   /** Omitted means available whenever the layer is. */
   readonly enabled?: () => boolean;
   /**
@@ -45,7 +49,7 @@ export interface ChatCommandSpec {
   readonly run: () => boolean | undefined;
 }
 
-export type ChatCommands = { readonly [K in ChatCommand]: ChatCommandSpec };
+export type ChatCommands = { readonly [K in ChatCommand]?: ChatCommandSpec };
 
 /**
  * The addons every chat keymap needs: the default key parser, `enabled` and
@@ -75,14 +79,31 @@ export function createChatKeymap(renderer: CliRenderer): Keymap<Renderable, KeyE
 function chatCommand<T extends object, E extends KeymapEvent>(
   name: ChatCommand,
   spec: ChatCommandSpec,
+  onRun: (() => void) | undefined,
 ): Command<T, E> {
   const command: Command<T, E> = {
     name,
     category: "Chat",
-    title: spec.title,
-    run: () => spec.run(),
+    namespace: "chat",
+    get title() {
+      return spec.title;
+    },
+    get hint() {
+      return spec.hint ?? spec.title;
+    },
+    get placement() {
+      return spec.placement;
+    },
+    get unavailable() {
+      return spec.unavailable?.();
+    },
+    enabled: () => spec.unavailable?.() === undefined && spec.enabled?.() !== false,
+    run: () => {
+      onRun?.();
+      return spec.run();
+    },
   };
-  return spec.enabled === undefined ? command : { ...command, enabled: spec.enabled };
+  return command;
 }
 
 /**
@@ -99,12 +120,14 @@ export function registerChatLayer<T extends object, E extends KeymapEvent>(
     readonly enabled: () => boolean;
     readonly commands: Partial<ChatCommands>;
     readonly keybinds?: Readonly<Record<ChatCommand, string>>;
+    /** Called before any command runs: a run may edit the composer. */
+    readonly onRun?: () => void;
   },
 ): () => void {
   const names = Object.keys(options.commands).filter(isChatCommand);
   const commands = names.flatMap((name) => {
     const spec = options.commands[name];
-    return spec === undefined ? [] : [chatCommand<T, E>(name, spec)];
+    return spec === undefined ? [] : [chatCommand<T, E>(name, spec, options.onRun)];
   });
   return keymap.registerLayer({
     enabled: options.enabled,
@@ -136,6 +159,14 @@ export function copyOnSelectRelease(renderer: CliRenderer, write: (text: string)
   return copy(renderer, write);
 }
 
+function selectionCopyAction(renderer: CliRenderer, copyOnSelect: boolean): "copy" | "clear" {
+  const selection = renderer.getSelection();
+  if (selection === null || (selection.isStart && selection.behavior === "cell")) return "clear";
+  const focus = renderer.currentFocusedEditor;
+  const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
+  return (copyOnSelect && !editing) || selection.getSelectedText() === "" ? "clear" : "copy";
+}
+
 export function handleSelectionKey(
   renderer: CliRenderer,
   write: (text: string) => void,
@@ -144,10 +175,8 @@ export function handleSelectionKey(
 ): boolean {
   const selection = renderer.getSelection();
   if (selection === null) return false;
-  const focus = renderer.currentFocusedEditor;
-  const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
   if (command === "selection.copy") {
-    if ((copyOnSelect && !editing) || !copy(renderer, write)) {
+    if (selectionCopyAction(renderer, copyOnSelect) === "clear" || !copy(renderer, write)) {
       renderer.clearSelection();
       return false;
     }
@@ -164,8 +193,25 @@ export function registerSelectionLayer(
   renderer: CliRenderer,
   options: { readonly copy: (text: string) => void; readonly copyOnSelect: () => boolean },
 ): () => void {
+  let previousSelection = renderer.getSelection();
+  let previousState = "";
+  let revision = 0;
+  let active = true;
+  const syncSelection = (): void => {
+    if (!active || renderer.isDestroyed) return;
+    const selection = renderer.getSelection();
+    const editor = renderer.currentFocusedEditor;
+    const state = `${String(selection?.isDragging)}:${String(selection?.isStart)}:${String(selection?.focus.x)}:${String(selection?.focus.y)}:${String(editor?.hasSelection())}:${String(options.copyOnSelect())}`;
+    if (selection === previousSelection && state === previousState) return;
+    previousSelection = selection;
+    previousState = state;
+    keymap.setData("selection.revision", ++revision);
+  };
+  // Native selection events cover mouse release, but not selectAll or clearSelection.
+  const selectionFrame = async (): Promise<void> => syncSelection();
   const onSelection = (): void => {
     if (options.copyOnSelect()) copyOnSelectRelease(renderer, options.copy);
+    queueMicrotask(syncSelection);
   };
   const onKey = (event: KeyEvent): void => {
     if (event.defaultPrevented) return;
@@ -173,26 +219,44 @@ export function registerSelectionLayer(
     const focus = renderer.currentFocusedEditor;
     if (focus?.hasSelection() && selection?.selectedRenderables.includes(focus)) return;
     renderer.clearSelection();
+    syncSelection();
   };
   renderer.on(CliRenderEvents.SELECTION, onSelection);
   renderer.keyInput.on("keypress", onKey);
+  renderer.setFrameCallback(selectionFrame);
   const unregister = keymap.registerLayer({
     priority: SELECTION_PRIORITY,
     enabled: () => renderer.hasSelection,
     commands: [
       {
         name: "selection.copy",
+        namespace: "selection",
+        get hint() {
+          return `${selectionCopyAction(renderer, options.copyOnSelect())} selection`;
+        },
+        placement: "primary",
         category: "Selection",
-        title: "Copy the selected text",
-        run: () =>
-          handleSelectionKey(renderer, options.copy, "selection.copy", options.copyOnSelect()),
+        get title() {
+          return `${selectionCopyAction(renderer, options.copyOnSelect())} selection`;
+        },
+        run: () => {
+          handleSelectionKey(renderer, options.copy, "selection.copy", options.copyOnSelect());
+          syncSelection();
+          return true;
+        },
       },
       {
         name: "selection.clear",
+        namespace: "selection",
+        hint: "clear selection",
+        placement: "cancel",
         category: "Selection",
         title: "Dismiss the selection",
-        run: () =>
-          handleSelectionKey(renderer, options.copy, "selection.clear", options.copyOnSelect()),
+        run: () => {
+          handleSelectionKey(renderer, options.copy, "selection.clear", options.copyOnSelect());
+          syncSelection();
+          return true;
+        },
       },
     ],
     bindings: commandBindings({
@@ -201,9 +265,12 @@ export function registerSelectionLayer(
     }),
   });
   return () => {
+    active = false;
     renderer.off(CliRenderEvents.SELECTION, onSelection);
     renderer.keyInput.off("keypress", onKey);
+    renderer.removeFrameCallback(selectionFrame);
     unregister();
+    keymap.setData("selection.revision", undefined);
   };
 }
 
@@ -232,25 +299,6 @@ export class DoubleEscape {
   }
 }
 
-export type EscapeIntent = "abort" | "open_tree" | "ignore";
-
-export interface EscapeState {
-  /** Another surface owns the keyboard. */
-  readonly selecting: boolean;
-  /** The composer is reading a line for a prompt, not chat. */
-  readonly prompting: boolean;
-  readonly hasDraft: boolean;
-  /** A run is live, so there is work to interrupt. */
-  readonly busy: boolean;
-}
-
-/** Resolve escape before the focused editor sees it. */
-export function escapeIntent(state: EscapeState): EscapeIntent {
-  if (state.prompting || state.selecting) return "ignore";
-  if (state.busy) return "abort";
-  return state.hasDraft ? "ignore" : "open_tree";
-}
-
 export type CtrlCAction = "clear_for_quit" | "shutdown";
 
 export interface CtrlCState {
@@ -267,7 +315,8 @@ export function ctrlCAction(
   key: Pick<KeymapEvent, "name" | "ctrl">,
   state: CtrlCState,
 ): CtrlCAction | undefined {
-  if (!key.ctrl || key.name !== "c" || state.prompting || state.selecting) return undefined;
+  if (!matchesKey("chat.quit", key, "required") || state.prompting || state.selecting)
+    return undefined;
   return state.hasDraft ? "clear_for_quit" : "shutdown";
 }
 
@@ -285,4 +334,40 @@ export function nextThinkingLevel<Level extends string>(
   if (supported.length < 2) return undefined;
   const index = supported.indexOf(current);
   return supported[(index + 1) % supported.length];
+}
+
+const parsedBindings = new Map<string, readonly KeyStrokeInput[]>();
+
+/** Callers project only the modifiers their existing handler owns. */
+export function matchesKey(
+  command: ChatCommand,
+  key: KeyStrokeInput,
+  modifiers: "exact" | "required" = "exact",
+): boolean {
+  const strokes = parsedBindings.get(command) ?? keyStrokes(command);
+  parsedBindings.set(command, strokes);
+  return strokes.some((stroke) => {
+    if (modifiers === "exact") return stringifyKeyStroke(stroke) === stringifyKeyStroke(key);
+    return (
+      stringifyKeyStroke(stroke) ===
+      stringifyKeyStroke({
+        name: key.name,
+        ctrl: stroke.ctrl && key.ctrl,
+        shift: stroke.shift && key.shift,
+        meta: stroke.meta && key.meta,
+        super: stroke.super && key.super,
+        hyper: stroke.hyper && key.hyper,
+      })
+    );
+  });
+}
+
+/** Some panels deliberately dispatch by name regardless of modifiers. */
+export function matchesKeyName(command: ChatCommand, key: Pick<KeyStrokeInput, "name">): boolean {
+  const strokes = parsedBindings.get(command) ?? keyStrokes(command);
+  parsedBindings.set(command, strokes);
+  return strokes.some(
+    (stroke) =>
+      stringifyKeyStroke({ name: stroke.name }) === stringifyKeyStroke({ name: key.name }),
+  );
 }

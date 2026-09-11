@@ -3,28 +3,34 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "turbo build",
-    "build:cli": "pnpm --dir packages/tui build:binary",
-    "test": "turbo test",
-    "dev": "turbo dev",
-    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "build": "turbo build --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
+    "build:tui": "turbo build --filter=@nyte-ai/tui",
+    "build:desktop": "turbo build --filter=@nyte-ai/desktop",
+    "package": "turbo package --filter=@nyte-ai/tui --filter=@nyte-ai/desktop",
+    "package:tui": "turbo package --filter=@nyte-ai/tui",
+    "package:desktop": "turbo package --filter=@nyte-ai/desktop",
+    "dev:tui": "pnpm --filter @nyte-ai/tui dev",
+    "dev:desktop": "pnpm --filter @nyte-ai/desktop dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "models:check": "pnpm --dir packages/ai models:check",
-    "models:generate": "pnpm --dir packages/ai models:generate",
-    "models:opencode:snapshot": "pnpm --dir packages/ai models:opencode:snapshot",
-    "typecheck": "turbo run typecheck"
+    "models:generate": "turbo models:generate --filter=@nyte-ai/ai",
+    "docs:dep": "node scripts/dependency-docs.mjs",
+    "docs:dep:test": "node --test scripts/dependency-docs.test.mjs",
+    "bench:core": "node packages/core/benchmark/run.ts",
+    "bench:desktop": "pnpm --dir packages/desktop bench",
+    "test:benchmark": "node --test packages/core/benchmark/smoke.test.ts",
+    "typecheck:benchmark": "tsc --noEmit -p packages/core/benchmark/tsconfig.json",
+    "typecheck": "turbo typecheck"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.81.0",
-    "@types/node": "^26.4.1",
-    "oxfmt": "^0.66.0",
+    "@types/node": "^26.5.0",
+    "oxfmt": "^0.67.0",
     "oxlint": "1.81.0",
     "oxlint-tsgolint": "^7.0.2001",
     "turbo": "^2.10.12",
     "typescript": "^7.0.2"
   },
-  "packageManager": "pnpm@11.25.0"
+  "packageManager": "pnpm@12.3.4"
 }

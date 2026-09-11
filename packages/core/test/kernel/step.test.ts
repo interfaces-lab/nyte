@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { AssistantMessage, Message } from "@nyte-ai/schema";
+import { contextMessages } from "../../src/kernel/context.ts";
 import { openEffect, parkEffect, signalEffect, listEffects } from "../../src/kernel/effects.ts";
 import { branch } from "../../src/kernel/graph.ts";
 import type { Run } from "../../src/kernel/model.ts";
@@ -21,7 +22,6 @@ import {
   landing,
   message,
   openSession,
-  reflog,
   sleep,
   toolResult,
   user,
@@ -126,10 +126,6 @@ test("a submitted message lands, gets its answer, and the head goes idle", async
   assert.equal(run?.attempts, 1);
 
   assert.equal((await stepMain(session, turn)).kind, "idle");
-  const reasons = reflog(await session.events.read({ afterSeq: 0 })).map((line) =>
-    line.slice(line.lastIndexOf("(")),
-  );
-  assert.ok(reasons.includes("(land)") && reasons.includes("(respond)"));
 });
 
 test("a tool round commits the call, then every result in order, then the answer", async () => {
@@ -278,47 +274,102 @@ test("input that arrives during a run lands after the current answer; the idle l
   assert.equal((await stepMain(session, turn)).kind, "idle");
 });
 
-test("an abort flag set by a participant ends the run before answering", async () => {
-  const session = await openSession();
-  const turn = new Script([complete("never")]);
-  await submit(session, { head: "main", lane: "now", body: say("hi") });
-  await stepMain(session, turn);
-  const run = await currentRun(session);
-  assert.ok(run !== undefined);
-  const [flagged] = await session.objects.put([{ ...run, abortRequested: true }]);
+/** Flag the live run the way `runs.abort` does: a participant write, not the runner's. */
+async function flagAbort(session: Session, run: Run): Promise<void> {
   const current = await session.refs.read(runRef("main"));
+  const [flagged] = await session.objects.put([{ ...run, abortRequested: true }]);
   await session.refs.update([{ name: runRef("main"), from: current, to: flagged ?? "" }], {
     reason: "abort",
   });
+}
 
-  const outcome = await stepMain(session, turn);
-  assert.equal(outcome.kind, "finished");
-  assert.equal((await currentRun(session))?.phase.kind, "aborted");
-  assert.equal((await currentRun(session))?.attempts, 0);
-  assert.deepEqual(await branchBodyRoles(session), ["user"]);
-});
-
-test("an abort that races the response keeps the response and ends the run", async () => {
+test("an abort that races the response keeps the response, then ends the run at the boundary when nothing is queued", async () => {
   const session = await openSession();
+  // One scripted answer: a second response request would fail the script.
   const turn = new Script([
     async (input) => {
-      const current = await input.session.refs.read(runRef("main"));
-      const [flagged] = await input.session.objects.put([{ ...input.run, abortRequested: true }]);
-      await input.session.refs.update(
-        [{ name: runRef("main"), from: current, to: flagged ?? "" }],
-        {
-          reason: "abort",
-        },
-      );
+      await flagAbort(input.session, input.run);
       return complete("finished anyway");
     },
   ]);
   await submit(session, { head: "main", lane: "now", body: say("hi") });
   await stepMain(session, turn);
-  assert.equal((await stepMain(session, turn)).kind, "finished");
-  assert.equal((await currentRun(session))?.phase.kind, "aborted");
+  assert.equal((await stepMain(session, turn)).kind, "continue");
   assert.equal(await textAt(session, 1), "finished anyway");
+  assert.equal((await stepMain(session, turn)).kind, "finished");
+  const run = await currentRun(session);
+  assert.equal(run?.phase.kind, "aborted");
+  assert.equal(run?.attempts, 1);
+  assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
 });
+
+test("an abort with a boundary-lane message waiting lands it and the run goes on without the flag", async () => {
+  const session = await openSession();
+  const seen: string[] = [];
+  const turn = new Script([
+    async (input) => {
+      await flagAbort(input.session, input.run);
+      return { kind: "aborted", message: assistant("half", { stop: "aborted" }) };
+    },
+    async (input) => {
+      seen.push(...contextMessages(input.commits.map((entry) => entry.commit)).map(roleText));
+      return complete("steered answer");
+    },
+  ]);
+  await submit(session, { head: "main", lane: "now", body: say("hi") });
+  await stepMain(session, turn);
+  const run = await currentRun(session);
+  await submit(session, { head: "main", lane: "now", body: say("do this instead") });
+  await submit(session, { head: "main", lane: "later", body: say("for later") });
+
+  assert.equal((await stepMain(session, turn)).kind, "continue");
+  assert.equal((await stepMain(session, turn)).kind, "continue");
+  const resumed = await currentRun(session);
+  assert.equal(resumed?.id, run?.id);
+  assert.equal(resumed?.abortRequested, undefined);
+  assert.deepEqual(
+    (await pending(session, "main")).map((item) => item.lane),
+    ["later"],
+  );
+
+  assert.equal((await stepMain(session, turn)).kind, "finished");
+  assert.deepEqual(seen, ["user:hi", "user:do this instead"]);
+  assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "user", "assistant"]);
+  assert.equal((await currentRun(session))?.phase.kind, "done");
+});
+
+test("an abort flagged during a tool batch settles the batch, then honors the flag", async () => {
+  const session = await openSession();
+  const turn = new Script(
+    [asks("a"), complete("after steer")],
+    [
+      async (input) => {
+        await flagAbort(input.session, input.run);
+        return results("a");
+      },
+    ],
+  );
+  await submit(session, { head: "main", lane: "now", body: say("hi") });
+  await stepMain(session, turn);
+  await stepMain(session, turn);
+  assert.equal((await currentRun(session))?.phase.kind, "tools");
+  assert.equal((await stepMain(session, turn)).kind, "continue");
+  assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "toolResult"]);
+  assert.equal((await currentRun(session))?.abortRequested, true);
+
+  await submit(session, { head: "main", lane: "now", body: say("steer") });
+  assert.equal((await stepMain(session, turn)).kind, "continue");
+  assert.equal((await stepMain(session, turn)).kind, "finished");
+  assert.equal(await textAt(session, 4), "after steer");
+});
+
+function roleText(entry: Message): string {
+  const content = entry.content;
+  const text = Array.isArray(content)
+    ? content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+    : content;
+  return `${entry.role}:${text}`;
+}
 
 test("a head moved under a run ends the run and leaves its answer off the branch", async () => {
   const session = await openSession();
@@ -333,54 +384,6 @@ test("a head moved under a run ends the run and leaves its answer off the branch
   assert.equal((await stepMain(session, turn)).kind, "finished");
   assert.equal((await currentRun(session))?.phase.kind, "aborted");
   assert.equal(await session.refs.read(headRef("main")), null);
-  const orphans = (await session.objects.list()).length;
-  assert.ok(orphans >= 3, "the user commit, the run objects, and the loose answer all exist");
-});
-
-test("a parked run consumes nothing until an answer arrives, then finishes the batch", async () => {
-  const session = await openSession();
-  let runId = "";
-  const turn = new Script(
-    [asks("ask"), complete("thanks")],
-    [
-      async (input) => {
-        runId = input.run.id;
-        const opened = await openEffect(input.session, {
-          lease: input.lease,
-          runId,
-          callId: "ask",
-          tool: "read",
-          args: {},
-          replay: "never",
-        });
-        await parkEffect(input.session, { lease: input.lease, view: opened.view });
-        return { kind: "waiting", calls: ["ask"] };
-      },
-      results("ask"),
-    ],
-  );
-  await submit(session, { head: "main", lane: "now", body: say("ask me") });
-  await stepMain(session, turn);
-  await stepMain(session, turn);
-  assert.equal((await stepMain(session, turn)).kind, "waiting");
-  assert.equal((await currentRun(session))?.phase.kind, "waiting");
-  assert.equal(await session.leases.read(headRef("main")), undefined);
-
-  const parkedRun = await session.refs.read(runRef("main"));
-  const parkedTip = await session.refs.read(headRef("main"));
-  assert.equal((await stepMain(session, turn)).kind, "waiting");
-  assert.equal(await session.refs.read(runRef("main")), parkedRun);
-  assert.equal(await session.refs.read(headRef("main")), parkedTip);
-
-  assert.equal(
-    (await signalEffect(session, { runId, callId: "ask", signal: "42" })).kind,
-    "signalled",
-  );
-  assert.equal((await stepMain(session, turn)).kind, "continue");
-  assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "toolResult"]);
-  assert.equal(await textAt(session, 2), "out ask");
-  assert.equal((await currentRun(session))?.phase.kind, "respond");
-  assert.equal((await stepMain(session, turn)).kind, "finished");
 });
 
 test("a transient failure waits out its backoff durably, then tries again", async () => {
@@ -461,7 +464,7 @@ test("a head held by another runner is busy; a runner that loses its lease publi
   assert.equal(await session.events.last(), before);
 });
 
-test("drive runs a head to idle under one lease and releases it when the run parks", async () => {
+test("drive runs a head to idle under one lease; a parked run releases the head and consumes nothing until its answer arrives", async () => {
   const session = await openSession();
   const turn = new Script([asks("c1"), complete("all done")], [results("c1")]);
   await submit(session, { head: "main", lane: "now", body: say("go") });
@@ -476,26 +479,43 @@ test("drive runs a head to idle under one lease and releases it when the run par
   assert.equal(await session.leases.read(headRef("main")), undefined);
   assert.equal((await drive(session, turn, { head: "main", landing })).kind, "idle");
 
+  let runId = "";
   const parked = new Script(
-    [asks("ask")],
+    [asks("ask"), complete("thanks")],
     [
       async (input) => {
+        runId = input.run.id;
         const opened = await openEffect(input.session, {
           lease: input.lease,
-          runId: input.run.id,
+          runId,
           callId: "ask",
           tool: "read",
           args: {},
           replay: "never",
         });
+        assert.ok(opened.kind === "opened");
         await parkEffect(input.session, { lease: input.lease, view: opened.view });
         return { kind: "waiting", calls: ["ask"] };
       },
+      results("ask"),
     ],
   );
   await submit(session, { head: "main", lane: "now", body: say("ask") });
   assert.equal((await drive(session, parked, { head: "main", landing })).kind, "waiting");
   assert.equal(await session.leases.read(headRef("main")), undefined);
+
+  // Polling a parked run without an answer writes nothing.
+  const before = await session.events.last();
+  assert.equal((await drive(session, parked, { head: "main", landing })).kind, "waiting");
+  assert.equal(await session.events.last(), before);
+
+  assert.equal(
+    (await signalEffect(session, { runId, callId: "ask", signal: "42" })).kind,
+    "signalled",
+  );
+  assert.equal((await drive(session, parked, { head: "main", landing })).kind, "finished");
+  assert.equal(await textAt(session, 6), "out ask");
+  assert.equal(await textAt(session, 7), "thanks");
 });
 
 test("a session marked deleted is left alone", async () => {

@@ -3,67 +3,146 @@
  * code through `new Function`, which the renderer's CSP forbids. Renderer code
  * imports `typebox/value` and never `typebox/compile`.
  */
-import { BROWSER_ACTIONS } from "../shared/ipc.ts";
+import { BROWSER_ACTIONS, HOST_OPERATION_PATHS, SDK_OPERATION_PATHS } from "../shared/ipc.ts";
 import { Type } from "typebox";
-import type { TProperties, TSchema } from "typebox";
+import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
-import type { Nyte } from "@nyte-ai/core";
-import { VERBS } from "@nyte-ai/protocol";
+import { ParseError } from "typebox/value";
+import { ExpectedHostError } from "./errors.ts";
+import { OPERATIONS, schemas } from "@nyte-ai/protocol";
 import { sessionId } from "../shared/schemas.ts";
 import type {
   BrowserBoundsMessage,
   CallInput,
-  CallOutput,
   CallPath,
   CallRequest,
-  SdkVerbPath,
   WatchStartInput,
+  WorkspaceEditorInput,
+  WorkspaceEditorOperation,
+  WorkspaceEditorRequest,
 } from "../shared/ipc.ts";
 
 interface Parser<T> {
-  // oxlint-disable-next-line anti-slop/no-unknown-parameters -- this is the boundary parser itself
   Parse(value: unknown): T;
 }
 
 const strict = <P extends TProperties>(properties: P) =>
   Type.Object(properties, { additionalProperties: false });
-/** Pins `Compile`'s result type so the `satisfies` below cannot widen it. */
-const compile = <T extends TSchema>(schema: T) => Compile(schema);
+/** Only request-schema failures are invalid input; internal parser failures remain diagnostics. */
+function compile<T extends TSchema>(schema: T) {
+  const validator = Compile(schema);
+  return {
+    Parse(value) {
+      try {
+        return validator.Parse(value);
+      } catch (cause) {
+        if (!(cause instanceof ParseError)) throw cause;
+        throw new ExpectedHostError({
+          code: "invalid_input",
+          message: "The request is invalid. Check its fields.",
+          issues: cause.cause.errors.slice(0, 20).map((error) => {
+            // Name only the top-level field from our schema, never input property names or values.
+            const path = error.schemaPath.split("/");
+            const index = path.indexOf("properties");
+            const field = index < 0 ? undefined : path[index + 1];
+            return {
+              path: field === undefined ? "" : `/${field}`,
+              message: "Invalid request field",
+            };
+          }),
+        });
+      }
+    },
+  } satisfies Parser<Static<T>>;
+}
 
 const id = Type.String();
 const nonEmpty = Type.String({ minLength: 1 });
-const thinkingLevel = Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const thinkingLevel = schemas.ThinkingLevel;
 const noInput = Type.Optional(Type.Undefined());
-const model = strict({ provider: Type.String(), id });
+const model = strict({ provider: nonEmpty, id: nonEmpty });
+const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
+/** A local calendar day. Anything else would fold history onto the wrong dates. */
+const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+
+const globPatterns = Type.Optional(
+  Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 20 }),
+);
+export const WORKSPACE_EDITOR_INPUT_SCHEMAS = {
+  search: compile(
+    strict({
+      requestId: Type.String({ minLength: 1, maxLength: 128 }),
+      query: Type.String({ minLength: 1, maxLength: 1000 }),
+      caseSensitive: Type.Optional(Type.Boolean()),
+      wholeWord: Type.Optional(Type.Boolean()),
+      regex: Type.Optional(Type.Boolean()),
+      include: globPatterns,
+      exclude: globPatterns,
+      maxMatches: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+      drafts: Type.Optional(
+        Type.Array(strict({ path: nonEmpty, contents: Type.String({ maxLength: 200_000 }) }), {
+          maxItems: 10,
+        }),
+      ),
+    }),
+  ),
+  cancelSearch: compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
+  blame: compile(strict({ path: nonEmpty })),
+  format: compile(
+    strict({
+      path: nonEmpty,
+      contents: Type.String({ maxLength: 2_000_000 }),
+      version: fileVersion,
+    }),
+  ),
+} satisfies { readonly [P in WorkspaceEditorOperation]: Parser<WorkspaceEditorInput<P>> };
+
+const workspaceEditorRequest = compile(
+  strict({
+    operation: Type.Enum(["search", "cancelSearch", "blame", "format"]),
+    input: Type.Unknown(),
+  }),
+);
+
+export function decodeWorkspaceEditorRequest(
+  input: WorkspaceEditorRequest,
+): WorkspaceEditorRequest {
+  return checked(workspaceEditorRequest, input);
+}
 
 export const CALL_INPUT_SCHEMAS = {
-  // The SDK verbs validate with the wire protocol's own input schemas, compiled here.
-  "sessions.create": compile(VERBS["sessions.create"].input),
-  "sessions.get": compile(VERBS["sessions.get"].input),
-  "sessions.snapshot": compile(VERBS["sessions.snapshot"].input),
-  "sessions.list": compile(VERBS["sessions.list"].input),
-  "sessions.rename": compile(VERBS["sessions.rename"].input),
-  "sessions.setPinned": compile(VERBS["sessions.setPinned"].input),
-  "sessions.setArchived": compile(VERBS["sessions.setArchived"].input),
-  "sessions.delete": compile(VERBS["sessions.delete"].input),
-  "sessions.configure": compile(VERBS["sessions.configure"].input),
-  "messages.send": compile(VERBS["messages.send"].input),
-  "messages.cancel": compile(VERBS["messages.cancel"].input),
-  "messages.redeliver": compile(VERBS["messages.redeliver"].input),
-  "runs.abort": compile(VERBS["runs.abort"].input),
-  "runs.changes": compile(VERBS["runs.changes"].input),
-  "heads.move": compile(VERBS["heads.move"].input),
-  "workspace.list": compile(VERBS["workspace.list"].input),
-  "workspace.forget": compile(VERBS["workspace.forget"].input),
-  "workspace.vcs.diff": compile(VERBS["workspace.vcs.diff"].input),
-  "provider.models.default": compile(VERBS["provider.models.default"].input),
-  "plugins.catalog": compile(VERBS["plugins.catalog"].input),
-  "plugins.list": compile(VERBS["plugins.list"].input),
-  "plugins.commands.list": compile(VERBS["plugins.commands.list"].input),
-  "plugins.commands.run": compile(VERBS["plugins.commands.run"].input),
-  "plugins.settings.list": compile(VERBS["plugins.settings.list"].input),
-  "plugins.settings.apply": compile(VERBS["plugins.settings.apply"].input),
-  "plugins.resources.list": compile(VERBS["plugins.resources.list"].input),
+  // The SDK operations validate with the wire protocol's own input schemas, compiled here.
+  "sessions.create": compile(OPERATIONS["sessions.create"].input),
+  "sessions.get": compile(OPERATIONS["sessions.get"].input),
+  "sessions.snapshot": compile(OPERATIONS["sessions.snapshot"].input),
+  "sessions.list": compile(OPERATIONS["sessions.list"].input),
+  "sessions.rename": compile(OPERATIONS["sessions.rename"].input),
+  "sessions.setPinned": compile(OPERATIONS["sessions.setPinned"].input),
+  "sessions.setArchived": compile(OPERATIONS["sessions.setArchived"].input),
+  "sessions.delete": compile(OPERATIONS["sessions.delete"].input),
+  "sessions.configure": compile(OPERATIONS["sessions.configure"].input),
+  "messages.send": compile(OPERATIONS["messages.send"].input),
+  "messages.cancel": compile(OPERATIONS["messages.cancel"].input),
+  "messages.redeliver": compile(OPERATIONS["messages.redeliver"].input),
+  "jobs.list": compile(OPERATIONS["jobs.list"].input),
+  "jobs.start": compile(OPERATIONS["jobs.start"].input),
+  "jobs.background": compile(OPERATIONS["jobs.background"].input),
+  "jobs.cancel": compile(OPERATIONS["jobs.cancel"].input),
+  "runs.abort": compile(OPERATIONS["runs.abort"].input),
+  "runs.reply": compile(OPERATIONS["runs.reply"].input),
+  "runs.changes": compile(OPERATIONS["runs.changes"].input),
+  "heads.move": compile(OPERATIONS["heads.move"].input),
+  "workspace.list": compile(OPERATIONS["workspace.list"].input),
+  "workspace.forget": compile(OPERATIONS["workspace.forget"].input),
+  "workspace.vcs.diff": compile(OPERATIONS["workspace.vcs.diff"].input),
+  "provider.models.default": compile(OPERATIONS["provider.models.default"].input),
+  "plugins.catalog": compile(OPERATIONS["plugins.catalog"].input),
+  "plugins.list": compile(OPERATIONS["plugins.list"].input),
+  "plugins.commands.list": compile(OPERATIONS["plugins.commands.list"].input),
+  "plugins.commands.run": compile(OPERATIONS["plugins.commands.run"].input),
+  "plugins.settings.list": compile(OPERATIONS["plugins.settings.list"].input),
+  "plugins.settings.apply": compile(OPERATIONS["plugins.settings.apply"].input),
+  "plugins.resources.list": compile(OPERATIONS["plugins.resources.list"].input),
   "host.state": compile(noInput),
   "host.sessionDirectory": compile(noInput),
   "host.fonts": compile(noInput),
@@ -72,6 +151,11 @@ export const CALL_INPUT_SCHEMAS = {
   "host.trustWorkspace": compile(strict({ path: Type.String() })),
   "host.closeWorkspace": compile(noInput),
   "host.catalog": compile(noInput),
+  "host.usage": compile(
+    // `sinceDay: null` is all time, the one window whose start the page cannot
+    // name before reading.
+    strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
+  ),
   "host.login": compile(
     strict({
       provider: Type.String(),
@@ -101,10 +185,21 @@ export const CALL_INPUT_SCHEMAS = {
   ),
   "host.vcs.snapshot": compile(noInput),
   "host.files.list": compile(noInput),
+  "host.files.read": compile(strict({ path: nonEmpty })),
+  "host.files.save": compile(
+    strict({
+      path: nonEmpty,
+      contents: Type.String({ maxLength: 2_000_000 }),
+      version: fileVersion,
+    }),
+  ),
   "host.github.state": compile(noInput),
-  "host.github.refresh": compile(noInput),
   "host.github.signIn": compile(noInput),
   "host.github.signOut": compile(noInput),
+  "host.server.state": compile(noInput),
+  "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
+  "host.server.disconnect": compile(noInput),
+  "host.server.createSession": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
   "host.browser.open": compile(strict({ surface: nonEmpty, url: Type.String() })),
   "host.browser.navigate": compile(
@@ -139,25 +234,25 @@ export const CALL_INPUT_SCHEMAS = {
   "host.terminal.acknowledge": compile(
     strict({ id: nonEmpty, length: Type.Integer({ minimum: 0, maximum: 1048576 }) }),
   ),
+  "host.terminal.idle": compile(strict({ id: nonEmpty })),
   "host.terminal.close": compile(strict({ id: nonEmpty })),
 } satisfies { readonly [P in CallPath]: Parser<CallInput<P>> };
 
-const callRequest = Compile(
-  Type.Union(
-    Object.entries(CALL_INPUT_SCHEMAS).map(([path, input]) =>
-      strict({ path: Type.Literal(path), input: input.Type() }),
-    ),
-  ),
+const callRequest = compile(
+  strict({
+    path: Type.Enum([...SDK_OPERATION_PATHS, ...HOST_OPERATION_PATHS]),
+    input: Type.Unknown(),
+  }),
 );
-const watchStart = Compile(
+const watchStart = compile(
   Type.Union([
     strict({ watchId: nonEmpty, sessionId, live: Type.Literal(true) }),
     strict({ watchId: nonEmpty, sessionId, afterSeq: Type.Optional(Type.Integer()) }),
   ]),
 );
-const watchStop = Compile(strict({ watchId: nonEmpty }));
+const watchStop = compile(strict({ watchId: nonEmpty }));
 const size = Type.Number({ minimum: 0 });
-const browserBounds = Compile(
+const browserBounds = compile(
   strict({
     surface: nonEmpty,
     bounds: strict({ x: Type.Number(), y: Type.Number(), width: size, height: size }),
@@ -165,13 +260,14 @@ const browserBounds = Compile(
   }),
 );
 
-/** The wire value already carries the static type; the check earns it. */
+/** Preserve the caller's correlated type after its boundary schema accepts it. */
 function checked<T>(validator: Parser<unknown>, value: T): T {
   validator.Parse(value);
   return value;
 }
 
 export function decodeCallRequest(input: CallRequest): CallRequest {
+  // DesktopHost's selected operation parser validates `input` exactly once.
   return checked(callRequest, input);
 }
 
@@ -185,23 +281,6 @@ export function decodeWatchStop(input: { readonly watchId: string }): string {
 
 export function decodeBrowserBounds(input: BrowserBoundsMessage): BrowserBoundsMessage {
   return checked(browserBounds, input);
-}
-
-export interface SdkVerb {
-  invoke(
-    input: CallInput<SdkVerbPath>,
-    getSdk: () => Promise<Nyte>,
-  ): Promise<CallOutput<SdkVerbPath>>;
-}
-
-/** Bind an SDK verb to its exact input parser before it enters the dispatcher. */
-export function sdkVerb<
-  TInput extends CallInput<SdkVerbPath>,
-  TResult extends CallOutput<SdkVerbPath>,
->(schema: Parser<TInput>, run: (sdk: Nyte, input: TInput) => Promise<TResult>): SdkVerb {
-  return {
-    invoke: async (input, getSdk) => run(await getSdk(), schema.Parse(input)),
-  };
 }
 
 export const themePreference = Compile(

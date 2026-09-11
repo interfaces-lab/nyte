@@ -4,8 +4,7 @@
  */
 import type { ThinkingLevel } from "@nyte-ai/core";
 import type { UserMessage } from "@nyte-ai/schema";
-import { parsePatch, type StructuredPatch } from "diff";
-import { GLYPHS, SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "./constants.ts";
+import { GLYPHS } from "./constants.ts";
 import { displayWidth, truncateDisplay } from "./width.ts";
 
 /** One heading per tool call: the tool's own title after its name, else the name alone. */
@@ -23,12 +22,6 @@ export function formatDuration(ms: number): string {
   return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
 }
 
-/** The spinner frame for a run that started `elapsedMs` ago. */
-export function spinnerFrame(elapsedMs: number): string {
-  const index = Math.floor(elapsedMs / SPINNER_INTERVAL_MS) % SPINNER_FRAMES.length;
-  return SPINNER_FRAMES[index] ?? SPINNER_FRAMES[0];
-}
-
 /** What a finished tool produced, for the dim tail of its heading. */
 export function resultSummary(text: string): string | undefined {
   const trimmed = text.replace(/\n+$/, "");
@@ -39,25 +32,39 @@ export function resultSummary(text: string): string | undefined {
 
 export interface Preview {
   readonly text: string;
+  /** Lines the cut dropped. Head cuts leave labelling to the caller; the others embed theirs. */
   readonly omitted: number;
 }
 
+export type PreviewCut =
+  | { readonly kind: "head"; readonly max: number }
+  | { readonly kind: "head-tail"; readonly head: number; readonly tail: number }
+  | { readonly kind: "tail"; readonly max: number };
+
 /**
- * A capped view of `text`: the first `max` lines, or, when `tail` is given,
- * the first `max` and the last `tail` with the middle dropped.
+ * A capped view of `text`: its first lines, its first and last lines with the
+ * middle dropped and labelled, or its last lines with the label above them.
  */
-export function previewLines(text: string, max: number, tail = 0): Preview {
+export function previewLines(text: string, cut: PreviewCut): Preview {
   const trimmed = text.replace(/\n+$/, "");
   if (trimmed === "") return { text: "", omitted: 0 };
   const lines = trimmed.split("\n");
-  if (lines.length <= max + tail) return { text: trimmed, omitted: 0 };
-  const head = lines.slice(0, max);
-  const omitted = lines.length - max - tail;
-  if (tail === 0) return { text: head.join("\n"), omitted };
-  return {
-    text: [...head, omittedLabel(omitted), ...lines.slice(-tail)].join("\n"),
-    omitted: 0,
-  };
+  const kept = cut.kind === "head-tail" ? cut.head + cut.tail : cut.max;
+  if (lines.length <= kept) return { text: trimmed, omitted: 0 };
+  const omitted = lines.length - kept;
+  switch (cut.kind) {
+    case "head":
+      return { text: lines.slice(0, cut.max).join("\n"), omitted };
+    case "head-tail":
+      return {
+        text: [...lines.slice(0, cut.head), omittedLabel(omitted), ...lines.slice(-cut.tail)].join(
+          "\n",
+        ),
+        omitted,
+      };
+    default:
+      return { text: [earlierLinesLabel(omitted), ...lines.slice(-cut.max)].join("\n"), omitted };
+  }
 }
 
 export function omittedLabel(omitted: number): string {
@@ -66,153 +73,16 @@ export function omittedLabel(omitted: number): string {
     : `${GLYPHS.ellipsis} ${String(omitted)} more lines`;
 }
 
+export function earlierLinesLabel(omitted: number): string {
+  return omitted === 1
+    ? `${GLYPHS.ellipsis} 1 earlier line`
+    : `${GLYPHS.ellipsis} ${String(omitted)} earlier lines`;
+}
+
 export function unchangedLinesLabel(omitted: number): string {
   return omitted === 1
     ? `${GLYPHS.ellipsis} 1 unchanged line`
     : `${GLYPHS.ellipsis} ${String(omitted)} unchanged lines`;
-}
-
-export interface DiffSection {
-  readonly patch: string;
-  readonly omittedBefore: number;
-  readonly rows: number;
-}
-
-interface HunkStart {
-  readonly index: number;
-  readonly newStart: number;
-  readonly newLines: number;
-}
-
-function hunkRows(hunk: string): number {
-  const [, ...lines] = hunk.replace(/\n$/u, "").split("\n");
-  return lines.filter((line) => !line.startsWith("\\")).length;
-}
-
-/**
- * Split a patch into independently sized hunks and count the unchanged lines
- * before each one, so the transcript uses one scroller for the whole
- * conversation instead of clipping a tall diff into a nested viewport.
- *
- * Based on OpenCode's patch-hunk presentation:
- * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/util/diff.ts
- */
-export function diffSections(patch: string): DiffSection[] {
-  const starts: HunkStart[] = [];
-  for (const match of patch.matchAll(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@.*$/gmu)) {
-    const newStart = match[1];
-    if (newStart === undefined) continue;
-    starts.push({
-      index: match.index,
-      newStart: Number(newStart),
-      newLines: Number(match[2] ?? "1"),
-    });
-  }
-  if (starts.length === 0) return [{ patch, omittedBefore: 0, rows: 0 }];
-
-  const prefix = patch.slice(0, starts[0]?.index);
-  let previousEnd = 1;
-  return starts.map((start, index) => {
-    const end = starts[index + 1]?.index ?? patch.length;
-    const hunk = patch.slice(start.index, end);
-    const omittedBefore = Math.max(0, start.newStart - previousEnd);
-    previousEnd = start.newStart + start.newLines;
-    return { patch: prefix + hunk, omittedBefore, rows: hunkRows(hunk) };
-  });
-}
-
-export interface OutputDiffFile {
-  readonly patch: string;
-  readonly path?: string;
-}
-
-export interface OutputDiff {
-  readonly files: readonly OutputDiffFile[];
-  readonly before?: string;
-  readonly after?: string;
-}
-
-function substantivePatch(patch: StructuredPatch): boolean {
-  return (
-    patch.hunks.length > 0 ||
-    patch.isBinary === true ||
-    patch.isRename === true ||
-    patch.isCopy === true ||
-    patch.isCreate === true ||
-    patch.isDelete === true ||
-    patch.oldMode !== patch.newMode
-  );
-}
-
-function outputDiffStart(text: string): number | undefined {
-  const git = /(^|\n)diff --git [^\n]+/.exec(text);
-  const unified = /(^|\n)--- [^\n]+\n\+\+\+ [^\n]+/.exec(text);
-  const starts = [git, unified]
-    .filter((match) => match !== null)
-    .map((match) => match.index + (match[1]?.length ?? 0));
-  return starts.length === 0 ? undefined : Math.min(...starts);
-}
-
-function diffPath(patch: StructuredPatch): string | undefined {
-  const named =
-    patch.newFileName !== undefined && patch.newFileName !== "/dev/null"
-      ? patch.newFileName
-      : patch.oldFileName;
-  if (named === undefined || named === "/dev/null") return undefined;
-  return patch.isGit === true && /^[ab]\//.test(named) ? named.slice(2) : named;
-}
-
-function withPath(patch: string, path: string | undefined): OutputDiffFile {
-  return path === undefined ? { patch } : { patch, path };
-}
-
-function outputDiffFiles(patch: string, parsed: readonly StructuredPatch[]): OutputDiffFile[] {
-  const starts = [...patch.matchAll(/^diff --git [^\n]+/gm)].map((match) => match.index);
-  if (starts.length !== parsed.length || starts.length === 0) {
-    const only = parsed.length === 1 ? parsed[0] : undefined;
-    return [withPath(patch, only === undefined ? undefined : diffPath(only))];
-  }
-  return starts.map((start, index) => {
-    const end = starts[index + 1] ?? patch.length;
-    const file = parsed[index];
-    return withPath(
-      patch.slice(start, end).replace(/\n+$/, ""),
-      file === undefined ? undefined : diffPath(file),
-    );
-  });
-}
-
-function trimSection(text: string): string | undefined {
-  const trimmed = text.replace(/^(?:\r?\n)+|(?:\r?\n)+$/g, "");
-  return trimmed === "" ? undefined : trimmed;
-}
-
-/**
- * Find a complete unified diff inside tool output. Shell calls often append a
- * status or diff-stat command, so try progressively shorter prefixes and keep
- * any text before or after the patch as ordinary output.
- */
-export function diffFromOutput(text: string): OutputDiff | undefined {
-  const start = outputDiffStart(text);
-  if (start === undefined) return undefined;
-  const before = trimSection(text.slice(0, start));
-  const lines = text.slice(start).split("\n");
-  for (let end = lines.length; end > 0; end--) {
-    const patch = lines.slice(0, end).join("\n").replace(/\n+$/, "");
-    let parsed: StructuredPatch[];
-    try {
-      parsed = parsePatch(patch);
-    } catch {
-      continue;
-    }
-    if (parsed.length === 0 || !parsed.some(substantivePatch)) continue;
-    const after = trimSection(lines.slice(end).join("\n"));
-    let diff: OutputDiff = { files: outputDiffFiles(patch, parsed) };
-    if (before !== undefined) diff = { ...diff, before };
-    if (after !== undefined) diff = { ...diff, after };
-    return diff;
-  }
-  return undefined;
 }
 
 /** Flatten user content parts to display text; images become a marker. */
@@ -264,17 +134,31 @@ export interface PowerlineState {
   /** Badges from plugin settings and the plugin status items, in that order. */
   readonly statuses: readonly string[];
   readonly queued: number;
-  /** Tokens reported by the last settled assistant turn. */
-  readonly tokens?: number;
-  /** Estimated share of the model's context window in use, whole percent. */
-  readonly pct?: number;
+  /** Tokens reported by the last settled assistant turn; 0 until one settles. */
+  readonly tokens: number;
+  /** The model's context window; 0 until the model is known. */
+  readonly window: number;
+  /**
+   * Core's whole-percent estimate of the window in use. It counts the
+   * measured tokens plus the estimated tail after them, so it is not derivable
+   * from `tokens / window` here. Meaningful only when `window > 0`.
+   */
+  readonly pct: number;
 }
 
 export type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
 
-export interface PowerlineSegment {
-  readonly text: string;
-  readonly tone: PowerlineTone;
+export type UsageLevel = "ok" | "warning" | "error";
+
+export type PowerlineSegment =
+  | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage"> }
+  | { readonly text: string; readonly tone: "usage"; readonly level: UsageLevel };
+
+/** Strict thresholds: past 70 % warns, past 90 % alarms. */
+function usageLevel(pct: number): UsageLevel {
+  if (pct > 90) return "error";
+  if (pct > 70) return "warning";
+  return "ok";
 }
 
 /** `42_000` → `42s`, `258_000` → `4m18s`, `3_720_000` → `1h02m`. */
@@ -319,11 +203,19 @@ export function powerlineSegments(state: Partial<PowerlineState>): PowerlineSegm
     { text: state.model ?? "model loading", tone: "model" },
   ];
   if (badges.length > 0) segments.push({ text: badges.join(" "), tone: "effort" });
-  if (state.tokens !== undefined && state.tokens > 0) {
-    segments.push({
-      text: `${formatTokens(state.tokens)} tokens${state.pct === undefined ? "" : ` · ${String(state.pct)}% context`}`,
-      tone: "usage",
-    });
+  const tokens = state.tokens ?? 0;
+  const window = state.window ?? 0;
+  if (tokens > 0) {
+    const pct = state.pct ?? 0;
+    segments.push(
+      window > 0
+        ? {
+            text: `${formatTokens(tokens)}/${formatTokens(window)} · ${String(pct)}% context`,
+            tone: "usage",
+            level: usageLevel(pct),
+          }
+        : { text: `${formatTokens(tokens)} tokens`, tone: "usage", level: "ok" },
+    );
   }
   if (state.queued !== undefined && state.queued > 0)
     segments.push({ text: `${String(state.queued)} queued`, tone: "queue" });

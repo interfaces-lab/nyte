@@ -1,5 +1,5 @@
 import { Card } from "fumadocs-ui/components/card";
-import { docsIcons, isDocsIconName } from "@/lib/docs-icons";
+import { docsIcons, isDocsIconName } from "~/lib/docs-icons";
 
 function CentralIcon({ name }: { name: string }) {
   if (!isDocsIconName(name)) return null;

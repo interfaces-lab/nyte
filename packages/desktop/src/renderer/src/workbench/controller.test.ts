@@ -21,11 +21,14 @@ describe("workbench capabilities", () => {
       undefined,
     );
 
-    assert.deepEqual(workbenchTabs(home), ["browser", "terminal"]);
-    assert.deepEqual(workbenchTabs(project), ["changes", "browser", "terminal"]);
+    assert.deepEqual(workbenchTabs(home), ["browser", "terminal", "agents"]);
+    assert.deepEqual(workbenchTabs(project), ["files", "changes", "browser", "terminal", "agents"]);
+    assert.equal(workbenchTabAvailable(home, "files"), false);
+    assert.equal(workbenchTabAvailable(project, "files"), true);
     assert.equal(workbenchTabAvailable(home, "changes"), false);
     assert.equal(workbenchTabAvailable(home, "browser"), true);
     assert.equal(workbenchTabAvailable(home, "terminal"), true);
+    assert.equal(workbenchTabAvailable(home, "agents"), true);
   });
 
   test("gives Home a stable view identity", () => {
@@ -72,7 +75,7 @@ describe("workbench geometry", () => {
     assert.equal(clampWorkbenchWidthToBounds(4_000, bounds), 776);
   });
 
-  test("choosing another file starts its patch from the top", () => {
+  test("choosing another file keeps the stacked scroll", () => {
     const controller = createWorkbenchController();
     const key = workbenchViewKey({ paneKey: "scroll-state", target: { kind: "home" } });
 
@@ -82,7 +85,42 @@ describe("workbench geometry", () => {
     assert.equal(controller.getView(key).scrollTop.changes, 240);
 
     controller.actions.selectPath(key, "src/b.ts");
+    assert.equal(controller.getView(key).scrollTop.changes, 240);
+  });
+
+  test("revealing a file issues a fresh navigation even when it is already selected", () => {
+    const controller = createWorkbenchController();
+    const key = workbenchViewKey({ paneKey: "reveal-path", target: { kind: "home" } });
+
+    controller.actions.revealPath(key, "src/a.ts");
+    assert.equal(controller.getView(key).selectedPath, "src/a.ts");
+    assert.equal(controller.getView(key).pathRevealRevision, 1);
+
+    controller.actions.selectPath(key, "src/b.ts");
+    assert.equal(controller.getView(key).pathRevealRevision, 1);
+
+    controller.actions.revealPath(key, "src/b.ts");
+    assert.equal(controller.getView(key).pathRevealRevision, 2);
+  });
+
+  test("a change scope owns its file and scroll selection", () => {
+    const controller = createWorkbenchController();
+    const key = workbenchViewKey({ paneKey: "change-scope", target: { kind: "home" } });
+
+    controller.actions.selectPath(key, "src/a.ts");
+    controller.actions.setScrollTop(key, "changes", 240);
+    controller.actions.selectChangesScope(key, { kind: "turn", turnId: "turn-2" });
+
+    assert.deepEqual(controller.getView(key).changesScope, {
+      kind: "turn",
+      turnId: "turn-2",
+    });
+    assert.equal(controller.getView(key).selectedPath, undefined);
     assert.equal(controller.getView(key).scrollTop.changes, 0);
+
+    const selected = controller.getView(key);
+    controller.actions.selectChangesScope(key, { kind: "turn", turnId: "turn-2" });
+    assert.equal(controller.getView(key), selected);
   });
 
   test("both workbench toggles restore the selected panel and its state", () => {
@@ -160,7 +198,7 @@ describe("workbench tabs", () => {
     assert.equal(controller.getView(key).browserUrl, "https://example.com/");
   });
 
-  test("persists open panels without restoring closed tabs or shells from a previous app run", () => {
+  test("persists open panels without restoring closed tabs, shells, or agents from a previous app run", () => {
     let stored: string | undefined;
     const persistence: WorkbenchPersistence = {
       read: () => (stored === undefined ? undefined : decodePersistedWorkbenchSnapshot(stored)),
@@ -173,16 +211,19 @@ describe("workbench tabs", () => {
     const second = workbenchViewKey({ paneKey: "persist-second", target: { kind: "home" } });
     controller.actions.openTab(first, "browser");
     controller.actions.openTab(first, "changes");
+    controller.actions.selectChangesScope(first, { kind: "turn", turnId: "old-turn" });
     controller.actions.closeTab(first, "browser");
     controller.actions.toggle(first);
     controller.actions.openTab(second, "browser");
     controller.actions.closeTab(second, "browser");
     controller.actions.openTab(second, "terminal");
+    controller.actions.openTab(second, "agents");
 
     const restored = createWorkbenchController(persistence);
     assert.deepEqual(restored.getView(first).openTabs, ["changes"]);
     assert.equal(restored.getView(first).activeTab, "changes");
     assert.equal(restored.getView(first).expanded, false);
+    assert.deepEqual(restored.getView(first).changesScope, { kind: "uncommitted" });
     assert.deepEqual(restored.getView(second).openTabs, []);
     assert.equal(restored.getView(second).activeTab, null);
   });

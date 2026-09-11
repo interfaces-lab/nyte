@@ -1,0 +1,105 @@
+---
+title: Alert dialog
+description: "The Dialog surface with the alert semantics: no outside dismissal, no close button, the user must choose"
+---
+
+```ts title="Import"
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@nyte-ai/ui";
+```
+
+Implemented in `packages/ui/src/components/ui/alert-dialog.tsx`, wrapping
+[`@nyte-ai/ui/alert-dialog`](/cloud/headless/alert-dialog). It reuses `dialogStyles` from
+Dialog, so the two look identical; the difference is behavior.
+
+## Usage
+
+- Use for a decision the user cannot back out of by clicking away: delete, discard, overwrite,
+  revoke.
+- The footer **must** offer an explicit way out (a Cancel `AlertDialogClose`). There is no ✕ and
+  outside press does nothing.
+- Title states the question; description states the consequence. Both are required.
+- The destructive action is the last button and uses `variant="destructive"`.
+
+## Anatomy
+
+```tsx
+<AlertDialog>
+  <AlertDialogTrigger />
+  <AlertDialogContent>
+    {/* Portal › Backdrop › Popup */}
+    <AlertDialogTitle />
+    <AlertDialogDescription />
+    <AlertDialogFooter>
+      <AlertDialogClose /> {/* cancel */}
+      <AlertDialogClose /> {/* confirm */}
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+`AlertDialog`, `AlertDialogTrigger`, and `AlertDialogClose` are the Base UI parts re-exported
+without styling.
+
+## Example
+
+<Preview>
+  <AlertDialogDemo />
+</Preview>
+
+```tsx
+<AlertDialog>
+  <AlertDialogTrigger render={<Button variant="destructive" />}>Delete session</AlertDialogTrigger>
+  <AlertDialogContent>
+    <AlertDialogTitle>Delete this session?</AlertDialogTitle>
+    <AlertDialogDescription>
+      The history tree and every head under it are removed. This cannot be undone.
+    </AlertDialogDescription>
+    <AlertDialogFooter>
+      <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+      <AlertDialogClose render={<Button variant="destructive" />}>Delete</AlertDialogClose>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+## Props
+
+### AlertDialog (Root)
+
+<include>../../base-ui-reference/alert-dialog/Root.md</include>
+
+### AlertDialogContent
+
+`StyledProps<AlertDialog.Popup.Props>`. Channels apply to the Popup.
+
+<include>../../base-ui-reference/alert-dialog/Popup.md</include>
+
+### AlertDialogTitle, AlertDialogDescription, AlertDialogFooter
+
+`StyledProps` of the matching Base UI part; Footer is a `<div>`. Styles are Dialog's.
+
+### AlertDialogTrigger, AlertDialogClose
+
+<include>../../base-ui-reference/alert-dialog/Trigger.md</include>
+
+<include>../../base-ui-reference/alert-dialog/Close.md</include>
+
+## Accessibility
+
+- `role="alertdialog"`, `aria-modal="true"`, labelled by the title and described by the
+  description.
+- Outside press does not close. Escape closes by default in Base UI; pass an `onOpenChange` that
+  ignores the `escape-key` reason if the surface must not be escapable.
+- Focus moves into the popup on open and returns to the trigger on close.
+
+## Styling
+
+Same tokens as [Dialog](/cloud/primitives/dialog#styling).

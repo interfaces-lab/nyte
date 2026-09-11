@@ -1,10 +1,13 @@
 /** Small shared controls, styled on the palette. */
-import { Button as BaseButton, Toggle, Tooltip } from "@nyte-ai/ui/primitives";
+import { Button as BaseButton } from "@nyte-ai/ui/button";
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { Tooltip } from "@nyte-ai/ui/tooltip";
 import * as stylex from "@stylexjs/stylex";
 import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
+import type { SessionMark } from "../chrome/sidebar-view.ts";
 import { Icon, type IconName } from "./icons";
 import { Spinner } from "./spinner.tsx";
 
@@ -12,18 +15,23 @@ import { Spinner } from "./spinner.tsx";
  * Keyboard focus must be visible to navigate at all: `ring` for standalone
  * controls, `ringInset` for rows and menu items that sit flush inside a
  * scroll container or popover, where an outset ring would clip.
+ *
+ * `t.focusRing` — not `:focus-visible` — is what keeps these off the mouse.
+ * Chromium matches `:focus-visible` on every text field focus, so a plain
+ * ring lands on any input the user clicked into; focus-modality.ts drops the
+ * color to `transparent` until focus arrives by keyboard.
  */
 export const focus = stylex.create({
   ring: {
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: 1,
   },
   ringInset: {
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: -2,
   },
 });
@@ -104,6 +112,7 @@ const styles = stylex.create({
     flexShrink: 0,
     color: t.iconSecondary,
   },
+  compactIconButton: { width: 24, height: 24 },
   statusDot: {
     display: "inline-flex",
     alignItems: "center",
@@ -115,10 +124,10 @@ const styles = stylex.create({
     pointerEvents: "none",
   },
   statusWorking: { width: 15, height: 15, color: t.textAccent },
-  statusIdle: {
-    backgroundColor: "transparent",
-    boxShadow: `inset 0 0 0 1.5px ${t.iconTertiary}`,
-  },
+  statusRetry: { width: 15, height: 15, color: t.textWarning },
+  statusWaiting: { backgroundColor: t.textWarning },
+  statusFailed: { backgroundColor: t.textDanger },
+  statusIdle: { backgroundColor: "transparent" },
   kbd: {
     display: "inline-flex",
     alignItems: "center",
@@ -234,6 +243,7 @@ interface IconButtonProps extends Omit<JSX.IntrinsicElements["button"], "classNa
   icon: IconName | ReactElement;
   label: string;
   size?: number;
+  compact?: boolean;
 }
 
 interface ToggleIconButtonProps extends Omit<IconButtonProps, "aria-pressed" | "onClick"> {
@@ -245,6 +255,7 @@ export function IconButton({
   icon,
   label,
   size = 15,
+  compact = false,
   type = "button",
   disabled,
   ...rest
@@ -255,7 +266,13 @@ export function IconButton({
       render={<button type={type} {...rest} />}
       aria-label={label}
       title={label}
-      {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
+      {...stylex.props(
+        styles.buttonBase,
+        focus.ring,
+        styles.ghost,
+        styles.iconButton,
+        compact && styles.compactIconButton,
+      )}
     >
       {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
     </BaseButton>
@@ -266,6 +283,7 @@ export function ToggleIconButton({
   icon,
   label,
   size = 15,
+  compact = false,
   pressed,
   onPressedChange,
   type = "button",
@@ -280,7 +298,13 @@ export function ToggleIconButton({
       render={<button type={type} {...rest} />}
       aria-label={label}
       title={label}
-      {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
+      {...stylex.props(
+        styles.buttonBase,
+        focus.ring,
+        styles.ghost,
+        styles.iconButton,
+        compact && styles.compactIconButton,
+      )}
     >
       {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
     </Toggle>
@@ -327,14 +351,41 @@ export function HintToggleIconButton({
   );
 }
 
-export function StatusDot({ working }: { working: boolean }): ReactElement {
+const STATUS_MARK_LABEL = {
+  idle: "Idle",
+  working: "Running",
+  waiting: "Needs attention",
+  retry: "Retrying",
+  failed: "Failed",
+} as const satisfies Readonly<Record<SessionMark, string>>;
+
+function statusMarkStyle(mark: SessionMark) {
+  switch (mark) {
+    case "working":
+      return styles.statusWorking;
+    case "retry":
+      return styles.statusRetry;
+    case "waiting":
+      return styles.statusWaiting;
+    case "failed":
+      return styles.statusFailed;
+    case "idle":
+      return styles.statusIdle;
+    default: {
+      const _exhaustive: never = mark;
+      return _exhaustive;
+    }
+  }
+}
+
+export function StatusDot({ mark }: { mark: SessionMark }): ReactElement {
   return (
     <span
       role="img"
-      aria-label={working ? "Running" : "Idle"}
-      {...stylex.props(styles.statusDot, working ? styles.statusWorking : styles.statusIdle)}
+      aria-label={STATUS_MARK_LABEL[mark]}
+      {...stylex.props(styles.statusDot, statusMarkStyle(mark))}
     >
-      {working && <Spinner />}
+      {(mark === "working" || mark === "retry") && <Spinner />}
     </span>
   );
 }

@@ -2,12 +2,16 @@
  * From flags and settings to a composed host: which provider answers, which
  * model and thinking level a run starts from, and the workspace's plugin set.
  */
-import { join } from "node:path";
 import process from "node:process";
 import { clampThinkingLevel, createNyteModels } from "@nyte-ai/ai";
 import type { Api, Model, Models, MutableModels, Provider } from "@nyte-ai/ai";
 import { isThinkingLevel, sessionId } from "@nyte-ai/core";
 import type { Nyte, SessionInfo, ThinkingLevel, TrustedWorkspace } from "@nyte-ai/core";
+import type { Plugin } from "@nyte-ai/core/plugins";
+import { workspaceStorePath } from "@nyte-ai/host";
+import { notificationsPlugin } from "@nyte-ai/plugin/examples/notifications";
+import { warmingPlugin } from "@nyte-ai/plugin/examples/warming";
+import type { TelemetryContext } from "@nyte-ai/telemetry";
 import {
   DEFAULT_PROVIDER_ID,
   DEFAULT_THINKING_LEVEL,
@@ -17,7 +21,6 @@ import {
 } from "./catalog.ts";
 import type { ResumeTarget, RunFlags } from "./flags.ts";
 import { Host } from "./host.ts";
-import { resolveWorkspacePlugins } from "./plugins.ts";
 import type { ResolvedSettings } from "./settings.ts";
 
 export interface Runtime {
@@ -54,14 +57,14 @@ function resolveRunModelId(
   return models.getModel(providerId, sources.settings.defaultModel)?.id;
 }
 
-/** The first provider with a stored credential, in preference order. */
+/** Choose configured auth locally; refreshing OAuth belongs to the request path. */
 export async function resolveRuntime(
   flags: RunFlags,
   settings: ResolvedSettings,
 ): Promise<Runtime | undefined> {
   const models = createNyteModels();
   for (const provider of runProviderCandidates(models, flags.provider, settings)) {
-    const auth = await models.getAuth(provider.id);
+    const auth = await models.checkAuth(provider.id);
     if (auth !== undefined) {
       await loadProviderCatalog(models, provider.id);
       return { models, provider };
@@ -111,7 +114,13 @@ export function hostFallbacks(
   return { model, thinkingLevel: clampThinkingLevel(model, effort) };
 }
 
+/** The terminal's own built-ins, after the shared set: attention comes through the shell. */
+export function tuiPlugins(models: Models): Plugin[] {
+  return [warmingPlugin({ models }), notificationsPlugin];
+}
+
 export interface OpenWorkspaceHostOptions {
+  readonly telemetry?: TelemetryContext;
   readonly workspace: TrustedWorkspace;
   readonly settings: ResolvedSettings;
   readonly runtime: Runtime;
@@ -121,48 +130,39 @@ export interface OpenWorkspaceHostOptions {
   readonly report: (message: string) => void;
 }
 
-export function sessionStorePath(cwd: string): string {
-  return join(cwd, ".nyte", "sessions.db");
-}
-
 /**
  * Compose the host for one workspace: its store, its plugin set behind trust,
  * and the model fallbacks the caller resolved.
  */
 export async function openWorkspaceHost(options: OpenWorkspaceHostOptions): Promise<Host> {
   const { workspace, runtime } = options;
-  const resolved = await resolveWorkspacePlugins(workspace, {
-    model: options.model,
-    models: runtime.models,
-  });
-  for (const failure of resolved.failures) {
-    options.report(`plugin ${failure.path}: ${failure.error}`);
-  }
   return Host.open({
     cwd: workspace.cwd,
-    storePath: sessionStorePath(workspace.cwd),
-    streamFn: (model, context, streamOptions) =>
-      runtime.models.streamSimple(model, context, streamOptions),
-    models: {
-      getModels: (provider) => runtime.models.getModels(provider),
-      getModel: (provider, id) => runtime.models.getModel(provider, id),
-    },
+    storePath: await workspaceStorePath(workspace.cwd),
+    models: runtime.models,
     model: options.model,
     thinkingLevel: options.thinkingLevel,
-    plugins: resolved.plugins,
+    telemetry: options.telemetry,
+    plugins: {
+      kind: "workspace",
+      target: { kind: "project", workspace },
+      extra: tuiPlugins(runtime.models),
+      onFailure: (failure) => options.report(`plugin ${failure.path}: ${failure.error}`),
+    },
     compaction: options.settings.compaction,
     streamOptions: { transport: options.settings.transport },
   });
 }
 
-/** The session a launch targets, through SDK verbs alone. */
+/** The session a launch targets, through SDK operations alone. */
 export async function targetSession(nyte: Nyte, target: ResumeTarget): Promise<SessionInfo> {
   switch (target.kind) {
     case "new":
       return nyte.sessions.create();
     case "latest": {
-      // Skip sessions that were created by a launch and never written to.
-      const { items } = await nyte.sessions.list();
+      // Skip sessions that were created by a launch and never written to,
+      // and subagent children, which resume under their parent's task call.
+      const { items } = await nyte.sessions.list({ parent: null });
       const used = items
         .filter((info) => info.heads.some((head) => head.tip !== null))
         .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)[0];

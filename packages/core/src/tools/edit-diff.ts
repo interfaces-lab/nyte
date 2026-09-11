@@ -110,16 +110,15 @@ function getReplacementLineRange(lines: LineSpan[], replacement: TextReplacement
 }
 
 function applyReplacements(content: string, replacements: TextReplacement[], offset = 0): string {
-  let result = content;
-  for (let i = replacements.length - 1; i >= 0; i--) {
-    const replacement = replacements[i];
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const replacement of replacements) {
     const matchIndex = replacement.matchIndex - offset;
-    result =
-      result.substring(0, matchIndex) +
-      replacement.newText +
-      result.substring(matchIndex + replacement.matchLength);
+    parts.push(content.slice(cursor, matchIndex), replacement.newText);
+    cursor = matchIndex + replacement.matchLength;
   }
-  return result;
+  parts.push(content.slice(cursor));
+  return parts.join("");
 }
 
 /**
@@ -203,30 +202,35 @@ export interface AppliedEditsResult {
   newContent: string;
 }
 
+/** An edit's needle in both spaces, so each is normalized once per call. */
+interface Needle {
+  readonly oldText: string;
+  readonly fuzzyOldText: string;
+}
+
 /**
- * Find oldText in content, trying exact match first, then fuzzy match.
- * When fuzzy matching is used, the returned contentForReplacement is the
- * fuzzy-normalized version of the content (trailing whitespace stripped,
- * Unicode quotes/dashes normalized to ASCII).
+ * Find the needle in `content`, exact first, then in `fuzzyContent` (the
+ * fuzzy-normalized `content`: trailing whitespace stripped, Unicode quotes,
+ * dashes and spaces folded to ASCII). A fuzzy hit reports offsets in that
+ * normalized space and names it as the content to replace in.
  */
-function fuzzyFindText(content: string, oldText: string): FuzzyMatchResult {
-  // Try exact match first
-  const exactIndex = content.indexOf(oldText);
+function findText(input: {
+  readonly content: string;
+  readonly fuzzyContent: string;
+  readonly needle: Needle;
+}): FuzzyMatchResult {
+  const { content, fuzzyContent, needle } = input;
+  const exactIndex = content.indexOf(needle.oldText);
   if (exactIndex !== -1) {
     return {
       found: true,
       index: exactIndex,
-      matchLength: oldText.length,
+      matchLength: needle.oldText.length,
       usedFuzzyMatch: false,
       contentForReplacement: content,
     };
   }
-
-  // Try fuzzy match - work entirely in normalized space
-  const fuzzyContent = normalizeForFuzzyMatch(content);
-  const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-  const fuzzyIndex = fuzzyContent.indexOf(fuzzyOldText);
-
+  const fuzzyIndex = fuzzyContent.indexOf(needle.fuzzyOldText);
   if (fuzzyIndex === -1) {
     return {
       found: false,
@@ -236,28 +240,22 @@ function fuzzyFindText(content: string, oldText: string): FuzzyMatchResult {
       contentForReplacement: content,
     };
   }
-
-  // When fuzzy matching, return offsets in normalized space. Callers can use
-  // the normalized content to compute replacements, then decide how much of
-  // that normalized output should be written back.
   return {
     found: true,
     index: fuzzyIndex,
-    matchLength: fuzzyOldText.length,
+    matchLength: needle.fuzzyOldText.length,
     usedFuzzyMatch: true,
     contentForReplacement: fuzzyContent,
   };
 }
 
-/** Strip UTF-8 BOM if present, return both the BOM (if any) and the text without it */
 export function stripBom(content: string): { bom: string; text: string } {
   return content.startsWith("﻿") ? { bom: "﻿", text: content.slice(1) } : { bom: "", text: content };
 }
 
-function countOccurrences(content: string, oldText: string): number {
-  const fuzzyContent = normalizeForFuzzyMatch(content);
-  const fuzzyOldText = normalizeForFuzzyMatch(oldText);
-  return fuzzyContent.split(fuzzyOldText).length - 1;
+/** Duplicates are counted in fuzzy space even for an exact hit, so a near-copy still refuses the edit. */
+function countOccurrences(fuzzyContent: string, needle: Needle): number {
+  return fuzzyContent.split(needle.fuzzyOldText).length - 1;
 }
 
 function getNotFoundError(path: string, editIndex: number, totalEdits: number): Error {
@@ -307,7 +305,7 @@ function getNoChangeError(path: string, totalEdits: number): Error {
  * Apply one or more exact-text replacements to LF-normalized content.
  *
  * All edits are matched against the same original content. Replacements are
- * then applied in reverse order so offsets remain stable. If any edit needs
+ * then assembled in forward order using their original offsets. If any edit needs
  * fuzzy matching, the operation runs in fuzzy-normalized content space and then
  * overlays those line-level changes onto the original content so unchanged line
  * blocks keep their original bytes.
@@ -328,23 +326,31 @@ export function applyEditsToNormalizedContent(
     }
   }
 
-  const initialMatches = normalizedEdits.map((edit) =>
-    fuzzyFindText(normalizedContent, edit.oldText),
+  // Normalizing is idempotent, so the fuzzy view of the fuzzy view is itself:
+  // once any edit needs fuzzy space, every edit is re-matched there.
+  const fuzzyContent = normalizeForFuzzyMatch(normalizedContent);
+  const needles = normalizedEdits.map((edit): Needle => ({
+    oldText: edit.oldText,
+    fuzzyOldText: normalizeForFuzzyMatch(edit.oldText),
+  }));
+  const initialMatches = needles.map((needle) =>
+    findText({ content: normalizedContent, fuzzyContent, needle }),
   );
   const usedFuzzyMatch = initialMatches.some((match) => match.usedFuzzyMatch);
-  const replacementBaseContent = usedFuzzyMatch
-    ? normalizeForFuzzyMatch(normalizedContent)
-    : normalizedContent;
+  const replacementBaseContent = usedFuzzyMatch ? fuzzyContent : normalizedContent;
 
   const matchedEdits: MatchedEdit[] = [];
   for (let i = 0; i < normalizedEdits.length; i++) {
     const edit = normalizedEdits[i];
-    const matchResult = fuzzyFindText(replacementBaseContent, edit.oldText);
+    const needle = needles[i];
+    const matchResult = usedFuzzyMatch
+      ? findText({ content: fuzzyContent, fuzzyContent, needle })
+      : initialMatches[i];
     if (!matchResult.found) {
       throw getNotFoundError(path, i, normalizedEdits.length);
     }
 
-    const occurrences = countOccurrences(replacementBaseContent, edit.oldText);
+    const occurrences = countOccurrences(fuzzyContent, needle);
     if (occurrences > 1) {
       throw getDuplicateError(path, i, normalizedEdits.length, occurrences);
     }

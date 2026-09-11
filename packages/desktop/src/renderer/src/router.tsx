@@ -8,7 +8,7 @@
  * Settings, ⌘D and ⇧⌘D split the stage — because the renderer owns chords.
  */
 import * as stylex from "@stylexjs/stylex";
-import { Tooltip } from "@nyte-ai/ui/primitives";
+import { Tooltip } from "@nyte-ai/ui/tooltip";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -20,6 +20,7 @@ import {
   useRouter,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
+import { AboutDialog } from "./chrome/about-dialog.tsx";
 import type { ReactElement } from "react";
 import { WorkspaceDialogHost } from "./chrome/open-workspace.tsx";
 import { isSettingsSection } from "./chrome/settings-navigation.tsx";
@@ -27,13 +28,8 @@ import { shellActions, useShellState } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
 import { Titlebar } from "./chrome/titlebar.tsx";
-import {
-  PaneControllerProvider,
-  usePaneActions,
-  usePaneControllerSnapshot,
-} from "./layout/pane-context.tsx";
+import { PaneControllerProvider, usePaneActions, useCanSplitPane } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { MIN_PANE_WIDTH } from "./layout/pane-layout.ts";
 import { keys, queryClient, useHostState, warmThread } from "./queries.ts";
 import type { SessionPage } from "./session-directory.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
@@ -43,6 +39,7 @@ import { sessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { activateOutbox } from "./use-outbox.ts";
+import { resolveClientAction } from "../../shared/client-actions.ts";
 
 import { CustomizeSurface } from "./chrome/customize.tsx";
 import { SettingsSurface } from "./chrome/appearance-settings.tsx";
@@ -93,56 +90,52 @@ function ShellChrome(): ReactElement {
   const host = useHostState();
   const shellRouter = useRouter();
   const panes = usePaneActions();
-  const { layout } = usePaneControllerSnapshot();
-  const { stage: shellStage } = useShellState();
-  const canSplit = layout.kind === "single" && shellStage.kind === "workspace";
+  const canSplit = useCanSplitPane();
+  const { stage: shellStage, about } = useShellState();
   const customizeOpen = shellStage.kind === "customize";
   const mac = macPlatform(host.data?.platform);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!(mac ? event.metaKey : event.ctrlKey) || event.altKey) return;
       const settingsOpen = shellRouter.state.matches.some(
         (match) => match.routeId === settingsRoute.id,
       );
-      const key = event.key.toLocaleLowerCase();
-      if (key === "d") {
-        if (settingsOpen || customizeOpen || !canSplit) return;
-        // The stage is never wider than the window, so a window this narrow
-        // would split into two panes that clip.
-        if (window.innerWidth < 2 * MIN_PANE_WIDTH) return;
+      const action = resolveClientAction(event, mac, settingsOpen ? "settings" : shellStage.kind);
+      if (action === undefined) return;
+      if (action.id === "split-right" || action.id === "split-down") {
+        if (!canSplit) return;
         event.preventDefault();
-        panes.split(event.shiftKey ? "down" : "right");
+        panes.split(action.id === "split-down" ? "down" : "right");
         return;
       }
-      if (event.shiftKey) return;
-      if (key === "n") {
+      if (action.id === "focus-pane") {
+        if (panes.focusNext()) event.preventDefault();
+        return;
+      }
+      if (action.id === "new-chat") {
         event.preventDefault();
-        shellActions.showWorkspace();
         panes.newChat();
-      } else if (key === "[" && settingsOpen) {
+      } else if (action.id === "back" && settingsOpen) {
         event.preventDefault();
         shellRouter.history.back();
-      } else if (key === "[" && customizeOpen) {
+      } else if (action.id === "back" && customizeOpen) {
         event.preventDefault();
         shellActions.showWorkspace();
-      } else if (key === "[" && shellRouter.history.canGoBack()) {
+      } else if (action.id === "back" && shellRouter.history.canGoBack()) {
         event.preventDefault();
         shellActions.showWorkspace();
         shellRouter.history.back();
       } else if (
-        key === "]" &&
+        action.id === "forward" &&
         shellRouter.history.location.state.__TSR_index < shellRouter.history.length - 1
       ) {
         event.preventDefault();
         shellActions.showWorkspace();
         shellRouter.history.forward();
-      } else if (key === "b") {
-        if (settingsOpen) return;
+      } else if (action.id === "sidebar") {
         event.preventDefault();
         shellActions.toggleSidebar();
-      } else if (key === ",") {
-        if (settingsOpen) return;
+      } else if (action.id === "settings") {
         event.preventDefault();
         void shellRouter.navigate({
           to: "/settings/$section",
@@ -181,6 +174,9 @@ function ShellChrome(): ReactElement {
         </SessionDndProvider>
       </div>
       <WorkspaceDialogHost />
+      {about !== undefined && (
+        <AboutDialog info={about} onClose={() => shellActions.showAbout(undefined)} />
+      )}
     </div>
   );
 }
@@ -280,6 +276,9 @@ export const router = createRouter({
   history,
   defaultPreload: "intent",
   defaultPreloadDelay: 50,
+  // The loader only warms a query; the query layer owns staleness, so every
+  // hover may re-check rather than the router skipping preloads for 30s.
+  defaultPreloadStaleTime: 0,
   defaultStructuralSharing: true,
 });
 

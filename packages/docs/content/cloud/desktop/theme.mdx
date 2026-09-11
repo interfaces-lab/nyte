@@ -1,0 +1,71 @@
+---
+title: Theme variables
+description: "t.* appearance constants, the geometry schema, layers, and the floating surface shared by every popup"
+---
+
+The desktop has two StyleX files that every component reads from, and a CSS file that gives them
+values.
+
+| File                                | Exports                                                                                     | Holds                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `theme/vars.stylex.ts`              | `t`                                                                                         | Runtime appearance: text, icon, surface, fill, border, status, conversation, shadow, type, radius, motion, scrollbar |
+| `theme/schema.stylex.ts`            | `shell`, `conversation`, `sidebar`, `settings`, `workbench`, `diffView`, `control`, `layer` | Structural geometry and stacking                                                                                     |
+| `theme/tokens.css`                  |                                                                                             | The `--nyte-*` and `--sand-*` custom properties behind both                                                          |
+| `theme/floating-surface.stylex.ts`  | `floatingSurfaceStyles`                                                                     | The popup surface shared by menus, preview cards, and the composer listbox                                           |
+| `theme/settings-patterns.stylex.ts` | `settingsPatterns`                                                                          | Section, group, and row layouts for Settings                                                                         |
+
+Both StyleX files use `stylex.defineConsts`, not `defineVars`. The comment in `vars.stylex.ts`
+gives the reason: the reference never changes, only the CSS custom property behind it does, and
+`defineVars` would emit a second hashed variable for every token without adding a theme.
+
+## `t.*` groups
+
+Names map one-to-one onto custom properties. The right-hand column is the variable the constant
+reads.
+
+| Group        | Constants                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text         | `textPrimary` `textSecondary` `textTertiary` `textQuaternary` `textInvert` `textAccent` `textCyan` `textSuccess` `textWarning` `textDanger` `textOnPrimary` `textOnColor` `textDisabled` `shimmerBase` `shimmerHighlight`                                                                                                                                                               |
+| icons        | `iconPrimary` `iconSecondary` `iconTertiary`                                                                                                                                                                                                                                                                                                                                            |
+| surfaces     | `bgBase` `bgSubtle` `bgElevated` `bgScrim` `bgChrome` `bgEditor` `imageBg` `bgCard` `bgHover` `bgActive` `bgFaint` `bgSelection` `bgSidebar`                                                                                                                                                                                                                                            |
+| fills        | `fillPrimary` `fillPrimaryHover` `fillPrimaryDisabled` `fillSecondary` `fillSecondaryHover` `fillGhostHover` `fillGhostSelected` `fillElevated` `fillBubbleAgent` `fillBubbleUser` `fillAccent` `fillAccentHover` `fillAccentSubtle` `fillSuccess` `fillSuccessSubtle` `fillWarning` `fillWarningSubtle` `fillDanger` `fillDangerHover` `fillDangerSubtle` `switchActive` `switchThumb` |
+| borders      | `borderSubtle` `imageOutline` `borderWeak` `borderDefault` `borderStrong` `borderFocus` `borderAccent` `strokePrimary` `strokeSecondary` `strokeTertiary` `strokeQuaternary` `strokeFocused` `focusRing`                                                                                                                                                                                |
+| status       | `accent` `success` `warn` `danger` `added` `removed` `red` `green` `yellow` `orange` `purple` `cyan` `magenta` `diffAddedLineBg` `diffAddedTextBg` `diffRemovedLineBg` `diffRemovedTextBg`                                                                                                                                                                                              |
+| conversation | `conversationUserShellBg` `conversationUserBg` `conversationUserBgHover` `conversationUserRing` `conversationTechnicalBg` `conversationTechnicalRing` `conversationGuide` `composerBg` `composerRing` `composerRingActive`                                                                                                                                                              |
+| shadows      | `shadowControlColor` `shadowPopover` `shadowModal` `shadowWorkbench`                                                                                                                                                                                                                                                                                                                    |
+| type         | `fontSans` `fontMono` `fontXs` `fontSm` `fontBase` `fontLg` `fontXl` `font2xl` `fontCode` `leadingXs` `leadingSm` `leadingBase` `leadingLg` `letterBase` `letterLg`                                                                                                                                                                                                                     |
+| geometry     | `radiusXs` `radiusSm` `radiusBase` `radiusLg` `radiusXl` `radius2xl` `radius3xl` `radius4xl` `radiusFull`                                                                                                                                                                                                                                                                               |
+| motion       | `durationInstant` `durationFast` `durationNormal` `durationSlow` `easeOut` `easeOutQuint` `easeInOutStrong`                                                                                                                                                                                                                                                                             |
+| scrollbar    | `scrollbarThumb` `scrollbarThumbHover`                                                                                                                                                                                                                                                                                                                                                  |
+
+Two constants have a stated constraint:
+
+- `imageBg` reads `--nyte-editor-base` because "image transparency must not pick up the workspace
+  tint."
+- `bgSelection` is a `color-mix()` of `--nyte-bg-secondary` at 40%, the one computed value.
+
+## Geometry schema
+
+`schema.stylex.ts` names structural decisions so components "compose these named decisions instead
+of growing their own almost-matching widths, insets, and row heights." Groups: `shell`
+(titlebar height), `conversation` (measure, gutter, turn/row gaps, composer inset and radii),
+`sidebar` (width, handle, row height, gutters, icon slot, action size), `settings` (content width,
+row heights, control height and max width), `workbench` (rail, panel, header, file list widths),
+`diffView` (line height, preview max height), `control` (menu width and similar), `layer`
+(z-indices: `menu`, `submenu`, `dialogBackdrop`, `dialog`, `dragPreview`, …).
+
+Geometry stays static "so StyleX can evaluate it once"; runtime appearance stays in CSS variables
+so the appearance settings can change it live.
+
+## Relationship to `@nyte-ai/ui` tokens
+
+There is no mapping. The desktop palette (`--sand-*` for fills and borders, `--nyte-*` for the
+rest) and the shared `--nyte-color-*` tokens are separate systems with overlapping names. A
+component belongs to one or the other by which file it imports. Consolidating them is the known
+gap recorded on the [introduction](/cloud/introduction#known-gaps).
+
+## Focus modality
+
+`theme/focus-modality.ts` writes `data-nyte-focus-modality` on `<html>` and `tokens.css` resolves
+`--nyte-focus-ring` to `transparent` while it reads `pointer`. The full mechanism is in
+[Foundations › Focus](/cloud/foundations/focus).

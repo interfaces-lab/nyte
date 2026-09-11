@@ -2,7 +2,7 @@
 
 The wire contract between a Nyte host and a client in another process. It
 holds the SDK's plain data types, a TypeBox schema for each, the table of
-verbs the wire carries, the JSON and server-sent-event envelopes, and an SSE
+operations the wire carries, the JSON and server-sent-event envelopes, and an SSE
 codec. `@nyte-ai/server` and `@nyte-ai/client` are both written against it,
 and `@nyte-ai/core` re-exports its types so a `SessionInfo` in core and one
 decoded from JSON are the same TypeScript type.
@@ -14,10 +14,14 @@ content security policy that forbids `eval`.
 ## The wire, version 1
 
 ```text
-POST {base}/v1/call/{verb}
+GET {base}/v1/info
+  reply: {"ok": true, "defined": true, "value": {"version": "<host release>", "wireVersion": 1}}
+         the prefix is the wire version; another wire answers this route not_found
+
+POST {base}/v1/call/{operation}
   content-type: application/json
-  body:  {"input": <verb input>}      omit "input" when the verb takes none
-  reply: {"ok": true, "defined": true, "value": <verb output>}
+  body:  {"input": <operation input>}      omit "input" when the operation takes none
+  reply: {"ok": true, "defined": true, "value": <operation output>}
          {"ok": true, "defined": false}                   the SDK returned undefined
          {"ok": false, "error": {"code": "...", "message": "..."}}
 
@@ -40,6 +44,10 @@ consumer must not drop an event because its seq equals the last one seen.
 A watch from a snapshot's `seq` may also replay a commit the snapshot already
 holds; consumers fold by identity (`oid`, `change`), not by count.
 
+`activation_changed` reports host-local session activation. Every watch replays
+the current activation, stamped with the latest durable `seq`; the notice is not
+part of that ordered durable stream.
+
 A stream that closes without an `ended` or `error` frame was interrupted.
 The client reports that as a failure, not as completion.
 
@@ -50,7 +58,7 @@ The client reports that as a failure, not as completion.
 | `invalid_input`          | 400    | input or query failed its schema; `issues` lists the paths  |
 | `unauthorized`           | 401    | no credential                                               |
 | `forbidden`              | 403    | credential refused, or a browser origin not on the list     |
-| `unknown_verb`           | 404    | not in the verb table                                       |
+| `unknown_operation`           | 404    | not in the operation table                                       |
 | `unknown_session`        | 404    | the SDK threw `UnknownSession`                              |
 | `not_found`              | 404    | no such route                                               |
 | `method_not_allowed`     | 405    |                                                             |
@@ -60,7 +68,7 @@ The client reports that as a failure, not as completion.
 | `internal`               | 500    | anything else; the message is fixed, the cause stays on the host |
 | `closed`                 | 503    | the SDK or the server is closed                             |
 
-## Verbs
+## Operations
 
 The set the desktop already carries over Electron IPC, plus `landing`:
 
@@ -69,38 +77,40 @@ landing
 sessions.create  sessions.get  sessions.snapshot  sessions.list  sessions.rename
 sessions.setPinned  sessions.setArchived  sessions.delete  sessions.configure
 messages.send  messages.cancel  messages.redeliver
-runs.abort  runs.changes
+runs.current  runs.abort  runs.reply  runs.changes
 heads.move
 workspace.list  workspace.forget  workspace.vcs.diff
 provider.models.default
 plugins.catalog  plugins.list  plugins.commands.list  plugins.commands.run
-plugins.settings.list  plugins.settings.apply  plugins.resources.list
+plugins.settings.list  plugins.settings.apply  plugins.resources.list  plugins.status.list
 ```
 
 Not carried, on purpose: `runs.wait` and `runs.compact` take an `AbortSignal`
-and hold a request open for a model call; `attach`, `setPlugins`, and
+and hold a request open for a model call. A remote client waits by watching
+`run` events and reading `runs.current`; compaction stays off the wire until
+dispatch can carry the request's signal. `attach`, `setPlugins`, and
 `close` are host lifecycle; step execution is never remote in this revision.
-The read verbs the desktop does not use (`messages.list`, `heads.list`, and
-so on) wait for a later revision. `VERBS` is the authoritative list.
+The read operations the desktop does not use (`messages.list`, `heads.list`, and
+so on) wait for a later revision. `OPERATIONS` is the authoritative list.
 
 ## Using it
 
 ```ts
 import { Value } from "typebox/value";
-import { VERBS, describeIssues, validationIssues } from "@nyte-ai/protocol";
+import { OPERATIONS, describeIssues, validationIssues } from "@nyte-ai/protocol";
 
 const input: unknown = JSON.parse(body);
-const schema = VERBS["messages.send"].input;
+const schema = OPERATIONS["messages.send"].input;
 if (!Value.Check(schema, input)) {
   throw new Error(describeIssues(validationIssues(Value.Errors(schema, input))));
 }
-// input now has the verb's input type, including its branded sessionId.
+// input now has the operation's input type, including its branded sessionId.
 ```
 
 Check untrusted values at the HTTP or SSE boundary with `Value.Check`.
 Pass the resulting types to SDK code without revalidating them.
-`validationIssues` limits schema diagnostics to 20 entries. `parseVerb`
-returns a verb from `VERBS`, or `undefined` for an unrecognized route name.
+`validationIssues` limits schema diagnostics to 20 entries. `parseOperation`
+returns an operation from `OPERATIONS`, or `undefined` for an unrecognized route name.
 
 `createSseParser({ maxFrameChars })` bounds the decoded text of one frame
 in UTF-16 code units, not bytes, including field names, comments, line
@@ -121,6 +131,6 @@ directions (readonly aside). A schema that drifts from its type fails
 - No batching, no reconnect protocol beyond "snapshot, then watch from the
   snapshot's `seq`". `after=<last seq seen>` is not a lossless resume across
   an arbitrary disconnect, because several events can share a seq.
-- No tenancy: a verb names a session id and nothing scopes which ids a
+- No tenancy: an operation names a session id and nothing scopes which ids a
   credential may name. That is the server's authorizer's job, and this
   revision's authorizer is all-or-nothing.

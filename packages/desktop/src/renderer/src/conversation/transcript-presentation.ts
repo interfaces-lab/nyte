@@ -1,4 +1,5 @@
 import type { Turn, TurnPart } from "@nyte-ai/core";
+import { messageParts } from "./message-references.ts";
 
 export type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
 export type WorkTurnPart = Extract<TurnPart, { readonly kind: "assistant" | "thinking" | "tool" }>;
@@ -17,8 +18,8 @@ function isActivityPart(part: TurnPart): boolean {
 }
 
 /**
- * Cursor treats the model's intermediate narration, reasoning, and tool calls
- * as one work episode. Only the assistant text after the final activity part
+ * Intermediate narration, reasoning, and tool calls form one work episode.
+ * Only the assistant text after the final activity part
  * remains in the transcript as the response.
  */
 export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
@@ -64,23 +65,40 @@ export type UserTextSegment =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reference"; readonly label: string; readonly target: string };
 
-/** Hide persisted skill-link plumbing without pretending it is ordinary Markdown. */
+/** Hide persisted skill plumbing while keeping its compact label available to assistive text. */
 export function userTextSegments(source: string): readonly UserTextSegment[] {
   const text = source.replaceAll(/\n{3,}/gu, "\n\n");
-  const pattern = /\[\$(?<name>[^\]\r\n]+)\]\((?<target>[^)\r\n]+)\)/gu;
+  const parts = messageParts(text, { form: "message" });
   const segments: UserTextSegment[] = [];
-  let cursor = 0;
+  const appendText = (value: string): void => {
+    if (value === "") return;
+    const previous = segments.at(-1);
+    if (previous?.kind === "text") {
+      segments[segments.length - 1] = { kind: "text", text: previous.text + value };
+      return;
+    }
+    segments.push({ kind: "text", text: value });
+  };
 
-  for (const match of text.matchAll(pattern)) {
-    const index = match.index;
-    const name = match.groups?.name;
-    const target = match.groups?.target;
-    if (index === undefined || name === undefined || target === undefined) continue;
-    if (index > cursor) segments.push({ kind: "text", text: text.slice(cursor, index) });
-    segments.push({ kind: "reference", label: `/${name}`, target });
-    cursor = index + match[0].length;
+  for (const [index, part] of parts.entries()) {
+    if (part.kind === "text") {
+      appendText(part.text);
+      continue;
+    }
+    if (part.reference.kind !== "skill") {
+      appendText(part.source);
+      continue;
+    }
+    segments.push({
+      kind: "reference",
+      label: `/${part.reference.name}`,
+      target: part.reference.path,
+    });
+    if (!part.source.endsWith("\n\n")) continue;
+    const next = parts[index + 1];
+    const separator = next?.kind === "text" ? "\n" : next?.kind === "reference" ? " " : "";
+    appendText(separator);
   }
-  if (cursor < text.length) segments.push({ kind: "text", text: text.slice(cursor) });
   return segments.length === 0 ? [{ kind: "text", text }] : segments;
 }
 
@@ -186,8 +204,16 @@ export function presentTranscriptNotice(source: string): TranscriptNotice {
 export function configChangeText(
   turn: Extract<Turn, { readonly kind: "config" }>,
 ): string | undefined {
-  if (turn.body.agent !== undefined) return `Mode set to ${turn.body.agent}`;
-  return undefined;
+  const changes: string[] = [];
+  if (turn.body.model !== undefined) {
+    const { provider, id } = turn.body.model;
+    changes.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
+  }
+  if (turn.body.thinkingLevel !== undefined) {
+    changes.push(`Thinking → ${turn.body.thinkingLevel}`);
+  }
+  if (turn.body.agent !== undefined) changes.push(`Agent → ${turn.body.agent}`);
+  return changes.length === 0 ? undefined : changes.join(" · ");
 }
 
 export function formatRunDuration(durationMs: number): string | undefined {

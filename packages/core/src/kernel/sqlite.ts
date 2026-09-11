@@ -1,17 +1,16 @@
-import { schemas } from "@nyte-ai/protocol";
-import { Type } from "typebox";
-import { Value } from "typebox/value";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type SQLOutputValue } from "node:sqlite";
-import { hashObject } from "./hash.ts";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { hashCanonicalJson, hashObject } from "./hash.ts";
 import { canonicalJson } from "./json.ts";
 import { CursorExpired } from "./model.ts";
 import { isRefName, newOwnerId } from "./names.ts";
-import { sql } from "./sql.ts";
+import { sql, sqlList, type SqliteConnection, type SqlRow } from "./sql.ts";
+import { checkEventBody, checkObject } from "./store-schemas.ts";
 import { UnknownSession } from "./store.ts";
 import type {
+  Commit,
   Event,
   EventBody,
   Lease,
@@ -34,7 +33,10 @@ import type {
   Store,
 } from "./store.ts";
 
+/** Oids per DELETE statement; SQLite binds at most 32 766 parameters. */
+const DELETE_CHUNK = 500;
 const DEFAULT_WATCH_POLL_INTERVAL_MS = 25;
+const WATCH_REPLAY_PAGE_SIZE = 256;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -79,25 +81,15 @@ CREATE TABLE IF NOT EXISTS events (
 `;
 
 /**
- * Bumped whenever the tables change shape. There is no migration: a store an
+ * Bumped whenever the tables change shape. There is no migration: a file an
  * earlier schema wrote is refused with a message that says to delete it, since
  * `CREATE TABLE IF NOT EXISTS` would keep the old shape and fail later.
  */
 const SCHEMA_VERSION = 2;
 
-function schemaVersion(db: DatabaseSync): number {
-  const row = db.prepare("PRAGMA user_version").get();
-  return row === undefined ? 0 : numberColumn(row, "user_version");
-}
-
-function isFresh(db: DatabaseSync): boolean {
-  return (
-    db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1").get() === undefined
-  );
-}
-
 const WAL_ATTEMPTS = 40;
 const WAL_RETRY_MS = 25;
+const MAX_STATEMENTS = 128;
 
 /**
  * Switching the journal mode needs the file to itself, and SQLite answers
@@ -116,8 +108,8 @@ function enableWal(db: DatabaseSync): void {
   }
 }
 
-function transact<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
+function transaction<T>(db: DatabaseSync, begin: string, fn: () => T): T {
+  db.exec(begin);
   try {
     const result = fn();
     db.exec("COMMIT");
@@ -132,109 +124,82 @@ function transact<T>(db: DatabaseSync, fn: () => T): T {
   }
 }
 
-function readTransaction<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec("BEGIN");
-  try {
-    const result = fn();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    try {
-      db.exec("ROLLBACK");
-    } catch {
-      // A failed COMMIT has already rolled back.
+/** A `node:sqlite` file or `:memory:` database, WAL, prepared statements cached per text. */
+function openNodeSqlite(path: string): SqliteConnection {
+  // SQLite creates a missing file, not a missing directory.
+  mkdirSync(dirname(path), { recursive: true });
+  const db = new DatabaseSync(path);
+  const statements = new Map<string, StatementSync>();
+  const statement = (text: string): StatementSync => {
+    const existing = statements.get(text);
+    if (existing !== undefined) return existing;
+    const prepared = db.prepare(text);
+    // Bound dynamic query shapes without caching mutable database results.
+    if (statements.size === MAX_STATEMENTS) {
+      const oldest = statements.keys().next();
+      if (!oldest.done) statements.delete(oldest.value);
     }
+    statements.set(text, prepared);
+    return prepared;
+  };
+  try {
+    db.exec("PRAGMA busy_timeout=5000");
+    enableWal(db);
+    db.exec("PRAGMA synchronous=FULL");
+    transaction(db, "BEGIN IMMEDIATE", () => {
+      const versionRow = db.prepare("PRAGMA user_version").get();
+      const version = versionRow === undefined ? 0 : numberColumn(versionRow, "user_version");
+      const fresh =
+        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1").get() ===
+        undefined;
+      if (version !== SCHEMA_VERSION && !(version === 0 && fresh)) {
+        throw new Error(
+          `${path} was written by another nyte schema (${String(version)}, this build reads ${String(SCHEMA_VERSION)}). Delete it to start over.`,
+        );
+      }
+      db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`);
+    });
+  } catch (error) {
+    db.close();
     throw error;
   }
+  return {
+    run: (text, params) => {
+      statement(text).run(...params);
+    },
+    all: (text, params) => statement(text).all(...params),
+    exec: (script) => db.exec(script),
+    transact: (fn) => transaction(db, "BEGIN IMMEDIATE", fn),
+    read: (fn) => transaction(db, "BEGIN", fn),
+    dataVersion: () => {
+      const row = db.prepare("PRAGMA data_version").get();
+      if (row === undefined) throw new Error("Could not read SQLite data_version");
+      return numberColumn(row, "data_version");
+    },
+    close: () => db.close(),
+  };
 }
 
-type SqliteRow = Record<string, SQLOutputValue>;
-
-function stringColumn(row: SqliteRow, name: string): string {
+function stringColumn(row: SqlRow, name: string): string {
   const value = row[name];
-  if (!Value.Check(Type.String(), value)) {
+  if (typeof value !== "string") {
     throw new TypeError(`SQLite column ${name} is not a string`);
   }
   return value;
 }
 
-function numberColumn(row: SqliteRow, name: string): number {
+function numberColumn(row: SqlRow, name: string): number {
   const value = row[name];
-  if (
-    !Value.Check(
-      Type.Integer({ minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER }),
-      value,
-    )
-  ) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new TypeError(`SQLite column ${name} is not a safe integer`);
   }
   return value;
 }
 
-const NullableString = Type.Union([Type.String(), Type.Null()]);
-const ObjectSchema = Type.Union([
-  schemas.Commit,
-  Type.Object({
-    kind: Type.Literal("change"),
-    previous: NullableString,
-    supersedes: Type.Optional(Type.String()),
-    body: schemas.CommitBody,
-    at: Type.Number(),
-    author: Type.Optional(schemas.Actor),
-  }),
-  Type.Object({
-    kind: Type.Literal("run"),
-    id: Type.String(),
-    head: Type.String(),
-    phase: schemas.RunPhase,
-    startedAt: Type.Number(),
-    attempts: Type.Number(),
-    config: Type.Object({
-      model: Type.Optional(schemas.ModelRef),
-      thinkingLevel: Type.Optional(Type.String()),
-      agent: Type.Optional(Type.String()),
-    }),
-    abortRequested: Type.Optional(Type.Literal(true)),
-  }),
-  Type.Object({
-    kind: Type.Literal("effect"),
-    state: Type.Literal("intent"),
-    runId: Type.String(),
-    callId: Type.String(),
-    tool: Type.String(),
-    args: schemas.JsonValue,
-    replay: Type.Union([Type.Literal("safe"), Type.Literal("never")]),
-    at: Type.Number(),
-  }),
-  Type.Object({
-    kind: Type.Literal("effect"),
-    state: Type.Literal("waiting"),
-    intent: Type.String(),
-    at: Type.Number(),
-  }),
-  Type.Object({
-    kind: Type.Literal("effect"),
-    state: Type.Literal("signal"),
-    intent: Type.String(),
-    signal: schemas.JsonValue,
-    at: Type.Number(),
-    author: Type.Optional(schemas.Actor),
-  }),
-  Type.Object({
-    kind: Type.Literal("effect"),
-    state: Type.Literal("result"),
-    intent: Type.String(),
-    result: schemas.ToolResultMessage,
-    at: Type.Number(),
-  }),
-  Type.Object({ kind: Type.Literal("stack"), parent: Type.String(), base: NullableString }),
-  Type.Object({ kind: Type.Literal("blob"), value: schemas.JsonValue }),
-]);
-
 /** Validate the stored shape before checking its content-addressed identity. */
 function parseObject(raw: string, oid: Oid): Obj {
   const value: unknown = JSON.parse(raw);
-  if (!Value.Check(ObjectSchema, value)) {
+  if (!checkObject.Check(value)) {
     throw new TypeError(`Stored object ${oid} is not a known object`);
   }
   if (hashObject(value) !== oid)
@@ -242,41 +207,9 @@ function parseObject(raw: string, oid: Oid): Obj {
   return value;
 }
 
-const EventBodySchema = Type.Union([
-  Type.Object({
-    kind: Type.Literal("ref"),
-    name: Type.String(),
-    from: NullableString,
-    to: NullableString,
-    reason: Type.String(),
-    actor: Type.Optional(schemas.Actor),
-  }),
-  Type.Object({
-    kind: Type.Literal("delta"),
-    runId: Type.String(),
-    attempt: Type.Number(),
-    index: Type.Number(),
-    part: Type.Union([Type.Literal("text"), Type.Literal("thinking")]),
-    delta: Type.String(),
-  }),
-  Type.Object({
-    kind: Type.Literal("progress"),
-    runId: Type.String(),
-    callId: Type.String(),
-    progress: schemas.ToolProgress,
-  }),
-  Type.Object({
-    kind: Type.Literal("notice"),
-    level: Type.Union([Type.Literal("info"), Type.Literal("warn"), Type.Literal("error")]),
-    owner: Type.String(),
-    message: Type.String(),
-  }),
-]);
-
 function parseEventBody(raw: string): EventBody {
   const value: unknown = JSON.parse(raw);
-  if (!Value.Check(EventBodySchema, value))
-    throw new TypeError("Stored event is not a known event body");
+  if (!checkEventBody.Check(value)) throw new TypeError("Stored event is not a known event body");
   return value;
 }
 
@@ -287,7 +220,7 @@ function encodeEventBody(body: EventBody): string {
 }
 
 function allocateSeq(options: {
-  readonly db: DatabaseSync;
+  readonly db: SqliteConnection;
   readonly sessionId: string;
   readonly count: number;
 }): Seq {
@@ -299,20 +232,20 @@ function allocateSeq(options: {
   return nextSeq;
 }
 
-function readLastSeq(db: DatabaseSync, sessionId: string): Seq {
+function readLastSeq(db: SqliteConnection, sessionId: string): Seq {
   const row = sql`SELECT next_seq FROM sessions WHERE id = ${sessionId}`.get(db);
   if (row === undefined) throw new UnknownSession(sessionId);
   return numberColumn(row, "next_seq") - 1;
 }
 
-function readEventFloor(db: DatabaseSync, sessionId: string): Seq {
+function readEventFloor(db: SqliteConnection, sessionId: string): Seq {
   const row = sql`SELECT event_floor FROM sessions WHERE id = ${sessionId}`.get(db);
   if (row === undefined) throw new UnknownSession(sessionId);
   return numberColumn(row, "event_floor");
 }
 
 function writeEvents(options: {
-  readonly db: DatabaseSync;
+  readonly db: SqliteConnection;
   readonly sessionId: string;
   readonly bodies: readonly EventBody[];
 }): Seq {
@@ -335,7 +268,7 @@ function writeEvents(options: {
 }
 
 function leaseMatches(options: {
-  readonly db: DatabaseSync;
+  readonly db: SqliteConnection;
   readonly sessionId: string;
   readonly lease: Lease;
 }): boolean {
@@ -353,7 +286,7 @@ function validateTtl(ttlMs: number, now: number): void {
   }
 }
 
-function validateLimit(limit: number | undefined): void {
+export function validateLimit(limit: number | undefined): void {
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0)) {
     throw new RangeError("limit must be a non-negative safe integer");
   }
@@ -433,14 +366,14 @@ class ChangeSubscription {
 
 /** Wakes local watchers immediately and polls data_version only while one exists. */
 class SqliteChangeTracker {
-  private readonly db: DatabaseSync;
+  private readonly db: SqliteConnection;
   private readonly pollIntervalMs: number;
   private readonly subscriptions = new Set<ChangeSubscription>();
   private dataVersion: number | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
 
-  constructor(db: DatabaseSync, pollIntervalMs: number) {
+  constructor(db: SqliteConnection, pollIntervalMs: number) {
     this.db = db;
     this.pollIntervalMs = pollIntervalMs;
   }
@@ -477,8 +410,9 @@ class SqliteChangeTracker {
   }
 
   private startPolling(): void {
+    if (this.db.dataVersion === undefined) return;
     if (this.timer !== undefined || this.closed || this.subscriptions.size === 0) return;
-    if (this.dataVersion === undefined) this.dataVersion = this.readDataVersion();
+    if (this.dataVersion === undefined) this.dataVersion = this.db.dataVersion();
     this.timer = setTimeout(() => this.poll(), this.pollIntervalMs);
     this.timer.unref();
   }
@@ -487,8 +421,8 @@ class SqliteChangeTracker {
     this.timer = undefined;
     if (this.closed || this.subscriptions.size === 0) return;
     try {
-      const next = this.readDataVersion();
-      if (this.dataVersion !== next) {
+      const next = this.db.dataVersion?.();
+      if (next !== undefined && this.dataVersion !== next) {
         this.dataVersion = next;
         for (const subscription of this.subscriptions) subscription.wake();
       }
@@ -498,29 +432,30 @@ class SqliteChangeTracker {
       this.startPolling();
     }
   }
-
-  private readDataVersion(): number {
-    const row = sql`PRAGMA data_version`.get(this.db);
-    if (row === undefined) throw new Error("Could not read SQLite data_version");
-    return numberColumn(row, "data_version");
-  }
 }
 
 class SessionState {
   readonly id: string;
-  readonly db: DatabaseSync;
+  readonly db: SqliteConnection;
   readonly changes: SqliteChangeTracker;
   readonly closeController = new AbortController();
+  private readonly storeOpen: () => boolean;
   private closed = false;
 
-  constructor(id: string, db: DatabaseSync, changes: SqliteChangeTracker) {
+  constructor(
+    id: string,
+    db: SqliteConnection,
+    changes: SqliteChangeTracker,
+    storeOpen: () => boolean,
+  ) {
     this.id = id;
     this.db = db;
     this.changes = changes;
+    this.storeOpen = storeOpen;
   }
 
   assertOpen(): void {
-    if (this.closed || !this.db.isOpen) throw new Error(`Session is closed: ${this.id}`);
+    if (this.closed || !this.storeOpen()) throw new Error(`Session is closed: ${this.id}`);
   }
 
   close(): void {
@@ -539,13 +474,12 @@ class SqliteObjects implements Objects {
 
   async put(objects: readonly Obj[]): Promise<readonly Oid[]> {
     this.state.assertOpen();
-    const encoded = objects.map((object) => ({
-      object,
-      oid: hashObject(object),
-      body: canonicalJson(object),
-    }));
+    const encoded = objects.map((object) => {
+      const body = canonicalJson(object);
+      return { object, oid: hashCanonicalJson(body), body };
+    });
     const at = Date.now();
-    transact(this.state.db, () => {
+    this.state.db.transact(() => {
       for (const item of encoded) {
         sql`INSERT OR IGNORE INTO objects (session_id, oid, kind, body, at)
           VALUES (${this.state.id}, ${item.oid}, ${item.object.kind}, ${item.body}, ${at})`.run(
@@ -563,6 +497,31 @@ class SqliteObjects implements Objects {
     return row === undefined ? undefined : parseObject(stringColumn(row, "body"), oid);
   }
 
+  async chain(
+    from: Oid,
+    options: { readonly limit: number },
+  ): Promise<readonly { readonly oid: Oid; readonly object: Obj }[]> {
+    this.state.assertOpen();
+    validateLimit(options.limit);
+    if (options.limit === 0) return [];
+    // The depth bound ends the recursion even when stored parents loop.
+    const rows = sql`WITH RECURSIVE chain(oid, body, depth) AS (
+        SELECT oid, body, 0 FROM objects
+          WHERE session_id = ${this.state.id} AND oid = ${from}
+        UNION ALL
+        SELECT objects.oid, objects.body, chain.depth + 1
+          FROM chain JOIN objects
+            ON objects.session_id = ${this.state.id}
+            AND objects.oid = json_extract(chain.body, '$.parent')
+          WHERE chain.depth + 1 < ${options.limit}
+      )
+      SELECT oid, body FROM chain ORDER BY depth`.all(this.state.db);
+    return rows.map((row) => {
+      const oid = stringColumn(row, "oid");
+      return { oid, object: parseObject(stringColumn(row, "body"), oid) };
+    });
+  }
+
   async list(): Promise<readonly { readonly oid: Oid; readonly at: number }[]> {
     this.state.assertOpen();
     return sql`SELECT oid, at FROM objects WHERE session_id = ${this.state.id} ORDER BY oid`
@@ -570,14 +529,32 @@ class SqliteObjects implements Objects {
       .map((row) => ({ oid: stringColumn(row, "oid"), at: numberColumn(row, "at") }));
   }
 
+  async commits(): Promise<readonly { readonly oid: Oid; readonly commit: Commit }[]> {
+    this.state.assertOpen();
+    const commits: { readonly oid: Oid; readonly commit: Commit }[] = [];
+    const rows = sql`SELECT oid, body FROM objects
+      WHERE session_id = ${this.state.id} AND kind = 'commit'`.all(this.state.db);
+    for (const row of rows) {
+      const oid = stringColumn(row, "oid");
+      const object = parseObject(stringColumn(row, "body"), oid);
+      if (object.kind === "commit") commits.push({ oid, commit: object });
+    }
+    return commits.sort(
+      (left, right) => left.commit.at - right.commit.at || left.oid.localeCompare(right.oid),
+    );
+  }
+
   async delete(oids: readonly Oid[]): Promise<number> {
     this.state.assertOpen();
-    return transact(this.state.db, () => {
+    if (oids.length === 0) return 0;
+    // One statement per chunk keeps a large sweep under SQLite's bound-parameter ceiling.
+    return this.state.db.transact(() => {
       let deleted = 0;
-      for (const oid of oids) {
-        const result = sql`DELETE FROM objects
-          WHERE session_id = ${this.state.id} AND oid = ${oid}`.run(this.state.db);
-        deleted += Number(result.changes);
+      for (let index = 0; index < oids.length; index += DELETE_CHUNK) {
+        const chunk = oids.slice(index, index + DELETE_CHUNK);
+        deleted += sql`DELETE FROM objects
+          WHERE session_id = ${this.state.id} AND oid IN (${sqlList(chunk)})
+          RETURNING 1`.count(this.state.db);
       }
       return deleted;
     });
@@ -616,7 +593,7 @@ class SqliteRefs implements Refs {
   ): Promise<RefUpdateOutcome> {
     this.state.assertOpen();
     validateUpdates(updates);
-    const outcome = transact(this.state.db, (): RefUpdateOutcome => {
+    const outcome = this.state.db.transact((): RefUpdateOutcome => {
       if (
         options.lease !== undefined &&
         !leaseMatches({
@@ -697,7 +674,7 @@ class SqliteLeases implements Leases {
     this.state.assertOpen();
     const now = Date.now();
     validateTtl(ttlMs, now);
-    return transact(this.state.db, () => {
+    return this.state.db.transact(() => {
       const row = sql`SELECT owner, fence, expires_at FROM leases
         WHERE session_id = ${this.state.id} AND name = ${name}`.get(this.state.db);
       if (row !== undefined) {
@@ -738,21 +715,25 @@ class SqliteLeases implements Leases {
     this.state.assertOpen();
     const now = Date.now();
     validateTtl(ttlMs, now);
-    return transact(this.state.db, () => {
-      const result = sql`UPDATE leases SET expires_at = ${now + ttlMs}
-        WHERE session_id = ${this.state.id} AND name = ${lease.name}
-          AND owner = ${lease.owner} AND fence = ${lease.fence}`.run(this.state.db);
-      return Number(result.changes) === 1;
+    return this.state.db.transact(() => {
+      return (
+        sql`UPDATE leases SET expires_at = ${now + ttlMs}
+          WHERE session_id = ${this.state.id} AND name = ${lease.name}
+            AND owner = ${lease.owner} AND fence = ${lease.fence}
+          RETURNING 1`.count(this.state.db) === 1
+      );
     });
   }
 
   async release(lease: Lease): Promise<boolean> {
     this.state.assertOpen();
-    return transact(this.state.db, () => {
-      const result = sql`DELETE FROM leases
-        WHERE session_id = ${this.state.id} AND name = ${lease.name}
-          AND owner = ${lease.owner} AND fence = ${lease.fence}`.run(this.state.db);
-      return Number(result.changes) === 1;
+    return this.state.db.transact(() => {
+      return (
+        sql`DELETE FROM leases
+          WHERE session_id = ${this.state.id} AND name = ${lease.name}
+            AND owner = ${lease.owner} AND fence = ${lease.fence}
+          RETURNING 1`.count(this.state.db) === 1
+      );
     });
   }
 
@@ -783,7 +764,7 @@ class SqliteEvents implements Events {
     options?: { readonly lease?: Lease },
   ): Promise<AppendOutcome> {
     this.state.assertOpen();
-    const outcome = transact(this.state.db, (): AppendOutcome => {
+    const outcome = this.state.db.transact((): AppendOutcome => {
       if (
         options?.lease !== undefined &&
         !leaseMatches({
@@ -809,7 +790,7 @@ class SqliteEvents implements Events {
   }): Promise<readonly Event[]> {
     this.state.assertOpen();
     validateLimit(options.limit);
-    return readTransaction(this.state.db, () => {
+    return this.state.db.read(() => {
       const floor = readEventFloor(this.state.db, this.state.id);
       if (options.afterSeq < floor) throw new CursorExpired(floor);
       const rows =
@@ -840,7 +821,7 @@ class SqliteEvents implements Events {
 
   async trim(beforeSeq: Seq): Promise<void> {
     this.state.assertOpen();
-    transact(this.state.db, () => {
+    this.state.db.transact(() => {
       // The floor never passes the newest seq, so an event written next is
       // never born expired.
       const floor = Math.min(beforeSeq, readLastSeq(this.state.db, this.state.id));
@@ -867,13 +848,14 @@ class SqliteEvents implements Events {
     let cursor = afterSeq;
     try {
       while (!subscription.closed) {
-        const events = await this.read({ afterSeq: cursor });
+        const events = await this.read({ afterSeq: cursor, limit: WATCH_REPLAY_PAGE_SIZE });
         for (const event of events) {
           if (subscription.closed) return;
           cursor = event.seq;
           yield event;
         }
-        await subscription.wait();
+        // A full page may leave a backlog even when no new write wakes us.
+        if (events.length < WATCH_REPLAY_PAGE_SIZE) await subscription.wait();
       }
     } finally {
       subscription.close();
@@ -907,38 +889,22 @@ export interface SqliteStoreOptions {
   readonly watchPollIntervalMs?: number;
 }
 
-export class SqliteStore implements Store {
-  private readonly db: DatabaseSync;
+/**
+ * The kernel store over any {@link SqliteConnection}: a `node:sqlite` file, a
+ * Durable Object's storage, a test double. The connection's transaction is the
+ * CAS transaction; the schema is created on open.
+ */
+export class SqlStore implements Store {
+  private readonly db: SqliteConnection;
   private readonly changes: SqliteChangeTracker;
   private closed = false;
 
-  constructor(path: string, options?: SqliteStoreOptions) {
+  constructor(db: SqliteConnection, options?: SqliteStoreOptions) {
     const watchPollIntervalMs = options?.watchPollIntervalMs ?? DEFAULT_WATCH_POLL_INTERVAL_MS;
     if (!Number.isSafeInteger(watchPollIntervalMs) || watchPollIntervalMs <= 0) {
       throw new RangeError("watchPollIntervalMs must be a positive safe integer");
     }
-
-    // SQLite creates a missing file, not a missing directory.
-    mkdirSync(dirname(path), { recursive: true });
-    const db = new DatabaseSync(path);
-    try {
-      db.exec("PRAGMA busy_timeout=5000");
-      enableWal(db);
-      db.exec("PRAGMA synchronous=FULL");
-      transact(db, () => {
-        const version = schemaVersion(db);
-        if (version !== SCHEMA_VERSION && !(version === 0 && isFresh(db))) {
-          throw new Error(
-            `${path} was written by another nyte schema (${String(version)}, this build reads ${String(SCHEMA_VERSION)}). Delete it to start over.`,
-          );
-        }
-        db.exec(SCHEMA);
-        db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`);
-      });
-    } catch (error) {
-      db.close();
-      throw error;
-    }
+    db.transact(() => db.exec(SCHEMA));
     this.db = db;
     this.changes = new SqliteChangeTracker(db, watchPollIntervalMs);
   }
@@ -947,10 +913,10 @@ export class SqliteStore implements Store {
     this.assertOpen();
     const id = options?.id ?? `session_${randomUUID().slice(0, 12)}`;
     const createdAt = Date.now();
-    transact(this.db, () => {
-      const result = sql`INSERT OR IGNORE INTO sessions (id, created_at, next_seq, event_floor)
-        VALUES (${id}, ${createdAt}, 1, 0)`.run(this.db);
-      if (Number(result.changes) !== 1) throw new Error(`Session already exists: ${id}`);
+    this.db.transact(() => {
+      const inserted = sql`INSERT OR IGNORE INTO sessions (id, created_at, next_seq, event_floor)
+        VALUES (${id}, ${createdAt}, 1, 0) RETURNING 1`.count(this.db);
+      if (inserted !== 1) throw new Error(`Session already exists: ${id}`);
     });
     return this.session(id);
   }
@@ -974,7 +940,7 @@ export class SqliteStore implements Store {
 
   async delete(id: string): Promise<void> {
     this.assertOpen();
-    transact(this.db, () => {
+    this.db.transact(() => {
       sql`DELETE FROM objects WHERE session_id = ${id}`.run(this.db);
       sql`DELETE FROM refs WHERE session_id = ${id}`.run(this.db);
       sql`DELETE FROM leases WHERE session_id = ${id}`.run(this.db);
@@ -988,14 +954,21 @@ export class SqliteStore implements Store {
     if (this.closed) return;
     this.closed = true;
     this.changes.close();
-    this.db.close();
+    this.db.close?.();
   }
 
   private assertOpen(): void {
-    if (this.closed || !this.db.isOpen) throw new Error("SQLite store is closed");
+    if (this.closed) throw new Error("SQLite store is closed");
   }
 
   private session(id: string): Session {
-    return new SqliteSession(new SessionState(id, this.db, this.changes));
+    return new SqliteSession(new SessionState(id, this.db, this.changes, () => !this.closed));
+  }
+}
+
+/** The store over a `node:sqlite` file (or `:memory:`), the backend every local host uses. */
+export class SqliteStore extends SqlStore {
+  constructor(path: string, options?: SqliteStoreOptions) {
+    super(openNodeSqlite(path), options);
   }
 }

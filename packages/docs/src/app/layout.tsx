@@ -1,8 +1,6 @@
-import { RootProvider } from "fumadocs-ui/provider/next";
 import "./global.css";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Newsreader } from "next/font/google";
-import { SiteNav } from "@/components/site-nav";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -55,12 +53,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${newsreader.variable} ${inter.className}`}
       suppressHydrationWarning
     >
-      <body className="flex min-h-screen flex-col">
-        <RootProvider>
-          <SiteNav />
-          {children}
-        </RootProvider>
-      </body>
+      <body className="flex min-h-screen flex-col">{children}</body>
     </html>
   );
 }

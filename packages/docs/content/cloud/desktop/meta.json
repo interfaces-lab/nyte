@@ -1,0 +1,14 @@
+{
+  "title": "Desktop",
+  "pages": [
+    "index",
+    "theme",
+    "button",
+    "menu",
+    "confirm-dialog",
+    "toaster",
+    "feedback",
+    "icons",
+    "settings-controls"
+  ]
+}

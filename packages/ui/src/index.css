@@ -23,7 +23,12 @@
 
   /* Kit components restate this; the base rule keeps ad-hoc focusables on the same ring. */
   :focus-visible {
-    outline: var(--nyte-control-focus-width) solid var(--nyte-color-ring);
+    outline: var(--nyte-control-focus-width) solid var(--nyte-color-focus-ring);
     outline-offset: var(--nyte-control-focus-offset);
+  }
+
+  /* Ring for keyboard navigation only; clicking into a field is not a request for one. */
+  :root[data-nyte-focus-modality="pointer"] {
+    --nyte-color-focus-ring: transparent;
   }
 }

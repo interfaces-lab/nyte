@@ -1,12 +1,36 @@
 /**
- * Tagged-template SQL helper, ported from pi (earendil-works) and adapted to
- * node:sqlite.
+ * Tagged-template SQL over one SQLite connection. The store speaks SQLite's
+ * dialect and runs its CAS inside a synchronous transaction closure, so the
+ * seam is a synchronous SQLite connection: `node:sqlite`, a Durable Object's
+ * storage, a test double. Another engine or an async client is another store,
+ * not another connection.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/session-backends/sqlite-node/src/sqlite/sql.ts
  */
-import type { DatabaseSync, StatementSync } from "node:sqlite";
 
 export type SqliteValue = string | number | null;
+
+export type SqlRow = Readonly<Record<string, unknown>>;
+
+export interface SqliteConnection {
+  /** Runs a statement and discards its rows. */
+  run(text: string, params: readonly SqliteValue[]): void;
+  /** Runs a statement and returns every row. */
+  all(text: string, params: readonly SqliteValue[]): readonly SqlRow[];
+  /** Runs a script of several statements with no parameters. */
+  exec(script: string): void;
+  /** Runs `fn` in one write transaction; a throw rolls it back. */
+  transact<T>(fn: () => T): T;
+  /** Runs `fn` in one read transaction so several reads see one snapshot. */
+  read<T>(fn: () => T): T;
+  /**
+   * A counter that changes when another connection writes. Present only when
+   * another process can write the same database; a single-writer store leaves
+   * it out and watchers rely on local notification alone.
+   */
+  dataVersion?(): number;
+  close?(): void;
+}
 
 type SqlTemplateValue = SqliteValue | SqlQuery;
 
@@ -20,16 +44,21 @@ export class SqlQuery {
     this.params = params;
   }
 
-  run(db: DatabaseSync): ReturnType<StatementSync["run"]> {
-    return db.prepare(this.queryText).run(...this.params);
+  run(db: SqliteConnection): void {
+    db.run(this.queryText, this.params);
   }
 
-  get(db: DatabaseSync): ReturnType<StatementSync["get"]> {
-    return db.prepare(this.queryText).get(...this.params);
+  get(db: SqliteConnection): SqlRow | undefined {
+    return db.all(this.queryText, this.params)[0];
   }
 
-  all(db: DatabaseSync): ReturnType<StatementSync["all"]> {
-    return db.prepare(this.queryText).all(...this.params);
+  all(db: SqliteConnection): readonly SqlRow[] {
+    return db.all(this.queryText, this.params);
+  }
+
+  /** Rows a `RETURNING` clause produced: the exact count a statement changed on any connection. */
+  count(db: SqliteConnection): number {
+    return db.all(this.queryText, this.params).length;
   }
 }
 
@@ -49,4 +78,9 @@ export function sql(strings: TemplateStringsArray, ...values: SqlTemplateValue[]
     queryText += strings[index + 1] ?? "";
   }
   return new SqlQuery(queryText, params);
+}
+
+/** A comma-separated parameter list for `IN (...)`, one `?` per value. */
+export function sqlList(values: readonly SqliteValue[]): SqlQuery {
+  return new SqlQuery(values.map(() => "?").join(", "), values);
 }

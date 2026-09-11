@@ -1,0 +1,69 @@
+---
+title: Tasks and jobs
+description: "Subagents and background commands: the count under the composer and the task list it opens"
+---
+
+<HostMatrix
+  primitive="none"
+  desktop={{
+    label: "conversation/jobs-panel.tsx",
+    note: "TasksPanel; projection helpers in jobs-view.ts",
+  }}
+  terminal={{
+    label: "task-browser.ts",
+    note: "TaskBrowser and TaskInspector via /tasks (later pass)",
+  }}
+/>
+
+## `TasksPanel`
+
+File: `packages/desktop/src/renderer/src/conversation/jobs-panel.tsx`. Mounted by the session
+composer's `backgroundWork` slot. Polls `nyte.jobs.list({ sessionId })` every 2s: "Recover
+disconnected watches without tying execution to panel visibility."
+
+| Prop           | Type                      | Description                      |
+| -------------- | ------------------------- | -------------------------------- |
+| `sessionId`    | `SessionId`               |                                  |
+| `open`         | `boolean`                 | Controlled.                      |
+| `onOpenChange` | `(open: boolean) => void` |                                  |
+| `onInspect`    | `(id: SessionId) => void` | Open a subagent's child session. |
+
+## Anatomy
+
+```
+<div panel>
+├─ <button aria-expanded={open} aria-controls={id}>   "{n} running in background · ↓ view"   (only when n > 0)
+└─ <section id={id} aria-label="Tasks">              when open
+   ├─ close button
+   ├─ role="status" "Loading tasks…" | role="alert" with Retry
+   ├─ active rows        <article aria-label={job.title}>
+   │    title · state · [Background] [Cancel] · [Inspect conversation] · <details><summary>Output</summary><pre>
+   │    role="status" action message | role="alert" "Failed to update task. Try again."
+   └─ "Finished · {n}" rows, or "No finished tasks."
+```
+
+## Projection (`jobs-view.ts`)
+
+Pure functions; the panel does not decide eligibility itself.
+
+| Function                            | Returns                                                                                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `taskSections(jobs)`                | `active` (running), `finished`, and `background` count, over jobs that are subagents or background-mode commands.                                                                                 |
+| `jobControls(job)`                  | `background` when running in the foreground; `cancel` when running.                                                                                                                               |
+| `jobActionMessage(outcome, action)` | "Running in background." / "Cancellation requested." / "This task is no longer available." / "This task has already finished. Its output is still available." Exhaustive over `JobActionOutcome`. |
+
+## Actions
+
+Each row runs one mutation, `nyte.jobs.background` or `nyte.jobs.cancel`, with both buttons
+disabled while it is pending. The outcome message is a `role="status"` line inside the row;
+failure is `role="alert"`. On settle the jobs query is invalidated.
+
+## Rules
+
+- A subagent is a child session, inspected from its parent task or jobs panel. Child sessions do not
+  appear in the sidebar or chat search.
+- Output is a native `<details>` so it is collapsible without JavaScript state; the summary carries
+  `focus.ring`.
+- Counts use `tabular-nums`.
+- The parent selects an exact [subagent model](/cloud/surfaces/model-picker#subagent-models) for each task.
+  Unavailable models fail without substitution.

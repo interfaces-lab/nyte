@@ -15,6 +15,7 @@
  */
 import type {
   Actor,
+  Commit,
   Event,
   EventBody,
   Lease,
@@ -31,8 +32,27 @@ export interface Objects {
   /** Idempotent: an object already present is not rewritten. Returns each object's oid in order. */
   put(objects: readonly Obj[]): Promise<readonly Oid[]>;
   get(oid: Oid): Promise<Obj | undefined>;
+  /**
+   * The object at `from` and the objects its `parent` field names, newest
+   * first, at most `limit`. Stops at a missing object or an object without a
+   * parent. Content is verified like `get`; kind and cycle checks are the
+   * caller's. One query, like git's commit-graph: a graph walk pays one round
+   * trip per page, not one per commit.
+   */
+  chain(
+    from: Oid,
+    options: { readonly limit: number },
+  ): Promise<readonly { readonly oid: Oid; readonly object: Obj }[]>;
   /** Every stored oid with when it was written, for the collector. */
   list(): Promise<readonly { readonly oid: Oid; readonly at: number }[]>;
+  /**
+   * Every retained commit once, oldest first, including abandoned branches and
+   * loose commits from failed publication. History totals and the tree picker
+   * must not lose records merely because a head moved. GC can still remove them.
+   * One read of the commit rows alone: blobs and effects outweigh commits and
+   * are never needed to answer this.
+   */
+  commits(): Promise<readonly { readonly oid: Oid; readonly commit: Commit }[]>;
   /** Removes what the collector proved unreachable. Returns how many rows went. */
   delete(oids: readonly Oid[]): Promise<number>;
 }
@@ -120,9 +140,15 @@ export interface Store {
   close(): Promise<void>;
 }
 
+/** Thrown by the store and passed through the SDK unchanged; `kind` and `what` name it to a wire mapping. */
 export class UnknownSession extends Error {
+  readonly kind = "not_found" satisfies "not_found";
+  readonly what = "session" satisfies "session";
+  readonly id: string;
+
   constructor(id: string) {
     super(`Unknown session: ${id}`);
     this.name = "UnknownSession";
+    this.id = id;
   }
 }

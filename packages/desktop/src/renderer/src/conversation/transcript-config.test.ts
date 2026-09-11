@@ -3,16 +3,32 @@ import { test } from "vitest";
 import type { Turn } from "@nyte-ai/core";
 import { configChangeText } from "./transcript-presentation.ts";
 
-test("model routing does not add a transcript notice", () => {
-  const turn = {
-    kind: "config",
-    commit: "model-change",
-    at: 0,
-    body: { kind: "config", model: { provider: "openai", id: "gpt-6-astra" } },
-  } satisfies Turn;
+const turn = {
+  kind: "config",
+  commit: "config-change",
+  at: 0,
+  body: { kind: "config" },
+} satisfies Turn;
+
+test("config history presents every change that the TUI presents", () => {
   assert.equal(configChangeText(turn), undefined);
   assert.equal(
-    configChangeText({ ...turn, body: { ...turn.body, agent: "plan" } }),
-    "Mode set to plan",
+    configChangeText({
+      ...turn,
+      body: {
+        ...turn.body,
+        model: { provider: "openai", id: "gpt-6-astra" },
+        thinkingLevel: "medium",
+        agent: "plan",
+      },
+    }),
+    "Model → openai/gpt-6-astra · Thinking → medium · Agent → plan",
+  );
+});
+
+test("a provider-less model keeps its configured id", () => {
+  assert.equal(
+    configChangeText({ ...turn, body: { ...turn.body, model: { id: "local-model" } } }),
+    "Model → local-model",
   );
 });

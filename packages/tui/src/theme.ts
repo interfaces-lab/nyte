@@ -51,17 +51,8 @@ export interface CliTheme {
   readonly diffRemovedBackground: string;
 }
 
-/** A stable object lets long-lived renderers see a palette change in place. */
+/** The theme store's shape: a palette whose roles the screen may replace. */
 export type ActiveCliTheme = { -readonly [Role in keyof CliTheme]: CliTheme[Role] };
-
-export function createActiveTheme(theme: CliTheme): ActiveCliTheme {
-  return { ...theme };
-}
-
-/** Change that stable object without replacing the references components hold. */
-export function updateActiveTheme(target: ActiveCliTheme, theme: CliTheme): void {
-  Object.assign(target, theme);
-}
 
 /**
  * Pierre's dark roles. Diff rows are `codeBackground` mixed 80% in CIELAB
@@ -140,7 +131,7 @@ export const LIGHT_THEME: CliTheme = Object.freeze({
   number: "#1ca1c7",
   string: "#199f43",
   type: "#a631be",
-  operator: "#08c0ef",
+  operator: "#1ca1c7",
   promptBorder: "#d4d4d4",
   promptBorderFocused: "#a3a3a3",
   selectionBackground: "#dfebff",

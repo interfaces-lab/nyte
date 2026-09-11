@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Subagent delegation TUI — current styling and redesign proposal</title>
+    <style>
+      :root {
+        --terminal: #171717;
+        --background: #0a0a0a;
+        --hover: #262626;
+        --code-bg: #171717;
+        --fg: #fafafa;
+        --dim: #737373;
+        --muted: #525252;
+        --accent: #009fff;
+        --user: #d4d4d4;
+        --thinking: #9d6afb;
+        --tool: #a3a3a3;
+        --error: #ff2e3f;
+        --warning: #ffca00;
+        --ok: #07c480;
+        --running: #08c0ef;
+        --path: #ffa359;
+        --selection-bg: #19283c;
+        --border: #2c2c2c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 28px 96px;
+        background: var(--background);
+        color: var(--fg);
+        font:
+          14px/1.6 ui-sans-serif,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 6px;
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--dim);
+        margin: 44px 0 14px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 {
+        font-size: 14px;
+        margin: 22px 0 8px;
+        color: var(--user);
+      }
+      p {
+        color: var(--user);
+        max-width: 76ch;
+      }
+      .lede {
+        color: var(--dim);
+        margin: 0 0 4px;
+      }
+      code,
+      pre,
+      .term {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      code {
+        color: var(--path);
+        font-size: 0.92em;
+      }
+      .term {
+        background: var(--terminal);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+        font-size: 12.5px;
+        line-height: 1.75;
+        white-space: pre;
+        overflow-x: auto;
+        color: var(--fg);
+        tab-size: 2;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 900px) {
+        .pair {
+          grid-template-columns: 1fr;
+        }
+      }
+      .tag {
+        display: inline-block;
+        font:
+          11px/1.5 ui-monospace,
+          monospace;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 2px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--dim);
+        margin-bottom: 8px;
+      }
+      .tag.now {
+        color: var(--dim);
+      }
+      .tag.next {
+        color: var(--accent);
+        border-color: #123;
+        background: var(--selection-bg);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 13px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        color: var(--dim);
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+      td {
+        color: var(--user);
+      }
+      td.ref {
+        color: var(--dim);
+        font-family: ui-monospace, monospace;
+        font-size: 11.5px;
+        white-space: nowrap;
+      }
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .sw {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font:
+          11.5px/1.4 ui-monospace,
+          monospace;
+        background: var(--terminal);
+        min-width: 132px;
+      }
+      .sw b {
+        display: block;
+        font-weight: 500;
+      }
+      .sw span {
+        color: var(--muted);
+      }
+      .chip {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        display: inline-block;
+        margin-right: 6px;
+        vertical-align: -1px;
+      }
+      ul {
+        color: var(--user);
+        max-width: 76ch;
+        padding-left: 18px;
+      }
+      li {
+        margin: 5px 0;
+      }
+      .fg {
+        color: var(--fg);
+      }
+      .dimc {
+        color: var(--dim);
+      }
+      .mutedc {
+        color: var(--muted);
+      }
+      .accentc {
+        color: var(--accent);
+      }
+      .okc {
+        color: var(--ok);
+      }
+      .errc {
+        color: var(--error);
+      }
+      .warnc {
+        color: var(--warning);
+      }
+      .runc {
+        color: var(--running);
+      }
+      .toolc {
+        color: var(--tool);
+      }
+      .userc {
+        color: var(--user);
+      }
+      .thinkc {
+        color: var(--thinking);
+      }
+      .pathc {
+        color: var(--path);
+      }
+      .sel {
+        background: var(--selection-bg);
+        color: var(--fg);
+      }
+      .b {
+        font-weight: 700;
+      }
+      footer {
+        margin-top: 56px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="lede">Nyte TUI</p>
+      <h1>Subagent delegation surfaces: what exists, and a light redesign</h1>
+      <p>
+        Everything below is drawn from the shipped code paths in
+        <code>packages/tui/src</code>. The proposal keeps the same renderables, menu API, and theme
+        roles — it only changes what those rows say and which role colors them.
+      </p>
+
+      <h2>1. Theme roles already available</h2>
+      <p>
+        <code>theme.ts</code> exposes semantic roles only; components never pick colors. The
+        delegation surfaces currently use a narrow slice of it.
+      </p>
+      <div class="swatches">
+        <div class="sw">
+          <b><span class="chip" style="background: #08c0ef"></span>running</b><span>#08c0ef</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #07c480"></span>ok</b><span>#07c480</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #ff2e3f"></span>error</b><span>#ff2e3f</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #ffca00"></span>warning</b><span>#ffca00</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #9d6afb"></span>thinking</b><span>#9d6afb</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #a3a3a3"></span>tool</b><span>#a3a3a3</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #009fff"></span>accent</b><span>#009fff</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #737373"></span>dim</b><span>#737373</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #525252"></span>muted</b><span>#525252</span>
+        </div>
+        <div class="sw">
+          <b><span class="chip" style="background: #ffa359"></span>path</b><span>#ffa359</span>
+        </div>
+      </div>
+
+      <h2>2. Inventory: current styling for background tasks and subagents</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Surface</th>
+            <th>Today</th>
+            <th>Color roles</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Background status line</td>
+            <td>
+              <code>2 running in background · ↓ view</code>, hidden when the count is 0, clickable
+            </td>
+            <td>foreground + dim</td>
+            <td class="ref">task-browser.ts <code>repaint()</code></td>
+          </tr>
+          <tr>
+            <td>Tasks menu row</td>
+            <td>
+              label <code>mode · state · title</code>, description
+              <code>agent · duration · activity</code>
+            </td>
+            <td>foreground label, dim description, selection band on the highlighted row</td>
+            <td class="ref">task-browser.ts <code>choices()</code></td>
+          </tr>
+          <tr>
+            <td>Row layout</td>
+            <td>
+              single line, <code>❯&nbsp;</code> prefix, aligned label column, 4-col gap, optional
+              right status with <code>dim|ok</code> tone
+            </td>
+            <td>selectionBackground / selectionForeground</td>
+            <td class="ref">menu-list.ts</td>
+          </tr>
+          <tr>
+            <td>Finished bucket</td>
+            <td>
+              trailing row <code>Finished · 3</code>, second screen titled
+              <code>Tasks · Finished</code>
+            </td>
+            <td>same as any row — no visual distinction</td>
+            <td class="ref">task-browser.ts <code>screen()</code></td>
+          </tr>
+          <tr>
+            <td>Inspector header</td>
+            <td><code>Tasks │ &lt;label&gt;</code> then <code>background · running</code></td>
+            <td>accent, muted separator, foreground, dim metadata</td>
+            <td class="ref">task-browser.ts <code>TaskInspector.show()</code></td>
+          </tr>
+          <tr>
+            <td>Inspector body</td>
+            <td>
+              child transcript with tool output force-expanded; jobs show raw output or
+              <code>No output yet.</code>
+            </td>
+            <td>full transcript palette</td>
+            <td class="ref">TaskInspector, transcript.ts</td>
+          </tr>
+          <tr>
+            <td>Inline <code>task</code> tool card</td>
+            <td>
+              <code>● task &lt;agent&gt;</code> plus a prompt/progress preview; bullet turns
+              ok/error on settle
+            </td>
+            <td>running → user → ok/error</td>
+            <td class="ref">transcript.ts <code>taskPreview()</code></td>
+          </tr>
+          <tr>
+            <td>Status vocabulary</td>
+            <td>8 states: queued, running, waiting, retrying, stopping, stopped, done, failed</td>
+            <td>none — rendered as plain words</td>
+            <td class="ref">tasks.ts <code>taskStatus()</code></td>
+          </tr>
+          <tr>
+            <td>Model &amp; thinking level</td>
+            <td>
+              Shown for the <em>parent</em> only, in the powerline: model segment plus an effort
+              badge. Never shown for a subagent, anywhere.
+            </td>
+            <td>accent (model), thinking (effort)</td>
+            <td class="ref">
+              format.ts <code>powerlineSegments()</code>, shell.ts <code>powerlineColor()</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Subagent model source</td>
+            <td>
+              one user-scoped override per agent in <code>~/.nyte/subagent-models.json</code>; a
+              missing agent inherits the parent. Live value sits on each child's
+              <code>state.config</code>.
+            </td>
+            <td>—</td>
+            <td class="ref">host/subagent-models.ts, session-state.ts</td>
+          </tr>
+          <tr>
+            <td>Hints</td>
+            <td>
+              <code>esc back · ↑↓ scroll · ctrl+x cancel · ctrl+z background · ctrl+o follow</code>
+            </td>
+            <td>hint row styling</td>
+            <td class="ref">task-browser.ts, constants.ts</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>What the inventory shows</h3>
+      <ul>
+        <li>
+          Eight distinct states all render in the same foreground gray; the palette already has
+          <em>running</em>, <em>ok</em>, <em>error</em>, <em>warning</em> unused here.
+        </li>
+        <li>
+          <code>mode · state · title</code> spends the leftmost, most-scanned characters on the two
+          lowest-entropy fields.
+        </li>
+        <li>
+          Duration is buried mid-description even though <code>MenuItem.status</code> gives a
+          right-aligned column for exactly that.
+        </li>
+        <li>
+          The agent name — the thing that says <em>who</em> is working — is the last field anyone
+          reads.
+        </li>
+        <li>
+          Model and thinking level are the two settings that most change what a delegated run costs
+          and how good it is, they are per-agent configurable, and they are invisible on every
+          subagent surface. You can override an agent's model and get no confirmation that the
+          override took.
+        </li>
+      </ul>
+
+      <h2>3. Proposal — Tasks menu</h2>
+      <p>
+        Same single-line rows, same <code>MenuItem</code> shape. Status becomes a colored glyph, the
+        agent leads, the title carries the row, model and thinking level get their own column, and
+        elapsed time moves to the right.
+      </p>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <div class="term">
+            <span class="dimc">Tasks</span>
+            <span class="sel"
+              >❯ background · running · Audit plugin surfaces general · 1m 04s · grep -rn
+              "regi…</span
+            >
+            foreground · running · Fix flaky resume test
+            <span class="dimc">general · 12.4s · read packages/tui…</span> background · completed ·
+            Bump oxlint <span class="dimc">command · 3.1s</span> background · failed · Generate
+            model catalog <span class="dimc">general · 8.0s · Error: 429 from provi…</span>
+            Finished · 3
+
+            <span class="dimc">enter inspect · esc close · ctrl+z background · ctrl+x cancel</span>
+          </div>
+        </div>
+        <div>
+          <span class="tag next">Proposed</span>
+          <div class="term">
+            <span class="dimc">Tasks</span>
+            <span class="mutedc">2 active · 1 queued · 3 finished</span>
+            <span class="sel"
+              >❯ ⠹ general Audit plugin surfaces sonnet-4.6 ▆ grep -rn "regis… 1m 04s ↑</span
+            >
+            <span class="runc">⠹</span> <span class="toolc">general </span
+            ><span class="fg">Fix flaky resume test </span><span class="mutedc">haiku-4.5 </span
+            ><span class="thinkc">· </span> <span class="dimc">read packages/t… 12.4s</span>
+            <span class="okc">✓</span> <span class="toolc">command </span
+            ><span class="fg">Bump oxlint </span><span class="mutedc">— </span
+            ><span class="dimc">exit 0 3.1s</span> <span class="errc">✗</span>
+            <span class="toolc">general </span><span class="fg">Generate model catalog </span
+            ><span class="fg">gpt-5.2 </span><span class="thinkc">▆ </span
+            ><span class="dimc">429 from provider 8.0s</span> <span class="mutedc">◆</span>
+            <span class="toolc">reviewer </span><span class="fg">Review diff </span
+            ><span class="mutedc">sonnet-4.6 </span><span class="thinkc">▄ </span
+            ><span class="dimc">queued —</span> <span class="mutedc">·</span>
+            <span class="mutedc">Finished · 3</span>
+
+            <span class="dimc">enter inspect · esc close · ctrl+z background · ctrl+x cancel</span>
+          </div>
+        </div>
+      </div>
+      <ul>
+        <li>
+          <span class="accentc">Glyph column</span> replaces the state word: one cell, colored by
+          role, aligned across rows.
+        </li>
+        <li>
+          <span class="accentc">Agent column</span> takes the slot the mode word held; mode survives
+          as a single trailing marker (<code>↑</code> foreground, nothing for background) so it
+          costs one cell instead of eleven.
+        </li>
+        <li>
+          <span class="accentc">Model column</span> shows the child's own
+          <code>state.config</code> model, short id only. <span class="mutedc">Muted</span> means
+          inherited from the parent, <span class="fg">foreground</span> means an override from
+          <code>subagent-models.json</code> is in force — the confirmation that override currently
+          never gets. A command job has no model and prints <code>—</code>.
+        </li>
+        <li>
+          <span class="accentc">Thinking level</span> rides the model as a one-cell meter in
+          <code>theme.thinking</code>, the same role the powerline effort badge already uses.
+        </li>
+        <li>
+          <span class="accentc">Elapsed</span> moves into <code>MenuItem.status</code>,
+          right-aligned, tone <code>dim</code> while running and <code>ok</code> on success — the
+          field already exists and is unused here.
+        </li>
+        <li>
+          <span class="accentc">Header counts</span> tell you the shape of the queue before you read
+          a single row.
+        </li>
+      </ul>
+
+      <h3>Thinking meter</h3>
+      <div class="term">
+        <span class="thinkc">·</span> off <span class="thinkc">▁</span> minimal
+        <span class="thinkc">▂</span> low <span class="thinkc">▄</span> medium
+        <span class="thinkc">▆</span> high <span class="thinkc">█</span> xhigh
+
+        <span class="dimc"
+          >Levels are MODEL_THINKING_LEVELS from @nyte-ai/schema, in order. Colored theme.thinking,
+          matching the powerline effort badge and the model picker's own ● ─ effort meter
+          (model-picker.ts). Legacy console: drop the meter, print the level word.</span
+        >
+      </div>
+
+      <h3>Column priority as the terminal narrows</h3>
+      <p>
+        <code>fitPowerlineSegments</code> already establishes the order things disappear in: usage,
+        workspace, queue, effort — model survives. Task rows should drop in the same spirit, so the
+        two surfaces never disagree about what matters.
+      </p>
+      <div class="term">
+        <span class="dimc">≥ 96 cols</span> glyph agent title model+meter activity elapsed mode
+        <span class="dimc">≥ 80 cols</span> glyph agent title model+meter activity elapsed
+        <span class="dimc">≥ 64 cols</span> glyph agent title model+meter elapsed
+        <span class="dimc">≥ 48 cols</span> glyph agent title model elapsed
+        <span class="dimc">&lt; 48 cols</span> glyph agent title
+      </div>
+
+      <h3>Status glyph map</h3>
+      <div class="term">
+        <span class="runc">⠹</span> running
+        <span class="dimc">theme.running spinner frames, SPINNER_INTERVAL_MS</span>
+        <span class="mutedc">◆</span> queued <span class="dimc">theme.muted GLYPHS.diamond</span>
+        <span class="warnc">●</span> waiting
+        <span class="dimc"
+          >theme.warning needs an answer — the one state worth interrupting for</span
+        >
+        <span class="warnc">⠹</span> retrying
+        <span class="dimc">theme.warning spinner keeps moving, color says it is not healthy</span>
+        <span class="mutedc">⠹</span> stopping
+        <span class="dimc">theme.muted spinner draining</span> <span class="mutedc">✗</span> stopped
+        <span class="dimc">theme.muted GLYPHS.cross, no alarm color</span>
+        <span class="okc">✓</span> done <span class="dimc">theme.ok GLYPHS.check</span>
+        <span class="errc">✗</span> failed <span class="dimc">theme.error GLYPHS.cross</span>
+      </div>
+      <p>
+        All glyphs are already in <code>GLYPHS</code> with legacy-console fallbacks; the spinner
+        frames already exist in <code>constants.ts</code>. No new characters enter the codebase.
+      </p>
+
+      <h2>4. Make the glyph vocabulary global</h2>
+      <p>
+        The map above should not belong to the task browser. One exported helper — say
+        <code>statusGlyph(status): { glyph, role }</code> next to <code>GLYPHS</code> — and every
+        surface that reports the state of work draws from it. Today each of these picked its own
+        convention independently, and they nearly agree, which is the worst case: close enough to
+        look intentional, different enough to misread.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Surface</th>
+            <th>Today</th>
+            <th>After</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Tool card heading <span class="dimc">transcript.ts</span></td>
+            <td>
+              <code>●</code> colored running → user → ok/error; already the closest thing to a
+              standard
+            </td>
+            <td>
+              the source the map is derived from; gains <code>◆</code> queued and
+              <code>●</code> waiting so a parked call reads as parked
+            </td>
+          </tr>
+          <tr>
+            <td>Task rows &amp; inspector</td>
+            <td>plain state words, no color</td>
+            <td><code>statusGlyph(taskStatus(task))</code></td>
+          </tr>
+          <tr>
+            <td>Background status line</td>
+            <td>static count text</td>
+            <td>leading glyph, spinner while running, warning when a child waits</td>
+          </tr>
+          <tr>
+            <td>Activity labels <span class="dimc">constants.ts</span></td>
+            <td>
+              hand-written leading spaces: <code>&nbsp;Working</code>, <code>!&nbsp;Stopped</code>,
+              <code>&nbsp;Failed</code>
+            </td>
+            <td>
+              the same glyph column, so <em>Failed</em> in the transcript and <em>failed</em> in
+              Tasks look like one fact
+            </td>
+          </tr>
+          <tr>
+            <td>Powerline status badges</td>
+            <td>free-text <code>statuses[]</code> joined into the effort segment</td>
+            <td>badges that describe work carry their glyph</td>
+          </tr>
+          <tr>
+            <td>
+              Notices <span class="dimc">shell.ts <code>notice()</code></span>
+            </td>
+            <td>color-only signal, passed per call site</td>
+            <td>glyph + role from one lookup instead of each caller choosing</td>
+          </tr>
+          <tr>
+            <td>Non-interactive print <span class="dimc">print.ts</span></td>
+            <td>its own formatting</td>
+            <td>same glyphs, so a log and a session read alike</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="term">
+        <span class="dimc">one lookup, four surfaces, same second of reading</span>
+
+        transcript <span class="runc">●</span> <span class="fg">task general</span>
+        <span class="dimc">Audit plugin surfaces</span> tasks row <span class="runc">⠹</span>
+        <span class="toolc">general</span> <span class="fg">Audit plugin surfaces</span> status line
+        <span class="runc">⠹</span> <span class="fg">2 in background</span> print
+        <span class="runc">●</span> <span class="fg">task general</span>
+        <span class="dimc">started</span>
+
+        <span class="warnc">●</span> waiting outranks everything: it is the only state that needs
+        you
+      </div>
+      <p>
+        Rule that keeps this from rotting: components never name a glyph or a color for a status,
+        the same way <code>theme.ts</code> already forbids naming a hex. They pass a status and get
+        both back.
+      </p>
+
+      <h2>5. Proposal — background status line</h2>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <div class="term">
+            <span class="fg">2 running in background</span><span class="dimc"> · ↓ view</span>
+          </div>
+        </div>
+        <div>
+          <span class="tag next">Proposed</span>
+          <div class="term">
+            <span class="runc">⠹</span> <span class="fg">2 in background</span>
+            <span class="dimc">· general </span><span class="mutedc">sonnet-4.6 </span
+            ><span class="thinkc">▆</span><span class="dimc">: grep -rn "register" · ↓ view</span>
+          </div>
+        </div>
+      </div>
+      <ul>
+        <li>A moving spinner distinguishes "work is happening" from a stale count.</li>
+        <li>
+          The newest activity line borrows <code>taskActivity()</code>, already computed for the
+          menu.
+        </li>
+        <li>
+          Model and meter appear only while a single task is active; with two or more the line stays
+          a count, since no one model describes the row.
+        </li>
+        <li>
+          When any child is <em>waiting</em>, the line swaps to
+          <code class="warnc">● 1 waiting for your answer · ↓ answer</code> in
+          <code>theme.warning</code>. That is the only case where this row should compete for
+          attention.
+        </li>
+      </ul>
+
+      <h2>6. Proposal — inspector header</h2>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <div class="term">
+            <span class="accentc">Tasks</span><span class="mutedc"> │ </span
+            ><span class="fg">Audit plugin surfaces</span>
+            <span class="mutedc">background · running</span>
+
+            ● read packages/tui/src/task-browser.ts ● grep -rn "register" packages/plugin
+          </div>
+        </div>
+        <div>
+          <span class="tag next">Proposed</span>
+          <div class="term">
+            <span class="accentc">Tasks</span><span class="mutedc"> │ </span
+            ><span class="toolc">general</span><span class="mutedc"> │ </span
+            ><span class="fg">Audit plugin surfaces</span> <span class="runc">⠹</span>
+            <span class="dimc">running · background · 1m 04s · 12 tools · </span
+            ><span class="fg">anthropic/sonnet-4.6</span> <span class="thinkc">▆ high</span>
+
+            <span class="okc">●</span> <span class="fg">read</span>
+            <span class="pathc">packages/tui/src/task-browser.ts</span> <span class="runc">●</span>
+            <span class="fg">grep</span> <span class="dimc">-rn "register" packages/plugin</span>
+          </div>
+        </div>
+      </div>
+      <ul>
+        <li>
+          Agent name joins the breadcrumb — the inspector is the one place you want to know which
+          agent definition produced this transcript.
+        </li>
+        <li>
+          The metadata line gains the same status glyph as the row you arrived from, so the
+          transition reads as continuous.
+        </li>
+        <li>
+          Live elapsed and tool count come from data the task already holds
+          (<code>run.startedAt</code>, transcript parts).
+        </li>
+        <li>
+          Model here is the full <code>provider/id</code> with the level spelled out, not the short
+          form used in rows — the inspector has the width, and this is where you go to check whether
+          an override landed.
+        </li>
+      </ul>
+
+      <h2>7. Proposal — fixed-height delegation window</h2>
+      <p>
+        The current card is height-unstable by construction. <code>render()</code> picks between
+        <code>clearBody()</code> and <code>showPreview()</code> on every sync, driven by whether the
+        live progress text happens to fit <code>inlineToolPreview</code>'s single-line test, and
+        then <code>renderSettled()</code> chooses again from the result. A delegation that was three
+        rows tall becomes one row the moment it finishes, and everything below it jumps.
+      </p>
+      <div class="term">
+        <span class="dimc">how the height moves today, one delegation, no user input</span>
+
+        t+0.4s <span class="errc">1 row</span> heading only, progress text empty t+6s
+        <span class="errc">1 row</span> progress fits inline → clearBody() t+9s
+        <span class="errc">4 rows</span> progress gained a newline → showPreview() t+22s
+        <span class="errc">7 rows</span> longer output, 3 head + 3 tail t+31s
+        <span class="errc">2 rows</span> next progress string is short again settled
+        <span class="errc">1 row</span> summary fits inline → clearBody()
+
+        <span class="dimc">every transition reflows the transcript below it</span>
+      </div>
+
+      <h3>The fix: reserve the space once</h3>
+      <p>
+        A delegation opens a window of exactly three rows the moment the call starts, and that
+        window is three rows until the card is destroyed. Rows are the child's last three transcript
+        items — one item per row, never wrapped, truncated at the terminal edge. The window tails: a
+        fourth item pushes the first out. Nothing below the card ever moves, because nothing about
+        the card's box ever changes.
+      </p>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <div class="term">
+            <span class="dimc">t+0.4s</span> <span class="runc">●</span>
+            <span class="fg">task general</span>
+            <span class="dimc">Audit every plugin surface and report…</span>
+
+            <span class="dimc">t+9s</span>
+            <span class="userc">●</span> <span class="fg">task general</span>
+            <span class="dimc">Searching packages/plugin</span>
+            <span class="dimc">packages/plugin/src/index.ts:14</span>
+            <span class="dimc">packages/plugin/src/registry.ts:88</span>
+            <span class="dimc">packages/host/src/index.ts:203</span>
+
+            <span class="dimc">settled</span>
+            <span class="okc">●</span> <span class="fg">task general</span>
+            <span class="dimc">Found 3 unregistered surfaces</span>
+          </div>
+        </div>
+        <div>
+          <span class="tag next">Proposed</span>
+          <div class="term">
+            <span class="dimc">t+0.4s</span> <span class="runc">⠹</span>
+            <span class="fg">task general</span>
+            <span class="dimc">Audit every plugin surface</span>
+            <span class="mutedc">sonnet-4.6 </span><span class="thinkc">▆</span
+            ><span class="mutedc"> 0.4s</span> <span class="mutedc">┃</span>
+            <span class="dimc">starting</span>
+            <span class="mutedc">┃</span>
+            <span class="mutedc">┃</span>
+
+            <span class="dimc">t+9s</span>
+            <span class="runc">⠹</span> <span class="fg">task general</span>
+            <span class="dimc">Audit every plugin surface</span>
+            <span class="mutedc">sonnet-4.6 </span><span class="thinkc">▆</span
+            ><span class="mutedc"> 9.1s</span> <span class="mutedc">┃</span>
+            <span class="thinkc">◆</span> <span class="dimc">thought about registry ownership</span>
+            <span class="mutedc">┃</span> <span class="okc">✓</span>
+            <span class="dimc">read packages/core/src/plugins/types.ts</span>
+            <span class="mutedc">┃</span> <span class="runc">⠹</span>
+            <span class="fg">grep -rn "activate" packages/host</span>
+
+            <span class="dimc">settled</span>
+            <span class="okc">✓</span> <span class="fg">task general</span>
+            <span class="dimc">Audit every plugin surface</span>
+            <span class="mutedc">sonnet-4.6 </span><span class="thinkc">▆</span
+            ><span class="mutedc"> 18 · 1m 47s</span> <span class="mutedc">┃</span>
+            <span class="mutedc">·</span> <span class="mutedc">15 earlier steps</span>
+            <span class="mutedc">┃</span> <span class="okc">✓</span>
+            <span class="dimc">bash pnpm --dir packages/plugin test</span>
+            <span class="mutedc">┃</span> <span class="accentc">→</span>
+            <span class="fg">Found 3 unregistered surfaces</span> <span class="dimc">ctrl+o</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Rules that make the height guarantee real</h3>
+      <ul>
+        <li>
+          <b>Reserved, not grown.</b> Three rows exist from the first frame, blank-padded at the
+          bottom. Fewer than three items never means a shorter card.
+        </li>
+        <li>
+          <b>Items, not lines.</b> One child transcript item per row — tool call, thinking,
+          assistant text — so information per row stays constant. Raw progress text is what makes
+          today's card breathe.
+        </li>
+        <li>
+          <b>Never wrap.</b> <code>wrapMode: "none"</code> with truncation. A wrapping row breaks
+          the guarantee on every resize.
+        </li>
+        <li>
+          <b>Settling changes color, not geometry.</b> The glyph goes <span class="okc">✓</span>,
+          the last row becomes the answer, the height does not move. This is the whole point: the
+          transition that jumps today is the one you watch most.
+        </li>
+        <li>
+          <b>The tail ends on the result.</b> Because the final assistant message is the newest
+          item, the frozen window's last row is the answer — the summary comes for free instead of
+          needing a separate collapsed state.
+        </li>
+        <li>
+          <b>Overflow is counted, not hidden.</b> Row one becomes
+          <code>· 13 earlier steps</code> once items scroll out, so the card never lies about being
+          complete.
+        </li>
+      </ul>
+
+      <h3>Cost, and the one escape hatch</h3>
+      <p>
+        Four rows per delegation, permanently, in scrollback. That is the price of never jumping,
+        and it is the right default: a delegated turn is the part of a session you most often
+        re-read. <code>ctrl+o</code> — already the tool-output toggle, already wired through
+        <code>ToolOutputExpansion</code> — collapses a settled window to its heading. Collapsing is
+        then a deliberate act with a keystroke behind it, not something the renderer does to you
+        mid-stream.
+      </p>
+
+      <h3>Open</h3>
+      <ul>
+        <li>
+          Three rows is the fixed size. It holds the newest step, its predecessor, and the overflow
+          count — enough to see the rhythm, cheap enough that three concurrent delegations cost 12
+          rows rather than a screen.
+        </li>
+        <li>
+          Concurrent delegations each own a window. At three rows this stays affordable, so no
+          shrink-when-crowded rule is needed — which is good, because that rule would be a height
+          change, exactly what this section forbids.
+        </li>
+        <li>
+          A child that spawns its own child still gets one row. Nesting the window recursively is a
+          different feature.
+        </li>
+      </ul>
+
+      <h2>8. What this does not change</h2>
+      <ul>
+        <li>
+          No new keybindings, no change to <code>Task</code>, <code>JobInfo</code>, or the jobs API.
+        </li>
+        <li>
+          <code>projectTasks</code>, <code>taskStatus</code>, <code>taskLabel</code>,
+          <code>taskActivity</code> stay as they are; only the formatting layer in
+          <code>choices()</code>, <code>repaint()</code>, and
+          <code>TaskInspector.show()</code> moves.
+        </li>
+        <li>
+          Model and level are read from each child's existing <code>state.config</code>. No new
+          fetch, no new event, no plumbing into core.
+        </li>
+        <li>
+          Legacy-console fallbacks continue to hold, since every glyph comes from
+          <code>GLYPHS</code>.
+        </li>
+      </ul>
+      <p>
+        The delegation window is the one piece that is not a formatting change: the
+        <code>task</code> branch in <code>ToolCard.render()</code> stops sharing the
+        <code>clearBody</code>/<code>showPreview</code> path with every other tool and gets a fixed
+        row set of its own, fed by the child items <code>TaskIndex</code> already follows.
+      </p>
+
+      <h3>Decisions worth making before this is built</h3>
+      <ul>
+        <li>
+          Routing <em>waiting</em> children into the background status line changes what that row
+          competes for.
+        </li>
+        <li>
+          Going global with the glyph means touching tool cards and activity labels in
+          <code>transcript.ts</code> — the highest-traffic surface in the app — for consistency's
+          sake alone. Worth it only if the vocabulary is settled first; doing it twice is worse than
+          not doing it.
+        </li>
+        <li>
+          Four permanent rows per delegation. If that is too much for long sessions, the alternative
+          is auto-collapse on settle — which brings the jump back. Pick one; there is no version
+          without a cost.
+        </li>
+      </ul>
+
+      <footer>
+        Mockups approximate an 80-column terminal in the dark theme. Colors are the literal role
+        values from <code>packages/tui/src/theme.ts</code>.
+      </footer>
+    </main>
+  </body>
+</html>

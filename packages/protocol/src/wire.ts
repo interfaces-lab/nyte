@@ -4,7 +4,8 @@
  *
  * Routes (version 1):
  *
- *   POST {base}/v1/call/{verb}          body `{ "input": <verb input> }`; omit `input` for none
+ *   GET  {base}/v1/info                       what is answering: its version and wire version
+ *   POST {base}/v1/call/{operation}          body `{ "input": <operation input> }`; omit `input` for none
  *   GET  {base}/v1/watch?sessionId=…    `&after=<seq>` to replay, `&live=1` to start at the tip
  *
  * The session id is a query parameter, not a path segment: ids are any
@@ -20,8 +21,29 @@ import { typed } from "./schemas.ts";
 import type { SessionEvent } from "./sdk.ts";
 
 export const WIRE_VERSION = 1;
+export const INFO_ROUTE = "/v1/info";
 export const CALL_ROUTE_PREFIX = "/v1/call/";
 export const WATCH_ROUTE = "/v1/watch";
+
+// ---------------------------------------------------------------------------
+// Info
+// ---------------------------------------------------------------------------
+
+/**
+ * The reply on the info route, carried in the call envelope. `version` is the
+ * host's own release, the product a user installed. `wireVersion` restates
+ * the route prefix: a client on another wire asks under another prefix and
+ * hears `not_found`, so a reply that reaches this schema with any other
+ * number is malformed, not merely older.
+ */
+export interface ServerInfo {
+  readonly version: string;
+  readonly wireVersion: typeof WIRE_VERSION;
+}
+
+export const ServerInfoSchema = typed<ServerInfo>()(
+  Type.Object({ version: Type.String(), wireVersion: Type.Literal(WIRE_VERSION) }),
+);
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -34,7 +56,7 @@ export interface Issue {
 }
 
 export type PlainErrorCode =
-  | "unknown_verb"
+  | "unknown_operation"
   | "unknown_session"
   | "not_found"
   | "method_not_allowed"
@@ -54,7 +76,7 @@ export type WireError =
 export type ErrorCode = WireError["code"];
 
 const plainCodes = [
-  "unknown_verb",
+  "unknown_operation",
   "unknown_session",
   "not_found",
   "method_not_allowed",
@@ -95,7 +117,7 @@ export function statusFor(code: ErrorCode): number {
       return 401;
     case "forbidden":
       return 403;
-    case "unknown_verb":
+    case "unknown_operation":
     case "unknown_session":
     case "not_found":
       return 404;
@@ -122,7 +144,7 @@ export function statusFor(code: ErrorCode): number {
 // Calls
 // ---------------------------------------------------------------------------
 
-/** The request body. `input` absent means the verb's input is `undefined`. */
+/** The request body. `input` absent means the operation's input is `undefined`. */
 export interface CallRequest {
   readonly input?: unknown;
 }
@@ -131,7 +153,7 @@ export const CallRequestSchema = typed<CallRequest>()(
   Type.Object({ input: Type.Optional(Type.Unknown()) }, { additionalProperties: false }),
 );
 
-/** The reply before the value is checked against the verb's output schema. */
+/** The reply before the value is checked against the operation's output schema. */
 export type CallReply =
   | { readonly ok: true; readonly defined: true; readonly value: unknown }
   | { readonly ok: true; readonly defined: false }
@@ -147,6 +169,13 @@ export const CallReplySchema = typed<CallReply>()(
 
 export const JSON_MEDIA_TYPE = "application/json";
 export const EVENT_STREAM_MEDIA_TYPE = "text/event-stream";
+
+/** The media type of a `content-type` header, without parameters; undefined when the header is absent. */
+export function mediaType(header: string | null): string | undefined {
+  if (header === null) return undefined;
+  const semicolon = header.indexOf(";");
+  return (semicolon === -1 ? header : header.slice(0, semicolon)).trim().toLowerCase();
+}
 
 // ---------------------------------------------------------------------------
 // Watch

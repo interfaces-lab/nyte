@@ -1,43 +1,37 @@
 import electronUpdater from "electron-updater";
-import { app, dialog, Menu, MenuItem } from "electron";
+import { updater } from "electron-sparkle";
+import { app, dialog } from "electron";
+import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createUpdateController } from "./update-controller.ts";
 
-export function registerUpdates(): void {
+export function registerUpdates(item: MenuItem, beforeRelaunch: () => Promise<void>): void {
   const logError = (message: string): void => {
     void appendFile(
       join(app.getPath("userData"), "updates.log"),
       `${JSON.stringify({ time: new Date().toISOString(), message })}\n`,
     ).catch(() => undefined);
   };
-  const item = new MenuItem({
-    label: "Check for Updates…",
-    click: () => {
-      void check(true);
-    },
-  });
-  const menu =
-    Menu.getApplicationMenu() ??
-    Menu.buildFromTemplate([
-      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
-      { role: "fileMenu" },
-      { role: "editMenu" },
-      { role: "viewMenu" },
-      { role: "windowMenu" },
-      { role: "help", submenu: [] },
-    ]);
-  const target =
-    process.platform === "darwin"
-      ? menu.items[0]?.submenu
-      : menu.items.find((entry) => entry.role === "help")?.submenu;
-  if (target !== undefined) target.insert(process.platform === "darwin" ? 1 : 0, item);
-  else {
-    const submenu = new Menu();
-    submenu.append(item);
-    menu.append(new MenuItem({ label: "Updates", submenu }));
+  const unavailable = !app.isPackaged
+    ? "This is a development build. Install the packaged Nyte app to receive updates."
+    : process.env["NYTE_OFFLINE"] !== undefined
+      ? "NYTE_OFFLINE is set. Disable it and restart Nyte to check for updates."
+      : process.platform === "linux" && process.env["APPIMAGE"] === undefined
+        ? "Install the AppImage build to receive desktop updates."
+        : undefined;
+  if (process.platform === "darwin" && unavailable === undefined) {
+    updater.setBeforeRelaunchHandler(beforeRelaunch);
+    updater.on("error", ({ error }) => logError(error.message));
+    updater.on("state-changed", ({ state }) => {
+      item.enabled = state.canCheckForUpdates;
+    });
+    updater.on("before-relaunch", () => logError("Restarting to install update"));
+    logError(`Started Nyte ${app.getVersion()}`);
   }
-  Menu.setApplicationMenu(menu);
+  item.click = () => {
+    void check(true);
+  };
 
   let controller: ReturnType<typeof createUpdateController> | undefined;
   const load = () => {
@@ -60,17 +54,30 @@ export function registerUpdates(): void {
       },
       logError,
       version: app.getVersion(),
-      unavailable: !app.isPackaged
-        ? "This is a development build. Install the packaged Nyte app to receive updates."
-        : process.env["NYTE_OFFLINE"] !== undefined
-          ? "NYTE_OFFLINE is set. Disable it and restart Nyte to check for updates."
-          : process.platform === "linux" && process.env["APPIMAGE"] === undefined
-            ? "Install the AppImage build to receive desktop updates."
-            : undefined,
+      unavailable,
     });
   };
   async function check(manual: boolean): Promise<void> {
     try {
+      if (process.platform === "darwin") {
+        if (unavailable !== undefined) {
+          if (manual)
+            await dialog.showMessageBox({
+              type: "info",
+              message: "Updates unavailable",
+              detail: unavailable,
+            });
+          return;
+        }
+        await updater.start();
+        // Nyte owns the schedule and environment flags on every platform.
+        updater.setAutomaticallyChecksForUpdates(false);
+        updater.setAutomaticallyDownloadsUpdates(false);
+        if (!updater.getState().canCheckForUpdates) return;
+        if (manual) updater.checkForUpdates();
+        else updater.checkForUpdatesInBackground();
+        return;
+      }
       controller ??= load();
       await controller.check(manual);
     } catch (cause) {

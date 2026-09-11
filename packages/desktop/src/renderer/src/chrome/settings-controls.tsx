@@ -1,4 +1,6 @@
-import { NumberField, Select, Switch } from "@nyte-ai/ui/primitives";
+import { NumberField } from "@nyte-ai/ui/number-field";
+import { Select } from "@nyte-ai/ui/select";
+import { Switch } from "@nyte-ai/ui/switch";
 import * as stylex from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "../components/icons.tsx";
@@ -199,18 +201,18 @@ export function SettingsStepper({
       <NumberField.Decrement
         type="button"
         aria-label={`Decrease ${label.toLocaleLowerCase()}`}
-        {...stylex.props(styles.stepperButton, focus.ringInset)}
+        {...stylex.props(styles.stepperButton, styles.stepperSplit)}
       >
         −
       </NumberField.Decrement>
       <NumberField.Input
         aria-label={label}
-        {...stylex.props(styles.stepperValue, focus.ringInset)}
+        {...stylex.props(styles.stepperValue, styles.stepperSplit)}
       />
       <NumberField.Increment
         type="button"
         aria-label={`Increase ${label.toLocaleLowerCase()}`}
-        {...stylex.props(styles.stepperButton, focus.ringInset)}
+        {...stylex.props(styles.stepperButton)}
       >
         +
       </NumberField.Increment>

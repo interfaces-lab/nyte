@@ -13,7 +13,7 @@
  * and https://github.com/anomalyco/opencode/blob/v2/packages/schema/src/websearch.ts
  */
 import { definePlugin } from "@nyte-ai/plugin";
-import type { AgentTool, Plugin, SettingChoice } from "@nyte-ai/plugin";
+import type { AgentTool, Plugin } from "@nyte-ai/plugin";
 
 export const WEB_SEARCH_TOOL_NAME = "websearch";
 export const WEB_SEARCH_SETTING_ID = "websearch-provider";
@@ -120,17 +120,6 @@ function withProvider(tool: AgentTool, provider: WebSearchProvider): AgentTool {
     providers: [...current.filter((entry) => entry.id !== provider.id), provider],
   };
   return joined;
-}
-
-/** Insert a provider's choice ahead of `off`, which stays last however many providers join. */
-export function withWebSearchChoice(
-  choices: readonly [SettingChoice, ...SettingChoice[]],
-  choice: SettingChoice,
-): [SettingChoice, ...SettingChoice[]] {
-  const [first, ...rest] = choices;
-  const middle = rest.filter((entry) => entry.id !== choice.id && entry.id !== WEB_SEARCH_OFF);
-  const off = rest.filter((entry) => entry.id === WEB_SEARCH_OFF);
-  return [first, ...middle, choice, ...off];
 }
 
 /**

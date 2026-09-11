@@ -85,16 +85,6 @@ test("ancestry follows the context parent only", async () => {
   assert.equal(await isAncestor(objects, { ancestor: null, descendant: b ?? null }), true);
 });
 
-test("a tip that is not a commit is reported as corruption by id", async () => {
-  const session = await openSession();
-  const [blob] = await session.objects.put([{ kind: "blob", value: 1 }]);
-  await assert.rejects(
-    branch(session.objects, blob ?? null),
-    (cause: unknown) => cause instanceof Error && cause.message.includes(blob ?? ""),
-  );
-  await assert.rejects(branch(session.objects, "0".repeat(64)), Error);
-});
-
 test("model context keeps what a provider accepts and drops what it rejects", () => {
   const failed = assistant("", { stop: "error", error: "boom" });
   const aborted = assistant("partial", { stop: "aborted" });

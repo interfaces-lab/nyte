@@ -4,5 +4,10 @@ import { canonicalJson } from "./json.ts";
 import type { Obj, Oid } from "./model.ts";
 
 export function hashObject(object: Obj): Oid {
-  return createHash("sha256").update(canonicalJson(object)).digest("hex");
+  return hashCanonicalJson(canonicalJson(object));
+}
+
+/** Hash the same canonical bytes the object writer persists. */
+export function hashCanonicalJson(json: string): Oid {
+  return createHash("sha256").update(json).digest("hex");
 }

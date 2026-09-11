@@ -54,6 +54,11 @@ export const MAX_SPLIT_RATIO = 0.8;
  */
 export const MIN_PANE_WIDTH = 320;
 
+/** Both split commands use the same window-width floor as their menu availability. */
+export function canSplitPane(layout: PaneLayout, windowWidth: number): boolean {
+  return layout.kind === "single" && windowWidth >= 2 * MIN_PANE_WIDTH;
+}
+
 export function createSinglePane(
   paneId: PaneId = "primary",
   selection: PaneSelection = BLANK_SELECTION,

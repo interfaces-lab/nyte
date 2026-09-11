@@ -1133,6 +1133,7 @@
             <li><a href="#scorecard">What moved</a></li>
             <li><a href="#vscode-model">What VS Code built</a></li>
             <li><a href="#useful-details">Useful details</a></li>
+            <li><a href="#git-view">The git view</a></li>
             <li><a href="#colour">The colour script</a></li>
             <li><a href="#nyte-now">Nyte now</a></li>
             <li><a href="#nyte-answer">A Nyte-shaped answer</a></li>
@@ -1163,6 +1164,7 @@
             <span>Research scope: VS Code 1.120 through 1.135</span>
             <span>Nyte scope: core, protocol, TUI, and desktop at <code>c0be400</code></span>
             <span>New material: a colour-script rule taken from film</span>
+            <span>Also read: Rebased, a standalone IntelliJ git client</span>
           </div>
         </header>
 
@@ -1662,8 +1664,175 @@
           </p>
         </section>
 
+        <section id="git-view">
+          <div class="eyebrow">05 / the git view</div>
+          <h2>Rebased gave the graph the editor. Nyte gave it a drawer.</h2>
+          <p class="lead">
+            Rebased is intellij-community with every bundled plugin removed except the git
+            integration, shipped as a standalone client. One decision in it is worth reading
+            closely: the git log opens in the main editor window, not the bottom tool window,
+            because in a git client the graph is the subject. The tool-window placement it inherited
+            was designed for a product whose subject was code. Putting the log back down there is a
+            setting, not the default.<a class="cite" href="#source-25">[25]</a>
+          </p>
+          <p>
+            Nyte made the opposite call, and for its domain the opposite call is right. The subject
+            of a Nyte window is a conversation, and the diff is evidence for the decision the user
+            is about to make in the composer. So Changes is a rail row and a side panel that opens
+            at 500px and stops shrinking at 384px, with 164px of that spent on the file list.<a
+              class="cite"
+              href="#source-13"
+              >[13]</a
+            >
+            The rest of this section is what that placement costs and what Nyte built instead.
+          </p>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>Rebased</th>
+                <th>Nyte</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Subject of the window</td>
+                <td>The commit graph, in an editor tab by default</td>
+                <td>The conversation. The diff is a side panel behind a rail row</td>
+              </tr>
+              <tr>
+                <td>Unit of review</td>
+                <td>A commit, a changelist, or a file's history</td>
+                <td>The working tree against <code>HEAD</code>, plus what this run declared</td>
+              </tr>
+              <tr>
+                <td>History</td>
+                <td>Log, graph, per-file history, blame, <code>Show in Git Log</code></td>
+                <td>
+                  None. <code>VcsBackend</code> is <code>status()</code> and <code>diff()</code>,
+                  and nothing above it asks for a commit
+                </td>
+              </tr>
+              <tr>
+                <td>Writing</td>
+                <td>Stage by hunk, commit, amend, branch, rebase, resolve conflicts</td>
+                <td>
+                  Nothing writes. The toolbar is Refresh and a file-tree toggle, under the label
+                  <code>Uncommitted</code>
+                </td>
+              </tr>
+              <tr>
+                <td>Diff surface</td>
+                <td>Side by side, right pane editable, whitespace and hunk controls</td>
+                <td>Unified, read-only, word-level inside the line, syntax highlighted</td>
+              </tr>
+              <tr>
+                <td>Untracked files</td>
+                <td>Listed as unversioned, addable to a changelist</td>
+                <td>
+                  Synthesised into a patch against <code>/dev/null</code>, capped at 2MB, with
+                  binary and symlink cases handled first
+                </td>
+              </tr>
+              <tr>
+                <td>Repository scope</td>
+                <td>Several VCS roots per project</td>
+                <td>
+                  One repository, the workspace directory. Every diff path is re-resolved and
+                  refused if it escapes it
+                </td>
+              </tr>
+              <tr>
+                <td>Freshness</td>
+                <td>Filesystem events through the platform's virtual file system</td>
+                <td>
+                  A five-second poll of <code>host.vcs.snapshot</code> while the panel is open
+                </td>
+              </tr>
+              <tr>
+                <td>Branch</td>
+                <td>A branch widget that checks out, creates, and rebases</td>
+                <td>
+                  A name. <code>parseGitStatus</code> reads it and the thread header prints it; the
+                  changes panel never shows it
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            <span class="tag observed">Source or local observation</span>
+            The Rebased column is the IntelliJ git integration it ships unchanged, plus the log
+            placement its README documents as its own. The Nyte column was read at
+            <code>c0be400</code> in the desktop changes path.<a class="cite" href="#source-26"
+              >[26]</a
+            >
+          </p>
+
+          <h3>Nyte holds two facts a git client has no reason to hold</h3>
+          <p>
+            The panel does not render <code>git status</code>. It renders a union of two sets: the
+            working tree, and the files this session declared it changed, folded out of settled tool
+            results by their commit id.<a class="cite" href="#source-27">[27]</a> A file the run
+            edited that is no longer different in the working tree still gets a row, and the row
+            explains itself: the change happened during the conversation and is gone now. Rebased
+            has no equivalent, because in a human git client there is no second author to reconcile
+            against.
+          </p>
+          <p>
+            The second fact is the revision. The host hashes the repository root, the working
+            directory, <code>HEAD</code>, the index, the raw status output, and per-file inode and
+            modification time into one string, and every patch is cached under repository, revision,
+            and path. Parsed patches sit in a 96-entry cache keyed the same way. That is
+            content-addressed diffing, and it is a stricter key than a JetBrains client needs,
+            because Nyte's files are rewritten by something that never tells the editor it is
+            typing.
+          </p>
+
+          <div class="grid">
+            <article class="card good">
+              <h3>Keep</h3>
+              <ul>
+                <li>Declared changes unioned with the working tree, with the divergence stated</li>
+                <li>The revision hash as the diff cache key</li>
+                <li>Read-only. An agent client that can commit is a different product</li>
+                <li>One repository per workspace, with paths re-resolved at the host boundary</li>
+              </ul>
+            </article>
+            <article class="card bad">
+              <h3>Change</h3>
+              <ul>
+                <li><code>Uncommitted</code> labels a list that is not all uncommitted work</li>
+                <li>A unified diff reviewed in 220px of panel once the file list takes its cut</li>
+                <li>A third five-second poll, over data that already knows when it changed</li>
+                <li>No mark for what moved since the user last looked</li>
+              </ul>
+            </article>
+          </div>
+
+          <h3>The placement is right; the width is not</h3>
+          <p>
+            Rebased's lesson is not that graphs belong in editors. It is that the surface a user
+            reviews with should get the window while reviewing is what they are doing. Nyte already
+            has the mechanism: the layout takes two panes, tracks a focused one, and accepts five
+            drop placements. The one surface that cannot occupy a pane is the diff, which is the
+            surface most starved by a 384px floor. Letting Changes open to the side costs a tab id,
+            not a new product.
+          </p>
+
+          <h3>The one history fact worth having is already in the fold</h3>
+          <p>
+            A log is the wrong ask. The review question in an agent client is not "what does this
+            repository look like", it is "what changed while I was not watching". Every
+            <code>FileChange</code> already carries <code>lastCommit</code>, the id of the tool
+            result that produced it, so one read mark per session is enough to sort and flag the
+            file list without git being consulted at all. That is the same unread state the sidebar
+            filter claims to have and cannot populate, and here it is populatable.
+          </p>
+        </section>
+
         <section id="colour">
-          <div class="eyebrow">05 / the colour script</div>
+          <div class="eyebrow">06 / the colour script</div>
           <h2>Film spends one colour at a time, and so should a session list</h2>
           <p class="lead">
             Before a frame is animated, a feature film is painted as a colour script: a strip of
@@ -1916,7 +2085,7 @@
         </section>
 
         <section id="nyte-now">
-          <div class="eyebrow">06 / Nyte now</div>
+          <div class="eyebrow">07 / Nyte now</div>
           <h2>The terminal now leads the desktop</h2>
           <p class="lead">
             The most interesting thing to happen since August is a reversal. The TUI, which had no
@@ -2156,7 +2325,7 @@
         </section>
 
         <section id="nyte-answer">
-          <div class="eyebrow">07 / a Nyte-shaped answer</div>
+          <div class="eyebrow">08 / a Nyte-shaped answer</div>
           <h2>Keep one session model and expose its relationships</h2>
           <p class="lead">
             VS Code has sessions containing chats. Nyte has durable sessions, branches, and child
@@ -2541,7 +2710,7 @@
         </section>
 
         <section id="build-order">
-          <div class="eyebrow">08 / build order</div>
+          <div class="eyebrow">09 / build order</div>
           <h2>Four days of rendering, not another surface</h2>
           <p class="lead">
             The August sequence was four slices of building. This one is much shorter, because the
@@ -2715,11 +2884,12 @@
         </section>
 
         <section id="sources">
-          <div class="eyebrow">09 / sources</div>
+          <div class="eyebrow">10 / sources</div>
           <h2>Primary material</h2>
           <p class="lead">
-            Claims about VS Code behaviour come from Microsoft documentation and release notes. Nyte
-            pixel values, state logic, and session counts were re-read at <code>c0be400</code>
+            Claims about VS Code behaviour come from Microsoft documentation and release notes.
+            Claims about Rebased come from its README and the IntelliJ git integration it ships.
+            Nyte pixel values, state logic, and session counts were re-read at <code>c0be400</code>
             on 5 September 2026. Recommendations are marked as design readings.
           </p>
 
@@ -2923,6 +3093,40 @@
               feature production and in the colour-timing tradition of live-action cinematography.
               Applied here as a design reading, not a citation of Nyte behaviour.
             </div>
+            <div class="source-item" id="source-25">
+              <strong>[25] Rebased</strong>
+              <a href="https://github.com/DetachHead/rebased"
+                >A git client based on the IntelliJ platform</a
+              >, a fork of intellij-community with the bundled plugins removed except git, and its
+              <a href="https://github.com/DetachHead/rebased/blob/master/README.md"
+                >customizable git log location</a
+              >: the log lives in the editor window unless
+              <em>Settings &gt; Version Control &gt; Log</em> is told otherwise. Everything else in
+              the Rebased column is the IntelliJ git integration it inherits.
+            </div>
+            <div class="source-item" id="source-26">
+              <strong>[26] Nyte changes path</strong>
+              <a href="packages/desktop/src/renderer/src/workbench/changes-panel.tsx"
+                >The union of working-tree status and declared run changes</a
+              >,
+              <a href="packages/desktop/src/main/vcs.ts"
+                >the git host with its revision hash, untracked patch synthesis, and workspace path
+                guard</a
+              >,
+              <a href="packages/desktop/src/renderer/src/workbench/diff-cache.ts"
+                >the parsed-diff cache</a
+              >, and
+              <a href="packages/desktop/src/renderer/src/queries.ts"
+                >the five-second snapshot poll</a
+              >.
+            </div>
+            <div class="source-item" id="source-27">
+              <strong>[27] Nyte declared changes</strong>
+              <a href="packages/core/src/kernel/views/changes.ts"
+                >The per-file fold over settled tool patches</a
+              >, keyed by result commit, which is what <code>runs.changes</code> returns and where
+              <code>FileChange.lastCommit</code> comes from.
+            </div>
             <div class="source-item">
               <strong>Additional VS Code specifications</strong>
               <a href="https://github.com/microsoft/vscode/blob/main/src/vs/sessions/SESSIONS.md"
@@ -2949,9 +3153,11 @@
             five participants and static stimuli. Nyte measurements come from the named source files
             at <code>c0be400</code>; the 27 sessions and 12 parent facts come from one local
             development store inspected on 5 September 2026, and a store that size cannot prove how
-            the ratio behaves at scale. No desktop screenshot was captured for this revision, so the
-            current-state claims are read from source rather than from a running window. The colour
-            script is a design reading with no user testing behind it.
+            the ratio behaves at scale. Rebased was read from its README and its upstream feature
+            set, not from a running build, so its column describes the client as documented rather
+            than as used. No desktop screenshot was captured for this revision, so the current-state
+            claims are read from source rather than from a running window. The colour script is a
+            design reading with no user testing behind it.
           </div>
         </section>
       </main>

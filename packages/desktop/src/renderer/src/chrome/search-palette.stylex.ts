@@ -57,7 +57,7 @@ export const searchPaletteStyles = stylex.create({
     borderRadius: t.radiusSm,
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: -2,
     backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
     color: t.textSecondary,

@@ -4,11 +4,12 @@
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/tools/ls.ts
  */
-import { readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { Unsafe } from "typebox";
+import { Type, type Static } from "typebox";
 import type { AgentTool } from "../types.ts";
 import { toolResultContent } from "../utils/tool-result.ts";
+import { argumentParser } from "./support/arguments.ts";
 import { pathExists, resolveToCwd } from "./support/path-utils.ts";
 import {
   DEFAULT_MAX_BYTES,
@@ -17,12 +18,7 @@ import {
   type TruncationResult,
 } from "./support/truncate.ts";
 
-export interface LsToolInput {
-  /** Directory to list (default: current directory) */
-  path?: string;
-  /** Maximum number of entries to return (default: 500) */
-  limit?: number;
-}
+export type LsToolInput = Static<typeof lsParameters>;
 
 const DEFAULT_LIMIT = 500;
 
@@ -48,8 +44,8 @@ export interface LsOperations {
 
 const defaultLsOperations: LsOperations = {
   exists: pathExists,
-  stat: fsStat,
-  readdir: fsReaddir,
+  stat,
+  readdir,
 };
 
 export interface LsToolOptions {
@@ -57,58 +53,14 @@ export interface LsToolOptions {
   operations?: LsOperations;
 }
 
-const lsParameters = Unsafe<LsToolInput>({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Directory to list (default: current directory)",
-    },
-    limit: {
-      type: "number",
-      description: "Maximum number of entries to return (default: 500)",
-    },
-  },
+const lsParameters = Type.Object({
+  path: Type.Optional(
+    Type.String({ description: "Directory to list (default: current directory)" }),
+  ),
+  limit: Type.Optional(
+    Type.Number({ description: "Maximum number of entries to return (default: 500)" }),
+  ),
 });
-
-interface LsInputFields {
-  readonly path?: unknown;
-  readonly limit?: unknown;
-}
-
-function isLsInputObject(value: unknown): value is LsInputFields {
-  return typeof value === "object" && value !== null;
-}
-
-function hasValidLsPath(value: LsInputFields): value is LsInputFields & Pick<LsToolInput, "path"> {
-  return value.path === undefined || typeof value.path === "string";
-}
-
-function hasValidLsLimit(
-  value: LsInputFields,
-): value is LsInputFields & Pick<LsToolInput, "limit"> {
-  return value.limit === undefined || typeof value.limit === "number";
-}
-
-type LsArgumentPreparer = NonNullable<
-  AgentTool<typeof lsParameters, LsToolDetails | undefined>["prepareArguments"]
->;
-
-const parseLsParams: LsArgumentPreparer = (params) => {
-  if (params === undefined || params === null) {
-    return {};
-  }
-  if (!isLsInputObject(params)) {
-    throw new Error("Invalid arguments for ls: expected an object");
-  }
-  if (!hasValidLsPath(params)) {
-    throw new Error('Invalid arguments for ls: "path" must be a string');
-  }
-  if (!hasValidLsLimit(params)) {
-    throw new Error('Invalid arguments for ls: "limit" must be a number');
-  }
-  return { path: params.path, limit: params.limit };
-};
 
 export function createLsTool(
   cwd: string,
@@ -120,7 +72,7 @@ export function createLsTool(
     description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     promptSnippet: "List directory contents",
     parameters: lsParameters,
-    prepareArguments: parseLsParams,
+    prepareArguments: argumentParser(lsParameters),
     async execute(_toolCallId, { path, limit }, signal?, _onUpdate?) {
       const throwIfAborted = (): void => {
         if (signal?.aborted) throw new Error("Operation aborted");

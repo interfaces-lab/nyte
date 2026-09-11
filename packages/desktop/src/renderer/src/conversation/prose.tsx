@@ -12,6 +12,7 @@ import { Streamdown } from "streamdown";
 import type { Components, ExtraProps } from "streamdown";
 import { nyte } from "../nyte.ts";
 import { CodeBlock } from "./code-block.tsx";
+import { MermaidDiagram } from "./mermaid-diagram.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 
 type MarkdownPreProps = ComponentProps<"pre"> & ExtraProps;
@@ -43,7 +44,12 @@ function MarkdownPre({
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
     const raw = nodeText(child.props.children);
     const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-    return <CodeBlock code={code} lang={codeLanguage(child.props.className)} />;
+    const language =
+      "language" in child.props && typeof child.props.language === "string"
+        ? child.props.language
+        : codeLanguage(child.props.className);
+    if (language.toLocaleLowerCase() === "mermaid") return <MermaidDiagram source={code} />;
+    return <CodeBlock code={code} lang={language} />;
   }
   return (
     <pre {...props} data-nyte-scrollport {...stylex.props(proseStyles.fallbackPre)}>

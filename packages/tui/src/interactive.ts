@@ -1,10 +1,12 @@
 /**
  * The interactive shell: one host, one followed session, one composer. Every
  * durable fact on screen comes from `SessionState`; every submission goes
- * through the outbox; every command is an SDK verb.
+ * through the outbox. Local `!` commands never enter the job or model loop.
  */
 import process from "node:process";
-import { basename } from "node:path";
+import { basename, resolve } from "node:path";
+import { homedir } from "node:os";
+import { isDeepStrictEqual } from "node:util";
 import open from "open";
 import {
   CliRenderEvents,
@@ -15,8 +17,11 @@ import {
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
 import { formatSkillInvocation } from "@nyte-ai/core/plugins";
+import { createTrustStore, pluginWatchTargets, resolveHostPlugins } from "@nyte-ai/host";
+import { createOtelExport } from "@nyte-ai/host/otel";
+import { readClaudeCodeUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
-import type { Api, AuthInteraction, Model, Provider } from "@nyte-ai/ai";
+import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import {
   collectAbandoned,
   DEFAULT_LANDING,
@@ -24,12 +29,13 @@ import {
   projectTree,
   sessionId,
   watchPluginDirectories,
+  isTerminalPhase,
 } from "@nyte-ai/core";
 import type {
   CommandInfo,
   Oid,
   RunInfo,
-  SessionEvent,
+  SelectionReply,
   SessionId,
   SessionInfo,
   SettingInfo,
@@ -37,11 +43,12 @@ import type {
   TrustedWorkspace,
 } from "@nyte-ai/core";
 import type { JsonValue, Skill } from "@nyte-ai/schema";
+import { loginProvider, logoutProvider } from "./auth.ts";
+import { readAuthPrompt } from "./auth-prompt.ts";
 import {
   cachedAuthenticatedModels,
   defaultModel,
   loadAuthenticatedModels,
-  providerAuthStatuses,
   requireProvider,
 } from "./catalog.ts";
 import {
@@ -57,17 +64,20 @@ import {
   SessionDrafts,
 } from "./composer.ts";
 import type { ComposerDraft, MentionFile } from "./composer.ts";
+import { ComposerDocument } from "./composer-document.ts";
+import { startLocalShell } from "./local-shell.ts";
+import type { ShellExecution, ShellProcess } from "./local-shell.ts";
 import {
   ANSWER_COMPOSER_PLACEHOLDER,
-  answerHints,
   BUSY_COMPOSER_PLACEHOLDER,
-  busyHints,
   COMPOSER_PLACEHOLDER,
-  CTRL_C_EXIT_HINT,
-  IDLE_HINTS,
   keycap,
 } from "./constants.ts";
 import { editInExternalEditor, resolveExternalEditor } from "./external-editor.ts";
+import { ComposerActions, composerHints, openActionPalette } from "./composer-actions.ts";
+import type { ComposerOperation } from "./composer-actions.ts";
+import { openDiagnosticReport } from "./diagnostic-report.ts";
+import { sessionRecovery } from "./flags.ts";
 import type { RunFlags } from "./flags.ts";
 import {
   clockDuration,
@@ -79,17 +89,15 @@ import {
 } from "./format.ts";
 import type { PowerlineState } from "./format.ts";
 import type { Host } from "./host.ts";
-import { isJsonArray, isJsonObject, isJsonString } from "./json.ts";
 import {
   ctrlCAction,
   DoubleEscape,
-  escapeIntent,
-  isComposerTextKey,
+  matchesKey,
+  matchesKeyName,
   nextThinkingLevel,
   registerChatLayer,
   registerSelectionLayer,
 } from "./keymap.ts";
-import type { ChatCommandSpec } from "./keymap.ts";
 import { laneRoles, nextToSteer } from "./lanes.ts";
 import type { LaneRoles } from "./lanes.ts";
 import { Outbox } from "./outbox.ts";
@@ -98,12 +106,7 @@ import type { ModelSelection } from "./model-picker.ts";
 import { gutterRows, laneMark, queuedPromptText } from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
-import {
-  PluginProvider,
-  pluginDirectories,
-  resolveWorkspacePlugins,
-  skillDirectories,
-} from "./plugins.ts";
+import { PluginProvider } from "./plugins.ts";
 import { browseHistory, PromptHistory } from "./prompt-history.ts";
 import {
   hostFallbacks,
@@ -111,34 +114,48 @@ import {
   resolveRuntime,
   signedOutRuntime,
   targetSession,
+  tuiPlugins,
 } from "./run.ts";
 import type { Runtime } from "./run.ts";
-import { SessionFollower } from "./session-follow.ts";
+import { TUI_RENDERER_CONFIG } from "./rendering.ts";
+import { SessionConfigurator } from "./session-config.ts";
+import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
+import { SessionFollower } from "@nyte-ai/core/client";
 import { TaskBrowser } from "./task-browser.ts";
-import type { SessionState, WaitingCall } from "./session-state.ts";
+import type { SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/core/client";
 import { FileSettingsStore } from "./settings.ts";
 import type { ResolvedSettings, SettingsPatch } from "./settings.ts";
+import { mountShell } from "./app/App.tsx";
 import {
-  applyShellTheme,
-  buildShell,
+  clearNotice,
   closePanel,
+  holdSlot,
   notice,
   openInlineMenu,
   openPanel,
+  patchStatus,
+  releaseSlot,
   selectChoice,
+  selectSelection,
   setHints,
   setInputText,
-} from "./shell.ts";
-import type { ComposerStatus, SelectChoiceOptions, Shell } from "./shell.ts";
+  setSlotRows,
+} from "./app/ui.ts";
+import type { SelectChoiceOptions, Shell } from "./app/ui.ts";
 import {
   availableSlashCommands,
   expandInlineSkills,
   hasInlineSkills,
   parseComposerSubmission,
+  promptDraft,
   resolveSlashCommand,
-  slashCommandLabel,
 } from "./slash.ts";
-import type { BuiltinSlashName, ParsedSlashCommand, SlashSetting } from "./slash.ts";
+import type {
+  BuiltinSlashName,
+  ComposerSubmission,
+  ParsedSlashCommand,
+  SlashSetting,
+} from "./slash.ts";
 import { SlashAutocomplete } from "./slash-autocomplete.ts";
 import { registerSyntaxParsers } from "./syntax-parsers.ts";
 import { isThemeChoice, resolveThemeMode, themeForMode } from "./theme.ts";
@@ -148,11 +165,12 @@ import type { TreeFilter } from "./tree-selector.ts";
 import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import type { UpdateProgress } from "./update.ts";
 import { updateSeverity } from "./cli-style.ts";
-import { fetchAccountLimits, hasHeadroom, usageCard, usageLines } from "./usage.ts";
+import { UsagePanel } from "./usage-panel.ts";
+import { fetchAccountLimits, hasHeadroom, usageCard } from "./usage.ts";
+import type { UsageCardOptions } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
-import { cellIndex, displayWidth } from "./width.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
-import { createWorkspaceTrustStore, requestWorkspaceTrust } from "./workspace-trust.ts";
+import { requestWorkspaceTrust } from "./workspace-trust.ts";
 
 export type TuiExit =
   | { readonly kind: "quit" }
@@ -160,6 +178,23 @@ export type TuiExit =
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function scheduleAt(until: number, onDeadline: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const check = (): void => {
+    const remaining = until - Date.now();
+    if (remaining > 0) {
+      timer = setTimeout(check, Math.min(remaining, MAX_TIMER_DELAY_MS));
+      return;
+    }
+    timer = undefined;
+    onDeadline();
+  };
+  timer = setTimeout(check, Math.min(Math.max(0, until - Date.now()), MAX_TIMER_DELAY_MS));
+  return () => clearTimeout(timer);
 }
 
 const THEME_CHOICES: readonly Choice[] = [
@@ -179,32 +214,6 @@ const SUMMARY_CHOICES: readonly Choice[] = [
   },
 ];
 
-interface QuestionAsk {
-  readonly question: string;
-  /** The options as menu rows; ids are the 1-based numbers the question tool accepts as replies. */
-  readonly choices: readonly Choice[];
-}
-
-/** The question tool's args, if this waiting call carries one. */
-function questionAsk(args: JsonValue): QuestionAsk | undefined {
-  if (!isJsonObject(args)) return undefined;
-  const question = args["question"];
-  if (!isJsonString(question)) return undefined;
-  const rawOptions = args["options"];
-  const choices: Choice[] = [];
-  if (isJsonArray(rawOptions)) {
-    for (const option of rawOptions) {
-      if (!isJsonObject(option)) continue;
-      const label = option["label"];
-      if (!isJsonString(label)) continue;
-      const id = String(choices.length + 1);
-      const description = option["description"];
-      choices.push(isJsonString(description) ? { id, label, description } : { id, label });
-    }
-  }
-  return { question, choices };
-}
-
 /**
  * One setting the shell can open or apply: `/settings` lists these, and
  * `/<id>` opens one or applies `/<id> <choice>` to it. Plugin settings join
@@ -216,6 +225,7 @@ interface SettingRow {
   readonly current: () => string;
   readonly choices: () => readonly Choice[];
   readonly load?: () => Promise<readonly Choice[]>;
+  readonly open?: () => Promise<void>;
   readonly apply: (choiceId: string) => Promise<void>;
 }
 
@@ -233,21 +243,17 @@ function matchChoice(choices: readonly Choice[], argument: string): Choice | und
   );
 }
 
-/** What the next run would use: a model and a thinking level. */
-interface RunChoice {
-  readonly model: Model<Api>;
-  readonly thinkingLevel: ThinkingLevel;
-}
-
 /** Resolve core's projected model in the catalog for client controls. */
-function effectiveConfig(state: SessionState, runtime: Runtime, fallback: RunChoice): RunChoice {
+function selectedConfig(state: SessionState, runtime: Runtime, fallback: RunChoice): RunChoice {
+  // Selected inputs may omit defaults that core recorded on a previous run.
+  const model = state.info.config.model ?? state.config.model;
   return {
     model:
-      state.config.model?.provider === undefined
+      model?.provider === undefined
         ? fallback.model
-        : (runtime.models.getModel(state.config.model.provider, state.config.model.id) ??
-          fallback.model),
-    thinkingLevel: state.config.thinkingLevel ?? fallback.thinkingLevel,
+        : (runtime.models.getModel(model.provider, model.id) ?? fallback.model),
+    thinkingLevel:
+      state.info.config.thinkingLevel ?? state.config.thinkingLevel ?? fallback.thinkingLevel,
   };
 }
 
@@ -257,14 +263,19 @@ function userPrompts(state: SessionState): string[] {
       ? item.parts.flatMap((part) => {
           if (part.kind !== "user") return [];
           const text = userText(part.content);
-          return text.trim() === "" ? [] : [text];
+          return text.trim() === "" ? [] : [promptDraft(text)];
         })
       : [],
   );
 }
 
 /** The last user message of the branch, when nothing answered it. */
-function unansweredRequest(
+/**
+ * The turn an aborted run hands back to the composer: a lone user request.
+ * A completion's continuation turn has no user part, so a stop after a
+ * background result landed retracts nothing and keeps the result in context.
+ */
+export function unansweredRequest(
   state: SessionState,
 ): Extract<SessionState["transcript"]["items"][number], { kind: "turn" }> | undefined {
   const last = state.transcript.items.at(-1);
@@ -293,13 +304,28 @@ export function createTuiRenderer(): Promise<CliRenderer> {
   // worker knows them the moment it starts.
   registerSyntaxParsers();
   return createCliRenderer({
+    ...TUI_RENDERER_CONFIG,
     exitOnCtrlC: false,
     autoFocus: false,
     enableMouseMovement: true,
     clearOnShutdown: true,
-    targetFps: 60,
   });
 }
+
+/**
+ * A message on its way back into the composer: one a move retracted, or one
+ * whose configuration never reached core. It lands only into an empty
+ * composer, so a draft typed meanwhile is never overwritten, and it survives
+ * a session switch until then.
+ */
+type Handback = (
+  | { readonly content: SessionState["pending"][number]["content"]; readonly draft?: never }
+  | { readonly draft: ComposerDraft; readonly content?: never }
+) & {
+  /** The retracted commit, when a move produced this; absent for an unsent message. */
+  readonly commit?: Oid;
+  readonly notice: string;
+};
 
 /**
  * Everything the shell knows about the followed session, rebuilt on a switch.
@@ -309,48 +335,74 @@ interface FollowedSession {
   readonly sessionId: SessionId;
   readonly follower: SessionFollower;
   readonly outbox: Outbox;
+  /** What the user asked the next run to use, ahead of core's acknowledgement. */
+  readonly config: SessionConfigurator;
   state: SessionState;
   commands: ReadonlyMap<string, CommandInfo>;
   skills: ReadonlyMap<string, Skill>;
   settings: readonly SettingInfo[];
+  completionCommands: ReturnType<typeof availableSlashCommands>;
   /** The plugin status items, as last listed or as `status_changed` said. */
   statusItems: readonly string[];
   stop(): void;
 }
 
-export async function runTui(flags: RunFlags, suppliedRenderer?: CliRenderer): Promise<TuiExit> {
+export async function runTui(
+  flags: RunFlags,
+  suppliedRenderer?: CliRenderer,
+  output: Pick<typeof process.stdout, "write"> | undefined = suppliedRenderer === undefined
+    ? process.stdout
+    : undefined,
+): Promise<TuiExit> {
   const renderer = suppliedRenderer ?? (await createTuiRenderer());
   const roles = laneRoles(DEFAULT_LANDING);
-  const shell = buildShell(
+  const shell = await mountShell({
     renderer,
-    themeForMode(resolveThemeMode("auto", renderer.themeMode)),
+    initialTheme: themeForMode(resolveThemeMode("auto", renderer.themeMode)),
     roles,
-    (path) => {
+    openPath: (path) => {
       void open(path).catch(() => undefined);
     },
-  );
-  shell.status.patch({ workspace: basename(process.cwd()) });
-  shell.loading.content = "Checking workspace…";
-  shell.loading.visible = true;
+  });
+  patchStatus(shell, { workspace: basename(process.cwd()) });
+  shell.setUi("loading", "Checking workspace…");
   shell.input.onSubmit = () => notice(shell, "Still starting. Your draft is saved here.");
-  let exit: TuiExit = { kind: "quit" };
+  const shutdown: { exit: TuiExit } = { exit: { kind: "quit" } };
+  let resumeId: SessionId | undefined;
   const startupAbort = new AbortController();
-  const destroyed = new Promise<void>((resolve) => {
+  const destroyed = new Promise<void>((resolveDestroyed) => {
     renderer.once("destroy", () => {
       startupAbort.abort();
-      process.nextTick(resolve);
+      resolveDestroyed();
     });
   });
+  const failures: string[] = [];
+  const cleanup = async (resource: string, dispose: () => unknown): Promise<void> => {
+    try {
+      await dispose();
+    } catch (cause) {
+      failures.push(`${resource} cleanup failed: ${errorMessage(cause)}`);
+    }
+  };
   const requestShutdown = (requested: TuiExit = { kind: "quit" }): void => {
-    if (requested.kind === "signal") exit = requested;
-    app?.dispose();
-    renderer.destroy();
+    if (requested.kind === "signal") shutdown.exit = requested;
+    // Disposal clears the followed session before the terminal has shut down.
+    resumeId ??= app?.sessionId;
+    try {
+      void app
+        ?.dispose()
+        .catch((cause) => failures.push(`TUI cleanup failed: ${errorMessage(cause)}`));
+    } catch (cause) {
+      failures.push(`TUI cleanup failed: ${errorMessage(cause)}`);
+    } finally {
+      renderer.destroy();
+    }
   };
   const onSigint = (): void => requestShutdown({ kind: "signal", signal: "SIGINT" });
   const onSigterm = (): void => requestShutdown({ kind: "signal", signal: "SIGTERM" });
   const onStartupKey = (key: KeyEvent): void => {
     if (
-      ctrlCAction(key, { selecting: shell.selecting, prompting: false, hasDraft: false }) ===
+      ctrlCAction(key, { selecting: shell.ui.selecting, prompting: false, hasDraft: false }) ===
       undefined
     )
       return;
@@ -358,22 +410,23 @@ export async function runTui(flags: RunFlags, suppliedRenderer?: CliRenderer): P
     key.stopPropagation();
     requestShutdown({ kind: "signal", signal: "SIGINT" });
   };
-  const clearNotice = (): void => {
-    if (!shell.root.isDestroyed) shell.ephemeral.release("notice");
+  const takeNoticeBack = (): void => {
+    if (!shell.root.isDestroyed) clearNotice(shell);
   };
   const onStartupTheme = (): void => {
-    applyShellTheme(shell, themeForMode(resolveThemeMode("auto", renderer.themeMode)));
+    shell.setTheme(themeForMode(resolveThemeMode("auto", renderer.themeMode)));
   };
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
   renderer.keyInput.on("keypress", onStartupKey);
-  renderer.keyInput.on("keypress", clearNotice);
+  renderer.keyInput.on("keypress", takeNoticeBack);
   renderer.on(CliRenderEvents.THEME_MODE, onStartupTheme);
   let host: Host | undefined;
+  const otel = createOtelExport({ serviceName: "nyte-tui" });
   let app: Interactive | undefined;
   const disposers: (() => void)[] = [];
   const boot = async (): Promise<void> => {
-    const trustStore = createWorkspaceTrustStore();
+    const trustStore = createTrustStore();
     const resolution = await trustStore.resolve(process.cwd());
     if (startupAbort.signal.aborted) return;
     let workspace: TrustedWorkspace;
@@ -399,18 +452,18 @@ export async function runTui(flags: RunFlags, suppliedRenderer?: CliRenderer): P
       shell.input.focusable = true;
       shell.focus.reset();
     }
-    shell.loading.content = "Loading settings…";
+    shell.setUi("loading", "Loading settings…");
     const settingsStore = new FileSettingsStore();
     const settings = await settingsStore.read(workspace.cwd);
     if (startupAbort.signal.aborted) return;
     renderer.off(CliRenderEvents.THEME_MODE, onStartupTheme);
     const updateTheme = (): void => {
-      applyShellTheme(shell, themeForMode(resolveThemeMode(settings.theme, renderer.themeMode)));
+      shell.setTheme(themeForMode(resolveThemeMode(settings.theme, renderer.themeMode)));
     };
     updateTheme();
     renderer.on(CliRenderEvents.THEME_MODE, updateTheme);
     disposers.push(() => renderer.off(CliRenderEvents.THEME_MODE, updateTheme));
-    shell.loading.content = "Loading providers…";
+    shell.setUi("loading", "Loading providers…");
     const bootNotices: string[] = [];
     const signedIn = await resolveRuntime(flags, settings);
     if (startupAbort.signal.aborted) return;
@@ -418,27 +471,24 @@ export async function runTui(flags: RunFlags, suppliedRenderer?: CliRenderer): P
     if (startupAbort.signal.aborted) return;
     if (signedIn === undefined) bootNotices.push("Not signed in. /login connects a provider.");
     const fallback = hostFallbacks(runtime, settings, flags);
-    shell.status.patch({
+    patchStatus(shell, {
       provider: fallback.model.provider,
       model: fallback.model.id,
       effort: fallback.thinkingLevel,
     });
-    shell.loading.content = "Loading workspace plugins…";
+    shell.setUi("loading", "Loading workspace plugins…");
     const opened = await openWorkspaceHost({
       workspace,
       settings,
       runtime,
       model: fallback.model,
       thinkingLevel: fallback.thinkingLevel,
+      telemetry: otel.telemetry,
       report: (message) => bootNotices.push(message),
     });
-    // A plugin can finish loading after the user has already left the terminal.
-    if (startupAbort.signal.aborted) {
-      await opened.close();
-      return;
-    }
+    // Keep ownership even if startup was cancelled while plugins were loading.
     host = opened;
-    disposers.push(host.attach());
+    if (startupAbort.signal.aborted) return;
     renderer.off(CliRenderEvents.THEME_MODE, updateTheme);
     app = new Interactive({
       renderer,
@@ -459,30 +509,48 @@ export async function runTui(flags: RunFlags, suppliedRenderer?: CliRenderer): P
     if (startupAbort.signal.aborted) return;
     for (const message of bootNotices) notice(shell, message, shell.theme.warning);
   };
+  const booting = boot().catch((cause: unknown) => {
+    failures.unshift(`error: ${errorMessage(cause)}`);
+    requestShutdown();
+  });
   try {
-    await Promise.race([boot(), destroyed]);
+    await Promise.race([booting, destroyed]);
     await destroyed;
-    return exit;
   } finally {
     startupAbort.abort();
-    const resumeId = app?.sessionId;
-    app?.dispose();
+    // Startup can still acquire a host after terminal destruction. Settle it
+    // before closing resources so nothing reports after the recovery command.
+    await booting;
+    resumeId ??= app?.sessionId;
+    await cleanup("TUI", () => app?.dispose());
     for (const dispose of disposers.splice(0).toReversed()) {
-      try {
-        dispose();
-      } catch {}
+      await cleanup("Host attachment", dispose);
     }
     renderer.off(CliRenderEvents.THEME_MODE, onStartupTheme);
     renderer.keyInput.off("keypress", onStartupKey);
-    renderer.keyInput.off("keypress", clearNotice);
-    renderer.destroy();
+    renderer.keyInput.off("keypress", takeNoticeBack);
+    await cleanup("Terminal", () => renderer.destroy());
+    await cleanup("Host", async () => {
+      const outcome = await host?.close();
+      if (outcome?.kind === "failed") {
+        for (const failure of outcome.failures) {
+          failures.push(`${failure.resource} cleanup failed: ${errorMessage(failure.cause)}`);
+        }
+      }
+    });
+    await cleanup("Telemetry", () => otel.shutdown());
     process.off("SIGINT", onSigint);
     process.off("SIGTERM", onSigterm);
-    await host?.close();
-    if (resumeId !== undefined && suppliedRenderer === undefined) {
-      process.stdout.write(`Return to this session: nyte --resume ${resumeId}\n`);
-    }
   }
+  // Restoration ends in escape bytes, not a newline. Keep the final two lines
+  // plain even in raw PTY captures, and report every failure before them.
+  if (failures.length > 0 || resumeId !== undefined) output?.write("\n");
+  for (const failure of failures) output?.write(`${failure}\n`);
+  if (resumeId !== undefined) {
+    output?.write(`To resume previous session\n${sessionRecovery(resumeId).command}\n`);
+  }
+  if (failures.length > 0 && shutdown.exit.kind !== "signal") process.exit(1);
+  return shutdown.exit;
 }
 
 interface InteractiveOptions {
@@ -503,20 +571,21 @@ interface InteractiveOptions {
 
 export class Interactive {
   private readonly tasks: TaskBrowser;
-  private readonly tuiPlugins: PluginProvider;
+  private tuiPlugins: PluginProvider;
   private readonly renderer: CliRenderer;
   private readonly shell: Shell;
   private readonly host: Host;
   private readonly runtime: Runtime;
   private readonly roles: LaneRoles;
   private readonly settingsStore: FileSettingsStore;
-  private readonly workspace: TrustedWorkspace;
+  private workspace: TrustedWorkspace;
+  private stopPluginWatch: (() => void) | undefined;
+  private changingDirectory = false;
   private readonly fallback: RunChoice;
   private readonly options: InteractiveOptions;
   private settings: ResolvedSettings;
   private themeMode: ThemeMode;
   private session: FollowedSession | undefined;
-  private readonly status: ComposerStatus;
   private readonly composerParts = new ComposerParts();
   private readonly attachmentPreview: DialogImagePreview;
   private readonly clipboard: ReturnType<typeof createTuiClipboard>;
@@ -531,28 +600,56 @@ export class Interactive {
     )
   >();
   private readonly drafts = new SessionDrafts();
+  /** Recovery belongs to the session, independently of which one the shell follows. */
+  private readonly handbacks = new Map<SessionId, Handback[]>();
   private readonly promptHistory = new PromptHistory();
   private readonly doubleEscape = new DoubleEscape();
+  private readonly document: ComposerDocument;
+  private hintsScheduled = false;
   private autocomplete: SlashAutocomplete | undefined;
+  private composerActions: ComposerActions | undefined;
   private mentionFiles: readonly MentionFile[] = [];
   private mentionGeneration = 0;
   private readonly disposers: (() => void)[] = [];
+  /** Sessions this process drives; a run started here keeps going after switching away. */
+  private readonly attachments = new Map<SessionId, () => void>();
   private submitting = false;
+  private pasteSubmission: SubmissionSlot | undefined;
+  private pasteFailures = 0;
   /** The open question menu, so a wait that ends elsewhere can close it. */
   private asking: AbortController | undefined;
+  private waiting: WaitingCall | undefined;
   private compaction: AbortController | undefined;
-  private cyclingThinking = false;
-  private cyclingModel = false;
+  private authenticating: AbortController | undefined;
+  /** Local commands belong to this TUI, never to a core run or task. */
+  private readonly shellCommands = new Map<
+    string,
+    {
+      readonly sessionId: SessionId;
+      readonly head: string;
+      readonly process: ShellProcess;
+      retention: "pending" | "attached" | "exclude" | "discarded";
+    }
+  >();
+  private activeShell: ShellProcess | undefined;
   private editingExternally = false;
   private switchingSession = false;
   private lastPluginSignature: string | undefined;
+  private readonly stopped = new AbortController();
   private disposed = false;
+  private closing: Promise<void> | undefined;
+  private pendingVisual:
+    | {
+        readonly session: FollowedSession;
+        readonly previous: SessionState | undefined;
+        readonly reset: boolean;
+      }
+    | undefined;
 
   constructor(options: InteractiveOptions) {
     this.options = options;
     this.renderer = options.renderer;
     this.shell = options.shell;
-    this.status = options.shell.status;
     this.host = options.host;
     this.runtime = options.runtime;
     this.roles = options.roles;
@@ -561,15 +658,15 @@ export class Interactive {
     this.fallback = options.fallback;
     this.settings = options.settings;
     this.themeMode = options.themeMode;
+    this.document = new ComposerDocument(options.shell.input);
+    this.renderer.setFrameCallback(this.flushVisual);
+    this.disposers.push(() => this.renderer.removeFrameCallback(this.flushVisual));
     this.clipboard =
       options.clipboard === undefined
         ? createTuiClipboard(options.renderer)
         : createClipboardAdapter(options.clipboard);
     this.attachmentPreview = new DialogImagePreview(options.renderer, options.shell.theme);
-    options.shell.live.insertBefore(
-      this.attachmentPreview.container,
-      options.shell.ephemeral.container,
-    );
+    options.shell.previewSlot.add(this.attachmentPreview.container);
     this.disposers.push(() => {
       this.attachmentPreview.close();
       void this.clipboard.dispose().catch(this.reportError);
@@ -578,6 +675,17 @@ export class Interactive {
       shell: options.shell,
       nyte: options.host.nyte,
       onClose: () => this.refreshHints(),
+      onChange: () => {
+        this.refreshQuestion();
+        // A child's step lands in its delegation card in the parent transcript.
+        if (this.session === undefined) return;
+        this.pendingVisual ??= {
+          session: this.session,
+          previous: this.session.state,
+          reset: false,
+        };
+        this.renderer.requestRender();
+      },
       onError: (cause) => this.reportError(cause),
     });
     this.tuiPlugins = new PluginProvider({
@@ -593,7 +701,7 @@ export class Interactive {
       const session = this.session;
       if (
         session === undefined ||
-        options.shell.selecting ||
+        options.shell.ui.selecting ||
         this.queueEdits.has(session.sessionId)
       )
         return;
@@ -608,10 +716,8 @@ export class Interactive {
   }
 
   async start(flags: RunFlags): Promise<void> {
-    const { shell, renderer } = this;
-    shell.loading.content = "Loading session…";
-    shell.loading.visible = true;
-    this.status.patch(this.initialStatus());
+    this.shell.setUi("loading", "Loading session…");
+    patchStatus(this.shell, this.initialStatus());
     this.refreshWorkspace();
     this.wireComposer();
     this.wireKeymap();
@@ -621,39 +727,36 @@ export class Interactive {
         void this.changeTheme(mode).catch(this.reportError);
       }
     };
-    renderer.on(CliRenderEvents.THEME_MODE, onTerminalTheme);
-    this.disposers.push(() => renderer.off(CliRenderEvents.THEME_MODE, onTerminalTheme));
+    this.renderer.on(CliRenderEvents.THEME_MODE, onTerminalTheme);
+    this.disposers.push(() => this.renderer.off(CliRenderEvents.THEME_MODE, onTerminalTheme));
     const info = await targetSession(this.host.nyte, flags.resume);
     if (this.disposed) return;
     await this.follow(info);
     if (this.disposed) return;
-    void this.tuiPlugins.reconcile().catch(this.reportError);
-    this.disposers.push(
-      watchPluginDirectories({
-        directories: [
-          ...pluginDirectories(this.host.cwd),
-          ...skillDirectories(this.host.cwd).map((path) => ({ path })),
-        ],
-        onChange: () => this.reloadPlugins(),
-        onError: (error) =>
-          notice(shell, `plugin reload failed: ${error.message}`, shell.theme.error),
-      }),
-    );
+    this.watchWorkspacePlugins();
     void loadAuthenticatedModels(this.runtime.models).catch(() => undefined);
     void this.refreshMentionFiles();
     void this.checkUpdate();
-    renderer.requestRender();
+    this.renderer.requestRender();
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.closing !== undefined) return this.closing;
     this.disposed = true;
+    this.cancelPasteSubmission();
+    this.pendingVisual = undefined;
+    this.stopped.abort();
+    this.shell.dismissInfoPanel?.();
     this.tasks.dispose();
     void this.tuiPlugins.dispose().catch(this.reportError);
     this.closeQueue();
+    this.asking?.abort();
     this.compaction?.abort();
+    this.stopPluginWatch?.();
     this.session?.stop();
     this.session = undefined;
+    for (const detach of this.attachments.values()) detach();
+    this.attachments.clear();
     for (const dispose of this.disposers.splice(0).toReversed()) {
       try {
         dispose();
@@ -661,6 +764,12 @@ export class Interactive {
     }
     this.autocomplete?.destroy();
     this.renderer.setTerminalTitle(TERMINAL_TITLE_BASE);
+    this.closing = Promise.all(
+      [...this.shellCommands.values()].map((entry) => entry.process.done),
+    ).then(() => {
+      this.shellCommands.clear();
+    });
+    return this.closing;
   }
 
   // -------------------------------------------------------------------------
@@ -679,32 +788,52 @@ export class Interactive {
   private get busy(): boolean {
     return (
       this.compaction !== undefined ||
-      (this.state?.run !== undefined &&
-        !["done", "aborted", "failed"].includes(this.state.run.phase.kind))
+      this.state?.compaction !== undefined ||
+      (this.state?.run !== undefined && !isTerminalPhase(this.state.run.phase))
     );
   }
 
+  /** The configuration the user selected, reconciled with core's selected inputs. */
   private get config(): RunChoice {
-    const state = this.state;
-    return state === undefined
-      ? this.fallback
-      : effectiveConfig(state, this.runtime, this.fallback);
+    return this.session?.config.selected ?? this.fallback;
   }
 
   /** Point the shell at a session: stop following the old one, snapshot the new one. */
   private async follow(info: SessionInfo): Promise<void> {
-    const { shell } = this;
+    const cwd = await this.host.sessionCwd(info.sessionId);
+    const workspace =
+      cwd === this.workspace.cwd
+        ? this.workspace
+        : cwd === this.options.workspace.cwd
+          ? this.options.workspace
+          : await this.trustDirectory(cwd);
+    if (this.disposed) return;
+    if (info.activation.kind !== "active" && cwd !== this.host.cwd) {
+      await this.relocateSession(info.sessionId, workspace);
+    }
+    await this.useWorkspace(workspace);
+    if (this.disposed) return;
+    this.shell.dismissInfoPanel?.();
     this.tasks.close();
     this.closeQueue();
+    this.asking?.abort();
+    this.asking = undefined;
+    this.waiting = undefined;
     this.compaction?.abort();
     this.compaction = undefined;
     const switching = this.session !== undefined;
+    this.cancelPasteSubmission();
+    this.pasting = undefined;
+    this.saveDraft();
     this.session?.stop();
     this.session = undefined;
-    shell.view.clear();
-    shell.loading.content = "Loading session…";
-    shell.loading.visible = true;
+    this.pendingVisual = undefined;
+    this.shell.view.clear();
+    this.shell.setUi("loading", "Loading session…");
     if (switching) this.restoreDraft(info.sessionId);
+    if (!this.attachments.has(info.sessionId)) {
+      this.attachments.set(info.sessionId, this.host.attach(info.sessionId));
+    }
     let current: FollowedSession | undefined;
     const outbox = new Outbox({
       send: (input) => this.host.nyte.messages.send({ sessionId: info.sessionId, ...input }),
@@ -715,22 +844,54 @@ export class Interactive {
     const follower = new SessionFollower(this.host.nyte, {
       sessionId: info.sessionId,
       head: MAIN,
-      onUpdate: ({ state, event }) => {
+      selectionVersion: () => current?.config.version ?? 0,
+      onUpdate: (update) => {
+        const { state, selectedVersion } = update;
         if (current === undefined || this.session !== current) return;
         const previous = current.state;
         current.state = state;
-        this.render(current, previous, event);
+        if (selectedVersion !== undefined) current.config.observeSelected(selectedVersion);
+        if (update.kind === "selected") this.refreshStatus(current);
+        else this.render(current, previous, update);
       },
       onError: (error) => {
         if (this.session === current)
-          notice(shell, `Session watch failed: ${error.message}`, shell.theme.error);
+          notice(this.shell, `Session watch failed: ${error.message}`, this.shell.theme.error);
       },
       retryMs: 500,
+    });
+    const config = new SessionConfigurator({
+      configure: (patch) =>
+        this.host.nyte.sessions.configure({
+          sessionId: info.sessionId,
+          ...(patch.model === undefined
+            ? {}
+            : { model: { provider: patch.model.provider, id: patch.model.id } }),
+          ...(patch.thinkingLevel === undefined ? {} : { thinkingLevel: patch.thinkingLevel }),
+        }),
+      readSelected: () =>
+        current === undefined
+          ? this.fallback
+          : selectedConfig(current.state, this.runtime, this.fallback),
+      onChange: (selected) => {
+        if (current === undefined || this.session !== current) return;
+        patchStatus(this.shell, {
+          provider: selected.model.provider,
+          model: selected.model.id,
+          effort: selected.thinkingLevel,
+        });
+      },
+      onAcknowledged: (choice, patch) => {
+        if (current === undefined || this.session !== current) return;
+        this.persistChoice(choice, patch);
+        void follower.refreshSelected().catch(this.reportError);
+      },
     });
     const followed: FollowedSession = {
       sessionId: info.sessionId,
       follower,
       outbox,
+      config,
       state: {
         sessionId: info.sessionId,
         head: MAIN,
@@ -740,6 +901,7 @@ export class Interactive {
         transcript: { items: [], tip: null },
         pending: [],
         run: undefined,
+        compaction: undefined,
         overlay: [],
         waiting: undefined,
         context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
@@ -748,18 +910,24 @@ export class Interactive {
       commands: new Map(),
       skills: new Map(),
       settings: [],
+      completionCommands: [],
       statusItems: [],
-      stop: () => follower.close(),
+      stop: () => {
+        follower.close();
+        config.dispose();
+      },
     };
     current = followed;
     this.session = followed;
-    followed.state = await follower.start();
+    this.refreshHints();
+    await follower.start();
     if (this.session !== followed) return;
     this.promptHistory.replace(userPrompts(followed.state));
     this.tuiPlugins.refresh();
-    this.render(followed, undefined, undefined);
     this.renderer.setTerminalTitle(terminalTitle(followed.state.info.name));
     await this.refreshContributions(followed);
+    await this.tuiPlugins.reconcile();
+    if (!this.disposed && this.session === followed) this.shell.setUi("loading", undefined);
   }
 
   private async refreshContributions(session: FollowedSession): Promise<void> {
@@ -780,74 +948,74 @@ export class Interactive {
   /** The plugin settings as last listed; badges from their current choices lead the status items. */
   private applySettingsList(session: FollowedSession, listed: readonly SettingInfo[]): void {
     session.settings = listed;
+    const commands = availableSlashCommands(
+      session.commands,
+      this.slashSettings(session),
+      session.skills,
+    );
+    // Badge-only refreshes must not reset the completion the user selected.
+    if (!isDeepStrictEqual(commands, session.completionCommands))
+      session.completionCommands = commands;
     const badges = listed.flatMap((setting) => {
       const status = setting.choices.find((choice) => choice.id === setting.current)?.status;
       return status === undefined ? [] : [status];
     });
-    this.status.patch({ statuses: [...badges, ...session.statusItems] });
+    patchStatus(this.shell, { statuses: [...badges, ...session.statusItems] });
   }
 
-  /** Draw one published state, and react to the event that produced it. */
+  /** Draw one published state, and react to the event that produced it. Only a snapshot replaces the transcript. */
   private render(
     session: FollowedSession,
     previous: SessionState | undefined,
-    event: SessionEvent | undefined,
+    update: Exclude<SessionUpdate, { kind: "selected" }>,
   ): void {
-    const { shell } = this;
     const { state } = session;
-    // A snapshot can rewind within a turn while retaining its ID. Rebuild its
-    // blocks so later assistant steps and tool results disappear as well.
-    shell.loading.visible = false;
-    shell.view.sync(state, { reset: event === undefined });
+    const event = update.kind === "event" ? update.event : undefined;
+    const snapshot = update.kind === "snapshot";
+    // Fold and react to every event, but reconcile only the latest visual state
+    // before a frame. A resnapshot must still reset even if deltas follow it.
+    this.pendingVisual = {
+      session,
+      previous: snapshot
+        ? undefined
+        : this.pendingVisual === undefined
+          ? previous
+          : this.pendingVisual.previous,
+      reset: snapshot || this.pendingVisual?.reset === true,
+    };
+    this.renderer.requestRender();
     this.tasks.update(state, event);
-    this.syncGutter(state);
-    if (state.config !== previous?.config) this.refreshStatus(state);
-    const running =
-      state.run !== undefined && !["done", "aborted", "failed"].includes(state.run.phase.kind);
-    shell.input.placeholder =
-      state.waiting !== undefined
-        ? ANSWER_COMPOSER_PLACEHOLDER
-        : running
-          ? BUSY_COMPOSER_PLACEHOLDER
-          : COMPOSER_PLACEHOLDER;
-    if (!shell.selecting && !shell.prompting) this.refreshHints();
-    if (state.info.name !== previous?.info.name) {
-      this.renderer.setTerminalTitle(terminalTitle(state.info.name));
-    }
-    // A newly parked call asks its question, whether the effect event brought
-    // it or a snapshot did: a session resumed mid-wait still has to be answered.
-    // A wait that ends any other way takes its menu down with it.
-    const parked = state.waiting;
-    if (previous?.waiting?.callId !== parked?.callId) {
-      this.asking?.abort();
-      if (parked !== undefined) this.askQuestion(session, parked);
-    }
     if (event === undefined) return;
     this.tuiPlugins.emit(event);
     switch (event.kind) {
+      case "activation_changed":
+        return;
+      case "job":
+        return;
       case "run":
         if (event.head !== state.head) return;
         if (
-          ["done", "aborted", "failed"].includes(event.run.phase.kind) &&
+          isTerminalPhase(event.run.phase) &&
           previous?.run !== undefined &&
-          !["done", "aborted", "failed"].includes(previous.run.phase.kind)
+          !isTerminalPhase(previous.run.phase)
         ) {
           this.onRunEnded(session, event.run);
         }
         if (event.run.phase.kind === "retry") {
           notice(
-            shell,
+            this.shell,
             `${retryCause(event.run.phase.error)} Retrying in ${clockDuration(Math.max(0, event.run.phase.at - Date.now()))} (attempt ${String(event.run.attempts)})`,
-            shell.theme.warning,
+            this.shell.theme.warning,
           );
         }
+        return;
+      case "compaction":
         return;
       case "effect":
         return;
       case "commit":
         if (event.head !== state.head) return;
         if (event.item.commit.body.kind === "message") {
-          if (event.item.commit.body.message.role === "assistant") this.refreshUsage(session);
           if (event.item.commit.body.message.role === "user") {
             this.promptHistory.replace(userPrompts(state));
           }
@@ -855,7 +1023,6 @@ export class Interactive {
         return;
       case "plugins_changed": {
         void this.refreshContributions(session).catch(() => undefined);
-        void this.refreshBadges();
         const failed = event.plugins.filter((plugin) => plugin.status === "failed");
         const signature = event.plugins
           .map((plugin) =>
@@ -866,22 +1033,22 @@ export class Interactive {
         this.lastPluginSignature = signature;
         if (failed.length > 0) {
           notice(
-            shell,
+            this.shell,
             failed.map((plugin) => `plugin ${plugin.id} failed: ${plugin.error}`),
-            shell.theme.error,
+            this.shell.theme.error,
           );
         }
         return;
       }
       case "diagnostic":
         notice(
-          shell,
+          this.shell,
           `${event.owner}: ${event.message}`,
-          event.level === "error" ? shell.theme.error : undefined,
+          event.level === "error" ? this.shell.theme.error : undefined,
         );
         return;
       case "deleted":
-        notice(shell, "This chat was deleted. /new starts another.", shell.theme.warning);
+        notice(this.shell, "This chat was deleted. /new starts another.", this.shell.theme.warning);
         return;
       case "notification":
         // The plugin said what; the terminal's own notification channel says it.
@@ -910,16 +1077,71 @@ export class Interactive {
     }
   }
 
+  private readonly flushVisual = async (): Promise<void> => {
+    const pending = this.pendingVisual;
+    this.pendingVisual = undefined;
+    if (this.disposed || pending === undefined || this.session !== pending.session) return;
+    const { state } = pending.session;
+    this.shell.view.sync(state, { reset: pending.reset });
+    if (pending.reset) this.restoreShellCards(pending.session);
+    const handbacks = this.handbacks.get(pending.session.sessionId);
+    const handback = handbacks?.[0];
+    if (
+      handbacks !== undefined &&
+      handback !== undefined &&
+      state.expectedTip === undefined &&
+      !state.transcript.items.some(
+        (item) =>
+          item.kind === "turn" &&
+          item.parts.some((part) => part.kind === "user" && part.commit === handback.commit),
+      )
+    ) {
+      // The watcher, not the move reply, determines which transcript is painted.
+      // Never overwrite a draft typed while that durable move was completing:
+      // the handback waits until the composer is empty again.
+      if (
+        this.shell.input.plainText.trim() === "" &&
+        !this.shell.ui.prompting &&
+        !this.queueEdits.has(pending.session.sessionId)
+      ) {
+        handbacks.shift();
+        if (handbacks.length === 0) this.handbacks.delete(pending.session.sessionId);
+        if (handback.draft !== undefined) {
+          this.composerParts.restore(handback.draft.parts);
+          setInputText(this.shell.input, handback.draft.text);
+          notice(this.shell, handback.notice, this.shell.theme.warning);
+        } else this.handBack(handback.content, handback.notice);
+      }
+    }
+    if (state.pending !== pending.previous?.pending) this.syncGutter(state);
+    if (
+      state.info.config !== pending.previous?.info.config ||
+      state.config !== pending.previous?.config ||
+      state.context !== pending.previous?.context
+    )
+      this.refreshStatus(pending.session);
+    if (!this.shell.ui.prompting) {
+      this.shell.input.placeholder =
+        state.waiting?.selection.other !== undefined
+          ? ANSWER_COMPOSER_PLACEHOLDER
+          : this.busy
+            ? BUSY_COMPOSER_PLACEHOLDER
+            : COMPOSER_PLACEHOLDER;
+    }
+    if (!this.shell.ui.selecting && !this.shell.ui.prompting) this.refreshHints();
+    if (state.info.name !== pending.previous?.info.name)
+      this.renderer.setTerminalTitle(terminalTitle(state.info.name));
+  };
+
   private onRunEnded(session: FollowedSession, run: RunInfo): void {
-    const { shell } = this;
-    if (run.phase.kind === "failed") notice(shell, `Error: ${run.phase.error}`, shell.theme.error);
+    if (run.phase.kind === "failed")
+      notice(this.shell, `Error: ${run.phase.error}`, this.shell.theme.error);
     this.refreshWorkspace();
-    this.refreshUsage(session);
     // A run stopped before it answered hands its message back to the composer,
     // the same round trip double-escape makes, minus the picker.
     if (
       run.phase.kind === "aborted" &&
-      shell.input.plainText.trim() === "" &&
+      this.shell.input.plainText.trim() === "" &&
       !this.queueEdits.has(session.sessionId)
     ) {
       const request = unansweredRequest(session.state);
@@ -935,57 +1157,107 @@ export class Interactive {
       expect: session.state.transcript.tip,
     });
     if (outcome.kind !== "moved" || outcome.restored === undefined) return;
-    this.handBack(outcome.restored.content, "Stopped. Message is back in the composer.");
+    this.stageHandback(session.sessionId, {
+      content: outcome.restored.content,
+      commit: outcome.restored.commit,
+      notice: "Stopped. Message is back in the composer.",
+    });
+  }
+
+  /** Queue a handback for the session it belongs to; a session not followed now keeps it until it is. */
+  private stageHandback(id: SessionId, handback: Handback): void {
+    if (this.disposed) return;
+    const handbacks = this.handbacks.get(id) ?? [];
+    handbacks.push(handback);
+    this.handbacks.set(id, handbacks);
+    const session = this.session;
+    if (session?.sessionId !== id) return;
+    // The watcher may have delivered the move before its request resolved.
+    this.pendingVisual ??= { session, previous: session.state, reset: false };
+    this.renderer.requestRender();
   }
 
   private handBack(content: SessionState["pending"][number]["content"], told: string): void {
     setInputText(this.shell.input, this.composerParts.load(content));
     this.promptHistory.resetBrowse();
-    this.focusComposer();
+    if (!this.shell.ui.selecting && !this.shell.ui.prompting) this.focusComposer();
     notice(this.shell, told, this.shell.theme.ok);
   }
 
+  private refreshQuestion(): void {
+    const session = this.session;
+    if (this.disposed || session === undefined) return;
+    const waiting = session.state.waiting ?? this.tasks.waiting;
+    if (waiting?.sessionId === this.waiting?.sessionId && waiting?.waitId === this.waiting?.waitId)
+      return;
+    this.waiting = waiting;
+    this.asking?.abort();
+    // The cancelled picker's finally opens the next call after it releases focus.
+    if (waiting !== undefined) this.askQuestion(session, waiting);
+  }
+
   /**
-   * The parked question as a menu: a row per option, and the text field for
-   * an answer in the user's own words. Escape leaves the run parked; an empty
-   * Enter in the composer brings the menu back.
+   * Parked selections accept one row, several rows, or typed text according to
+   * their protocol data. Escape leaves the call parked; its durable deadline
+   * closes the panel without sending a reply.
    */
   private askQuestion(session: FollowedSession, waiting: WaitingCall): void {
-    const { shell } = this;
-    const ask = questionAsk(waiting.args);
-    if (ask === undefined || shell.selecting || shell.prompting) return;
+    if (this.asking !== undefined || this.authenticating !== undefined) return;
+    this.shell.dismissInfoPanel?.();
+    if (this.shell.ui.selecting || this.shell.ui.prompting) return;
     const asking = new AbortController();
+    const cancelDeadline =
+      waiting.until === undefined ? undefined : scheduleAt(waiting.until, () => asking.abort());
     this.asking = asking;
     void (async () => {
       try {
-        // A chosen row resolves with its number, typed text with itself; the
-        // question tool reads both as a reply.
-        const reply = await selectChoice(shell, ask.question, ask.choices, {
-          signal: asking.signal,
-          selectLabel: "answer",
-          cancelLabel: "later",
-          typedPlaceholder: "or type your own answer",
-        });
-        await this.answer(session, waiting, reply);
+        const { selection } = waiting;
+        const title =
+          waiting.sessionId === session.sessionId
+            ? selection.title
+            : `Subagent ${shortId(waiting.sessionId)}: ${selection.title}`;
+        const reply = await selectSelection(
+          this.shell,
+          { ...selection, title },
+          {
+            signal: asking.signal,
+            cancelLabel: "later",
+          },
+        );
+        await this.answer(waiting, reply);
+        // A reply may change a setting, as consent does; the badges read settings.
+        await this.refreshBadges();
       } catch (cause) {
         if (!(cause instanceof PickerCancelled)) throw cause;
       } finally {
+        cancelDeadline?.();
         if (this.asking === asking) this.asking = undefined;
+        if (
+          !this.disposed &&
+          this.session === session &&
+          !this.shell.ui.selecting &&
+          !this.shell.ui.prompting
+        ) {
+          this.refreshHints();
+          if (this.waiting !== undefined && this.waiting !== waiting)
+            this.askQuestion(session, this.waiting);
+        }
       }
     })().catch(this.reportError);
   }
 
   /** Replies to the parked call. A wait that already ended is reported, never re-sent as a message. */
-  private async answer(
-    session: FollowedSession,
-    waiting: WaitingCall,
-    reply: string,
-  ): Promise<void> {
+  private async answer(waiting: WaitingCall, reply: SelectionReply): Promise<void> {
+    const durableReply: JsonValue =
+      reply.other === undefined
+        ? { choices: [...reply.choices] }
+        : { choices: [...reply.choices], other: reply.other };
     const outcome = await this.host.nyte.runs.reply({
-      sessionId: session.sessionId,
+      sessionId: waiting.sessionId,
       runId: waiting.runId,
       callId: waiting.callId,
-      reply,
+      waitId: waiting.waitId,
+      reply: durableReply,
     });
     if (outcome.kind !== "signalled") {
       notice(this.shell, "That question is no longer waiting", this.shell.theme.warning);
@@ -995,10 +1267,13 @@ export class Interactive {
   private syncGutter(state: SessionState): void {
     const rows = gutterRows(state.pending, this.session?.outbox.entries ?? []);
     this.shell.pendingGutter.sync(rows);
-    this.queueMenu?.setChoices(this.queueChoices(), this.queueSelection);
-    if (this.queueChoices().some((choice) => choice.id === this.queueSelection))
-      this.queueSelection = undefined;
-    this.status.patch({ queued: rows.length });
+    if (this.queueMenu !== undefined || this.queueSelection !== undefined) {
+      const choices = this.queueChoices();
+      this.queueMenu?.setChoices(choices, this.queueSelection);
+      if (choices.some((choice) => choice.id === this.queueSelection))
+        this.queueSelection = undefined;
+    }
+    patchStatus(this.shell, { queued: rows.length });
   }
 
   // -------------------------------------------------------------------------
@@ -1008,7 +1283,7 @@ export class Interactive {
   private initialStatus(): Partial<PowerlineState> {
     const config = this.config;
     return {
-      workspace: basename(this.host.cwd),
+      workspace: basename(this.workspace.cwd),
       provider: config.model.provider,
       model: config.model.id,
       effort: config.thinkingLevel,
@@ -1017,37 +1292,25 @@ export class Interactive {
     };
   }
 
-  private refreshStatus(state: SessionState): void {
-    const config = effectiveConfig(state, this.runtime, this.fallback);
-    let patch: Partial<PowerlineState> = {
+  private refreshStatus(session: FollowedSession): void {
+    const { state } = session;
+    const config = session.config.selected;
+    patchStatus(this.shell, {
       provider: config.model.provider,
       model: config.model.id,
       effort: config.thinkingLevel,
       tokens: state.context.usageTokens,
-    };
-    if (state.context.percent !== undefined) patch = { ...patch, pct: state.context.percent };
-    this.status.patch(patch);
+      window: state.context.contextWindow,
+      pct: state.context.percent ?? 0,
+    });
     void this.refreshBadges();
   }
 
   private refreshWorkspace(): void {
-    void readWorkspaceStatus(this.host.cwd).then((workspace) => {
-      if (!this.disposed) this.status.patch(workspace);
+    const cwd = this.workspace.cwd;
+    void readWorkspaceStatus(cwd).then((workspace) => {
+      if (!this.disposed && this.workspace.cwd === cwd) patchStatus(this.shell, workspace);
     });
-  }
-
-  private refreshUsage(session: FollowedSession): void {
-    void this.host.nyte.runs
-      .context({ sessionId: session.sessionId })
-      .then((context) => {
-        if (this.session !== session) return;
-        const patch: Partial<PowerlineState> = { tokens: context.usageTokens };
-        this.status.patch(
-          context.percent === undefined ? patch : { ...patch, pct: context.percent },
-        );
-        this.refreshStatus({ ...session.state, context });
-      })
-      .catch(() => undefined);
   }
 
   /** Re-list the plugin settings: a command or an apply may have changed a current choice. */
@@ -1064,35 +1327,41 @@ export class Interactive {
     }
   }
 
+  private composerBlocked(): string | undefined {
+    if (this.session === undefined) return "Wait for the session to open";
+    if (this.shell.ui.prompting || this.shell.ui.selecting)
+      return "Another panel owns the keyboard";
+    if (this.renderer.hasSelection) return "Text selection owns the keyboard";
+    if (this.authenticating !== undefined) return "Finish authentication first";
+    if (this.changingDirectory || this.switchingSession) return "Wait for the workspace switch";
+    if (this.submitting) return "A message is being submitted";
+    return undefined;
+  }
+
   private refreshHints(): void {
-    if (this.session !== undefined && this.queueEdits.has(this.session.sessionId)) {
-      setHints(this.shell, "enter save queued message · esc cancel edit");
+    this.document.during(() => this.paintHints());
+  }
+
+  /** One hint pass inside an open document scope, so its many getters share one read. */
+  private paintHints(): void {
+    if (this.disposed || this.shell.root.isDestroyed) return;
+    if (this.authenticating !== undefined) {
+      setHints(this.shell, "esc cancel authentication");
       return;
     }
-    const hints =
-      this.state?.waiting !== undefined
-        ? answerHints(this.roles)
-        : this.busy
-          ? busyHints({ steer: this.delivery(), queue: this.alternate() })
-          : IDLE_HINTS;
-    setHints(this.shell, hints);
+    if (this.shell.ui.selecting || this.shell.ui.prompting) return;
+    this.flushShellMarkers();
+    setHints(this.shell, composerHints(this.shell));
   }
 
-  private delivery(): string {
-    const editing =
-      this.session === undefined ? undefined : this.queueEdits.get(this.session.sessionId);
-    if (editing !== undefined) return editing.lane;
-    return this.busy && this.state?.waiting === undefined
-      ? this.roles[this.settings.followUp]
-      : this.roles.steer;
-  }
-
-  private alternate(): string {
-    if (this.session !== undefined && this.queueEdits.has(this.session.sessionId))
-      return this.roles.steer;
-    return this.busy && this.state?.waiting === undefined && this.settings.followUp === "queue"
-      ? this.roles.steer
-      : this.roles.queue;
+  /** Event-driven refreshes from one turn collapse into a single pass. */
+  private scheduleHints(): void {
+    if (this.hintsScheduled) return;
+    this.hintsScheduled = true;
+    queueMicrotask(() => {
+      this.hintsScheduled = false;
+      this.refreshHints();
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1100,72 +1369,95 @@ export class Interactive {
   // -------------------------------------------------------------------------
 
   private wireComposer(): void {
-    const { shell, renderer } = this;
-    const syntax = SyntaxStyle.fromStyles({
-      attachment: { fg: shell.theme.pasteForeground, bg: shell.theme.pasteBackground },
-    });
-    shell.input.syntaxStyle = syntax;
+    const syntax = SyntaxStyle.create();
+    this.shell.input.syntaxStyle = syntax;
     const styleId = syntax.registerStyle("attachment", {
-      fg: shell.theme.pasteForeground,
-      bg: shell.theme.pasteBackground,
+      fg: this.shell.theme.pasteForeground,
+      bg: this.shell.theme.pasteBackground,
     });
+    // A key's resolution shares one draft read; the focused editor edits only after dispatch.
+    this.disposers.push(
+      this.shell.keymap.intercept("key", () => this.document.open()),
+      this.shell.keymap.intercept("key:after", () => this.document.close()),
+    );
     const autocomplete = new SlashAutocomplete({
-      renderer,
-      input: shell.input,
-      theme: shell.theme,
-      nextId: shell.nextId,
+      renderer: this.renderer,
+      keymap: this.shell.keymap,
+      enabled: () => this.composerBlocked() === undefined,
+      input: this.shell.input,
+      readText: () => this.document.read().text,
+      widthMethod: this.shell.inputWidthMethod,
+      theme: this.shell.theme,
+      nextId: this.shell.nextId,
       onCommand: (command) => {
-        void this.runCommand({ name: command.name, argument: "" }, { lane: this.delivery() }).catch(
-          this.reportError,
-        );
+        void this.runCommand(
+          { name: command.name, argument: "" },
+          { lane: this.composerActions?.primaryLane ?? this.roles.steer },
+        ).catch(this.reportError);
       },
       onFile: (path) => this.composerParts.addFile(path),
       onRows: (rows) => {
-        if (rows > 0) shell.ephemeral.mount(autocomplete.container, rows);
-        else shell.ephemeral.release(autocomplete.container);
+        if (rows > 0) holdSlot(this.shell, autocomplete.container, rows);
+        else releaseSlot(this.shell, autocomplete.container);
+        this.scheduleHints();
       },
     });
     this.autocomplete = autocomplete;
-    shell.closeCompletion = () => autocomplete.close();
+    this.shell.closeCompletion = () => autocomplete.close();
 
-    const previousChange = shell.input.onContentChange;
-    shell.input.onContentChange = (event) => {
+    const previousChange = this.shell.input.onContentChange;
+    let marksScheduled = false;
+    let latestText = "";
+    this.shell.input.onContentChange = (event) => {
       previousChange?.(event);
-      this.composerParts.retain(shell.input.plainText);
-      queueMicrotask(() => {
-        if (shell.input.isDestroyed) return;
-        this.composerParts.sync(shell.input, styleId);
-        this.attachmentPreview.retain(this.composerParts.current);
+      this.document.during(() => {
+        const text = this.document.read().text;
+        latestText = text;
+        this.composerParts.retain(text);
+        if (!marksScheduled) {
+          marksScheduled = true;
+          queueMicrotask(() => {
+            marksScheduled = false;
+            if (this.disposed || this.shell.input.isDestroyed) return;
+            this.composerParts.sync(
+              this.shell.input,
+              styleId,
+              this.shell.inputWidthMethod,
+              latestText,
+            );
+            this.attachmentPreview.retain(this.composerParts.current);
+          });
+        }
+        this.refreshAutocompleteAt(text, this.shell.input.cursorOffset);
+        this.scheduleHints();
+        // An emptied composer lets a waiting handback land.
+        if (
+          text.trim() === "" &&
+          this.session !== undefined &&
+          this.handbacks.has(this.session.sessionId)
+        ) {
+          this.pendingVisual ??= {
+            session: this.session,
+            previous: this.session.state,
+            reset: false,
+          };
+          this.renderer.requestRender();
+        }
       });
-      this.refreshAutocomplete();
-      if (!shell.prompting && shell.input.plainText !== "" && !shell.selecting) this.refreshHints();
     };
-    shell.input.onKeyDown = (key) => {
-      if (!isComposerTextKey(key) || shell.input.hasSelection()) return;
-      // Project the typed character into the draft so `/re` filters in the
-      // same input pass; the matching content callback is then a no-op.
-      const text = shell.input.plainText;
-      const index = cellIndex(text, shell.input.cursorOffset);
-      this.refreshAutocompleteAt(
-        `${text.slice(0, index)}${key.sequence}${text.slice(index)}`,
-        shell.input.cursorOffset + displayWidth(key.sequence),
-      );
-    };
-    shell.input.onPaste = (event) => this.handlePaste(event);
-    shell.input.onMouseUp = (event) => {
-      if (event.button !== 0 || shell.selecting || shell.prompting) return;
-      if (renderer.getSelection()?.getSelectedText()) return;
+    this.shell.input.onPaste = (event) => this.handlePaste(event);
+    this.shell.input.onMouseUp = (event) => {
+      if (event.button !== 0 || this.shell.ui.selecting || this.shell.ui.prompting) return;
+      if (this.renderer.getSelection()?.getSelectedText()) return;
       this.openAttachment();
     };
-    shell.scroll.onPaste = (event) => {
+    this.shell.scroll.onPaste = (event) => {
       this.focusComposer();
       this.handlePaste(event);
       event.stopPropagation();
     };
-    shell.input.onSubmit = () => {
-      this.submitComposer(this.delivery());
-      this.refreshHints();
-    };
+    // Temporary readLine prompts use native submit; chat submits only through its keymap binding.
+    this.shell.input.onSubmit = undefined;
     this.disposers.push(() => autocomplete.destroy());
   }
 
@@ -1177,33 +1469,33 @@ export class Interactive {
   private refreshAutocompleteAt(value: string, cursor: number): void {
     const autocomplete = this.autocomplete;
     if (autocomplete === undefined) return;
-    if (this.shell.prompting || this.shell.selecting) {
+    if (this.shell.ui.prompting || this.shell.ui.selecting || value.startsWith("!")) {
       autocomplete.close();
       return;
     }
-    const session = this.session;
-    const commands =
-      session === undefined
-        ? []
-        : availableSlashCommands(session.commands, this.slashSettings(session), session.skills);
-    autocomplete.update(value, commands, this.mentionFiles, this.host.cwd, cursor);
+    autocomplete.update(
+      value,
+      this.session?.completionCommands ?? [],
+      this.mentionFiles,
+      this.workspace.cwd,
+      cursor,
+    );
   }
 
   private async refreshMentionFiles(): Promise<void> {
     const generation = ++this.mentionGeneration;
-    const files = await discoverMentionFiles(this.host.cwd);
+    const files = await discoverMentionFiles(this.workspace.cwd);
     if (generation !== this.mentionGeneration || this.disposed) return;
     this.mentionFiles = files;
     this.refreshAutocomplete();
   }
 
   private handlePaste(event: PasteEvent): void {
-    const { shell } = this;
     this.promptHistory.resetBrowse();
     event.preventDefault();
-    if (shell.selecting || this.disposed) return;
-    if (shell.prompting) {
-      shell.input.insertText(decodePasteBytes(event.bytes));
+    if (this.shell.ui.selecting || this.disposed) return;
+    if (this.shell.ui.prompting) {
+      this.shell.input.insertText(decodePasteBytes(event.bytes));
       return;
     }
     this.enqueuePaste(async () => {
@@ -1214,7 +1506,7 @@ export class Interactive {
         const image = resolveComposerImagePaste(event.bytes);
         if (image === undefined) throw new Error("Unsupported image data");
         const marker = this.composerParts.addImage(image.image);
-        if (!shell.input.plainText.includes(marker)) shell.input.insertText(`${marker} `);
+        if (!this.shell.input.plainText.includes(marker)) this.shell.input.insertText(`${marker} `);
         return;
       }
       await this.pasteInputText(decodePasteBytes(event.bytes));
@@ -1228,13 +1520,16 @@ export class Interactive {
         if (
           this.disposed ||
           this.session !== session ||
-          this.shell.selecting ||
-          this.shell.prompting
+          this.shell.ui.selecting ||
+          this.shell.ui.prompting
         )
           return;
         await work();
       })
-      .catch(this.reportError)
+      .catch((cause: unknown) => {
+        this.pasteFailures += 1;
+        this.reportError(cause);
+      })
       .finally(() => {
         if (this.pasting === pending) this.pasting = undefined;
       });
@@ -1242,24 +1537,39 @@ export class Interactive {
   }
 
   private async pasteInputText(text: string): Promise<void> {
-    const { shell } = this;
     const session = this.session;
-    const paste = await resolveComposerPaste(text, this.host.cwd);
-    if (this.disposed || this.session !== session || shell.selecting || shell.prompting) return;
+    const workspace = this.workspace;
+    const paste = await resolveComposerPaste(text, workspace.cwd);
+    if (
+      this.disposed ||
+      this.workspace !== workspace ||
+      this.session !== session ||
+      this.shell.ui.selecting ||
+      this.shell.ui.prompting
+    )
+      return;
     switch (paste.kind) {
       case "text": {
-        const extmark = shell.input.extmarks.getVirtual().find((mark) => {
-          const marker = shell.input.getTextRange(mark.start, mark.end);
+        const extmark = this.shell.input.extmarks.getVirtual().find((mark) => {
+          const marker = this.shell.input.getTextRange(mark.start, mark.end);
           const part = this.composerParts.current.find((candidate) => candidate.marker === marker);
           return (
-            (mark.end === shell.input.cursorOffset || mark.end + 1 === shell.input.cursorOffset) &&
+            (mark.end === this.shell.input.cursorOffset ||
+              mark.end + 1 === this.shell.input.cursorOffset) &&
             part?.kind === "paste" &&
             part.text === paste.text
           );
         });
-        if (extmark !== undefined && this.composerParts.expandPastedText(shell.input, extmark.id))
+        if (
+          extmark !== undefined &&
+          this.composerParts.expandPastedText(
+            this.shell.input,
+            extmark.id,
+            this.shell.inputWidthMethod,
+          )
+        )
           return;
-        shell.input.insertText(
+        this.shell.input.insertText(
           pasteLineCount(paste.text) > PASTE_COLLAPSE_LINES
             ? `${this.composerParts.addPaste(paste.text)} `
             : paste.text,
@@ -1267,11 +1577,11 @@ export class Interactive {
         return;
       }
       case "file":
-        shell.input.insertText(`${this.composerParts.addFile(paste.path)} `);
+        this.shell.input.insertText(`${this.composerParts.addFile(paste.path)} `);
         return;
       case "image": {
         const marker = this.composerParts.addImage(paste.image);
-        if (!shell.input.plainText.includes(marker)) shell.input.insertText(`${marker} `);
+        if (!this.shell.input.plainText.includes(marker)) this.shell.input.insertText(`${marker} `);
         return;
       }
       default: {
@@ -1288,7 +1598,12 @@ export class Interactive {
       const extmark = this.shell.input.extmarks
         .getAtOffset(this.shell.input.cursorOffset)
         .find((mark) => this.shell.input.getTextRange(mark.start, mark.end) === part.marker);
-      if (extmark !== undefined) this.composerParts.expandPastedText(this.shell.input, extmark.id);
+      if (extmark !== undefined)
+        this.composerParts.expandPastedText(
+          this.shell.input,
+          extmark.id,
+          this.shell.inputWidthMethod,
+        );
       return;
     }
     const session = this.session;
@@ -1305,9 +1620,15 @@ export class Interactive {
   private async pasteClipboard(): Promise<void> {
     const session = this.session;
     const result = await this.clipboard.read();
-    if (this.disposed || session !== this.session || this.shell.selecting || this.shell.prompting)
+    if (
+      this.disposed ||
+      session !== this.session ||
+      this.shell.ui.selecting ||
+      this.shell.ui.prompting
+    )
       return;
     if (result === undefined) {
+      this.pasteFailures += 1;
       notice(
         this.shell,
         "Clipboard has no supported text or image. Use your terminal's paste shortcut.",
@@ -1325,7 +1646,14 @@ export class Interactive {
     this.refreshHints();
   }
 
+  private cancelPasteSubmission(): void {
+    this.pasteSubmission?.release();
+    this.pasteSubmission = undefined;
+  }
+
   private clearComposer(): void {
+    this.cancelPasteSubmission();
+    this.autocomplete?.close();
     this.composerParts.clear();
     this.promptHistory.resetBrowse();
     this.shell.input.clear();
@@ -1335,7 +1663,8 @@ export class Interactive {
   private saveDraft(): void {
     const session = this.session;
     if (session === undefined) return;
-    this.drafts.save(session.sessionId, this.shell.input.plainText, this.composerParts.current);
+    const text = this.shell.input.plainText;
+    this.drafts.save(session.sessionId, text, this.composerParts.current);
   }
 
   private restoreDraft(id: string): void {
@@ -1345,31 +1674,91 @@ export class Interactive {
   }
 
   /** Enter and ctrl+enter both land here; only the lane differs. */
-  private submitComposer(lane: string): void {
-    const { shell } = this;
+  private submitComposer(action: Extract<ComposerOperation, { readonly lane: string }>): void {
     const session = this.session;
-    if (session === undefined || shell.loading.visible) {
-      notice(shell, "Loading session. Your draft is saved here.");
+    if (session === undefined || this.shell.ui.loading !== undefined) {
+      notice(this.shell, "Loading session. Your draft is saved here.");
       return;
     }
-    if (shell.prompting || shell.selecting || this.submitting) return;
+    if (this.changingDirectory || this.switchingSession) {
+      notice(this.shell, "Switching workspace. Your draft is saved here.");
+      return;
+    }
+    if (
+      this.shell.ui.prompting ||
+      this.shell.ui.selecting ||
+      this.submitting ||
+      this.pasteSubmission !== undefined
+    )
+      return;
+    if (this.authenticating !== undefined) {
+      notice(this.shell, "Finish signing in or out first. Esc cancels.");
+      return;
+    }
+    this.refreshAutocomplete();
     if (this.autocomplete?.accepting === true) return;
     if (this.pasting !== undefined) {
-      void this.pasting.then(() => {
-        if (!this.disposed && this.session === session && shell.input.plainText.trim() !== "")
-          this.submitComposer(lane);
-      });
+      const slot = session.config.reserveSubmission();
+      const failures = this.pasteFailures;
+      this.pasteSubmission = slot;
+      void (async () => {
+        try {
+          // Clipboard image decoding can append another paste to the same chain.
+          while (this.pasting !== undefined && this.pasteSubmission === slot) await this.pasting;
+          if (this.pasteSubmission !== slot) return;
+          if (
+            this.disposed ||
+            this.session !== session ||
+            this.shell.ui.prompting ||
+            this.shell.ui.selecting ||
+            this.switchingSession ||
+            this.changingDirectory ||
+            this.authenticating !== undefined ||
+            this.shell.ui.loading !== undefined
+          )
+            return;
+          if (failures !== this.pasteFailures) return;
+          await this.submitReady(action, session, slot);
+        } finally {
+          if (this.pasteSubmission === slot) this.cancelPasteSubmission();
+        }
+      })().catch(this.reportError);
       return;
     }
-    if (this.queueEdits.has(session.sessionId)) {
-      void this.confirmEdit(session, lane).catch(this.reportError);
+    void this.submitReady(action, session).catch(this.reportError);
+  }
+
+  private async submitReady(
+    action: Extract<ComposerOperation, { readonly lane: string }>,
+    session: FollowedSession,
+    reserved?: SubmissionSlot,
+  ): Promise<void> {
+    const lane = action.lane;
+    if (action.kind === "save-edit") {
+      await this.confirmEdit(session, lane);
       return;
     }
-    const draft = shell.input.plainText;
+    const draft = this.shell.input.plainText;
     const submission = parseComposerSubmission(draft);
+    if (submission.kind === "shell") {
+      if (this.activeShell !== undefined) {
+        notice(this.shell, "A local command is running. Esc stops it; your draft is kept.");
+        return;
+      }
+      this.submitting = true;
+      this.shell.input.clear();
+      this.promptHistory.resetBrowse();
+      this.autocomplete?.close();
+      queueMicrotask(() => {
+        this.submitting = false;
+      });
+      this.promptHistory.record(draft);
+      this.startShell(session, submission);
+      return;
+    }
     if (submission.kind === "empty") {
       if (lane !== this.roles.steer) return;
-      const { waiting } = session.state;
+      const waiting = this.waiting;
       if (waiting === undefined) this.steerFirstQueued(session);
       else this.askQuestion(session, waiting);
       return;
@@ -1381,33 +1770,179 @@ export class Interactive {
         : undefined;
     // A skill named inside the draft makes the whole thing a prompt; a slash
     // line only becomes a command when this host can invoke it.
+    const inlineSkills = hasInlineSkills(draft, skills);
     const prompting =
       submission.kind === "prompt" ||
       commandTarget?.kind === "message" ||
-      hasInlineSkills(draft, skills);
+      commandTarget?.kind === "skill" ||
+      (!(commandTarget?.kind === "builtin" && commandTarget.name === "cd") && inlineSkills);
+    // A foreground shell result must not arrive after the prompt that refers to it.
+    if (prompting && this.activeShell !== undefined) {
+      notice(this.shell, "A local command is running. Wait or press Esc; your draft is kept.");
+      return;
+    }
+    // A selection without an "other" answer cannot be answered from the composer; reopen its menu.
+    if (
+      prompting &&
+      lane === this.roles.steer &&
+      this.waiting !== undefined &&
+      this.waiting.selection.other === undefined
+    ) {
+      this.askQuestion(session, this.waiting);
+      return;
+    }
+    const captured: ComposerDraft = { text: draft, parts: [...this.composerParts.current] };
+    let leading = true;
     const preparing = prompting
-      ? this.composerParts.prepare(draft, (text) => expandInlineSkills(text, skills))
+      ? this.composerParts.prepare(draft, (text) => {
+          if (commandTarget?.kind !== "skill" || inlineSkills)
+            return expandInlineSkills(text, skills);
+          // Images split the draft into text segments. Only the first contains
+          // the command; subsequent segments keep their arguments verbatim.
+          if (!leading) return text;
+          leading = false;
+          const argument = text.slice(commandTarget.skill.name.length + 1).trimStart();
+          return formatSkillInvocation(commandTarget.skill, argument || undefined);
+        })
       : undefined;
+    // Reserve this message's place behind the configuration it was pressed
+    // under, before preparation yields; configuration selected later waits.
+    const slot =
+      preparing === undefined ? undefined : (reserved ?? session.config.reserveSubmission());
+    // Captured submissions own admission now; clearing a later draft only cancels paste waiting.
+    if (slot !== undefined && this.pasteSubmission === slot) this.pasteSubmission = undefined;
     this.submitting = true;
-    shell.input.clear();
+    this.shell.input.clear();
     this.promptHistory.resetBrowse();
     this.autocomplete?.close();
+    queueMicrotask(() => {
+      this.submitting = false;
+    });
     if (preparing === undefined) {
       if (submission.kind === "command" && commandTarget !== undefined) {
         void this.runCommand(submission.command, { lane, target: commandTarget }).catch(
           this.reportError,
         );
       }
-    } else {
-      void (async () => {
+    } else if (slot !== undefined) {
+      try {
         const prepared = await preparing;
         this.promptHistory.record(prepared.displayText);
+        const result = await slot.configured;
+        if (result !== undefined && result.kind !== "acknowledged") {
+          // The configuration this message was pressed under never reached
+          // core, so the message stays unsent, with every part it carried.
+          const reason = result.kind === "failed" ? result.message : "configuration changed";
+          this.stageHandback(session.sessionId, {
+            draft: { text: captured.text, parts: prepared.parts },
+            notice: `Message not sent: ${reason}. It is back in the composer.`,
+          });
+          return;
+        }
         await this.send(session, prepared.content, lane);
-      })().catch(this.reportError);
+      } catch (cause) {
+        this.stageHandback(session.sessionId, {
+          draft: captured,
+          notice: "Message preparation failed. The original draft is back in the composer.",
+        });
+        throw cause;
+      } finally {
+        slot.release();
+      }
     }
-    queueMicrotask(() => {
-      this.submitting = false;
+  }
+
+  // -------------------------------------------------------------------------
+  // `!command`: a foreground process owned only by this TUI
+  // -------------------------------------------------------------------------
+
+  private startShell(
+    session: FollowedSession,
+    submission: Extract<ComposerSubmission, { readonly kind: "shell" }>,
+  ): void {
+    const command = startLocalShell({
+      command: submission.command,
+      cwd: this.workspace.cwd,
+      signal: this.stopped.signal,
+      onUpdate: (execution) => this.syncShell(execution),
     });
+    this.shellCommands.set(command.snapshot.id, {
+      sessionId: session.sessionId,
+      head: session.state.head,
+      process: command,
+      retention: submission.retain ? "pending" : "exclude",
+    });
+    this.activeShell = command;
+    this.syncShell(command.snapshot);
+    this.refreshHints();
+    this.scrollToEnd();
+    void command.done
+      .then(() => {
+        if (this.activeShell === command) this.activeShell = undefined;
+        if (this.disposed) return;
+        this.flushShellMarkers();
+        this.refreshHints();
+      })
+      .catch(this.reportError);
+  }
+
+  private syncShell(execution: ShellExecution): void {
+    if (this.disposed) return;
+    const entry = this.shellCommands.get(execution.id);
+    if (
+      entry === undefined ||
+      this.session?.sessionId !== entry.sessionId ||
+      this.state?.head !== entry.head
+    )
+      return;
+    this.shell.view.syncShell(
+      execution,
+      entry.retention === "exclude" ? "not sent to model" : undefined,
+    );
+    if (execution.state !== "running") this.refreshHints();
+  }
+
+  /** Keep a finished command with its session until its composer is available. */
+  private flushShellMarkers(): void {
+    if (
+      this.shell.input.onSubmit !== undefined ||
+      this.shell.ui.prompting ||
+      this.shell.ui.selecting
+    )
+      return;
+    for (const entry of this.shellCommands.values()) {
+      if (
+        entry.retention !== "pending" ||
+        entry.sessionId !== this.session?.sessionId ||
+        entry.head !== this.state?.head
+      )
+        continue;
+      const execution = entry.process.snapshot;
+      // Cancellation, signals and launch failures have no exit code to fabricate.
+      if (execution.state === "running") continue;
+      if (execution.state !== "exited") {
+        entry.retention = "discarded";
+        continue;
+      }
+      entry.retention = "attached";
+      const marker = this.composerParts.addShell({
+        command: execution.command,
+        output: execution.output,
+        exitCode: execution.exitCode,
+      });
+      this.document.invalidate();
+      const text = this.shell.input.plainText;
+      // Prefix the result: a draft typed while the command ran now follows its context.
+      setInputText(this.shell.input, `${marker} ${text}`);
+    }
+  }
+
+  private restoreShellCards(session: FollowedSession): void {
+    for (const entry of this.shellCommands.values()) {
+      if (entry.sessionId === session.sessionId && entry.head === session.state.head)
+        this.syncShell(entry.process.snapshot);
+    }
+    this.flushShellMarkers();
   }
 
   /** A plain line answers a parked question through the reply channel; anything else is admitted. */
@@ -1417,26 +1952,24 @@ export class Interactive {
     lane: string,
   ): Promise<void> {
     const waiting = session.state.waiting;
-    if (waiting !== undefined && lane === this.roles.steer) {
-      if (!Array.isArray(content)) return this.answer(session, waiting, content);
+    if (waiting?.selection.other !== undefined && lane === this.roles.steer) {
+      if (!Array.isArray(content)) return this.answer(waiting, { choices: [], other: content });
       notice(
         this.shell,
         "Attachments can't answer a question; sent as a message",
         this.shell.theme.warning,
       );
     }
-    this.scrollToEnd();
+    if (this.session === session) this.scrollToEnd();
     const outcome = await session.outbox.submit({ content, lane });
     if (outcome.kind === "withdrawn") notice(this.shell, "Message withdrawn");
   }
 
   private scrollToEnd(): void {
-    setTimeout(() => {
-      const { scroll } = this.shell;
-      if (scroll.isDestroyed) return;
-      scroll.stickyScroll = true;
-      scroll.scrollTo(scroll.scrollHeight);
-    }, 50);
+    // OpenTUI follows subsequent layout changes until the user scrolls away.
+    // A delayed jump could override that scroll or land in another session.
+    this.shell.scroll.stickyScroll = true;
+    this.shell.scroll.scrollTo(this.shell.scroll.scrollHeight);
   }
 
   private steerFirstQueued(session: FollowedSession): void {
@@ -1494,19 +2027,18 @@ export class Interactive {
 
   /** The live queue shares the composer's rich parts and core's atomic redelivery. */
   private async openQueue(selectedId?: string): Promise<void> {
-    const { shell } = this;
     const session = this.requireSession();
-    if (this.queueMenu !== undefined || shell.selecting || shell.prompting) return;
+    if (this.queueMenu !== undefined || this.shell.ui.selecting || this.shell.ui.prompting) return;
     const rows = () => gutterRows(session.state.pending, session.outbox.entries);
     if (rows().length === 0) {
-      notice(shell, "Nothing is queued");
+      notice(this.shell, "Nothing is queued");
       return;
     }
     const edit = async (id: string): Promise<void> => {
       const row = rows().find((candidate) => rowId(candidate) === id);
       if (row === undefined) return;
       if (this.queueEdits.has(session.sessionId)) {
-        notice(shell, "Save or cancel the current queue edit first.");
+        notice(this.shell, "Save or cancel the current queue edit first.");
         return;
       }
       if (row.kind === "sending") {
@@ -1514,7 +2046,7 @@ export class Interactive {
         if (outcome === undefined || this.disposed || this.session !== session) return;
         const stash = {
           lane: row.entry.lane,
-          draft: { text: shell.input.plainText, parts: this.composerParts.current },
+          draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
         };
         this.queueEdits.set(
           session.sessionId,
@@ -1529,7 +2061,7 @@ export class Interactive {
         kind: "pending",
         change: row.item.change,
         lane: row.item.lane,
-        draft: { text: shell.input.plainText, parts: this.composerParts.current },
+        draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
       });
       this.handBack(row.item.content, "Editing queued message. Enter saves; Esc cancels.");
     };
@@ -1544,7 +2076,7 @@ export class Interactive {
           : withdrawn?.kind === "durable"
             ? await this.cancelPending(session, withdrawn.change)
             : withdrawn?.kind === "withdrawn";
-      if (removed) notice(shell, "Removed from the queue");
+      if (removed) notice(this.shell, "Removed from the queue");
     };
     const move = async (id: string, delta: -1 | 1): Promise<void> => {
       const row = rows().find((candidate) => rowId(candidate) === id);
@@ -1560,7 +2092,7 @@ export class Interactive {
       );
     };
     this.queueMenu = openInlineMenu(
-      shell,
+      this.shell,
       {
         title: "Queued messages",
         choices: this.queueChoices(),
@@ -1677,27 +2209,105 @@ export class Interactive {
   // -------------------------------------------------------------------------
 
   private wireKeymap(): void {
-    const { shell, renderer } = this;
-    const keymap = shell.keymap;
-    const queue: ChatCommandSpec = {
-      title: "Send the draft with the alternate delivery mode",
-      run: () => {
-        if (shell.input.plainText.trim() === "") return false;
-        if (this.autocomplete?.accepting && !this.autocomplete.completeQueueableCommand())
-          return true;
-        this.submitComposer(this.alternate());
-        return true;
+    const keymap = this.shell.keymap;
+    const tasks = this.tasks;
+    /** Down on an empty composer opens the task list when there is one. */
+    const viewsTasks = (): boolean => tasks.hasTasks && this.document.read().kind === "empty";
+    const composer = new ComposerActions(
+      this.shell,
+      this.roles,
+      () => {
+        // Another surface owning the keyboard settles every action; the draft is not read for it.
+        const blocked = this.composerBlocked();
+        const draft = blocked === undefined ? this.document.read() : this.document.latest;
+        const input = draft === undefined ? undefined : parseComposerSubmission(draft.text);
+        return {
+          busy: this.busy,
+          shell: this.activeShell !== undefined,
+          shellInput: input?.kind === "shell" ? (input.retain ? "include" : "exclude") : undefined,
+          waiting: this.waiting !== undefined || this.state?.waiting !== undefined,
+          question: this.state?.waiting?.selection.other !== undefined,
+          draft: draft?.kind ?? "empty",
+          editingLane:
+            this.session === undefined
+              ? undefined
+              : this.queueEdits.get(this.session.sessionId)?.lane,
+          followUp: this.settings.followUp,
+          completion: this.autocomplete?.visible
+            ? { accepting: this.autocomplete.accepting, queueable: this.autocomplete.queueable }
+            : undefined,
+          blocked,
+        };
       },
-    };
+      (operation) => {
+        this.document.invalidate();
+        switch (operation.kind) {
+          case "submit":
+          case "save-edit":
+            if (this.autocomplete?.accepting && !this.autocomplete.completeQueueableCommand())
+              return;
+            this.submitComposer(operation);
+            break;
+          case "cancel-edit":
+            this.cancelEdit();
+            break;
+          case "stop":
+            if (this.activeShell !== undefined) {
+              this.activeShell.cancel();
+              break;
+            }
+            if (this.compaction !== undefined) {
+              this.compaction.abort();
+              break;
+            }
+            if (this.state?.run !== undefined && !isTerminalPhase(this.state.run.phase)) {
+              void this.stopRun(this.requireSession());
+            }
+            break;
+          case "tree":
+            if (this.doubleEscape.press()) void this.openTree({}).catch(this.reportError);
+            break;
+          case "clear":
+            this.clearComposer();
+            break;
+          case "quit":
+            this.options.requestShutdown();
+            break;
+        }
+        this.refreshHints();
+      },
+    );
+    this.composerActions = composer;
+    this.disposers.push(() => composer.dispose());
+    const scheduleHints = (): void => this.scheduleHints();
+    this.renderer.on(CliRenderEvents.SELECTION, scheduleHints);
+    this.renderer.on(CliRenderEvents.RESIZE, scheduleHints);
+    this.disposers.push(
+      keymap.on("state", scheduleHints),
+      keymap.intercept("key:after", scheduleHints),
+      () => this.renderer.off(CliRenderEvents.SELECTION, scheduleHints),
+      () => this.renderer.off(CliRenderEvents.RESIZE, scheduleHints),
+    );
+    const onRun = (): void => this.document.invalidate();
     this.disposers.push(
       registerChatLayer(keymap, {
-        enabled: () =>
-          !shell.prompting && !shell.selecting && this.autocomplete?.accepting === true,
-        commands: { "chat.queue.submit": queue },
+        enabled: () => this.composerBlocked() === undefined,
+        onRun,
+        commands: {
+          "chat.commands.open": {
+            title: "Commands and active shortcuts",
+            hint: "help",
+            placement: "help",
+            run: () => {
+              void this.openCommandPalette().catch(this.reportError);
+              return true;
+            },
+          },
+        },
       }),
     );
     this.disposers.push(
-      registerSelectionLayer(keymap, renderer, {
+      registerSelectionLayer(keymap, this.renderer, {
         copyOnSelect: () => this.settings.copyOnSelect,
         copy: (text) => {
           void this.clipboard.write(text).catch(this.reportError);
@@ -1706,67 +2316,61 @@ export class Interactive {
     );
     this.disposers.push(
       keymap.intercept("key", (ctx) => {
-        if (shell.prompting || shell.selecting) return;
-        if (ctx.event.name === "up" || ctx.event.name === "down") return;
+        if (this.shell.ui.prompting || this.shell.ui.selecting) return;
+        if (
+          matchesKeyName("chat.history.previous", ctx.event) ||
+          matchesKeyName("chat.history.next", ctx.event)
+        )
+          return;
         this.promptHistory.resetBrowse();
       }),
     );
     this.disposers.push(
       registerChatLayer(keymap, {
-        enabled: () =>
-          !shell.prompting && !shell.selecting && this.autocomplete?.accepting !== true,
+        enabled: () => this.composerBlocked() === undefined && this.autocomplete?.visible !== true,
+        onRun,
         commands: {
-          "chat.interrupt": {
-            title: "Stop the current run",
+          "chat.job.background": {
+            title: "Move agent work to background",
+            unavailable: () =>
+              this.activeShell === undefined
+                ? undefined
+                : "Local commands run in the foreground. Esc stops the command.",
+            hint: "background",
+            get placement() {
+              return tasks.hasForegroundWork ? ("secondary" as const) : undefined;
+            },
             run: () => {
-              if (this.session !== undefined && this.queueEdits.has(this.session.sessionId)) {
-                this.cancelEdit();
-                return true;
-              }
-              const intent = escapeIntent({
-                selecting: shell.selecting,
-                prompting: shell.prompting,
-                hasDraft: shell.input.plainText.trim() !== "",
-                busy: this.busy,
-              });
-              if (intent === "ignore") return false;
-              if (intent === "abort") {
-                if (this.compaction !== undefined) {
-                  this.compaction.abort();
-                  notice(shell, "Stopping compaction…", shell.theme.tool);
-                  return true;
-                }
-                const session = this.requireSession();
-                void this.host.nyte.runs
-                  .abort({ sessionId: session.sessionId })
-                  .catch(this.reportError);
-                return true;
-              }
-              if (this.doubleEscape.press()) void this.openTree({}).catch(this.reportError);
+              void this.tasks.backgroundForeground().catch(this.reportError);
               return true;
             },
           },
           "chat.scroll.page.up": {
             title: "Scroll the transcript up",
             run: () => {
-              shell.scroll.scrollBy(-0.5, "viewport");
+              this.shell.scroll.scrollBy(-0.5, "viewport");
               return true;
             },
           },
           "chat.scroll.page.down": {
             title: "Scroll the transcript down",
             run: () => {
-              shell.scroll.scrollBy(0.5, "viewport");
+              this.shell.scroll.scrollBy(0.5, "viewport");
               return true;
             },
           },
           "chat.message.previous": {
             title: "Previous message",
-            run: () => this.jumpTurn("previous"),
+            run: () => this.shell.view.jumpTurn("previous"),
           },
-          "chat.message.next": { title: "Next message", run: () => this.jumpTurn("next") },
+          "chat.message.next": {
+            title: "Next message",
+            run: () => this.shell.view.jumpTurn("next"),
+          },
           "chat.thinking.cycle": {
             title: "Cycle the thinking level",
+            hint: "thinking",
+            placement: "secondary",
             run: () => {
               this.cycleThinkingLevel();
               return true;
@@ -1774,6 +2378,8 @@ export class Interactive {
           },
           "chat.model.next": {
             title: "Next model",
+            hint: "model",
+            placement: "secondary",
             run: () => {
               this.cycleModel(1);
               return true;
@@ -1814,12 +2420,11 @@ export class Interactive {
               return true;
             },
           },
-          "chat.queue.submit": queue,
           "chat.tools.toggle": {
-            title: "Expand or collapse all tool output",
+            title: "Expand or collapse tool output and thoughts",
             run: () => {
-              const expanded = shell.transcript.toolOutput.toggle();
-              notice(shell, `Tool output ${expanded ? "expanded" : "collapsed"}`);
+              const expanded = this.shell.transcript.toolOutput.toggle();
+              notice(this.shell, `Output ${expanded ? "expanded" : "collapsed"}`);
               return true;
             },
           },
@@ -1831,23 +2436,23 @@ export class Interactive {
               return true;
             },
           },
-          "chat.commands.open": {
-            title: "Open the command palette",
-            run: () => {
-              this.focusComposer();
-              void this.openCommandPalette().catch(this.reportError);
-              return true;
-            },
-          },
           "chat.history.previous": {
-            title: "Previous message you sent",
-            run: () => browseHistory(shell.input, this.promptHistory, "previous"),
+            title: "Previous message you sent at the start of the draft",
+            run: () => browseHistory(this.shell.input, this.promptHistory, "previous"),
           },
           "chat.history.next": {
-            title: "Next message you sent",
+            get title() {
+              return viewsTasks() ? "View tasks" : "Next message you sent at the end of the draft";
+            },
+            get hint() {
+              return viewsTasks() ? "view tasks" : "next history at end";
+            },
+            get placement() {
+              return viewsTasks() ? ("secondary" as const) : undefined;
+            },
             run: () => {
-              if (browseHistory(shell.input, this.promptHistory, "next")) return true;
-              if (shell.input.plainText !== "" || !this.tasks.hasTasks) return false;
+              if (browseHistory(this.shell.input, this.promptHistory, "next")) return true;
+              if (!viewsTasks()) return false;
               this.tasks.open();
               return true;
             },
@@ -1855,99 +2460,122 @@ export class Interactive {
         },
       }),
     );
-    // What the keymap deliberately leaves alone: quitting, and the completion
-    // dropdown, which answers arbitrary keys rather than a fixed set.
+    // Authentication keeps its existing isolated cancellation lifecycle.
     const onKeyPress = (key: KeyEvent): void => {
+      // The keymap's listener ran first; whatever it left open is over for this key.
+      this.document.close();
       if (key.defaultPrevented) return;
-      if (this.autocomplete?.handleKey(key) === true) return;
-      const action = ctrlCAction(key, {
-        selecting: shell.selecting,
-        prompting: shell.prompting,
-        hasDraft: shell.input.plainText !== "",
-      });
-      if (action === undefined) return;
-      key.preventDefault();
-      key.stopPropagation();
-      if (action === "clear_for_quit") {
-        this.clearComposer();
-        setHints(shell, CTRL_C_EXIT_HINT);
+      if (
+        this.authenticating !== undefined &&
+        !this.shell.ui.prompting &&
+        !this.shell.ui.selecting &&
+        matchesKey("auth.cancel", key, "required")
+      ) {
+        key.preventDefault();
+        key.stopPropagation();
+        this.authenticating.abort(new PickerCancelled());
         return;
       }
-      this.options.requestShutdown();
     };
-    renderer.keyInput.on("keypress", onKeyPress);
-    this.disposers.push(() => renderer.keyInput.off("keypress", onKeyPress));
+    this.renderer.keyInput.on("keypress", onKeyPress);
+    this.disposers.push(() => this.renderer.keyInput.off("keypress", onKeyPress));
   }
 
-  /** Jump to the next turn boundary above or below the viewport. */
-  private jumpTurn(direction: "previous" | "next"): boolean {
-    const { scroll } = this.shell;
-    const top = scroll.scrollTop;
-    const turns = scroll
-      .getChildren()
-      .flatMap((child) =>
-        child.id.startsWith("turn:") && child.visible ? [child.y - scroll.y + top] : [],
-      );
-    const target =
-      direction === "next" ? turns.find((y) => y > top) : turns.findLast((y) => y < top);
-    if (target === undefined) return false;
-    scroll.stickyScroll = false;
-    scroll.scrollTo(target);
-    return true;
-  }
-
-  private cycleThinkingLevel(): void {
-    if (this.cyclingThinking || this.busy) return;
-    const { model, thinkingLevel } = this.config;
-    const next = nextThinkingLevel(thinkingLevel, getSupportedThinkingLevels(model));
-    if (next === undefined) return;
-    this.cyclingThinking = true;
-    void this.changeThinkingLevel(next, false)
-      .catch(this.reportError)
-      .finally(() => {
-        this.cyclingThinking = false;
+  private async stopRun(session: FollowedSession): Promise<void> {
+    const run = session.state.run;
+    if (run === undefined) return;
+    let untouched = true;
+    const remove = this.shell.keymap.intercept("key", () => {
+      untouched = false;
+    });
+    const active = (): boolean =>
+      untouched &&
+      !this.disposed &&
+      this.session === session &&
+      session.state.run?.runId === run.runId &&
+      !isTerminalPhase(session.state.run.phase) &&
+      !this.shell.ui.selecting &&
+      !this.shell.ui.prompting;
+    try {
+      const outcome = await this.host.nyte.runs.abort({
+        sessionId: session.sessionId,
+        runId: run.runId,
       });
+      if (active() && outcome.kind === "not_running") notice(this.shell, "No active run to stop.");
+      // Only the watcher can report a stopped run or retract its unanswered message.
+    } catch (cause) {
+      if (active()) this.reportError(cause);
+    } finally {
+      remove();
+    }
+  }
+
+  /** Each press steps from the selected level, so a burst of presses steps that many times. */
+  private cycleThinkingLevel(): void {
+    const session = this.session;
+    if (session === undefined) return;
+    void session.config
+      .prepareSelection(({ model, thinkingLevel }) => {
+        const next = nextThinkingLevel(thinkingLevel, getSupportedThinkingLevels(model));
+        return next === undefined ? undefined : { thinkingLevel: next };
+      })
+      .then((result) => {
+        if (result.kind === "failed") throw new Error(result.message);
+      })
+      .catch(this.reportError);
   }
 
   private cycleModel(delta: 1 | -1): void {
-    if (this.cyclingModel || this.busy) return;
-    this.cyclingModel = true;
-    void (async () => {
-      const available =
-        cachedAuthenticatedModels(this.runtime.models) ??
-        (await loadAuthenticatedModels(this.runtime.models));
-      if (available.length < 2) return;
-      const current = this.config.model;
-      const index = available.findIndex(
-        (model) => model.provider === current.provider && model.id === current.id,
-      );
-      const next =
-        available[index === -1 ? 0 : (index + delta + available.length) % available.length];
-      if (next !== undefined) await this.changeModel(next);
-    })()
-      .catch(this.reportError)
-      .finally(() => {
-        this.cyclingModel = false;
-      });
+    const session = this.session;
+    if (session === undefined) return;
+    let cycled: RunChoice | undefined;
+    void session.config
+      .prepareSelection((selected) => {
+        const choose = (available: readonly Model<Api>[]): ConfigPatch | undefined => {
+          if (available.length < 2) return undefined;
+          const index = available.findIndex(
+            (model) => model.provider === selected.model.provider && model.id === selected.model.id,
+          );
+          const model =
+            available[index === -1 ? 0 : (index + delta + available.length) % available.length] ??
+            selected.model;
+          cycled = { model, thinkingLevel: clampThinkingLevel(model, selected.thinkingLevel) };
+          return cycled;
+        };
+        const cached = cachedAuthenticatedModels(this.runtime.models);
+        return cached === undefined
+          ? loadAuthenticatedModels(this.runtime.models).then(choose)
+          : choose(cached);
+      })
+      .then((result) => {
+        if (result.kind === "failed") throw new Error(result.message);
+        if (result.kind !== "acknowledged" || cycled === undefined || this.session !== session)
+          return;
+        notice(
+          this.shell,
+          `Model: ${cycled.model.provider}/${cycled.model.id} · ${cycled.thinkingLevel}`,
+          this.shell.theme.ok,
+        );
+      })
+      .catch(this.reportError);
   }
 
   private openExternalEditor(): void {
     if (this.editingExternally) return;
     this.editingExternally = true;
     this.autocomplete?.close();
-    const { shell, renderer } = this;
-    const draft = shell.input.plainText;
-    shell.input.blur();
-    renderer.suspend();
+    const draft = this.shell.input.plainText;
+    this.shell.input.blur();
+    this.renderer.suspend();
     void editInExternalEditor(draft, resolveExternalEditor(this.settings.externalEditor))
       .then((result) => {
-        if (result.status === "completed") setInputText(shell.input, result.text);
+        if (result.status === "completed") setInputText(this.shell.input, result.text);
         else this.reportError(result.error);
       })
       .finally(() => {
-        renderer.resume();
-        shell.focus.reset();
-        renderer.requestRender();
+        this.renderer.resume();
+        this.shell.focus.reset();
+        this.renderer.requestRender();
         this.editingExternally = false;
       });
   }
@@ -1958,45 +2586,53 @@ export class Interactive {
 
   private async changeModel(model: Model<Api>, thinkingLevel?: ThinkingLevel): Promise<void> {
     const session = this.requireSession();
-    const current = this.config.model;
-    const effort = clampThinkingLevel(model, thinkingLevel ?? this.config.thinkingLevel);
+    const selected = session.config.selected;
     if (
-      current.provider === model.provider &&
-      current.id === model.id &&
-      effort === this.config.thinkingLevel
+      !session.config.preparingSelection &&
+      selected.model.provider === model.provider &&
+      selected.model.id === model.id &&
+      clampThinkingLevel(model, thinkingLevel ?? selected.thinkingLevel) === selected.thinkingLevel
     ) {
       notice(this.shell, `Already using ${model.id}`);
       return;
     }
-    const outcome = await this.host.nyte.sessions.configure({
-      sessionId: session.sessionId,
-      model: { provider: model.provider, id: model.id },
-      thinkingLevel: effort,
-    });
-    if (outcome.kind !== "queued") throw new Error(`Unknown model: ${model.id}`);
-    this.status.patch({ provider: model.provider, model: model.id, effort });
-    this.updateSettings({
-      defaultProvider: model.provider,
-      defaultModel: model.id,
-      defaultThinkingLevel: effort,
-    });
-    notice(this.shell, `Model: ${model.provider}/${model.id} · ${effort}`, this.shell.theme.ok);
+    const result = await session.config.prepareSelection((choice) => ({
+      model,
+      thinkingLevel: clampThinkingLevel(model, thinkingLevel ?? choice.thinkingLevel),
+    }));
+    if (result.kind === "failed") throw new Error(result.message);
+    if (result.kind === "superseded" || this.session !== session) return;
+    notice(
+      this.shell,
+      `Model: ${model.provider}/${model.id} · ${session.config.selected.thinkingLevel}`,
+      this.shell.theme.ok,
+    );
   }
 
   private async changeThinkingLevel(level: ThinkingLevel, announce: boolean): Promise<void> {
     const session = this.requireSession();
-    if (this.config.thinkingLevel === level) {
+    if (!session.config.preparingSelection && session.config.selected.thinkingLevel === level) {
       if (announce) notice(this.shell, `Already using ${level}`);
       return;
     }
-    const outcome = await this.host.nyte.sessions.configure({
-      sessionId: session.sessionId,
-      thinkingLevel: level,
-    });
-    if (outcome.kind !== "queued") throw new Error(`Unsupported thinking level: ${level}`);
-    this.status.patch({ effort: level });
-    this.updateSettings({ defaultThinkingLevel: level });
+    const result = await session.config.request({ thinkingLevel: level });
+    if (result.kind === "failed") throw new Error(result.message);
+    if (result.kind === "superseded" || this.session !== session) return;
     if (announce) notice(this.shell, `Thinking level: ${level}`, this.shell.theme.ok);
+  }
+
+  /** Core queued the choice; it becomes the default for the next chat the same way it did before. */
+  private persistChoice(choice: RunChoice, patch: ConfigPatch): void {
+    this.updateSettings({
+      ...(patch.model === undefined
+        ? {}
+        : {
+            defaultProvider: choice.model.provider,
+            defaultModel: choice.model.id,
+            defaultThinkingLevel: choice.thinkingLevel,
+          }),
+      ...(patch.thinkingLevel === undefined ? {} : { defaultThinkingLevel: choice.thinkingLevel }),
+    });
   }
 
   private updateSettings(patch: Omit<SettingsPatch, "compaction">): void {
@@ -2007,10 +2643,8 @@ export class Interactive {
 
   private async changeTheme(mode: ThemeMode): Promise<void> {
     this.themeMode = mode;
-    applyShellTheme(this.shell, themeForMode(mode));
+    this.shell.setTheme(themeForMode(mode));
     this.autocomplete?.retheme(this.shell.theme);
-    this.status.repaint();
-    this.redraw();
     this.tuiPlugins.refresh();
     notice(this.shell, `Theme: ${mode}`, this.shell.theme.ok);
   }
@@ -2027,48 +2661,171 @@ export class Interactive {
     await this.changeTheme(mode);
   }
 
-  /** Redraw the record from the follower's state; presentation changed, the record did not. */
-  private redraw(): void {
-    const session = this.session;
-    if (session === undefined) return;
-    this.shell.view.clear();
-    this.render(session, undefined, undefined);
+  private async trustDirectory(cwd: string): Promise<TrustedWorkspace> {
+    const trustStore = createTrustStore();
+    const resolution = await trustStore.resolve(cwd);
+    this.stopped.signal.throwIfAborted();
+    if (resolution.kind === "trusted") return resolution.workspace;
+    this.shell.setUi("selecting", true);
+    this.shell.input.blur();
+    this.shell.input.focusable = false;
+    this.autocomplete?.close();
+    try {
+      const decision = await requestWorkspaceTrust({
+        renderer: this.renderer,
+        theme: this.shell.theme,
+        cwd: resolution.cwd,
+        decline: "cancel",
+        signal: this.stopped.signal,
+        nextId: this.shell.nextId,
+      });
+      this.stopped.signal.throwIfAborted();
+      if (decision !== "trust") throw new PickerCancelled();
+      return await trustStore.trust(resolution.cwd);
+    } finally {
+      if (!this.disposed) {
+        this.shell.setUi("selecting", false);
+        this.shell.input.focusable = true;
+        this.focusComposer();
+      }
+    }
+  }
+
+  private async relocateSession(id: SessionId, workspace: TrustedWorkspace): Promise<void> {
+    const resolved = await resolveHostPlugins(
+      { kind: "project", workspace },
+      {
+        model: this.config.model,
+        models: this.runtime.models,
+        extra: tuiPlugins(this.runtime.models),
+      },
+    );
+    this.stopped.signal.throwIfAborted();
+    if (resolved.failures.length > 0)
+      throw new Error(
+        `Failed to load destination plugins: ${resolved.failures.map((failure) => `${failure.path}: ${failure.error}`).join("; ")}`,
+      );
+    const outcome = await this.host.relocate(id, workspace, resolved.plugins);
+    if (outcome.kind === "busy")
+      throw new Error("Wait for active runs and jobs to finish before changing directories.");
+  }
+
+  private async changeDirectory(argument: string): Promise<void> {
+    if (argument === "") throw new Error("Directory is required. Use /cd <path>.");
+    if (this.switchingSession || this.changingDirectory)
+      throw new Error("A chat switch is already in progress.");
+    const session = this.requireSession();
+    if (session.outbox.entries.length > 0 || session.state.pending.length > 0)
+      throw new Error("Wait for queued messages before changing directories.");
+    this.changingDirectory = true;
+    try {
+      const path =
+        argument === "~"
+          ? homedir()
+          : argument.startsWith("~/")
+            ? resolve(homedir(), argument.slice(2))
+            : resolve(this.workspace.cwd, argument);
+      const workspace = await this.trustDirectory(path);
+      if (workspace.cwd === this.workspace.cwd) {
+        notice(this.shell, `Already in ${workspace.cwd}`);
+        return;
+      }
+      await this.relocateSession(session.sessionId, workspace);
+      if (this.disposed || this.session !== session) return;
+      await this.useWorkspace(workspace);
+      await this.refreshContributions(session);
+      await this.tuiPlugins.reconcile();
+      notice(this.shell, `Working directory: ${workspace.cwd}`, this.shell.theme.ok);
+    } finally {
+      this.changingDirectory = false;
+    }
+  }
+
+  private watchWorkspacePlugins(): void {
+    this.stopPluginWatch?.();
+    this.stopPluginWatch = watchPluginDirectories({
+      directories: pluginWatchTargets({ kind: "project", workspace: this.workspace }),
+      // Runners wait on the hold, so a tool the model just wrote is in its next request.
+      hold: () => this.host.nyte.holdPlugins(),
+      onChange: () => this.reloadPlugins(),
+      onError: (error) => this.reportError(error),
+    });
+  }
+
+  private async useWorkspace(workspace: TrustedWorkspace): Promise<void> {
+    if (workspace.cwd === this.workspace.cwd) return;
+    this.stopPluginWatch?.();
+    await this.tuiPlugins.dispose();
+    if (this.disposed) return;
+    this.workspace = workspace;
+    this.tuiPlugins = new PluginProvider({
+      shell: this.shell,
+      workspace,
+      client: this.host.nyte,
+      sessionID: () => this.sessionId,
+    });
+    this.watchWorkspacePlugins();
+    patchStatus(this.shell, {
+      workspace: basename(workspace.cwd),
+      branch: undefined,
+      dirty: false,
+    });
+    this.refreshWorkspace();
+    this.mentionFiles = [];
+    this.autocomplete?.close();
+    await this.refreshMentionFiles();
   }
 
   private async reloadPlugins(): Promise<void> {
+    if (this.changingDirectory || this.switchingSession) return;
+    const workspace = this.workspace;
+    const session = this.session;
     await this.tuiPlugins.reconcile();
-    const resolved = await resolveWorkspacePlugins(this.workspace, {
-      model: this.config.model,
-      models: this.runtime.models,
-    });
+    const resolved = await resolveHostPlugins(
+      { kind: "project", workspace: this.workspace },
+      {
+        model: this.config.model,
+        models: this.runtime.models,
+        extra: tuiPlugins(this.runtime.models),
+      },
+    );
     for (const failure of resolved.failures) {
       notice(this.shell, `plugin ${failure.path}: ${failure.error}`, this.shell.theme.error);
     }
-    await this.host.nyte.setPlugins(resolved.plugins);
-    const session = this.session;
-    if (session !== undefined) await this.refreshContributions(session);
+    if (
+      this.disposed ||
+      this.changingDirectory ||
+      this.switchingSession ||
+      this.workspace !== workspace ||
+      this.session !== session
+    )
+      return;
+    if (workspace.cwd === this.host.cwd) await this.host.nyte.setPlugins(resolved.plugins);
+    if (session !== undefined) {
+      await this.host.nyte.setPlugins(resolved.plugins, { sessionId: session.sessionId });
+      await this.refreshContributions(session);
+    }
   }
 
   private async checkUpdate(): Promise<void> {
     const release = await checkForUpdate();
     if (release === undefined || this.disposed) return;
-    const { shell } = this;
     if (!this.settings.autoUpdate) {
       notice(
-        shell,
+        this.shell,
         `Update available: ${release.version} · /update to install`,
-        shell.theme.warning,
+        this.shell.theme.warning,
       );
       return;
     }
     const outcome = await selfUpdate();
     if (this.disposed) return;
     notice(
-      shell,
+      this.shell,
       outcome.kind === "updated"
         ? describeUpdateOutcome(outcome)
         : `Update available: ${release.version} · ${describeUpdateOutcome(outcome)}`,
-      outcome.kind === "updated" ? undefined : shell.theme.warning,
+      outcome.kind === "updated" ? undefined : this.shell.theme.warning,
     );
   }
 
@@ -2077,12 +2834,12 @@ export class Interactive {
   // -------------------------------------------------------------------------
 
   private async switchSession(info: SessionInfo, announce: boolean): Promise<void> {
-    if (this.switchingSession) throw new Error("A chat switch is already in progress");
+    if (this.switchingSession || this.changingDirectory)
+      throw new Error("A chat switch is already in progress");
     this.switchingSession = true;
     try {
-      this.saveDraft();
       await this.follow(info);
-      this.focusComposer();
+      if (!this.shell.ui.selecting) this.focusComposer();
       if (announce) {
         const session = this.requireSession();
         notice(
@@ -2096,9 +2853,8 @@ export class Interactive {
   }
 
   private async resumeSession(): Promise<void> {
-    const { shell } = this;
     const current = this.requireSession();
-    const { items } = await this.host.nyte.sessions.list();
+    const { items } = await this.host.nyte.sessions.list({ parent: null });
     const sessions: Choice[] = items
       .filter((session) => session.heads.some((head) => head.tip !== null))
       .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt)
@@ -2106,21 +2862,18 @@ export class Interactive {
         const title = session.name ?? session.preview ?? shortId(session.sessionId);
         const currentLabel = session.sessionId === current.sessionId ? " (current)" : "";
         const savedAt = new Date(session.lastActivityAt).toLocaleString();
-        const description =
-          session.parent === undefined
-            ? `${savedAt} · ${shortId(session.sessionId)}`
-            : `${session.parent.agent} subagent · ${savedAt} · ${shortId(session.sessionId)}`;
+        const description = `${savedAt} · ${shortId(session.sessionId)}`;
         return { id: session.sessionId, label: `${title}${currentLabel}`, description };
       });
     if (sessions.length === 0) {
-      notice(shell, "No saved chats");
+      notice(this.shell, "No saved chats");
       return;
     }
-    const chosen = await selectChoice(shell, "Resume chat", sessions, {
+    const chosen = await selectChoice(this.shell, "Resume chat", sessions, {
       selectedId: current.sessionId,
     });
     if (chosen === current.sessionId) {
-      notice(shell, `Already in ${shortId(chosen)}`);
+      notice(this.shell, `Already in ${shortId(chosen)}`);
       return;
     }
     const info = await this.host.nyte.sessions.get({ sessionId: sessionId(chosen) });
@@ -2137,31 +2890,28 @@ export class Interactive {
     readonly selectedOid?: Oid | null;
     readonly filter?: TreeFilter;
   }): Promise<Oid> {
-    const { shell } = this;
-    const restoredHints = shell.hintText;
-    return new Promise<Oid>((resolve, reject) => {
+    const restoredHints = this.shell.ui.hints;
+    return new Promise<Oid>((resolveSelection, reject) => {
       let selector: TreeSelector | undefined;
       let settled = false;
       const settle = (finish: () => void): void => {
         if (settled) return;
         settled = true;
-        if (selector !== undefined) closePanel(shell, selector);
-        shell.inputBox.visible = true;
-        shell.powerline.visible = true;
-        setHints(shell, restoredHints);
+        if (selector !== undefined) closePanel(this.shell, selector);
+        this.shell.setUi("composerVisible", true);
+        setHints(this.shell, restoredHints);
         finish();
       };
-      shell.inputBox.visible = false;
-      shell.powerline.visible = false;
+      this.shell.setUi("composerVisible", false);
       selector = openPanel(
-        shell,
+        this.shell,
         new TreeSelector(
           {
             renderer: this.renderer,
-            theme: shell.theme,
-            nextId: shell.nextId,
-            onRows: (rows) => shell.ephemeral.setRows(rows),
-            onSelect: (oid) => settle(() => resolve(oid)),
+            theme: this.shell.theme,
+            nextId: this.shell.nextId,
+            onRows: (rows) => setSlotRows(this.shell, rows),
+            onSelect: (oid) => settle(() => resolveSelection(oid)),
             onCancel: () => settle(() => reject(new PickerCancelled())),
           },
           options,
@@ -2209,26 +2959,24 @@ export class Interactive {
     readonly prompt: string;
     readonly placeholder: string;
   }): Promise<string> {
-    const { shell } = this;
-    shell.dismissInfoPanel?.();
-    if (shell.selecting) return Promise.reject(new Error("Another panel is already open"));
-    return new Promise<string>((resolve, reject) => {
-      const previousPrompt = shell.prompt.content;
-      const previousSubmit = shell.input.onSubmit;
-      const previousPlaceholder = shell.input.placeholder;
-      shell.input.placeholder = options.placeholder;
-      shell.prompt.content = options.prompt;
-      shell.prompting = true;
+    this.shell.dismissInfoPanel?.();
+    if (this.shell.ui.selecting) return Promise.reject(new Error("Another panel is already open"));
+    return new Promise<string>((resolveLine, reject) => {
+      const previousPrompt = this.shell.ui.prompt;
+      const previousSubmit = this.shell.input.onSubmit;
+      const previousPlaceholder = this.shell.input.placeholder;
+      this.shell.input.placeholder = options.placeholder;
+      this.shell.setUi({ prompt: options.prompt, prompting: true });
       let settled = false;
       const finish = (): void => {
         this.renderer.keyInput.off("keypress", onKeyPress);
-        shell.input.placeholder = previousPlaceholder;
-        shell.prompt.content = previousPrompt;
-        shell.prompting = false;
-        shell.input.onSubmit = previousSubmit;
+        this.shell.input.placeholder = previousPlaceholder;
+        this.shell.setUi({ prompt: previousPrompt, prompting: false });
+        this.shell.input.onSubmit = previousSubmit;
+        this.flushShellMarkers();
       };
       const onKeyPress = (key: KeyEvent): void => {
-        if (settled || (key.name !== "escape" && !(key.ctrl && key.name === "c"))) return;
+        if (settled || !matchesKey("auth.cancel", key, "required")) return;
         key.preventDefault();
         key.stopPropagation();
         settled = true;
@@ -2236,15 +2984,15 @@ export class Interactive {
         reject(new PickerCancelled());
       };
       this.renderer.keyInput.on("keypress", onKeyPress);
-      shell.input.onSubmit = () => {
+      this.shell.input.onSubmit = () => {
         if (settled) return;
         settled = true;
-        const text = shell.input.plainText;
-        shell.input.clear();
+        const text = this.shell.input.plainText;
+        this.shell.input.clear();
         finish();
-        resolve(text);
+        resolveLine(text);
       };
-      shell.input.focus();
+      this.shell.input.focus();
     });
   }
 
@@ -2260,12 +3008,11 @@ export class Interactive {
     readonly filter?: TreeFilter;
     readonly selectedOid?: Oid;
   }): Promise<void> {
-    const { shell } = this;
     const session = this.requireSession();
     if (this.busy) throw new Error("Wait for the current run before changing the session branch");
     const commits = await this.host.sessionCommits(session.sessionId);
     if (commits.length === 0) {
-      notice(shell, "No messages to branch from");
+      notice(this.shell, "No messages to branch from");
       return;
     }
     const tip = session.state.transcript.tip;
@@ -2285,11 +3032,11 @@ export class Interactive {
     const selected = byOid.get(picked);
     if (selected === undefined) throw new Error(`Commit not found: ${picked}`);
     if (picked === tip) {
-      notice(shell, "Already at that point in the chat");
+      notice(this.shell, "Already at that point in the chat");
       return;
     }
     const takesBack = selected.body.kind === "message" && selected.body.message.role === "user";
-    if (takesBack && shell.input.plainText.trim() !== "") {
+    if (takesBack && this.shell.input.plainText.trim() !== "") {
       throw new Error("Clear the composer before editing a message");
     }
     const again = (): Promise<void> => this.openTree({ ...options, selectedOid: picked });
@@ -2308,13 +3055,14 @@ export class Interactive {
     switch (outcome.kind) {
       case "moved":
         if (outcome.restored !== undefined) {
-          this.handBack(
-            outcome.restored.content,
-            "Message moved back to the composer. Enter sends it again.",
-          );
+          this.stageHandback(session.sessionId, {
+            content: outcome.restored.content,
+            commit: outcome.restored.commit,
+            notice: "Message moved back to the composer. Enter sends it again.",
+          });
           return;
         }
-        notice(shell, "Moved. The next message starts a branch here.", shell.theme.ok);
+        notice(this.shell, "Moved. The next message starts a branch here.", this.shell.theme.ok);
         this.focusComposer();
         return;
       case "busy":
@@ -2348,17 +3096,22 @@ export class Interactive {
       this.slashSettings(session),
       new Map(),
     );
-    const selectedName = await selectChoice(
+    const restoreCompletion = this.autocomplete?.preserveSelection();
+    const selectedName = await openActionPalette(
       this.shell,
-      "Commands",
-      commands.map((command) => ({
-        id: command.name,
-        label: slashCommandLabel(command),
-        description: command.description,
-      })),
+      commands,
+      () => {
+        restoreCompletion?.();
+        this.refreshHints();
+      },
+      () => this.refreshHints(),
     );
     const selected = commands.find((command) => command.name === selectedName);
     if (selected === undefined || selected.name === "help") return;
+    if (selected.name === "cd") {
+      this.prefillComposer("/cd ");
+      return;
+    }
     await this.runCommand({ name: selected.name, argument: "" });
   }
 
@@ -2400,6 +3153,7 @@ export class Interactive {
             this.runtime,
             await loadAuthenticatedModels(this.runtime.models, { force: true }),
           ),
+        open: () => this.pickModel(),
         apply: (choiceId) => this.changeModelChoice(choiceId),
       },
       {
@@ -2478,10 +3232,12 @@ export class Interactive {
     argument: string,
     cancelLabel: "back" | "close" = "close",
   ): Promise<void> {
-    if (this.busy) throw new Error(`Wait for the current run before changing ${row.label}`);
+    // Model and effort select inputs for the next message, not the active turn.
+    if (this.busy && row.id !== "model" && row.id !== "effort")
+      throw new Error(`Wait for the current run before changing ${row.label}`);
     if (argument === "") {
-      if (row.id === "model") {
-        await this.pickModel();
+      if (row.open !== undefined) {
+        await row.open();
         return;
       }
       const picker: SelectChoiceOptions = { selectedId: row.current(), cancelLabel };
@@ -2522,58 +3278,80 @@ export class Interactive {
   }
 
   private async pickModel(): Promise<void> {
-    const { shell, runtime } = this;
     const session = this.requireSession();
-    if (shell.selecting) throw new Error("Another menu is already open");
-    const selection = await new Promise<ModelSelection>((resolve, reject) => {
+    if (this.shell.ui.selecting) throw new Error("Another menu is already open");
+    await new Promise<void>((resolveSelection, reject) => {
       const close = (): void => {
-        closePanel(shell, picker);
+        closePanel(this.shell, picker);
         this.refreshHints();
       };
       const picker = new ModelPicker({
+        kind: "session",
         renderer: this.renderer,
-        theme: shell.theme,
-        nextId: shell.nextId,
-        models: cachedAuthenticatedModels(runtime.models) ?? [],
+        theme: this.shell.theme,
+        nextId: this.shell.nextId,
+        models: cachedAuthenticatedModels(this.runtime.models) ?? [],
         current: this.config.model,
         thinkingLevel: this.config.thinkingLevel,
         fastModes: new Map(
           session.settings.map((setting) => [setting.id, setting.current === "on"]),
         ),
-        load: () => loadAuthenticatedModels(runtime.models),
-        onRows: (rows) => shell.ephemeral.setRows(rows),
-        onHints: (hints) => setHints(shell, hints),
+        load: () => loadAuthenticatedModels(this.runtime.models),
+        onRows: (rows) => setSlotRows(this.shell, rows),
+        onHints: (hints) => setHints(this.shell, hints),
         onError: this.reportError,
         onSelect: (picked) => {
+          // Reserve before closing the panel lets another key submit a message.
+          const applying = this.applyModelSelection(session, picked);
           close();
-          resolve(picked);
+          resolveSelection(applying);
         },
         onCancel: () => {
           close();
           reject(new PickerCancelled());
         },
       });
-      openPanel(shell, picker);
+      openPanel(this.shell, picker);
     });
-    if (selection.fast !== undefined) {
-      const { settingId, enabled } = selection.fast;
-      const row = this.settingRows(session).find((setting) => setting.id === settingId);
-      if (row !== undefined && row.current() !== (enabled ? "on" : "off")) {
-        await row.apply(enabled ? "on" : "off");
+  }
+
+  private async applyModelSelection(
+    session: FollowedSession,
+    selection: ModelSelection,
+  ): Promise<void> {
+    let unchanged = false;
+    const result = await session.config.prepareSelection((selected) => {
+      const choice = {
+        model: selection.model,
+        thinkingLevel: clampThinkingLevel(selection.model, selection.thinkingLevel),
+      };
+      unchanged =
+        selected.model.provider === choice.model.provider &&
+        selected.model.id === choice.model.id &&
+        selected.thinkingLevel === choice.thinkingLevel;
+      const patch = unchanged ? undefined : choice;
+      if (selection.fast !== undefined) {
+        const { settingId, enabled } = selection.fast;
+        const row = this.settingRows(session).find((setting) => setting.id === settingId);
+        if (row !== undefined && row.current() !== (enabled ? "on" : "off")) {
+          return row.apply(enabled ? "on" : "off").then(() => patch);
+        }
       }
-    }
-    await this.changeModel(selection.model, selection.thinkingLevel);
+      return patch;
+    });
+    if (this.disposed || this.session !== session) return;
+    if (result.kind === "failed") throw new Error(result.message);
+    if (result.kind !== "acknowledged" && !unchanged) return;
     const fast =
       selection.fast === undefined ? "" : ` · Fast mode ${selection.fast.enabled ? "on" : "off"}`;
     notice(
-      shell,
+      this.shell,
       `Model: ${modelChoiceId(selection.model)} · ${selection.thinkingLevel}${fast}`,
-      shell.theme.ok,
+      this.shell.theme.ok,
     );
   }
 
   private async openSettings(): Promise<void> {
-    if (this.busy) throw new Error("Wait for the current run before changing settings");
     let selectedId = "model";
     while (!this.disposed) {
       const rows = this.settingRows(this.requireSession());
@@ -2607,20 +3385,21 @@ export class Interactive {
 
   /** The login funnel over the shell: pickers for choices, the composer for keys and codes. */
   private authInteraction(signal: AbortSignal): AuthInteraction {
-    const { shell } = this;
     return {
       signal,
       prompt: (prompt) => {
+        const promptSignal =
+          prompt.signal === undefined ? signal : AbortSignal.any([signal, prompt.signal]);
         switch (prompt.type) {
           case "select":
-            return selectChoice(shell, prompt.message, [...prompt.options]);
+            return selectChoice(this.shell, prompt.message, prompt.options, {
+              signal: promptSignal,
+              selectedId: this.config.model.provider,
+            });
           case "text":
           case "secret":
           case "manual_code":
-            return this.readLine({
-              prompt: `${prompt.message} `,
-              placeholder: prompt.placeholder ?? "",
-            });
+            return readAuthPrompt(this.shell, prompt, promptSignal);
           default: {
             const _exhaustive: never = prompt;
             return _exhaustive;
@@ -2628,17 +3407,21 @@ export class Interactive {
         }
       },
       notify: (event) => {
+        if (signal.aborted || this.disposed) return;
         switch (event.type) {
           case "auth_url":
-            notice(shell, [event.instructions ?? "Open this URL to continue:", event.url]);
+            notice(this.shell, [event.instructions ?? "Open this URL to continue:", event.url]);
             void open(event.url).catch(() => undefined);
             return;
           case "device_code":
-            notice(shell, `Visit ${event.verificationUri} and enter the code ${event.userCode}`);
+            notice(
+              this.shell,
+              `Visit ${event.verificationUri} and enter the code ${event.userCode}`,
+            );
             return;
           case "info":
           case "progress":
-            notice(shell, event.message);
+            notice(this.shell, event.message);
             return;
           default: {
             const _exhaustive: never = event;
@@ -2649,96 +3432,188 @@ export class Interactive {
     };
   }
 
-  /** `/login [provider]`: pick a provider when none is named, then its login mode when it has two. */
-  private async login(argument: string): Promise<void> {
-    const { shell } = this;
-    const { models } = this.runtime;
-    let provider: Provider;
-    if (argument === "") {
-      const statuses = await providerAuthStatuses(models);
-      const chosen = await selectChoice(
-        shell,
-        "Sign in",
-        statuses.map((status) => ({
-          id: status.provider.id,
-          label: status.provider.name,
-          description: status.kind === "authenticated" ? "signed in" : "",
-        })),
-        { selectedId: this.config.model.provider },
-      );
-      provider = requireProvider(models, chosen);
-    } else {
-      provider = requireProvider(models, argument);
-    }
-    const controller = new AbortController();
-    const interaction = this.authInteraction(controller.signal);
-    const { oauth, apiKey } = provider.auth;
-    let mode: "oauth" | "api_key" = oauth === undefined ? "api_key" : "oauth";
-    if (oauth !== undefined && apiKey?.login !== undefined) {
-      const picked = await interaction.prompt({
-        type: "select",
-        message: `Sign in to ${provider.name} with`,
-        options: [
-          { id: "oauth", label: oauth.name },
-          { id: "api_key", label: apiKey.name },
-        ],
-      });
-      if (picked !== "oauth" && picked !== "api_key") throw new Error("Unknown login mode");
-      mode = picked;
-    }
-    const wasSignedOut = (await models.getAuth(this.config.model.provider)) === undefined;
-    try {
-      await models.login(provider.id, mode, interaction);
-    } catch (cause) {
-      controller.abort();
-      throw cause;
-    }
-    await loadAuthenticatedModels(models, { force: true });
-    notice(shell, `Signed in to ${provider.name}`, shell.theme.ok);
-    // A shell that opened signed out now has somewhere to send: move to the provider just joined.
-    if (wasSignedOut) await this.changeModel(defaultModel(models, provider.id));
-  }
-
-  /** `/logout [provider]`: the named provider, else the one the chat is using. */
-  private async logout(argument: string): Promise<void> {
-    const { models } = this.runtime;
-    const provider = requireProvider(
-      models,
-      argument === "" ? this.config.model.provider : argument,
-    );
-    await models.logout(provider.id);
-    await loadAuthenticatedModels(models, { force: true });
-    notice(this.shell, `Signed out of ${provider.name}`, this.shell.theme.ok);
-  }
-
-  /** The usage card, in the notice slot: first what the store knows, then the account's headroom. */
-  private async openUsage(): Promise<void> {
-    const { shell } = this;
+  /** Credential changes and their model recovery belong to the session that started them. */
+  private async authenticate(action: "login" | "logout", argument: string): Promise<void> {
+    if (this.authenticating !== undefined)
+      throw new Error("An authentication command is already running.");
     const session = this.requireSession();
-    const report = await this.host.workspaceUsage(session.sessionId);
+    const controller = new AbortController();
+    this.authenticating = controller;
+    this.refreshHints();
+    const signal = AbortSignal.any([controller.signal, this.stopped.signal]);
+    const models = this.runtime.models;
+    const current = this.config.model;
+    const interaction = this.authInteraction(signal);
+    try {
+      const wasSignedOut =
+        action === "login" && (await models.checkAuth(current.provider, { signal })) === undefined;
+      const input = { models, interaction, providerId: argument === "" ? undefined : argument };
+      const result =
+        action === "login"
+          ? await loginProvider(input).then((provider) => ({
+              provider,
+              message: `Signed in to ${provider.name}.`,
+            }))
+          : await logoutProvider(input);
+      if (this.disposed || this.session !== session) return;
+      notice(this.shell, result.message, this.shell.theme.ok);
+      try {
+        // Discovery is separate from credential persistence and never runs on logout.
+        if (action === "login") {
+          const refreshed = await models.refresh({
+            providers: [result.provider.id],
+            force: true,
+            signal,
+          });
+          for (const error of refreshed.errors.values())
+            notice(
+              this.shell,
+              `Signed in, but model discovery failed: ${error.message}. Use /model to retry.`,
+              this.shell.theme.warning,
+            );
+        }
+        const available = await loadAuthenticatedModels(models, {
+          force: true,
+          allowNetwork: false,
+          signal,
+        });
+        if (signal.aborted || this.disposed || this.session !== session) return;
+        if (this.config.model.provider !== current.provider || this.config.model.id !== current.id)
+          return;
+        if (
+          action === "login"
+            ? !wasSignedOut
+            : (await models.checkAuth(current.provider, { signal })) !== undefined
+        )
+          return;
+        if (action === "logout" && result.provider.id !== current.provider) return;
+        const candidates =
+          action === "login"
+            ? available.filter((model) => model.provider === result.provider.id)
+            : available;
+        const first = candidates[0];
+        if (first === undefined) {
+          notice(
+            this.shell,
+            [
+              result.message,
+              available.length === 0
+                ? "No authenticated models available. /login connects a provider; /model refreshes the catalog."
+                : "No models available for this provider. /model selects another.",
+            ],
+            this.shell.theme.warning,
+          );
+          return;
+        }
+        const preferred = defaultModel(models, first.provider);
+        const selected =
+          candidates.find(
+            (model) => model.provider === preferred.provider && model.id === preferred.id,
+          ) ?? first;
+        await this.changeModel(selected);
+        notice(
+          this.shell,
+          [result.message, `Model: ${modelChoiceId(selected)}`],
+          this.shell.theme.ok,
+        );
+      } catch (cause) {
+        if (signal.aborted) return;
+        notice(
+          this.shell,
+          [
+            result.message,
+            `Model selection could not refresh: ${errorMessage(cause)}. Use /model to retry.`,
+          ],
+          this.shell.theme.warning,
+        );
+      }
+    } catch (cause) {
+      if (signal.aborted && !this.disposed) {
+        notice(this.shell, "Authentication cancelled.");
+        return;
+      }
+      throw cause;
+    } finally {
+      controller.abort();
+      if (this.authenticating === controller) this.authenticating = undefined;
+      if (!this.disposed) {
+        this.refreshHints();
+        if (this.session !== undefined && this.waiting !== undefined)
+          this.askQuestion(this.session, this.waiting);
+      }
+    }
+  }
+
+  /** Local history and account limits load independently without blocking the report. */
+  private async openUsage(): Promise<void> {
+    const session = this.requireSession();
+    if (this.disposed || this.shell.ui.selecting || this.shell.ui.prompting) return;
     const activeProvider = this.config.model.provider;
     const checking = hasHeadroom(activeProvider);
-    notice(
-      shell,
-      usageLines(
-        usageCard(report, {
-          activeProvider,
-          headroom: checking ? { kind: "checking" } : { kind: "none" },
-        }),
-      ),
-    );
-    if (!checking) return;
-    const limits = await fetchAccountLimits(this.runtime.models, activeProvider);
-    if (this.session !== session || this.disposed) return;
-    notice(
-      shell,
-      usageLines(
-        usageCard(report, {
-          activeProvider,
-          headroom: limits === undefined ? { kind: "unavailable" } : { kind: "known", limits },
-        }),
-      ),
-    );
+    const controller = new AbortController();
+    const close = (): void => {
+      controller.abort();
+      if (this.shell.dismissInfoPanel !== close) return;
+      this.shell.dismissInfoPanel = undefined;
+      if (panel.container.isDestroyed) return;
+      this.shell.setUi("overlay", undefined);
+      closePanel(this.shell, panel);
+      this.refreshHints();
+    };
+    let options: UsageCardOptions = {
+      activeProvider,
+      headroom: checking ? { kind: "checking" } : { kind: "none" },
+      claudeCode: { kind: "checking" },
+    };
+    const panel = openPanel(this.shell, new UsagePanel(this.shell, close));
+    // Cover the chat without changing its layout or scroll position. The shell
+    // still owns dismissal, composer focus, and notices queued behind the panel.
+    this.shell.setUi("overlay", panel.container);
+    this.shell.dismissInfoPanel = close;
+    const active = (): boolean =>
+      this.session === session &&
+      !this.disposed &&
+      !controller.signal.aborted &&
+      this.shell.dismissInfoPanel === close;
+    let report: Awaited<ReturnType<Host["workspaceUsage"]>>;
+    try {
+      report = await this.host.workspaceUsage(session.sessionId);
+    } catch (cause) {
+      if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });
+      return;
+    }
+    if (!active()) return;
+    const update = (patch: Partial<UsageCardOptions>): void => {
+      if (!active()) return;
+      options = { ...options, ...patch };
+      panel.update({ kind: "ready", card: usageCard(report, options) });
+    };
+    update({});
+    try {
+      await Promise.all([
+        readClaudeCodeUsage({ models: this.runtime.models, signal: controller.signal }).then(
+          (claudeCode) => update({ claudeCode }),
+          (cause: unknown) =>
+            update({
+              claudeCode: {
+                kind: "failed",
+                message: `Failed to read local history: ${errorMessage(cause)}`,
+              },
+            }),
+        ),
+        checking
+          ? fetchAccountLimits(this.runtime.models, activeProvider, controller.signal).then(
+              (limits) =>
+                update({
+                  headroom:
+                    limits === undefined ? { kind: "unavailable" } : { kind: "known", limits },
+                }),
+            )
+          : undefined,
+      ]);
+    } catch (cause) {
+      if (active()) throw cause;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -2760,8 +3635,11 @@ export class Interactive {
     parsed: ParsedSlashCommand,
     options: { readonly lane?: string; readonly target?: SlashTarget } = {},
   ): Promise<void> {
-    const { shell } = this;
     const session = this.requireSession();
+    if (this.changingDirectory || this.switchingSession)
+      throw new Error("Wait for the workspace switch to finish.");
+    if (this.authenticating !== undefined)
+      throw new Error("Finish signing in or out first. Esc cancels.");
     const lane = options.lane ?? this.roles.steer;
     const target = options.target ?? this.resolveTarget(session, parsed.name);
     const asMessage = (): Promise<void> =>
@@ -2780,7 +3658,7 @@ export class Interactive {
         void this.refreshBadges();
         switch (outcome.kind) {
           case "ran":
-            if (outcome.output !== undefined) notice(shell, outcome.output);
+            if (outcome.output !== undefined) notice(this.shell, outcome.output);
             return;
           case "prompt":
             await this.send(session, outcome.prompt, lane);
@@ -2821,7 +3699,6 @@ export class Interactive {
   }
 
   private async runBuiltin(name: BuiltinSlashName, argument: string): Promise<void> {
-    const { shell } = this;
     const session = this.requireSession();
     const noArgument = (): void => {
       if (argument !== "") throw new Error(`/${name} takes no argument`);
@@ -2844,25 +3721,28 @@ export class Interactive {
       case "new": {
         noArgument();
         const info = await this.host.nyte.sessions.create();
+        if (this.workspace.cwd !== this.host.cwd)
+          await this.relocateSession(info.sessionId, this.workspace);
         await this.switchSession(info, false);
         return;
       }
+      case "cd":
+        whenIdle("changing directories");
+        await this.changeDirectory(argument);
+        return;
       case "settings":
         noArgument();
         await this.openSettings();
         return;
       case "login":
-        await this.login(argument);
-        return;
       case "logout":
-        await this.logout(argument);
+        await this.authenticate(name, argument);
         return;
       case "compact": {
         whenIdle("compacting");
         const controller = new AbortController();
         this.compaction = controller;
         this.refreshHints();
-        notice(shell, "Compacting…", shell.theme.tool);
         try {
           const request = { sessionId: session.sessionId, signal: controller.signal };
           const outcome = await this.host.nyte.runs.compact(
@@ -2871,13 +3751,12 @@ export class Interactive {
           if (this.disposed || this.session !== session) return;
           switch (outcome.kind) {
             case "compacted":
-              notice(shell, "Compacted", shell.theme.ok);
               return;
             case "nothing_to_compact":
-              notice(shell, "Nothing to compact");
+              notice(this.shell, "Nothing to compact");
               return;
             case "aborted":
-              notice(shell, "Compaction cancelled");
+              notice(this.shell, "Compaction cancelled");
               return;
             case "busy":
               throw new Error("Wait for the current run before compacting");
@@ -2913,58 +3792,65 @@ export class Interactive {
         return;
       case "plugins": {
         noArgument();
-        const plugins = await this.host.nyte.plugins.list({ sessionId: session.sessionId });
-        if (plugins.length === 0) {
-          notice(shell, "No plugins");
-          return;
-        }
-        const lines = plugins.map((plugin) => {
-          const where =
-            plugin.path === undefined ? plugin.source : `${plugin.source} ${plugin.path}`;
-          return plugin.status === "failed"
-            ? `${plugin.id} ${where} failed: ${plugin.error}`
-            : `${plugin.id} ${where}`;
-        });
-        lines.unshift(
-          ...this.tuiPlugins.registered().map((plugin) => `${plugin.id} TUI ${plugin.target}`),
+        const panel = openDiagnosticReport(this.shell, "Plugins", ["Loading plugins…"], () =>
+          this.refreshHints(),
         );
-        const commands = [...session.commands.keys()];
-        if (commands.length > 0)
-          lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
-        notice(shell, lines);
+        if (panel === undefined) return;
+        try {
+          const plugins = await this.host.nyte.plugins.list({ sessionId: session.sessionId });
+          if (this.disposed || this.session !== session) return;
+          const lines = plugins.map((plugin) => {
+            const where =
+              plugin.path === undefined ? plugin.source : `${plugin.source} ${plugin.path}`;
+            return plugin.status === "failed"
+              ? `${plugin.id} ${where} failed: ${plugin.error}`
+              : `${plugin.id} ${where}`;
+          });
+          lines.unshift(
+            ...this.tuiPlugins.registered().map((plugin) => `${plugin.id} TUI ${plugin.target}`),
+          );
+          const commands = [...session.commands.keys()];
+          if (commands.length > 0)
+            lines.push(`Commands: ${commands.map((command) => `/${command}`).join(" ")}`);
+          panel.update(lines.length === 0 ? ["No plugins"] : lines);
+        } catch (cause) {
+          if (!this.disposed && this.session === session)
+            panel.update([`Failed to list plugins: ${errorMessage(cause)}`]);
+        }
         return;
       }
       case "reload": {
         noArgument();
         whenIdle("reloading");
         await this.reloadPlugins();
-        this.redraw();
+        // Repaint changed TUI extensions without rebuilding transcript state.
+        this.renderer.requestFullRepaint();
         const pluginCount = (await this.host.nyte.plugins.list({ sessionId: session.sessionId }))
           .length;
         notice(
-          shell,
+          this.shell,
           `Reloaded ${String(pluginCount)} ${pluginCount === 1 ? "plugin" : "plugins"} and ${String(session.skills.size)} ${session.skills.size === 1 ? "skill" : "skills"}`,
-          shell.theme.ok,
+          this.shell.theme.ok,
         );
         return;
       }
       case "update": {
         const report = (event: UpdateProgress): void => {
-          if (event.kind === "downloading") notice(shell, `Downloading ${event.asset}…`);
-          else if (event.kind === "verified") notice(shell, "Checksum verified.");
+          if (event.kind === "downloading") notice(this.shell, `Downloading ${event.asset}…`);
+          else if (event.kind === "verified") notice(this.shell, "Checksum verified.");
         };
         const outcome = await selfUpdate(
           argument === "" ? { report } : { version: argument, report },
         );
         const severity = updateSeverity(outcome);
         notice(
-          shell,
+          this.shell,
           describeUpdateOutcome(outcome),
           severity === "ok"
             ? undefined
             : severity === "warn"
-              ? shell.theme.warning
-              : shell.theme.error,
+              ? this.shell.theme.warning
+              : this.shell.theme.error,
         );
         return;
       }

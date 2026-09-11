@@ -5,6 +5,8 @@
  * Synced with pi 7ebf9087e.
  */
 import { Compile } from "typebox/compile";
+import type { Validator } from "typebox/compile";
+import type { Static, TSchema } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
 import type { Tool, ToolCall } from "@nyte-ai/schema";
@@ -307,7 +309,7 @@ function formatValidationPath(error: TLocalizedValidationError): string {
  * @returns The validated arguments
  * @throws Error if tool is not found or validation fails
  */
-export function validateToolCall(tools: Tool[], toolCall: ToolCall): any {
+export function validateToolCall(tools: Tool[], toolCall: ToolCall): unknown {
   const tool = tools.find((t) => t.name === toolCall.name);
   if (!tool) {
     throw new Error(`Tool "${toolCall.name}" not found`);
@@ -322,42 +324,44 @@ export function validateToolCall(tools: Tool[], toolCall: ToolCall): any {
  * @returns The validated (and potentially coerced) arguments
  * @throws Error with formatted message if validation fails
  */
-export function validateToolArguments(tool: Tool, toolCall: ToolCall): any {
-  const args = structuredClone(toolCall.arguments);
-  normalizeOptionalNulls(args, tool.parameters as JsonSchemaObject);
-  Value.Convert(tool.parameters, args);
+export function validateToolArguments(tool: Tool, toolCall: ToolCall): unknown {
+  return parseToolArguments(
+    tool.parameters,
+    toolCall.arguments,
+    toolCall.name,
+    getValidator(tool.parameters),
+  );
+}
 
-  const validator = getValidator(tool.parameters);
-  if (!Object.getOwnPropertySymbols(tool.parameters).includes(TYPEBOX_KIND)) {
-    const coerced = coerceWithJsonSchema(args, tool.parameters as JsonSchemaObject);
-    if (coerced !== args) {
-      if (
-        typeof args === "object" &&
-        args !== null &&
-        typeof coerced === "object" &&
-        coerced !== null
-      ) {
-        for (const key of Object.keys(args)) {
-          delete args[key];
-        }
-        Object.assign(args, coerced);
-      } else {
-        return validator.Check(coerced) ? coerced : args;
-      }
-    }
-  }
+/** Captures the schema's validator while its input type is still known. */
+export function createToolArgumentParser<T extends TSchema>(
+  tool: Tool<T>,
+): (args: unknown) => Static<T> {
+  const schema = tool.parameters;
+  const validator = Compile(schema);
+  return (args) => parseToolArguments(schema, args, tool.name, validator);
+}
 
-  if (validator.Check(args)) {
-    return args;
-  }
+function parseToolArguments<T extends TSchema>(
+  schema: T,
+  input: unknown,
+  name: string,
+  validator: Validator<{}, T>,
+): Static<T> {
+  const args = structuredClone(input);
+  normalizeOptionalNulls(args, schema);
+  Value.Convert(schema, args);
+  const coerced = Object.getOwnPropertySymbols(schema).includes(TYPEBOX_KIND)
+    ? args
+    : coerceWithJsonSchema(args, schema);
+  if (validator.Check(coerced)) return coerced;
 
   const errors =
     validator
-      .Errors(args)
+      .Errors(coerced)
       .map((error) => `  - ${formatValidationPath(error)}: ${error.message}`)
       .join("\n") || "Unknown validation error";
-
-  const errorMessage = `Validation failed for tool "${toolCall.name}":\n${errors}\n\nReceived arguments:\n${JSON.stringify(toolCall.arguments, null, 2)}`;
-
-  throw new Error(errorMessage);
+  throw new Error(
+    `Validation failed for tool "${name}":\n${errors}\n\nReceived arguments:\n${JSON.stringify(input, null, 2)}`,
+  );
 }

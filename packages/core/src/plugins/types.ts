@@ -7,9 +7,12 @@
  * dev's extensions-v2 notes, runtime form from opencode v2
  * (`define({ id, effect(ctx) })`, a scope per plugin).
  */
-import type { JsonValue, Message, Skill } from "@nyte-ai/schema";
-import type { PluginSource, SettingChoice } from "@nyte-ai/protocol";
+import type { Api, JsonValue, Message, Model, Skill } from "@nyte-ai/schema";
+import { schemas } from "@nyte-ai/protocol";
+import type { PluginSource, SelectionReply, SettingChoice } from "@nyte-ai/protocol";
+import { Value } from "typebox/value";
 import type { SessionEvent } from "../kernel/sdk/types.ts";
+import type { TSchema } from "typebox";
 import type { AgentTool } from "../types.ts";
 import type { HookHandler, HookName } from "./hooks.ts";
 
@@ -46,6 +49,7 @@ export interface Draft<T> {
 }
 
 export interface ToolDraft extends Draft<AgentTool> {
+  set<T extends TSchema, Details>(id: string, tool: AgentTool<T, Details>): void;
   /** Replace a tool's `execute` with one that can call the previous implementation. */
   wrap(id: string, wrap: (inner: AgentTool["execute"]) => AgentTool["execute"]): void;
 }
@@ -60,22 +64,17 @@ export interface ToolRegistry extends Registry<ToolDraft> {
   list(): readonly AgentTool[];
 }
 
-/**
- * A declared agent: one record that describes the agent a user talks to, a
- * delegate a parent invokes, or a hidden utility turn. There is no separate
- * subagent type; `mode` is subtractive over a default of `all`. Argued in
- * design.mdx, "Agents".
- */
+/** A declared session preset. Delegated tasks choose their model and role per call instead. */
 export interface Agent {
   readonly id: string;
-  /** Default `all`. `primary` withholds from parents; `subagent` from the user's picker. */
+  /** Default `all`. `subagent` presets are omitted from the user's picker. */
   readonly mode?: "primary" | "subagent" | "all";
-  /** Hide from both the picker and the delegate list without changing run rights. */
+  /** Hide from the picker without changing run rights. */
   readonly hidden?: boolean;
-  /** What a parent reads to decide whether to delegate. */
+  /** Description shown when choosing a session preset. */
   readonly description?: string;
-  /** A `provider/model` ref the catalog resolves; omitted inherits the run's fallback model. */
-  readonly model?: string;
+  /** Model pin for a session using this preset. */
+  readonly model?: Pick<Model<Api>, "provider" | "id">;
   /** Persona layered onto the base system prompt, never replacing it. */
   readonly system?: string;
   /**
@@ -96,6 +95,13 @@ export interface Agent {
  */
 export interface AgentRegistry extends Registry<Draft<Agent>> {
   list(): readonly Agent[];
+}
+
+/** Session-local limits for an exact `provider/model` catalog reference. */
+export interface ModelContextPolicy {
+  readonly contextWindow: number;
+  /** Start automatic compaction at this token count, independently of summary output reserves. */
+  readonly compactAt: number;
 }
 
 export interface PromptSection {
@@ -202,6 +208,7 @@ export interface SessionApi {
   readonly settings: Registry<Draft<PluginSetting>>;
   readonly agents: AgentRegistry;
   readonly status: Registry<Draft<StatusItem>>;
+  readonly modelContext: Registry<Draft<ModelContextPolicy>>;
 
   // 2. hook: intercept a live operation and return a typed result
   hook<TName extends HookName>(name: TName, handler: HookHandler<TName>): Disposer;
@@ -212,6 +219,8 @@ export interface SessionApi {
 
   readonly storage: PluginStorage;
   readonly diagnostics: Diagnostics;
+  /** Aborts when the plugin is deactivated: a reload, a removal, or the session closing. */
+  readonly signal: AbortSignal;
 }
 
 /** Reads and writes on the session itself, as opposed to the plugin's own storage. */
@@ -230,6 +239,11 @@ export interface PluginContext {
 
 export function definePlugin(plugin: Plugin): Plugin {
   return plugin;
+}
+
+/** A wake handler's `reply` as a client sends it for a `Selection`, or nothing if it is some other shape. */
+export function selectionReply(reply: JsonValue): SelectionReply | undefined {
+  return Value.Check(schemas.SelectionReply, reply) ? reply : undefined;
 }
 
 /** Wrap a plugin object as a loaded plugin without a loader. */

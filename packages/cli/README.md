@@ -19,3 +19,8 @@ The npm package downloads the matching release from
 [`interfaces-lab/nyte`](https://github.com/interfaces-lab/nyte), verifies its SHA-256 checksum,
 and caches the native executable under `~/.nyte/bin`. Set `NYTE_BIN_DIR` to choose another cache
 directory.
+
+Read the [included guide and runnable examples](docs/README.md). These files ship
+with this npm version. For a global install, the guide is at
+`$(npm root -g)/nyte-ai/docs/README.md`. A downloaded native release also retains
+its guide at `<cache-directory>/<version>/docs/README.md`.

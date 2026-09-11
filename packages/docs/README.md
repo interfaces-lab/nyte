@@ -3,6 +3,12 @@
 The Nyte documentation site. Content lives in `content/docs`. The [design record](content/docs/design.mdx)
 is the contract; other pages describe what shipped.
 
+`content/cloud` is Cloud, the design system, served at `/cloud/introduction`. Its `headless/`
+pages and `content/base-ui-reference/` are vendored from Base UI's MIT-licensed docs by
+`pnpm sync:base-ui`; `pnpm check:base-ui` fails when they drift. Live primitive examples compile
+`@nyte-ai/ui` through StyleX (`.babelrc.json` + `@stylexjs/postcss-plugin` in
+`postcss.config.mjs`); the `@stylex;` marker in `src/app/global.css` is where the rules land.
+
 ```bash
 pnpm --dir packages/docs dev
 ```

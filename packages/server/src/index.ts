@@ -1,17 +1,19 @@
 /**
  * `@nyte-ai/server`: a Web `Request -> Response` handler over a `Nyte` SDK.
  *
- * Two routes, both under `/v1`: `POST /v1/call/{verb}` runs one verb from the
- * protocol table, `GET /v1/watch` streams a session's events as server-sent
- * events. The handler never listens on a socket. Hand `server.fetch` to
- * `Bun.serve`, `Deno.serve`, or a Node adapter that builds a `Request` from
- * an incoming message, and bind that listener to a loopback address unless
- * the deployment has its own edge.
+ * Three routes, all under `/v1`: `GET /v1/info` says what is answering,
+ * `POST /v1/call/{operation}` runs one operation from the protocol table,
+ * `GET /v1/watch` streams a session's events as server-sent events. The
+ * handler never listens on a socket. Hand `server.fetch` to `Bun.serve`,
+ * `Deno.serve`, or a Node adapter that builds a `Request` from an incoming
+ * message, and bind that listener to a loopback address unless the deployment
+ * has its own edge.
  *
  * The handler owns nothing of the SDK's lifecycle. It does not attach a
  * runner, and `close()` stops only the watch streams it opened.
  */
 import {
+  dispatch,
   CursorExpired,
   NyteClosed,
   UnknownSession,
@@ -22,14 +24,17 @@ import {
   CALL_ROUTE_PREFIX,
   CallRequestSchema,
   EVENT_STREAM_MEDIA_TYPE,
+  INFO_ROUTE,
   JSON_MEDIA_TYPE,
-  VERBS,
+  OPERATIONS,
   WATCH_QUERY,
   WATCH_ROUTE,
+  WIRE_VERSION,
   describeIssues,
   encodeSseComment,
   encodeSseFrame,
-  parseVerb,
+  mediaType,
+  parseOperation,
   schemas,
   statusFor,
   validationIssues,
@@ -38,9 +43,10 @@ import {
   type Issue,
   type Seq,
   type SessionId,
-  type Verb,
-  type VerbInput,
-  type VerbOutput,
+  type Operation,
+  type OperationInput,
+  type OperationOutput,
+  type ServerInfo,
   type WatchFrame,
   type WireError,
 } from "@nyte-ai/protocol";
@@ -73,12 +79,14 @@ export type ServerAuth =
 
 export interface ServerFailure {
   readonly route: "call" | "watch" | "request";
-  readonly verb?: Verb;
+  readonly operation?: Operation;
   readonly cause: unknown;
 }
 
 export interface NyteServerOptions {
   readonly sdk: Nyte;
+  /** The host's release, answered on the info route so a client can say what it is attached to. */
+  readonly version: string;
   readonly auth: ServerAuth;
   /**
    * Origins a browser page may call from, exactly as the `Origin` header
@@ -111,47 +119,8 @@ const DEFAULT_HEARTBEAT_MS = 15_000;
 const WATCH_QUERY_KEYS: readonly string[] = Object.values(WATCH_QUERY);
 const encoder = new TextEncoder();
 
-// ---------------------------------------------------------------------------
-// Dispatch
-// ---------------------------------------------------------------------------
-
-type Dispatch = {
-  readonly [V in Verb]: (sdk: Nyte, input: VerbInput<V>) => Promise<VerbOutput<V>>;
-};
-
-/** Every verb in the table, bound to the SDK method it names. A verb missing here fails the build. */
-const DISPATCH: Dispatch = {
-  landing: (sdk) => Promise.resolve(sdk.landing),
-  "sessions.create": (sdk, input) => sdk.sessions.create(input),
-  "sessions.get": (sdk, input) => sdk.sessions.get(input),
-  "sessions.snapshot": (sdk, input) => sdk.sessions.snapshot(input),
-  "sessions.list": (sdk, input) => sdk.sessions.list(input),
-  "sessions.rename": (sdk, input) => sdk.sessions.rename(input),
-  "sessions.setPinned": (sdk, input) => sdk.sessions.setPinned(input),
-  "sessions.setArchived": (sdk, input) => sdk.sessions.setArchived(input),
-  "sessions.delete": (sdk, input) => sdk.sessions.delete(input),
-  "sessions.configure": (sdk, input) => sdk.sessions.configure(input),
-  "messages.send": (sdk, input) => sdk.messages.send(input),
-  "messages.cancel": (sdk, input) => sdk.messages.cancel(input),
-  "messages.redeliver": (sdk, input) => sdk.messages.redeliver(input),
-  "runs.abort": (sdk, input) => sdk.runs.abort(input),
-  "runs.changes": (sdk, input) => sdk.runs.changes(input),
-  "heads.move": (sdk, input) => sdk.heads.move(input),
-  "workspace.list": (sdk) => sdk.workspace.list(),
-  "workspace.forget": (sdk, input) => sdk.workspace.forget(input),
-  "workspace.vcs.diff": (sdk, input) => sdk.workspace.vcs.diff(input),
-  "provider.models.default": (sdk) => sdk.provider.models.default(),
-  "plugins.catalog": (sdk) => sdk.plugins.catalog(),
-  "plugins.list": (sdk, input) => sdk.plugins.list(input),
-  "plugins.commands.list": (sdk, input) => sdk.plugins.commands.list(input),
-  "plugins.commands.run": (sdk, input) => sdk.plugins.commands.run(input),
-  "plugins.settings.list": (sdk, input) => sdk.plugins.settings.list(input),
-  "plugins.settings.apply": (sdk, input) => sdk.plugins.settings.apply(input),
-  "plugins.resources.list": (sdk, input) => sdk.plugins.resources.list(input),
-};
-
-type VerbResult =
-  | { readonly kind: "value"; readonly value: VerbOutput<Verb> }
+type OperationResult =
+  | { readonly kind: "value"; readonly value: OperationOutput<Operation> }
   | { readonly kind: "error"; readonly error: WireError; readonly cause?: unknown };
 
 function invalid(message: string, issues: readonly Issue[] = []): WireError {
@@ -163,7 +132,7 @@ function invalid(message: string, issues: readonly Issue[] = []): WireError {
  * error is reported as `internal`. The server knows the policy, so it names
  * the mistake first, with a fixed message.
  */
-function laneIssue(sdk: Nyte, input: VerbInput<Verb>): WireError | undefined {
+function laneIssue(sdk: Nyte, input: OperationInput<Operation>): WireError | undefined {
   if (input === undefined || !("lane" in input)) return undefined;
   const { lane } = input;
   if (lane === undefined || sdk.landing.lanes.some((policy) => policy.lane === lane)) {
@@ -174,24 +143,27 @@ function laneIssue(sdk: Nyte, input: VerbInput<Verb>): WireError | undefined {
   ]);
 }
 
-/** Keep the parsed input tied to the selected verb through dispatch. */
-async function runVerb<V extends Verb>(
+/** Keep the parsed input tied to the selected operation through dispatch. */
+async function runOperation<V extends Operation>(
   sdk: Nyte,
-  verb: V,
+  operation: V,
   request: CallRequest,
-): Promise<VerbResult> {
-  const schema: (typeof VERBS)[V]["input"] = VERBS[verb].input;
+): Promise<OperationResult> {
+  const schema: (typeof OPERATIONS)[V]["input"] = OPERATIONS[operation].input;
   const input = Object.hasOwn(request, "input") ? request.input : undefined;
   if (!Value.Check(schema, input)) {
     return {
       kind: "error",
-      error: invalid("Input did not match the verb", validationIssues(Value.Errors(schema, input))),
+      error: invalid(
+        "Input did not match the operation",
+        validationIssues(Value.Errors(schema, input)),
+      ),
     };
   }
   const issue = laneIssue(sdk, input);
   if (issue !== undefined) return { kind: "error", error: issue };
   try {
-    return { kind: "value", value: await DISPATCH[verb](sdk, input) };
+    return { kind: "value", value: await dispatch(sdk, operation, input) };
   } catch (cause) {
     return { kind: "error", error: wireErrorFor(cause), cause };
   }
@@ -258,12 +230,6 @@ function bearerToken(request: Request): string | undefined {
   if (space === -1) return undefined;
   if (header.slice(0, space).toLowerCase() !== "bearer") return undefined;
   return header.slice(space + 1).trim();
-}
-
-function mediaType(header: string | null): string | undefined {
-  if (header === null) return undefined;
-  const semicolon = header.indexOf(";");
-  return (semicolon === -1 ? header : header.slice(0, semicolon)).trim().toLowerCase();
 }
 
 type BodyRead =
@@ -439,6 +405,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
   const browserOrigins = options.browserOrigins ?? [];
   const watches = new Set<OpenWatch>();
   let closed = false;
+  const info: ServerInfo = { version: options.version, wireVersion: WIRE_VERSION };
 
   /** A diagnostic hook that throws must not turn a redacted reply into no reply. */
   const report = (failure: ServerFailure): void => {
@@ -493,7 +460,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     return new Response(null, { status: 204, headers });
   };
 
-  const call = async (request: Request, verb: Verb, cors: Headers): Promise<Response> => {
+  const call = async (request: Request, operation: Operation, cors: Headers): Promise<Response> => {
     if (mediaType(request.headers.get("content-type")) !== JSON_MEDIA_TYPE) {
       return refuse({ code: "unsupported_media_type", message: `Send ${JSON_MEDIA_TYPE}` }, cors);
     }
@@ -526,7 +493,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         cors,
       );
     }
-    const result = await runVerb(sdk, verb, parsed);
+    const result = await runOperation(sdk, operation, parsed);
     switch (result.kind) {
       case "value": {
         const reply: CallReply =
@@ -537,12 +504,13 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
           return jsonResponse(200, reply, cors);
         } catch (cause) {
           // A value JSON cannot carry (a bigint, a cycle) is a host bug, not the caller's.
-          report({ route: "call", verb, cause });
+          report({ route: "call", operation, cause });
           return refuse({ code: "internal", message: "Internal error" }, cors);
         }
       }
       case "error":
-        if (result.error.code === "internal") report({ route: "call", verb, cause: result.cause });
+        if (result.error.code === "internal")
+          report({ route: "call", operation, cause: result.cause });
         return refuse(result.error, cors);
       default: {
         const _exhaustive: never = result;
@@ -701,6 +669,12 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       );
     }
 
+    if (url.pathname === INFO_ROUTE) {
+      if (request.method !== "GET") {
+        return refuse({ code: "method_not_allowed", message: "Info is GET" }, cors);
+      }
+      return jsonResponse(200, { ok: true, defined: true, value: info }, cors);
+    }
     if (url.pathname === WATCH_ROUTE) {
       if (request.method !== "GET") {
         return refuse({ code: "method_not_allowed", message: "Watch is GET" }, cors);
@@ -712,11 +686,11 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         return refuse({ code: "method_not_allowed", message: "Calls are POST" }, cors);
       }
       const name = url.pathname.slice(CALL_ROUTE_PREFIX.length);
-      const verb = parseVerb(name);
-      if (verb === undefined) {
-        return refuse({ code: "unknown_verb", message: `Unknown verb: ${name}` }, cors);
+      const operation = parseOperation(name);
+      if (operation === undefined) {
+        return refuse({ code: "unknown_operation", message: `Unknown operation: ${name}` }, cors);
       }
-      return call(request, verb, cors);
+      return call(request, operation, cors);
     }
     return refuse({ code: "not_found", message: "No such route" }, cors);
   };

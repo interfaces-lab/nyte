@@ -70,7 +70,7 @@ describe("context files", () => {
     assert.deepEqual(files, [{ path: join(root, "AGENTS.md"), content: "agents" }]);
   });
 
-  test("skips the main repo file shadowed by a nested linked worktree's own copy", () => {
+  test("a linked worktree's own context file shadows the main repo's; without one it inherits", () => {
     const root = tempDir();
     const mainRepo = join(root, "repo");
     const worktree = join(mainRepo, "wt");
@@ -82,29 +82,16 @@ describe("context files", () => {
     writeFileSync(join(worktreeGitDir, "commondir"), "../..\n");
     writeFileSync(join(worktree, ".git"), `gitdir: ${worktreeGitDir}\n`);
     writeFileSync(join(mainRepo, "AGENTS.md"), "main");
+
+    assert.deepEqual(underRoot(loadProjectContextFiles({ cwd: worktree }), root), [
+      { path: join(mainRepo, "AGENTS.md"), content: "main" },
+    ]);
+
     writeFileSync(join(worktree, "AGENTS.md"), "worktree");
 
-    const files = underRoot(loadProjectContextFiles({ cwd: worktree }), root);
-
-    assert.deepEqual(files, [{ path: join(worktree, "AGENTS.md"), content: "worktree" }]);
-  });
-
-  test("keeps ancestor inheritance when the worktree has no context file of its own", () => {
-    const root = tempDir();
-    const mainRepo = join(root, "repo");
-    const worktree = join(mainRepo, "wt");
-    const worktreeGitDir = join(mainRepo, ".git", "worktrees", "wt");
-    mkdirSync(worktreeGitDir, { recursive: true });
-    mkdirSync(worktree, { recursive: true });
-    writeFileSync(join(mainRepo, ".git", "HEAD"), "ref: refs/heads/main\n");
-    writeFileSync(join(worktreeGitDir, "HEAD"), "ref: refs/heads/feat\n");
-    writeFileSync(join(worktreeGitDir, "commondir"), "../..\n");
-    writeFileSync(join(worktree, ".git"), `gitdir: ${worktreeGitDir}\n`);
-    writeFileSync(join(mainRepo, "AGENTS.md"), "main");
-
-    const files = underRoot(loadProjectContextFiles({ cwd: worktree }), root);
-
-    assert.deepEqual(files, [{ path: join(mainRepo, "AGENTS.md"), content: "main" }]);
+    assert.deepEqual(underRoot(loadProjectContextFiles({ cwd: worktree }), root), [
+      { path: join(worktree, "AGENTS.md"), content: "worktree" },
+    ]);
   });
 
   test("formats files as a project_context block and returns empty for none", () => {

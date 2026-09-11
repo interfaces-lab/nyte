@@ -9,7 +9,7 @@ let terminals: TerminalSessions;
 
 beforeEach(() => {
   events.length = 0;
-  terminals = new TerminalSessions((event) => events.push(event), "/bin/sh");
+  terminals = new TerminalSessions((event) => events.push(event), "/bin/bash");
 });
 afterEach(() => {
   terminals.dispose();
@@ -24,7 +24,7 @@ function text(id: string): string {
 test("real shells accept input, resize independently, and report exit", async () => {
   const first = terminals.create({ id: "one", cwd: "/private/tmp" });
   terminals.create({ id: "two", cwd: "/private/tmp" });
-  assert.equal(first.title, "sh");
+  assert.equal(first.title, "bash");
   terminals.resize({ id: "one", cols: 91, rows: 29 });
   terminals.write({
     id: "one",
@@ -65,6 +65,18 @@ test("output waits for renderer acknowledgements and drains without losing bytes
     { timeout: 5000 },
   );
   assert.ok(text("flood").includes("x".repeat(512 * 1024)));
+});
+
+test("idle is true at the prompt and false while a foreground job runs", async () => {
+  terminals.create({ id: "busy", cwd: "/private/tmp" });
+  terminals.write({ id: "busy", data: "stty -echo; printf 'PROMPT_OK\\n'\r" });
+  await vi.waitFor(() => assert.match(text("busy"), /PROMPT_OK/));
+  assert.equal(terminals.idle({ id: "busy" }), true);
+  terminals.write({ id: "busy", data: "sleep 30\r" });
+  await vi.waitFor(() => assert.equal(terminals.idle({ id: "busy" }), false));
+  terminals.write({ id: "busy", data: "\u0003" });
+  await vi.waitFor(() => assert.equal(terminals.idle({ id: "busy" }), true));
+  assert.equal(terminals.idle({ id: "missing" }), true);
 });
 
 test("closing is idempotent and window disposal ends remaining shells", () => {

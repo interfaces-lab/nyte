@@ -2,9 +2,23 @@
  * Pure rules the model picker and Settings › Models share. The host already
  * decided which models are listed; this file only formats and groups.
  */
-import type { ThinkingLevel } from "@nyte-ai/core";
+import type { RunConfig, ThinkingLevel } from "@nyte-ai/core";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
+
+/** The catalog's name for a session's model; the raw id until the catalog loads. */
+export function modelDisplayName(
+  catalog: DesktopCatalog | undefined,
+  model: RunConfig["model"],
+): string | undefined {
+  if (model === undefined) return undefined;
+  const option = catalog?.models.find(
+    (candidate) =>
+      candidate.id === model.id &&
+      (model.provider === undefined || candidate.provider === model.provider),
+  );
+  return option?.name ?? model.id;
+}
 
 export const THINKING_LABELS: Readonly<Record<ThinkingLevel, string>> = {
   off: "Off",

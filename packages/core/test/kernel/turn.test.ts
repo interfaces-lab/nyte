@@ -4,7 +4,10 @@
  * functions.
  */
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { access, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { expect, test } from "vitest";
+import { NOOP_TELEMETRY_CONTEXT } from "@nyte-ai/telemetry";
 import {
   createAssistantMessageEventStream,
   type Api,
@@ -12,13 +15,27 @@ import {
   type Model,
 } from "@nyte-ai/ai";
 import { Type } from "typebox";
+import { bindTool } from "../../src/tools/bind-tool.ts";
+import { createAllTools } from "../../src/tools/index.ts";
+import { createJobs } from "../../src/kernel/sdk/jobs.ts";
+import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { openEffect, readEffect, signalEffect } from "../../src/kernel/effects.ts";
 import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
 import { effectPrefix, headRef } from "../../src/kernel/names.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn, type Turn, type TurnInput, type TurnOptions } from "../../src/kernel/turn.ts";
 import { ToolWait, type AgentTool, type StreamFn } from "../../src/types.ts";
-import { assistant, call, commit, lease, message, openSession, user, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  commit,
+  lease,
+  message,
+  openSession,
+  storePath,
+  user,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -92,6 +109,7 @@ interface Bench {
     readonly signal?: AbortSignal;
     readonly abort?: true;
     readonly attempts?: number;
+    readonly now?: number;
   }): TurnInput;
 }
 
@@ -127,8 +145,10 @@ async function bench(): Promise<Bench> {
           };
       return {
         session,
+        telemetry: NOOP_TELEMETRY_CONTEXT,
         lease: held,
         run: activeRun,
+        now: options.now ?? 1,
         attempt: (options.attempts ?? 0) + 1,
         commits: [{ oid: "opening", commit: opening }],
         emit: (event) => events.push(event),
@@ -141,8 +161,8 @@ async function bench(): Promise<Bench> {
 function tool(
   execute: TestTool["execute"],
   extra: Partial<Pick<TestTool, "replay" | "wake">> = {},
-): TestTool {
-  return { name: "test", description: "a test tool", parameters, execute, ...extra };
+): AgentTool {
+  return bindTool({ name: "test", description: "a test tool", parameters, execute, ...extra });
 }
 
 function turnWith(
@@ -342,7 +362,7 @@ test("an after-tool hook failure is the durable result on recovery", async () =>
   assert.equal(hooks, 1);
 });
 
-test("a fenced final settlement fails the batch instead of publishing a completed result", async () => {
+test("a fenced final settlement fences the batch instead of publishing a completed result", async () => {
   const b = await bench();
   const turn = turnWith(
     scripted([]).streamFn,
@@ -358,9 +378,7 @@ test("a fenced final settlement fails the batch instead of publishing a complete
     },
   );
   const outcome = await turn.tools({ ...b.input(), assistant: askTool() });
-  assert.ok(outcome.kind === "failed");
-  assert.deepEqual(outcome.messages, []);
-  assert.match(outcome.error, /changed before it could settle/u);
+  assert.deepEqual(outcome, { kind: "fenced" });
   assert.equal(await effectState(b.session), "intent");
 });
 
@@ -402,8 +420,7 @@ test("a failed settlement stays handled while a later policy decision is pending
     release.resolve();
   }
   const outcome = await within(batch);
-  assert.ok(outcome.kind === "failed");
-  assert.match(outcome.error, /changed before it could settle/u);
+  assert.deepEqual(outcome, { kind: "fenced" });
 });
 
 test("a tool that throws settles an error; a truncated batch fails without touching any effect", async () => {
@@ -508,6 +525,38 @@ test("a tool that waits parks its call, wakes with the reply, and settles exactl
   assert.equal(wakes, 1);
 });
 
+test("a deadline uses the step's clock and wakes without a reply", async () => {
+  const b = await bench();
+  const wakes: { readonly expired: boolean; readonly reply: unknown }[] = [];
+  const asking = turnWith(scripted([]).streamFn, [
+    tool(
+      async () => {
+        throw new ToolWait({ until: 100 });
+      },
+      {
+        wake: async (_waiting, context) => {
+          wakes.push({ expired: context.expired, reply: context.reply });
+          return {
+            kind: "settle",
+            result: { content: [{ type: "text", text: "done" }], details: {} },
+          };
+        },
+      },
+    ),
+  ]);
+  assert.deepEqual(await asking.tools({ ...b.input({ now: 99 }), assistant: askTool() }), {
+    kind: "waiting",
+    calls: ["call-1"],
+  });
+  const completed = await asking.tools({ ...b.input({ now: 100 }), assistant: askTool() });
+  assert.equal(completed.kind, "complete");
+  if (completed.kind === "complete") {
+    const content = completed.messages[0]?.content[0];
+    assert.equal(content?.type === "text" ? content.text : undefined, "done");
+  }
+  assert.deepEqual(wakes, [{ expired: true, reply: undefined }]);
+});
+
 test("an abort settles a parked call as an error so the run can end", async () => {
   const b = await bench();
   const asking = turnWith(scripted([]).streamFn, [
@@ -527,4 +576,86 @@ test("an abort settles a parked call as an error so the run can end", async () =
   assert.equal(await effectState(b.session), "result");
   assert.equal((await b.session.refs.list(effectPrefix("run_1"))).length, 1);
   assert.equal(await b.session.refs.read(headRef("main")), null);
+});
+
+test("builtin factories execute approved arguments after durable intent and jobs replay reuses their results", async () => {
+  const b = await bench();
+  const directory = dirname(storePath());
+  const release = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  let executions = 0;
+  const diagnostics: unknown[] = [];
+  const jobs = createJobs({
+    session: b.session,
+    childId: () => sessionId("unused-child"),
+    backgroundChild: async () => {},
+    interruptChild: async () => {},
+    notify: async () => {},
+    diagnostic: async (cause) => {
+      diagnostics.push(cause);
+    },
+  });
+  const tools = createAllTools(directory).map((builtin) =>
+    builtin.name !== "bash"
+      ? builtin
+      : jobs.wrap({
+          ...builtin,
+          execute: async (id, args, signal, update, context) => {
+            executions += 1;
+            const effect = await readEffect(b.session, { runId: b.run.id, callId: id });
+            assert.ok(effect, "durable intent must precede the real command's side effect");
+            assert.deepEqual(effect.intent.args, { command: "printf approved > command.txt" });
+            assert.deepEqual(args, effect.intent.args);
+            await assert.rejects(access(join(directory, "command.txt")));
+            started.resolve();
+            await release.promise;
+            return builtin.execute(id, args, signal, update, context);
+          },
+        }),
+  );
+  const requested = assistant("", {
+    calls: [
+      call("job", "bash", { command: "printf wrong > command.txt" }),
+      call("write", "write", { path: "sibling.txt", content: "sibling" }),
+    ],
+  });
+  const script = scripted([requested]);
+  const turn = turnWith(script.streamFn, tools, {
+    loop: {
+      beforeToolCall: async ({ toolCall }) =>
+        toolCall.name === "bash"
+          ? { args: { command: "printf approved > command.txt", timeout: null } }
+          : undefined,
+    },
+  });
+  try {
+    const response = await turn.respond(b.input());
+    assert.equal(response.kind, "tools");
+    assert.equal(script.requests, 1);
+    assert.deepEqual(await turn.tools({ ...b.input(), assistant: requested }), {
+      kind: "waiting",
+      calls: ["job"],
+    });
+    await within(started.promise);
+    assert.equal(await effectState(b.session, "job"), "waiting");
+    assert.equal(await readFile(join(directory, "sibling.txt"), "utf8"), "sibling");
+    release.resolve();
+    await expect.poll(async () => (await jobs.list())[0]?.state).toBe("completed");
+    await jobs.recheck(b.run.id);
+    for (let replay = 0; replay < 2; replay += 1) {
+      const outcome = await turn.tools({ ...b.input(), assistant: requested });
+      assert.ok(outcome.kind === "complete");
+      assert.deepEqual(
+        outcome.messages.map((result) => result.toolCallId),
+        ["job", "write"],
+      );
+      assert.ok(outcome.messages.every((result) => !result.isError));
+    }
+    assert.equal(await readFile(join(directory, "command.txt"), "utf8"), "approved");
+    assert.equal(executions, 1);
+    assert.deepEqual(diagnostics, []);
+  } finally {
+    release.resolve();
+    await jobs.close();
+  }
 });

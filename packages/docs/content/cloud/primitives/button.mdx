@@ -1,0 +1,143 @@
+---
+title: Button
+description: "The styled Base UI button: four variants, three sizes, and an unstyled escape hatch"
+---
+
+```ts title="Import"
+import { Button } from "@nyte-ai/ui";
+```
+
+Implemented in `packages/ui/src/components/ui/button.tsx`, wrapping
+[`@nyte-ai/ui/button`](/cloud/headless/button).
+
+## Usage
+
+- Use `default` for the one primary action on a surface, `outline` for secondary actions beside it,
+  `ghost` for toolbar and inline actions, and `destructive` for actions that remove or discard.
+- Do not render a link as a Button. Base UI enforces button semantics; a link that looks like a
+  button is an `<a>` styled by the app.
+- `type` defaults to `"button"` unless `render` replaces the element, so a Button inside a form
+  never submits by accident. Say `type="submit"` when you mean it.
+- An icon-only button (`size="icon-sm"`) **must** carry `aria-label`.
+- A button that becomes disabled while it holds focus (loading after click) should pass
+  `focusableWhenDisabled` so focus does not fall to `<body>`.
+
+## Anatomy
+
+A single element. `Button` renders `<button>` with `data-slot="button"`, `data-variant`, and
+`data-size`.
+
+```tsx
+<Button variant="outline" size="sm">
+  Label
+</Button>
+```
+
+## Examples
+
+### Variants
+
+<Preview>
+  <ButtonVariantsDemo />
+</Preview>
+
+```tsx
+<Button>Default</Button>
+<Button variant="outline">Outline</Button>
+<Button variant="ghost">Ghost</Button>
+<Button variant="destructive">Destructive</Button>
+```
+
+### Sizes
+
+<Preview>
+  <ButtonSizesDemo />
+</Preview>
+
+```tsx
+<Button size="default">Default</Button>
+<Button size="sm">Small</Button>
+<Button size="icon-sm" aria-label="Add">
+  <IconPlusSmall size={14} />
+</Button>
+```
+
+### Disabled
+
+<Preview>
+  <ButtonStatesDemo />
+</Preview>
+
+```tsx
+<Button disabled>Disabled</Button>
+<Button variant="outline" disabled focusableWhenDisabled>
+  Focusable when disabled
+</Button>
+```
+
+### Rendering as another element
+
+Pass `render`. If the element is not a `<button>`, add `nativeButton={false}` so Base UI keeps
+the keyboard and ARIA behavior. `type` is not set when `render` is present.
+
+```tsx
+<Button render={<div />} nativeButton={false}>
+  Complex children
+</Button>
+```
+
+### Unstyled
+
+```tsx
+<Button unstyled xstyle={myStyles.trigger}>
+  Product-specific treatment
+</Button>
+```
+
+## Props
+
+`ButtonProps` is Base UI's `Button.Props` minus `className`/`style`, plus the styling channels and
+appearance props. `unstyled: true` makes `variant` and `size` a type error.
+
+| Prop        | Type                                                 | Default     | Description                                                |
+| ----------- | ---------------------------------------------------- | ----------- | ---------------------------------------------------------- |
+| `variant`   | `"default" \| "outline" \| "ghost" \| "destructive"` | `"default"` | Fill and border treatment.                                 |
+| `size`      | `"default" \| "sm" \| "icon-sm"`                     | `"default"` | 28px, 24px, or 24×24 square with no horizontal padding.    |
+| `unstyled`  | `boolean`                                            | `false`     | Render with no StyleX class. Forbids `variant` and `size`. |
+| `className` | `string`                                             |             | Consumer layout class, appended after the StyleX class.    |
+| `style`     | `React.CSSProperties`                                |             | Inline style, merged after StyleX's.                       |
+| `xstyle`    | `XStyle`                                             |             | StyleX override, applied last.                             |
+| `type`      | `"button" \| "submit" \| "reset"`                    | `"button"`  | Defaulted only when `render` is absent.                    |
+
+### Inherited from Base UI Button
+
+<include>../../base-ui-reference/button/Button.md</include>
+
+## Accessibility
+
+Base UI's guarantees, which the wrapper does not alter:
+
+- Renders a native `<button>`; Enter and Space activate it.
+- With `render` to a non-button and `nativeButton={false}`, Base UI adds `role="button"`,
+  `tabIndex`, and keyboard handlers so the element still behaves as a button.
+- `disabled` sets `data-disabled` and, on a native button, the `disabled` attribute.
+  `focusableWhenDisabled` keeps it in the tab order with `aria-disabled` instead.
+- Focus ring: `:focus-visible` outline in `--nyte-color-focus-ring`; see
+  [Focus](/cloud/foundations/focus).
+
+## Styling
+
+| Token                                             | Role                                         |
+| ------------------------------------------------- | -------------------------------------------- |
+| `--nyte-control-height-md` / `-sm`                | Height for `default` / `sm` and `icon-sm`    |
+| `--nyte-control-padding-sm` / `-xs`               | Horizontal padding for `default` / `sm`      |
+| `--nyte-radius-control`                           | Corner radius                                |
+| `--nyte-color-primary`, `-hover`, `-foreground`   | `default` variant                            |
+| `--nyte-color-border`, `-border-strong`, `-muted` | `outline` variant                            |
+| `--nyte-color-muted-hover`                        | `ghost` hover                                |
+| `--nyte-color-destructive`, `-muted`, `-hover`    | `destructive` variant                        |
+| `--nyte-control-disabled-opacity`                 | Disabled opacity                             |
+| `--nyte-motion-fast`, `--nyte-motion-ease-out`    | Color transitions; `0s` under reduced motion |
+
+State selectors used: `:hover` only under `@media (hover: hover)`; `[data-popup-open]` mirrors
+hover so a trigger stays lit while its menu is open; `:active:not(:disabled)` nudges 1px down.

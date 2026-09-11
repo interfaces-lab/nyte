@@ -1,16 +1,26 @@
 /**
  * The SDK's plain-data contracts: ids, session and run read models, the
- * discriminated outcome of every verb, and the session event. These were
+ * discriminated outcome of every operation, and the session event. These were
  * `@nyte-ai/core`'s `kernel/sdk/types.ts` data half; core re-exports them so
  * its callers see the same types, and a wire client sees them without core.
  *
- * Verb signatures (the `Sessions`, `Messages`, ... interfaces) stay in core:
+ * Operation signatures (the `Sessions`, `Messages`, ... interfaces) stay in core:
  * they carry host concerns such as `AbortSignal`. The remote subset is
  * `RemoteNyte` in `remote.ts`.
  */
 import type { JsonValue, ModelThinkingLevel, UserMessage } from "@nyte-ai/schema";
 import type { Actor, Commit, ModelRef, Oid, RunPhase, Seq, ToolProgress } from "./kernel.ts";
+import type { Static } from "typebox";
+import type {
+  SummaryFailure,
+  SummaryStoppedFailure,
+  CheckpointFailure,
+  InactiveFailure,
+  JobInfo as JobInfoSchema,
+  JobActionOutcome as JobActionOutcomeSchema,
+} from "./schemas.ts";
 import type { PluginInfo } from "./plugins.ts";
+import type { Selection } from "./ui.ts";
 import type { ContextStatus, Turn } from "./views.ts";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +40,7 @@ export function sessionId(value: string): SessionId {
   return value as SessionId;
 }
 
-/** The default head for every verb whose `head` is absent. The kernel has no such head; the SDK does. */
+/** The default head for every operation whose `head` is absent. The kernel has no such head; the SDK does. */
 export const MAIN: HeadName = "main";
 
 // ---------------------------------------------------------------------------
@@ -78,6 +88,16 @@ export interface RunConfig {
 // Sessions
 // ---------------------------------------------------------------------------
 
+export type ActivationRequirement = {
+  readonly kind: "workspace_trust";
+  readonly cwd: string;
+};
+
+export type SessionActivationState =
+  | { readonly kind: "active" }
+  | { readonly kind: "inactive" }
+  | { readonly kind: "requires"; readonly requirement: ActivationRequirement };
+
 export interface HeadInfo {
   readonly head: HeadName;
   readonly tip: Oid | null;
@@ -93,12 +113,12 @@ export interface SessionParent {
   readonly sessionId: SessionId;
   readonly runId: RunId;
   readonly callId: string;
-  readonly agent: string;
   readonly depth: number;
 }
 
 export interface SessionInfo {
   readonly sessionId: SessionId;
+  readonly activation: SessionActivationState;
   readonly name?: string;
   readonly preview?: string;
   readonly createdAt: number;
@@ -115,12 +135,27 @@ export interface Page<T> {
   readonly next?: string;
 }
 
-/** A tool call the run has parked for a reply (design record, "Suspension and wake"). */
+/** A tool call the run has parked for a reply (design record, "Wait and wake"). */
 export interface ParkedCall {
   readonly runId: RunId;
   readonly callId: string;
+  /** Content identity of this wait generation; changes when the same call parks again. */
+  readonly waitId: Oid;
   readonly tool: string;
   readonly args: JsonValue;
+  /**
+   * What a participant is asked to pick, answered through `runs.reply`.
+   * Absent, the call waits on something other than a participant: background work.
+   */
+  readonly selection?: Selection;
+  /** Epoch ms after which the runner wakes the call unanswered. Absent, it waits indefinitely. */
+  readonly until?: number;
+}
+
+export interface CompactionInfo {
+  readonly id: string;
+  readonly reason: "threshold" | "overflow" | "manual";
+  readonly startedAt: number;
 }
 
 export interface SessionSnapshot {
@@ -133,6 +168,7 @@ export interface SessionSnapshot {
   readonly transcript: readonly Turn[];
   readonly pending: readonly PendingItem[];
   readonly run?: RunInfo;
+  readonly compaction?: CompactionInfo;
   /**
    * Calls of `run` still waiting for a reply, in call order. A client that
    * opens or resyncs mid-wait answers from here; the `effect` events that
@@ -201,13 +237,28 @@ export interface RunInfo {
   readonly lease?: { readonly owner: string; readonly expiresAt: number };
 }
 
+export type JobInfo = Readonly<Static<typeof JobInfoSchema>>;
+export type JobActionOutcome = Readonly<Static<typeof JobActionOutcomeSchema>>;
+
+/**
+ * The `runId` of a job the user started (`jobs.start`), which no run owns: it
+ * survives `runs.abort`, delivers no completion, and its `callId` is its own id.
+ */
+export const USER_JOB_RUN_ID = "user";
+
+export function isUserJob(job: JobInfo): boolean {
+  return job.runId === USER_JOB_RUN_ID;
+}
+
 export type AbortOutcome =
   | { readonly kind: "requested"; readonly runId: RunId }
   | { readonly kind: "not_running" };
 
 export type WaitOutcome =
   | { readonly kind: "idle" }
-  | { readonly kind: "waiting"; readonly runId: RunId };
+  | { readonly kind: "waiting"; readonly runId: RunId }
+  /** Only this caller stopped waiting. The run and its lease are unchanged. */
+  | { readonly kind: "cancelled" };
 
 export type ReplyOutcome =
   | { readonly kind: "signalled" }
@@ -219,7 +270,7 @@ export type CompactOutcome =
   | { readonly kind: "aborted" }
   | { readonly kind: "nothing_to_compact" }
   | { readonly kind: "busy"; readonly run: RunInfo }
-  | { readonly kind: "failed"; readonly message: string };
+  | Readonly<Static<typeof CheckpointFailure>>;
 
 // ---------------------------------------------------------------------------
 // Heads
@@ -240,7 +291,9 @@ export type MoveOutcome =
   | { readonly kind: "busy"; readonly run: RunInfo }
   | { readonly kind: "moved_since"; readonly tip: Oid | null }
   | { readonly kind: "not_found" }
-  | { readonly kind: "failed"; readonly message: string };
+  | Readonly<Static<typeof SummaryFailure>>
+  | Readonly<Static<typeof SummaryStoppedFailure>>
+  | Readonly<Static<typeof InactiveFailure>>;
 
 export type DeleteHeadOutcome =
   | { readonly kind: "deleted" }
@@ -266,6 +319,7 @@ export type MergeOutcome =
  * `undefined`, so the wire omits it and the type says optional.
  */
 export type SessionEvent = { readonly seq: Seq } & (
+  | { readonly kind: "activation_changed"; readonly activation: SessionActivationState }
   | {
       readonly kind: "commit";
       readonly head: HeadName;
@@ -280,6 +334,12 @@ export type SessionEvent = { readonly seq: Seq } & (
       readonly actor?: Actor;
     }
   | { readonly kind: "run"; readonly head: HeadName; readonly run: RunInfo }
+  | {
+      readonly kind: "compaction";
+      readonly head: HeadName;
+      readonly compaction: CompactionInfo | null;
+    }
+  | { readonly kind: "job"; readonly job: JobInfo }
   | { readonly kind: "queued"; readonly head: HeadName; readonly item: PendingItem }
   | { readonly kind: "landed"; readonly head: HeadName; readonly change: Oid }
   | { readonly kind: "queue_cancelled"; readonly change: Oid }
@@ -287,9 +347,20 @@ export type SessionEvent = { readonly seq: Seq } & (
       readonly kind: "effect";
       readonly runId: RunId;
       readonly callId: string;
-      readonly state: "intent" | "waiting" | "signal" | "result";
+      readonly state: "intent" | "expired" | "signal" | "result";
       readonly tool: string;
       readonly args: JsonValue;
+    }
+  | {
+      readonly kind: "effect";
+      readonly runId: RunId;
+      readonly callId: string;
+      readonly state: "waiting";
+      readonly waitId: Oid;
+      readonly tool: string;
+      readonly args: JsonValue;
+      readonly selection?: Selection;
+      readonly until?: number;
     }
   | {
       readonly kind: "stack";

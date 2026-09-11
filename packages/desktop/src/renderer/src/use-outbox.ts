@@ -13,13 +13,16 @@ import {
 } from "./outbox.ts";
 import { createIndexedDbOutboxStorage } from "./outbox-storage.ts";
 import { loadThread } from "./queries.ts";
+import { requestTrust } from "./chrome/open-workspace.tsx";
 import { nyte } from "./nyte.ts";
 
 export const outbox = createOutbox({
   storage: createIndexedDbOutboxStorage(),
   send: (input) => nyte.messages.send(input),
   settled: async (sessionId) => {
-    await loadThread(sessionId);
+    // The message is durable; if the folder is untrusted it waits there, so ask now.
+    const snapshot = await loadThread(sessionId);
+    requestTrust(snapshot.session.activation);
   },
 });
 

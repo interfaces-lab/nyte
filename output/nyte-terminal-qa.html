@@ -1,0 +1,2105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nyte terminal QA</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0a;
+        --panel: #171717;
+        --fg: #fafafa;
+        --secondary: #b0b0b0;
+        --line: #303030;
+        --blue: #009fff;
+        --green: #07c480;
+        --yellow: #ffca00;
+        --purple: #b295f5;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        font-synthesis: none;
+        -webkit-font-smoothing: antialiased;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.55;
+      }
+      main {
+        max-width: 1240px;
+        margin: auto;
+        padding: 36px 32px 80px;
+      }
+      a {
+        color: #6ec8ff;
+        text-underline-offset: 3px;
+      }
+      a:hover {
+        color: #b5e4ff;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      a:focus-visible,
+      summary:focus-visible {
+        outline: 2px solid var(--blue);
+        outline-offset: 4px;
+      }
+      button,
+      input,
+      select {
+        min-height: 44px;
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: clamp(30px, 5vw, 48px);
+        font-weight: 600;
+        letter-spacing: -0.045em;
+        line-height: 1.12;
+        text-wrap: balance;
+        margin-bottom: 16px;
+      }
+      h2 {
+        font-size: 24px;
+        letter-spacing: -0.025em;
+        margin-bottom: 8px;
+      }
+      h3 {
+        font-size: 17px;
+        margin-bottom: 8px;
+      }
+      p {
+        color: var(--secondary);
+        text-wrap: pretty;
+      }
+      code,
+      kbd,
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: var(--secondary);
+        margin-bottom: 22px;
+      }
+      .brand {
+        color: var(--blue);
+        font-weight: 700;
+      }
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+      }
+      .pill {
+        font-size: 12px;
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        padding: 6px 12px;
+        white-space: nowrap;
+        color: var(--secondary);
+      }
+      .intro {
+        max-width: 760px;
+        font-size: 17px;
+      }
+      .facts {
+        display: flex;
+        gap: 32px;
+        flex-wrap: wrap;
+        padding: 18px 0 22px;
+        border-bottom: 1px solid var(--line);
+        margin: 22px 0 24px;
+      }
+      .fact strong {
+        display: block;
+        font-size: 23px;
+        font-weight: 550;
+        font-variant-numeric: tabular-nums;
+      }
+      .fact span {
+        font-size: 12px;
+        color: var(--secondary);
+      }
+      nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 28px;
+      }
+      nav button {
+        background: none;
+        color: var(--secondary);
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 8px 16px;
+        transition:
+          color 0.12s,
+          background-color 0.12s;
+      }
+      nav button:hover {
+        color: var(--fg);
+        background: #171717;
+      }
+      nav button[aria-pressed="true"] {
+        background: #19283c;
+        border-color: #244666;
+        color: #8fd3ff;
+      }
+      .tools {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) 230px;
+        gap: 12px;
+        margin: 22px 0 16px;
+      }
+      .tools input,
+      .tools select {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        padding: 10px 14px;
+        color: var(--fg);
+        width: 100%;
+      }
+      .tools input::placeholder {
+        color: #999;
+      }
+      .subtle {
+        font-size: 13px;
+        color: var(--secondary);
+      }
+      .result-count {
+        font-size: 12px;
+        color: var(--secondary);
+        margin-bottom: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        text-align: left;
+        font-size: 14px;
+      }
+      th {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.065em;
+        text-transform: uppercase;
+        background: var(--panel);
+        color: var(--secondary);
+      }
+      th,
+      td {
+        padding: 15px 18px;
+        vertical-align: top;
+        border-bottom: 1px solid #252525;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      tbody tr:hover {
+        background: #121212;
+      }
+      td:first-child {
+        min-width: 145px;
+        width: 18%;
+        color: var(--secondary);
+      }
+      td:nth-child(2) {
+        min-width: 210px;
+        width: 28%;
+      }
+      td small {
+        display: block;
+        font-size: 11px;
+        margin-top: 7px;
+        color: #999;
+      }
+      kbd {
+        display: inline-block;
+        border: 1px solid #444;
+        border-bottom-width: 2px;
+        background: #1d1d1d;
+        border-radius: 5px;
+        padding: 2px 7px;
+        margin: 1px 3px 1px 0;
+        font-size: 12px;
+        white-space: nowrap;
+        color: #eee;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 22px;
+      }
+      .card {
+        padding: 22px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+      .card .number {
+        font:
+          12px ui-monospace,
+          monospace;
+        color: var(--blue);
+        margin-bottom: 10px;
+      }
+      .card p:last-child {
+        margin-bottom: 0;
+      }
+      .card ul {
+        margin: 10px 0 0;
+        padding-left: 19px;
+        color: var(--secondary);
+        font-size: 14px;
+      }
+      .card li + li {
+        margin-top: 7px;
+      }
+      .card .entry {
+        font:
+          12px ui-monospace,
+          monospace;
+        color: #8fd3ff;
+        margin-bottom: 12px;
+      }
+      .banner {
+        border-left: 3px solid var(--blue);
+        background: #101a24;
+        padding: 16px 20px;
+        margin: 20px 0;
+        border-radius: 0 7px 7px 0;
+      }
+      .banner p {
+        margin: 0;
+        color: #c8d9e5;
+        font-size: 14px;
+      }
+      .banner.warning {
+        border-color: var(--yellow);
+        background: #201d10;
+      }
+      .banner.warning p {
+        color: #ded4a6;
+      }
+      .flow {
+        display: grid;
+        grid-template-columns: 1fr 35px 1fr 35px 1fr;
+        align-items: stretch;
+        gap: 7px;
+        margin: 24px 0;
+      }
+      .flow .node {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 20px;
+        background: var(--panel);
+      }
+      .flow .node strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+      .flow .node span {
+        font-size: 13px;
+        color: var(--secondary);
+      }
+      .flow .arrow {
+        display: grid;
+        place-items: center;
+        color: var(--blue);
+        font-size: 24px;
+      }
+      .evidence {
+        font-size: 13px;
+        padding: 18px;
+        border-top: 1px solid var(--line);
+        margin-top: 26px;
+        color: var(--secondary);
+      }
+      .evidence ul {
+        padding-left: 19px;
+      }
+      section[hidden] {
+        display: none !important;
+      }
+      .empty {
+        padding: 36px;
+        color: var(--secondary);
+        text-align: center;
+      }
+      .legend {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin: 15px 0;
+        font-size: 12px;
+        color: var(--secondary);
+      }
+      .legend b {
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .row-tag {
+        font-size: 10px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--purple);
+      }
+      .label {
+        display: block;
+        font-size: 12px;
+        margin-bottom: 6px;
+        color: var(--secondary);
+      }
+      .qa-case {
+        counter-increment: cases;
+        margin: 20px 0;
+        padding: 20px 22px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 9px;
+      }
+      .qa-case h3::before {
+        content: "0" counter(cases) " / ";
+        color: var(--blue);
+        font:
+          13px ui-monospace,
+          monospace;
+      }
+      .qa-case ol {
+        padding-left: 20px;
+        color: var(--secondary);
+        font-size: 14px;
+      }
+      .qa-case .expected {
+        color: var(--fg);
+        font-size: 14px;
+      }
+      .qa-case .expected strong {
+        color: var(--green);
+        font-weight: 500;
+      }
+      .qa-cases {
+        counter-reset: cases;
+      }
+      .source {
+        font-size: 11px;
+        color: #999;
+        overflow-wrap: anywhere;
+      }
+      footer {
+        margin-top: 40px;
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+        font-size: 12px;
+        color: #999;
+      }
+      details {
+        margin-top: 14px;
+      }
+      summary {
+        cursor: pointer;
+        padding: 8px 0;
+        color: var(--secondary);
+        font-size: 13px;
+      }
+      pre {
+        overflow: auto;
+        padding: 20px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font:
+          13px/1.65 ui-monospace,
+          monospace;
+      }
+      .todo {
+        color: var(--yellow);
+      }
+      @media (max-width: 750px) {
+        main {
+          padding: 24px 16px 50px;
+        }
+        .topline {
+          align-items: flex-start;
+        }
+        .pill {
+          white-space: normal;
+          max-width: 175px;
+        }
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .tools {
+          grid-template-columns: 1fr;
+        }
+        .flow {
+          grid-template-columns: 1fr;
+        }
+        .flow .arrow {
+          transform: rotate(90deg);
+          height: 28px;
+        }
+        .facts {
+          gap: 24px;
+        }
+        th,
+        td {
+          padding: 12px;
+        }
+        nav button {
+          padding: 8px 11px;
+        }
+        .intro {
+          font-size: 15px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+        button:active {
+          transform: none;
+        }
+      }
+      @media print {
+        nav,
+        .tools,
+        .result-count {
+          display: none;
+        }
+        section[hidden] {
+          display: block !important;
+        }
+        section {
+          break-before: page;
+        }
+        .table-wrap {
+          overflow: visible;
+        }
+        .cards {
+          display: block;
+        }
+        .card,
+        .qa-case {
+          break-inside: avoid;
+          margin-bottom: 12px;
+        }
+        :root {
+          color-scheme: light;
+          --bg: white;
+          --panel: #f6f6f6;
+          --fg: #111;
+          --secondary: #444;
+          --line: #ccc;
+        }
+        .pill {
+          display: none;
+        }
+        a {
+          color: #126398;
+        }
+        kbd {
+          background: #eee;
+          color: #111;
+        }
+        tbody tr:hover {
+          background: transparent;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="topline">
+          <div class="eyebrow"><span class="brand">nyte</span> / terminal QA</div>
+          <span class="pill">Design review · changes pending</span>
+        </div>
+        <h1>Every input.<br />Its expected result.</h1>
+        <p class="intro">
+          Expected shortcuts and features, including the requested changes below. The next QA runner
+          will launch the compiled binary in a PTY and observe its terminal output and real work.
+          This page is the plan, not a record of implemented changes or passing tests.
+        </p>
+        <div class="banner">
+          <p>
+            Requested changes: arrow-only previous/next completion, one editable default subagent
+            model, and <code>/quit</code> as the only slash command for exiting. Ctrl+C and other
+            shutdown mechanisms remain. Every action needs immediate local feedback, data-backed
+            panels open with loading UI, and stopping a parent cancels its subagents. OS termination
+            and declining workspace trust still require safe cleanup.
+          </p>
+        </div>
+        <div class="facts">
+          <div class="fact">
+            <strong id="shortcut-total">…</strong><span>shortcut rows, across contexts</span>
+          </div>
+          <div class="fact"><strong id="feature-total">…</strong><span>feature groups</span></div>
+          <div class="fact"><strong>0.5.11</strong><span>latest OpenTUI release checked</span></div>
+          <div class="fact">
+            <strong>Binary + PTY</strong><span>planned execution boundary</span>
+          </div>
+        </div>
+      </header>
+      <nav aria-label="Inventory sections">
+        <button type="button" data-view="shortcuts" aria-pressed="true">Shortcuts</button
+        ><button type="button" data-view="features" aria-pressed="false">Features</button
+        ><button type="button" data-view="latency" aria-pressed="false">Latency</button
+        ><button type="button" data-view="cancellation" aria-pressed="false">Cancellation</button
+        ><button type="button" data-view="plan" aria-pressed="false">Terminal run plan</button>
+      </nav>
+      <section id="shortcuts" aria-labelledby="shortcuts-title">
+        <h2 id="shortcuts-title">Shortcuts by context</h2>
+        <p>
+          The focused composer, completion list, panel or selection determines what a key does. Test
+          that context, not just the key. Editor defaults below reflect Nyte’s installed OpenTUI
+          0.5.10; confirm them again when upgrading.
+        </p>
+        <div class="tools">
+          <label
+            ><span class="label">Search shortcuts</span
+            ><input
+              id="key-search"
+              type="search"
+              placeholder="Try model, Ctrl+C, paste, history…" /></label
+          ><label
+            ><span class="label">Context</span
+            ><select id="context">
+              <option value="">All contexts</option>
+            </select></label
+          >
+        </div>
+        <div class="legend">
+          <span><b>Ctrl</b> = Control</span
+          ><span><b>Meta</b> = decoded modifier, often Alt/Option</span
+          ><span><b>Super</b> = Command/Windows when reported</span>
+        </div>
+        <div class="result-count" id="key-count" role="status"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Where</th>
+                <th scope="col">Input</th>
+                <th scope="col">Expected result</th>
+              </tr>
+            </thead>
+            <tbody id="key-rows"></tbody>
+          </table>
+        </div>
+        <div class="banner">
+          <p>
+            Modified Enter, Super shortcuts and some Alt combinations depend on what the terminal
+            sends. Run the same cases with negotiated Kitty keys and ordinary terminal escape
+            sequences. Printable characters, including <code>?</code>, remain text. Keypad Enter is
+            explicitly bound in the composer and completion; verify it separately in panels whose
+            handlers accept Return. Ctrl+C is not a universal panel-close shortcut.
+          </p>
+        </div>
+      </section>
+      <section id="features" aria-labelledby="features-title" hidden>
+        <h2 id="features-title">Feature coverage</h2>
+        <p>
+          Each group needs a successful path, cancellation where offered, and a visible failure
+          path. Plugin and provider features appear only when their contributions are present.
+        </p>
+        <label
+          ><span class="label">Search features</span
+          ><input
+            id="feature-search"
+            type="search"
+            placeholder="Find a command or workflow"
+            style="
+              width: 100%;
+              padding: 10px 14px;
+              border: 1px solid var(--line);
+              border-radius: 7px;
+              background: var(--panel);
+              color: var(--fg);
+            "
+        /></label>
+        <div id="feature-cards" class="cards"></div>
+      </section>
+      <section id="latency" aria-labelledby="latency-title" hidden>
+        <h2 id="latency-title">No waiting before feedback</h2>
+        <p>
+          Every keypress is a latency case, in idle chat, streaming chat and cancellation. Local
+          editing and navigation must not wait for network, database, provider or tool work.
+        </p>
+        <div class="banner">
+          <p>
+            <strong>Meaning of zero latency:</strong> zero awaited external work before the local
+            state changes, followed by the next render opportunity. Measure the elapsed time rather
+            than claiming a physically impossible zero-millisecond display.
+          </p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Action</th>
+                <th scope="col">Immediate feedback</th>
+                <th scope="col">Asynchronous work</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Each character, delete, cursor or selection key</td>
+                <td>
+                  The edit or cursor change appears without waiting. Undo and redo are included.
+                </td>
+                <td>No fetch, persistence or transcript rebuild on the editing path.</td>
+              </tr>
+              <tr>
+                <td>Enter → transcript</td>
+                <td>
+                  Capture the draft and show a pending user message in the transcript immediately.
+                  The composer accepts the next draft.
+                </td>
+                <td>
+                  Prepare attachments and await ordered configuration/admission. Distinguish pending
+                  from durable; preserve failures for retry.
+                </td>
+              </tr>
+              <tr>
+                <td>Streaming + typing</td>
+                <td>
+                  Every edit remains responsive while tokens, reasoning, tools and child updates
+                  arrive.
+                </td>
+                <td>
+                  Batch background presentation work. Do not let event bursts monopolize keyboard
+                  processing.
+                </td>
+              </tr>
+              <tr>
+                <td>Parent cancel</td>
+                <td>Show “Stopping…” on the next frame and suppress duplicate stop actions.</td>
+                <td>
+                  Cancel the parent and its subagents, including backgrounded children. Show
+                  “Stopped” only after the outcome is confirmed.
+                </td>
+              </tr>
+              <tr>
+                <td>Selected subagent cancel</td>
+                <td>The selected task shows “Stopping…” without freezing navigation or typing.</td>
+                <td>
+                  Verify the child and its owned work stop. Do not cancel its parent or siblings.
+                </td>
+              </tr>
+              <tr>
+                <td>Question arrives</td>
+                <td>
+                  The question takes input ownership before its first interactive frame. Its keys
+                  cannot also invoke composer actions.
+                </td>
+                <td>
+                  Wait for the explicit answer. Escape dismissal must not grant consent or send a
+                  chat message.
+                </td>
+              </tr>
+              <tr>
+                <td>Open Usage</td>
+                <td>
+                  Open the panel and skeleton before starting usage reads. Close and scroll remain
+                  responsive.
+                </td>
+                <td>
+                  Load local usage, imported history and account limits independently. Replace each
+                  skeleton with data or a visible failure.
+                </td>
+              </tr>
+              <tr>
+                <td>Open model selection</td>
+                <td>
+                  Open immediately with cached models and the current selection. Search, arrows and
+                  option changes remain local.
+                </td>
+                <td>
+                  Refresh the catalog separately if needed. With no cache, show loading rather than
+                  waiting to open. Never require deep provider discovery to navigate cached choices.
+                </td>
+              </tr>
+              <tr>
+                <td>Switch model / thinking level</td>
+                <td>
+                  Show the selected choice immediately. Every repeated keypress advances from that
+                  local choice.
+                </td>
+                <td>
+                  Persist in order; keep following Enter behind the chosen configuration. Failure is
+                  visible and does not silently send under a different choice.
+                </td>
+              </tr>
+              <tr>
+                <td>Open data-backed panels or request updates</td>
+                <td>
+                  Show the panel, loading state or progress immediately. Keep dismissal responsive.
+                </td>
+                <td>
+                  Fetch plugin data, saved sessions, update metadata or downloads separately. Late
+                  responses cannot reopen or overwrite a different panel.
+                </td>
+              </tr>
+              <tr>
+                <td>Resize, scroll, hover and focus</td>
+                <td>
+                  Keep the composer, selection and reading anchor stable at the next render
+                  opportunity.
+                </td>
+                <td>Unrelated child/provider work must not delay these interactions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>Measure every action, not an average session</h3>
+            <ul>
+              <li>
+                Record each input’s PTY-write timestamp and the first matching emulated
+                screen/cursor state.
+              </li>
+              <li>
+                Report p50, p95 and maximum by action, terminal, viewport, and
+                idle/streaming/cancelling state.
+              </li>
+              <li>
+                Hold every data source deliberately. Edits, panel shells, skeletons and selection
+                changes must still appear before the held source is released.
+              </li>
+              <li>
+                Record startup and steady-state cases separately. Never hide a stalled key behind a
+                good aggregate average.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Keep slow work away from input</h3>
+            <ul>
+              <li>
+                Host execution and synchronous database work need an execution context separate from
+                terminal input and rendering.
+              </li>
+              <li>
+                Bound client-side background event processing. A native output thread alone does not
+                isolate application JavaScript.
+              </li>
+              <li>
+                Use cached local choices for navigation. Loading indicators describe actual pending
+                reads, not artificial delays.
+              </li>
+              <li>
+                Keep immediate feedback, durable admission and actual process termination as
+                separate measured outcomes.
+              </li>
+            </ul>
+          </article>
+        </div>
+        <p class="subtle">
+          Requested acceptance criteria. The binary-PTY suite and latency budgets have not yet been
+          implemented or measured. Terminal window scanout remains a separate real-terminal
+          measurement.
+        </p>
+      </section>
+      <section id="cancellation" aria-labelledby="cancellation-title" hidden>
+        <h2 id="cancellation-title">What does “stop” stop?</h2>
+        <p>
+          A disappearing spinner is not proof of cancellation. Observe the parent, child, task state
+          and tool process separately.
+        </p>
+        <div class="banner warning">
+          <p>
+            These are expected-behavior cases, not a record of passed PTY tests. Run each with a
+            child held at a known point so it cannot finish before the cancel key arrives.
+          </p>
+        </div>
+        <div id="cancellation-matrix"></div>
+        <div class="qa-cases">
+          <article class="qa-case">
+            <h3>Stop a parent with an active foreground child</h3>
+            <ol>
+              <li>
+                Launch an isolated Nyte binary and request a child that runs a controlled long tool.
+              </li>
+              <li>
+                Wait until the child is visibly running. Record the parent and child identities.
+              </li>
+              <li>Focus the composer with no selection or popup, then press <kbd>Esc</kbd>.</li>
+              <li>
+                Inspect Tasks, the child conversation and the controlled tool’s
+                completion/termination signal.
+              </li>
+              <li>Resume the session in a fresh binary process and inspect the durable result.</li>
+            </ol>
+            <p class="expected">
+              <strong>Verify:</strong> the cancellation policy in the matrix, no orphan process, and
+              a composer that accepts the next message.
+            </p>
+          </article>
+          <article class="qa-case">
+            <h3>Background first, then stop the parent</h3>
+            <ol>
+              <li>
+                Start foreground child work and use <kbd>Ctrl+Z</kbd> to move it to the background.
+              </li>
+              <li>
+                Confirm the background transition before pressing <kbd>Esc</kbd> in the composer.
+              </li>
+              <li>
+                Inspect the background child and confirm that parent cancellation stopped it too. In
+                a separate run, use <kbd>Ctrl+X</kbd> to verify selected-child cancellation without
+                stopping the parent.
+              </li>
+            </ol>
+            <p class="expected">
+              <strong>Verify:</strong> parent stop cancels every subagent it owns, including
+              backgrounded children. Selected-task stop affects only that task. Closing the browser
+              cancels neither.
+            </p>
+          </article>
+          <article class="qa-case">
+            <h3>Cancel around completion and a pending question</h3>
+            <ol>
+              <li>
+                Repeat parent stop while a child is starting, running a tool, asking a question, and
+                completing.
+              </li>
+              <li>
+                Repeat with child-owned foreground/background commands and two independently running
+                tasks. Built-in child agents cannot delegate grandchildren; verify that attempted
+                delegation is rejected.
+              </li>
+              <li>
+                Check that a late completion or late provider chunk cannot turn a stopped task back
+                into a running one.
+              </li>
+            </ol>
+            <p class="expected">
+              <strong>Verify:</strong> one terminal outcome per task, no unintended answer or
+              consent, and sibling tasks follow the intended scope.
+            </p>
+          </article>
+          <article class="qa-case">
+            <h3>Cancel UI work without cancelling captured messages</h3>
+            <ol>
+              <li>Hold model discovery, paste a draft and press Enter before paste completes.</li>
+              <li>
+                Complete the paste and wait for draft capture. Type another draft, then clear it
+                with <kbd>Ctrl+C</kbd>.
+              </li>
+              <li>
+                Fail model discovery. Inspect the captured message, the new draft and provider
+                activity.
+              </li>
+              <li>
+                Repeat while switching sessions and while retrying a rich inline-skill message.
+              </li>
+            </ol>
+            <p class="expected">
+              <strong>Verify:</strong> clearing later input cannot release an earlier message’s
+              configuration gate. The failed message returns without duplicated skill instructions
+              or lost attachments.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section id="plan" aria-labelledby="plan-title" hidden>
+        <h2 id="plan-title">Run the actual binary</h2>
+        <p>
+          OpenTUI provides the terminal emulator and mode-aware input. Bun provides the PTY. Nyte
+          runs as its own process, including startup, the host, providers, tools and shutdown.
+        </p>
+        <div class="flow">
+          <div class="node">
+            <strong>QA driver</strong
+            ><span>Keys, paste, mouse, resize, controlled services and recorded evidence.</span>
+          </div>
+          <div class="arrow" aria-hidden="true">↔</div>
+          <div class="node">
+            <strong>Real PTY</strong
+            ><span
+              ><code>Bun.spawn([binary], { terminal })</code><br />Nyte sees terminal stdin and
+              stdout.</span
+            >
+          </div>
+          <div class="arrow" aria-hidden="true">↔</div>
+          <div class="node">
+            <strong>OpenTUI terminal</strong
+            ><span
+              ><code>EmbeddedTerminalRenderable</code><br />Ghostty VT parsing, screen, cursor and
+              protocol replies.</span
+            >
+          </div>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <div class="number">01 / Identity</div>
+            <h3>Know which binary ran</h3>
+            <ul>
+              <li>Build the CLI before QA. Keep the previous binary if compilation fails.</li>
+              <li>
+                Record absolute binary path, hash, version, source revision and OpenTUI version.
+              </li>
+              <li>
+                Drive that binary. Do not import Interactive or construct a replacement Nyte app
+                inside the runner.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="number">02 / Isolation</div>
+            <h3>Own every side effect</h3>
+            <ul>
+              <li>
+                Fresh HOME, workspace, settings, credentials and database for each independent case.
+              </li>
+              <li>
+                Local scripted providers and tools for deterministic running, failure, retry and
+                cancellation states.
+              </li>
+              <li>
+                Separate opt-in checks for real login, provider access, clipboard and updates. No
+                production credentials or sessions.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="number">03 / Terminal I/O</div>
+            <h3>Connect both directions</h3>
+            <ul>
+              <li>PTY output goes to <code>terminal.write()</code>.</li>
+              <li>
+                Forward both encoded input and terminal query replies from <code>onData</code> back
+                to the PTY.
+              </li>
+              <li>
+                Propagate <code>onTerminalResize</code> to the child. Focus the embedded terminal
+                before sending keys.
+              </li>
+              <li>
+                Do not reserve the same Escape or Ctrl+C keys in the driver that Nyte must receive.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="number">04 / Evidence</div>
+            <h3>Assert observable results</h3>
+            <ul>
+              <li>Read <code>terminal.screen()</code> after paint, including cursor position.</li>
+              <li>
+                Wait for a matching screen or controlled service event with a deadline, rather than
+                arbitrary sleeps.
+              </li>
+              <li>
+                Record PTY output, inputs with timestamps, final screens and process exit status.
+              </li>
+              <li>
+                For cancellation, inspect tool lifetime and reopened task state. For submission,
+                inspect the controlled provider’s received payload.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="number">05 / Stress</div>
+            <h3>Repeat under load</h3>
+            <ul>
+              <li>Empty workspace; empty chat in a busy workspace; short and large histories.</li>
+              <li>Widths 32, 80, 120 and 160 columns; short windows; repeated resize.</li>
+              <li>
+                Rapid typing, key bursts, slow output consumption, streaming, catalog refresh and
+                multiple children.
+              </li>
+              <li>
+                Direct terminal and tmux. Report latency distributions separately, not a single
+                “instant” claim.
+              </li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="number">06 / Real terminal pass</div>
+            <h3>Check what the emulator cannot show</h3>
+            <ul>
+              <li>
+                Ghostty VT renders the character grid, not child Kitty graphics or Sixel images.
+                Inspect image previews in a real supporting terminal.
+              </li>
+              <li>
+                Check OS clipboard, IME composition, browser authentication and external-editor
+                handoff interactively.
+              </li>
+              <li>
+                Measure key-to-emulated-screen separately from terminal window presentation. PTY
+                timing does not measure display scanout.
+              </li>
+              <li>
+                Close the child and PTY, restore terminal modes, and account for every spawned
+                process.
+              </li>
+            </ul>
+          </article>
+        </div>
+        <article class="card" style="margin-top: 22px">
+          <h3>Clean exit, one copyable command</h3>
+          <p>
+            Restore terminal modes, finish cleanup and print any diagnostics first. When a session
+            exists, every graceful shutdown ends with these two lines:
+          </p>
+          <pre><code>To resume previous session
+nyte --session=&lt;session-id&gt;</code></pre>
+          <p>
+            The second line contains only the command with the actual session ID, quoted safely when
+            needed. No prefix, prompt symbol or extra message on that line. Ctrl+C, /quit, SIGINT
+            and SIGTERM keep the same teardown guarantees; their exit statuses remain appropriate to
+            the cause. Without a saved session, omit the resume hint.
+          </p>
+        </article>
+        <div class="evidence">
+          <strong>Upstream checked</strong>
+          <ul>
+            <li>
+              Latest npm release observed: <code>@opentui/core 0.5.11</code>, checked September 9,
+              2026.
+            </li>
+            <li>
+              Nyte currently resolves <code>0.5.10</code>, which also exports the embedded terminal
+              component. This page does not update dependencies.
+            </li>
+            <li>Repository HEAD: <code>ac753b48d386707a931dcf881d0741905b64b4f9</code>.</li>
+            <li>
+              <a
+                href="https://github.com/anomalyco/opentui/blob/ac753b48d386707a931dcf881d0741905b64b4f9/packages/web/src/content/docs/components/embedded-terminal.mdx"
+                target="_blank"
+                rel="noreferrer"
+                >Embedded terminal documentation</a
+              >
+              ·
+              <a
+                href="https://github.com/anomalyco/opentui/blob/ac753b48d386707a931dcf881d0741905b64b4f9/packages/examples/src/embedded-terminal-demo.ts"
+                target="_blank"
+                rel="noreferrer"
+                >Official Bun PTY example</a
+              >
+              ·
+              <a
+                href="https://github.com/anomalyco/opentui/blob/ac753b48d386707a931dcf881d0741905b64b4f9/packages/web/src/content/docs/core-concepts/testing.mdx"
+                target="_blank"
+                rel="noreferrer"
+                >Testing APIs and wait helpers</a
+              >
+            </li>
+          </ul>
+          <p>
+            Upstream also recommends pure and component tests. This proposed Nyte suite targets
+            binary workflows, as requested. An in-memory renderer may observe the outer terminal
+            emulator, but Nyte itself must still run inside a real PTY.
+          </p>
+        </div>
+      </section>
+      <footer>
+        Expected behavior under review, not a QA pass report. Requested changes are marked in the
+        entries; other behavior is source-derived. Plugin commands, skills, provider options and
+        task contents depend on the workspace. Test files remain in place during this planning step.
+      </footer>
+      <script>
+        const keys = [
+          [
+            "Composer",
+            "Enter | Keypad Enter",
+            "Send the draft. While busy, use the configured follow-up lane. While editing a queued message, save the edit.",
+            "composer-actions.ts; interactive.ts",
+          ],
+          [
+            "Composer",
+            "Ctrl+Enter | Ctrl+Keypad Enter",
+            "Use the alternate delivery lane. With an idle chat, queue the message. With follow-up set to queue, steer instead.",
+            "composer-actions.ts",
+          ],
+          [
+            "Composer",
+            "Enter · empty draft",
+            "If a question is waiting, open its choices. Otherwise steer the next queued message when one exists.",
+            "interactive.ts: submitReady",
+          ],
+          [
+            "Composer",
+            "Esc",
+            "Stop active parent work and its subagents, including backgrounded children, or stop compaction. During a queue edit, cancel the edit. With idle nonblank text, keep the draft.",
+            "Requested behavior · immediate feedback and parent-to-child cancellation",
+          ],
+          [
+            "Composer",
+            "Esc, Esc",
+            "With idle blank input, open the session tree. The two presses must fall within 500 ms.",
+            "keymap.ts: DoubleEscape",
+          ],
+          [
+            "Composer",
+            "Ctrl+C",
+            "Clear a nonempty draft; quit from an empty composer. A selection, panel or authentication flow takes priority. Exiting performs clean teardown and prints the two-line resume message.",
+            "Ctrl+C behavior retained; requested two-line exit message",
+          ],
+          [
+            "Composer",
+            "/quit",
+            "Quit Nyte, restore the terminal and print the two-line resume message. This is the only slash command for exiting; other shutdown mechanisms remain.",
+            "Requested behavior · one quit slash command",
+          ],
+          [
+            "Composer",
+            "Shift+Tab",
+            "Cycle supported thinking levels while idle. Repeated presses advance from the local selected choice.",
+            "interactive.ts: cycleThinkingLevel",
+          ],
+          [
+            "Composer",
+            "Ctrl+P | Ctrl+Shift+P",
+            "Next / previous authenticated model while idle. Preserve the draft and clamp effort to the selected model.",
+            "interactive.ts: cycleModel",
+          ],
+          [
+            "Composer",
+            "Ctrl+K",
+            "Open commands and active shortcuts. Hidden-at-this-width shortcuts remain discoverable here.",
+            "composer-actions.ts: openActionPalette",
+          ],
+          [
+            "Composer",
+            "Ctrl+S",
+            "Open skills. Choosing a skill fills its token into the composer for arguments and submission.",
+            "interactive.ts: openSkillPalette",
+          ],
+          [
+            "Composer",
+            "Ctrl+G",
+            "Open the draft in the configured external editor, then return to Nyte with the edited text.",
+            "interactive.ts: openExternalEditor",
+          ],
+          [
+            "Composer",
+            "Ctrl+V | Super+V | Meta+V",
+            "Read supported text or image data from the clipboard. Terminal paste also follows the bracketed-paste path.",
+            "constants.ts; interactive.ts: pasteClipboard",
+          ],
+          [
+            "Composer",
+            "Ctrl+Space",
+            "Expand collapsed pasted text or preview the attachment at the cursor.",
+            "interactive.ts: openAttachment",
+          ],
+          [
+            "Composer",
+            "↑ | ↓",
+            "Browse prompt history at the relevant draft boundary; elsewhere move the native cursor. Down on empty input opens available tasks after history declines it.",
+            "prompt-history.ts; interactive.ts: wireKeymap",
+          ],
+          [
+            "Transcript",
+            "Page Up | Page Down",
+            "Scroll the transcript by half a viewport without moving the editor cursor.",
+            "interactive.ts: wireKeymap",
+          ],
+          [
+            "Transcript",
+            "Ctrl+↑ | Ctrl+↓",
+            "Jump to the previous / next logical turn.",
+            "transcript.ts: jumpTurn",
+          ],
+          [
+            "Transcript",
+            "Ctrl+O",
+            "Expand or collapse tool output globally.",
+            "interactive.ts: wireKeymap",
+          ],
+          [
+            "Transcript",
+            "Wheel | drag scrollbar",
+            "Scroll history. Reading position stays put while new output arrives until following is resumed.",
+            "shell.ts; transcript.ts",
+          ],
+          [
+            "Transcript",
+            "Click tool or activity header",
+            "Toggle that section’s output or details. Keep selection and reading position stable.",
+            "transcript.ts",
+          ],
+          [
+            "Selection",
+            "Ctrl+C | Super+C | Meta+C",
+            "Copy selected text. With copy-on-select active, Ctrl+C can clear a transcript selection that was already copied; it must not quit instead.",
+            "keymap.ts: handleSelectionKey",
+          ],
+          [
+            "Selection",
+            "Esc",
+            "Clear selection before composer stop or tree behavior.",
+            "keymap.ts: registerSelectionLayer",
+          ],
+          [
+            "Selection",
+            "Mouse drag | release",
+            "Select text. Copy on release when copy-on-select is enabled. Verify wrapped text and multi-turn selections.",
+            "keymap.ts; shell.ts",
+          ],
+          [
+            "Completion",
+            "/ | @",
+            "Open command/skill suggestions or file mentions at the cursor’s token, without discarding surrounding text.",
+            "slash-autocomplete.ts",
+          ],
+          [
+            "Completion",
+            "↑",
+            "Previous suggestion. No Ctrl+P or Shift+Tab binding for completion navigation.",
+            "Requested behavior · arrows only",
+          ],
+          [
+            "Completion",
+            "↓",
+            "Next suggestion. No Ctrl+N binding for completion navigation.",
+            "Requested behavior · arrows only",
+          ],
+          [
+            "Completion",
+            "Page Up | Page Down",
+            "Move through suggestion pages rather than scrolling the transcript.",
+            "constants.ts: completion.page.*",
+          ],
+          [
+            "Completion",
+            "Enter | Keypad Enter",
+            "Accept the suggestion. Actions/settings can execute; a skill token or /cd fills the draft. Existing arguments are preserved.",
+            "slash.ts: acceptSlashCommand",
+          ],
+          [
+            "Completion",
+            "Tab",
+            "Complete the highlighted token without executing the command. For /cd, complete the directory path.",
+            "slash.ts; slash-autocomplete.ts",
+          ],
+          [
+            "Completion",
+            "Ctrl+Enter",
+            "Complete a queueable skill or unknown-command prompt and submit through the alternate lane; action suggestions are not queued as text.",
+            "slash-autocomplete.ts; interactive.ts",
+          ],
+          [
+            "Completion",
+            "Esc",
+            "Dismiss suggestions without clearing the draft or stopping a run.",
+            "slash-autocomplete.ts",
+          ],
+          ["Queue", "Ctrl+Q", "Open queued and in-flight messages.", "interactive.ts: openQueue"],
+          [
+            "Queue",
+            "Enter",
+            "Send the selected durable queued message now through the steer lane.",
+            "interactive.ts: openQueue",
+          ],
+          [
+            "Queue",
+            "Ctrl+E",
+            "Edit the selected queued message; retain the previous composer draft for restoration.",
+            "constants.ts; interactive.ts",
+          ],
+          [
+            "Queue",
+            "Ctrl+D",
+            "Remove the selected message, accounting for a send that was admitted during withdrawal.",
+            "interactive.ts: openQueue",
+          ],
+          [
+            "Queue",
+            "Ctrl+↑ | Ctrl+↓",
+            "Move the selected durable message earlier / later within its lane.",
+            "interactive.ts: reorder",
+          ],
+          [
+            "Queue",
+            "Drag pending row",
+            "Reorder durable queued messages using the gutter.",
+            "pending-gutter.ts; interactive.ts",
+          ],
+          [
+            "Tasks",
+            "Ctrl+Z · composer",
+            "Background running foreground work on the current head. This is a Nyte action, not shell job suspension.",
+            "interactive.ts; tasks.ts",
+          ],
+          [
+            "Models",
+            "Type to search",
+            "Filter by model name, provider and model ID. Retain the highlighted identity when refreshed results allow it.",
+            "model-picker.ts",
+          ],
+          [
+            "Models",
+            "↑ / Ctrl+P | ↓ / Ctrl+N",
+            "Move between models. The highlighted model and request options stay local until confirmation.",
+            "model-picker.ts",
+          ],
+          [
+            "Models",
+            "Page Up | Page Down",
+            "Move by the visible page, bounded at the beginning or end.",
+            "model-picker.ts",
+          ],
+          [
+            "Models",
+            "← | →",
+            "Change the active effort or fast-mode field. Effort clamps at either end; left turns fast off and right turns it on.",
+            "model-picker.ts",
+          ],
+          [
+            "Models",
+            "Tab | Shift+Tab",
+            "Switch the active session request-option field when applicable. The subagent default picker selects a model, not separate effort/fast options.",
+            "model-picker.ts",
+          ],
+          [
+            "Models",
+            "Enter",
+            "Confirm the selected model, effort and offered fast-mode choice.",
+            "model-picker.ts; interactive.ts: pickModel",
+          ],
+          ["Models", "Esc", "Close without accepting the picker draft.", "model-picker.ts"],
+          [
+            "Models",
+            "Click row | Wheel",
+            "Select a model row / move the highlight. A row click does not confirm the model.",
+            "model-picker.ts",
+          ],
+        ];
+        keys.push(
+          [
+            "Editor",
+            "Shift+Enter | Shift+Keypad Enter | Meta+Enter | Meta+Keypad Enter | Ctrl+J",
+            "Insert a newline. Raw linefeed also inserts a newline. Test the physical gesture in each terminal; modified Enter must arrive distinctly.",
+            "shell.ts: textarea overrides; OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "← / Ctrl+B | → / Ctrl+F",
+            "Move left / right. With a selection, horizontal movement first collapses it to the corresponding edge.",
+            "OpenTUI 0.5.10: Textarea; EditBufferRenderable",
+          ],
+          [
+            "Editor",
+            "Meta+B / Meta+← / Ctrl+← | Meta+F / Meta+→ / Ctrl+→",
+            "Move to the previous / next native word boundary. Meta is the decoded modifier; physical Alt/Option delivery varies.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Ctrl+A | Ctrl+E",
+            "Logical line start / end, not select-all. At that edge, move to the previous line’s end / next line’s start.",
+            "OpenTUI EditBufferRenderable",
+          ],
+          [
+            "Editor",
+            "Meta+A / Super+← | Meta+E / Super+→",
+            "Move to the beginning / end of the wrapped visual line.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Home / Super+↑ | End / Super+↓",
+            "Move to the beginning / end of the entire buffer, not just the current line.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Shift+← | Shift+→ | Shift+↑ | Shift+↓",
+            "Extend the selection in that direction.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Ctrl+Shift+A | Ctrl+Shift+E",
+            "Extend selection to the logical line start / end.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Meta+Shift+A / Super+Shift+← | Meta+Shift+E / Super+Shift+→",
+            "Extend selection to the wrapped visual line start / end.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Shift+Home / Super+Shift+↑ | Shift+End / Super+Shift+↓",
+            "Extend selection to the start / end of the buffer.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Meta+Shift+B / Meta+Shift+← | Meta+Shift+F / Meta+Shift+→",
+            "Extend selection backward / forward by word. Ctrl+Shift+arrows are not mapped to this action.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Super+A",
+            "Select the whole draft when the terminal reports Super. Ctrl+A has line-navigation semantics.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Backspace | Shift+Backspace",
+            "Delete backward, or remove selected text.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Delete | Shift+Delete | Ctrl+D",
+            "Delete forward, or remove selected text. Shift+Delete is deletion, not clipboard cut.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Ctrl+W | Ctrl+Backspace | Meta+Backspace",
+            "Delete backward to the native word boundary.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Editor",
+            "Meta+D | Meta+Delete | Ctrl+Delete",
+            "Delete forward to the native word boundary.",
+            "OpenTUI Textarea defaults",
+          ],
+          ["Editor", "Ctrl+Shift+D", "Delete the logical line.", "OpenTUI Textarea defaults"],
+          [
+            "Editor",
+            "Ctrl+U",
+            "Delete to the logical line start. At column zero, delete backward across the line break.",
+            "OpenTUI EditBufferRenderable",
+          ],
+          [
+            "Editor",
+            "Ctrl+- | Super+Z",
+            "Undo. Ctrl+Z belongs to Nyte backgrounding. The raw Ctrl+underscore byte does not equal Ctrl+minus.",
+            "OpenTUI Textarea defaults; parse.keypress",
+          ],
+          [
+            "Editor",
+            "Ctrl+. | Super+Shift+Z",
+            "Redo. Ctrl+Y is not the redo binding.",
+            "OpenTUI Textarea defaults",
+          ],
+          [
+            "Picker input",
+            "Ctrl+K",
+            "Delete to the logical line end in native search inputs. In the main composer, Ctrl+K opens commands instead.",
+            "OpenTUI Textarea defaults; keymap ownership",
+          ],
+          [
+            "Pickers",
+            "Type to search",
+            "Filter choices by all typed terms. A typed-answer prompt keeps its choice rows and treats input as an answer instead.",
+            "picker.ts: filter",
+          ],
+          [
+            "Pickers",
+            "↑ / Ctrl+P / Shift+Tab | ↓ / Ctrl+N / Tab",
+            "Previous / next row, wrapping at the ends. Applies to shared choice, settings, task and queue menus.",
+            "menu-list.ts: key bindings",
+          ],
+          [
+            "Pickers",
+            "Page Up | Page Down",
+            "Move by the visible row budget minus one, at least one row, bounded at list ends.",
+            "menu-list.ts",
+          ],
+          [
+            "Pickers",
+            "Enter | Click row",
+            "Activate the highlighted / clicked choice. In a typed-answer prompt, nonblank input submits the typed answer instead.",
+            "picker.ts; menu-list.ts",
+          ],
+          [
+            "Pickers",
+            "Esc · nonempty filter or answer",
+            "Clear the field and keep the picker open.",
+            "picker.ts",
+          ],
+          [
+            "Pickers",
+            "Esc · empty field",
+            "Go back or close, according to the current screen. A pending action does not consume Escape cancellation.",
+            "picker.ts",
+          ],
+          [
+            "Pickers",
+            "Wheel | scrollbar | hover",
+            "Scroll the list; hover highlights visually without changing the selected row. Unlike the model picker, wheel does not move selection.",
+            "menu-list.ts",
+          ],
+          [
+            "Tree",
+            "Type to search",
+            "Search displayed labels/text while retaining the chosen role filter. Typing clears branch folds.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "↑ / Ctrl+P / Shift+Tab | ↓ / Ctrl+N / Tab",
+            "Previous / next entry with wraparound.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "← / Page Up | → / Page Down",
+            "Previous / next page. These arrows navigate the tree rather than the search cursor.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "Alt+← | Alt+→",
+            "Fold / unfold a branch when applicable; otherwise move to the preceding / next branch connector. Accepts decoded Meta or Option.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "Ctrl+D | Ctrl+T | Ctrl+U | Ctrl+A",
+            "Choose default, toggle no-tools, toggle users, or toggle all entries. Ctrl+A changes the tree filter rather than selecting search text.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "Ctrl+O | Ctrl+Shift+O",
+            "Cycle role filters forward / backward: default, no-tools, users, all.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "Ctrl+X",
+            "Copy the selected displayed row text or label through OSC 52, subject to terminal clipboard support.",
+            "tree-selector.ts",
+          ],
+          [
+            "Tree",
+            "Enter | Click row",
+            "Select the commit. The shell then handles branch movement, optional summary and user-message restoration.",
+            "tree-selector.ts; interactive.ts: openTree",
+          ],
+          [
+            "Tree",
+            "Esc | Ctrl+C",
+            "Clear a nonempty search first; from an empty search, close the tree. An active selection may consume the key first.",
+            "tree-selector.ts; keymap.ts",
+          ],
+          [
+            "Tasks",
+            "Enter | Click task",
+            "Inspect the task. Finished / Back to Tasks rows switch sections.",
+            "task-browser.ts",
+          ],
+          [
+            "Tasks",
+            "Ctrl+Z | Ctrl+X",
+            "Background / cancel the selected task. Does not directly abort its parent run. Completed or unavailable tasks report their current state.",
+            "task-browser.ts: act",
+          ],
+          [
+            "Tasks",
+            "Esc",
+            "Clear a nonempty filter first. From Finished, return to active Tasks; from active Tasks, close. Work continues.",
+            "task-browser.ts; picker.ts",
+          ],
+          ["Task inspection", "↑ | ↓", "Scroll output one row.", "task-browser.ts"],
+          ["Task inspection", "Page Up | Page Down", "Scroll half a viewport.", "task-browser.ts"],
+          [
+            "Task inspection",
+            "Ctrl+↑ | Ctrl+↓",
+            "Previous / next task in the whole current section, wrapping. Not limited to current search matches.",
+            "task-browser.ts",
+          ],
+          [
+            "Task inspection",
+            "Ctrl+O",
+            "Jump to the bottom and follow output. This is not an on/off toggle.",
+            "task-browser.ts",
+          ],
+          [
+            "Task inspection",
+            "Ctrl+X | Ctrl+Z",
+            "Cancel / background this task while keeping inspection open.",
+            "task-browser.ts",
+          ],
+          [
+            "Task inspection",
+            "Esc",
+            "Return to the same Tasks section and filter. Do not cancel work.",
+            "task-browser.ts",
+          ],
+          [
+            "Usage report",
+            "↑ / ↓ | Page Up / Page Down",
+            "Scroll one row / one full viewport. Keep report title and close controls visible.",
+            "usage-panel.ts",
+          ],
+          [
+            "Usage report",
+            "Esc",
+            "Close the report, after clearing any active text selection.",
+            "usage-panel.ts; keymap.ts",
+          ],
+          [
+            "Authentication",
+            "Enter",
+            "Submit the text or secret field. Secret input is masked and separate from the composer draft and history.",
+            "auth-prompt.ts",
+          ],
+          [
+            "Authentication",
+            "Esc | Ctrl+C",
+            "Cancel immediately, including when the field has text or a selection. Do not save the partially entered secret.",
+            "auth-prompt.ts",
+          ],
+          [
+            "Workspace trust",
+            "↑ | ↓ | Tab | Shift+Tab",
+            "Toggle Trust / Quit or Trust / Cancel. The initial choice is decline.",
+            "workspace-trust.ts",
+          ],
+          [
+            "Workspace trust",
+            "Enter",
+            "Accept the highlighted trust decision. Untouched default declines.",
+            "workspace-trust.ts",
+          ],
+          [
+            "Workspace trust",
+            "A | Q / Esc",
+            "A trusts immediately. Q or Escape declines immediately, regardless of the highlighted choice. The handler matches key names.",
+            "workspace-trust.ts",
+          ],
+        );
+        const features = [
+          [
+            "Startup and workspace trust",
+            "nyte · nyte --resume · nyte --session=<id>",
+            [
+              "Launch signed in and signed out. Show trust approval before loading project code.",
+              "Type during startup; retain the draft and give a clear loading response to Enter.",
+              "Decline trust or cancel startup; restore the terminal and leave no host work running.",
+              "Resume the requested chat without resending its last message.",
+            ],
+            "interactive.ts: runTui/start; flags.ts",
+          ],
+          [
+            "Composer editing",
+            "Text · multiline · undo / redo",
+            [
+              "Insert, move, select and delete ASCII, CJK, emoji, combining characters and mixed-direction text.",
+              "Preserve cursor, native undo and selection across status refreshes and provider events.",
+              "Rapid multi-key input shows every edit in order without stale action hints.",
+            ],
+            "shell.ts; composer.ts; composer-document.ts",
+          ],
+          [
+            "Messages and delivery lanes",
+            "Enter · Ctrl+Enter · /follow-up",
+            [
+              "Capture Enter immediately, show the pending user message in the transcript, and accept the next draft without waiting for admission.",
+              "Send, steer or queue according to idle/busy/question state and the selected follow-up behavior.",
+              "A captured message waits for configuration selected before Enter. A later choice cannot pass it.",
+              "Keep typing while a prior submission is preparing or being admitted.",
+              "Recover failed rich drafts without overwriting newer typing or duplicating skill instructions.",
+            ],
+            "composer-actions.ts; interactive.ts; session-config.ts",
+          ],
+          [
+            "Rich paste and file mentions",
+            "Ctrl+V · terminal paste · @file · Ctrl+Space",
+            [
+              "Paste text, file paths, images and multiline text. Collapse long paste and expand it again.",
+              "Complete file mentions and preview supported attachments at the cursor.",
+              "Keep image order and attachment data through undo, retry, queue editing and session changes.",
+              "Enter while paste is pending waits for the right paste; cancellation does not release another submission.",
+            ],
+            "composer.ts; slash-autocomplete.ts; interactive.ts",
+          ],
+          [
+            "Prompt history and per-chat drafts",
+            "↑ · ↓ · /resume",
+            [
+              "Browse sent prompts only at the relevant cursor boundary and restore the in-progress draft.",
+              "Switch chats and recover their separate text, attachments and queue-edit state.",
+              "A late result from another chat cannot replace the current draft.",
+            ],
+            "prompt-history.ts; composer.ts: SessionDrafts; interactive.ts",
+          ],
+          [
+            "Commands and completion",
+            "/help · Ctrl+K · /",
+            [
+              "Search commands, inspect all active shortcuts and invoke an action from help.",
+              "Tab fills; Enter executes actions/settings or leaves prompt tokens for submission.",
+              "Preserve surrounding text and arguments. Unknown slash commands can remain message text.",
+              "Built-ins take priority, followed by settings, plugin commands and skills.",
+            ],
+            "slash.ts; composer-actions.ts; slash-autocomplete.ts",
+          ],
+          [
+            "Model and effort selection",
+            "/model [choice] · /effort [level]",
+            [
+              "Open immediately with cached models and the current selection. Show a loading state before any cold-catalog read, never after it.",
+              "Search, highlight, model switching and effort changes stay local. Network discovery is separate from choosing cached models.",
+              "Select model and supported effort, with provider-offered fast mode and price/context details.",
+              "Cycle quickly from the composer without dropping presses. Do not send under a choice that failed.",
+              "Reflect configuration changed by another client without reverting newer local input.",
+            ],
+            "catalog.ts; model-picker.ts; interactive.ts; session-follow.ts",
+          ],
+          [
+            "Default subagent model",
+            "/settings → Subagent model",
+            [
+              "One default model for all subagents, including General and Explore.",
+              "The user can change this default with the model picker. No separate per-agent model settings.",
+              "New subagents use the selected default; changing it does not change the parent model or an already running child.",
+              "Save the shared default so TUI and desktop use the same selection.",
+            ],
+            "Requested behavior · one editable shared subagent default",
+          ],
+          [
+            "Queued and in-flight messages",
+            "Ctrl+Q · Ctrl+E · Ctrl+D",
+            [
+              "Inspect delivery lane, edit content, change order, send now or remove a queued message.",
+              "Save/cancel an edit and recover the composer draft it temporarily replaced.",
+              "Handle cancellation racing admission without duplicate delivery or disappearing content.",
+            ],
+            "pending-gutter.ts; outbox.ts; interactive.ts",
+          ],
+          [
+            "Streaming transcript and tools",
+            "Page Up/Down · Ctrl+O · disclosure clicks",
+            [
+              "Render user/assistant text, reasoning, Markdown, code, tables, diffs, tools and progress.",
+              "Keep live-to-settled content continuous with no duplicated or missing rows.",
+              "Browse large history, expand large turns, select across turns, resize and preserve the reading anchor.",
+              "Show retries, waiting, failure, cancellation and completion as distinct states.",
+            ],
+            "transcript.ts; output-diff.ts; session-follow.ts",
+          ],
+          [
+            "Tasks and child inspection",
+            "/tasks · Ctrl+Z · Ctrl+X",
+            [
+              "Browse unfinished work and Finished; distinguish child agents from background commands.",
+              "Inspect complete child conversations and command output, including tool details.",
+              "Background foreground work; stop one selected task without stopping its parent or sibling.",
+              "Stopping the parent cancels all its subagents, including backgrounded children. Verify terminal child state and owned process termination.",
+            ],
+            "tasks.ts; task-browser.ts; core job/delegation lifecycle",
+          ],
+          [
+            "Questions and web-search consent",
+            "Enter · choice picker · typed answer",
+            [
+              "An active question owns input and blocks ordinary composer actions; one keypress cannot both answer and submit a chat message.",
+              "Answer a parent or child question using a choice or typed reply.",
+              "Dismiss the prompt to leave the call waiting; answer later without sending an accidental chat message.",
+              "Web-search consent uses offered provider choices. Cancelling never silently grants consent.",
+              "Attachments that cannot serve as a typed answer remain explicit message delivery.",
+            ],
+            "interactive.ts: askQuestion/answer/send; plugin question and web-search",
+          ],
+          [
+            "Session and branch navigation",
+            "/new · /resume · /sessions · /continue · /tree · /edit",
+            [
+              "Start a new chat and resume saved top-level chats.",
+              "Browse commits and abandoned branches; filter the tree and jump to a selected point.",
+              "Choose no summary, automatic summary or custom summary focus when leaving a branch.",
+              "Editing a historical user message restores it only after the watcher confirms retraction.",
+            ],
+            "interactive.ts; tree-selector.ts",
+          ],
+          [
+            "Compaction",
+            "/compact [instructions]",
+            [
+              "Compact eligible context, show progress and retain a readable summary marker.",
+              "Cancel compaction with Escape. Preserve history on failure.",
+              "Reject incompatible work while the run is busy; render recovered compaction state after resume.",
+            ],
+            "interactive.ts; transcript.ts; core compaction",
+          ],
+          [
+            "Working directory and project code",
+            "/cd <path> · /reload · /plugins",
+            [
+              "Complete literal relative/absolute paths, spaces and home-directory paths.",
+              "Ask for trust before loading the destination’s project code; cancel keeps the current directory.",
+              "Move the current chat’s tools, skills, mentions and status to that directory without losing history.",
+              "List core and TUI plugins; reload their contributions; display failures while preserving usable UI.",
+            ],
+            "directory-completion.ts; interactive.ts; plugins.ts",
+          ],
+          [
+            "Skills",
+            "/skills · Ctrl+S · /<skill> · inline /<skill>",
+            [
+              "Discover workspace skills, select one, add arguments and invoke several in a draft.",
+              "Send expanded instructions while presenting the readable skill token in the conversation.",
+              "Preserve file/image content and raw draft tokens through a failed submission and retry.",
+            ],
+            "slash.ts; composer.ts; interactive.ts",
+          ],
+          [
+            "Authentication",
+            "/login [provider] · /logout [provider]",
+            [
+              "Choose provider and method, enter masked secrets, open browser/device-code flows and cancel safely.",
+              "Refresh model choices after credentials change and keep the current draft.",
+              "Report credential persistence separately from discovery failure. Do not expose secrets in screens or recordings.",
+            ],
+            "auth.ts; auth-prompt.ts; interactive.ts",
+          ],
+          [
+            "Settings and theme",
+            "/settings · /theme · /follow-up · /copy-on-select · /auto-update",
+            [
+              "Pick or directly apply settings. Include provider/plugin settings only when offered.",
+              "Follow the terminal in auto theme, or pin dark/light. Retheme mounted content without losing selection or reading position.",
+              "Save global preferences and show the correct choices after restart.",
+            ],
+            "interactive.ts: settingRows; settings.ts; theme.ts",
+          ],
+          [
+            "Usage and reports",
+            "/usage · /plugins · Ctrl+K → Keyboard shortcuts",
+            [
+              "Open the usage skeleton immediately, before fetching local records, imported history or account limits. Keep close and navigation responsive.",
+              "Replace loading sections independently as data arrives; show failures without leaving a permanent skeleton.",
+              "Inspect session/workspace usage, costs, account limits and Claude Code usage when available.",
+              "Scroll long reports and keep totals, labels and close controls reachable at narrow widths.",
+              "Close or switch chats during loading; late responses must not replace another panel.",
+            ],
+            "usage-panel.ts; usage.ts; diagnostic-report.ts; interactive.ts",
+          ],
+          [
+            "Updates",
+            "/update [version] · startup update setting",
+            [
+              "Show download, verification and install outcomes; report errors without breaking the terminal session.",
+              "Use a controlled release endpoint and isolated executable for automated update QA.",
+              "Check notices when auto-update is disabled. Never overwrite the user’s installed binary during QA.",
+            ],
+            "update.ts; version.ts; interactive.ts",
+          ],
+          [
+            "Terminal lifecycle and integrations",
+            "/quit · Ctrl+C · SIGINT/SIGTERM",
+            [
+              "Use /quit as the only slash command for exiting. Ctrl+C retains copy/clear/quit behavior, and /exit is not a quit alias.",
+              "All graceful exit paths finish cleanup and restore terminal modes before printing the final resume message.",
+              "Print exactly two resume lines: To resume previous session, then the executable command on its own line. No prompt symbol, label, status text or ANSI styling on the command line.",
+              "Use the actual saved session ID with shell-safe quoting. When no session exists, do not print a fabricated resume command.",
+              "Suspend/resume for an external editor, including editor failure and cancellation.",
+              "Check focus changes, mouse selection, terminal resize, notifications and transport backpressure.",
+              "SIGINT and SIGTERM retain clean shutdown and their signal exit statuses. Finish cleanup diagnostics before the final two resume lines.",
+              "On host shutdown, inspect work interruption and recovery; never infer process survival from the UI alone.",
+            ],
+            "Requested quit behavior; lifecycle: interactive.ts, shell.ts, rendering.ts, host.ts",
+          ],
+          [
+            "CLI boundaries around the TUI",
+            "nyte --help · --version · -p · --json · status/login/logout/update",
+            [
+              "Help/version do not open an interactive session. Validate incompatible or repeated flags before work starts.",
+              "TTY input launches the TUI; explicit print/JSON and piped input use their documented CLI contracts.",
+              "A terminal QA run must not accidentally pass redirected stdin and test print mode instead.",
+            ],
+            "index.ts; flags.ts; print-invocation.ts; README.md",
+          ],
+        ];
+        const esc = (value) =>
+          String(value).replace(
+            /[&<>"']/g,
+            (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+          );
+        const tableBody = document.getElementById("key-rows");
+        const context = document.getElementById("context");
+        for (const name of [...new Set(keys.map((row) => row[0]))]) {
+          const option = document.createElement("option");
+          option.value = name;
+          option.textContent = name;
+          context.append(option);
+        }
+        function renderKeys() {
+          const query = document.getElementById("key-search").value.trim().toLowerCase();
+          const rows = keys.filter(
+            (row) =>
+              (!context.value || row[0] === context.value) &&
+              row.slice(0, 3).join(" ").toLowerCase().includes(query),
+          );
+          tableBody.innerHTML =
+            rows
+              .map(
+                (row) =>
+                  `<tr><td>${esc(row[0])}</td><td>${row[1]
+                    .split(" | ")
+                    .map((key) => `<kbd>${esc(key)}</kbd>`)
+                    .join(" ")}</td><td>${esc(row[2])}<small>${esc(row[3])}</small></td></tr>`,
+              )
+              .join("") || '<tr><td colspan="3" class="empty">No matching shortcuts.</td></tr>';
+          document.getElementById("key-count").textContent =
+            `${rows.length} of ${keys.length} shortcut rows`;
+        }
+        function renderFeatures() {
+          const query = document.getElementById("feature-search").value.trim().toLowerCase();
+          document.getElementById("feature-cards").innerHTML =
+            features
+              .map((row, index) => ({ row, index }))
+              .filter(({ row }) => row.flat().join(" ").toLowerCase().includes(query))
+              .map(
+                ({ row, index }) =>
+                  `<article class="card"><div class="number">${String(index + 1).padStart(2, "0")}</div><h3>${esc(row[0])}</h3><div class="entry">${esc(row[1])}</div><ul>${row[2].map((item) => `<li>${esc(item)}</li>`).join("")}</ul><details><summary>Source</summary><p class="source">${esc(row[3])}</p></details></article>`,
+              )
+              .join("") || '<p class="empty">No matching features.</p>';
+        }
+        for (const button of document.querySelectorAll("nav button"))
+          button.addEventListener("click", () => {
+            for (const other of document.querySelectorAll("nav button"))
+              other.setAttribute("aria-pressed", String(other === button));
+            for (const section of document.querySelectorAll("main > section"))
+              section.hidden = section.id !== button.dataset.view;
+          });
+        document.getElementById("key-search").addEventListener("input", renderKeys);
+        context.addEventListener("change", renderKeys);
+        document.getElementById("feature-search").addEventListener("input", renderFeatures);
+        document.getElementById("shortcut-total").textContent = keys.length;
+        document.getElementById("feature-total").textContent = features.length;
+        renderKeys();
+        renderFeatures();
+        const cancellation = [
+          [
+            "Esc · parent waiting on foreground child",
+            "Show Stopping immediately, then confirm parent and child cancellation.",
+            "Cancel the foreground subagent and its owned work. Verify both the job and child run, not just the parent spinner.",
+          ],
+          [
+            "Esc · parent has background child",
+            "Show Stopping immediately and cancel the active parent run.",
+            "Requested policy: cancel the backgrounded subagent too, including work owned by that child.",
+          ],
+          [
+            "Esc · only background work remains",
+            "No active run to abort; idle Escape/tree behavior applies.",
+            "Background tasks continue.",
+          ],
+          [
+            "Esc · foreground bash, parent waiting",
+            "Abort parent run.",
+            "Cancel foreground job and signal its local process group.",
+          ],
+          [
+            "Esc · background bash",
+            "Abort only the active parent run.",
+            "Background command continues.",
+          ],
+          [
+            "Ctrl+X · selected child or command",
+            "No direct parent abort. The parent may continue after the task error or completion.",
+            "Cancel that task. For a child, verify child execution and owned work stop; shell jobs signal their process group.",
+          ],
+          [
+            "Ctrl+Z · composer",
+            "Background all running foreground jobs on the current head; do not abort.",
+            "Children and commands continue with background mode and receipts.",
+          ],
+          [
+            "Ctrl+Z · selected task",
+            "Do not abort the parent.",
+            "Background the selected foreground job; leave siblings unchanged.",
+          ],
+          [
+            "Esc · task inspection or browser",
+            "Only dismiss or navigate the panel.",
+            "Work continues. A nonempty browser filter clears before closing.",
+          ],
+          [
+            "Esc · selection, completion, question or queue edit",
+            "The current input owner handles Escape before parent stop.",
+            "Do not infer cancellation. A dismissed question remains waiting.",
+          ],
+          [
+            "Stop child with child-owned background bash",
+            "Request child stop and show Stopping immediately.",
+            "Requested policy: stop child-owned background commands as part of fully cancelling the subagent; late completion must not restart it.",
+          ],
+          [
+            "/quit or Ctrl+C · owning Nyte process",
+            "Stop execution runners; final run state depends on phase.",
+            "Locally owned live jobs, including background jobs, are interrupted. Reopen to inspect retained output and stopped tasks.",
+          ],
+          [
+            "Crash and reopen with execution attachment",
+            "Recover durable state; do not replay the user submission.",
+            "Abandoned jobs become interrupted after ownership recovery, not rerun. A live foreign lease prevents premature interruption.",
+          ],
+          [
+            "Watch disconnect / reconnect",
+            "Observer recovery, not run cancellation.",
+            "Work continues under its execution owner; replay restores its UI.",
+          ],
+          [
+            "Abort between tool execution and publishing waiting",
+            "The parent and child must still reach confirmed stopped outcomes.",
+            "Target the execution-to-waiting race. Passing requires actual child/process termination even when parent cancellation arrives before the waiting phase is published.",
+          ],
+        ];
+        document.getElementById("cancellation-matrix").innerHTML =
+          '<div class="table-wrap"><table><thead><tr><th scope="col">Action and state</th><th scope="col">Parent</th><th scope="col">Child / command</th></tr></thead><tbody>' +
+          cancellation
+            .map(
+              (row) => "<tr>" + row.map((cell) => "<td>" + esc(cell) + "</td>").join("") + "</tr>",
+            )
+            .join("") +
+          '</tbody></table></div><div class="banner"><p><strong>Requested policy:</strong> stopping a parent cancels its subagents whether foreground or background. Cancelling a subagent also stops its owned work. This intentionally changes the source-derived behavior documented in the first inventory; it is not yet a verified implementation. The execution-to-waiting race is a required QA case.</p></div><p class="source">Sources: interactive.ts; composer-actions.ts; task-browser.ts; tasks.ts; core/kernel/sdk/jobs.ts and nyte.ts; core/kernel/step.ts and turn.ts; core/plugins/builtin/subagents.ts; core/tools/support/shell.ts.</p>';
+      </script>
+    </main>
+  </body>
+</html>

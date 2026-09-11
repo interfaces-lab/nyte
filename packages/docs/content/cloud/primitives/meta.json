@@ -1,0 +1,4 @@
+{
+  "title": "Primitives",
+  "pages": ["button", "avatar", "input", "textarea", "dialog", "alert-dialog", "dropdown-menu"]
+}

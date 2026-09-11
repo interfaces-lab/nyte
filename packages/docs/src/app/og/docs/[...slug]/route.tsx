@@ -1,8 +1,8 @@
-import { getPageImageUrl, source } from "@/lib/source";
+import { getPageImageUrl, source } from "~/lib/source";
 import { notFound } from "next/navigation";
 import { ImageResponse } from "next/og";
 import { generate as DefaultImage } from "fumadocs-ui/og";
-import { appName } from "@/lib/shared";
+import { appName } from "~/lib/shared";
 
 export async function GET(_req: Request, { params }: RouteContext<"/og/docs/[...slug]">) {
   const { slug } = await params;

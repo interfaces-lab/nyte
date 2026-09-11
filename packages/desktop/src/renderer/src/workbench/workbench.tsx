@@ -4,16 +4,16 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench.tsx
  */
-import * as stylex from "@stylexjs/stylex";
-import { Button as BaseButton } from "@nyte-ai/ui";
-import { Toolbar } from "@nyte-ai/ui/primitives";
+import { create, props } from "@stylexjs/stylex";
+import { Button } from "@nyte-ai/ui";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/core";
 import { Icon, PanelToggleIcon } from "../components/icons";
 import type { IconName } from "../components/icons";
 import { focus, IconButton, ToggleIconButton } from "../components/ui";
-import { refreshVcs, useHostState, useRunChanges } from "../queries.ts";
+import { Menu, MenuItem } from "../components/menu.tsx";
+import { useHostState, useRunChanges } from "../queries.ts";
 import { layer, workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import {
@@ -21,6 +21,7 @@ import {
   workbenchTabAvailable,
   activeWorkbenchTab,
   workbenchTabLabel,
+  workbenchTabs,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
@@ -42,9 +43,12 @@ import type {
 import { terminalActions, useTerminals } from "./terminal-store";
 
 import { BrowserPanel } from "./browser-panel";
+import { FilesPanel } from "./files-panel.tsx";
+import { fileActions, useFileTabs } from "./file-store.ts";
 import { TerminalPanel } from "./terminal-panel";
+import { AgentsPanel } from "./agents-panel.tsx";
 import { ChangesPanel } from "./changes-panel";
-const styles = stylex.create({
+const styles = create({
   root: {
     position: "relative",
     display: "flex",
@@ -68,6 +72,7 @@ const styles = stylex.create({
     borderInlineStartColor: t.borderSubtle,
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
+  railHostCompact: { width: 44, minWidth: 44 },
   panelOverlay: {
     position: "absolute",
     zIndex: layer.workbench,
@@ -88,6 +93,28 @@ const styles = stylex.create({
     paddingBlock: 5,
     paddingInline: 8,
     color: t.textSecondary,
+  },
+  compactRail: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    boxSizing: "border-box",
+    width: 32,
+    marginBlockStart: 5,
+    marginInline: 6,
+    padding: 3,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.strokeTertiary,
+    borderRadius: t.radiusLg,
+    backgroundColor: t.bgElevated,
+    color: t.textSecondary,
+    boxShadow: `0 1px 2px ${t.shadowControlColor}`,
+  },
+  compactRailDivider: {
+    height: 1,
+    marginInline: 3,
+    backgroundColor: t.strokeTertiary,
   },
   railSection: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
   railHeading: {
@@ -165,19 +192,6 @@ const styles = stylex.create({
   },
   railAdded: { color: t.textSuccess },
   railRemoved: { color: t.textDanger },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 2,
-    height: workbench.headerHeight,
-    flexShrink: 0,
-    paddingInline: 8,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
-  },
-  headerLabel: { color: t.textSecondary, fontSize: t.fontSm, paddingInline: 4 },
-  spacer: { flex: 1, minWidth: 0 },
   panelSlot: {
     display: "flex",
     flexDirection: "column",
@@ -206,6 +220,14 @@ const styles = stylex.create({
   sashActive: { backgroundColor: t.fillPrimary, opacity: 0.25 },
 });
 
+const tabIcons = {
+  files: "file",
+  changes: "git-branch",
+  browser: "globe",
+  terminal: "console",
+  agents: "robot",
+} satisfies Record<WorkbenchTabId, IconName>;
+
 interface ResizeState {
   readonly pointerId: number;
   readonly startX: number;
@@ -229,18 +251,77 @@ function RailRow({
   readonly onClick: () => void;
 }): ReactElement {
   return (
-    <BaseButton
+    <Button
       unstyled
       type="button"
       title={title}
-      {...stylex.props(styles.railRow, focus.ring)}
+      {...props(styles.railRow, focus.ring)}
       onClick={onClick}
     >
-      <span {...stylex.props(styles.railIcon)}>
+      <span {...props(styles.railIcon)}>
         <Icon name={icon} size={14} />
       </span>
       {children}
-    </BaseButton>
+    </Button>
+  );
+}
+
+function CompactWorkbenchRail({
+  viewKey,
+  scope,
+  workspacePath,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly scope: WorkbenchScope;
+  readonly workspacePath: string | null;
+}): ReactElement {
+  const terminals = useTerminals(viewKey);
+  const directTab = scope.kind === "project" ? "files" : "agents";
+  const openTerminal = (): void => {
+    if (terminals.tabs.length === 0) void terminalActions.create(viewKey, workspacePath);
+    workbenchController.actions.openTab(viewKey, "terminal");
+  };
+
+  return (
+    <nav aria-label="Workbench navigation" {...props(styles.compactRail)}>
+      <Menu
+        label="Open workbench panel"
+        align="end"
+        trigger={<IconButton compact icon="plus" size={15} label="Open workbench panel" />}
+      >
+        {workbenchTabs(scope).map((tab) => (
+          <MenuItem
+            key={tab}
+            icon={tabIcons[tab]}
+            onSelect={() => {
+              if (tab === "terminal") {
+                openTerminal();
+                return;
+              }
+              workbenchController.actions.openTab(viewKey, tab);
+            }}
+          >
+            {workbenchTabLabel(tab)}
+          </MenuItem>
+        ))}
+      </Menu>
+      <span aria-hidden="true" {...props(styles.compactRailDivider)} />
+      <IconButton
+        compact
+        icon="globe"
+        size={14}
+        label="Open Browser"
+        onClick={() => workbenchController.actions.openTab(viewKey, "browser")}
+      />
+      <IconButton compact icon="console" size={14} label="Open Terminal" onClick={openTerminal} />
+      <IconButton
+        compact
+        icon={tabIcons[directTab]}
+        size={14}
+        label={`Open ${workbenchTabLabel(directTab)}`}
+        onClick={() => workbenchController.actions.openTab(viewKey, directTab)}
+      />
+    </nav>
   );
 }
 
@@ -251,7 +332,6 @@ function WorkbenchRail({
   sessionId,
   workspaceName,
   workspacePath,
-  onShowFiles,
 }: {
   readonly viewKey: WorkbenchViewKey;
   readonly view: WorkbenchViewState;
@@ -259,7 +339,6 @@ function WorkbenchRail({
   readonly sessionId: SessionId | undefined;
   readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
-  readonly onShowFiles: () => void;
 }): ReactElement {
   const changes = useRunChanges(sessionId, scope.kind === "project");
   const stats = (changes.data ?? []).reduce(
@@ -270,40 +349,54 @@ function WorkbenchRail({
     (tab) => tab !== "terminal" && workbenchTabAvailable(scope, tab),
   );
   const terminals = useTerminals(viewKey);
+  const files = useFileTabs(viewKey);
 
   return (
-    <nav aria-label="Workbench navigation" {...stylex.props(styles.rail)}>
-      <section {...stylex.props(styles.railSection)}>
-        <div {...stylex.props(styles.railHeading)}>
-          <span {...stylex.props(styles.railHeadingText)}>Open Tabs</span>
-          <BaseButton
+    <nav aria-label="Workbench navigation" {...props(styles.rail)}>
+      <section {...props(styles.railSection)}>
+        <div {...props(styles.railHeading)}>
+          <span {...props(styles.railHeadingText)}>Open Tabs</span>
+          <Button
             unstyled
             type="button"
             aria-label="Show workbench"
-            {...stylex.props(styles.railCollapse, focus.ring)}
+            {...props(styles.railCollapse, focus.ring)}
             onClick={() => workbenchController.actions.toggle(viewKey)}
           >
             <Icon name="chevron-right" size={11} />
-            <span {...stylex.props(styles.railCollapseGlyph)}>
+            <span {...props(styles.railCollapseGlyph)}>
               <Icon name="chevron-right" size={11} />
             </span>
-          </BaseButton>
+          </Button>
         </div>
-        {tabs.map((tab) => (
-          <RailRow
-            key={tab}
-            icon={tab === "changes" ? "git-branch" : "globe"}
-            onClick={() => workbenchController.actions.openTab(viewKey, tab)}
-          >
-            <span {...stylex.props(styles.railLabel)}>{workbenchTabLabel(tab)}</span>
-          </RailRow>
-        ))}
+        {tabs.flatMap((tab) =>
+          tab === "files" && files.tabs.length > 0
+            ? files.tabs.map((file) => (
+                <RailRow
+                  key={`file:${file.path}`}
+                  icon="file"
+                  title={`${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`}
+                  onClick={() => fileActions.select(viewKey, file.path)}
+                >
+                  <span {...props(styles.railLabel)}>{file.displayPath}</span>
+                </RailRow>
+              ))
+            : [
+                <RailRow
+                  key={tab}
+                  icon={tabIcons[tab]}
+                  onClick={() => workbenchController.actions.openTab(viewKey, tab)}
+                >
+                  <span {...props(styles.railLabel)}>{workbenchTabLabel(tab)}</span>
+                </RailRow>,
+              ],
+        )}
         {view.openTabs.includes("terminal") && terminals.tabs.length === 0 && (
           <RailRow
             icon="console"
             onClick={() => workbenchController.actions.openTab(viewKey, "terminal")}
           >
-            <span {...stylex.props(styles.railLabel)}>Terminal</span>
+            <span {...props(styles.railLabel)}>Terminal</span>
           </RailRow>
         )}
         {terminals.tabs.map((terminal) => (
@@ -316,32 +409,38 @@ function WorkbenchRail({
               workbenchController.actions.openTab(viewKey, "terminal");
             }}
           >
-            <span {...stylex.props(styles.railLabel)}>{terminal.title}</span>
+            <span {...props(styles.railLabel)}>{terminal.title}</span>
           </RailRow>
         ))}
       </section>
 
-      <section {...stylex.props(styles.railSection)}>
-        <div {...stylex.props(styles.railHeading)}>
-          <span {...stylex.props(styles.railHeadingText)}>
+      <section {...props(styles.railSection)}>
+        <div {...props(styles.railHeading)}>
+          <span {...props(styles.railHeadingText)}>
             {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
           </span>
         </div>
         {scope.kind === "project" && (
           <RailRow
+            icon="file"
+            onClick={() => workbenchController.actions.openTab(viewKey, "files")}
+          >
+            <span {...props(styles.railLabel)}>Files</span>
+          </RailRow>
+        )}
+        {scope.kind === "project" && (
+          <RailRow
             icon="git"
             onClick={() => workbenchController.actions.openTab(viewKey, "changes")}
           >
-            <span {...stylex.props(styles.railLabel)}>Changes</span>
+            <span {...props(styles.railLabel)}>Changes</span>
             {(stats.added > 0 || stats.removed > 0) && (
               <span
                 aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-                {...stylex.props(styles.railStats)}
+                {...props(styles.railStats)}
               >
-                {stats.added > 0 && <span {...stylex.props(styles.railAdded)}>+{stats.added}</span>}
-                {stats.removed > 0 && (
-                  <span {...stylex.props(styles.railRemoved)}>-{stats.removed}</span>
-                )}
+                {stats.added > 0 && <span {...props(styles.railAdded)}>+{stats.added}</span>}
+                {stats.removed > 0 && <span {...props(styles.railRemoved)}>-{stats.removed}</span>}
               </span>
             )}
           </RailRow>
@@ -350,7 +449,7 @@ function WorkbenchRail({
           icon="globe"
           onClick={() => workbenchController.actions.openTab(viewKey, "browser")}
         >
-          <span {...stylex.props(styles.railLabel)}>Browser</span>
+          <span {...props(styles.railLabel)}>Browser</span>
         </RailRow>
         <RailRow
           icon="console"
@@ -359,46 +458,20 @@ function WorkbenchRail({
             workbenchController.actions.openTab(viewKey, "terminal");
           }}
         >
-          <span {...stylex.props(styles.railLabel)}>
+          <span {...props(styles.railLabel)}>
             {terminals.tabs.length > 1 ? `${String(terminals.tabs.length)} Terminals` : "Terminal"}
           </span>
         </RailRow>
-        {scope.kind === "project" && (
-          <RailRow icon="file" onClick={onShowFiles}>
-            <span {...stylex.props(styles.railLabel)}>Files</span>
+        {sessionId !== undefined && (
+          <RailRow
+            icon="robot"
+            onClick={() => workbenchController.actions.openTab(viewKey, "agents")}
+          >
+            <span {...props(styles.railLabel)}>Agents</span>
           </RailRow>
         )}
       </section>
     </nav>
-  );
-}
-
-function ChangesToolbar({
-  sidebarVisible,
-  onToggleSidebar,
-}: {
-  readonly sidebarVisible: boolean;
-  readonly onToggleSidebar: () => void;
-}): ReactElement {
-  return (
-    <Toolbar.Root aria-label="Changes actions" {...stylex.props(styles.header)}>
-      <Icon name="git" size={14} />
-      <span {...stylex.props(styles.headerLabel)}>Uncommitted</span>
-      <span {...stylex.props(styles.spacer)} />
-      <Toolbar.Button
-        render={<IconButton icon="refresh" label="Refresh changes" onClick={refreshVcs} />}
-      />
-      <Toolbar.Button
-        render={
-          <ToggleIconButton
-            icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
-            label={sidebarVisible ? "Hide file tree" : "Show file tree"}
-            pressed={sidebarVisible}
-            onPressedChange={onToggleSidebar}
-          />
-        }
-      />
-    </Toolbar.Root>
   );
 }
 
@@ -408,10 +481,12 @@ interface PanelContentProps {
   readonly sessionId: SessionId | undefined;
   readonly view: WorkbenchViewState;
   readonly visible: boolean;
+  readonly workspaceActive: boolean;
   readonly workspacePath: string | null;
   readonly sidebarVisible: boolean;
   readonly onToggleSidebar: () => void;
   readonly onSelectPath: (path: string | undefined) => void;
+  readonly onRevealPath: (path: string) => void;
   readonly onChangesScroll: (scrollTop: number) => void;
   readonly onBrowserUrl: (url: string | undefined) => void;
 }
@@ -423,26 +498,32 @@ function PanelContent({
   view,
   visible,
   workspacePath,
+  workspaceActive,
   sidebarVisible,
   onToggleSidebar,
   onSelectPath,
+  onRevealPath,
   onChangesScroll,
   onBrowserUrl,
 }: PanelContentProps): ReactElement {
   switch (tab) {
+    case "files":
+      return <FilesPanel viewKey={viewKey} workspaceActive={workspaceActive} />;
     case "changes":
       return (
-        <>
-          <ChangesToolbar sidebarVisible={sidebarVisible} onToggleSidebar={onToggleSidebar} />
-          <ChangesPanel
-            sessionId={sessionId}
-            selectedPath={view.selectedPath}
-            scrollTop={view.scrollTop.changes}
-            fileTreeVisible={sidebarVisible}
-            onSelectPath={onSelectPath}
-            onScrollTop={onChangesScroll}
-          />
-        </>
+        <ChangesPanel
+          sessionId={sessionId}
+          scope={view.changesScope}
+          selectedPath={view.selectedPath}
+          revealPathRevision={view.pathRevealRevision}
+          scrollTop={view.scrollTop.changes}
+          fileTreeVisible={sidebarVisible}
+          onScopeChange={(scope) => workbenchController.actions.selectChangesScope(viewKey, scope)}
+          onToggleFileTree={onToggleSidebar}
+          onSelectPath={onSelectPath}
+          onRevealPath={onRevealPath}
+          onScrollTop={onChangesScroll}
+        />
       );
     case "browser":
       return (
@@ -463,7 +544,16 @@ function PanelContent({
         />
       );
     case "terminal":
-      return <TerminalPanel owner={viewKey} workspacePath={workspacePath} visible={visible} />;
+      return (
+        <TerminalPanel
+          owner={viewKey}
+          sessionId={sessionId}
+          workspacePath={workspacePath}
+          visible={visible}
+        />
+      );
+    case "agents":
+      return <AgentsPanel owner={viewKey} sessionId={sessionId} visible={visible} />;
     default: {
       const _exhaustive: never = tab;
       return _exhaustive;
@@ -492,18 +582,26 @@ function WorkbenchViewHost({
 }): ReactElement {
   const [resizing, setResizing] = useState(false);
   const activeTerminalId = useTerminals(viewKey).activeId;
+  const files = useFileTabs(viewKey);
   const [sidebars, setSidebars] = useState<Record<WorkbenchTabId, boolean>>({
+    files: true,
     changes: true,
     browser: false,
     terminal: false,
+    agents: false,
   });
   const panelRef = useRef<HTMLElement>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
+  const compactRail = bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
   const selectPath = useCallback(
     (path: string | undefined) => workbenchController.actions.selectPath(viewKey, path),
+    [viewKey],
+  );
+  const revealPath = useCallback(
+    (path: string) => workbenchController.actions.revealPath(viewKey, path),
     [viewKey],
   );
   const setChangesScroll = useCallback(
@@ -571,7 +669,10 @@ function WorkbenchViewHost({
   useLayoutEffect(() => {
     if (panelVisible) setActiveWidth(panelWidth);
   }, [panelVisible, panelWidth]);
-  const mountedTabs = view.openTabs.filter((tab) => workbenchTabAvailable(scope, tab));
+  // Retained views are pathless while inactive, but their file editors still own drafts.
+  const mountedTabs = view.openTabs.filter(
+    (tab) => workbenchTabAvailable(scope, tab) || (tab === "files" && files.tabs.length > 0),
+  );
 
   return (
     <section
@@ -579,33 +680,30 @@ function WorkbenchViewHost({
       hidden={!hostVisible}
       aria-hidden={!hostVisible}
       inert={!hostVisible ? true : undefined}
-      {...stylex.props(
+      {...props(
         styles.panel,
         panelVisible && styles.panelOpen,
         !panelVisible && styles.railHost,
+        !panelVisible && compactRail && styles.railHostCompact,
         panelVisible && (view.maximized || bounds.kind === "overlay") && styles.panelOverlay,
         !hostVisible && styles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
-      {!panelVisible && (
-        <WorkbenchRail
-          viewKey={viewKey}
-          view={view}
-          scope={scope}
-          sessionId={target.kind === "session" ? target.sessionId : undefined}
-          workspaceName={workspaceName}
-          workspacePath={workspacePath}
-          onShowFiles={() => {
-            setSidebars((current) => ({ ...current, changes: true }));
-            workbenchController.actions.openTab(viewKey, "changes");
-          }}
-        />
-      )}
-      <div
-        hidden={!panelVisible}
-        {...stylex.props(styles.panelBody, !panelVisible && styles.panelHidden)}
-      >
+      {!panelVisible &&
+        (compactRail ? (
+          <CompactWorkbenchRail viewKey={viewKey} scope={scope} workspacePath={workspacePath} />
+        ) : (
+          <WorkbenchRail
+            viewKey={viewKey}
+            view={view}
+            scope={scope}
+            sessionId={target.kind === "session" ? target.sessionId : undefined}
+            workspaceName={workspaceName}
+            workspacePath={workspacePath}
+          />
+        ))}
+      <div hidden={!panelVisible} {...props(styles.panelBody, !panelVisible && styles.panelHidden)}>
         {panelVisible && !view.maximized && (
           <div
             role="separator"
@@ -616,7 +714,7 @@ function WorkbenchViewHost({
             aria-valuemax={bounds.max}
             aria-valuenow={panelWidth}
             title="Drag to resize. Double-click to reset."
-            {...stylex.props(styles.sash, resizing && styles.sashActive)}
+            {...props(styles.sash, resizing && styles.sashActive)}
             onKeyDown={resizeWithKeyboard}
             onPointerDown={beginResize}
             onPointerMove={moveResize}
@@ -632,11 +730,17 @@ function WorkbenchViewHost({
               key={tab}
               id={`${viewKey}-panel-${tab}`}
               role="tabpanel"
-              aria-labelledby={`${viewKey}-tab-${tab === "terminal" ? activeTerminalId : tab}`}
+              aria-labelledby={`${viewKey}-tab-${
+                tab === "terminal"
+                  ? activeTerminalId
+                  : tab === "files" && files.activePath !== undefined
+                    ? `file:${encodeURIComponent(files.activePath)}`
+                    : tab
+              }`}
               hidden={!tabVisible}
               aria-hidden={!tabVisible}
               inert={!tabVisible ? true : undefined}
-              {...stylex.props(styles.panelSlot, !tabVisible && styles.panelSlotHidden)}
+              {...props(styles.panelSlot, !tabVisible && styles.panelSlotHidden)}
             >
               <PanelContent
                 tab={tab}
@@ -645,11 +749,13 @@ function WorkbenchViewHost({
                 view={view}
                 visible={tabVisible}
                 workspacePath={workspacePath}
+                workspaceActive={current}
                 sidebarVisible={sidebars[tab]}
                 onToggleSidebar={() =>
                   setSidebars((current) => ({ ...current, [tab]: !current[tab] }))
                 }
                 onSelectPath={selectPath}
+                onRevealPath={revealPath}
                 onChangesScroll={setChangesScroll}
                 onBrowserUrl={setBrowserUrl}
               />
@@ -705,7 +811,7 @@ export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
   }, []);
 
   return (
-    <aside ref={rootRef} {...stylex.props(styles.root)} aria-label="Workbench">
+    <aside ref={rootRef} {...props(styles.root)} aria-label="Workbench">
       {paneViews.map(({ identity, view }) => {
         const current = identity.key === viewKey;
         const scope: WorkbenchScope = current

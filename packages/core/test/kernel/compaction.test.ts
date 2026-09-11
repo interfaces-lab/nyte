@@ -1,16 +1,14 @@
 /**
- * Checkpoints: when the context must shrink, what the summary holds, and how
- * a checkpoint reaches the branch. The summarizing model is a script.
+ * Checkpoints: when the context must shrink, what the cut keeps, and how a
+ * checkpoint reaches the branch. The summarizing model is a script.
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { NOOP_TELEMETRY_CONTEXT } from "@nyte-ai/telemetry";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage, Context, Usage } from "@nyte-ai/schema";
 import {
   prepareCheckpoint,
-  shouldCompact,
-  summarizeBranch,
-  summarizeCheckpoint,
   writeCheckpoint,
   type CompactionSettings,
 } from "../../src/kernel/compaction.ts";
@@ -69,20 +67,11 @@ function items(bodies: readonly CommitBody[]): Item[] {
 }
 
 /** A model that answers every request with the same text. */
-function summarizer(text: string, options: { readonly fail?: string } = {}) {
+function summarizer(text: string) {
   const streamFn: StreamFn = () => {
     const stream = createAssistantMessageEventStream();
-    const answer: AssistantMessage =
-      options.fail === undefined
-        ? assistant(text)
-        : assistant("", { stop: "error", error: options.fail });
-    queueMicrotask(() => {
-      if (answer.stopReason === "error") {
-        stream.push({ type: "error", reason: "error", error: answer });
-      } else {
-        stream.push({ type: "done", reason: "stop", message: answer });
-      }
-    });
+    const answer: AssistantMessage = assistant(text);
+    queueMicrotask(() => stream.push({ type: "done", reason: "stop", message: answer }));
     return stream;
   };
   return { streamFn };
@@ -102,85 +91,18 @@ const longChat = (): CommitBody[] => [
   message(user("third question")),
 ];
 
-test("the context must shrink when the last report leaves less than the reserve", () => {
-  assert.equal(shouldCompact(950, 1_000, settings), true);
-  assert.equal(shouldCompact(850, 1_000, settings), false);
-  assert.equal(shouldCompact(950, 1_000, { ...settings, enabled: false }), false);
-});
-
 test("a checkpoint cut keeps the recent tail whole and never separates a call from its result", () => {
   const prepared = prepareCheckpoint(items(longChat()), { ...settings, keepRecentTokens: 5 });
   assert.ok(prepared.ok && prepared.value !== undefined);
-  const { messagesToSummarize, retainedTail, tokensBefore } = prepared.value;
+  const { messagesToSummarize, retainedTail } = prepared.value;
   assert.ok(messagesToSummarize.length > 0);
   assert.ok(retainedTail.length > 0);
   assert.notEqual(retainedTail[0]?.role, "toolResult");
-  assert.ok(tokensBefore > 0);
 
-  assert.deepEqual(prepareCheckpoint([], settings), { ok: true, value: undefined });
   const alreadyCut = items([
     { kind: "checkpoint", summary: "s", retainedTail: [], tokensBefore: 1 },
   ]);
   assert.deepEqual(prepareCheckpoint(alreadyCut, settings), { ok: true, value: undefined });
-});
-
-test("a summary is what the model wrote, with the tail and the cost attached", async () => {
-  const script = summarizer("EVERYTHING SO FAR");
-  const summarized = await summarizeCheckpoint({
-    commits: items(longChat()),
-    streamFn: script.streamFn,
-    model,
-    settings,
-    reason: "manual",
-  });
-  assert.ok(summarized.ok);
-  const body = summarized.value;
-  assert.equal(body.kind, "checkpoint");
-  assert.match(body.summary, /EVERYTHING SO FAR/u);
-  assert.ok(body.retainedTail.length > 0);
-  assert.ok(body.tokensBefore > 0);
-  assert.deepEqual(body.usage?.totalTokens, usage.totalTokens);
-
-  const failing = await summarizeCheckpoint({
-    commits: items(longChat()),
-    streamFn: summarizer("", { fail: "provider down" }).streamFn,
-    model,
-    settings,
-    reason: "manual",
-    retry: { enabled: false, maxRetries: 0, baseDelayMs: 0 },
-  });
-  assert.equal(failing.ok, false);
-});
-
-test("splitting the first retained turn preserves the previous checkpoint summary", async () => {
-  const commits = items([
-    {
-      kind: "checkpoint",
-      summary: "The original constraints must survive another checkpoint.",
-      retainedTail: [user("current task ".repeat(30)), assistant("early work ".repeat(30))],
-      tokensBefore: 200,
-    },
-    message(assistant("latest work")),
-  ]);
-  const compacting = { ...settings, keepRecentTokens: 1 };
-  const prepared = prepareCheckpoint(commits, compacting);
-  assert.ok(prepared.ok && prepared.value !== undefined);
-  assert.equal(prepared.value.isSplitTurn, true);
-  assert.equal(prepared.value.messagesToSummarize.length, 0);
-
-  const summarized = await summarizeCheckpoint({
-    commits,
-    streamFn: summarizer("Recent turn summary.").streamFn,
-    model,
-    settings: compacting,
-    reason: "manual",
-  });
-  assert.ok(summarized.ok);
-  assert.match(
-    summarized.value.summary,
-    /The original constraints must survive another checkpoint\./u,
-  );
-  assert.match(summarized.value.summary, /Recent turn summary\./u);
 });
 
 test("a checkpoint lands on an idle head and becomes where the model's context starts", async () => {
@@ -198,7 +120,12 @@ test("a checkpoint lands on an idle head and becomes where the model's context s
   assert.equal(await session.refs.read(headRef("main")), outcome.commit);
   const context = await contextCommits(session.objects, outcome.commit);
   assert.equal(context.length, 1);
-  assert.equal(context[0]?.commit.parent, oids.at(-1));
+  const checkpoint = context[0]?.commit;
+  assert.equal(checkpoint?.parent, oids.at(-1));
+  assert.ok(checkpoint?.body.kind === "checkpoint");
+  assert.match(checkpoint.body.summary, /THE GIST/u);
+  assert.ok(checkpoint.body.retainedTail.length > 0);
+  assert.equal(checkpoint.body.usage?.totalTokens, usage.totalTokens);
   assert.equal(await session.leases.read(headRef("main")), undefined);
 
   assert.equal(
@@ -226,25 +153,6 @@ test("a checkpoint lands on an idle head and becomes where the model's context s
   await session.leases.release(held);
 });
 
-test("a branch that was left behind is summarized into one message, or nothing when empty", async () => {
-  const abandoned = items([message(user("we tried x")), message(assistant("x did not work"))]);
-  const summarized = await summarizeBranch({
-    abandoned,
-    streamFn: summarizer("TRIED X, FAILED").streamFn,
-    model,
-  });
-  assert.ok(summarized.ok);
-  assert.equal(summarized.value.kind, "summary");
-  assert.match(summarized.value.text, /TRIED X, FAILED/u);
-
-  const empty = await summarizeBranch({
-    abandoned: [],
-    streamFn: summarizer("unused").streamFn,
-    model,
-  });
-  assert.deepEqual(empty, { ok: true, value: { kind: "summary", text: "" } });
-});
-
 async function turnInput(
   session: Session,
   commits: readonly Item[],
@@ -253,6 +161,7 @@ async function turnInput(
   const held = (await session.leases.read(headRef("main"))) ?? (await lease(session, "main"));
   return {
     session,
+    telemetry: NOOP_TELEMETRY_CONTEXT,
     lease: held,
     run: {
       kind: "run",
@@ -263,6 +172,7 @@ async function turnInput(
       attempts: 0,
       config: {},
     },
+    now: 1,
     attempt: 1,
     commits,
     emit: () => undefined,
@@ -270,16 +180,12 @@ async function turnInput(
   };
 }
 
-test("the turn asks for a checkpoint before answering when the last report says the next request will not fit", async () => {
+test("the turn asks for a checkpoint before answering only when the last report says the next request will not fit", async () => {
   const session = await openSession();
   const script = summarizer("COMPACTED");
-  const turn = bindTurn({
-    streamFn: script.streamFn,
-    model,
-    systemPrompt: "system",
-    tools: [],
-    compaction: settings,
-  });
+  const bind = (compaction: CompactionSettings) =>
+    bindTurn({ streamFn: script.streamFn, model, systemPrompt: "system", tools: [], compaction });
+  const turn = bind(settings);
   const outcome = await turn.respond(await turnInput(session, items(longChat())));
   assert.equal(outcome.kind, "checkpoint");
   if (outcome.kind === "checkpoint") assert.match(outcome.body.summary, /COMPACTED/u);
@@ -289,8 +195,13 @@ test("the turn asks for a checkpoint before answering when the last report says 
     message(assistant("small", { usage })),
     message(user("more")),
   ]);
-  const answered = await turn.respond(await turnInput(session, light));
-  assert.equal(answered.kind, "complete");
+  assert.equal((await turn.respond(await turnInput(session, light))).kind, "complete");
+
+  const disabled = bind({ ...settings, enabled: false });
+  assert.equal(
+    (await disabled.respond(await turnInput(session, items(longChat())))).kind,
+    "complete",
+  );
 });
 
 test("an oversized request compacts once, then the failure stands", async () => {

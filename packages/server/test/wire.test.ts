@@ -7,7 +7,14 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/client";
-import { createNyte, type Nyte, type SessionEvent, type SessionId } from "@nyte-ai/core";
+import {
+  createNyte,
+  type Nyte,
+  type JobInfo,
+  type SessionActivationResolver,
+  type SessionEvent,
+  type SessionId,
+} from "@nyte-ai/core";
 import { CallReplySchema, sessionId as parseSessionId } from "@nyte-ai/protocol";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { Value } from "typebox/value";
@@ -16,6 +23,7 @@ import { createNyteServer, type NyteServerOptions, type ServerFailure } from "..
 
 const TOKEN = "test-token-0123456789abcdef";
 const BASE = "http://nyte.test";
+const VERSION = "0.0.2-test";
 
 const model: Model<Api> = {
   id: "echo-model",
@@ -36,27 +44,32 @@ afterEach(async () => {
 });
 
 interface FixtureOptions {
-  /** Wrap the real SDK before the server sees it, to observe or to fail a verb. */
+  /** Wrap the real SDK before the server sees it, to observe or to fail an operation. */
   readonly wrap?: (sdk: Nyte) => Nyte;
   readonly server?: Partial<Omit<NyteServerOptions, "sdk">>;
   readonly token?: string;
+  readonly resolveActivation?: SessionActivationResolver;
 }
 
 async function fixture(options: FixtureOptions = {}) {
   const store = new SqliteStore(":memory:", { watchPollIntervalMs: 5 });
-  const nyte = await createNyte({
+  const base = {
     store,
     streamFn: () => {
       throw new Error("These scenes never reach a model");
     },
     models: {
       getModels: () => [model],
-      getModel: (_provider, id) => (id === model.id ? model : undefined),
+      getModel: (_provider: string, id: string) => (id === model.id ? model : undefined),
+      getAvailable: async () => [model],
     },
     model,
-    plugins: [],
-    env: { cwd: "/tmp/nowhere" },
-  });
+  };
+  const nyte = await createNyte(
+    options.resolveActivation === undefined
+      ? { ...base, plugins: [], env: { cwd: "/tmp/nowhere" } }
+      : { ...base, resolveActivation: options.resolveActivation },
+  );
   cleanups.push(
     () => nyte.close(),
     () => store.close(),
@@ -64,6 +77,7 @@ async function fixture(options: FixtureOptions = {}) {
   const failures: ServerFailure[] = [];
   const server = createNyteServer({
     sdk: options.wrap?.(nyte) ?? nyte,
+    version: VERSION,
     auth: { kind: "token", token: TOKEN },
     heartbeatMs: 0,
     onError: (failure) => failures.push(failure),
@@ -221,6 +235,104 @@ test("send with an idempotency key queues once and reports the duplicate with th
   assert.deepEqual(await client.runs.abort({ sessionId }), { kind: "not_running" });
 });
 
+test("run reads and replies on an idle head answer without a runner, and status starts empty", async () => {
+  const { client, raw } = await fixture();
+  const { sessionId } = await client.sessions.create();
+  assert.equal(await client.runs.current({ sessionId }), undefined);
+  assert.deepEqual(
+    await client.runs.reply({
+      sessionId,
+      callId: "call-1",
+      waitId: "missing-wait",
+      reply: { ok: true },
+    }),
+    { kind: "not_found" },
+  );
+  assert.deepEqual(await client.plugins.status.list({ sessionId }), []);
+  assert.deepEqual(
+    await errorOf(
+      await raw(
+        "/v1/call/runs.reply",
+        post(JSON.stringify({ input: { sessionId, callId: "call-1" } })),
+      ),
+    ),
+    { status: 400, code: "invalid_input" },
+  );
+});
+
+test("job calls dispatch through HTTP and job events round-trip through SSE", async () => {
+  const job: JobInfo = {
+    kind: "command",
+    id: "job-1",
+    runId: "run-1",
+    callId: "call-1",
+    head: "branch",
+    title: "Run tests",
+    mode: "background",
+    state: "running",
+    startedAt: 1,
+    updatedAt: 2,
+    output: "partial output\n",
+  };
+  const calls: unknown[] = [];
+  const { client, raw } = await fixture({
+    wrap: (sdk) => ({
+      ...sdk,
+      jobs: {
+        async list(input) {
+          calls.push(["list", input]);
+          return [job];
+        },
+        async background(input) {
+          calls.push(["background", input]);
+          return { kind: "applied" };
+        },
+        async cancel(input) {
+          calls.push(["cancel", input]);
+          return { kind: "finished" };
+        },
+      },
+      async *watch() {
+        yield { seq: 3, kind: "job", job };
+        yield {
+          seq: 3,
+          kind: "job",
+          job: { ...job, kind: "subagent", childSessionId: parseSessionId("child") },
+        };
+      },
+    }),
+  });
+  const { sessionId } = await client.sessions.create();
+  assert.deepEqual(await client.jobs.list({ sessionId }), [job]);
+  assert.deepEqual(await client.jobs.list({ sessionId, head: "branch" }), [job]);
+  assert.deepEqual(await client.jobs.background({ sessionId, jobId: job.id }), { kind: "applied" });
+  assert.deepEqual(await client.jobs.cancel({ sessionId, jobId: job.id }), { kind: "finished" });
+  assert.deepEqual(calls, [
+    ["list", { sessionId }],
+    ["list", { sessionId, head: "branch" }],
+    ["background", { sessionId, jobId: job.id }],
+    ["cancel", { sessionId, jobId: job.id }],
+  ]);
+  for (const operation of ["jobs.background", "jobs.cancel"]) {
+    assert.deepEqual(
+      await errorOf(
+        await raw(
+          `/v1/call/${operation}`,
+          post(JSON.stringify({ input: { sessionId, jobId: job.id, head: "main" } })),
+        ),
+      ),
+      { status: 400, code: "invalid_input" },
+    );
+  }
+  assert.equal(calls.length, 4);
+  const events: SessionEvent[] = [];
+  for await (const event of client.watch({ sessionId, live: true })) events.push(event);
+  assert.deepEqual(events, [
+    { seq: 3, kind: "job", job },
+    { seq: 3, kind: "job", job: { ...job, kind: "subagent", childSessionId: "child" } },
+  ]);
+});
+
 test("a lane outside the landing policy is refused as invalid input before the SDK sees it", async () => {
   const { client, failures } = await fixture();
   const { sessionId } = await client.sessions.create();
@@ -242,7 +354,7 @@ test("an unknown session is a tagged 404, not an internal error", async () => {
   assert.deepEqual(failures, []);
 });
 
-test("a verb that throws reaches the client as internal with a fixed message; the host hears the cause", async () => {
+test("an operation that throws reaches the client as internal with a fixed message; the host hears the cause", async () => {
   const { client, failures } = await fixture({
     wrap: (sdk) => ({
       ...sdk,
@@ -260,7 +372,7 @@ test("a verb that throws reaches the client as internal with a fixed message; th
   assert.ok(!JSON.stringify(error.error).includes("secret"));
   assert.equal(failures.length, 1);
   assert.ok(failures[0]?.cause instanceof TypeError);
-  assert.equal(failures[0]?.verb, "plugins.catalog");
+  assert.equal(failures[0]?.operation, "plugins.catalog");
 });
 
 test("a throwing diagnostic hook does not stop the redacted reply", async () => {
@@ -284,7 +396,7 @@ test("a throwing diagnostic hook does not stop the redacted reply", async () => 
 // The HTTP boundary
 // ---------------------------------------------------------------------------
 
-test("malformed bodies, unknown verbs, wrong methods, and oversized payloads are tagged refusals", async () => {
+test("malformed bodies, unknown operations, wrong methods, and oversized payloads are tagged refusals", async () => {
   const { raw } = await fixture({ server: { maxBodyBytes: 200 } });
   assert.deepEqual(await errorOf(await raw("/v1/call/sessions.get", post("{not json"))), {
     status: 400,
@@ -312,15 +424,15 @@ test("malformed bodies, unknown verbs, wrong methods, and oversized payloads are
   });
   assert.deepEqual(await errorOf(await raw("/v1/call/nope", post("{}"))), {
     status: 404,
-    code: "unknown_verb",
+    code: "unknown_operation",
   });
   assert.deepEqual(await errorOf(await raw("/v1/call/constructor", post("{}"))), {
     status: 404,
-    code: "unknown_verb",
+    code: "unknown_operation",
   });
   assert.deepEqual(await errorOf(await raw("/v1/call/__proto__", post("{}"))), {
     status: 404,
-    code: "unknown_verb",
+    code: "unknown_operation",
   });
   assert.deepEqual(await errorOf(await raw("/v1/other", post("{}"))), {
     status: 404,
@@ -381,18 +493,48 @@ test("no token is 401, a wrong token is 403, and the client surfaces both", asyn
   assert.equal(refused.code, "forbidden");
   assert.equal(refused.status, 403);
   assert.throws(
-    () => createNyteServer({ sdk: anonymous.nyte, auth: { kind: "token", token: "short" } }),
+    () =>
+      createNyteServer({
+        sdk: anonymous.nyte,
+        version: VERSION,
+        auth: { kind: "token", token: "short" },
+      }),
     RangeError,
   );
   assert.throws(
     () =>
       createNyteServer({
         sdk: anonymous.nyte,
+        version: VERSION,
         auth: { kind: "token", token: TOKEN },
         maxBodyBytes: Number.NaN,
       }),
     RangeError,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Info
+// ---------------------------------------------------------------------------
+
+test("info answers the host version and wire version behind auth, on GET only", async () => {
+  const { raw, client } = await fixture();
+  assert.deepEqual(await client.info(), { version: VERSION, wireVersion: 1 });
+  const response = await raw("/v1/info");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    defined: true,
+    value: { version: VERSION, wireVersion: 1 },
+  });
+  assert.deepEqual(await errorOf(await raw("/v1/info", post("{}"))), {
+    status: 405,
+    code: "method_not_allowed",
+  });
+  assert.deepEqual(await errorOf(await raw("/v1/info", { headers: { authorization: "" } })), {
+    status: 401,
+    code: "unauthorized",
+  });
 });
 
 test("a custom authorizer decides per request and a throwing one fails closed", async () => {
@@ -509,6 +651,8 @@ test("a live watch syncs first and then carries a queued message", async () => {
   const iterator = client.watch({ sessionId, live: true })[Symbol.asyncIterator]();
   const synced = await iterator.next();
   assert.equal(synced.done === false && synced.value.kind, "synced");
+  const activation = await iterator.next();
+  assert.equal(activation.done === false && activation.value.kind, "activation_changed");
   const receipt = await client.messages.send({ sessionId, content: "queued while watching" });
   const queued = await iterator.next();
   assert.ok(queued.done === false && queued.value.kind === "queued");
@@ -516,18 +660,68 @@ test("a live watch syncs first and then carries a queued message", async () => {
   await iterator.return?.();
 });
 
+test("activation state and activation_changed round-trip over HTTP and SSE", async () => {
+  let active = false;
+  const { client, nyte } = await fixture({
+    resolveActivation: () =>
+      active
+        ? { kind: "active", plugins: [], env: { cwd: "/workspace" } }
+        : {
+            kind: "requires",
+            requirement: { kind: "workspace_trust", cwd: "/workspace" },
+          },
+  });
+  const created = await client.sessions.create();
+  assert.deepEqual(created.activation, {
+    kind: "requires",
+    requirement: { kind: "workspace_trust", cwd: "/workspace" },
+  });
+  assert.equal(
+    (await client.sessions.snapshot({ sessionId: created.sessionId }))?.session.activation.kind,
+    "requires",
+  );
+
+  const iterator = client
+    .watch({ sessionId: created.sessionId, live: true })
+    [Symbol.asyncIterator]();
+  const synced = await iterator.next();
+  assert.ok(synced.done === false && synced.value.kind === "synced");
+  const required = await iterator.next();
+  assert.ok(required.done === false && required.value.kind === "activation_changed");
+  if (required.done === false && required.value.kind === "activation_changed") {
+    assert.equal(required.value.activation.kind, "requires");
+  }
+
+  active = true;
+  await nyte.reactivate();
+  const activated = await iterator.next();
+  assert.ok(activated.done === false && activated.value.kind === "activation_changed");
+  if (activated.done === false && activated.value.kind === "activation_changed") {
+    assert.deepEqual(activated.value.activation, { kind: "active" });
+  }
+  await iterator.return?.();
+});
+
 test("a replay from the start delivers a head move and its commit on one seq, then synced", async () => {
   const { client, store } = await fixture();
   const { sessionId } = await client.sessions.create();
   await landCommit(store, sessionId, "landed");
-  const events = await take(client.watch({ sessionId, afterSeq: 0 }), 3);
-  assert.deepEqual(
-    events.map((event) => event.kind),
-    ["head_moved", "commit", "synced"],
-  );
-  assert.equal(events[0]?.seq, events[1]?.seq);
-  const commit = events[1];
+  const events: SessionEvent[] = [];
+  for await (const event of client.watch({
+    sessionId,
+    afterSeq: 0,
+    signal: AbortSignal.timeout(3_000),
+  })) {
+    events.push(event);
+    if (event.kind === "synced") break;
+  }
+  assert.equal(events.at(-1)?.kind, "synced");
+  assert.ok(events.some((event) => event.kind === "activation_changed"));
+  const moved = events.findIndex((event) => event.kind === "head_moved");
+  assert.ok(moved >= 0);
+  const commit = events[moved + 1];
   assert.ok(commit?.kind === "commit" && commit.item.commit.body.kind === "message");
+  assert.equal(events[moved]?.seq, commit.seq);
   assert.equal(commit.item.commit.body.message.content, "landed");
 });
 
@@ -553,6 +747,8 @@ test("a cursor below the floor is a cursor_expired refusal with the floor; a sna
   const iterator = client.watch({ sessionId, afterSeq: snapshot.seq })[Symbol.asyncIterator]();
   const synced = await iterator.next();
   assert.ok(synced.done === false && synced.value.kind === "synced");
+  const activation = await iterator.next();
+  assert.ok(activation.done === false && activation.value.kind === "activation_changed");
   await landCommit(store, sessionId, "three");
   const moved = await iterator.next();
   assert.ok(moved.done === false && moved.value.kind === "head_moved");
@@ -584,6 +780,7 @@ test("breaking out of a watch aborts the SDK watch on the server without touchin
     .watch({ sessionId, live: true, signal: controller.signal })
     [Symbol.asyncIterator]();
   await iterator.next();
+  await iterator.next();
   const pending = iterator.next();
   controller.abort();
   assert.deepEqual(await pending, { done: true, value: undefined });
@@ -610,6 +807,7 @@ test("closing the server ends open watches with a closed error frame and refuses
   const { client, server } = await fixture();
   const { sessionId } = await client.sessions.create();
   const iterator = client.watch({ sessionId, live: true })[Symbol.asyncIterator]();
+  await iterator.next();
   await iterator.next();
   const pending = iterator.next();
   server.close();
@@ -707,6 +905,7 @@ test("a heartbeat comment keeps a quiet stream open without producing an event",
   const { client } = await fixture({ server: { heartbeatMs: 10 } });
   const { sessionId } = await client.sessions.create();
   const iterator = client.watch({ sessionId, live: true })[Symbol.asyncIterator]();
+  await iterator.next();
   await iterator.next();
   const pending = iterator.next();
   await new Promise((resolve) => setTimeout(resolve, 60));

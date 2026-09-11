@@ -4,37 +4,41 @@
  * its view-state owner.
  */
 import * as stylex from "@stylexjs/stylex";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
-import type { SessionId, ThinkingLevel, Turn, UserTurnPart } from "@nyte-ai/core";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type { Virtualizer } from "@tanstack/react-virtual";
+import { isTerminalPhase } from "@nyte-ai/core/views";
+import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/core";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { Lane } from "@nyte-ai/core";
 import {
   Composer,
   ComposerFrame,
-  composerMessageContent,
-  composerPromptText,
-  composerSource,
   readComposerImageAttachments,
 } from "../conversation/composer.tsx";
-import type { ComposerChip, ComposerImageAttachment } from "../conversation/composer.tsx";
-import type { BranchModelChoice, BranchModelPicker } from "../conversation/turn-view.tsx";
-import { ModelPicker, type ModelPickerChange } from "../conversation/model-picker.tsx";
-import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import type { ComposerImageAttachment } from "../conversation/composer.tsx";
+import { composerSource } from "../conversation/composer-suggestions.tsx";
+import { dropHandlers } from "../conversation/composer-file-drop.ts";
+import type { ComposerSubmission } from "../conversation/composer-document.ts";
+import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
+import { composerSendInput, composerSendPlan } from "../conversation/composer-send.ts";
+import type {
+  BranchModelChoice,
+  BranchModelPicker,
+  TurnChangesTarget,
+} from "../conversation/turn-view.tsx";
+import { ModelPicker } from "../conversation/model-picker.tsx";
+import { updateDraftModel } from "../conversation/blank-draft.ts";
 import { Icon } from "../components/icons.tsx";
+import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
 import { handleOpenOutcome } from "../chrome/open-workspace.tsx";
 import {
   usePaneActions,
+  useCanSplitPane,
   usePaneControllerSnapshot,
   usePaneViewStateStore,
 } from "../layout/pane-context.tsx";
@@ -48,11 +52,12 @@ import {
 import type { PaneId, PaneLayout, PaneState, SplitDirection } from "../layout/pane-layout.ts";
 import { useSessionDropTarget, useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import type { SessionDropTarget } from "../layout/session-dnd.tsx";
-import type { BlankViewState, SessionViewState } from "../layout/session-view-state.ts";
-import { livePartKey, useSessionLive } from "../live.ts";
-import type { LiveSnapshot } from "../live.ts";
+import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
+import { useSessionLive } from "../live.ts";
+import type { LiveToolProgress } from "../live-fold.ts";
 import {
   keys,
+  configureSession,
   loadThread,
   queryClient,
   useCatalog,
@@ -73,15 +78,50 @@ import { outbox, useOutboxRows } from "../use-outbox.ts";
 import { conversation, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
-import type { DesktopModelOption } from "../nyte.ts";
 
-import { Prose } from "../conversation/prose.tsx";
+import { BackgroundWork } from "../conversation/jobs-panel.tsx";
+import type { BackgroundWorkSection } from "../conversation/jobs-panel.tsx";
+import { LiveTurn, liveTurnStyles } from "../conversation/live-turn.tsx";
+import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
-import { WorkGroupView } from "../conversation/tool-group.tsx";
+import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
+import { Selections } from "../conversation/selection.tsx";
+import { parkedSelections } from "../conversation/selection.ts";
+import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
+import {
+  estimateRowSize,
+  promptRowCount,
+  rowHasPrompt,
+  transcriptRows,
+} from "../conversation/transcript-rows.ts";
+import type { TranscriptRow } from "../conversation/transcript-rows.ts";
+import {
+  activeStickyCandidate,
+  initialTranscriptOffset,
+  isBottomPinned,
+  overscrollReserve,
+  PROMPT_TOP_INSET,
+  remainingOverscroll,
+  shouldAdjustScrollForResize,
+  TRANSCRIPT_PADDING_END,
+  TRANSCRIPT_PADDING_START,
+} from "../conversation/transcript-scroll.ts";
+import type { StickyCandidate } from "../conversation/transcript-scroll.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
-import { WORKBENCH_STAGE_PANE_KEY } from "../workbench/controller.ts";
+import {
+  WORKBENCH_STAGE_PANE_KEY,
+  workbenchController,
+  workbenchViewKey,
+} from "../workbench/controller.ts";
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
+import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
+import { terminalActions } from "../workbench/terminal-store.ts";
+import { agentActions } from "../workbench/agents-store.ts";
+import { SubagentInspectorProvider } from "../conversation/subagent-inspector.ts";
+import { focusTerminal } from "../workbench/terminal-runtime.ts";
+import { clientActions, clientActionShortcut } from "../../../shared/client-actions.ts";
+import { errorMessage } from "../../../shared/errors.ts";
 
 const styles = stylex.create({
   stage: {
@@ -154,17 +194,43 @@ const styles = stylex.create({
   },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   conversation: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  scroll: { flex: 1, minHeight: 0, overflowY: "auto" },
-  transcript: {
+  // The stuck prompt sits 10px below the top edge; content scrolling through
+  // that gap fades out instead of cutting off at the edge. Rows resize under
+  // the virtualizer's own corrections, so the browser's anchoring stays out.
+  scroll: {
     display: "flex",
     flexDirection: "column",
-    gap: conversation.turnGap,
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowAnchor: "none",
+    maskImage: {
+      default: null,
+      "[data-scrolled='true']": "linear-gradient(to bottom, transparent, black 10px)",
+    },
+  },
+  // The plane's height is the virtualizer's total; rows sit inside it at
+  // their measured offsets. Top and bottom padding live in the virtualizer
+  // (`paddingStart`/`paddingEnd`), the turn gap on each row.
+  transcript: {
+    position: "relative",
+    flexGrow: 1,
+    flexShrink: 0,
     width: `min(${conversation.measure}, 100%)`,
     marginInline: "auto",
-    paddingInline: conversation.gutter,
-    paddingTop: 16,
-    paddingBottom: 18,
   },
+  // `top` rather than a transform: the prompt inside is `position: sticky`,
+  // and a transformed ancestor would pin it to the row instead of the
+  // scrollport. A row that renders nothing drops its gap like a missing flex
+  // item would.
+  row: {
+    position: "absolute",
+    insetInline: 0,
+    paddingInline: conversation.gutter,
+    paddingTop: { default: conversation.turnGap, ":empty": 0 },
+    contain: "layout",
+  },
+  rowFirst: { paddingTop: 0 },
   banner: {
     width: "fit-content",
     padding: "5px 10px",
@@ -181,14 +247,6 @@ const styles = stylex.create({
     fontSize: "inherit",
     textDecorationLine: "underline",
     cursor: "pointer",
-  },
-  loading: { color: t.textTertiary, fontSize: t.fontSm },
-  liveTurn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: conversation.rowGap,
-    width: "100%",
-    minWidth: 0,
   },
   blank: {
     display: "flex",
@@ -253,7 +311,7 @@ const styles = stylex.create({
     touchAction: "none",
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: -2,
   },
   sashRight: { width: 9, cursor: "col-resize" },
@@ -280,7 +338,10 @@ const styles = stylex.create({
 });
 
 const EMPTY_TURNS: readonly Turn[] = [];
-const STICKY_MESSAGE_ACTIVATION_EPSILON = 2;
+const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
+const TRANSCRIPT_OVERSCAN = 4;
+
+type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 
 function setDataState(element: HTMLElement, name: string, active: boolean): void {
   const value = active ? "true" : "false";
@@ -288,31 +349,266 @@ function setDataState(element: HTMLElement, name: string, active: boolean): void
 }
 
 /**
- * Cursor keeps the real user row sticky inside its turn boundary. Mutating a
- * data state here avoids cloning the prompt or rerendering the transcript on
+ * The real user row stays sticky inside its turn boundary. Mutating a data
+ * state here avoids cloning the prompt or rerendering the transcript on
  * every scroll tick; React continues to own the row and its edit state.
+ * A turn's top comes from the virtualizer's cached item start plus the row's
+ * gap padding, so a scroll tick reads no rects. The scrollport learns whether
+ * it is scrolled so it can fade its top edge under the stuck prompt.
  */
-function syncStickyUserMessage(scroll: HTMLDivElement, transcript: HTMLDivElement): void {
-  const viewportTop = scroll.getBoundingClientRect().top;
-  let active: HTMLElement | undefined;
-  const rows = transcript.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+function syncStickyUserMessage(
+  scroll: HTMLDivElement,
+  plane: HTMLDivElement,
+  virtualizer: TranscriptVirtualizer,
+): void {
+  setDataState(scroll, "scrolled", scroll.scrollTop > 0);
+  // Item starts are computed lazily; the total forces the cache current.
+  virtualizer.getTotalSize();
+  const rows = plane.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+  const candidates: StickyCandidate[] = [];
+  const candidateRows: HTMLElement[] = [];
 
   for (const row of rows) {
     const turn = row.closest<HTMLElement>("[data-sticky-turn='true']");
-    const eligible = turn !== null && row.offsetHeight < scroll.clientHeight;
+    const wrapper = row.closest<HTMLDivElement>("[data-index]");
+    const item =
+      wrapper === null
+        ? undefined
+        : virtualizer.measurementsCache[virtualizer.indexFromElement(wrapper)];
+    const eligible = turn !== null && item !== undefined && row.offsetHeight < scroll.clientHeight;
     setDataState(row, "stickyDisabled", !eligible);
-    if (!eligible || turn === null) continue;
-
-    const sourceTop = turn.getBoundingClientRect().top - viewportTop + scroll.scrollTop;
-    if (sourceTop <= scroll.scrollTop + STICKY_MESSAGE_ACTIVATION_EPSILON) active = row;
+    if (!eligible || turn === null || item === undefined) continue;
+    candidates.push({ start: item.start + turn.offsetTop, height: item.size });
+    candidateRows.push(row);
   }
 
-  for (const row of rows) {
-    const selected = row === active;
-    setDataState(row, "stickyActive", selected);
-    const fade = row.querySelector<HTMLElement>("[data-sticky-message-fade]");
-    if (fade !== null) setDataState(fade, "stickyVisible", selected);
-  }
+  const active = activeStickyCandidate(candidates, scroll.scrollTop, isBottomPinned(scroll));
+  const activeRow = active === undefined ? undefined : candidateRows[active];
+  for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
+}
+
+interface OverscrollReservation {
+  readonly sessionId: SessionId;
+  readonly initial: number;
+  /** Content height (padding excluded) when the reserve was taken. */
+  readonly baseline: number;
+  readonly reserve: number;
+}
+
+/**
+ * The virtualized transcript. It owns the scroll behaviours that need the
+ * virtualizer (sticky prompts, the send-time overscroll reserve, composer
+ * height compensation, restore) and leaves the scrollport, the composer,
+ * and the persisted scroll state to the conversation around it. It is its
+ * own component because the virtualizer instance mutates in place and the
+ * compiler bails out of memoizing whatever calls it. It is keyed by session
+ * so each visit gets a fresh virtualizer seeded from the last visit's
+ * measurements and offset, rather than one first render at the previous
+ * session's scroll position.
+ */
+function TranscriptPlane({
+  paneId,
+  sessionId,
+  ready,
+  scrollRef,
+  rows,
+  renderRow,
+}: {
+  paneId: PaneId;
+  sessionId: SessionId;
+  ready: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
+  rows: readonly TranscriptRow[];
+  renderRow: (row: TranscriptRow) => ReactNode;
+}): ReactElement {
+  const viewStore = usePaneViewStateStore();
+  const planeRef = useRef<HTMLDivElement>(null);
+  const dockHeight = useRef(0);
+  const promptTrack = useRef<{ sessionId: SessionId | undefined; count: number }>({
+    sessionId: undefined,
+    count: 0,
+  });
+  const pendingPin = useRef<number | undefined>(undefined);
+  const [overscroll, setOverscroll] = useState<OverscrollReservation>();
+  const reserve = overscroll?.sessionId === sessionId ? overscroll.reserve : 0;
+  // What the last visit measured, read once: the virtualizer consults its
+  // initial options only until the scrollport reports, and the plane is
+  // keyed by session so each visit gets a fresh instance. Rows already
+  // measured take their real height; the rest keep their estimate.
+  const [restore] = useState(() => {
+    const { transcript, scroll } = viewStore.readSession(sessionId, paneId);
+    const measured = new Map(transcript.measurements.map((item) => [item.key, item.size]));
+    return {
+      measurements: [...transcript.measurements],
+      rect: transcript.viewport ?? { width: 0, height: 0 },
+      offset: initialTranscriptOffset({
+        sizes: rows.map((row) => measured.get(row.key) ?? estimateRowSize(row)),
+        paddingStart: TRANSCRIPT_PADDING_START,
+        paddingEnd: TRANSCRIPT_PADDING_END,
+        viewportHeight: transcript.viewport?.height ?? 0,
+        scroll,
+      }),
+    };
+  });
+  // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
+  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (index) => estimateRowSize(rows[index]),
+    getItemKey: (index) => rows[index]?.key ?? index,
+    initialMeasurementsCache: restore.measurements,
+    initialRect: restore.rect,
+    initialOffset: restore.offset,
+    overscan: TRANSCRIPT_OVERSCAN,
+    paddingStart: TRANSCRIPT_PADDING_START,
+    paddingEnd: TRANSCRIPT_PADDING_END + reserve,
+    // Fires after every measurement and scroll: item starts may have moved
+    // under the stuck prompt, and a growing reply eats into the reserve.
+    onChange: (instance) => {
+      const scroll = scrollRef.current;
+      const plane = planeRef.current;
+      if (scroll !== null && plane !== null) syncStickyUserMessage(scroll, plane, instance);
+      if (overscroll === undefined || overscroll.sessionId !== sessionId) return;
+      const next = remainingOverscroll({
+        initial: overscroll.initial,
+        baseline: overscroll.baseline,
+        content: instance.getTotalSize() - instance.options.paddingEnd,
+      });
+      if (next !== overscroll.reserve) setOverscroll({ ...overscroll, reserve: next });
+    },
+  });
+
+  useLayoutEffect(() => {
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
+      shouldAdjustScrollForResize({
+        start: item.start,
+        end: item.end,
+        // The size cache is written after this decision, so a missing entry
+        // means this is the row's first real measurement.
+        firstMeasure: !instance.itemSizeCache.has(item.key),
+        scrollTop: (instance.scrollOffset ?? 0) + instance.scrollAdjustments,
+        scrollingBackward: instance.scrollDirection === "backward",
+      });
+  }, [virtualizer]);
+
+  // Leaving the session keeps what this visit measured for the next one.
+  useLayoutEffect(
+    () => () => {
+      viewStore.updateSession(sessionId, paneId, (current) => ({
+        ...current,
+        transcript: {
+          measurements: virtualizer.takeSnapshot(),
+          viewport: virtualizer.scrollRect ?? undefined,
+        },
+      }));
+    },
+    [paneId, sessionId, viewStore, virtualizer],
+  );
+
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const plane = planeRef.current;
+    if (scroll === null || plane === null) return undefined;
+    // The composer dock is the scrollport's last child; the plane comes first.
+    const last = scroll.lastElementChild;
+    const dock = last instanceof HTMLElement ? last : undefined;
+    dockHeight.current = dock?.offsetHeight ?? 0;
+    const restored = viewStore.readSession(sessionId, paneId).scroll;
+    if (restored.bottomPinned) scroll.scrollTop = scroll.scrollHeight;
+    else virtualizer.scrollToOffset(restored.top);
+    syncStickyUserMessage(scroll, plane, virtualizer);
+
+    const sync = (): void => syncStickyUserMessage(scroll, plane, virtualizer);
+    // Streamed text, late highlights, a growing composer, and a shrinking
+    // scrollport all move the bottom; a reader pinned there follows it. A
+    // reader elsewhere keeps what they are looking at: the dock grows over
+    // the content, so the content moves up by as much.
+    const observer = new ResizeObserver((entries) => {
+      const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
+      if (dock !== undefined && entries.some((entry) => entry.target === dock)) {
+        const delta = dock.offsetHeight - dockHeight.current;
+        dockHeight.current = dock.offsetHeight;
+        if (!pinned) scroll.scrollTop += delta;
+      }
+      if (pinned) scroll.scrollTop = scroll.scrollHeight;
+      sync();
+    });
+    observer.observe(scroll);
+    observer.observe(plane);
+    if (dock !== undefined) observer.observe(dock);
+    scroll.addEventListener("scroll", sync, { passive: true });
+    return () => {
+      observer.disconnect();
+      scroll.removeEventListener("scroll", sync);
+    };
+  }, [paneId, ready, scrollRef, sessionId, viewStore, virtualizer]);
+
+  // Rows have been measured by their refs by the time this runs, so the
+  // virtualizer's totals are current for the reserve arithmetic below.
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const plane = planeRef.current;
+    if (scroll === null || plane === null) return;
+    syncStickyUserMessage(scroll, plane, virtualizer);
+
+    // The reserve from the previous commit is in the DOM now; the prompt can
+    // reach the top edge.
+    const pin = pendingPin.current;
+    if (pin !== undefined && overscroll?.sessionId === sessionId) {
+      pendingPin.current = undefined;
+      virtualizer.scrollToOffset(pin);
+    }
+
+    const count = promptRowCount(rows);
+    const track = promptTrack.current;
+    const sent = track.sessionId === sessionId && count > track.count;
+    promptTrack.current = { sessionId, count };
+    const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
+    const index = rows.findLastIndex(rowHasPrompt);
+    const row = rows[index];
+    if (!sent || !pinned || row === undefined) return;
+    // Reserve bottom overscroll so the new prompt can scroll to the top edge
+    // before its reply exists; the reserve then gives way to the reply.
+    const content = virtualizer.getTotalSize() - virtualizer.options.paddingEnd;
+    const item = virtualizer.measurementsCache[index];
+    const wrapper = virtualizer.elementsCache.get(row.key);
+    const turn = wrapper?.firstElementChild;
+    if (item === undefined || wrapper === undefined || !(turn instanceof HTMLElement)) return;
+    const initial = overscrollReserve({
+      viewportHeight: scroll.clientHeight,
+      rowHeight: turn.offsetHeight,
+      dockHeight: dockHeight.current,
+    });
+    // A row mounted mid-scroll is still an estimate in the totals; the
+    // baseline uses its real height so the reply's growth alone shrinks the reserve.
+    const baseline = content - item.size + wrapper.offsetHeight;
+    pendingPin.current = item.start + turn.offsetTop - PROMPT_TOP_INSET;
+    setOverscroll({ sessionId, initial, baseline, reserve: initial });
+  }, [overscroll, paneId, rows, scrollRef, sessionId, viewStore, virtualizer]);
+
+  return (
+    <div
+      ref={planeRef}
+      {...stylex.props(styles.transcript)}
+      style={{ height: virtualizer.getTotalSize() }}
+    >
+      {virtualizer.getVirtualItems().map((item) => {
+        const row = rows[item.index];
+        if (row === undefined) return null;
+        return (
+          <div
+            key={row.key}
+            ref={virtualizer.measureElement}
+            data-index={item.index}
+            {...stylex.props(styles.row, item.index === 0 && styles.rowFirst)}
+            style={{ top: item.start }}
+          >
+            {renderRow(row)}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function repositoryBranch(snapshot: DesktopVcsSnapshot | undefined): string | undefined {
@@ -333,74 +629,14 @@ function displayWorkspacePath(path: string): string {
   return path.replace(/^\/Users\/[^/]+(?=\/|$)/, "~").replace(/^\/home\/[^/]+(?=\/|$)/, "~");
 }
 
-function LiveTurn({
-  live,
-  working,
-  settledWork,
-  cwd,
-}: {
-  live: LiveSnapshot;
-  working: boolean;
-  settledWork: boolean;
-  cwd: string | undefined;
-}): ReactElement | null {
-  const appearance = useAppearanceSettings();
-  const textParts = live.order.filter((ref) => ref.kind === "text");
-  const hasText = textParts.length > 0;
-  const hasLiveWork =
-    live.order.some((ref) => ref.kind === "thinking") ||
-    live.tools.size > 0 ||
-    (!hasText && working);
-  if (!hasText && !hasLiveWork && !working) return null;
-
-  return (
-    <div {...stylex.props(styles.liveTurn)}>
-      {!settledWork && hasLiveWork && (
-        <WorkGroupView
-          parts={[]}
-          live={live}
-          liveTools={live.tools}
-          cwd={cwd}
-          durationMs={0}
-          running={working}
-          density={appearance.toolCalls}
-        />
-      )}
-      {textParts.map((ref) => {
-        const key = livePartKey(ref.runId, ref.attempt, ref.index);
-        const text = live.text.get(key) ?? "";
-        return text === "" ? null : <Prose key={`text:${key}`} markdown={text} streaming />;
-      })}
-    </div>
-  );
-}
-
-type SessionViewUpdate = (current: SessionViewState) => SessionViewState;
 type BlankViewUpdate = (current: BlankViewState) => BlankViewState;
 type SessionDeletionState =
   | { readonly kind: "closed" }
   | { readonly kind: "open"; readonly sessionId: SessionId };
 
-function useSessionViewBinding(
-  sessionId: SessionId,
-  paneId: PaneId,
-): readonly [SessionViewState, (update: SessionViewUpdate) => void] {
-  const store = usePaneViewStateStore();
-  const [, redraw] = useReducer((value: number) => value + 1, 0);
-  const state = store.readSession(sessionId, paneId);
-  const update = useCallback(
-    (change: SessionViewUpdate): void => {
-      store.updateSession(sessionId, paneId, change);
-      redraw();
-    },
-    [paneId, sessionId, store],
-  );
-  return [state, update];
-}
-
 function useBlankViewBinding(
   paneId: PaneId,
-): readonly [BlankViewState, (update: BlankViewUpdate) => void] {
+): readonly [ChatDraft, (update: BlankViewUpdate) => void] {
   const store = usePaneViewStateStore();
   const [, redraw] = useReducer((value: number) => value + 1, 0);
   const state = store.readBlank(paneId);
@@ -427,12 +663,9 @@ function PaneHeader({
   menuTriggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactElement {
   const actions = usePaneActions();
-  const { layout } = usePaneControllerSnapshot();
   const host = useHostState();
-  const canSplit = layout.kind === "single";
+  const canSplit = useCanSplitPane();
   const mac = macPlatform(host.data?.platform);
-  const modifier = mac ? "⌘" : "Ctrl+";
-  const shift = mac ? "⇧" : "Shift+";
 
   return (
     <div {...stylex.props(styles.header)}>
@@ -445,19 +678,19 @@ function PaneHeader({
         >
           <MenuItem
             icon="split-down"
-            meta={`${shift}${modifier}D`}
+            meta={clientActionShortcut(clientActions.splitDown, mac)}
             disabled={!canSplit}
             onSelect={() => actions.split("down")}
           >
-            Split down
+            {clientActions.splitDown.label}
           </MenuItem>
           <MenuItem
             icon="split-right"
-            meta={`${modifier}D`}
+            meta={clientActionShortcut(clientActions.splitRight, mac)}
             disabled={!canSplit}
             onSelect={() => actions.split("right")}
           >
-            Split right
+            {clientActions.splitRight.label}
           </MenuItem>
           <MenuItem icon="x" onSelect={() => actions.close(paneId)}>
             Close pane
@@ -476,7 +709,7 @@ function SessionConversation({
 }: {
   paneId: PaneId;
   sessionId: SessionId;
-  inputRef: (element: HTMLDivElement | null) => void;
+  inputRef: (element: ComposerEditorHandle | null) => void;
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
@@ -488,17 +721,21 @@ function SessionConversation({
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
+  const [backgroundWork, setBackgroundWork] = useState<{
+    sessionId: SessionId;
+    section: BackgroundWorkSection;
+  }>();
+  const openBackgroundWork =
+    backgroundWork?.sessionId === sessionId ? backgroundWork.section : undefined;
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
   const live = useSessionLive(sessionId, snapshot.data?.seq);
   const viewStore = usePaneViewStateStore();
-  const [viewState, updateViewState] = useSessionViewBinding(sessionId, paneId);
   const settledRun =
     snapshot.data !== undefined &&
     snapshot.data.session.heads.some(
-      (head) =>
-        head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
+      (head) => head.run !== undefined && !isTerminalPhase(head.run.phase),
     );
   // Whether a submitted message steers a live run or opens the next turn is
   // read from the snapshot alone, so one coherent read moves each message from
@@ -517,8 +754,14 @@ function SessionConversation({
   const working = navigating || live.runState !== "idle" || settledRun || landing.length > 0;
   const cwd = host.data?.workspace?.path;
   const scrollRef = useRef<HTMLDivElement>(null);
-  const transcriptRef = useRef<HTMLDivElement>(null);
+  const [bottomPinned, setBottomPinned] = useState(
+    () => viewStore.readSession(sessionId, paneId).scroll.bottomPinned,
+  );
   const ready = snapshot.data !== undefined;
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    if (scroll !== null) setBottomPinned(isBottomPinned(scroll));
+  }, [ready, sessionId]);
   const modelOptions = catalog.data?.models ?? [];
   const pluginSettings = usePluginSettings(
     sessionId,
@@ -545,29 +788,20 @@ function SessionConversation({
     fastEnabled,
   };
   const lastTurn = turns.at(-1);
+  // A turn that ends in a work group already draws the run's indicator there.
+  // One that ends in prose needs it below the prose, or the model looks idle
+  // while it prepares its next step.
   const settledWork =
-    lastTurn?.kind === "turn" &&
-    lastTurn.parts.some((part) => part.kind === "thinking" || part.kind === "tool");
-
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    const transcript = transcriptRef.current;
-    if (element === null || transcript === null) return undefined;
-    const restored = viewStore.readSession(sessionId, paneId).scroll;
-    element.scrollTop = restored.bottomPinned ? element.scrollHeight : restored.top;
-    syncStickyUserMessage(element, transcript);
-    // Streamed text, late highlights, and a shrinking scrollport all move the
-    // bottom; a reader pinned there follows it.
-    const observer = new ResizeObserver(() => {
-      if (viewStore.readSession(sessionId, paneId).scroll.bottomPinned) {
-        element.scrollTop = element.scrollHeight;
-      }
-      syncStickyUserMessage(element, transcript);
-    });
-    observer.observe(element);
-    observer.observe(transcript);
-    return () => observer.disconnect();
-  }, [paneId, ready, sessionId, viewStore]);
+    lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work";
+  const rows = transcriptRows({
+    loading: snapshot.isLoading,
+    failed: snapshot.isError,
+    turns,
+    landing,
+    retrying: live.runState === "retrying" ? live.retry.message : undefined,
+    working,
+    selections: parkedSelections(snapshot.data?.parked).length,
+  });
 
   const title =
     snapshot.data?.session.name ??
@@ -630,7 +864,7 @@ function SessionConversation({
                 throw new Error("That model setting is no longer available.");
               }
             }
-            await outbox.submitDurably({ sessionId, content });
+            await outbox.submit({ sessionId, content });
             await loadThread(sessionId);
             void queryClient.invalidateQueries({ queryKey: keys.sessions });
             void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
@@ -653,147 +887,248 @@ function SessionConversation({
     },
     [fastEnabled, sessionId],
   );
+  const subagentInspector = useMemo(
+    () => ({
+      sessionId,
+      inspect: (childSessionId: SessionId): void => {
+        const viewKey = workbenchViewKey({
+          paneKey: WORKBENCH_STAGE_PANE_KEY,
+          target: { kind: "session", sessionId },
+        });
+        agentActions.select(viewKey, childSessionId);
+        workbenchController.actions.openTab(viewKey, "agents");
+      },
+    }),
+    [sessionId],
+  );
+  const openChanges = useCallback(
+    (target: TurnChangesTarget): void => {
+      const viewKey = workbenchViewKey({
+        paneKey: WORKBENCH_STAGE_PANE_KEY,
+        target: { kind: "session", sessionId },
+      });
+      workbenchController.actions.selectChangesScope(viewKey, {
+        kind: "turn",
+        turnId: target.turnId,
+      });
+      if (target.kind === "file") {
+        workbenchController.actions.revealPath(viewKey, target.path);
+      }
+      workbenchController.actions.openTab(viewKey, "changes");
+    },
+    [sessionId],
+  );
+  const renderRow = (row: TranscriptRow): ReactNode => {
+    switch (row.kind) {
+      case "skeleton":
+        return <TranscriptSkeleton />;
+      case "error":
+        return (
+          <div role="alert" {...stylex.props(styles.banner)}>
+            Couldn&rsquo;t load this chat.{" "}
+            <button
+              type="button"
+              {...stylex.props(styles.bannerAction, focus.ring)}
+              onClick={() => void snapshot.refetch()}
+            >
+              Try again
+            </button>
+          </div>
+        );
+      case "turn":
+        return (
+          <TurnView
+            turn={row.turn}
+            // Settled turns carry their tool results; only the trailing turn has calls in flight.
+            liveTools={row.trailing ? live.tools : NO_LIVE_TOOLS}
+            live={working && row.trailing ? live : undefined}
+            cwd={cwd}
+            onEditUser={editUserMessage}
+            branchModel={branchModel}
+            onOpenChanges={openChanges}
+            running={working && row.trailing}
+          />
+        );
+      case "landing":
+        return (
+          <div data-sticky-turn {...stylex.props(liveTurnStyles.root)}>
+            <UserMessageView content={row.content} />
+          </div>
+        );
+      case "retry":
+        return (
+          <div role="status" title={row.message} {...stylex.props(styles.banner)}>
+            Retrying…
+          </div>
+        );
+      case "live":
+        return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
+      case "selections":
+        return (
+          <Selections
+            sessionId={sessionId}
+            parked={snapshot.data?.parked}
+            disabled={snapshot.isError || navigating}
+          />
+        );
+      default: {
+        const _exhaustive: never = row;
+        return _exhaustive;
+      }
+    }
+  };
 
   return (
-    <div {...stylex.props(styles.screen)} aria-busy={snapshot.isLoading}>
-      {layout.kind === "split" && (
-        <PaneHeader
-          paneId={paneId}
-          menuTriggerRef={paneMenuTrigger}
-          title={
-            draftName === undefined ? (
-              title
-            ) : (
-              <input
-                aria-label="Chat name"
-                autoFocus
-                {...stylex.props(styles.renameInput)}
-                value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
-                onBlur={commitRename}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") commitRename();
-                  if (event.key === "Escape") setDraftName(undefined);
-                }}
-              />
-            )
-          }
-          sessionItems={
-            <>
-              <MenuSeparator />
-              <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
-                Rename
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem icon="trash" danger onSelect={requestDelete}>
-                Delete
-              </MenuItem>
-            </>
-          }
-        />
-      )}
-
-      <div {...stylex.props(styles.body)}>
-        <div {...stylex.props(styles.conversation)}>
-          <div
-            ref={scrollRef}
-            data-nyte-scrollport="balanced"
-            {...stylex.props(styles.scroll)}
-            onScroll={(event) => {
-              const element = event.currentTarget;
-              const bottomPinned =
-                element.scrollHeight - element.scrollTop - element.clientHeight < 60;
-              viewStore.updateSession(sessionId, paneId, (current) => ({
-                ...current,
-                scroll: { top: element.scrollTop, bottomPinned },
-              }));
-              const transcript = transcriptRef.current;
-              if (transcript !== null) syncStickyUserMessage(element, transcript);
-            }}
-          >
-            <div ref={transcriptRef} {...stylex.props(styles.transcript)}>
+    <SubagentInspectorProvider value={subagentInspector}>
+      <div {...stylex.props(styles.screen)} aria-busy={snapshot.isLoading}>
+        {layout.kind === "split" && (
+          <PaneHeader
+            paneId={paneId}
+            menuTriggerRef={paneMenuTrigger}
+            title={
+              draftName === undefined ? (
+                title
+              ) : (
+                <input
+                  aria-label="Chat name"
+                  autoFocus
+                  {...stylex.props(styles.renameInput)}
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") commitRename();
+                    if (event.key === "Escape") setDraftName(undefined);
+                  }}
+                />
+              )
+            }
+            sessionItems={
               <>
-                {snapshot.isLoading && turns.length === 0 && landing.length === 0 && (
-                  <div role="status" {...stylex.props(styles.loading)}>
-                    Loading chat…
-                  </div>
-                )}
-                {snapshot.isError && (
-                  <div role="alert" {...stylex.props(styles.banner)}>
-                    Couldn&rsquo;t load this chat.{" "}
-                    <button
-                      type="button"
-                      {...stylex.props(styles.bannerAction, focus.ring)}
-                      onClick={() => void snapshot.refetch()}
-                    >
-                      Try again
-                    </button>
-                  </div>
-                )}
-                {turns.map((turn, index) => (
-                  <TurnView
-                    key={turn.kind === "turn" ? turn.id : `${turn.kind}:${turn.commit}`}
-                    turn={turn}
-                    liveTools={live.tools}
-                    live={working && index === turns.length - 1 ? live : undefined}
-                    cwd={cwd}
-                    onEditUser={editUserMessage}
-                    branchModel={branchModel}
-                    running={working && index === turns.length - 1}
-                  />
-                ))}
-                {landing.map((message) => (
-                  <div key={message.key} data-sticky-turn {...stylex.props(styles.liveTurn)}>
-                    <UserMessageView content={message.content} />
-                  </div>
-                ))}
-                {live.runState === "retrying" && live.retry !== undefined && (
-                  <div role="status" title={live.retry.message} {...stylex.props(styles.banner)}>
-                    Retrying…
-                  </div>
-                )}
-                <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />
+                <MenuSeparator />
+                <MenuItem icon="pencil" onSelect={() => setDraftName(title)}>
+                  Rename
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem icon="trash" danger onSelect={requestDelete}>
+                  Delete
+                </MenuItem>
               </>
+            }
+          />
+        )}
+
+        <div {...stylex.props(styles.body)}>
+          <div {...stylex.props(styles.conversation)}>
+            <div
+              ref={scrollRef}
+              data-nyte-scrollport="balanced"
+              {...stylex.props(styles.scroll)}
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                const nextBottomPinned = isBottomPinned(element);
+                setBottomPinned(nextBottomPinned);
+                viewStore.updateSession(sessionId, paneId, (current) => ({
+                  ...current,
+                  scroll: { top: element.scrollTop, bottomPinned: nextBottomPinned },
+                }));
+              }}
+            >
+              <TranscriptPlane
+                key={sessionId}
+                paneId={paneId}
+                sessionId={sessionId}
+                ready={ready}
+                scrollRef={scrollRef}
+                rows={rows}
+                renderRow={renderRow}
+              />
+
+              <Composer
+                key={sessionId}
+                sessionId={sessionId}
+                backgroundWork={{
+                  content: (
+                    <BackgroundWork
+                      key={sessionId}
+                      sessionId={sessionId}
+                      terminalOwner={workbenchViewKey({
+                        paneKey: WORKBENCH_STAGE_PANE_KEY,
+                        target: { kind: "session", sessionId },
+                      })}
+                      open={openBackgroundWork}
+                      onOpenChange={(section) =>
+                        setBackgroundWork(
+                          section === undefined ? undefined : { sessionId, section },
+                        )
+                      }
+                      onInspect={subagentInspector.inspect}
+                      onOpenTerminal={(job) => {
+                        const viewKey = workbenchViewKey({
+                          paneKey: WORKBENCH_STAGE_PANE_KEY,
+                          target: { kind: "session", sessionId },
+                        });
+                        const terminalId = terminalActions.openJob(viewKey, sessionId, job);
+                        workbenchController.actions.openTab(viewKey, "terminal");
+                        focusTerminal(terminalId);
+                      }}
+                      viewportRef={scrollRef}
+                    />
+                  ),
+                  onEscape: () => {
+                    if (openBackgroundWork === undefined) return false;
+                    setBackgroundWork(undefined);
+                    return true;
+                  },
+                }}
+                working={working}
+                pending={settledRun ? pending : []}
+                unsent={settledRun ? unsent : unsent.filter((row) => row.state.kind === "failed")}
+                disabled={snapshot.data === undefined || snapshot.isError}
+                fileDropRoot={scrollRef}
+                initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                onViewStateChange={(composer) =>
+                  viewStore.updateSession(sessionId, paneId, (current) => ({
+                    ...current,
+                    composer,
+                  }))
+                }
+                inputRef={inputRef}
+                autoFocus={false}
+                onScrollToBottom={
+                  !bottomPinned
+                    ? () => {
+                        const scroll = scrollRef.current;
+                        if (scroll === null) return;
+                        scroll.scrollTop = scroll.scrollHeight;
+                        setBottomPinned(true);
+                      }
+                    : undefined
+                }
+              />
             </div>
           </div>
-
-          <Composer
-            sessionId={sessionId}
-            working={working}
-            pending={settledRun ? pending : []}
-            unsent={settledRun ? unsent : unsent.filter((row) => row.state.kind === "failed")}
-            disabled={snapshot.data === undefined || snapshot.isError}
-            viewState={viewState.composer}
-            onViewStateChange={(updateComposer) =>
-              updateViewState((current) => ({
-                ...current,
-                composer: updateComposer(current.composer),
-              }))
-            }
-            inputRef={inputRef}
-            autoFocus={false}
-          />
         </div>
+        {deletion.kind === "open" && (
+          <ConfirmDialog
+            open
+            pending={false}
+            error={undefined}
+            description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
+            returnFocusRef={paneMenuTrigger}
+            onOpenChange={(nextOpen) => {
+              if (nextOpen) return;
+              setDeletion({ kind: "closed" });
+            }}
+            onConfirm={() => {
+              const { sessionId: targetSessionId } = deletion;
+              setDeletion({ kind: "closed" });
+              sessionActions.delete(targetSessionId, (id) => removeSession(cwd ?? null, id));
+            }}
+          />
+        )}
       </div>
-      {deletion.kind === "open" && (
-        <ConfirmDialog
-          open
-          pending={false}
-          error={undefined}
-          description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
-          returnFocusRef={paneMenuTrigger}
-          onOpenChange={(nextOpen) => {
-            if (nextOpen) return;
-            setDeletion({ kind: "closed" });
-          }}
-          onConfirm={() => {
-            const { sessionId: targetSessionId } = deletion;
-            setDeletion({ kind: "closed" });
-            sessionActions.delete(targetSessionId, (id) => removeSession(cwd ?? null, id));
-          }}
-        />
-      )}
-    </div>
+    </SubagentInspectorProvider>
   );
 }
 
@@ -802,7 +1137,7 @@ function BlankConversation({
   inputRef,
 }: {
   paneId: PaneId;
-  inputRef: (element: HTMLDivElement | null) => void;
+  inputRef: (element: ComposerEditorHandle | null) => void;
 }): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
@@ -813,11 +1148,8 @@ function BlankConversation({
   const workspaceFiles = useMentionFiles(workspace !== undefined);
   const workspaces = useWorkspaces();
   const actions = usePaneActions();
+  const viewStore = usePaneViewStateStore();
   const [viewState, updateViewState] = useBlankViewBinding(paneId);
-  const [picked, setPicked] = useState<DesktopModelOption | undefined>();
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel | undefined>();
-  /** Fast-mode setting ids switched on for the session this composer will create. */
-  const [fastSettings, setFastSettings] = useState<ReadonlySet<string>>(() => new Set());
   // The raw cause is diagnostic only: it rides in `title`, never in body copy.
   const [startFailure, setStartFailure] = useState<string | undefined>();
   const [sending, setSending] = useState(false);
@@ -828,44 +1160,17 @@ function BlankConversation({
   const recentWorkspaces = (workspaces.data ?? []).filter(
     (candidate) => candidate.path !== workspace?.path,
   );
-  const defaults = catalog.data?.defaults;
-  const current =
-    picked ??
-    catalog.data?.models.find(
-      (option) => option.provider === defaults?.model.provider && option.id === defaults.model.id,
-    );
-  const effectiveThinkingLevel = thinkingLevel ?? defaults?.thinkingLevel;
-  const handleModelPickerChange = useCallback((change: ModelPickerChange) => {
-    switch (change.kind) {
-      case "model":
-        setPicked(change.option);
-        setThinkingLevel(change.thinkingLevel);
-        return;
-      case "thinking":
-        setThinkingLevel(change.thinkingLevel);
-        return;
-      case "fast":
-        setFastSettings((settings) => {
-          const next = new Set(settings);
-          if (change.enabled) next.add(change.settingId);
-          else next.delete(change.settingId);
-          return next;
-        });
-        return;
-      default: {
-        const _exhaustive: never = change;
-        return _exhaustive;
-      }
-    }
-  }, []);
+  const configuration = viewState.configuration ?? catalog.data?.defaults;
+  const current = catalog.data?.models.find(
+    (option) =>
+      option.provider === configuration?.model.provider && option.id === configuration.model.id,
+  );
 
-  const start = async (chips: readonly ComposerChip[]): Promise<boolean> => {
-    const text = viewState.composer.draft.trim();
-    const prompt = composerPromptText(text, chips);
-    if ((prompt === "" && attachments.length === 0) || sending || attachmentReads !== 0) {
-      return false;
-    }
-    const content = composerMessageContent(text, attachments, chips);
+  const start = async (submission: ComposerSubmission, lane: Lane): Promise<boolean> => {
+    if (sending || attachmentReads !== 0) return false;
+    // A new chat has no plugin commands active yet; its first message is always a message.
+    const plan = composerSendPlan({ submission, attachments, commands: [], lane });
+    if (plan.kind !== "message") return false;
     setSending(true);
     setStartFailure(undefined);
     let session: { readonly sessionId: SessionId } | undefined;
@@ -875,18 +1180,16 @@ function BlankConversation({
       // first message finish behind the transcript instead of holding Home.
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void loadThread(session.sessionId).catch(() => undefined);
+      const configuring =
+        configuration === undefined
+          ? undefined
+          : configureSession(session.sessionId, configuration);
       actions.openSessionInPane(paneId, session.sessionId);
-      // Configure what the chip showed, picked or not: the host composed its
-      // default before any login or Settings change made since.
-      if (current !== undefined) {
-        const model = { provider: current.provider, id: current.id };
-        await nyte.sessions.configure(
-          effectiveThinkingLevel === undefined
-            ? { sessionId: session.sessionId, model }
-            : { sessionId: session.sessionId, model, thinkingLevel: effectiveThinkingLevel },
-        );
-      }
-      if (current?.fastMode.kind === "available" && fastSettings.has(current.fastMode.settingId)) {
+      await configuring;
+      if (
+        current?.fastMode.kind === "available" &&
+        viewState.fastSettings.has(current.fastMode.settingId)
+      ) {
         const outcome = await nyte.plugins.settings.apply({
           sessionId: session.sessionId,
           id: current.fastMode.settingId,
@@ -894,16 +1197,14 @@ function BlankConversation({
         });
         if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
       }
-      await outbox.submitDurably({ sessionId: session.sessionId, content });
-      updateViewState(() => ({
-        composer: { draft: "", selectionStart: 0, selectionEnd: 0, focused: false },
-      }));
+      await outbox.submit(composerSendInput(session.sessionId, plan));
+      viewStore.removeDraft(viewState.id);
       setAttachments([]);
       setAttachmentError(undefined);
       return true;
     } catch (cause: unknown) {
       setSending(false);
-      setStartFailure(cause instanceof Error ? cause.message : String(cause));
+      setStartFailure(errorMessage(cause));
       // Past the pane switch this composer is gone; the draft stays on Home.
       if (session !== undefined) {
         toast.error("Couldn't send the first message. Your draft is still on Home.", {
@@ -930,7 +1231,15 @@ function BlankConversation({
   return (
     <div {...stylex.props(styles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-      <div {...stylex.props(styles.blank)}>
+      <div
+        {...stylex.props(styles.blank)}
+        {...dropHandlers({
+          onFiles: (files) => {
+            void addFiles(files);
+          },
+          disabled: sending || host.data === undefined,
+        })}
+      >
         <div {...stylex.props(styles.blankColumn)}>
           {host.data !== undefined && (
             <div {...stylex.props(styles.workspaceContext)}>
@@ -1003,14 +1312,20 @@ function BlankConversation({
           )}
           <ComposerFrame
             surface="new-chat"
-            value={viewState.composer.draft}
-            onChange={(draft) =>
-              updateViewState((currentState) => ({
+            document={{
+              text: viewState.composer.draft,
+              selectionStart: viewState.composer.selectionStart,
+              selectionEnd: viewState.composer.selectionEnd,
+            }}
+            onDocumentChange={(document) =>
+              updateViewState((state) => ({
+                ...state,
+                configuration: state.configuration ?? catalog.data?.defaults,
                 composer: {
-                  ...currentState.composer,
-                  draft,
-                  selectionStart: Math.min(currentState.composer.selectionStart, draft.length),
-                  selectionEnd: Math.min(currentState.composer.selectionEnd, draft.length),
+                  ...state.composer,
+                  draft: document.text,
+                  selectionStart: document.selectionStart,
+                  selectionEnd: document.selectionEnd,
                 },
               }))
             }
@@ -1032,26 +1347,24 @@ function BlankConversation({
               setAttachmentError(undefined);
             }}
             inputRef={inputRef}
-            selectionStart={viewState.composer.selectionStart}
-            selectionEnd={viewState.composer.selectionEnd}
-            onSelectionChange={(selectionStart, selectionEnd) =>
-              updateViewState((currentState) => ({
-                composer: { ...currentState.composer, selectionStart, selectionEnd },
-              }))
-            }
             onFocusChange={(focused) =>
-              updateViewState((currentState) => ({
-                composer: { ...currentState.composer, focused },
+              updateViewState((state) => ({
+                ...state,
+                composer: { ...state.composer, focused },
               }))
             }
             model={
               <ModelPicker
                 catalog={catalog.data}
                 current={current}
-                thinkingLevel={effectiveThinkingLevel}
-                fastEnabled={fastSettings}
+                thinkingLevel={configuration?.thinkingLevel}
+                fastEnabled={viewState.fastSettings}
                 disabled={sending || host.data === undefined}
-                onChange={handleModelPickerChange}
+                onChange={(change) =>
+                  updateViewState((state) =>
+                    updateDraftModel({ state, defaults: catalog.data?.defaults, change }),
+                  )
+                }
               />
             }
           />
@@ -1146,11 +1459,31 @@ function PaneHost({
 }): ReactElement {
   const actions = usePaneActions();
   const { focusRequest } = usePaneControllerSnapshot();
-  const inputRef = useRef<HTMLDivElement | null>(null);
+  const viewStore = usePaneViewStateStore();
+  const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
-  const attachInput = useCallback((element: HTMLDivElement | null) => {
+  const attachInput = useCallback((element: ComposerEditorHandle | null) => {
     inputRef.current = element;
   }, []);
+  const host = useHostState();
+  const workspacePath = host.data?.workspace?.path;
+  // Pointer-down focuses the pane first, so a chip opens in the workbench this pane shows.
+  const referenceOpener = useMemo(
+    () =>
+      workbenchReferenceOpener({
+        viewKey: workbenchViewKey({
+          paneKey: WORKBENCH_STAGE_PANE_KEY,
+          target:
+            pane.selection.kind === "session"
+              ? { kind: "session", sessionId: pane.selection.sessionId }
+              : workspacePath === undefined
+                ? { kind: "home" }
+                : { kind: "workspace", workspacePath },
+        }),
+        workspacePath,
+      }),
+    [pane.selection, workspacePath],
+  );
 
   useLayoutEffect(() => {
     if (focusRequest.paneId === pane.id) inputRef.current?.focus();
@@ -1170,15 +1503,21 @@ function PaneHost({
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
     >
-      {pane.selection.kind === "session" ? (
-        <SessionConversation
-          paneId={pane.id}
-          sessionId={pane.selection.sessionId}
-          inputRef={attachInput}
-        />
-      ) : (
-        <BlankConversation paneId={pane.id} inputRef={attachInput} />
-      )}
+      <ReferenceOpenerProvider value={referenceOpener}>
+        {pane.selection.kind === "session" ? (
+          <SessionConversation
+            paneId={pane.id}
+            sessionId={pane.selection.sessionId}
+            inputRef={attachInput}
+          />
+        ) : (
+          <BlankConversation
+            key={viewStore.readBlank(pane.id).id}
+            paneId={pane.id}
+            inputRef={attachInput}
+          />
+        )}
+      </ReferenceOpenerProvider>
     </section>
   );
 }
@@ -1302,19 +1641,9 @@ export function ThreadScreen({
     );
   }, [actions, routeSessionId]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "F6" && layout.kind === "split") {
-        event.preventDefault();
-        actions.focus(activePane(layout).id === "primary" ? "secondary" : "primary");
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actions, layout]);
-
   return (
     <div {...stylex.props(styles.stage)}>
+      <FileTypeIconSprite />
       <div
         ref={containerRef}
         {...stylex.props(

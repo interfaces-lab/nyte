@@ -1,8 +1,11 @@
 /**
- * `@nyte-ai/core/store`: the kernel store contract and its SQLite backend for
- * hosts. The exported helpers are pure reads over kernel commits.
+ * `@nyte-ai/core/store`: the kernel store contract, its SQLite backend for
+ * hosts, and the connection seam another SQLite backend implements. The
+ * exported helpers are pure reads over kernel commits.
  */
-export { SqliteStore, type SqliteStoreOptions } from "./kernel/sqlite.ts";
+export { SqlStore, SqliteStore, type SqliteStoreOptions } from "./kernel/sqlite.ts";
+export type { SqliteConnection, SqlRow, SqliteValue } from "./kernel/sql.ts";
+export { WorkerStore, type WorkerStoreOptions } from "./kernel/worker-store.ts";
 export {
   UnknownSession,
   type AppendOutcome,

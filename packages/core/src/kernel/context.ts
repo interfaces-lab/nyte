@@ -13,6 +13,7 @@ import type {
   ProviderId,
   UserMessage,
 } from "@nyte-ai/schema";
+import type { JobInfo } from "@nyte-ai/protocol";
 import type { Commit, ModelRef, RunConfig } from "./model.ts";
 
 export interface ModelContext {
@@ -37,7 +38,7 @@ function createCompactionSummaryMessage(summary: string, timestamp: number): Use
   };
 }
 
-export const BRANCH_SUMMARY_PREFIX =
+const BRANCH_SUMMARY_PREFIX =
   "The following is a summary of a branch that this conversation came back from:\n\n<summary>\n";
 const BRANCH_SUMMARY_SUFFIX = "\n</summary>";
 
@@ -113,6 +114,22 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
   return output;
 }
 
+/** The message a finished background job lands as. The model reads it as a new user turn. */
+export function completionText(job: JobInfo): string {
+  const subject =
+    job.kind === "subagent" ? `subagent ${job.title} (${job.id})` : `command ${job.id}`;
+  const outcome =
+    job.state === "completed"
+      ? job.kind === "subagent"
+        ? "finished. Its report:"
+        : `exited: \`${job.title}\`. Its output:`
+      : job.state === "failed"
+        ? "failed:"
+        : `was ${job.state}.`;
+  const output = job.output === "" ? "(no output)" : job.output;
+  return `Background ${subject} ${outcome}\n\n${output}`;
+}
+
 /** Convert oldest-first commits into provider-safe model messages. */
 export function contextMessages(commits: readonly Commit[]): Message[] {
   const messages: Message[] = [];
@@ -121,6 +138,13 @@ export function contextMessages(commits: readonly Commit[]): Message[] {
     switch (body.kind) {
       case "message":
         if (isContextMessage(body.message)) messages.push(body.message);
+        break;
+      case "completion":
+        messages.push({
+          role: "user",
+          timestamp: commit.at,
+          content: completionText(body.job),
+        });
         break;
       case "checkpoint":
         if (body.summary !== "")
@@ -166,7 +190,7 @@ export function modelContext(
  * Fold the run inputs declared across the whole branch. Each defined field in
  * a later config commit replaces the earlier value, including across checkpoints.
  */
-export function branchConfig(commits: readonly Commit[]): RunConfig {
+export function branchConfig(commits: readonly Pick<Commit, "body">[]): RunConfig {
   let model: ModelRef | undefined;
   let thinkingLevel: string | undefined;
   let agent: string | undefined;
@@ -182,6 +206,7 @@ export function branchConfig(commits: readonly Commit[]): RunConfig {
       case "message":
         if (body.agent !== undefined) agent = body.agent;
         break;
+      case "completion":
       case "checkpoint":
       case "summary":
       case "note":

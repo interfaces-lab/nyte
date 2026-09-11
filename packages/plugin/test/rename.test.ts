@@ -158,7 +158,6 @@ test("a root chat with no name is titled in the background on its first prompt, 
       sessionId: world.sessionId,
       runId: "run",
       callId: "call",
-      agent: "general",
       depth: 1,
     },
   });

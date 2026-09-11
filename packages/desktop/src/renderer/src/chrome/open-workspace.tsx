@@ -1,12 +1,14 @@
 /**
- * Trust is requested when sending. Folder selection failures appear as a
- * dismissible toast, leaving the current chat usable.
+ * Trust is requested when a session reports it: the watch replays the
+ * session's activation and every receipt re-reads it. Folder selection
+ * failures appear as a dismissible toast, leaving the current chat usable.
  */
-import { Dialog } from "@nyte-ai/ui/primitives";
+import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/sonner";
 import * as stylex from "@stylexjs/stylex";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
+import type { SessionActivationState } from "@nyte-ai/core";
 import { Button } from "../components/ui";
 import { keys, queryClient } from "../queries.ts";
 import { layer } from "../theme/schema.stylex.ts";
@@ -55,6 +57,8 @@ const styles = stylex.create({
 });
 
 let prompt: string | undefined;
+/** Folders the user declined this session; a replayed activation must not nag. */
+const declined = new Set<string>();
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
@@ -100,7 +104,22 @@ export function handleOpenOutcome(outcome: OpenWorkspaceOutcome): void {
   }
 }
 
+/** A session's activation says the folder needs trust; ask once per folder until granted. */
+export function requestTrust(activation: SessionActivationState): void {
+  if (activation.kind !== "requires") return;
+  const path = activation.requirement.cwd;
+  if (declined.has(path)) return;
+  toast.dismiss("workspace-open");
+  setPrompt(path);
+}
+
+function declineTrust(path: string): void {
+  declined.add(path);
+  setPrompt(undefined);
+}
+
 function grantTrust(path: string): void {
+  declined.delete(path);
   setPrompt(undefined);
   void nyte.host.trustWorkspace({ path }).then((outcome) => {
     handleOpenOutcome(outcome);
@@ -119,7 +138,7 @@ function Modal({
   children: ReactNode;
 }): ReactElement {
   return (
-    <Dialog.Root open onOpenChange={(open) => !open && onDismiss()}>
+    <Dialog.Root defaultOpen onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
         <Dialog.Backdrop {...stylex.props(styles.backdrop)} />
         <Dialog.Popup aria-label={label} {...stylex.props(styles.popup)}>
@@ -136,7 +155,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
   if (current === undefined) return null;
 
   return (
-    <Modal key={current} label="Do you trust this folder?" onDismiss={() => setPrompt(undefined)}>
+    <Modal key={current} label="Do you trust this folder?" onDismiss={() => declineTrust(current)}>
       <div {...stylex.props(styles.title)}>Do you trust this folder?</div>
       <div {...stylex.props(styles.path)}>{current}</div>
       <div {...stylex.props(styles.body)}>
@@ -144,7 +163,7 @@ export function WorkspaceDialogHost(): ReactElement | null {
         after you trust it.
       </div>
       <div {...stylex.props(styles.actions)}>
-        <Button variant="ghost" autoFocus onClick={() => setPrompt(undefined)}>
+        <Button variant="ghost" autoFocus onClick={() => declineTrust(current)}>
           Cancel
         </Button>
         <Button variant="primary" onClick={() => grantTrust(current)}>

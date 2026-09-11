@@ -1,0 +1,75 @@
+---
+title: Settings
+description: "General, Appearance, Models, Usage, and Accounts: one route, one navigation, one row grammar"
+---
+
+<HostMatrix
+  primitive="none"
+  desktop={{
+    label: "chrome/appearance-settings.tsx (SettingsSurface)",
+    href: "/cloud/desktop/settings-controls",
+    note: "route /settings/$section; navigation in settings-navigation.tsx",
+  }}
+  terminal={{ label: "/settings", note: "a selectChoice menu inside interactive.ts (later pass)" }}
+/>
+
+## Structure
+
+`SettingsSurface` renders `<h1>{settingsTitle(section)}</h1>` and one panel per section. The
+sidebar swaps to `SettingsNavigation` while the route is `/settings/$section`. The root carries
+`data-nyte-settings-surface` and `data-nyte-scrollport="balanced"`.
+
+| Section    | File                      | Icon          | Contents                                                                                                                                                                                                                                                     |
+| ---------- | ------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| General    | `appearance-settings.tsx` | `settings`    | Window restoration select (New chat / Last chat).                                                                                                                                                                                                            |
+| Appearance | `appearance-panel.tsx`    | `canvas-grid` | Theme select; word wrap, themed diff backgrounds, reduce transparency, font smoothing (macOS only) switches; UI/code font size steppers (12–16, 11–15); UI/code family selects; hue (0–360), intensity (0–100), density (compact/balanced/detailed) sliders. |
+| Models     | `models-settings.tsx`     | `box-3d`      | Defaults (model, thinking), **Subagents** (default model), providers with connection status and per-model listing switches, API key form.                                                                                                                    |
+| Usage      | `usage-settings.tsx`      | `trending`    | Range toggle group, drag-sortable metric cards, local history, tools.                                                                                                                                                                                        |
+| Accounts   | `accounts-settings.tsx`   | `user-key`    | GitHub CLI account, repository, pull request rows; sign out via ConfirmDialog.                                                                                                                                                                               |
+
+## Navigation
+
+`SettingsNavigation` (`chrome/settings-navigation.tsx`): a search input (`type="search"`,
+`aria-label="Search Settings"`) filtering `SETTINGS_SECTIONS` by name and `SECTION_ALIASES`, links
+with `aria-current="page"` and `replace`, and a Back button calling `router.history.back()`.
+`isSettingsSection` parses the route param at the boundary.
+
+## Row grammar
+
+Every setting is a [`SettingsRow`](/cloud/desktop/settings-controls#settingsrow) inside
+`settingsPatterns.group` inside `settingsPatterns.section`. The rules:
+
+- The title names the setting; the description states its current consequence in one sentence.
+- One control per row. A row with two controls is two rows.
+- A disabled control says why in `title` (reduce transparency when the OS already reduces it).
+- Controls carry their own `aria-label`; the row is not a `<label>`.
+
+## Sliders
+
+Appearance uses [`@nyte-ai/ui/slider`](/cloud/headless/slider) directly:
+`Slider.Root › Control › Track › Thumb` with `thumbAlignment="edge"` and `aria-valuetext`
+("120 degrees", "40 percent", "Balanced"). Keyboard is Base UI's: arrows step, Home/End, Page
+Up/Down.
+
+## Usage cards
+
+The Usage page is sortable with `@dnd-kit`. `PointerSensor` activates at 4px, "longer than the
+pointer's own slop, so a click on the grip is never a drag." `KeyboardSensor` with
+`sortableKeyboardCoordinates`: Space picks up, arrows move, Space drops, Escape cancels. The drag
+handle is a button labelled `Reorder {title}`. "Dragging moves the card's own node rather than a
+copy in an overlay, so a chart is never mounted twice and never re-animates mid-drag." The range
+control is a `ToggleGroup` labelled "Usage range".
+
+## Accounts
+
+`ConnectionList › ConnectionRow › ConnectionStatus` (`chrome/connection-list.tsx`) render one row
+per account state: connecting, error, checking, cli_missing, signed_out, ready. Sign out opens a
+[ConfirmDialog](/cloud/desktop/confirm-dialog) with `returnFocusRef` on the Sign out button.
+
+## Customize
+
+Not a Settings section but the same grammar: `chrome/customize.tsx` (`CustomizeSurface`,
+`PluginSettings`) shows plugins, MCPs, skills, and plugin settings on
+[`@nyte-ai/ui/tabs`](/cloud/headless/tabs) with a `<search>` input labelled "Search inventory"
+and an `aria-live="polite"` count. Without a session the selects are disabled with the copy
+"Defaults shown. Open a chat to change its settings."

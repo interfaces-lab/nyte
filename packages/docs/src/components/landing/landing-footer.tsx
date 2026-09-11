@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { NyteWordmark } from "@/components/brand/mark";
-import { gitConfig } from "@/lib/shared";
+import { NyteWordmark } from "~/components/brand/mark";
+import { gitConfig } from "~/lib/shared";
 
 const source = `https://github.com/${gitConfig.user}/${gitConfig.repo}`;
 

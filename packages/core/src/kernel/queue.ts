@@ -3,6 +3,7 @@
  * submitter chooses; the lanes a head has are the ones its refs name, and which
  * of them lands when is the runner's policy (see `step.ts`), not this file's.
  */
+import { validateHeadName } from "@nyte-ai/protocol";
 import {
   CANCELLED_PREFIX,
   cancelledRef,
@@ -24,24 +25,23 @@ export function mergeQueuedLanes<T>(
   items: readonly T[],
   options: { readonly lane: (item: T) => string; readonly compare: (left: T, right: T) => number },
 ): T[] {
-  const lanes = new Map<string, T[]>();
-  for (const item of items) {
-    const lane = options.lane(item);
-    const queue = lanes.get(lane);
-    if (queue === undefined) lanes.set(lane, [item]);
-    else queue.push(item);
-  }
+  // A k-way merge over lane cursors. Ties keep the earlier lane, as the lanes were first seen.
+  const lanes = [...Map.groupBy(items, options.lane).values()].map((queue) => ({
+    queue,
+    index: 0,
+  }));
   const ordered: T[] = [];
-  while (lanes.size > 0) {
-    const next = [...lanes.values()]
-      .flatMap((queue) => (queue[0] === undefined ? [] : [queue[0]]))
-      .sort(options.compare)[0];
-    if (next === undefined) break;
-    ordered.push(next);
-    const lane = options.lane(next);
-    const queue = lanes.get(lane);
-    queue?.shift();
-    if (queue?.length === 0) lanes.delete(lane);
+  for (let count = 0; count < items.length; count += 1) {
+    let best: { readonly lane: (typeof lanes)[number]; readonly item: T } | undefined;
+    for (const lane of lanes) {
+      const item = lane.queue[lane.index];
+      if (item !== undefined && (best === undefined || options.compare(item, best.item) < 0)) {
+        best = { lane, item };
+      }
+    }
+    if (best === undefined) break;
+    ordered.push(best.item);
+    best.lane.index += 1;
   }
   return ordered;
 }
@@ -206,6 +206,7 @@ export async function submit(
     readonly actor?: Actor;
   },
 ): Promise<SubmitOutcome> {
+  validateHeadName(options.head);
   validateLane(options.lane);
   const tipName = queueTipRef(options.head, options.lane);
   const receiptName = options.key === undefined ? undefined : keyRef(options.key);
@@ -253,7 +254,7 @@ export async function submit(
   throw new Error(`Queue submission did not settle after ${String(MAX_SUBMIT_ATTEMPTS)} attempts`);
 }
 
-export async function cancelledSet(session: Session): Promise<ReadonlySet<Oid>> {
+async function cancelledSet(session: Session): Promise<ReadonlySet<Oid>> {
   const refs = await session.refs.list(CANCELLED_PREFIX);
   return new Set(refs.map((ref) => ref.name.slice(CANCELLED_PREFIX.length)));
 }
@@ -285,6 +286,7 @@ export async function cancel(
   session: Session,
   options: { readonly head: string; readonly change: Oid; readonly actor?: Actor },
 ): Promise<CancelOutcome> {
+  validateHeadName(options.head);
   const name = cancelledRef(options.change);
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
     const chains = await walkLanes(session, options.head);
@@ -335,6 +337,7 @@ export async function redeliver(
     readonly actor?: Actor;
   },
 ): Promise<RedeliverOutcome> {
+  validateHeadName(options.head);
   validateLane(options.lane);
   const tombstoneName = cancelledRef(options.change);
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {

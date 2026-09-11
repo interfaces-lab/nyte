@@ -3,7 +3,6 @@
  * expands file and paste markers and attaches image bytes at the submission
  * boundary. Also the `@` mention index and paste classification.
  */
-import { statSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
@@ -27,13 +26,15 @@ import type {
   RendererClipboardBoundary,
   SyntaxStyle,
   TextareaRenderable,
+  WidthMethod,
 } from "@opentui/core";
 import type { CliTheme } from "./theme.ts";
 import { completionTrigger, discoverMentionFiles } from "@nyte-ai/core";
 import type { MentionFile } from "@nyte-ai/core";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import fuzzysort from "fuzzysort";
-import { cellIndex, cellOffset } from "./width.ts";
+import { cellOffset } from "./width.ts";
+import { promptDraft } from "./slash.ts";
 
 export { discoverMentionFiles };
 export type { MentionFile };
@@ -50,7 +51,15 @@ export type ComposerPart =
       readonly text?: string;
     }
   | { readonly kind: "image"; readonly marker: string; readonly image: ImageContent }
-  | { readonly kind: "paste"; readonly marker: string; readonly text: string };
+  | { readonly kind: "paste"; readonly marker: string; readonly text: string }
+  /** A `!command` the user ran; its output rides along with the next prompt. */
+  | { readonly kind: "shell"; readonly marker: string; readonly run: ShellRun };
+
+export interface ShellRun {
+  readonly command: string;
+  readonly output: string;
+  readonly exitCode: number;
+}
 
 export type ComposerPaste =
   | { readonly kind: "text"; readonly text: string }
@@ -217,18 +226,17 @@ function fileMentionQuery(value: string, cursor: number): FileMentionQuery | und
 }
 
 /** A query spelled as a path is resolved directly and offered first when it names something real. */
-function explicitMentionFile(query: string, cwd: string): MentionFile | undefined {
+export async function explicitMentionFile(
+  query: string,
+  cwd: string,
+): Promise<MentionFile | undefined> {
   if (query === "" || !/^(\.{1,2}[/\\]|~[/\\]|[/\\]|[A-Za-z]:[/\\])/.test(query)) {
     return undefined;
   }
   const expanded = query.startsWith("~") ? join(homedir(), query.slice(2)) : query;
   const path = resolve(cwd, expanded);
-  let info;
-  try {
-    info = statSync(path);
-  } catch {
-    return undefined;
-  }
+  const info = await stat(path).catch(() => undefined);
+  if (info === undefined) return undefined;
   const rel = relative(cwd, path).split("\\").join("/");
   if (info.isDirectory()) {
     return {
@@ -264,7 +272,6 @@ export interface FileMentionSuggestions {
 export function fileMentionSuggestions(
   value: string,
   files: readonly MentionFile[],
-  cwd: string,
   cursor = value.length,
 ): FileMentionSuggestions | undefined {
   const query = fileMentionQuery(value, cursor);
@@ -274,6 +281,7 @@ export function fileMentionSuggestions(
     matches = files.slice(0, MAX_MENTION_RESULTS);
   } else {
     const prefixed = prefixedMentionFiles(query.query.toLowerCase(), files);
+    if (prefixed.length === MAX_MENTION_RESULTS) return { query, files: prefixed };
     const seen = new Set(prefixed.map((file) => file.path));
     matches = [
       ...prefixed,
@@ -281,10 +289,6 @@ export function fileMentionSuggestions(
         .go(query.query, files, { keys: ["displayPath", "label"], limit: MAX_MENTION_RESULTS })
         .flatMap((result) => (seen.has(result.obj.path) ? [] : [result.obj])),
     ].slice(0, MAX_MENTION_RESULTS);
-  }
-  const explicit = explicitMentionFile(query.query, cwd);
-  if (explicit !== undefined && !matches.some((file) => file.path === explicit.path)) {
-    matches.unshift(explicit);
   }
   return { query, files: matches };
 }
@@ -336,6 +340,54 @@ export function extractFileAttachments(text: string): FileAttachment[] {
   return attachments;
 }
 
+/**
+ * A command the user ran with `!` travels inside the message the way an
+ * attached file does, so any client folds it back to a tag.
+ */
+const SHELL_BLOCK_PATTERN = /<shell command="([^"\n]*)" exit="(\d+)">\n([\s\S]*?)\n<\/shell>/g;
+
+function shellCommandAttribute(command: string): string {
+  return command
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll("\r", "&#13;")
+    .replaceAll("\n", "&#10;");
+}
+
+function commandFromShellAttribute(command: string): string {
+  return command
+    .replaceAll("&#10;", "\n")
+    .replaceAll("&#13;", "\r")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&amp;", "&");
+}
+
+export interface ShellBlock extends ShellRun {
+  readonly source: string;
+}
+
+export function shellBlock(run: ShellRun): string {
+  const closingBreak = run.output.endsWith("\n") ? "" : "\n";
+  return `<shell command="${shellCommandAttribute(run.command)}" exit="${String(run.exitCode)}">\n${run.output}${closingBreak}</shell>`;
+}
+
+export function extractShellBlocks(text: string): ShellBlock[] {
+  const blocks: ShellBlock[] = [];
+  for (const match of text.matchAll(SHELL_BLOCK_PATTERN)) {
+    const [source, command, exit, output] = match;
+    if (command === undefined || exit === undefined || output === undefined) continue;
+    blocks.push({
+      source,
+      command: commandFromShellAttribute(command),
+      exitCode: Number(exit),
+      output: output === "" ? "" : `${output}\n`,
+    });
+  }
+  return blocks;
+}
+
 /** Only text bodies inline; folders, binaries, and oversized files fall back to a mention. */
 async function readAttachmentText(path: string): Promise<string | undefined> {
   const info = await stat(path).catch(() => undefined);
@@ -383,6 +435,7 @@ export class SessionDrafts {
 export class ComposerParts {
   private parts: ComposerPart[] = [];
   private value: string | undefined;
+  private readonly markedInputs = new WeakSet<TextareaRenderable>();
   private nextImage = 1;
   private nextPaste = 1;
   /** Reads start when the tag is inserted and are awaited at submission. */
@@ -423,37 +476,73 @@ export class ComposerParts {
     return marker;
   }
 
+  /** Park a finished `!command` behind a marker; `prepare` writes it out as a shell block. */
+  addShell(run: ShellRun): string {
+    const marker = this.uniqueMarker(`[Shell ${run.command.trim().replace(/\s+/gu, " ")}]`);
+    this.parts.push({ kind: "shell", marker, run });
+    return marker;
+  }
+
   /** Keep removed bytes until the draft is cleared: undo can bring a marker back. */
   retain(value: string): void {
     this.value = value;
   }
 
   /** Markers move, select, delete, and undo as one item in OpenTUI's editor. */
-  sync(input: TextareaRenderable, styleId: number): void {
+  sync(input: TextareaRenderable, styleId: number, widthMethod: WidthMethod, value?: string): void {
+    // Reading extmarks installs editor listeners. Plain drafts never need them,
+    // but a previously marked editor still needs cleanup after clear or undo.
+    if (this.parts.length === 0 && !this.markedInputs.has(input)) return;
+    this.markedInputs.add(input);
+    const text = value ?? input.plainText;
     const typeId = input.extmarks.registerType("composer-part");
-    for (const mark of input.extmarks.getAllForTypeId(typeId)) input.extmarks.delete(mark.id);
-    const text = input.plainText;
     this.retain(text);
-    for (const part of this.current) {
+    // OpenTUI restores marks on undo, but not its per-type index. Read the marks
+    // themselves so restored virtual ranges are neither lost nor duplicated.
+    const marks = input.extmarks.getAll().filter((mark) => mark.typeId === typeId);
+    const ranges = new Map<string, (typeof marks)[number]>();
+    const removed = new Set(marks);
+    for (const mark of marks) {
+      if (mark.virtual && mark.styleId === styleId) {
+        ranges.set(`${mark.start}:${mark.end}`, mark);
+      }
+    }
+    const tabWidth = input.editBuffer.getTabWidth();
+    const occurrences: { index: number; width: number }[] = [];
+    for (const part of this.parts) {
       let index = text.indexOf(part.marker);
+      if (index === -1) continue;
+      const width = cellOffset(part.marker, part.marker.length, widthMethod, tabWidth);
       while (index !== -1) {
-        input.extmarks.create({
-          start: cellOffset(text, index),
-          end: cellOffset(text, index + part.marker.length),
-          virtual: true,
-          styleId,
-          typeId,
-        });
+        occurrences.push({ index, width });
         index = text.indexOf(part.marker, index + part.marker.length);
       }
+    }
+    occurrences.sort((left, right) => left.index - right.index);
+    let previousIndex = 0;
+    let start = 0;
+    const missing: { start: number; end: number }[] = [];
+    for (const occurrence of occurrences) {
+      const between = text.slice(previousIndex, occurrence.index);
+      start += cellOffset(between, between.length, widthMethod, tabWidth);
+      previousIndex = occurrence.index;
+      const end = start + occurrence.width;
+      const mark = ranges.get(`${start}:${end}`);
+      if (mark !== undefined) removed.delete(mark);
+      else missing.push({ start, end });
+    }
+    for (const mark of removed) input.extmarks.delete(mark.id);
+    for (const range of missing) {
+      input.extmarks.create({ ...range, virtual: true, styleId, typeId });
     }
   }
 
   atCursor(input: TextareaRenderable): ComposerPart | undefined {
-    this.retain(input.plainText);
-    const index = cellIndex(input.plainText, input.cursorOffset);
-    return this.current.find((part) => {
-      const start = input.plainText.lastIndexOf(part.marker, index);
+    const text = input.plainText;
+    this.retain(text);
+    const index = input.editBuffer.getTextRange(0, input.cursorOffset).length;
+    return this.parts.find((part) => {
+      const start = text.lastIndexOf(part.marker, index);
       return start !== -1 && index <= start + part.marker.length;
     });
   }
@@ -465,7 +554,11 @@ export class ComposerParts {
   }
 
   /** Based on https://github.com/anomalyco/opencode/blob/3bfce3fd2d07588ffd1e3d6fa301626632627cf9/packages/tui/src/component/prompt/index.tsx */
-  expandPastedText(input: TextareaRenderable, extmarkId: number): boolean {
+  expandPastedText(
+    input: TextareaRenderable,
+    extmarkId: number,
+    widthMethod: WidthMethod,
+  ): boolean {
     const extmark = input.extmarks.get(extmarkId);
     if (extmark === null) return false;
     const marker = input.getTextRange(extmark.start, extmark.end);
@@ -474,10 +567,12 @@ export class ComposerParts {
 
     // OpenTUI records delete/insert separately; replace keeps expansion one undo step.
     const text = input.plainText;
-    const start = cellIndex(text, extmark.start);
-    const end = cellIndex(text, extmark.end);
-    input.replaceText(text.slice(0, start) + part.text + text.slice(end));
-    input.cursorOffset = cellOffset(input.plainText, start + part.text.length);
+    const start = input.editBuffer.getTextRange(0, extmark.start).length;
+    const next = text.slice(0, start) + part.text + text.slice(start + marker.length);
+    input.replaceText(next);
+    input.cursorOffset =
+      extmark.start +
+      cellOffset(part.text, part.text.length, widthMethod, input.editBuffer.getTabWidth());
     return true;
   }
 
@@ -524,10 +619,14 @@ export class ComposerParts {
       this.bodies.set(attachment.path, Promise.resolve(attachment.text));
       text = text.replace(attachment.source, this.addFile(attachment.path));
     }
+    for (const block of extractShellBlocks(text)) {
+      const { source, ...run } = block;
+      text = text.replace(source, this.addShell(run));
+    }
     for (const mention of extractFileMentions(text)) {
       text = text.replace(mention.source, this.addFile(mention.path));
     }
-    return text;
+    return promptDraft(text);
   }
 
   /**
@@ -559,9 +658,8 @@ export class ComposerParts {
     const imageMarkers = new Map(
       images.map((part, index) => [part.marker, `[Image ${String(index + 1)}]`]),
     );
-    const displayText = rawDisplayText.replace(
-      /\[Image \d+\]/g,
-      (marker) => imageMarkers.get(marker) ?? marker,
+    const displayText = promptDraft(
+      rawDisplayText.replace(/\[Image \d+\]/g, (marker) => imageMarkers.get(marker) ?? marker),
     );
     const expandFiles = (text: string): string => {
       let expanded = expandText(text);
@@ -575,6 +673,8 @@ export class ComposerParts {
           );
         }
         if (part.kind === "paste") expanded = expanded.replaceAll(part.marker, part.text);
+        if (part.kind === "shell")
+          expanded = expanded.replaceAll(part.marker, shellBlock(part.run));
       }
       return expanded;
     };
@@ -674,7 +774,12 @@ export class DialogImagePreview {
     });
     viewport.add(
       new CodeRenderable(this.renderer, {
-        content: part.kind === "paste" ? part.text : (part.text ?? part.path),
+        content:
+          part.kind === "paste"
+            ? part.text
+            : part.kind === "shell"
+              ? part.run.output
+              : (part.text ?? part.path),
         syntaxStyle,
         fg: this.theme.foreground,
         wrapMode: "word",

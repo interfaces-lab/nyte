@@ -1,10 +1,31 @@
 import { loader } from "fumadocs-core/source";
-import { docsContentRoute, docsImageRoute, docsRoute } from "./shared";
+import {
+  cloudContentRoute,
+  cloudRoute,
+  docsContentRoute,
+  docsImageRoute,
+  docsRoute,
+} from "./shared";
 import { defineDocs } from "fumadocs-mdx/macro";
 import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
 
 const docs = defineDocs({
   dir: "content/docs",
+  docs: {
+    schema: pageSchema,
+    postprocess: {
+      includeProcessedMarkdown: true,
+    },
+  },
+  meta: {
+    schema: metaSchema,
+  },
+});
+
+// Cloud is Nyte's design system. It is a second collection with its own
+// route root so the primitives catalog does not sit inside the core docs tree.
+const cloud = defineDocs({
+  dir: "content/cloud",
   docs: {
     schema: pageSchema,
     postprocess: {
@@ -24,7 +45,15 @@ export const source = loader({
   source: docs.toFumadocsSource(),
 });
 
-export function getPageImageUrl(page: (typeof source)["$inferPage"]) {
+export const cloudSource = loader({
+  baseUrl: cloudRoute,
+  source: cloud.toFumadocsSource(),
+});
+
+// Both collections share one page schema, so one page type serves both loaders.
+type DocsPage = (typeof source)["$inferPage"];
+
+export function getPageImageUrl(page: DocsPage) {
   const segments = [...page.slugs, "image.png"];
 
   return {
@@ -33,7 +62,7 @@ export function getPageImageUrl(page: (typeof source)["$inferPage"]) {
   };
 }
 
-export function getPageMarkdownUrl(page: (typeof source)["$inferPage"]) {
+export function getPageMarkdownUrl(page: DocsPage) {
   const segments = [...page.slugs, "content.md"];
 
   return {
@@ -42,7 +71,17 @@ export function getPageMarkdownUrl(page: (typeof source)["$inferPage"]) {
   };
 }
 
-export async function getLLMText(page: (typeof source)["$inferPage"]) {
+export function getCloudPageMarkdownUrl(page: DocsPage) {
+  const segments = [...page.slugs, "content.md"];
+
+  return {
+    segments,
+    url:
+      "/" + [page.locale, ...cloudContentRoute.split("/"), ...segments].filter(Boolean).join("/"),
+  };
+}
+
+export async function getLLMText(page: DocsPage) {
   const processed = await page.data.getText("processed");
 
   return `# ${page.data.title} (${page.url})

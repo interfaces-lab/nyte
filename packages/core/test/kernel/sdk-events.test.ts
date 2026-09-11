@@ -4,8 +4,10 @@ import { test } from "vitest";
 import { hashObject } from "../../src/kernel/hash.ts";
 import type { JsonValue } from "@nyte-ai/schema";
 import type { Change, Commit, Effect, Event, Obj, Oid, Run } from "../../src/kernel/model.ts";
+import type { Objects } from "../../src/kernel/store.ts";
 import {
   cancelledRef,
+  compactionRef,
   effectRef,
   factRef,
   headRef,
@@ -27,14 +29,27 @@ import {
 import type { SessionEvent } from "../../src/kernel/sdk/types.ts";
 import { assistant, commit, message, user } from "./helpers.ts";
 
-class Objects {
+class MemoryObjects {
   private readonly store = new Map<Oid, Obj>();
   put(object: Obj): Oid {
     const oid = hashObject(object);
     this.store.set(oid, object);
     return oid;
   }
-  readonly read = (oid: Oid): Promise<Obj | undefined> => Promise.resolve(this.store.get(oid));
+  readonly read: Pick<Objects, "get" | "chain"> = {
+    get: (oid) => Promise.resolve(this.store.get(oid)),
+    chain: (from, options) => {
+      const page: { oid: Oid; object: Obj }[] = [];
+      let oid: Oid | null = from;
+      while (oid !== null && page.length < options.limit) {
+        const object = this.store.get(oid);
+        if (object === undefined) break;
+        page.push({ oid, object });
+        oid = "parent" in object ? object.parent : null;
+      }
+      return Promise.resolve(page);
+    },
+  };
 }
 
 function ref(name: string, from: Oid | null, to: Oid | null, reason = "test"): Event {
@@ -56,7 +71,7 @@ const run: Run = {
 };
 
 test("a head advance is one move plus one commit event per new commit, oldest first", async () => {
-  const objects = new Objects();
+  const objects = new MemoryObjects();
   const a = objects.put(commit(null, message(user("a"))));
   const b = objects.put(commit(a, message(assistant("b"))));
   const c = objects.put(commit(b, message(user("c"))));
@@ -79,7 +94,7 @@ test("a head advance is one move plus one commit event per new commit, oldest fi
 });
 
 test("queue refs become pending items, landings, and cancellations", async () => {
-  const objects = new Objects();
+  const objects = new MemoryObjects();
   const first: Change = { kind: "change", previous: null, body: message(user("hi")), at: 5 };
   const firstOid = objects.put(first);
   const second: Change = {
@@ -127,11 +142,37 @@ test("queue refs become pending items, landings, and cancellations", async () =>
 });
 
 test("run, effect, stack, fact, and deletion refs project their objects", async () => {
-  const objects = new Objects();
+  const objects = new MemoryObjects();
   const runOid = objects.put(run);
   assert.deepEqual(await projectEvent(ref(runRef("main"), null, runOid, "wait"), objects.read), [
     { seq: 7, kind: "run", head: "main", run: runInfo(run) },
   ]);
+
+  const compactionOid = objects.put({
+    kind: "blob",
+    value: {
+      id: "compaction-1",
+      reason: "manual",
+      startedAt: 3,
+      leaseOwner: "owner",
+      leaseFence: 1,
+    },
+  });
+  assert.deepEqual(
+    await projectEvent(ref(compactionRef("main"), null, compactionOid, "compaction"), objects.read),
+    [
+      {
+        seq: 7,
+        kind: "compaction",
+        head: "main",
+        compaction: { id: "compaction-1", reason: "manual", startedAt: 3 },
+      },
+    ],
+  );
+  assert.deepEqual(
+    await projectEvent(ref(compactionRef("main"), compactionOid, null, "compaction"), objects.read),
+    [{ seq: 7, kind: "compaction", head: "main", compaction: null }],
+  );
 
   const intent: Effect = {
     kind: "effect",
@@ -154,6 +195,23 @@ test("run, effect, stack, fact, and deletion refs project their objects", async 
         runId: "run_1",
         callId: "c1",
         state: "waiting",
+        waitId: waitingOid,
+        tool: "ask",
+        args: { question: "why" },
+      },
+    ],
+  );
+
+  const expiredOid = objects.put({ kind: "effect", state: "expired", intent: intentOid, at: 3 });
+  assert.deepEqual(
+    await projectEvent(ref(effectRef("run_1", "c1"), waitingOid, expiredOid, "expired"), objects.read),
+    [
+      {
+        seq: 7,
+        kind: "effect",
+        runId: "run_1",
+        callId: "c1",
+        state: "expired",
         tool: "ask",
         args: { question: "why" },
       },
@@ -183,7 +241,7 @@ test("run, effect, stack, fact, and deletion refs project their objects", async 
 });
 
 test("stream events pass through with their keys", async () => {
-  const read = new Objects().read;
+  const read = new MemoryObjects().read;
   const delta: Event = {
     seq: 9,
     at: 1,
@@ -231,14 +289,16 @@ test("a session's row folds its facts, its branch config, and its newest message
   const facts = new Map<string, JsonValue>([
     ["name", "Chat"],
     ["pinned", true],
-    ["parent", { sessionId: "p", runId: "r", callId: "c", agent: "worker", depth: 1 }],
+    ["parent", { sessionId: "p", runId: "r", callId: "c", depth: 1 }],
   ]);
   const info = sessionInfo({
     id: "s1",
+    activation: { kind: "active" },
     createdAt: 0,
     heads: [headInfo({ head: "main", tip: "t" }, "t")],
     facts,
     mainCommits: commits,
+    pendingChanges: [],
   });
   assert.equal(info.name, "Chat");
   assert.equal(info.pinned, true);
@@ -294,10 +354,12 @@ test("session rows omit unknown thinking levels at the SDK boundary", () => {
   const project = (thinkingLevel: string) =>
     sessionInfo({
       id: "s1",
+      activation: { kind: "active" },
       createdAt: 0,
       heads: [],
       facts: new Map(),
       mainCommits: [commit(null, { kind: "config", thinkingLevel })],
+      pendingChanges: [],
     }).config.thinkingLevel;
 
   assert.equal(project("future-level"), undefined);
@@ -338,4 +400,31 @@ test("legacy agent responses reveal their model until another agent is selected"
       agent: "planner",
     },
   );
+});
+
+test("a choice landing during a snapshot cannot overwrite a newer branch choice", () => {
+  const info = sessionInfo({
+    id: "s1",
+    activation: { kind: "active" },
+    createdAt: 0,
+    heads: [],
+    facts: new Map(),
+    mainCommits: [
+      commit(null, { kind: "config", thinkingLevel: "low" }, { change: "landed" }),
+      commit(null, { kind: "config", thinkingLevel: "high" }),
+    ],
+    pendingChanges: [
+      {
+        oid: "landed",
+        lane: "steer",
+        change: {
+          kind: "change",
+          previous: null,
+          body: { kind: "config", thinkingLevel: "low" },
+          at: 1,
+        },
+      },
+    ],
+  });
+  assert.equal(info.config.thinkingLevel, "high");
 });

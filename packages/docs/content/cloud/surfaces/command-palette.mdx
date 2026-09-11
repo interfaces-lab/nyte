@@ -1,0 +1,87 @@
+---
+title: Command palette and search
+description: "⌘K: sessions, files, actions, and settings in one modal menu, and the client action table it draws from"
+---
+
+<HostMatrix
+  primitive={{ label: "@nyte-ai/ui/menu, /tabs", href: "/cloud/headless/menu" }}
+  desktop={{
+    label: "chrome/search-palette.tsx",
+    href: "/cloud/desktop/menu#commandmenu",
+    note: "SearchPalette on CommandMenu",
+  }}
+  terminal={{
+    label: "composer-actions.ts openActionPalette",
+    note: "Ctrl+K via selectChoice (later pass)",
+  }}
+/>
+
+## `SearchPalette`
+
+File: `packages/desktop/src/renderer/src/chrome/search-palette.tsx`.
+
+| Prop                                           | Type                                 | Description                                   |
+| ---------------------------------------------- | ------------------------------------ | --------------------------------------------- |
+| `open`                                         | `boolean`                            | Controlled.                                   |
+| `platform`                                     | `NodeJS.Platform \| undefined`       | For shortcut glyphs.                          |
+| `sessionQueriesAvailable`                      | `boolean`                            | Gate for session queries (host state loaded). |
+| `onOpenChange`                                 | `(open: boolean) => void`            |                                               |
+| `onOpenSession`                                | `(sessionId) => void`                |                                               |
+| `onNewChat`, `onOpenFolder`, `onOpenCustomize` | `() => void`                         |                                               |
+| `onOpenHome`                                   | `(() => void) \| undefined`          | Undefined hides the "Open home" action.       |
+| `onOpenSettings`                               | `(section: SettingsSection) => void` |                                               |
+
+### Anatomy
+
+```
+CommandMenu label="Search" (modal, viewport-anchored)
+└─ <search>
+   ├─ input aria-label="Search" aria-controls="{id}-{tab}"     focused via rAF on open
+   ├─ Tabs.Root › Tabs.List aria-label="Search categories"     all · Chats · files · actions · settings
+   ├─ Tabs.Panel per tab
+   │  └─ MenuItem itemStyle=result leading=<StatusDot> meta=formatTimeAgo | <Kbd plain>
+   └─ srOnly role="status"   result count; "One stable node the whole time the palette is open"
+```
+
+Actions come from `shared/client-actions.ts` entries that declare a `palette` field.
+
+### Keyboard
+
+| Key                              | Where  | Effect                                                            |
+| -------------------------------- | ------ | ----------------------------------------------------------------- |
+| ⌘K / Ctrl+K                      | window | Toggle (global `keydown`, resolved through `resolveClientAction`) |
+| ArrowDown                        | input  | Focus first `[role="menuitem"]:not([data-disabled])`              |
+| ArrowUp                          | input  | Focus last                                                        |
+| Arrows, typeahead, Enter, Escape | list   | Base UI menu                                                      |
+
+### Rules
+
+- The live region is one node that stays mounted; replacing it per result set would re-announce
+  from scratch.
+- Results are `MenuItem`s so the keyboard model is the menu's; the input only hands off focus.
+- Session rows show state through `StatusDot` (a labelled `role="img"`), never through color
+  alone.
+
+## Client actions
+
+`packages/desktop/src/shared/client-actions.ts` is the single table of window-level shortcuts.
+`Kbd` displays them, `aria-keyshortcuts` advertises them, and `resolveClientAction(event, mac,
+scope)` decides which one an event is.
+
+| id             | macOS | Other        | Scope            | Handled in           |
+| -------------- | ----- | ------------ | ---------------- | -------------------- |
+| `new-chat`     | ⌘N    | Ctrl+N       | window           | shell / main process |
+| `search`       | ⌘K    | Ctrl+K       | window           | `SearchPalette`      |
+| `settings`     | ⌘,    | Ctrl+,       | outside-settings | shell                |
+| `back`         | ⌘[    | Ctrl+[       | window           | shell                |
+| `forward`      | ⌘]    | Ctrl+]       | window           | shell                |
+| `sidebar`      | ⌘B    | Ctrl+B       | outside-settings | shell                |
+| `split-right`  | ⌘D    | Ctrl+D       | workspace        | pane controller      |
+| `split-down`   | ⇧⌘D   | Shift+Ctrl+D | workspace        | pane controller      |
+| `workbench`    | ⌥⌘B   | Alt+Ctrl+B   | workspace        | `Titlebar`           |
+| `terminal`     | ⌃`    | Ctrl+`       | workspace        | `Titlebar`           |
+| `new-terminal` | ⇧⌃`   | Shift+Ctrl+` | workspace        | `Titlebar`           |
+| `focus-pane`   | F6    | F6           | workspace        | pane controller      |
+
+Add a shortcut there, not in a component. A component that wants to react to one calls
+`resolveClientAction` with its scope.
