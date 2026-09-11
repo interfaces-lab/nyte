@@ -31,7 +31,8 @@ docs/
 
 The npm `files` list includes the same `docs` source directly, so no prepack
 generation is needed. The npm launcher extracts the native archive in its versioned
-cache. `install.sh` copies docs into `<install-directory>/../share/nyte/<version>/docs`.
+cache. `packages/docs/public/install` copies docs into
+`<install-directory>/../share/nyte/<version>/docs`.
 Older releases without docs still install through the existing binary path.
 
 Run the distribution tests with `pnpm --dir packages/cli test`. They use `npm pack`

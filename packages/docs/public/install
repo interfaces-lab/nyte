@@ -2,9 +2,9 @@
 # Install the nyte CLI from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh
-#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh -s -- --version 0.2.0
-#   curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh -s -- --no-modify-path
+#   curl -fsSL https://nyte.sh/install | sh
+#   curl -fsSL https://nyte.sh/install | sh -s -- --version 0.2.0
+#   curl -fsSL https://nyte.sh/install | sh -s -- --no-modify-path
 #
 # Environment:
 #   NYTE_INSTALL_DIR     where the binary goes (default ~/.local/bin)
@@ -22,7 +22,7 @@ usage() {
 	cat <<EOF
 nyte installer
 
-Usage: install.sh [options]
+Usage: install [options]
 
 Options:
   -h, --help              Show this help

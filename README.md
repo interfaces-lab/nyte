@@ -13,7 +13,7 @@ Nyte is local-first today: its clients embed the host, store sessions locally, a
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/interfaces-lab/nyte/main/install.sh | sh
+curl -fsSL https://nyte.sh/install | sh
 nyte login
 nyte
 ```
