@@ -1,0 +1,223 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  CENTRAL_LICENSE_KEY: ${{ secrets.CENTRAL_LICENSE_KEY }}
+
+jobs:
+  verify:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify release versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node <<'NODE'
+          const manifests = [
+            "packages/cli/package.json",
+            "packages/tui/package.json",
+            "packages/desktop/package.json",
+          ];
+          const versions = manifests.map((file) => require(`./${file}`).version);
+          const expected = process.env.RELEASE_TAG?.replace(/^v/u, "");
+          if (expected === undefined || versions.some((version) => version !== expected)) {
+            throw new Error(`Tag ${process.env.RELEASE_TAG} does not match ${versions.join(", ")}`);
+          }
+          NODE
+      - name: Verify release secrets
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK SPARKLE_PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "Required release secret $name is not configured." >&2
+              exit 1
+            fi
+          done
+      - run: pnpm format
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  tui:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: darwin-arm64
+          - runner: blacksmith-4vcpu-ubuntu-2404
+            target: linux-x64
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-tui-${{ matrix.target }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'tsconfig.base.json') }}
+          restore-keys: turbo-tui-${{ matrix.target }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:tui
+      - run: sh scripts/assemble-release.sh bin/nyte dist ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tui-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  desktop:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: mac-arm64
+            command: package:mac
+          - runner: blacksmith-4vcpu-ubuntu-2404
+            target: linux-x64
+            command: package:linux
+          - runner: blacksmith-4vcpu-windows-2025
+            target: windows-x64
+            command: package:win
+    runs-on: ${{ matrix.runner }}
+    env:
+      CSC_LINK: ${{ matrix.target == 'mac-arm64' && secrets.CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ matrix.target == 'mac-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
+      APPLE_API_KEY_ID: ${{ matrix.target == 'mac-arm64' && secrets.APPLE_API_KEY_ID || '' }}
+      APPLE_API_ISSUER: ${{ matrix.target == 'mac-arm64' && secrets.APPLE_API_ISSUER || '' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-desktop-${{ matrix.target }}-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'tsconfig.base.json') }}
+          restore-keys: turbo-desktop-${{ matrix.target }}-
+      - run: pnpm install --frozen-lockfile
+      - name: Configure Apple notarization
+        if: matrix.target == 'mac-arm64'
+        shell: bash
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [[ -z "$CSC_LINK" || -z "$CSC_KEY_PASSWORD" || -z "$APPLE_API_KEY_CONTENT" || -z "$APPLE_API_KEY_ID" || -z "$APPLE_API_ISSUER" ]]; then
+            echo "macOS release secrets are incomplete." >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$key"
+          chmod 600 "$key"
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+      - run: pnpm --dir packages/desktop ${{ matrix.command }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            packages/desktop/dist/*
+            !packages/desktop/dist/*-unpacked/**
+            !packages/desktop/dist/mac*/**
+            !packages/desktop/dist/builder-*.yml
+            !packages/desktop/dist/builder-debug.yml
+          if-no-files-found: error
+
+  publish:
+    needs: [tui, desktop]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release
+          merge-multiple: true
+      - name: Publish versioned release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" release/* --repo "${{ github.repository }}" --clobber
+          else
+            gh release create "${{ github.ref_name }}" release/* --repo "${{ github.repository }}" --verify-tag --generate-notes --title "Nyte ${{ github.ref_name }}"
+          fi
+
+  appcast:
+    needs: publish
+    runs-on: blacksmith-6vcpu-macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: desktop-mac-arm64
+          path: packages/desktop/dist
+      - name: Generate signed appcast
+        shell: bash
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
+            echo "SPARKLE_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+          key="$RUNNER_TEMP/sparkle-private-key"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
+          chmod 600 "$key"
+          pnpm --dir packages/desktop update:appcast "dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip" --key-file "$key"
+      - name: Publish desktop update feed
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view desktop-updates --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create desktop-updates --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Desktop update feed" --notes "Stable Sparkle update feed for Nyte desktop."
+          fi
+          gh release upload desktop-updates packages/desktop/dist/appcast.xml --repo "$GITHUB_REPOSITORY" --clobber
