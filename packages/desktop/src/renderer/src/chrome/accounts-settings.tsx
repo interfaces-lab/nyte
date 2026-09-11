@@ -1,11 +1,12 @@
 /**
- * Settings › Accounts: the GitHub connection for this project as one card.
+ * Settings › Accounts: the shared GitHub CLI account and the selected repository.
  * The account row says whether it is connected and offers the single action
  * that changes that; the rows under it show what the connection reaches, the
  * repository and the current branch's pull request. Model providers live
  * under Settings › Models with their models.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import type {
   GitHubPullRequest,
@@ -15,13 +16,13 @@ import type {
 import { Icon, type IconName } from "../components/icons.tsx";
 import { Button } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
-import { refreshGitHub } from "../queries.ts";
+import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import { ConnectionList, ConnectionRow, ConnectionStatus as Status } from "./connection-list.tsx";
-import { useGitHubAccount, type GitHubAccountViewModel } from "./github-account.ts";
+import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import { useGitHubAccount } from "./github-account.ts";
 
-const styles = stylex.create({
+const styles = create({
   avatar: {
     display: "block",
     width: "100%",
@@ -31,46 +32,94 @@ const styles = stylex.create({
   },
 });
 
-function openOnGitHub(url: string): void {
-  void nyte.host.openExternal({ url }).catch(() => undefined);
-}
-
 function OpenOnGitHub({ url }: { url: string }): ReactElement {
   return (
-    <Button variant="ghost" icon="github" onClick={() => openOnGitHub(url)}>
+    <Button
+      variant="ghost"
+      icon="github"
+      onClick={() => void nyte.host.openExternal({ url }).catch(() => undefined)}
+    >
       Open on GitHub
     </Button>
   );
 }
 
-function AccountRow({ account }: { account: GitHubAccountViewModel }): ReactElement {
+function AccountRow({
+  query,
+  auth,
+  busy,
+  connecting,
+}: ReturnType<typeof useGitHubAccount>): ReactElement {
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const signOutRef = useRef<HTMLButtonElement>(null);
   const glyph = <Icon name="github" size={15} />;
+  if (connecting) {
+    return (
+      <ConnectionRow
+        glyph={glyph}
+        title="GitHub"
+        detail="When GitHub opens, paste the one-time code copied by the CLI. If no browser opens, run gh auth login in a terminal."
+        status={<ConnectionStatus tone="warn">Signing in…</ConnectionStatus>}
+      />
+    );
+  }
+  if (query.isError || auth.isError || query.data?.kind === "error") {
+    return (
+      <ConnectionRow
+        glyph={glyph}
+        title="GitHub"
+        detail={
+          query.data?.kind === "error"
+            ? query.data.message
+            : auth.isError
+              ? "GitHub sign-in or sign-out failed. Run gh auth status in a terminal, then refresh."
+              : "Failed to read GitHub status. Try again."
+        }
+        status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
+        actions={
+          <Button
+            disabled={query.isFetching}
+            onClick={() => {
+              auth.reset();
+              void query.refetch();
+            }}
+          >
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
+  const account = query.data;
+  if (account === undefined) {
+    return (
+      <ConnectionRow
+        glyph={glyph}
+        title="GitHub"
+        detail={undefined}
+        status={<ConnectionStatus tone="off">Checking GitHub…</ConnectionStatus>}
+      />
+    );
+  }
   switch (account.kind) {
-    case "loading":
-      return (
-        <ConnectionRow
-          glyph={glyph}
-          title="GitHub"
-          detail={undefined}
-          status={<Status tone="off">…</Status>}
-        />
-      );
-    case "no_remote":
-      return (
-        <ConnectionRow
-          glyph={glyph}
-          title="GitHub"
-          detail="This project has no GitHub remote"
-          status={<Status tone="off">Not connected</Status>}
-        />
-      );
     case "cli_missing":
       return (
         <ConnectionRow
           glyph={glyph}
           title="GitHub"
-          detail="Install the GitHub CLI (gh) to sign in"
-          status={<Status tone="off">Not connected</Status>}
+          detail="Install the GitHub CLI, then refresh."
+          status={<ConnectionStatus tone="off">CLI not found</ConnectionStatus>}
+          actions={
+            <Button
+              onClick={() =>
+                void nyte.host
+                  .openExternal({ url: "https://cli.github.com" })
+                  .catch(() => undefined)
+              }
+            >
+              Install GitHub CLI
+            </Button>
+          }
         />
       );
     case "signed_out":
@@ -78,52 +127,56 @@ function AccountRow({ account }: { account: GitHubAccountViewModel }): ReactElem
         <ConnectionRow
           glyph={glyph}
           title="GitHub"
-          detail="Sign in to see this branch's pull request"
-          status={<Status tone="off">Not connected</Status>}
-          actions={<Button onClick={account.signIn}>Sign in</Button>}
-        />
-      );
-    case "connecting":
-      return (
-        <ConnectionRow
-          glyph={glyph}
-          title="GitHub"
-          detail="Finish signing in with the browser window that opened"
-          status={<Status tone="warn">Waiting for browser</Status>}
-        />
-      );
-    case "signed_in": {
-      const { login, name, avatarUrl } = account.account;
-      return (
-        <ConnectionRow
-          glyph={
-            avatarUrl === undefined ? (
-              glyph
-            ) : (
-              <img alt="" src={avatarUrl} {...stylex.props(styles.avatar)} />
-            )
-          }
-          title={name ?? login}
-          detail={`@${login}`}
-          status={<Status tone="on">Connected</Status>}
+          detail="Sign in through the browser. The CLI copies a one-time code to your clipboard."
+          status={<ConnectionStatus tone="off">Not connected</ConnectionStatus>}
           actions={
-            <Button variant="ghost" disabled={account.signingOut} onClick={account.signOut}>
-              Sign out
+            <Button disabled={busy} onClick={() => auth.mutate("signIn")}>
+              Sign in
             </Button>
           }
         />
       );
-    }
-    case "error":
+    case "ready": {
+      const { login, name, avatarUrl } = account.account;
       return (
-        <ConnectionRow
-          glyph={glyph}
-          title="GitHub"
-          detail={account.message}
-          status={<Status tone="err">Unavailable</Status>}
-          actions={<Button onClick={() => void refreshGitHub()}>Try again</Button>}
-        />
+        <>
+          <ConnectionRow
+            glyph={
+              avatarUrl === undefined ? (
+                glyph
+              ) : (
+                <img alt="" src={avatarUrl} {...props(styles.avatar)} />
+              )
+            }
+            title={name ?? login}
+            detail={`@${login}`}
+            status={<ConnectionStatus tone="on">Connected</ConnectionStatus>}
+            actions={
+              <Button
+                ref={signOutRef}
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setConfirmSignOut(true)}
+              >
+                Sign out
+              </Button>
+            }
+          />
+          <ConfirmDialog
+            open={confirmSignOut}
+            pending={busy}
+            error={undefined}
+            returnFocusRef={signOutRef}
+            title="Sign out of GitHub CLI?"
+            description={`This removes the CLI login for @${login} on github.com. Terminal commands and other apps using this login will also be signed out.`}
+            confirmLabel="Sign out"
+            pendingLabel="Signing out…"
+            onOpenChange={setConfirmSignOut}
+            onConfirm={() => auth.mutate("signOut", { onSuccess: () => setConfirmSignOut(false) })}
+          />
+        </>
       );
+    }
     default: {
       const _exhaustive: never = account;
       return _exhaustive;
@@ -161,14 +214,14 @@ function pullRequestStatus(pullRequest: GitHubPullRequest): ReactElement {
   switch (pullRequest.state) {
     case "OPEN":
       return pullRequest.draft ? (
-        <Status tone="off">Draft</Status>
+        <ConnectionStatus tone="off">Draft</ConnectionStatus>
       ) : (
-        <Status tone="on">Open</Status>
+        <ConnectionStatus tone="on">Open</ConnectionStatus>
       );
     case "MERGED":
-      return <Status tone="off">Merged</Status>;
+      return <ConnectionStatus tone="off">Merged</ConnectionStatus>;
     case "CLOSED":
-      return <Status tone="off">Closed</Status>;
+      return <ConnectionStatus tone="off">Closed</ConnectionStatus>;
     default: {
       const _exhaustive: never = pullRequest.state;
       return _exhaustive;
@@ -176,7 +229,13 @@ function pullRequestStatus(pullRequest: GitHubPullRequest): ReactElement {
   }
 }
 
-function PullRequestRow({ context }: { context: GitHubPullRequestContext }): ReactElement {
+function PullRequestRow({
+  context,
+  refresh,
+}: {
+  context: GitHubPullRequestContext;
+  refresh: () => void;
+}): ReactElement {
   switch (context.kind) {
     case "none":
       return (
@@ -204,9 +263,9 @@ function PullRequestRow({ context }: { context: GitHubPullRequestContext }): Rea
           glyph={<Icon name="pull-request" size={15} />}
           title="Pull request"
           detail={context.message}
-          status={<Status tone="err">Unavailable</Status>}
+          status={<ConnectionStatus tone="err">Unavailable</ConnectionStatus>}
           actions={
-            <Button variant="ghost" onClick={() => void refreshGitHub()}>
+            <Button variant="ghost" onClick={refresh}>
               Try again
             </Button>
           }
@@ -219,43 +278,33 @@ function PullRequestRow({ context }: { context: GitHubPullRequestContext }): Rea
   }
 }
 
-/** The repository is known before sign-in; the card shows it so signing in has a visible object. */
-function repositoryOf(account: GitHubAccountViewModel): GitHubRepository | undefined {
-  switch (account.kind) {
-    case "cli_missing":
-    case "signed_out":
-    case "signed_in":
-    case "error":
-      return account.repository;
-    case "loading":
-    case "no_remote":
-    case "connecting":
-      return undefined;
-    default: {
-      const _exhaustive: never = account;
-      return _exhaustive;
-    }
-  }
-}
-
 export function AccountsSettings(): ReactElement {
   const account = useGitHubAccount();
-  const repository = repositoryOf(account);
+  const state = account.query.data;
+  const repository = state?.repository;
+  const refresh = () => {
+    account.auth.reset();
+    void account.query.refetch();
+  };
 
   return (
-    <section {...stylex.props(settingsPatterns.section)}>
-      <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>GitHub</h2>
-        <p {...stylex.props(settingsPatterns.sectionDescription)}>
-          Signs in through the GitHub CLI. Nyte never sees the token. Optional; local Git works
-          without it.
+    <section {...props(settingsPatterns.section)}>
+      <div {...props(settingsPatterns.sectionHeader)}>
+        <h2 {...props(settingsPatterns.sectionTitle)}>GitHub</h2>
+        <p {...props(settingsPatterns.sectionDescription)}>
+          Uses your GitHub CLI account. Local Git works without it.
         </p>
       </div>
       <ConnectionList>
-        <AccountRow account={account} />
+        <AccountRow {...account} />
         {repository !== undefined && <RepositoryRow repository={repository} />}
-        {account.kind === "signed_in" && <PullRequestRow context={account.pullRequest} />}
+        {state?.kind === "ready" && repository !== undefined && (
+          <PullRequestRow context={state.pullRequest} refresh={refresh} />
+        )}
       </ConnectionList>
+      <Button variant="ghost" disabled={account.query.isFetching || account.busy} onClick={refresh}>
+        {account.query.isFetching ? "Refreshing…" : "Refresh GitHub"}
+      </Button>
     </section>
   );
 }

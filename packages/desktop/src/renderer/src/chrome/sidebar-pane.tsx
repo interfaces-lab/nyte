@@ -8,8 +8,8 @@
  * root variable on every pointer move and commits to the store on release,
  * so the drag never waits for React.
  *
- * Geometry follows Cursor's Agents sidebar: 220 default, 190 to
- * 400, an 8px pointer target on the trailing edge, and 8px keyboard steps.
+ * Sidebar geometry is 220px by default, clamped from 190px to 400px, with an
+ * 8px pointer target on the trailing edge and 8px keyboard steps.
  */
 import * as stylex from "@stylexjs/stylex";
 import { useMatch } from "@tanstack/react-router";

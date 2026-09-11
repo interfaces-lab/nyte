@@ -126,10 +126,32 @@ tar -xzf "${asset}.tar.gz"
 
 install_dir="${NYTE_INSTALL_DIR:-${HOME}/.local/bin}"
 mkdir -p "$install_dir"
+if [ -d docs ]; then
+	docs_parent="${install_dir}/../share/nyte/${tag#v}"
+	# Refuse redirected docs destinations before copying or replacing the executable.
+	for directory in "${install_dir}/../share" "${install_dir}/../share/nyte" "$docs_parent"; do
+		if [ -L "$directory" ]; then
+			echo "nyte install: docs destination is a symlink: ${directory}." >&2
+			exit 1
+		fi
+	done
+	if [ -e "${docs_parent}/docs" ] || [ -L "${docs_parent}/docs" ]; then
+		docs_links=$(find "${docs_parent}/docs" -type l -print)
+		if [ -n "$docs_links" ]; then
+			echo "nyte install: docs destination contains symlinks: ${docs_parent}/docs." >&2
+			exit 1
+		fi
+	fi
+	mkdir -p "$docs_parent"
+	cp -R docs "$docs_parent/"
+fi
+chmod 755 nyte
 mv -f nyte "${install_dir}/nyte"
-chmod 755 "${install_dir}/nyte"
 
 echo "Installed nyte ${tag#v} to ${install_dir}/nyte"
+if [ -d docs ]; then
+	echo "Installed docs to ${docs_parent}/docs/README.md"
+fi
 
 # Append `command` to `file` once. The exact line already present means skip;
 # an unwritable file means print the line for the user instead.

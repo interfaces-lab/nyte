@@ -8,7 +8,7 @@ export interface SessionDragPoint {
   readonly y: number;
 }
 
-/** Cursor uses the nearest normalized edge and reserves the middle 25% as center. */
+/** The nearest normalized edge wins; the middle 25% is reserved for center. */
 export function placementInRect(
   rect: ClientRect,
   point: SessionDragPoint,

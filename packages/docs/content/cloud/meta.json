@@ -1,0 +1,16 @@
+{
+  "title": "Cloud",
+  "pages": [
+    "introduction",
+    "---Foundations---",
+    "...foundations",
+    "---Primitives---",
+    "...primitives",
+    "---Headless---",
+    "...headless",
+    "---Desktop---",
+    "...desktop",
+    "---Surfaces---",
+    "...surfaces"
+  ]
+}

@@ -1,6 +1,6 @@
 /**
- * The read model behind `/usage`: durable workspace totals, in-progress runs,
- * and subscription headroom the host fetched. `usageCard` turns the three into
+ * The read model behind `/usage`: workspace totals, Claude Code local history,
+ * and subscription headroom the host fetched. `usageCard` turns them into
  * strings, fills, and tones, so the panel only paints.
  */
 import {
@@ -11,11 +11,10 @@ import {
   type Model,
   type Models,
 } from "@nyte-ai/ai";
+import type { ClaudeCodeUsage } from "@nyte-ai/host/usage";
 import type { Usage } from "@nyte-ai/schema";
-import { GLYPHS } from "./constants.ts";
-import { formatDuration, formatTokens } from "./format.ts";
+import { formatTokens } from "./format.ts";
 import type { WorkspaceUsage } from "./host.ts";
-import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
 // ---------------------------------------------------------------------------
 // Ephemeral: subscription headroom
@@ -108,29 +107,9 @@ function toWindow(window: AccountLimits["windows"][number]): HeadroomWindow {
 // The card: strings, fills, tones
 // ---------------------------------------------------------------------------
 
-export const USAGE_BAR_CELLS = 20;
 const STALE_AFTER_MS = 15 * 60_000;
-const MAX_RUN_ROWS = 5;
-const LABEL_CELLS = 24;
 
 export type Tone = "ok" | "warning" | "critical";
-
-export interface RunCardRow {
-  readonly live: boolean;
-  readonly label: string;
-  readonly detail: string;
-  readonly usage: string;
-}
-
-export type RunsCard =
-  | { readonly kind: "none" }
-  | {
-      readonly kind: "runs";
-      readonly summary: string;
-      readonly rows: readonly [RunCardRow, ...RunCardRow[]];
-      readonly more?: string;
-      readonly note: string;
-    };
 
 export interface HeadroomWindowRow {
   readonly label: string;
@@ -154,7 +133,7 @@ export type HeadroomCard =
 
 export interface UsageCardRow {
   readonly label: string;
-  /** Compaction and tool buckets, rendered dim: spend without a model id. */
+  /** Compaction and tool buckets use neutral bars: spend without a model id. */
   readonly system: boolean;
   readonly share: number;
   readonly cost: string;
@@ -172,10 +151,20 @@ export type WorkspaceUsageCard =
       readonly thisChat?: string;
     };
 
+export type ClaudeCodeUsageCard =
+  | { readonly kind: "message"; readonly message: string }
+  | {
+      readonly kind: "usage";
+      readonly total: string;
+      readonly rows: readonly UsageCardRow[];
+      readonly breakdown: readonly string[];
+      readonly notes: readonly string[];
+    };
+
 export interface UsageCard {
-  readonly runs: RunsCard;
   readonly headroom: HeadroomCard;
   readonly workspace: WorkspaceUsageCard;
+  readonly claudeCode: ClaudeCodeUsageCard;
 }
 
 export type HeadroomState =
@@ -187,6 +176,7 @@ export type HeadroomState =
 export interface UsageCardOptions {
   readonly activeProvider: string;
   readonly headroom: HeadroomState;
+  readonly claudeCode: ClaudeCodeUsage | { readonly kind: "checking" };
   readonly now?: number;
 }
 
@@ -226,35 +216,6 @@ function count(value: number, noun: string): string {
 
 function hasUsage(usage: Usage): boolean {
   return usage.totalTokens > 0 || usage.cost.total > 0;
-}
-
-function runsCard(report: WorkspaceUsage, now: number): RunsCard {
-  const [first, ...rest] = report.runs.slice(0, MAX_RUN_ROWS).map((run): RunCardRow => {
-    const live = run.run.lease !== undefined;
-    return {
-      live,
-      label: run.current ? "this chat" : run.label,
-      detail: live
-        ? `${run.run.phase.kind} · ${formatDuration(Math.max(0, now - run.run.startedAt))}`
-        : "interrupted",
-      usage: `${formatTokens(run.usage.totalTokens)} · ${formatCost(run.usage.cost.total)}`,
-    };
-  });
-  if (first === undefined) return { kind: "none" };
-  const live = report.runs.filter((run) => run.run.lease !== undefined).length;
-  const interrupted = report.runs.length - live;
-  const summary = [
-    ...(live > 0 ? [`${String(live)} running`] : []),
-    ...(interrupted > 0 ? [`${String(interrupted)} interrupted`] : []),
-  ].join(" · ");
-  const hidden = report.runs.length - MAX_RUN_ROWS;
-  const card: RunsCard = {
-    kind: "runs",
-    summary,
-    rows: [first, ...rest],
-    note: "committed below · open requests excluded",
-  };
-  return hidden > 0 ? { ...card, more: `+${String(hidden)} more` } : card;
 }
 
 function headroomWindowRow(window: HeadroomWindow, now: number): HeadroomWindowRow {
@@ -322,6 +283,24 @@ function shares(rows: readonly RawRow[]): number[] {
   return rows.map((row) => measure(row) / top);
 }
 
+function formatRows(raw: readonly RawRow[], hasUnpriced = false): UsageCardRow[] {
+  // History counts unpriced records globally, so a zero-cost model may not be free.
+  const costs = raw.map((row) =>
+    hasUnpriced && row.usage.cost.total === 0 ? "—" : formatCost(row.usage.cost.total),
+  );
+  const tokens = raw.map((row) => formatTokens(row.usage.totalTokens));
+  const costWidth = Math.max(...costs.map((cost) => cost.length));
+  const tokenWidth = Math.max(...tokens.map((value) => value.length));
+  const rowShares = shares(raw);
+  return raw.map((row, index) => ({
+    label: row.label,
+    system: row.system,
+    share: rowShares[index] ?? 0,
+    cost: (costs[index] ?? "").padStart(costWidth),
+    tokens: (tokens[index] ?? "").padStart(tokenWidth),
+  }));
+}
+
 function breakdownLines(total: Usage): readonly [string, ...string[]] {
   const primary = `input ${formatTokens(total.input)} · output ${formatTokens(total.output)}`;
   const cache: string[] = [];
@@ -340,7 +319,11 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
   if (chats === 0) return empty;
 
   const raw: RawRow[] = workspace.models.map((row) => ({
-    label: truncateDisplay(row.model, LABEL_CELLS, GLYPHS.ellipsis),
+    label: workspace.models.some(
+      (other) => other.model === row.model && other.provider !== row.provider,
+    )
+      ? `${row.provider}/${row.model}`
+      : row.model,
     system: false,
     usage: row.usage,
   }));
@@ -348,27 +331,14 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
     raw.push({ label: "compaction", system: true, usage: workspace.compaction });
   }
   if (hasUsage(workspace.tools)) raw.push({ label: "tools", system: true, usage: workspace.tools });
-  const [first, ...rest] = raw;
+  const [first, ...rest] = formatRows(raw);
   if (first === undefined) return empty;
-
-  const costs = raw.map((row) => formatCost(row.usage.cost.total));
-  const tokens = raw.map((row) => formatTokens(row.usage.totalTokens));
-  const costWidth = Math.max(...costs.map((cost) => cost.length));
-  const tokenWidth = Math.max(...tokens.map((value) => value.length));
-  const rowShares = shares(raw);
-  const toRow = (row: RawRow, index: number): UsageCardRow => ({
-    label: row.label,
-    system: row.system,
-    share: rowShares[index] ?? 0,
-    cost: (costs[index] ?? "").padStart(costWidth),
-    tokens: (tokens[index] ?? "").padStart(tokenWidth),
-  });
 
   const card: WorkspaceUsageCard = {
     kind: "usage",
     title: `workspace · ${count(chats, "chat")}`,
     total: formatCost(workspace.total.cost.total),
-    rows: [toRow(first, 0), ...rest.map((row, index) => toRow(row, index + 1))],
+    rows: [first, ...rest],
     breakdown: breakdownLines(workspace.total),
   };
   if (chats > 1 && hasUsage(current.total)) {
@@ -380,81 +350,64 @@ function workspaceCard(report: WorkspaceUsage): WorkspaceUsageCard {
   return card;
 }
 
-/** Join in-progress runs, account headroom, and workspace totals into one card. */
-export function usageCard(report: WorkspaceUsage, options: UsageCardOptions): UsageCard {
-  const now = options.now ?? Date.now();
-  return {
-    runs: runsCard(report, now),
-    headroom: headroomCard(options, now),
-    workspace: workspaceCard(report),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// The card as text, for the notice slot
-// ---------------------------------------------------------------------------
-
-const BAR_FILLED = "━";
-/** An open run nobody is driving: hollow, next to the running bullet. */
-const INTERRUPTED = "○";
-
-function bar(share: number, cells: number): string {
-  const fill = share <= 0 ? 0 : Math.max(1, Math.min(cells, Math.round(share * cells)));
-  return `${BAR_FILLED.repeat(fill)}${GLYPHS.rule.repeat(cells - fill)}`;
-}
-
-/** One line per row, the way the notice slot draws them: no colors, no panel. */
-export function usageLines(card: UsageCard): string[] {
-  const lines: string[] = [];
-  if (card.runs.kind === "none") lines.push("in progress · none");
-  else {
-    lines.push(`in progress · ${card.runs.summary}`);
-    for (const run of card.runs.rows) {
-      lines.push(
-        `  ${run.live ? GLYPHS.bullet : INTERRUPTED} ${run.label}  ${run.detail}  ${run.usage}`,
-      );
-    }
-    if (card.runs.more !== undefined) lines.push(`  ${card.runs.more}`);
-    lines.push(`  ${card.runs.note}`);
-  }
-  const { headroom } = card;
-  switch (headroom.kind) {
-    case "none":
-      lines.push("account headroom · not in use");
-      break;
+function claudeCodeCard(result: UsageCardOptions["claudeCode"]): ClaudeCodeUsageCard {
+  switch (result.kind) {
     case "checking":
-      lines.push(`${headroom.name} · checking…`);
-      break;
-    case "unavailable":
-      lines.push(`${headroom.name} · not available`);
-      break;
-    case "known":
-      lines.push(`${headroom.name} · ${headroom.meta}${headroom.stale ? " (stale)" : ""}`);
-      for (const window of headroom.windows) {
-        lines.push(
-          `  ${window.label} ${bar(window.share, USAGE_BAR_CELLS)}  ${window.remaining}  ${window.reset}`,
+      return { kind: "message", message: "Reading local history…" };
+    case "missing":
+      return { kind: "message", message: "No local Claude Code history found" };
+    case "failed":
+      return { kind: "message", message: result.message };
+    case "ready": {
+      const partial =
+        result.unpricedRecords > 0 || result.malformedRecords > 0 || result.unreadableFiles > 0;
+      if (result.summary.models.length === 0 && !hasUsage(result.summary.total) && !partial) {
+        return { kind: "message", message: "No Claude Code usage recorded" };
+      }
+      const notes = ["API estimates are not subscription charges."];
+      if (result.unpricedRecords > 0) {
+        notes.push(
+          `Cost unavailable for ${count(result.unpricedRecords, "record")}; excluded from the estimate.`,
         );
       }
-      break;
+      if (result.malformedRecords > 0) {
+        notes.push(`Skipped ${count(result.malformedRecords, "malformed record")}.`);
+      }
+      if (result.unreadableFiles > 0) {
+        notes.push(`Could not read ${count(result.unreadableFiles, "history file")}.`);
+      }
+      const estimate =
+        partial && result.summary.total.cost.total === 0
+          ? "API estimate unavailable"
+          : `${partial ? "Known API estimate" : "API estimate"} ${formatCost(result.summary.total.cost.total)}`;
+      return {
+        kind: "usage",
+        total: `${formatTokens(result.summary.total.totalTokens)} tokens · ${estimate}`,
+        rows: formatRows(
+          result.summary.models.map((row) => ({
+            label: row.model,
+            system: false,
+            usage: row.usage,
+          })),
+          result.unpricedRecords > 0,
+        ),
+        breakdown: breakdownLines(result.summary.total),
+        notes,
+      };
+    }
     default: {
-      const _exhaustive: never = headroom;
+      const _exhaustive: never = result;
       return _exhaustive;
     }
   }
-  const { workspace } = card;
-  if (workspace.kind === "empty") {
-    lines.push(`${workspace.title} · ${workspace.message}`);
-    return lines;
-  }
-  lines.push(`${workspace.title} · ${workspace.total}`);
-  const labelCells = Math.max(...workspace.rows.map((row) => displayWidth(row.label)));
-  for (const row of workspace.rows) {
-    lines.push(
-      `  ${padDisplay(row.label, labelCells)}  ${bar(row.share, USAGE_BAR_CELLS)}  ${row.cost}  ${row.tokens}`,
-    );
-  }
-  lines.push(...workspace.breakdown.map((line) => `  ${line}`));
-  if (workspace.thisChat !== undefined) lines.push(`  ${workspace.thisChat}`);
-  lines.push("  estimates exclude subscription billing");
-  return lines;
+}
+
+/** Join account headroom, workspace totals, and Claude Code local history into one card. */
+export function usageCard(report: WorkspaceUsage, options: UsageCardOptions): UsageCard {
+  const now = options.now ?? Date.now();
+  return {
+    headroom: headroomCard(options, now),
+    workspace: workspaceCard(report),
+    claudeCode: claudeCodeCard(options.claudeCode),
+  };
 }

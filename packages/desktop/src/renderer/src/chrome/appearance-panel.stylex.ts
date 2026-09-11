@@ -39,7 +39,7 @@ export const appearancePanelStyles = stylex.create({
     borderRadius: t.radiusFull,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: 2,
     userSelect: "none",
   },

@@ -25,14 +25,18 @@ const model: Model<Api> = {
 
 async function open(
   store: Store = openStore(),
-  toolGate?: { readonly started: () => void; readonly release: Promise<void> },
+  toolGate?: {
+    readonly started: () => void;
+    readonly release: Promise<void>;
+    readonly request?: number;
+  },
 ) {
   const requests: { content: string; agent: string }[] = [];
   const runIds: string[] = [];
   const nyte = await createNyte({
     store,
     model,
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     plugins: [
       inlinePlugin(
         definePlugin({
@@ -74,7 +78,7 @@ async function open(
         agent: context.systemPrompt?.trim().split("\n").at(-1) ?? "",
       });
       const stream = createAssistantMessageEventStream();
-      const wantsTool = toolGate !== undefined && requests.length === 1;
+      const wantsTool = toolGate !== undefined && requests.length === (toolGate.request ?? 1);
       const answer = wantsTool
         ? assistant("", { calls: [call("hold-1", "hold")] })
         : assistant("answered");
@@ -233,6 +237,59 @@ test.each(["agent-a", "agent-b"])(
   },
 );
 
+test.each(["targeted", "head"] as const)(
+  "a stale targeted abort leaves the next run active until a %s abort",
+  async (target) => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const { nyte, requests } = await open(openStore(), {
+      started: started.resolve,
+      release: release.promise,
+      request: 2,
+    });
+    try {
+      const { sessionId } = await nyte.sessions.create();
+      assert.deepEqual(await nyte.runs.abort({ sessionId, runId: "missing" }), {
+        kind: "not_running",
+      });
+      await nyte.messages.send({ sessionId, content: "first" });
+      nyte.attach();
+      await within(nyte.runs.wait({ sessionId }));
+      const completed = await nyte.runs.current({ sessionId });
+      assert.equal(completed?.phase.kind, "done");
+      assert.ok(completed);
+      assert.deepEqual(await nyte.runs.abort({ sessionId, runId: completed.runId }), {
+        kind: "not_running",
+      });
+
+      await nyte.messages.send({ sessionId, content: "second" });
+      await within(started.promise);
+      const held = await nyte.runs.current({ sessionId });
+      assert.ok(held);
+      assert.notEqual(held.runId, completed.runId);
+      assert.equal(held.phase.kind, "tools");
+      assert.deepEqual(await nyte.runs.abort({ sessionId, runId: completed.runId }), {
+        kind: "not_running",
+      });
+      assert.deepEqual(await nyte.runs.current({ sessionId }), held);
+      assert.deepEqual(await nyte.messages.pending({ sessionId }), []);
+
+      const input = target === "targeted" ? { sessionId, runId: held.runId } : { sessionId };
+      assert.deepEqual(await nyte.runs.abort(input), { kind: "requested", runId: held.runId });
+      assert.equal((await nyte.runs.current({ sessionId }))?.abortRequested, true);
+      release.resolve();
+      await within(nyte.runs.wait({ sessionId }));
+      const aborted = await nyte.runs.current({ sessionId });
+      assert.equal(aborted?.runId, held.runId);
+      assert.equal(aborted?.phase.kind, "aborted");
+      assert.equal(requests.length, 2);
+    } finally {
+      release.resolve();
+      await nyte.close();
+    }
+  },
+);
+
 class ObservedStore extends SqliteStore {
   readonly opened: Session[] = [];
 
@@ -242,6 +299,75 @@ class ObservedStore extends SqliteStore {
     return session;
   }
 }
+
+test("invalid heads, string or not, reject before activation, admission writes, or receipt reuse", async () => {
+  const store = openStore();
+  const session = await store.create({ id: "invalid-admission" });
+  const { nyte } = await open(store);
+  const id = sessionId(session.id);
+  const state = async () => ({
+    objects: await session.objects.list(),
+    refs: await session.refs.list(""),
+    cursor: await session.events.last(),
+  });
+  try {
+    const before = await state();
+    for (const head of ["a/b", "", "bad.lock", "bad\n"]) {
+      await assert.rejects(
+        nyte.sessions.configure({ sessionId: id, head, agent: "agent-a" }),
+        TypeError,
+      );
+      await assert.rejects(
+        nyte.messages.send({ sessionId: id, head, content: "bad", agent: "agent-a" }),
+        TypeError,
+      );
+      assert.deepEqual(await state(), before);
+    }
+    for (const head of [123, ["main"], { toString: () => "main" }]) {
+      await assert.rejects(
+        // @ts-expect-error Exercise invalid JavaScript input before plugin activation.
+        nyte.sessions.configure({ sessionId: id, head, agent: "agent-a" }),
+        TypeError,
+      );
+      await assert.rejects(
+        // @ts-expect-error Exercise invalid JavaScript input at public SDK admission.
+        nyte.messages.send({ sessionId: id, head, content: "bad", agent: "agent-a" }),
+        TypeError,
+      );
+      assert.deepEqual(await state(), before);
+    }
+    await nyte.messages.send({ sessionId: id, content: "seed", key: "existing" });
+    const seeded = await state();
+    await assert.rejects(
+      nyte.messages.send({ sessionId: id, head: "a/b", content: "retry", key: "existing" }),
+      TypeError,
+    );
+    assert.deepEqual(await state(), seeded);
+  } finally {
+    await nyte.close();
+    await session.close();
+  }
+});
+
+test("direct SDK configure and send preserve unusual valid head names", async () => {
+  const { nyte } = await open();
+  try {
+    const { sessionId } = await nyte.sessions.create();
+    const head = "日本語+é!😀";
+    assert.equal(
+      (await nyte.sessions.configure({ sessionId, head, agent: "agent-a" })).kind,
+      "queued",
+    );
+    const sent = await nyte.messages.send({ sessionId, head, content: "hello" });
+    assert.ok(
+      (await nyte.messages.pending({ sessionId, head })).some(
+        (item) => item.change === sent.change,
+      ),
+    );
+  } finally {
+    await nyte.close();
+  }
+});
 
 test("concurrent session opens keep one live handle and close every handle at shutdown", async () => {
   const store = new ObservedStore(storePath());
@@ -266,5 +392,33 @@ test("concurrent session opens keep one live handle and close every handle at sh
   } finally {
     await nyte.close();
     await store.close();
+  }
+});
+
+test("a saved thinking choice stays selected while the previous run is executing", async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const { nyte } = await open(openStore(), {
+    started: started.resolve,
+    release: release.promise,
+  });
+  try {
+    const session = await nyte.sessions.create();
+    const sessionId = session.sessionId;
+    await nyte.sessions.configure({ sessionId, thinkingLevel: "off" });
+    await nyte.messages.send({ sessionId, content: "first" });
+    nyte.attach();
+    await within(started.promise);
+    await nyte.sessions.configure({ sessionId, thinkingLevel: "high" });
+    const snapshot = await nyte.sessions.snapshot({ sessionId });
+    assert.equal(snapshot?.session.config.thinkingLevel, "high");
+    assert.equal(snapshot?.config.thinkingLevel, "off");
+    assert.equal((await nyte.sessions.get({ sessionId }))?.config.thinkingLevel, "high");
+    release.resolve();
+    await within(nyte.runs.wait({ sessionId }));
+    assert.equal((await nyte.sessions.snapshot({ sessionId }))?.config.thinkingLevel, "high");
+  } finally {
+    release.resolve();
+    await nyte.close();
   }
 });

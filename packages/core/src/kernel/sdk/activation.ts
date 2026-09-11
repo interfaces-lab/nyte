@@ -51,6 +51,7 @@ const REGISTRY_PROPERTIES = [
   "resources",
   "settings",
   "status",
+  "modelContext",
 ] satisfies readonly (keyof PluginRegistries)[];
 
 export type Notice = PluginNotice;
@@ -168,14 +169,12 @@ function factsFor(session: Session): FactsShim {
       const refs = await session.refs.list(
         prefix === "" ? FACT_PREFIX : factRef(encodeFactKey(prefix)),
       );
-      const facts: { fact: string; value: JsonValue }[] = [];
-      for (const ref of refs) {
-        facts.push({
+      return Promise.all(
+        refs.map(async (ref) => ({
           fact: decodeFactKey(ref.name.slice(FACT_PREFIX.length)),
           value: await blobValue(session, ref.oid, ref.name),
-        });
-      }
-      return facts;
+        })),
+      );
     },
   };
 }
@@ -229,8 +228,8 @@ export async function activate(input: {
   const hooks = new HookRegistry((error, hook) =>
     emit({
       kind: "diagnostic",
-      owner: `hook ${hook}`,
-      level: "error",
+      owner: hook === "before_compaction" ? "compaction" : `hook ${hook}`,
+      level: hook === "before_compaction" ? "warn" : "error",
       message: error.message,
     }),
   );
@@ -278,7 +277,7 @@ export async function activate(input: {
       const events = session.events.watch({ afterSeq, signal: loop.signal });
       for await (const event of events) {
         if (loop.signal.aborted) return;
-        for (const projected of await projectEvent(event, (oid) => session.objects.get(oid))) {
+        for (const projected of await projectEvent(event, session.objects)) {
           for (const listener of eventListeners) {
             try {
               listener(projected);
@@ -363,18 +362,19 @@ export async function activate(input: {
     resources: () => registries.resources.current(),
     statuses,
     listSettings: async () => {
-      const settings: SettingInfo[] = [];
-      for (const [id, setting] of registries.settings.current()) {
-        const owner = registries.settings.owner(id);
-        if (owner === undefined) continue;
-        const stored = await facts.getFact(pluginFactKey(owner, setting.key));
-        const current =
-          isStringFact(stored) && setting.choices.some((choice) => choice.id === stored)
-            ? stored
-            : (setting.fallback ?? setting.choices[0].id);
-        settings.push({ id, owner, label: setting.label, choices: setting.choices, current });
-      }
-      return settings;
+      const settings = await Promise.all(
+        [...registries.settings.current()].map(async ([id, setting]): Promise<SettingInfo[]> => {
+          const owner = registries.settings.owner(id);
+          if (owner === undefined) return [];
+          const stored = await facts.getFact(pluginFactKey(owner, setting.key));
+          const current =
+            isStringFact(stored) && setting.choices.some((choice) => choice.id === stored)
+              ? stored
+              : (setting.fallback ?? setting.choices[0].id);
+          return [{ id, owner, label: setting.label, choices: setting.choices, current }];
+        }),
+      );
+      return settings.flat();
     },
     applySetting: async (id, choiceId) => {
       const setting = registries.settings.get(id);
@@ -428,7 +428,9 @@ export interface TurnResolutionDefaults {
 }
 
 export interface TurnResolution {
+  readonly catalogModel: Model<Api>;
   readonly model: Model<Api>;
+  readonly compactAt: number | undefined;
   readonly agent: Agent | undefined;
   readonly thinkingLevel: ThinkingLevel | undefined;
   readonly steps: number | undefined;
@@ -442,18 +444,14 @@ interface InvocationState {
 }
 
 interface CachedTurn {
+  readonly catalogModel: Model<Api>;
   readonly model: Model<Api>;
+  readonly compactAt: number | undefined;
   readonly agent: Agent | undefined;
   readonly thinkingLevel: ThinkingLevel | undefined;
   readonly systemPrompt: string;
   readonly tools: readonly AgentTool[];
   readonly turn: Turn;
-}
-
-function parseModelRef(ref: string): ModelRef {
-  const slash = ref.indexOf("/");
-  if (slash <= 0 || slash === ref.length - 1) return { id: ref };
-  return { provider: ref.slice(0, slash), id: ref.slice(slash + 1) };
 }
 
 /** Resolve the model, agent, and thinking level declared by a branch. */
@@ -472,8 +470,9 @@ export function resolveTurnConfig(
     config.model !== undefined
       ? (defaults.resolveModel?.(config.model) ?? defaults.model)
       : agent?.model !== undefined
-        ? (defaults.resolveModel?.(parseModelRef(agent.model)) ?? defaults.model)
+        ? (defaults.resolveModel?.(agent.model) ?? defaults.model)
         : defaults.model;
+  const policy = activation.registries.modelContext.get(`${model.provider}/${model.id}`);
   const thinkingLevel =
     config.thinkingLevel !== undefined && isThinkingLevel(config.thinkingLevel)
       ? config.thinkingLevel
@@ -483,7 +482,9 @@ export function resolveTurnConfig(
   const allowed = agent?.tools === undefined ? undefined : new Set(agent.tools);
   const tools = activation.tools();
   return {
-    model,
+    catalogModel: model,
+    model: policy === undefined ? model : { ...model, contextWindow: policy.contextWindow },
+    compactAt: policy?.compactAt,
     agent,
     thinkingLevel,
     steps: agent?.steps,
@@ -498,7 +499,9 @@ function sameItems<T>(left: readonly T[], right: readonly T[]): boolean {
 
 function sameResolution(cached: CachedTurn, resolved: TurnResolution): boolean {
   return (
-    cached.model === resolved.model &&
+    cached.catalogModel === resolved.catalogModel &&
+    cached.model.contextWindow === resolved.model.contextWindow &&
+    cached.compactAt === resolved.compactAt &&
     cached.agent === resolved.agent &&
     cached.thinkingLevel === resolved.thinkingLevel &&
     cached.systemPrompt === resolved.systemPrompt &&
@@ -664,11 +667,14 @@ export function turnFor(
       loop,
       retry: defaults.retry,
       compaction: defaults.compaction,
+      compactAt: resolved.compactAt,
       compactionStreamFn,
       providerCompaction,
     });
     cache.set(key, {
+      catalogModel: resolved.catalogModel,
       model: resolved.model,
+      compactAt: resolved.compactAt,
       agent: resolved.agent,
       thinkingLevel: resolved.thinkingLevel,
       systemPrompt: resolved.systemPrompt,

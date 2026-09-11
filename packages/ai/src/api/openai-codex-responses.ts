@@ -1,14 +1,17 @@
+import { OpenAICodexCompactionError } from "./openai-codex-compaction-error.ts";
 import type * as NodeZlib from "node:zlib";
 import type {
   Tool as OpenAITool,
+  ResponseCompactionItemParam,
   ResponseCreateParamsStreaming,
   ResponseInput,
+  ResponseInputItem,
   ResponseStreamEvent,
 } from "openai/resources/responses/responses.js";
 import { type Static, Type } from "typebox";
 import { Value } from "typebox/value";
 
-import { clampThinkingLevel } from "../models.ts";
+import { calculateCost, clampThinkingLevel } from "../models.ts";
 import { getServiceTierCostMultiplier } from "../model-pricing.ts";
 import { registerSessionResourceCleanup } from "../session-resources.ts";
 import type {
@@ -16,6 +19,7 @@ import type {
   Api,
   AssistantMessage,
   Context,
+  JsonValue,
   Model,
   ProviderEnv,
   ProviderHeaders,
@@ -39,11 +43,13 @@ import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { uuidv7 } from "../utils/uuid.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
-import { readOpenAICompactResponse, type OpenAICompactResult } from "./openai-compact.ts";
+import type { OpenAICompactResult } from "./openai-compact.ts";
 import {
   convertResponsesMessages,
   convertResponsesTools,
   processResponsesStream,
+  type ResponsesStreamEvent,
+  ResponsesUsageError,
   stripStreamingScratchState,
 } from "./openai-responses-shared.ts";
 import { buildBaseOptions } from "./simple-options.ts";
@@ -64,6 +70,7 @@ interface CodexFrame {
   readonly message?: unknown;
   readonly error?: unknown;
   readonly response?: unknown;
+  readonly item?: unknown;
 }
 
 interface CodexEventError {
@@ -112,7 +119,10 @@ function decodeCodexFrame(value: unknown): CodexFrame | undefined {
 
 function isTerminalResponseType(type: string): boolean {
   return (
-    type === "response.completed" || type === "response.done" || type === "response.incomplete"
+    type === "response.completed" ||
+    type === "response.done" ||
+    type === "response.incomplete" ||
+    type === "response.failed"
   );
 }
 
@@ -123,7 +133,7 @@ function isTerminalResponseType(type: string): boolean {
 const DEFAULT_CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth" as const;
 const DEFAULT_MAX_RETRIES = 0;
-const DEFAULT_COMPACT_MAX_RETRIES = 3;
+const DEFAULT_COMPACT_IDLE_TIMEOUT_MS = 300_000;
 const BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_RETRY_DELAY_MS = 60_000;
 const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS = 15_000;
@@ -199,13 +209,6 @@ function isRetryableError(status: number, errorText: string): boolean {
   return /rate.?limit|overloaded|service.?unavailable|upstream.?connect|connection.?refused/i.test(
     errorText,
   );
-}
-
-function isRetryableCompactError(status: number, errorText: string): boolean {
-  // ChatGPT's Codex compact route can temporarily disappear while the normal
-  // responses route remains healthy. Give that 404 the same bounded retry
-  // budget as transient provider failures before the caller uses portable compaction.
-  return status === 404 || isRetryableError(status, errorText);
 }
 
 function getRetryAfterDelayMs(headers: Headers): number | undefined {
@@ -699,11 +702,89 @@ function buildRequestBody(
 
 export type OpenAICodexCompactResult = OpenAICompactResult;
 
+export { OpenAICodexCompactionError };
+
+const compactTokenCount = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
+const codexCompactionItem = Type.Object({
+  type: Type.Literal("compaction"),
+  id: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
+  encrypted_content: Type.String({ minLength: 1 }),
+});
+type CodexCompactionOutput =
+  | { readonly kind: "missing" }
+  | { readonly kind: "checkpoint"; readonly item: Static<typeof codexCompactionItem> }
+  | { readonly kind: "invalid"; readonly reason: string };
+
+const codexCompactCompleted = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  // Codex's SSE protocol permits omitted status, but never a contradictory status.
+  status: Type.Optional(Type.Literal("completed")),
+  error: Type.Optional(Type.Null()),
+  incomplete_details: Type.Optional(Type.Null()),
+  usage: Type.Optional(
+    Type.Union([
+      Type.Null(),
+      Type.Object({
+        input_tokens: compactTokenCount,
+        output_tokens: compactTokenCount,
+        total_tokens: compactTokenCount,
+        input_tokens_details: Type.Optional(
+          Type.Union([
+            Type.Null(),
+            Type.Object({
+              cached_tokens: Type.Optional(compactTokenCount),
+              cache_write_tokens: Type.Optional(compactTokenCount),
+            }),
+          ]),
+        ),
+        output_tokens_details: Type.Optional(
+          Type.Union([
+            Type.Null(),
+            Type.Object({
+              reasoning_tokens: Type.Optional(compactTokenCount),
+            }),
+          ]),
+        ),
+      }),
+    ]),
+  ),
+  service_tier: Type.Optional(
+    Type.Union([
+      Type.Null(),
+      Type.Literal("auto"),
+      Type.Literal("default"),
+      Type.Literal("flex"),
+      Type.Literal("scale"),
+      Type.Literal("priority"),
+    ]),
+  ),
+});
+const codexRetainedMessages = Type.Array(
+  Type.Object({
+    role: Type.Literal("user"),
+    content: Type.Union([
+      Type.String(),
+      Type.Array(
+        Type.Union([
+          Type.Object({ type: Type.Literal("input_text"), text: Type.String() }),
+          Type.Object({
+            type: Type.Literal("input_image"),
+            image_url: Type.String(),
+            // Nyte emits auto-detail images. Original-detail patch estimation is not used.
+            detail: Type.Literal("auto"),
+          }),
+        ]),
+      ),
+    ]),
+  }),
+);
+
 /**
- * Call Codex's native unary compaction endpoint. The caller decides whether
- * this provider-native material becomes a durable checkpoint.
- *
- * Based on https://github.com/openai/codex/blob/d5caceccb1ee5bf94c081b995575ce4860e0912b/codex-rs/codex-api/src/endpoint/compact.rs
+ * Codex V2 uses the ordinary Responses stream, not /responses/compact.
+ * History retention follows openai/codex@121f91fd5d9dc66017866ce9bdc49f1e182721df,
+ * core/src/compact_remote_v2.rs and compact_remote_v2_images.rs.
+ * timeoutMs bounds header wait and stream idleness, not total duration.
+ * It defaults to five minutes; zero disables it.
  */
 export async function compactOpenAICodexContext(
   model: Model<"openai-codex-responses">,
@@ -716,81 +797,303 @@ export async function compactOpenAICodexContext(
   const cacheSessionId =
     options?.cacheRetention === "none" ? undefined : clampOpenAIPromptCacheKey(options?.sessionId);
   const request = buildRequestBody(model, context, options, cacheSessionId);
-  let body: RequestBody = {
-    model: request.model,
-    input: request.input,
-    instructions: request.instructions,
-    tools: request.tools,
-    parallel_tool_calls: request.parallel_tool_calls,
-    reasoning: request.reasoning,
-    service_tier: request.service_tier,
-    prompt_cache_key: request.prompt_cache_key,
-    text: request.text,
-  };
-  const nextBody = await options?.onPayload?.(body, model);
-  if (nextBody !== undefined) body = nextBody as RequestBody;
-
-  const headers = buildBaseCodexHeaders(model.headers, options?.headers, accountId, apiKey);
-  headers.set("accept", "application/json");
-  headers.set("content-type", "application/json");
-  const timeoutMs = normalizeTimeoutMs(options?.timeoutMs);
-  const maxRetries = options?.maxRetries ?? DEFAULT_COMPACT_MAX_RETRIES;
-  const fetch = options?.fetch ?? globalThis.fetch;
-  const url = `${resolveCodexUrl(model.baseUrl)}/compact`;
-  const encodedBody = JSON.stringify(body);
-  let attempt = 0;
-
-  for (;;) {
-    if (options?.signal?.aborted) throw new Error("Request was aborted");
-    const timeoutSignal =
-      timeoutMs !== undefined && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
-    const combinedSignal = combineAbortSignals([options?.signal, timeoutSignal]);
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: encodedBody,
-        signal: combinedSignal.signal,
-      });
-    } catch (error) {
-      if (options?.signal?.aborted) throw new Error("Request was aborted");
-      if (attempt >= maxRetries) {
-        throw error instanceof Error ? error : new Error(String(error));
-      }
-      const delayMs = BASE_DELAY_MS * 2 ** attempt;
-      attempt += 1;
-      await sleep(delayMs, options?.signal);
-      continue;
-    } finally {
-      combinedSignal.cleanup();
-    }
-
-    await options?.onResponse?.(
-      { status: response.status, headers: headersToRecord(response.headers) },
-      model,
-    );
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (attempt < maxRetries && isRetryableCompactError(response.status, errorText)) {
-        const retryAfterDelayMs = getRetryAfterDelayMs(response.headers);
-        const delayMs =
-          retryAfterDelayMs === undefined
-            ? BASE_DELAY_MS * 2 ** attempt
-            : validateRetryDelayMs(retryAfterDelayMs, options);
-        attempt += 1;
-        await sleep(delayMs, options?.signal);
-        continue;
-      }
-
-      const info = await parseErrorResponse(
-        new Response(errorText, { status: response.status, statusText: response.statusText }),
-      );
-      throw new Error(info.friendlyMessage || info.message);
-    }
-
-    return readOpenAICompactResponse(response, model);
+  request.input = [
+    ...(request.input ?? []),
+    { type: "compaction_trigger" } satisfies ResponseInputItem.CompactionTrigger,
+  ];
+  const nextBody = await options?.onPayload?.(request, model);
+  const body = recordOf(nextBody === undefined ? request : nextBody);
+  const input = body?.input;
+  if (
+    !body ||
+    !Value.Check(Type.Array(Type.Unknown()), input) ||
+    !Value.Check(
+      Type.Object({ type: Type.Literal("compaction_trigger") }, { additionalProperties: false }),
+      input.at(-1),
+    ) ||
+    input.slice(0, -1).some((item) => recordOf(item)?.type === "compaction_trigger")
+  ) {
+    throw new Error("Invalid Codex compaction request input");
   }
+  const userInputs = input.filter((item) => recordOf(item)?.role === "user");
+  if (!Value.Check(codexRetainedMessages, userInputs)) {
+    throw new Error("Invalid Codex compaction user input");
+  }
+  const headers = buildSSEHeaders(
+    model.headers,
+    options?.headers,
+    accountId,
+    apiKey,
+    cacheSessionId,
+  );
+  const betaFeatures = new Set(
+    (headers.get("x-codex-beta-features") ?? "").split(",").filter(Boolean),
+  );
+  betaFeatures.add("remote_compaction_v2");
+  headers.set("x-codex-beta-features", [...betaFeatures].join(","));
+  const encodedBody = JSON.stringify({
+    ...body,
+    store: false,
+    stream: true,
+    input,
+  });
+  const compressedBody = compressRequestBodyZstd(encodedBody);
+  if (compressedBody) headers.set("content-encoding", "zstd");
+  const url = new URL(resolveCodexUrl(model.baseUrl));
+  const timeoutMs = normalizeTimeoutMs(options?.timeoutMs) ?? DEFAULT_COMPACT_IDLE_TIMEOUT_MS;
+  const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
+  if (!Number.isSafeInteger(maxRetries) || maxRetries < 0) {
+    throw new Error("Invalid Codex compaction maxRetries");
+  }
+  let response: Response | undefined;
+  let failure = "Request failed";
+  let usage: Usage | undefined;
+  try {
+    for (let attempt = 0; ; attempt++) {
+      response = undefined;
+      failure = "Request failed";
+      const headerTimeout = new AbortController();
+      const combinedSignal = combineAbortSignals([options?.signal, headerTimeout.signal]);
+      const timer = timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
+      let retryable = true;
+      let output: CodexCompactionOutput = { kind: "missing" };
+      try {
+        response = await (options?.fetch ?? globalThis.fetch)(url, {
+          method: "POST",
+          headers,
+          body: compressedBody ? new Uint8Array(compressedBody) : encodedBody,
+          signal: combinedSignal.signal,
+        });
+        clearTimeout(timer);
+        retryable = false;
+        await options?.onResponse?.(
+          { status: response.status, headers: headersToRecord(response.headers) },
+          model,
+        );
+        if (!response.ok) {
+          failure = "HTTP request failed";
+          // Only status codes authorize an HTTP retry, never provider error prose.
+          retryable = response.status === 408 || isRetryableError(response.status, "");
+          if (response.status === 429) {
+            const bodyTimer =
+              timeoutMs > 0 ? setTimeout(() => headerTimeout.abort(), timeoutMs) : undefined;
+            try {
+              retryable = !isTerminalRateLimitError(await response.text());
+            } finally {
+              clearTimeout(bodyTimer);
+            }
+          }
+          throw new Error(failure);
+        }
+        retryable = true;
+        for await (const event of parseSSE(response, combinedSignal.signal, timeoutMs)) {
+          if (event.type === "response.output_item.done") {
+            const item = event.item;
+            // Keep reading malformed output to account for terminal usage, but never commit it.
+            if (!Value.Check(CodexFrameJson, item)) {
+              output = { kind: "invalid", reason: "Invalid output item" };
+              continue;
+            }
+            if (item.type !== "compaction" || output.kind === "invalid") continue;
+            if (!Value.Check(codexCompactionItem, item)) {
+              output = { kind: "invalid", reason: "Invalid compaction item" };
+              continue;
+            }
+            if (output.kind === "checkpoint") {
+              output = { kind: "invalid", reason: "Expected exactly one compaction item" };
+              continue;
+            }
+            // Persist only protocol fields, never arbitrary server metadata.
+            const checkpoint: Static<typeof codexCompactionItem> = {
+              type: item.type,
+              encrypted_content: item.encrypted_content,
+            } satisfies ResponseCompactionItemParam;
+            if (item.id !== undefined) checkpoint.id = item.id;
+            output = { kind: "checkpoint", item: checkpoint };
+          } else if (isTerminalResponseType(event.type) || event.type === "response.cancelled") {
+            retryable = false;
+            const terminal = recordOf(event.response);
+            const tokens = terminal?.usage;
+            if (
+              tokens !== undefined &&
+              !Value.Check(codexCompactCompleted.properties.usage, tokens)
+            ) {
+              failure = "Invalid terminal usage";
+              throw new Error(failure);
+            }
+            if (tokens) {
+              const cached = tokens.input_tokens_details?.cached_tokens ?? 0;
+              const written = tokens.input_tokens_details?.cache_write_tokens ?? 0;
+              const reported: Usage = {
+                input: Math.max(0, tokens.input_tokens - cached - written),
+                output: tokens.output_tokens,
+                cacheRead: cached,
+                cacheWrite: written,
+                reasoning: tokens.output_tokens_details?.reasoning_tokens ?? 0,
+                totalTokens: tokens.total_tokens,
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+              };
+              calculateCost(model, reported);
+              applyServiceTierPricing(
+                reported,
+                resolveCodexServiceTier(
+                  Value.Check(codexCompactCompleted.properties.service_tier, terminal?.service_tier)
+                    ? terminal?.service_tier
+                    : undefined,
+                  options?.serviceTier,
+                ),
+                model,
+              );
+              if (usage) {
+                for (const key of [
+                  "input",
+                  "output",
+                  "cacheRead",
+                  "cacheWrite",
+                  "totalTokens",
+                ] as const) {
+                  reported[key] += usage[key];
+                }
+                reported.reasoning = (reported.reasoning ?? 0) + (usage.reasoning ?? 0);
+                for (const key of [
+                  "input",
+                  "output",
+                  "cacheRead",
+                  "cacheWrite",
+                  "total",
+                ] as const) {
+                  reported.cost[key] += usage.cost[key];
+                }
+              }
+              usage = reported;
+            }
+            if (event.type !== "response.completed") {
+              failure = output.kind === "invalid" ? output.reason : "Compaction did not complete";
+              const code = recordOf(terminal?.error)?.code;
+              retryable =
+                event.type === "response.failed" &&
+                (code === "server_error" ||
+                  code === "rate_limit_exceeded" ||
+                  code === "overloaded");
+              throw new Error(failure);
+            }
+            if (!Value.Check(codexCompactCompleted, event.response)) {
+              failure = "Invalid completed response or usage";
+              throw new Error(failure);
+            }
+            if (output.kind !== "checkpoint") {
+              failure =
+                output.kind === "invalid" ? output.reason : "Expected exactly one compaction item";
+              throw new Error(failure);
+            }
+            const data = [...retainCodexUserInputs(userInputs), output.item];
+            return usage === undefined ? { data } : { data, usage };
+          } else if (event.type === "error") {
+            failure = "Compaction did not complete";
+            const code = extractCodexEventError(event).code;
+            retryable =
+              code === "server_error" || code === "rate_limit_exceeded" || code === "overloaded";
+            throw new Error(failure);
+          }
+        }
+        failure =
+          output.kind === "invalid" ? output.reason : "Stream ended before response.completed";
+        throw new Error(failure);
+      } catch (error) {
+        if (options?.signal?.aborted) throw error;
+        if (headerTimeout.signal.aborted)
+          failure = response ? "HTTP error body timed out" : "Response headers timed out";
+        else if (error instanceof DOMException && error.name === "TimeoutError")
+          failure = "Stream idle timeout";
+        else if (error instanceof CodexProtocolError) {
+          failure = "Invalid SSE stream";
+          retryable = false;
+        }
+        if (!retryable || output.kind === "invalid" || attempt >= maxRetries) throw error;
+      } finally {
+        clearTimeout(timer);
+        combinedSignal.cleanup();
+        await response?.body?.cancel().catch(() => {});
+      }
+      const delayMs =
+        getRetryAfterDelayMs(response?.headers ?? new Headers()) ?? BASE_DELAY_MS * 2 ** attempt;
+      failure = "Retry delay exceeded";
+      await sleep(validateRetryDelayMs(delayMs, options), options?.signal);
+    }
+  } catch (error) {
+    if (options?.signal?.aborted) failure = "Request was aborted";
+    else if (error instanceof RetryDelayExceededError) failure = error.message;
+    const requestId =
+      response?.headers.get("x-request-id") ?? response?.headers.get("x-openai-request-id");
+    const safeRequestId =
+      requestId && /^[a-zA-Z0-9_-]{1,200}$/.test(requestId) ? requestId : undefined;
+    // Do not attach a cause, response body, or raw SSE payload: they may echo prompts or credentials.
+    throw new OpenAICodexCompactionError(
+      `Codex compaction: ${failure}; ${url.origin}${url.pathname}${response ? `; HTTP ${response.status}` : ""}${safeRequestId ? `; request ID ${safeRequestId}` : ""}`,
+      usage,
+    );
+  }
+}
+
+function retainCodexUserInputs(messages: Static<typeof codexRetainedMessages>): JsonValue[] {
+  let remaining = 64_000;
+  const retained: JsonValue[] = [];
+  const encoder = new TextEncoder();
+  for (const message of messages.toReversed()) {
+    if (remaining === 0) break;
+    const content = Array.isArray(message.content)
+      ? message.content
+      : [{ type: "input_text", text: message.content } as const];
+    // Official auto-detail estimate is ceil(7373 / 4), independent of base64 size.
+    const budgeted = content.map((part) => ({
+      part,
+      tokens: part.type === "input_image" ? 1844 : Math.ceil(encoder.encode(part.text).length / 4),
+    }));
+    const cost = Math.max(
+      1,
+      budgeted.reduce((sum, item) => sum + item.tokens, 0),
+    );
+    if (cost <= remaining) {
+      retained.push({ type: "message", role: "user", content });
+      remaining -= cost;
+      continue;
+    }
+    // Text-only boundaries keep earlier parts; image boundaries keep later parts.
+    const hasImages = content.some((part) => part.type === "input_image");
+    const parts: Array<(typeof content)[number]> = [];
+    for (const { part, tokens } of hasImages ? budgeted.toReversed() : budgeted) {
+      if (part.type === "input_image") {
+        if (tokens <= remaining) {
+          parts.push(part);
+          remaining -= tokens;
+        } else remaining = 0;
+      } else if (remaining > 0) {
+        if (tokens <= remaining) {
+          if (part.text) parts.push(part);
+          remaining -= tokens;
+        } else {
+          const bytes = encoder.encode(part.text);
+          const budget = remaining * 4;
+          let left = budget / 2;
+          let right = bytes.length - budget / 2;
+          // Slice only at UTF-8 character boundaries, as Codex's truncation helper does.
+          while (left > 0 && (bytes[left] & 0xc0) === 0x80) left--;
+          while (right < bytes.length && (bytes[right] & 0xc0) === 0x80) right++;
+          const decoder = new TextDecoder();
+          parts.push({
+            type: "input_text",
+            text: `${decoder.decode(bytes.subarray(0, left))}…${Math.ceil((bytes.length - budget) / 4)} tokens truncated…${decoder.decode(bytes.subarray(right))}`,
+          });
+          remaining = 0;
+        }
+      }
+    }
+    if (hasImages) parts.reverse();
+    if (parts.length > 0) retained.push({ type: "message", role: "user", content: parts });
+    // Never backfill older messages when a boundary image does not fit.
+    remaining = 0;
+  }
+  return retained.reverse();
 }
 
 function accountWindow(
@@ -965,7 +1268,11 @@ class CodexProtocolError extends Error {
 }
 
 function isCodexNonTransportError(cause: unknown): boolean {
-  return cause instanceof CodexApiError || cause instanceof CodexProtocolError;
+  return (
+    cause instanceof CodexApiError ||
+    cause instanceof CodexProtocolError ||
+    cause instanceof ResponsesUsageError
+  );
 }
 
 function isWebSocketConnectionLimitReachedError(cause: unknown): boolean {
@@ -987,7 +1294,7 @@ function extractCodexEventError(event: CodexFrame): CodexEventError {
 async function* mapCodexEvents(
   events: AsyncIterable<CodexFrame>,
   output: AssistantMessage,
-): AsyncGenerator<ResponseStreamEvent> {
+): AsyncGenerator<ResponsesStreamEvent> {
   for await (const event of events) {
     const { type } = event;
 
@@ -999,29 +1306,31 @@ async function* mapCodexEvents(
       });
     }
 
-    if (type === "response.failed") {
-      const failure = recordOf(recordOf(event.response)?.error);
-      throw new CodexApiError(textOf(failure?.message) || "Codex response failed", {
-        code: textOf(failure?.code),
-        payload: event,
-      });
-    }
-
     if (isTerminalResponseType(type)) {
       const response = recordOf(event.response);
       const endTurn = boolOf(response?.end_turn);
       if (endTurn !== undefined) {
         output.endTurn = endTurn;
       }
-      // SAFETY: terminal Codex events are normalized into the OpenAI Responses "response.completed" shape that processResponsesStream consumes; the frame carries the same response fields.
+      // SAFETY: Codex shares the Responses terminal metadata. Usage stays unknown
+      // in ResponsesStreamEvent and is validated by the shared finalizer.
       yield {
         ...event,
         type: "response.completed",
-        response: response && {
+        response: {
           ...response,
-          status: normalizeCodexStatus(response.status),
+          status: type === "response.failed" ? "failed" : normalizeCodexStatus(response?.status),
         },
-      } as ResponseStreamEvent;
+      } as ResponsesStreamEvent;
+      // Finalize supplied usage before throwing, while retaining Codex error codes
+      // used to distinguish API failures from retryable transport failures.
+      if (type === "response.failed") {
+        const failure = recordOf(response?.error);
+        throw new CodexApiError(textOf(failure?.message) || "Codex response failed", {
+          code: textOf(failure?.code),
+          payload: event,
+        });
+      }
       return;
     }
 
@@ -1038,12 +1347,18 @@ function normalizeCodexStatus(status: unknown): CodexResponseStatus | undefined 
 // SSE Parsing
 // ============================================================================
 
-async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerator<CodexFrame> {
+async function* parseSSE(
+  response: Response,
+  signal?: AbortSignal,
+  idleTimeoutMs?: number,
+): AsyncGenerator<CodexFrame> {
   if (!response.body) return;
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let idleTimedOut = false;
   const onAbort = () => {
     void reader.cancel().catch(() => {});
   };
@@ -1054,12 +1369,21 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
       if (signal?.aborted) {
         throw new Error("Request was aborted");
       }
+      if (idleTimeoutMs !== undefined && idleTimeoutMs > 0) {
+        idleTimer = setTimeout(() => {
+          idleTimedOut = true;
+          void reader.cancel().catch(() => {});
+        }, idleTimeoutMs);
+      }
       const { done, value } = await reader.read();
+      clearTimeout(idleTimer);
       if (signal?.aborted) {
         throw new Error("Request was aborted");
       }
+      if (idleTimedOut) throw new DOMException("Codex SSE idle timeout", "TimeoutError");
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, "\n");
 
       let idx = buffer.indexOf("\n\n");
       while (idx !== -1) {
@@ -1088,6 +1412,7 @@ async function* parseSSE(response: Response, signal?: AbortSignal): AsyncGenerat
       }
     }
   } finally {
+    clearTimeout(idleTimer);
     signal?.removeEventListener("abort", onAbort);
     try {
       await reader.cancel();
@@ -1713,12 +2038,14 @@ function buildCachedWebSocketRequestBody(
 }
 
 async function* startWebSocketOutputOnFirstEvent(
-  events: AsyncIterable<ResponseStreamEvent>,
+  events: AsyncIterable<ResponsesStreamEvent>,
   onStart: () => void,
-): AsyncGenerator<ResponseStreamEvent> {
+): AsyncGenerator<ResponsesStreamEvent> {
   let started = false;
   for await (const event of events) {
-    if (!started) {
+    // A failed terminal frame is yielded only to account for usage. It must not
+    // turn a before-start API failure into an after-start transport failure.
+    if (!started && !(event.type === "response.completed" && event.response.status === "failed")) {
       started = true;
       onStart();
     }

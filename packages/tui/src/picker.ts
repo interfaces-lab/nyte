@@ -1,3 +1,4 @@
+import { matchesKeyName } from "./keymap.ts";
 import {
   bold,
   BoxRenderable,
@@ -230,10 +231,10 @@ export class InlineMenu {
   /** Keycap row for the shell's hint line while this menu owns the input. */
   get hints(): string {
     return [
-      `enter ${this.screen.selectLabel ?? "select"}`,
+      `${keycap("picker.accept")} ${this.screen.selectLabel ?? "select"}`,
       ...(this.screen.actions ?? []).map((action) => `${keycap(action.command)} ${action.label}`),
-      "↑↓ move",
-      `esc ${this.screen.cancelLabel ?? "close"}`,
+      `${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} move`,
+      `${keycap("picker.close")} ${this.screen.cancelLabel ?? "close"}`,
     ].join(" · ");
   }
 
@@ -419,7 +420,7 @@ export class InlineMenu {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || !this.container.visible || key.defaultPrevented) return;
-    if (key.name === "escape") {
+    if (matchesKeyName("picker.close", key)) {
       consume(key);
       if (this.queryInput.value === "") this.screen.onCancel();
       else this.queryInput.value = "";
@@ -431,13 +432,13 @@ export class InlineMenu {
     }
     const { typed } = this.screen;
     const text = this.queryInput.value;
-    if (key.name === "return" && typed !== undefined && text.trim() !== "") {
+    if (matchesKeyName("picker.accept", key) && typed !== undefined && text.trim() !== "") {
       consume(key);
       this.run(() => typed.onSubmit(text));
       return;
     }
     if (this.matches.length === 0) return;
-    if (key.name === "return") {
+    if (matchesKeyName("picker.accept", key)) {
       consume(key);
       this.list.selectCurrent();
       return;

@@ -36,6 +36,10 @@ function useHostEvents(): void {
         case "github_changed":
           void queryClient.invalidateQueries({ queryKey: keys.github });
           return;
+        case "server_changed":
+          void queryClient.invalidateQueries({ queryKey: keys.server });
+          void queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
+          return;
         case "status":
           toast(event.message);
           return;

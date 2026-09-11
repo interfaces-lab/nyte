@@ -1,11 +1,11 @@
 /**
- * The kernel SDK contract: plain data and one options object per verb, so a
+ * The kernel SDK contract: plain data and one options object per operation, so a
  * protocol layer can mirror it without reshaping it.
  *
  * The plain data (ids, read models, outcomes, the session event) is declared
  * in `@nyte-ai/protocol` and re-exported here, so core, the desktop, and a
  * remote client read one definition. What stays here is host-facing: the
- * verb interfaces (some take an `AbortSignal`), the composition options, and
+ * operation interfaces (some take an `AbortSignal`), the composition options, and
  * the errors the SDK throws.
  *
  * Streaming deltas key on `(runId, attempt, index)`, not a commit id. A
@@ -13,9 +13,12 @@
  * message exists. The tuple identifies a provisional part while it streams;
  * the settled commit supplies its durable identity afterward.
  */
-import type { Api, JsonValue, Model, Skill } from "@nyte-ai/schema";
+import type { Models } from "@nyte-ai/ai";
+import type { Api, Model, Skill } from "@nyte-ai/schema";
+import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type {
   AbortOutcome,
+  OperationInput,
   ApplyOutcome,
   CancelOutcome,
   CommandInfo,
@@ -28,6 +31,7 @@ import type {
   FileChange,
   HeadInfo,
   HeadName,
+  RemoteJobs,
   Lane,
   Landing,
   MergeOutcome,
@@ -48,6 +52,7 @@ import type {
   SessionId,
   SessionInfo,
   SessionParent,
+  SessionActivationState,
   SessionSnapshot,
   Turn,
   VcsDiff,
@@ -64,6 +69,7 @@ import type {
 } from "../../plugins/types.ts";
 import type { StreamFn, StreamOptions, ThinkingLevel } from "../../types.ts";
 import type { WorkspaceRegistryBackend } from "../../workspace-registry.ts";
+import type { TrustedWorkspace } from "../../workspace-trust.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import type { Actor } from "../model.ts";
 import type { Store } from "../store.ts";
@@ -72,13 +78,16 @@ export {
   DEFAULT_LANDING,
   MAIN,
   sessionId,
+  type ActivationRequirement,
   type AbortOutcome,
   type Actor,
   type ApplyOutcome,
+  type Choice,
   type CancelOutcome,
   type CommandInfo,
   type CommandOutcome,
   type CompactOutcome,
+  type CompactionInfo,
   type ConfigureOutcome,
   type ContextStatus,
   type CreateHeadOutcome,
@@ -86,6 +95,8 @@ export {
   type FileChange,
   type HeadInfo,
   type HeadName,
+  type JobInfo,
+  type JobActionOutcome,
   type Lane,
   type Landing,
   type LanePolicy,
@@ -104,12 +115,15 @@ export {
   type RunInfo,
   type RunPhase,
   type SendInput,
+  type Selection,
+  type SelectionReply,
   type SendReceipt,
   type Seq,
   type SessionEvent,
   type SessionId,
   type SessionInfo,
   type SessionParent,
+  type SessionActivationState,
   type SessionSnapshot,
   type ToolProgress,
   type Turn,
@@ -194,19 +208,13 @@ export interface Runs {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
   }): Promise<RunInfo | undefined>;
-  abort(input: { readonly sessionId: SessionId; readonly head?: HeadName }): Promise<AbortOutcome>;
+  abort(input: OperationInput<"runs.abort">): Promise<AbortOutcome>;
   wait(input: {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
     readonly signal?: AbortSignal;
   }): Promise<WaitOutcome>;
-  reply(input: {
-    readonly sessionId: SessionId;
-    readonly head?: HeadName;
-    readonly runId?: RunId;
-    readonly callId: string;
-    readonly reply: JsonValue;
-  }): Promise<ReplyOutcome>;
+  reply(input: OperationInput<"runs.reply">): Promise<ReplyOutcome>;
   compact(input: {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
@@ -223,6 +231,13 @@ export interface Runs {
     readonly runId?: RunId;
   }): Promise<readonly FileChange[]>;
 }
+
+// ---------------------------------------------------------------------------
+// Jobs
+// ---------------------------------------------------------------------------
+
+/** Job operations share the protocol signatures; none takes host-only options. */
+export type Jobs = RemoteJobs;
 
 // ---------------------------------------------------------------------------
 // Heads
@@ -320,15 +335,7 @@ export class NyteClosed extends Error {
   }
 }
 
-export class UnknownSession extends Error {
-  readonly kind = "not_found" satisfies "not_found";
-  readonly what = "session" satisfies "session";
-
-  constructor(id: string) {
-    super(`Unknown session: ${id}`);
-    this.name = "UnknownSession";
-  }
-}
+export { UnknownSession } from "../store.ts";
 
 export type { Disposer };
 
@@ -336,7 +343,15 @@ export interface AttachOptions {
   readonly sessions?: readonly SessionId[];
 }
 
+/** Host-only cause; never send this record over IPC, events, or telemetry. */
+export type SummaryDiagnostic = Extract<MoveOutcome, { readonly code: "internal" }> & {
+  readonly operation: "runs.compact" | "heads.move";
+  readonly cause: unknown;
+};
+
 interface NyteBaseOptions {
+  /** Receives converted summary failures once, before the public outcome is returned. */
+  readonly onDiagnostic?: (diagnostic: SummaryDiagnostic) => void | Promise<void>;
   readonly store: Store;
   readonly streamFn: StreamFn;
   readonly models: ModelCatalog;
@@ -347,6 +362,8 @@ interface NyteBaseOptions {
   readonly thinkingLevel?: ThinkingLevel;
   readonly compaction?: CompactionSettings;
   readonly streamOptions?: StreamOptions;
+  /** default: records nothing */
+  readonly telemetry?: TelemetryContext;
   readonly vcs?: VcsBackend;
   readonly workspaces?: WorkspaceRegistryBackend;
 }
@@ -357,7 +374,9 @@ export interface ActiveSessionActivation {
   readonly env: PluginEnv;
 }
 
-export type SessionActivation = ActiveSessionActivation | { readonly kind: "inactive" };
+export type SessionActivation =
+  | ActiveSessionActivation
+  | Exclude<SessionActivationState, { readonly kind: "active" }>;
 
 export type ActivationTarget =
   | { readonly kind: "new-session" }
@@ -381,10 +400,7 @@ export interface LazyNyteOptions extends NyteBaseOptions {
 
 export type NyteOptions = StaticNyteOptions | LazyNyteOptions;
 
-export interface ModelCatalog {
-  getModels(provider?: string): readonly Model<Api>[];
-  getModel(provider: string, id: string): Model<Api> | undefined;
-}
+export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable">;
 
 export interface Nyte {
   /** The landing policy in force: the lanes a client may send to, in the runner's priority order. */
@@ -392,6 +408,7 @@ export interface Nyte {
   readonly sessions: Sessions;
   readonly messages: Messages;
   readonly runs: Runs;
+  readonly jobs: Jobs;
   readonly heads: Heads;
   readonly workspace: Workspace;
   readonly provider: Provider;
@@ -403,6 +420,24 @@ export interface Nyte {
     ),
   ): AsyncIterable<SessionEvent>;
   attach(input?: AttachOptions): Disposer;
-  setPlugins(plugins: readonly LoadedPlugin[]): Promise<void>;
+  reactivate(): Promise<void>;
+  /** Host-only location read. A saved path is not a trust grant. */
+  sessionCwd(input: { readonly sessionId: SessionId }): Promise<string | undefined>;
+  /** Replace one idle session's environment and plugins, keeping its store and history. */
+  relocate(input: {
+    readonly sessionId: SessionId;
+    readonly workspace: TrustedWorkspace;
+    readonly plugins: readonly LoadedPlugin[];
+  }): Promise<{ readonly kind: "relocated" } | { readonly kind: "busy" }>;
+  setPlugins(
+    plugins: readonly LoadedPlugin[],
+    input?: { readonly sessionId: SessionId },
+  ): Promise<void>;
+  /**
+   * Hold every runner's next step until the returned disposer runs. A host
+   * takes the hold when it sees plugin sources change and releases it after
+   * `setPlugins`, so a tool the model just wrote is in its very next request.
+   */
+  holdPlugins(): Disposer;
   close(): Promise<void>;
 }

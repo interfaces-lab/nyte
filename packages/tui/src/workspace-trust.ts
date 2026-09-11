@@ -1,10 +1,8 @@
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
-import process from "node:process";
+import { matchesKeyName } from "./keymap.ts";
 import { bold, BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer, KeyEvent, TextChunk } from "@opentui/core";
-import { WorkspaceTrustStore } from "@nyte-ai/core";
 import {
+  keycap,
   WORKSPACE_TRUST_MESSAGE,
   WORKSPACE_TRUST_QUESTION,
   WORKSPACE_TRUST_TITLE,
@@ -12,14 +10,6 @@ import {
 import type { CliTheme } from "./theme.ts";
 
 export type WorkspaceTrustDecision = "trust" | "decline";
-
-export function nyteHome(): string {
-  return resolve(process.env["NYTE_HOME"] ?? join(homedir(), ".nyte"));
-}
-
-export function createWorkspaceTrustStore(): WorkspaceTrustStore {
-  return new WorkspaceTrustStore(join(nyteHome(), "trust.json"));
-}
 
 function consume(key: KeyEvent): void {
   key.preventDefault();
@@ -30,6 +20,7 @@ export interface WorkspaceTrustDialogOptions {
   readonly renderer: CliRenderer;
   readonly theme: CliTheme;
   readonly cwd: string;
+  readonly decline?: "quit" | "cancel";
   readonly signal?: AbortSignal;
   readonly nextId: (prefix?: string) => string;
 }
@@ -44,6 +35,7 @@ class WorkspaceTrustDialog {
   private readonly declineRow: TextRenderable;
   private readonly theme: CliTheme;
   private readonly signal: AbortSignal | undefined;
+  private readonly decline: "quit" | "cancel";
   private resolveResult: ((decision: WorkspaceTrustDecision) => void) | undefined;
   private selected: WorkspaceTrustDecision = "decline";
   private settled = false;
@@ -52,6 +44,7 @@ class WorkspaceTrustDialog {
     this.renderer = options.renderer;
     this.theme = options.theme;
     this.signal = options.signal;
+    this.decline = options.decline ?? "quit";
     const { nextId, theme } = options;
 
     this.overlay = new BoxRenderable(options.renderer, {
@@ -146,7 +139,7 @@ class WorkspaceTrustDialog {
       new TextRenderable(options.renderer, {
         id: nextId("trust-footer"),
         marginTop: 1,
-        content: "↑↓ move · enter · a/q choose",
+        content: `${keycap("chat.history.previous", "symbol")}${keycap("chat.history.next", "symbol")} move · ${keycap("workspace.accept")} · ${keycap("workspace.trust")}/${keycap("workspace.decline")} choose`,
         fg: theme.dim,
         flexShrink: 0,
         wrapMode: "none",
@@ -175,30 +168,34 @@ class WorkspaceTrustDialog {
   }
 
   private paintRows(): void {
-    this.trustRow.content = this.row("trust", "a", "Trust this workspace");
-    this.declineRow.content = this.row("decline", "q", "Quit");
+    this.trustRow.content = this.row("trust", keycap("workspace.trust"), "Trust this workspace");
+    this.declineRow.content = this.row(
+      "decline",
+      keycap("workspace.decline"),
+      this.decline === "quit" ? "Quit" : "Cancel",
+    );
   }
 
   private readonly onAbort = (): void => this.select("decline");
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.settled) return;
-    if (key.name === "a") {
+    if (matchesKeyName("workspace.trust", key)) {
       consume(key);
       this.select("trust");
       return;
     }
-    if (key.name === "q" || key.name === "escape") {
+    if (matchesKeyName("workspace.decline", key)) {
       consume(key);
       this.select("decline");
       return;
     }
-    if (key.name === "return") {
+    if (matchesKeyName("workspace.accept", key)) {
       consume(key);
       this.select(this.selected);
       return;
     }
-    if (key.name === "up" || key.name === "down" || key.name === "tab") {
+    if (matchesKeyName("workspace.toggle", key)) {
       consume(key);
       this.selected = this.selected === "trust" ? "decline" : "trust";
       this.paintRows();
@@ -210,12 +207,12 @@ class WorkspaceTrustDialog {
     this.settled = true;
     this.signal?.removeEventListener("abort", this.onAbort);
     this.renderer.keyInput.off("keypress", this.onKeyPress);
-    if (decision === "trust") {
+    if (decision === "trust" || this.decline === "cancel") {
       this.renderer.root.remove(this.overlay);
       this.overlay.destroyRecursively();
     }
-    // On decline the renderer owns the overlay: the caller destroys it next,
-    // and removing the box first would queue a frame under that teardown.
+    // Startup decline leaves the overlay for renderer teardown, avoiding an
+    // extra frame of the workspace the user chose not to trust.
     this.resolveResult?.(decision);
   }
 }

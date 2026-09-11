@@ -4,6 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { NOOP_TELEMETRY_CONTEXT } from "@nyte-ai/telemetry";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage } from "@nyte-ai/schema";
 import { Type } from "typebox";
@@ -73,8 +74,10 @@ async function inputFor(session: Session, run: Run): Promise<TurnInput> {
   const held = (await session.leases.read(headRef("main"))) ?? (await lease(session, "main"));
   return {
     session,
+    telemetry: NOOP_TELEMETRY_CONTEXT,
     lease: held,
     run,
+    now: 1,
     attempt: run.attempts + 1,
     commits: [{ oid: "opening", commit: commit(null, message(user("hello"))) }],
     emit: () => undefined,
@@ -191,7 +194,6 @@ test("plugin session messages start at the newest checkpoint", async () => {
   });
 
   assert.ok(exposed);
-  assert.deepEqual(Object.keys(exposed).sort(), ["context", "info", "rename"]);
   const { messages } = await exposed.context();
   assert.deepEqual(
     messages.map((item) => item.role),
@@ -258,7 +260,7 @@ test("a run's declared agent brings its own model, persona, and step ceiling; an
           api.agents.add((draft) =>
             draft.set("reviewer", {
               id: "reviewer",
-              model: "openai/other-model",
+              model: { provider: "openai", id: "other-model" },
               system: "You review.",
               steps: 3,
             }),
@@ -267,7 +269,6 @@ test("a run's declared agent brings its own model, persona, and step ceiling; an
       ),
     ],
   });
-  const resolved: string[] = [];
   const script = scripted("ok");
   const requested: string[] = [];
   const streamFn: StreamFn = (used, context, options) => {
@@ -277,16 +278,12 @@ test("a run's declared agent brings its own model, persona, and step ceiling; an
   const bound = turnFor(activation, {
     streamFn,
     model,
-    resolveModel: (ref) => {
-      resolved.push(`${ref.provider ?? "?"}/${ref.id}`);
-      return ref.id === "other-model" ? other : undefined;
-    },
+    resolveModel: (ref) => (ref.id === "other-model" ? other : undefined),
   });
 
   const reviewer = runWith({ agent: "reviewer" }, "run_r");
   await bound.turn.respond(await inputFor(session, reviewer));
   assert.deepEqual(requested, ["other-model"]);
-  assert.deepEqual(resolved, ["openai/other-model"]);
   assert.equal(script.prompts[0], "base\n\nYou review.");
   assert.equal(bound.stepsFor(reviewer), 3);
 

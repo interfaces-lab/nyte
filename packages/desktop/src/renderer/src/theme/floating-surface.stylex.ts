@@ -2,8 +2,6 @@
  * One painted frame for raised desktop surfaces. The popup owns its fill,
  * shadow, and hairline so all three follow the same enter/exit lifecycle.
  * Collision-aware positioners only handle placement.
- *
- * Based on Cursor's bundled floating-surface.stylex.js and Menu.stylex.js.
  */
 import * as stylex from "@stylexjs/stylex";
 import { t } from "./vars.stylex.ts";

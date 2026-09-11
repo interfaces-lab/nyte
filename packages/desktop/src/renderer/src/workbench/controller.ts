@@ -5,7 +5,7 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-controller.ts
  */
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { Oid, SessionId } from "@nyte-ai/core";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
@@ -17,9 +17,12 @@ export const WORKBENCH_STAGE_PANE_KEY = "stage";
 /** Read by the title bar to draw the column seam above the open panel. */
 export const WORKBENCH_ACTIVE_WIDTH_VARIABLE = "--nyte-active-workbench-width";
 
-export type WorkbenchTabId = "changes" | "browser" | "terminal";
+export type WorkbenchTabId = "files" | "changes" | "browser" | "terminal" | "agents";
 export type WorkbenchScrollableTabId = "changes";
 export type WorkbenchViewKey = string & { readonly __brand: "WorkbenchViewKey" };
+export type WorkbenchChangesScope =
+  | { readonly kind: "uncommitted" }
+  | { readonly kind: "turn"; readonly turnId: Oid };
 
 export type WorkbenchTarget =
   | { readonly kind: "home" }
@@ -52,8 +55,25 @@ export interface WorkbenchViewIdentity {
   readonly target: WorkbenchTarget;
 }
 
-const PATHLESS_TABS = Object.freeze(["browser", "terminal"] satisfies WorkbenchTabId[]);
-const PROJECT_TABS = Object.freeze(["changes", "browser", "terminal"] satisfies WorkbenchTabId[]);
+const PATHLESS_TABS = Object.freeze(["browser", "terminal", "agents"] satisfies WorkbenchTabId[]);
+const PROJECT_TABS = Object.freeze([
+  "files",
+  "changes",
+  "browser",
+  "terminal",
+  "agents",
+] satisfies WorkbenchTabId[]);
+/** Tabs that survive a restart. Terminals and agents belong to this window's live processes and sessions. */
+type PersistedTab = Exclude<WorkbenchTabId, "terminal" | "agents">;
+const PERSISTED_TABS: ReadonlySet<WorkbenchTabId> = new Set<PersistedTab>([
+  "files",
+  "changes",
+  "browser",
+]);
+
+function isPersistedTab(tab: WorkbenchTabId): tab is PersistedTab {
+  return PERSISTED_TABS.has(tab);
+}
 
 export function workbenchTabs(scope: WorkbenchScope): readonly WorkbenchTabId[] {
   switch (scope.kind) {
@@ -72,7 +92,9 @@ export function workbenchTabAvailable(scope: WorkbenchScope, tab: WorkbenchTabId
   switch (tab) {
     case "browser":
     case "terminal":
+    case "agents":
       return true;
+    case "files":
     case "changes":
       return scope.kind === "project";
     default: {
@@ -95,7 +117,9 @@ export interface WorkbenchViewState {
   readonly activeTab: WorkbenchTabId | null;
   readonly maximized: boolean;
   readonly openTabs: readonly WorkbenchTabId[];
+  readonly changesScope: WorkbenchChangesScope;
   readonly selectedPath: string | undefined;
+  readonly pathRevealRevision: number;
   readonly width: number;
   readonly scrollTop: WorkbenchScrollState;
   readonly browserUrl: string | undefined;
@@ -118,8 +142,11 @@ export interface WorkbenchController {
     readonly openTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
     readonly closeTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
     readonly toggle: (key: WorkbenchViewKey) => void;
+    readonly toggleWorkbench: (key: WorkbenchViewKey, scope: WorkbenchScope) => void;
     readonly toggleMaximized: (key: WorkbenchViewKey) => void;
+    readonly selectChangesScope: (key: WorkbenchViewKey, scope: WorkbenchChangesScope) => void;
     readonly selectPath: (key: WorkbenchViewKey, path: string | undefined) => void;
+    readonly revealPath: (key: WorkbenchViewKey, path: string) => void;
     readonly setWidth: (key: WorkbenchViewKey, width: number) => void;
     readonly setScrollTop: (
       key: WorkbenchViewKey,
@@ -139,7 +166,9 @@ const DEFAULT_VIEW = Object.freeze({
   activeTab: null,
   maximized: false,
   openTabs: Object.freeze([]),
+  changesScope: Object.freeze({ kind: "uncommitted" }),
   selectedPath: undefined,
+  pathRevealRevision: 0,
   width: WORKBENCH_WIDTH_DEFAULT,
   scrollTop: EMPTY_SCROLL,
   browserUrl: undefined,
@@ -166,7 +195,7 @@ const legacyWorkbenchSnapshot = Type.Object(
   strict,
 );
 
-const persistedTab = Type.Enum(["changes", "browser", "terminal"]);
+const persistedTab = Type.Enum(["files", "changes", "browser", "terminal"]);
 const persistedWorkbenchView = Type.Object(
   {
     key: nonEmpty,
@@ -198,12 +227,16 @@ export function activeWorkbenchTab(
 
 export function workbenchTabLabel(tab: WorkbenchTabId): string {
   switch (tab) {
+    case "files":
+      return "Files";
     case "changes":
       return "Changes";
     case "browser":
       return "Browser";
     case "terminal":
       return "Terminal";
+    case "agents":
+      return "Agents";
     default: {
       const _exhaustive: never = tab;
       return _exhaustive;
@@ -274,7 +307,7 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
   for (const stored of persisted?.views ?? []) {
     // SAFETY: the persistence schema proved that this storage key is non-empty.
     const key = stored.key as WorkbenchViewKey;
-    const openTabs = Object.freeze(stored.openTabs.filter((tab) => tab !== "terminal"));
+    const openTabs = Object.freeze(stored.openTabs.filter(isPersistedTab));
     const activeTab = openTabs.find((tab) => tab === stored.activeTab) ?? openTabs[0] ?? null;
     views.set(
       key,
@@ -283,7 +316,9 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
         activeTab,
         maximized: stored.maximized,
         openTabs,
+        changesScope: Object.freeze({ kind: "uncommitted" }),
         selectedPath: stored.selectedPath,
+        pathRevealRevision: 0,
         width: clampWorkbenchWidth(stored.width),
         scrollTop: Object.freeze(stored.scrollTop),
         browserUrl: stored.browserUrl,
@@ -298,7 +333,7 @@ function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
     version: 5,
     views: [...snapshot.views].map(([key, view]) => {
       // Shells belong to this window's PTY host and do not survive an app restart.
-      const openTabs = view.openTabs.filter((tab) => tab !== "terminal");
+      const openTabs = view.openTabs.filter(isPersistedTab);
       const activeTab = openTabs.find((tab) => tab === view.activeTab) ?? openTabs[0] ?? null;
       return {
         key,
@@ -453,14 +488,41 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
     toggleMaximized(key) {
       update(key, (current) => ({ ...current, maximized: !current.maximized }));
     },
-    selectPath(key, path) {
-      // A saved scroll offset belongs to the file it was read at, so choosing
-      // another file starts its patch from the top.
-      update(key, (current) =>
-        current.selectedPath === path
+    toggleWorkbench(key, scope) {
+      const current = snapshot.views.get(key) ?? DEFAULT_VIEW;
+      if (current.expanded && activeWorkbenchTab(current, scope) === null) {
+        actions.openTab(key, "browser");
+        return;
+      }
+      actions.toggle(key);
+    },
+    selectChangesScope(key, scope) {
+      update(key, (current) => {
+        const unchanged =
+          current.changesScope.kind === scope.kind &&
+          (scope.kind === "uncommitted" ||
+            (current.changesScope.kind === "turn" && current.changesScope.turnId === scope.turnId));
+        return unchanged
           ? current
-          : { ...current, selectedPath: path, scrollTop: { ...current.scrollTop, changes: 0 } },
+          : {
+              ...current,
+              changesScope: scope,
+              selectedPath: undefined,
+              scrollTop: { ...current.scrollTop, changes: 0 },
+            };
+      });
+    },
+    selectPath(key, path) {
+      update(key, (current) =>
+        current.selectedPath === path ? current : { ...current, selectedPath: path },
       );
+    },
+    revealPath(key, path) {
+      update(key, (current) => ({
+        ...current,
+        selectedPath: path,
+        pathRevealRevision: current.pathRevealRevision + 1,
+      }));
     },
     setWidth(key, width) {
       const nextWidth = clampWorkbenchWidth(width);

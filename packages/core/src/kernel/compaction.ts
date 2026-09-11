@@ -14,14 +14,17 @@ import {
 } from "@nyte-ai/ai";
 import type { Api, AssistantMessage, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
 import type { Context, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
+import { schemas, type CompactionInfo } from "@nyte-ai/protocol";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { Result } from "./result.ts";
 import type { StreamFn, ThinkingLevel } from "../types.ts";
 import { contextMessages, modelContext } from "./context.ts";
 import { contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";
-import { withLeaseRenewal } from "./lease.ts";
-import type { Commit, CommitBody, Lease, Oid } from "./model.ts";
-import { headRef, runRef } from "./names.ts";
+import { LeaseLost, withLeaseRenewal } from "./lease.ts";
+import type { Blob, Commit, CommitBody, Lease, Obj, Oid, RefUpdate } from "./model.ts";
+import { compactionRef, DELETED_REF, headRef, runRef } from "./names.ts";
 import type { Session } from "./store.ts";
 import {
   estimateContextTokens,
@@ -30,23 +33,28 @@ import {
 } from "./views/context.ts";
 import { addUsage } from "./views/usage.ts";
 
-export {
-  calculateContextTokens,
-  estimateContextTokens,
-  estimateTokens,
-  type ContextUsageEstimate,
-} from "./views/context.ts";
-
 type CompactionErrorCode = "aborted" | "nothing_to_compact" | "summarization_failed";
 
 export class CompactionError extends Error {
   readonly code: CompactionErrorCode;
+  readonly usage: Usage | undefined;
 
-  constructor(code: CompactionErrorCode, message: string, cause?: Error) {
+  constructor(code: CompactionErrorCode, message: string, cause?: unknown, usage?: Usage) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "CompactionError";
     this.code = code;
+    this.usage = usage;
   }
+}
+
+function withPriorUsage(error: CompactionError, prior: Usage | undefined): CompactionError {
+  if (prior === undefined) return error;
+  return new CompactionError(
+    error.code,
+    error.message,
+    error,
+    error.usage === undefined ? prior : addUsage(prior, error.usage),
+  );
 }
 
 /** Compaction thresholds and retention settings. */
@@ -64,6 +72,122 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
   reserveTokens: 16_384,
   keepRecentTokens: 20_000,
 };
+
+type CompactionReason = CompactionInfo["reason"];
+
+const CompactionRecordSchema = Type.Intersect([
+  schemas.CompactionInfo,
+  Type.Object({ leaseOwner: Type.String(), leaseFence: Type.Number() }),
+]);
+
+type CompactionRecord = Static<typeof CompactionRecordSchema>;
+
+function publicCompaction(record: CompactionRecord): CompactionInfo {
+  return { id: record.id, reason: record.reason, startedAt: record.startedAt };
+}
+
+function parseCompactionRecord(value: Obj | undefined, ref: string): CompactionRecord {
+  if (value?.kind !== "blob" || !Value.Check(CompactionRecordSchema, value.value)) {
+    throw new Error(`Corrupt compaction ref ${ref}`);
+  }
+  return value.value;
+}
+
+export function compactionInfoFromObject(value: Obj | undefined, ref: string): CompactionInfo {
+  return publicCompaction(parseCompactionRecord(value, ref));
+}
+
+export async function activeCompaction(
+  session: Session,
+  head: string,
+): Promise<CompactionInfo | undefined> {
+  const ref = compactionRef(head);
+  const oid = await session.refs.read(ref);
+  if (oid === null) return undefined;
+  const record = parseCompactionRecord(await session.objects.get(oid), ref);
+  const lease = await session.leases.read(headRef(head));
+  return lease?.owner === record.leaseOwner && lease.fence === record.leaseFence
+    ? publicCompaction(record)
+    : undefined;
+}
+
+export async function startCompaction(
+  session: Session,
+  input: { readonly head: string; readonly lease: Lease; readonly reason: CompactionReason },
+): Promise<CompactionInfo> {
+  if (!(await finishCompaction(session, input))) throw new LeaseLost(input.lease);
+  const info: CompactionInfo = {
+    id: uuidv7(),
+    reason: input.reason,
+    startedAt: Date.now(),
+  };
+  const value: Blob = {
+    kind: "blob",
+    value: { ...info, leaseOwner: input.lease.owner, leaseFence: input.lease.fence },
+  };
+  await session.objects.put([value]);
+  const oid = hashObject(value);
+  const ref = compactionRef(input.head);
+  for (;;) {
+    const current = await session.refs.read(ref);
+    const outcome = await session.refs.update(
+      [
+        { name: ref, from: current, to: oid },
+        { name: DELETED_REF, from: null, to: null },
+      ],
+      { lease: input.lease, reason: "compaction" },
+    );
+    if (outcome.ok) return info;
+    switch (outcome.reason) {
+      case "conflict":
+        if (outcome.name === DELETED_REF) {
+          throw new Error("Cannot start compaction after session deletion");
+        }
+        continue;
+      case "fenced":
+        throw new LeaseLost(input.lease);
+      default: {
+        const _exhaustive: never = outcome;
+        return _exhaustive;
+      }
+    }
+  }
+}
+
+/** Publish under the head lease: its fence protects both current and abandoned activity. */
+export async function compactionClearUpdates(
+  session: Session,
+  head: string,
+): Promise<readonly RefUpdate[]> {
+  const ref = compactionRef(head);
+  const current = await session.refs.read(ref);
+  return current === null ? [] : [{ name: ref, from: current, to: null }];
+}
+
+export async function finishCompaction(
+  session: Session,
+  input: { readonly head: string; readonly lease: Lease },
+): Promise<boolean> {
+  for (;;) {
+    const updates = await compactionClearUpdates(session, input.head);
+    if (updates.length === 0) return true;
+    const outcome = await session.refs.update(updates, {
+      lease: input.lease,
+      reason: "compaction",
+    });
+    if (outcome.ok) return true;
+    switch (outcome.reason) {
+      case "conflict":
+        continue;
+      case "fenced":
+        return false;
+      default: {
+        const _exhaustive: never = outcome;
+        return _exhaustive;
+      }
+    }
+  }
+}
 
 export function validateCompactionSettings(settings: CompactionSettings): void {
   if (
@@ -86,7 +210,7 @@ export function shouldCompact(
   return contextTokens > contextWindow - settings.reserveTokens;
 }
 
-export const SUMMARIZATION_SYSTEM_PROMPT = `You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
+const SUMMARIZATION_SYSTEM_PROMPT = `You are a context summarization assistant. Your task is to read a conversation between a user and an AI assistant, then produce a structured summary following the exact format specified.
 
 Do NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary.`;
 
@@ -214,7 +338,7 @@ Keep each section concise. Preserve exact file paths, function names, and error 
 const TOOL_RESULT_MAX_CHARS = 2_000;
 const DEFAULT_TTL_MS = 30_000;
 
-export interface FileOperations {
+interface FileOperations {
   readonly read: Set<string>;
   readonly written: Set<string>;
   readonly edited: Set<string>;
@@ -225,10 +349,6 @@ interface FileLists {
   readonly modifiedFiles: string[];
 }
 
-function isStringValue(value: unknown): value is string {
-  return typeof value === "string";
-}
-
 function createFileOps(): FileOperations {
   return { read: new Set(), written: new Set(), edited: new Set() };
 }
@@ -237,7 +357,9 @@ function extractFileOpsFromMessage(message: Message, fileOps: FileOperations): v
   if (message.role !== "assistant") return;
   for (const block of message.content) {
     if (block.type !== "toolCall") continue;
-    const path = isStringValue(block.arguments.path) ? block.arguments.path : undefined;
+    const path = Value.Check(Type.String(), block.arguments.path)
+      ? block.arguments.path
+      : undefined;
     if (path === undefined || path === "") continue;
     switch (block.name) {
       case "read":
@@ -392,11 +514,29 @@ async function completeSimpleWithRetries(input: {
     cacheRetention: "none",
     sessionId: uuidv7(),
   };
-  return retryAssistantCall(
-    async () => (await input.streamFn(input.model, input.context, requestOptions)).result(),
-    input.retry,
-    requestOptions.signal,
-  );
+  let usage: Usage | undefined;
+  try {
+    const response = await retryAssistantCall(
+      async () => {
+        const response = await (
+          await input.streamFn(input.model, input.context, requestOptions)
+        ).result();
+        usage = usage === undefined ? response.usage : addUsage(usage, response.usage);
+        return response;
+      },
+      input.retry,
+      requestOptions.signal,
+    );
+    // Count provider results, not the retry helper's synthesized backoff abort.
+    return { ...response, usage: usage ?? response.usage };
+  } catch (cause) {
+    throw new CompactionError(
+      input.signal?.aborted ? "aborted" : "summarization_failed",
+      "Summarization failed",
+      cause,
+      usage,
+    );
+  }
 }
 
 export interface SummaryGenerationInput {
@@ -491,7 +631,7 @@ async function generateBoundedSummary(
   let usage: Usage | undefined;
   while (true) {
     if (input.signal?.aborted) {
-      return Result.err(new CompactionError("aborted", `${label} aborted`));
+      return Result.err(new CompactionError("aborted", `${label} aborted`, undefined, usage));
     }
     const availableChars = promptChars - promptFor("", previousSummary).length;
     if (availableChars <= 0) {
@@ -499,6 +639,8 @@ async function generateBoundedSummary(
         new CompactionError(
           "summarization_failed",
           "The model context window cannot fit the summarization instructions and previous summary",
+          undefined,
+          usage,
         ),
       );
     }
@@ -511,22 +653,34 @@ async function generateBoundedSummary(
         ? boundary + 1
         : availableChars;
     const chunk = remaining.slice(0, chunkLength);
-    const response = await completeSimpleWithRetries({
-      streamFn: input.streamFn,
-      model: input.model,
-      context: {
-        systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
-        messages: [
-          { role: "user", content: promptFor(chunk, previousSummary), timestamp: Date.now() },
-        ],
-      },
-      options: summaryStreamOptions(maxTokens, input.model, input.thinkingLevel),
-      retry: input.retry,
-      signal: input.signal,
-    });
+    let response: AssistantMessage;
+    try {
+      response = await completeSimpleWithRetries({
+        streamFn: input.streamFn,
+        model: input.model,
+        context: {
+          systemPrompt: SUMMARIZATION_SYSTEM_PROMPT,
+          messages: [
+            { role: "user", content: promptFor(chunk, previousSummary), timestamp: Date.now() },
+          ],
+        },
+        options: summaryStreamOptions(maxTokens, input.model, input.thinkingLevel),
+        retry: input.retry,
+        signal: input.signal,
+      });
+    } catch (cause) {
+      if (!(cause instanceof CompactionError)) throw cause;
+      return Result.err(withPriorUsage(cause, usage));
+    }
+    usage = usage === undefined ? response.usage : addUsage(usage, response.usage);
     if (input.signal?.aborted || response.stopReason === "aborted") {
       return Result.err(
-        new CompactionError("aborted", response.errorMessage || `${label} aborted`),
+        new CompactionError(
+          "aborted",
+          response.errorMessage || `${label} aborted`,
+          undefined,
+          usage,
+        ),
       );
     }
     if (
@@ -544,6 +698,8 @@ async function generateBoundedSummary(
         new CompactionError(
           "summarization_failed",
           `${label} failed: ${response.errorMessage || "Unknown error"}`,
+          undefined,
+          usage,
         ),
       );
     }
@@ -552,12 +708,13 @@ async function generateBoundedSummary(
         new CompactionError(
           "summarization_failed",
           "Branch summarization attempted to call a tool",
+          undefined,
+          usage,
         ),
       );
     }
     remaining = remaining.slice(chunk.length);
     previousSummary = contentText(response.content);
-    usage = usage === undefined ? response.usage : addUsage(usage, response.usage);
     if (remaining.length === 0) return Result.ok({ text: previousSummary, usage });
   }
 }
@@ -695,10 +852,10 @@ export function prepareCheckpoint(
   );
 }
 
-export interface ProviderCompactionRequest {
+interface ProviderCompactionRequest {
   readonly context: Context;
   readonly model: Model<Api>;
-  readonly reason: "manual" | "threshold" | "overflow";
+  readonly reason: CompactionReason;
   readonly tokensBefore: number;
   readonly customInstructions?: string;
 }
@@ -706,7 +863,11 @@ export interface ProviderCompactionRequest {
 export type ProviderCompaction = (
   request: ProviderCompactionRequest,
   signal: AbortSignal | undefined,
-) => Promise<{ readonly material: ProviderCheckpointMaterial; readonly usage?: Usage } | undefined>;
+) => Promise<
+  | { readonly material: ProviderCheckpointMaterial; readonly usage?: Usage }
+  | { readonly error: string; readonly usage?: Usage }
+  | undefined
+>;
 
 export interface SummarizeCheckpointInput {
   readonly commits: readonly { readonly oid: Oid; readonly commit: Commit }[];
@@ -714,7 +875,7 @@ export interface SummarizeCheckpointInput {
   readonly model: Model<Api>;
   readonly thinkingLevel?: ThinkingLevel;
   readonly settings: CompactionSettings;
-  readonly reason: "manual" | "threshold" | "overflow";
+  readonly reason: CompactionReason;
   readonly customInstructions?: string;
   readonly material?: ProviderCheckpointMaterial;
   readonly signal?: AbortSignal;
@@ -769,7 +930,7 @@ async function summarizePreparedCheckpoint(input: {
       },
       "turn-prefix",
     );
-    if (!turnPrefix.ok) return Result.err(turnPrefix.error);
+    if (!turnPrefix.ok) return Result.err(withPriorUsage(turnPrefix.error, historyUsage));
     summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefix.value.text}`;
     summaryUsage =
       historyUsage === undefined
@@ -846,9 +1007,11 @@ export async function summarizeCheckpoint(
     input.signal,
   );
   if (input.signal?.aborted) {
-    return Result.err(new CompactionError("aborted", "Compaction aborted"));
+    return Result.err(
+      new CompactionError("aborted", "Compaction aborted", undefined, checkpoint?.usage),
+    );
   }
-  if (checkpoint !== undefined) {
+  if (checkpoint !== undefined && "material" in checkpoint) {
     // Native context is opaque. Keep portable history for a later model switch;
     // the matching provider replays only material plus messages after this commit.
     return Result.ok({
@@ -860,7 +1023,7 @@ export async function summarizeCheckpoint(
       usage: checkpoint.usage,
     });
   }
-  return summarizePreparedCheckpoint({
+  const summarized = await summarizePreparedCheckpoint({
     preparation: { ...prepared.value, tokensBefore },
     streamFn: input.streamFn,
     model: input.model,
@@ -869,6 +1032,15 @@ export async function summarizeCheckpoint(
     material: input.material,
     signal: input.signal,
     retry: input.retry,
+  });
+  if (!summarized.ok) return Result.err(withPriorUsage(summarized.error, checkpoint?.usage));
+  if (checkpoint?.usage === undefined) return summarized;
+  return Result.ok({
+    ...summarized.value,
+    usage:
+      summarized.value.usage === undefined
+        ? checkpoint.usage
+        : addUsage(checkpoint.usage, summarized.value.usage),
   });
 }
 
@@ -883,10 +1055,27 @@ export type WriteCheckpointOutcome =
   | { readonly kind: "aborted" }
   | { readonly kind: "nothing_to_compact" }
   | { readonly kind: "busy"; readonly holder: Lease }
-  | { readonly kind: "failed"; readonly error: string };
+  | { readonly kind: "failed"; readonly code: "internal"; readonly error: unknown }
+  | { readonly kind: "failed"; readonly code: "conflict" | "fenced"; readonly error: string };
 
-function errorText(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+/** Keep reported spend without moving a head or claiming that context was compacted.
+ * Like output from a failed CAS, this loose object survives only until collection.
+ */
+export async function retainCompactionUsage(
+  session: Session,
+  input: { readonly parent: Oid | null; readonly usage: Usage | undefined },
+): Promise<void> {
+  if (input.usage === undefined) return;
+  await session.objects.put([
+    {
+      kind: "commit",
+      parent: input.parent,
+      body: { kind: "summary", text: "", usage: input.usage },
+      // Distinct compaction invocations can report identical usage in the same ms.
+      run: uuidv7(),
+      at: Date.now(),
+    },
+  ]);
 }
 
 /** Summarize and publish one checkpoint under the head's lease. */
@@ -907,22 +1096,37 @@ export async function writeCheckpoint(
     acquiredHere = true;
   }
 
+  const failures: unknown[] = [];
+  let unrecordedUsage: Usage | undefined;
+  let tip: Oid | null = null;
   try {
-    const [tip, runOid] = await Promise.all([
+    const refs = await Promise.all([
       session.refs.read(headRef(input.head)),
       session.refs.read(runRef(input.head)),
     ]);
+    tip = refs[0];
+    const runOid = refs[1];
     const commits = await contextCommits(session.objects, tip);
+    await startCompaction(session, {
+      head: input.head,
+      lease,
+      reason: input.reason,
+    });
     const summarized = await withLeaseRenewal(
       { session, lease, ttlMs: input.ttlMs ?? DEFAULT_TTL_MS, signal: input.signal },
-      (signal) => summarizeCheckpoint({ ...input, commits, signal }),
+      async (signal) => {
+        const result = await summarizeCheckpoint({ ...input, commits, signal });
+        unrecordedUsage = result.ok ? result.value.usage : result.error.usage;
+        return result;
+      },
     );
     input.signal?.throwIfAborted();
     if (!summarized.ok) {
+      failures.push(summarized.error);
       if (summarized.error.code === "aborted") return { kind: "aborted" };
       return summarized.error.code === "nothing_to_compact"
         ? { kind: "nothing_to_compact" }
-        : { kind: "failed", error: summarized.error.message };
+        : { kind: "failed", code: "internal", error: summarized.error };
     }
 
     const commit: Commit = {
@@ -933,27 +1137,52 @@ export async function writeCheckpoint(
     };
     const commitOid = hashObject(commit);
     await session.objects.put([commit]);
+    unrecordedUsage = undefined;
     input.signal?.throwIfAborted();
     const published = await session.refs.update(
       [
         { name: headRef(input.head), from: tip, to: commitOid },
         { name: runRef(input.head), from: runOid, to: runOid },
+        ...(await compactionClearUpdates(session, input.head)),
       ],
       { lease, reason: input.reason },
     );
     if (published.ok) return { kind: "compacted", commit: commitOid };
     return {
       kind: "failed",
+      code: published.reason,
       error:
         published.reason === "fenced"
           ? "Checkpoint publication was fenced"
           : `Checkpoint publication conflicted at ${published.name}`,
     };
   } catch (error) {
+    failures.push(error);
     if (input.signal?.aborted) return { kind: "aborted" };
-    return { kind: "failed", error: errorText(error) };
+    if (error instanceof LeaseLost) {
+      return { kind: "failed", code: "fenced", error: "Checkpoint publication was fenced" };
+    }
+    return { kind: "failed", code: "internal", error };
   } finally {
-    if (acquiredHere) await session.leases.release(lease);
+    const cleanupFailures: unknown[] = [];
+    try {
+      await retainCompactionUsage(session, { parent: tip, usage: unrecordedUsage });
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+    try {
+      await finishCompaction(session, { head: input.head, lease });
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+    try {
+      if (acquiredHere) await session.leases.release(lease);
+    } catch (cause) {
+      cleanupFailures.push(cause);
+    }
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError([...failures, ...cleanupFailures], "Compaction cleanup failed");
+    }
   }
 }
 
@@ -968,6 +1197,7 @@ function branchMessages(commit: Commit): Message[] {
       return body.summary === ""
         ? contextMessages([commit])
         : contextMessages([commit]).slice(0, 1);
+    case "completion":
     case "summary":
       return contextMessages([commit]);
     case "config":
@@ -980,21 +1210,17 @@ function branchMessages(commit: Commit): Message[] {
   }
 }
 
-export interface BranchSummaryPreparation {
+interface BranchSummaryPreparation {
   readonly messages: readonly Message[];
   readonly fileOps: FileOperations;
-  readonly totalTokens: number;
 }
 
 /** Keep the newest abandoned messages within the prompt budget. */
-export function prepareBranchSummary(
+function prepareBranchSummary(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
   tokenBudget: number,
 ): BranchSummaryPreparation {
-  const messages: Message[] = [];
   const fileOps = createFileOps();
-  let totalTokens = 0;
-
   for (const entry of commits) {
     const body = entry.commit.body;
     if (body.kind === "message") extractFileOpsFromMessage(body.message, fileOps);
@@ -1010,67 +1236,23 @@ export function prepareBranchSummary(
     if (body.kind === "summary") extractTaggedFileOps(body.text, fileOps);
   }
 
-  for (let index = commits.length - 1; index >= 0; index -= 1) {
-    const entry = commits[index];
-    if (entry === undefined) continue;
+  // Newest first, so the budget keeps the recent work; reversed once at the end.
+  const kept: Message[][] = [];
+  let totalTokens = 0;
+  for (const entry of commits.toReversed()) {
     const contributed = branchMessages(entry.commit);
     if (contributed.length === 0) continue;
     const tokens = contributed.reduce((sum, message) => sum + estimateTokens(message), 0);
     if (tokenBudget > 0 && totalTokens + tokens > tokenBudget) {
       const kind = entry.commit.body.kind;
       const isSummary = kind === "checkpoint" || kind === "summary";
-      if (isSummary && totalTokens < tokenBudget * 0.9) {
-        messages.unshift(...contributed);
-        totalTokens += tokens;
-      }
+      if (isSummary && totalTokens < tokenBudget * 0.9) kept.push(contributed);
       break;
     }
-    messages.unshift(...contributed);
+    kept.push(contributed);
     totalTokens += tokens;
   }
-  return { messages, fileOps, totalTokens };
-}
-
-export interface GenerateBranchSummaryInput {
-  readonly preparation: BranchSummaryPreparation;
-  readonly streamFn: StreamFn;
-  readonly model: Model<Api>;
-  readonly reserveTokens: number;
-  readonly thinkingLevel?: ThinkingLevel;
-  readonly customInstructions?: string;
-  readonly signal?: AbortSignal;
-  readonly retry?: RetryPolicy;
-}
-
-/** Generate a summary body for prepared abandoned commits. */
-export async function generateBranchSummary(
-  input: GenerateBranchSummaryInput,
-): Promise<Result<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
-  const generated = await generateBoundedSummary(
-    {
-      currentMessages: input.preparation.messages,
-      streamFn: input.streamFn,
-      model: input.model,
-      reserveTokens: input.reserveTokens,
-      thinkingLevel: input.thinkingLevel,
-      customInstructions: input.customInstructions,
-      signal: input.signal,
-      retry: input.retry,
-    },
-    "branch",
-  );
-  if (!generated.ok) return Result.err(generated.error);
-
-  const files = computeFileLists(input.preparation.fileOps);
-  const text = generated.value.text;
-  return Result.ok({
-    kind: "summary",
-    text:
-      BRANCH_SUMMARY_PREAMBLE +
-      (text === "" ? "No summary generated" : text) +
-      formatFileOperations(files.readFiles, files.modifiedFiles),
-    usage: generated.value.usage,
-  });
+  return { messages: kept.toReversed().flat(), fileOps };
 }
 
 export interface SummarizeBranchInput {
@@ -1087,20 +1269,36 @@ export interface SummarizeBranchInput {
 export async function summarizeBranch(
   input: SummarizeBranchInput,
 ): Promise<Result<Extract<CommitBody, { kind: "summary" }>, CompactionError>> {
+  const reserveTokens = DEFAULT_COMPACTION_SETTINGS.reserveTokens;
   const preparation = prepareBranchSummary(
     input.abandoned,
-    Math.max(0, input.model.contextWindow - DEFAULT_COMPACTION_SETTINGS.reserveTokens),
+    Math.max(0, input.model.contextWindow - reserveTokens),
   );
   if (preparation.messages.length === 0) return Result.ok({ kind: "summary", text: "" });
-  return generateBranchSummary({
-    preparation,
-    streamFn: input.streamFn,
-    model: input.model,
-    reserveTokens: DEFAULT_COMPACTION_SETTINGS.reserveTokens,
-    thinkingLevel: input.thinkingLevel,
-    customInstructions: input.customInstructions,
-    signal: input.signal,
-    retry: input.retry,
+  const generated = await generateBoundedSummary(
+    {
+      currentMessages: preparation.messages,
+      streamFn: input.streamFn,
+      model: input.model,
+      reserveTokens,
+      thinkingLevel: input.thinkingLevel,
+      customInstructions: input.customInstructions,
+      signal: input.signal,
+      retry: input.retry,
+    },
+    "branch",
+  );
+  if (!generated.ok) return Result.err(generated.error);
+
+  const files = computeFileLists(preparation.fileOps);
+  const text = generated.value.text;
+  return Result.ok({
+    kind: "summary",
+    text:
+      BRANCH_SUMMARY_PREAMBLE +
+      (text === "" ? "No summary generated" : text) +
+      formatFileOperations(files.readFiles, files.modifiedFiles),
+    usage: generated.value.usage,
   });
 }
 

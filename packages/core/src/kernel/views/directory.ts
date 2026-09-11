@@ -66,6 +66,7 @@ function messagePreview(body: CommitBody): string | undefined {
       const preview = text.trim();
       return preview === "" ? undefined : preview;
     }
+    case "completion":
     case "checkpoint":
     case "summary":
     case "config":

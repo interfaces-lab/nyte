@@ -1,0 +1,65 @@
+---
+title: Permission and consent prompts
+description: "Web-search consent cards parked in the transcript, and the workspace trust gate"
+---
+
+<HostMatrix
+  primitive={{ label: "@nyte-ai/ui/dialog", href: "/cloud/headless/dialog" }}
+  desktop={{
+    label: "conversation/web-search-consent.tsx, chrome/open-workspace.tsx",
+    note: "consent is inline; trust is a dialog",
+  }}
+  terminal={{ label: "workspace-trust.ts, QuestionAsk", note: "later pass" }}
+/>
+
+Two shapes, chosen by what is being asked:
+
+| Ask                                       | Shape                         | Why                                                                          |
+| ----------------------------------------- | ----------------------------- | ---------------------------------------------------------------------------- |
+| A tool parked waiting for a decision      | Inline card in the transcript | The decision belongs to the run; the user may keep reading and answer later. |
+| Opening a folder the app has never run in | Modal dialog                  | Nothing can proceed until it is answered.                                    |
+
+## Web-search consent
+
+`WebSearchConsents({ sessionId, parked, disabled })` renders one `WebSearchConsentCard` per parked
+web-search call, including calls delegated to child sessions. Each card:
+
+```
+<section aria-labelledby={title} aria-describedby={description}>
+  options: <div role="group" aria-busy>
+    <button aria-describedby={optionDescription}> per option
+  status: role="status" while sending, role="alert" on failure
+```
+
+Copy comes from `@nyte-ai/plugin/examples/web-search/consent`; the card does not invent wording.
+Answering calls `nyte.runs.reply` and reloads the thread. Because the runtime's effect signalling
+is a compare-and-swap (see the [design record](/docs/design)), a card answered from two places
+shows the first answer and settles quietly.
+
+## Workspace trust
+
+`chrome/open-workspace.tsx`:
+
+> Trust is requested when a session reports it: the watch replays the session's activation and
+> every receipt re-reads it. Folder selection failures appear as a dismissible toast, leaving the
+> current chat usable.
+
+- `handleOpenOutcome(outcome)`: `needs_trust` shows the prompt; `failed` raises
+  `toast.error("Couldn't open folder", { id: "workspace-open", duration: Infinity })`; `opened` /
+  `cancelled` dismiss it.
+- `requestTrust(activation)` prompts once per folder unless declined this session: "a replayed
+  activation must not nag."
+- `WorkspaceDialogHost` renders `Dialog.Root defaultOpen` with `aria-label="Do you trust this
+folder?"`, Cancel (ghost, `autoFocus`) and "Trust and continue" (primary). Granting calls
+  `nyte.host.trustWorkspace` and invalidates the workspaces and plugin catalog queries.
+
+Initial focus on Cancel follows the same rule as [ConfirmDialog](/cloud/desktop/confirm-dialog):
+Enter by reflex must not grant.
+
+## Rules
+
+- A consent surface **must** state what will happen for each option, in text attached with
+  `aria-describedby`, not in a tooltip.
+- The pending state is `aria-busy` on the option group and a `role="status"` line, so a screen
+  reader hears that the answer is in flight.
+- Failure keeps the card and shows `role="alert"`; the user retries from the same place.

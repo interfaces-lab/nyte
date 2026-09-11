@@ -1,0 +1,105 @@
+diff --git a/chunk-bun-37s3zwb6.js b/chunk-bun-37s3zwb6.js
+index 3a1401446d3e35b8e5a8cd540125e956f51e5f92..8edf274812a36d23fca8e1239ac0b4a8e2815e6c 100644
+--- a/chunk-bun-37s3zwb6.js
++++ b/chunk-bun-37s3zwb6.js
+@@ -11557,7 +11557,12 @@ class OptimizedBuffer2 {
+   }
+   fillRect(x, y, width, height, bg) {
+     this.guard();
+-    this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg);
++    const left = Math.max(0, x);
++    const top = Math.max(0, y);
++    const right = Math.min(this._width, x + width);
++    const bottom = Math.min(this._height, y + height);
++    if (right <= left || bottom <= top) return;
++    this.lib.bufferFillRect(this.bufferPtr, left, top, right - left, bottom - top, bg);
+   }
+   colorMatrix(matrix, cellMask, strength = 1, target = 3 /* Both */) {
+     this.guard();
+diff --git a/chunk-bun-bwjmgnxw.js b/chunk-bun-bwjmgnxw.js
+index 0fd2ffe27300a8fecbf8f5fb55c5327b4aeb4fae..fb85dc49b698f36e41ce5b164dc98dd2d4b24157 100644
+--- a/chunk-bun-bwjmgnxw.js
++++ b/chunk-bun-bwjmgnxw.js
+@@ -2079,8 +2079,10 @@ class EditBuffer2 extends EventEmitter2 {
+   }
+   getText() {
+     this.guard();
+-    const maxSize = 1024 * 1024;
+-    const textBytes = this.lib.editBufferGetText(this.bufferPtr, maxSize);
++    const byteSize = this.lib.textBufferGetByteSize(this.textBufferPtr);
++    if (byteSize === 0)
++      return "";
++    const textBytes = this.lib.editBufferGetText(this.bufferPtr, byteSize);
+     if (!textBytes)
+       return "";
+     return this.lib.decoder.decode(textBytes);
+@@ -7753,6 +7755,10 @@ Captured external output:
+     }
+     this.scheduleRenderTimer();
+   }
++  requestFullRepaint() {
++    this.forceFullRepaintRequested = true;
++    this.requestRender();
++  }
+   requestRender() {
+     if (this._controlState === "explicit_suspended" /* EXPLICIT_SUSPENDED */) {
+       return;
+diff --git a/chunk-node-54dhb2fr.js b/chunk-node-54dhb2fr.js
+index 5c879aa6cfd737cfb9d56b433144b356324e4545..c201f46944267769940cbe50cc3e876b655ff04d 100644
+--- a/chunk-node-54dhb2fr.js
++++ b/chunk-node-54dhb2fr.js
+@@ -2078,8 +2078,10 @@ class EditBuffer2 extends EventEmitter2 {
+   }
+   getText() {
+     this.guard();
+-    const maxSize = 1024 * 1024;
+-    const textBytes = this.lib.editBufferGetText(this.bufferPtr, maxSize);
++    const byteSize = this.lib.textBufferGetByteSize(this.textBufferPtr);
++    if (byteSize === 0)
++      return "";
++    const textBytes = this.lib.editBufferGetText(this.bufferPtr, byteSize);
+     if (!textBytes)
+       return "";
+     return this.lib.decoder.decode(textBytes);
+@@ -7752,6 +7754,10 @@ Captured external output:
+     }
+     this.scheduleRenderTimer();
+   }
++  requestFullRepaint() {
++    this.forceFullRepaintRequested = true;
++    this.requestRender();
++  }
+   requestRender() {
+     if (this._controlState === "explicit_suspended" /* EXPLICIT_SUSPENDED */) {
+       return;
+diff --git a/chunk-node-70eg2nhg.js b/chunk-node-70eg2nhg.js
+index d7fc27b19ed7845ccf34c963e60dd267dcf782d9..07ffbf200683741b133e6751d9d339dd0aa61d1f 100644
+--- a/chunk-node-70eg2nhg.js
++++ b/chunk-node-70eg2nhg.js
+@@ -11539,7 +11539,12 @@ class OptimizedBuffer2 {
+   }
+   fillRect(x, y, width, height, bg) {
+     this.guard();
+-    this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg);
++    const left = Math.max(0, x);
++    const top = Math.max(0, y);
++    const right = Math.min(this._width, x + width);
++    const bottom = Math.min(this._height, y + height);
++    if (right <= left || bottom <= top) return;
++    this.lib.bufferFillRect(this.bufferPtr, left, top, right - left, bottom - top, bg);
+   }
+   colorMatrix(matrix, cellMask, strength = 1, target = 3 /* Both */) {
+     this.guard();
+diff --git a/renderer.d.ts b/renderer.d.ts
+index f16bf8e47456bdf8b6c2c5a0016e947ed623538c..23632dbb4dc48e3c0de2df12472760ff8616d826 100644
+--- a/renderer.d.ts
++++ b/renderer.d.ts
+@@ -416,6 +416,8 @@ export declare class CliRenderer extends EventEmitter implements RenderContext {
+     private scheduleRenderTimer;
+     private scheduleRenderAfterBackpressure;
+     requestRender(): void;
++    /** Rewrite every cell on the next frame, not only those the buffer diff says changed. */
++    requestFullRepaint(): void;
+     private activateFrame;
+     get consoleMode(): ConsoleMode;
+     set consoleMode(mode: ConsoleMode);

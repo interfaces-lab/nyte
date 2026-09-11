@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "@nyte-ai/ui/platform-tokens.css";
+@stylex;
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
 

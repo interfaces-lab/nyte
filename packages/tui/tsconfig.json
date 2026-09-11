@@ -3,7 +3,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2025"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "qa/**/*.ts", "scripts/**/*.ts"]
 }

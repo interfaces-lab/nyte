@@ -22,6 +22,7 @@
   --nyte-color-border-strong: light-dark(#1414144d, #fcfcfc4d);
   --nyte-color-field-background: light-dark(#fcfcfc, #2f2f2f);
   --nyte-color-ring: light-dark(#14141466, #fcfcfc66);
+  --nyte-color-focus-ring: var(--nyte-color-ring);
   --nyte-color-scrim: light-dark(#14141480, #141414b2);
   --nyte-color-sidebar: light-dark(#f7f7f7, #141414);
   --nyte-color-bubble-agent: light-dark(#eeeeee, #262626);

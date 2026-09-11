@@ -2,7 +2,13 @@
 import type { Usage } from "@nyte-ai/schema";
 import type { Commit } from "../model.ts";
 
+export type UsageSubject =
+  | { readonly kind: "model"; readonly provider: string; readonly model: string }
+  | { readonly kind: "tool" }
+  | { readonly kind: "compaction" };
+
 export interface ModelUsage {
+  readonly provider: string;
   readonly model: string;
   /** Assistant messages folded into this row. */
   readonly turns: number;
@@ -10,7 +16,7 @@ export interface ModelUsage {
 }
 
 export interface UsageSummary {
-  /** Highest cost first, then most tokens, then model id. */
+  /** Highest cost first, then most tokens, then model id and provider. */
   readonly models: readonly ModelUsage[];
   /** Checkpoint and branch-summary spend, which has no model id. */
   readonly compaction: Usage;
@@ -34,13 +40,58 @@ function emptyUsage(): Usage {
   };
 }
 
+/** Use reported totals when present; cache and reasoning subcounts are not added twice. */
+export function usageTokens(usage: Usage): number {
+  return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+
+/** Classify recorded usage, including an explicitly reported zero. */
+export function commitUsage(
+  commit: Commit,
+): { readonly subject: UsageSubject; readonly usage: Usage } | undefined {
+  const body = commit.body;
+  switch (body.kind) {
+    case "message":
+      switch (body.message.role) {
+        case "assistant":
+          return {
+            subject: { kind: "model", provider: body.message.provider, model: body.message.model },
+            usage: body.message.usage,
+          };
+        case "toolResult":
+          return body.message.usage === undefined
+            ? undefined
+            : { subject: { kind: "tool" }, usage: body.message.usage };
+        case "user":
+          return undefined;
+        default: {
+          const _exhaustive: never = body.message;
+          return _exhaustive;
+        }
+      }
+    case "checkpoint":
+    case "summary":
+      return body.usage === undefined
+        ? undefined
+        : { subject: { kind: "compaction" }, usage: body.usage };
+    case "completion":
+    case "config":
+    case "note":
+      return undefined;
+    default: {
+      const _exhaustive: never = body;
+      return _exhaustive;
+    }
+  }
+}
+
 export function addUsage(left: Usage, right: Usage): Usage {
   let total: Usage = {
     input: left.input + right.input,
     output: left.output + right.output,
     cacheRead: left.cacheRead + right.cacheRead,
     cacheWrite: left.cacheWrite + right.cacheWrite,
-    totalTokens: left.totalTokens + right.totalTokens,
+    totalTokens: usageTokens(left) + usageTokens(right),
     cost: {
       input: left.cost.input + right.cost.input,
       output: left.cost.output + right.cost.output,
@@ -62,23 +113,18 @@ export function emptyUsageSummary(): UsageSummary {
   return { models: [], compaction: emptyUsage(), tools: emptyUsage(), total: emptyUsage() };
 }
 
-function sortModels(models: ReadonlyMap<string, { turns: number; usage: Usage }>): ModelUsage[] {
-  return [...models]
-    .map(([model, { turns, usage }]) => ({ model, turns, usage }))
-    .toSorted(
-      (left, right) =>
-        right.usage.cost.total - left.usage.cost.total ||
-        right.usage.totalTokens - left.usage.totalTokens ||
-        left.model.localeCompare(right.model),
-    );
-}
-
 function summarize(
-  models: ReadonlyMap<string, { turns: number; usage: Usage }>,
+  models: ReadonlyMap<string, ModelUsage>,
   compaction: Usage,
   tools: Usage,
 ): UsageSummary {
-  const sorted = sortModels(models);
+  const sorted = [...models.values()].toSorted(
+    (left, right) =>
+      right.usage.cost.total - left.usage.cost.total ||
+      right.usage.totalTokens - left.usage.totalTokens ||
+      left.model.localeCompare(right.model) ||
+      left.provider.localeCompare(right.provider),
+  );
   const total = [...sorted.map((row) => row.usage), compaction, tools].reduce(
     addUsage,
     emptyUsage(),
@@ -88,45 +134,34 @@ function summarize(
 
 /** Fold every supplied commit, including commits on abandoned branches. */
 export function projectUsage(commits: readonly Commit[]): UsageSummary {
-  const models = new Map<string, { turns: number; usage: Usage }>();
+  const models = new Map<string, ModelUsage>();
   let compaction = emptyUsage();
   let tools = emptyUsage();
 
   for (const commit of commits) {
-    const body = commit.body;
-    switch (body.kind) {
-      case "message":
-        switch (body.message.role) {
-          case "assistant": {
-            const bucket = models.get(body.message.model) ?? { turns: 0, usage: emptyUsage() };
-            models.set(body.message.model, {
-              turns: bucket.turns + 1,
-              usage: addUsage(bucket.usage, body.message.usage),
-            });
-            break;
-          }
-          case "toolResult":
-            if (body.message.usage !== undefined) {
-              tools = addUsage(tools, body.message.usage);
-            }
-            break;
-          case "user":
-            break;
-          default: {
-            const _exhaustive: never = body.message;
-            return _exhaustive;
-          }
-        }
+    const spend = commitUsage(commit);
+    if (spend === undefined) continue;
+    const { subject, usage } = spend;
+    switch (subject.kind) {
+      case "model": {
+        const key = JSON.stringify([subject.provider, subject.model]);
+        const bucket = models.get(key);
+        models.set(key, {
+          provider: subject.provider,
+          model: subject.model,
+          turns: (bucket?.turns ?? 0) + 1,
+          usage: addUsage(bucket?.usage ?? emptyUsage(), usage),
+        });
         break;
-      case "checkpoint":
-      case "summary":
-        if (body.usage !== undefined) compaction = addUsage(compaction, body.usage);
+      }
+      case "tool":
+        tools = addUsage(tools, usage);
         break;
-      case "config":
-      case "note":
+      case "compaction":
+        compaction = addUsage(compaction, usage);
         break;
       default: {
-        const _exhaustive: never = body;
+        const _exhaustive: never = subject;
         return _exhaustive;
       }
     }
@@ -137,12 +172,15 @@ export function projectUsage(commits: readonly Commit[]): UsageSummary {
 
 /** Combine per-session summaries into a workspace-wide summary. */
 export function mergeUsageSummaries(left: UsageSummary, right: UsageSummary): UsageSummary {
-  const models = new Map<string, { turns: number; usage: Usage }>();
+  const models = new Map<string, ModelUsage>();
   for (const row of [...left.models, ...right.models]) {
-    const bucket = models.get(row.model) ?? { turns: 0, usage: emptyUsage() };
-    models.set(row.model, {
-      turns: bucket.turns + row.turns,
-      usage: addUsage(bucket.usage, row.usage),
+    const key = JSON.stringify([row.provider, row.model]);
+    const bucket = models.get(key);
+    models.set(key, {
+      provider: row.provider,
+      model: row.model,
+      turns: (bucket?.turns ?? 0) + row.turns,
+      usage: addUsage(bucket?.usage ?? emptyUsage(), row.usage),
     });
   }
   return summarize(

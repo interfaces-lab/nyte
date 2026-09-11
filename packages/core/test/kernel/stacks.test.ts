@@ -12,7 +12,7 @@ import {
   moveHead,
   stackStatus,
 } from "../../src/kernel/stacks.ts";
-import { assistant, lease, message, openSession, reflog, seedHead, user } from "./helpers.ts";
+import { assistant, lease, message, openSession, seedHead, user } from "./helpers.ts";
 
 test("a head exists once something names it, and a head cut from it remembers where it was cut", async () => {
   const session = await openSession();
@@ -134,7 +134,7 @@ test("a stack is stale exactly when its parent moved on, and heals when the pare
 
 test("a current child fast-forwards its parent in one step; a stale one is refused", async () => {
   const session = await openSession();
-  const [base] = await seedHead(session, "main", [message(user("a"))]);
+  await seedHead(session, "main", [message(user("a"))]);
   await createHead(session, { head: "review", from: { head: "main" } });
   assert.deepEqual(await fastForward(session, { head: "review" }), { kind: "empty" });
   assert.deepEqual(await fastForward(session, { head: "main" }), { kind: "no_stack" });
@@ -154,9 +154,15 @@ test("a current child fast-forwards its parent in one step; a stale one is refus
     base: childTip,
     parentTip: childTip,
   });
-  const lines = reflog(await session.events.read({ afterSeq: before }));
-  assert.ok(lines.includes(`refs/heads/main ${base} > ${childTip} (merge)`));
-  assert.ok(lines.every((line) => line.endsWith("(merge)")));
+  // The merge moves the parent head and the child's stack base, nothing else.
+  const moved = (await session.events.read({ afterSeq: before })).flatMap((event) =>
+    event.kind === "ref" ? [[event.name, event.to]] : [],
+  );
+  assert.ok(moved.some(([name, to]) => name === headRef("main") && to === childTip));
+  assert.deepEqual(
+    new Set(moved.map(([name]) => name)),
+    new Set([headRef("main"), stackRef("review")]),
+  );
 
   await seedHead(session, "main", [message(user("moved on"))]);
   await seedHead(session, "review", [message(user("more"))]);

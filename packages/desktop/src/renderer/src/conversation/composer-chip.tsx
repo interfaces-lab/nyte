@@ -1,54 +1,85 @@
 import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
+import type { IconName } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
-import type { ComposerChip } from "./composer.tsx";
-import { composerStyles, inlineTextStyles } from "./styles.stylex.ts";
+import { isFolder, referenceLabel, referenceTitle } from "./message-references.ts";
+import type { MessageReference } from "./message-references.ts";
+import { useReferenceOpener } from "./reference-opener.tsx";
+import { composerStyles } from "./styles.stylex.ts";
 
-/** An atomic inline editor component, not a shortened URL painted over a textarea. */
+function referenceIcon(reference: MessageReference): IconName {
+  switch (reference.kind) {
+    case "file":
+      return isFolder(reference.file) ? "folder" : "file";
+    case "skill":
+      return "skills";
+    case "mention":
+      return "more";
+    default: {
+      const exhaustive: never = reference;
+      return exhaustive;
+    }
+  }
+}
+
+/** One chip, the same in the editor, the queue strip, the transcript, and a message edit. */
 export function ComposerChipView({
-  chip,
-  disabled,
+  reference,
   onRemove,
 }: {
-  readonly chip: ComposerChip;
-  readonly disabled: boolean;
-  readonly onRemove: () => void;
+  readonly reference: MessageReference;
+  /** Present only inside an editor; read-only surfaces draw the chip without controls. */
+  readonly onRemove?: () => void;
 }): ReactElement {
-  if (chip.kind === "command" || chip.kind === "skill") {
-    return (
-      <span
-        data-composer-chip={chip.kind}
-        title={`Remove ${chip.label} with Backspace`}
-        {...props(inlineTextStyles.skill)}
-      >
-        {chip.kind === "skill" ? `/${chip.label}` : chip.label}
-      </span>
-    );
-  }
-  const icon = chip.kind === "file" ? (chip.file.label.endsWith("/") ? "folder" : "file") : "more";
+  const label = referenceLabel(reference);
+  const open = useReferenceOpener()?.(reference);
+  const inEditor = onRemove !== undefined;
   return (
     <span
-      data-composer-chip={chip.kind}
-      data-has-remove-button="true"
-      title={chip.kind === "file" ? chip.file.path : chip.label}
-      {...props(composerStyles.mentionChip, chip.kind === "file" && composerStyles.fileChip)}
+      data-composer-chip={reference.kind}
+      data-has-remove-button={inEditor}
+      data-openable={open !== undefined}
+      title={referenceTitle(reference)}
+      role={open === undefined ? undefined : "link"}
+      // The editor moves through chips with its own selection; only read-only
+      // surfaces need a tab stop.
+      tabIndex={open === undefined || inEditor ? undefined : 0}
+      onClick={open}
+      onKeyDown={
+        open === undefined || inEditor
+          ? undefined
+          : (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              open();
+            }
+      }
+      {...props(
+        composerStyles.mentionChip,
+        reference.kind === "skill" && composerStyles.mentionChipSkill,
+        open !== undefined && focus.ring,
+      )}
     >
       <span aria-hidden="true" {...props(composerStyles.mentionChipLeading)}>
-        <Icon name={icon} size={12} />
+        <Icon name={referenceIcon(reference)} size={12} />
       </span>
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label={`Remove ${chip.label}`}
-        title={`Remove ${chip.label}`}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={onRemove}
-        {...props(composerStyles.mentionChipRemove, focus.ring)}
-      >
-        <Icon name="x" size={11} />
-      </button>
-      <span {...props(composerStyles.fileChipLabel)}>{chip.label}</span>
+      {onRemove !== undefined && (
+        <button
+          type="button"
+          aria-label={`Remove ${label}`}
+          title={`Remove ${label}`}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onRemove();
+          }}
+          {...props(composerStyles.mentionChipRemove, focus.ring)}
+        >
+          <Icon name="x" size={11} />
+        </button>
+      )}
+      <span {...props(composerStyles.mentionChipLabel)}>{label}</span>
     </span>
   );
 }

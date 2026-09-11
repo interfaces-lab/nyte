@@ -13,11 +13,11 @@ export { systemPromptPlugin } from "./builtin/system-prompt.ts";
 export { contextFilesPlugin } from "./builtin/context-files.ts";
 export { SKILLS_PLUGIN_ID, skillsPlugin } from "./builtin/skills.ts";
 export { toolsFsPlugin } from "./builtin/tools-fs.ts";
-export { stockAgentsPlugin } from "./builtin/agents.ts";
 /**
  * Durable suspension, the mechanism behind asks and subagent waits: a tool
- * throws `ToolWait` and settles on wake (design record, "Suspension
- * and wake"). The question example shows the whole pattern.
+ * throws `ToolWait` and settles on wake (design record, "Wait and wake").
+ * A wait that needs a participant carries a `Selection`, which every client
+ * renders without knowing the tool. The question example shows the whole pattern.
  */
 export {
   ToolWait,
@@ -26,7 +26,10 @@ export {
   type ToolWakeContext,
   type ToolWakeOutcome,
 } from "../types.ts";
+export { acceptsSelectionReply } from "@nyte-ai/protocol";
+export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
 export { ToolError, toolResultContent } from "../utils/tool-result.ts";
+export { bindTool } from "../tools/bind-tool.ts";
 
 /** What a hook handler is handed, and what a `before_tool` policy decides. */
 export type {
@@ -45,6 +48,7 @@ export type {
   AgentToolCall,
   AgentToolResult,
   AgentToolUpdateCallback,
+  ToolExecutionContext,
 } from "../types.ts";
 export { toJsonValue } from "../kernel/json.ts";
 

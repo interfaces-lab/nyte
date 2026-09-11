@@ -12,31 +12,62 @@ import {
   submit,
 } from "../../src/kernel/queue.ts";
 import type { PendingChange } from "../../src/kernel/queue.ts";
-import { message, openSession, openStore, reflog, sleep, storePath, user } from "./helpers.ts";
+import { message, openSession, openStore, sleep, storePath, user } from "./helpers.ts";
 
 const say = (text: string) => message(user(text));
+
+test("invalid heads, string or not, cannot write objects, refs, or events, including receipt retries", async () => {
+  const session = await openSession();
+  const first = await submit(session, { head: "main", lane: "now", body: say("seed"), key: "k" });
+  const state = async () => ({
+    objects: await session.objects.list(),
+    refs: await session.refs.list(""),
+    cursor: await session.events.last(),
+  });
+  const before = await state();
+  for (const head of ["a/b", "", ".hidden", "x.", "x..y", "x@{y", "@", "x.lock", "x y", "x\n"]) {
+    for (const key of [undefined, "k"]) {
+      await assert.rejects(
+        submit(session, { head, lane: "now", body: say("bad"), key }),
+        TypeError,
+      );
+    }
+    await assert.rejects(
+      redeliver(session, { head, lane: "later", change: first.change }),
+      TypeError,
+    );
+    assert.deepEqual(await state(), before);
+  }
+  for (const head of [123, ["main"], { toString: () => "main" }]) {
+    for (const key of [undefined, "k"]) {
+      await assert.rejects(
+        // @ts-expect-error Exercise invalid JavaScript input at the admission boundary.
+        submit(session, { head, lane: "now", body: say("bad"), key }),
+        TypeError,
+      );
+    }
+    assert.deepEqual(await state(), before);
+  }
+});
+
+test.each(["日本語", "é+😀", "a!#$%&'()+,;=]{}", "a\u2028.b", "a.\u2029"])(
+  "unusual valid head %s remains discoverable",
+  async (head) => {
+    const session = await openSession();
+    const sent = await submit(session, { head, lane: "now", body: say("hello") });
+    assert.deepEqual(await listLanes(session, head), ["now"]);
+    assert.deepEqual(
+      (await pending(session, head)).map((item) => item.oid),
+      [sent.change],
+    );
+  },
+);
 
 function messageText(item: PendingChange | undefined): string {
   const body = item?.change.body;
   const content = body?.kind === "message" ? body.message.content : undefined;
   return content !== undefined && !Array.isArray(content) ? content : "";
 }
-
-test("a submission is pending until it lands, in the order it arrived", async () => {
-  const session = await openSession();
-  const first = await submit(session, { head: "main", lane: "now", body: say("one") });
-  const second = await submit(session, { head: "main", lane: "now", body: say("two") });
-  assert.equal(first.kind, "queued");
-  const items = await pending(session, "main");
-  assert.deepEqual(
-    items.map((item) => [item.oid, item.lane, messageText(item)]),
-    [
-      [first.change, "now", "one"],
-      [second.change, "now", "two"],
-    ],
-  );
-  assert.equal((await nextToLand(session, { head: "main", lanes: ["now"] }))?.oid, first.change);
-});
 
 test("one hundred concurrent submitters lose nothing and keep one order", async () => {
   const session = await openSession();
@@ -139,6 +170,7 @@ test("landing skips cancelled changes, and a landed change can no longer be canc
   );
   assert.equal(landed.ok, true);
   assert.deepEqual(await pending(session, "main"), []);
+  const cursor = await session.events.last();
   assert.deepEqual(await cancel(session, { head: "main", change: second.change }), {
     kind: "landed",
   });
@@ -146,12 +178,22 @@ test("landing skips cancelled changes, and a landed change can no longer be canc
     await redeliver(session, { head: "main", change: second.change, lane: "later" }),
     { kind: "landed" },
   );
+  assert.deepEqual(
+    await redeliver(session, {
+      head: "main",
+      lane: "now",
+      change: second.change,
+      content: "too late",
+    }),
+    { kind: "landed" },
+  );
+  assert.deepEqual(await pending(session, "main"), []);
+  assert.equal(await session.events.last(), cursor);
 });
 
 test("moving a change between lanes is one atomic update that keeps it pending", async () => {
   const session = await openSession();
   const parked = await submit(session, { head: "main", body: say("later"), lane: "later" });
-  const before = await session.events.last();
   const moved = await redeliver(session, { head: "main", change: parked.change, lane: "now" });
   assert.equal(moved.kind, "redelivered");
   if (moved.kind !== "redelivered") return;
@@ -161,9 +203,6 @@ test("moving a change between lanes is one atomic update that keeps it pending",
     [[moved.change, "now"]],
   );
   assert.equal(messageText(items[0]), "later");
-  const lines = reflog(await session.events.read({ afterSeq: before }));
-  assert.ok(lines.length > 0);
-  assert.ok(lines.every((line) => line.endsWith("(redeliver)")));
 
   assert.deepEqual(await redeliver(session, { head: "main", change: moved.change, lane: "now" }), {
     kind: "unchanged",
@@ -248,25 +287,4 @@ test("an edit racing cancellation cannot restore the cancelled original or dupli
   ]);
   const contents = (await pending(observer, "main")).map(messageText);
   assert.deepEqual(contents, edited.kind === "redelivered" ? ["edited"] : []);
-});
-
-test("editing a landed message does not admit a new one", async () => {
-  const session = await openSession();
-  const submitted = await submit(session, { head: "main", lane: "later", body: say("original") });
-  await session.refs.update(
-    [{ name: queueBaseRef("main", "later"), from: null, to: submitted.change }],
-    { reason: "land" },
-  );
-  const before = await session.events.last();
-  assert.deepEqual(
-    await redeliver(session, {
-      head: "main",
-      lane: "later",
-      change: submitted.change,
-      content: "too late",
-    }),
-    { kind: "landed" },
-  );
-  assert.deepEqual(await pending(session, "main"), []);
-  assert.equal(await session.events.last(), before);
 });

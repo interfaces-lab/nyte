@@ -62,6 +62,29 @@ describe("transcript presentation", () => {
     ]);
   });
 
+  test("expanded TUI skill instructions become a compact transcript label", () => {
+    const source = [
+      '<skill name="review" location="/Users/me/.agents/skills/review/SKILL.md">',
+      "References are relative to /Users/me/.agents/skills/review.",
+      "",
+      "# Review",
+      "Inspect every changed file.",
+      "</skill>",
+      "",
+      "Fix the regression.",
+    ].join("\n");
+
+    assert.equal(userDisplayText(source), "/review\nFix the regression.");
+    assert.deepEqual(userTextSegments(source), [
+      {
+        kind: "reference",
+        label: "/review",
+        target: "/Users/me/.agents/skills/review/SKILL.md",
+      },
+      { kind: "text", text: "\nFix the regression." },
+    ]);
+  });
+
   test("provider errors become concise product copy while retaining diagnostics", () => {
     const source =
       'Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"Try later"},"request_id":"req_secret"}';

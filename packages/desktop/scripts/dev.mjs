@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
@@ -8,16 +9,24 @@ import electronMetadata from "electron/package.json" with { type: "json" };
 export function prepareDevElectron() {
   if (process.platform !== "darwin") return electronPath;
 
-  // macOS reads the bundle name, not app.setName(). Keep pnpm's Electron intact.
+  // Mission Control reads the bundle icon, not the runtime Dock override.
+  // A fresh path also avoids reusing macOS's cached icon after an artwork change.
+  const icon = readFileSync(new URL("../build/icon.icns", import.meta.url));
+  const fingerprint = createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .update(icon)
+    .digest("hex");
   const cache = join(
     import.meta.dirname,
     "../node_modules/.cache/nyte-electron",
-    `${electronMetadata.version}-${process.arch}`,
+    `${electronMetadata.version}-${process.arch}-${fingerprint}`,
   );
   const bundle = join(cache, "Nyte (Dev).app");
   const ready = join(cache, "ready");
   if (!existsSync(ready)) {
     mkdirSync(cache, { recursive: true });
+    // Retry interrupted preparation from a clean copy. Keep pnpm's Electron intact.
+    rmSync(bundle, { recursive: true, force: true });
     cpSync(join(dirname(electronPath), "../.."), bundle, {
       recursive: true,
       verbatimSymlinks: true,
@@ -31,6 +40,14 @@ export function prepareDevElectron() {
       "CFBundleIdentifier",
       "-string",
       "ai.nyte.desktop.dev",
+      plist,
+    ]);
+    writeFileSync(join(bundle, "Contents/Resources/icon.icns"), icon);
+    execFileSync("/usr/bin/plutil", [
+      "-replace",
+      "CFBundleIconFile",
+      "-string",
+      "icon.icns",
       plist,
     ]);
     execFileSync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", bundle]);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { isAtScrollBottom, workGroupBody } from "./work-group-body.ts";
+import { workGroupBody } from "./work-group-body.ts";
 
 describe("workGroupBody", () => {
   test("compact streams through a preview window and expands only when opened", () => {
@@ -46,12 +46,5 @@ describe("workGroupBody", () => {
       workGroupBody({ density: "detailed", active: true, reveal: "closed", hasContent: true }),
       "none",
     );
-  });
-});
-
-describe("isAtScrollBottom", () => {
-  test("treats the last five pixels as the bottom", () => {
-    assert.equal(isAtScrollBottom({ scrollTop: 95, scrollHeight: 200, clientHeight: 100 }), true);
-    assert.equal(isAtScrollBottom({ scrollTop: 90, scrollHeight: 200, clientHeight: 100 }), false);
   });
 });

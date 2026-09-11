@@ -1,4 +1,4 @@
-import { PreviewCard } from "@nyte-ai/ui/primitives";
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
 import * as stylex from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import type { GitHubRepository } from "../../../shared/ipc.ts";
@@ -71,6 +71,8 @@ const styles = stylex.create({
 
 export type SessionPreviewContext =
   | { readonly kind: "home" }
+  /** Runs on the connected server; no local folder to name. */
+  | { readonly kind: "cloud" }
   | {
       readonly kind: "workspace";
       readonly path: string;

@@ -2,12 +2,12 @@
  * The host these tests run their plugins in.
  *
  * `@nyte-ai/plugin` re-exports `@nyte-ai/core/plugins` and nothing else, so its
- * tests reach core the way any host does: `createNyte` for the verbs and a
+ * tests reach core the way any host does: `createNyte` for the operations and a
  * `SqliteStore` from `/store` for durability. Nothing here reaches a kernel
  * internal, which is the point: a plugin that only works when the test drives
  * the loop directly is a plugin no host can load.
  *
- * Every plugin fact these tests care about is read back through the verbs a
+ * Every plugin fact these tests care about is read back through the operations a
  * client has (`plugins.settings.list`, `plugins.commands.run`, the transcript,
  * the event stream), never through the session's refs.
  */
@@ -47,11 +47,13 @@ export const testModel: Model<Api> = {
 
 /** A catalog over a fixed set of models: composition never reaches a network. */
 export function catalogOf(...models: readonly Model<Api>[]): ModelCatalog {
+  const getModels = (provider?: string) =>
+    provider === undefined ? models : models.filter((m) => m.provider === provider);
   return {
-    getModels: (provider) =>
-      provider === undefined ? models : models.filter((m) => m.provider === provider),
+    getModels,
     getModel: (provider, id) =>
       models.find((m) => m.provider === provider && m.id === id) ?? models.find((m) => m.id === id),
+    getAvailable: async (provider) => getModels(provider),
   };
 }
 
@@ -151,7 +153,7 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 /**
  * `runs.wait` answers `idle` once the run's phase is terminal, which is a
- * moment before its runner releases the head lease. A verb that needs the
+ * moment before its runner releases the head lease. An operation that needs the
  * head free (`runs.compact`) would answer `busy` in that gap, so wait for the
  * release too, through the same public read a client has.
  */

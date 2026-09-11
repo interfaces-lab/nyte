@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, FormEvent, ReactElement, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 import type { BrowserBoundsMessage, BrowserNavigationAction } from "../../../shared/ipc.ts";
+import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons";
 import { focus, IconButton } from "../components/ui";
 import { workbench } from "../theme/schema.stylex";
@@ -79,6 +80,12 @@ const styles = stylex.create({
     borderColor: t.borderWeak,
     borderRadius: t.radiusLg,
     backgroundColor: t.bgElevated,
+    // The ring belongs on the rounded field, not on the square input nested
+    // inside it, so its corners stay concentric with the border it wraps.
+    outlineStyle: { default: "none", ":focus-within": "solid" },
+    outlineWidth: 2,
+    outlineColor: t.focusRing,
+    outlineOffset: 1,
   },
   addressIcon: { display: "inline-flex", flexShrink: 0, color: t.iconSecondary },
   blocked: {
@@ -320,16 +327,12 @@ export function BrowserPanel({
       void nyte.host.browser.open({ surface, url }).then(
         (state) => applyBrowserEvent({ kind: "browser_changed", surface, state }),
         (cause: unknown) => {
-          setFailure(cause instanceof Error ? cause.message : "The page could not open.");
+          setFailure(errorMessage(cause));
         },
       );
     }
     return () => releaseSurface(surface);
   }, [surface, url]);
-
-  useEffect(() => {
-    if (state !== undefined && state.url !== "" && state.url !== url) onUrlChange(state.url);
-  }, [onUrlChange, state, url]);
 
   const navigate = (action: BrowserNavigationAction): void => {
     void nyte.host.browser.navigate({ surface, action }).catch(() => undefined);
@@ -365,7 +368,7 @@ export function BrowserPanel({
         await nyte.host.browser.perform({ surface, action });
         if (action === "clear-history") clearBrowserHistory();
       })
-      .catch((cause) => setFailure(cause instanceof Error ? cause.message : String(cause)));
+      .catch((cause) => setFailure(errorMessage(cause)));
   };
 
   const loading = state?.loading === true;
@@ -408,7 +411,7 @@ export function BrowserPanel({
               aria-label="Address"
               placeholder="Search or enter address"
               value={draft ?? displayAddress(currentUrl)}
-              {...stylex.props(styles.address, focus.ring)}
+              {...stylex.props(styles.address)}
               onFocus={(event) => {
                 flushSync(() => setDraft(currentUrl));
                 event.currentTarget.select();

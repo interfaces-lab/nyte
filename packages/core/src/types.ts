@@ -25,6 +25,7 @@ import type {
 } from "@nyte-ai/ai";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
+import type { Selection } from "@nyte-ai/protocol";
 import type { JsonObject } from "./kernel/json.ts";
 import type { Static, TSchema } from "typebox";
 
@@ -150,7 +151,7 @@ export interface AfterToolCallContext {
   /** Validated tool arguments for the target tool schema. */
   args: unknown;
   /** The executed tool result before any `afterToolCall` overrides are applied. */
-  result: AgentToolResult<any>;
+  result: AgentToolResult<unknown>;
   /** Whether the executed tool result is currently treated as an error. */
   isError: boolean;
   /** Current agent context at the time the tool call is finalized. */
@@ -158,7 +159,7 @@ export interface AfterToolCallContext {
 }
 
 export interface AgentLoopConfig extends SimpleStreamOptions {
-  model: Model<any>;
+  model: Model<Api>;
 
   /**
    * Optional transform applied to the context before the request.
@@ -245,31 +246,46 @@ export interface AgentToolResult<T> {
  * The callback is scoped to the current `execute()` invocation. Calls made after
  * the tool promise settles are ignored.
  */
-export type AgentToolUpdateCallback<T = any> = (partialResult: AgentToolResult<T>) => void;
+export type AgentToolUpdateCallback<T = unknown> = (partialResult: AgentToolResult<T>) => void;
 
 // ---------------------------------------------------------------------------
 // Durable tool wait (design record: "Wait and wake")
 // ---------------------------------------------------------------------------
 
 /**
- * Thrown by a tool's `execute` to settle the call as waiting: the runner
- * commits a durable `tool_waiting` record naming the reserved result entry,
- * releases the run's claim, and the run stops consuming any process anywhere.
- * The wake input arrives by ordinary admission; whichever host observes it
- * claims the run and settles the reserved entry exactly once through the
- * tool's `wake` handler.
+ * Thrown by a tool's `execute` to park the call: the runner moves the effect
+ * ref to `waiting`, releases the head, and the run stops consuming any process
+ * anywhere. A reply arrives through `runs.reply`; whichever host next acquires
+ * the head settles the call through the tool's `wake` handler.
  *
- * The wait carries nothing. Everything a wake needs is already durable
- * and typed: the intent's schema-validated arguments, the run and call ids,
- * and ids derived from them (the design record's wait invariants). A
- * tool that thinks it must smuggle state across the gap should derive it
- * instead.
+ * The wait carries no state for the wake. Everything a wake needs is already
+ * durable and typed: the intent's schema-validated arguments, the run and
+ * call ids, and ids derived from them. What it may carry is a `selection`: what
+ * a participant is asked to pick, stored with the waiting effect so any
+ * client, on any host, at any later time, can render it and answer it without
+ * knowing the tool. A wait without one is background work, not a request for
+ * input. It may also carry `until`, an epoch-ms deadline: a runner that steps
+ * the run past it wakes the call with `expired` set, so a human who never
+ * answers does not hold the run forever. Like a retry's `at`, the deadline is
+ * durable state, never a timer in a process.
  */
 const TOOL_WAIT_BRAND = Symbol.for("nyte.toolWait");
+
+export interface ToolWaitOptions {
+  readonly selection?: Selection;
+  readonly until?: number;
+}
 
 export class ToolWait {
   /** Shared-symbol brand: `instanceof` fails across duplicated bundles. */
   readonly [TOOL_WAIT_BRAND] = true;
+  readonly selection: Selection | undefined;
+  readonly until: number | undefined;
+
+  constructor(options: ToolWaitOptions = {}) {
+    this.selection = options.selection;
+    this.until = options.until;
+  }
 }
 
 export function isToolWait(error: unknown): error is ToolWait {
@@ -303,6 +319,8 @@ export interface ToolWakeContext {
    * must not outlive an abort.
    */
   readonly aborted: boolean;
+  /** The wait's `until` passed with no reply. The handler should settle; a `wait` parks again. */
+  readonly expired: boolean;
   /**
    * The first durable reply recorded for this call (`runs.reply`), if any.
    * Queued conversation messages are never offered to a wake handler.
@@ -312,7 +330,8 @@ export interface ToolWakeContext {
 
 export type ToolWakeOutcome =
   | { kind: "settle"; result: AgentToolResult<unknown>; isError?: boolean }
-  | { kind: "wait" };
+  /** Park again, with what the new wait asks and when it expires, as `ToolWait` takes them. */
+  | ({ kind: "wait" } & ToolWaitOptions);
 
 /**
  * Settle a waiting call on wake, or keep waiting. Runs on whichever host
@@ -323,23 +342,33 @@ export type ToolWakeOutcome =
  */
 export type ToolWake = (wait: WaitingCall, context: ToolWakeContext) => Promise<ToolWakeOutcome>;
 
+/** The durable run and head executing a tool call. */
+export interface ToolExecutionContext {
+  readonly runId: string;
+  readonly head: string;
+}
+
 /** Tool definition used by the agent runtime. */
 export interface AgentTool<
   TParameters extends TSchema = TSchema,
-  TDetails = any,
+  TDetails = unknown,
 > extends Tool<TParameters> {
   /**
    * Optional compatibility shim for raw tool-call arguments before schema validation.
-   * Must return an object that matches `TParameters`.
+   * The returned value is validated against `TParameters` before execution.
    */
-  prepareArguments?: (args: AgentToolCall["arguments"]) => Static<TParameters>;
+  prepareArguments?: (args: AgentToolCall["arguments"]) => unknown;
   /** Execute the tool call. Throw on failure instead of encoding errors in `content`. */
   execute: (
     toolCallId: string,
-    params: Static<TParameters>,
+    // An erased schema cannot prove an input type. Bind typed definitions before storage.
+    params: TSchema extends TParameters ? unknown : Static<TParameters>,
     signal?: AbortSignal,
     onUpdate?: AgentToolUpdateCallback<TDetails>,
+    context?: ToolExecutionContext,
   ) => Promise<AgentToolResult<TDetails>>;
+  /** Available only while the session is foreground work with a participant present. */
+  availability?: "foreground";
   /** Recovery policy for an effect whose durable intent exists but whose outcome is unknown. */
   replay?: "never" | "safe";
   /** Settles this tool's waiting calls on wake (design record: "Wait and wake"). */
@@ -362,7 +391,7 @@ export interface AgentContext {
   /** Transcript visible to the model after the checkpoint, if any. */
   messages: Message[];
   /** Tools available for this run. */
-  tools?: AgentTool<any>[];
+  tools?: AgentTool[];
 }
 
 /**
@@ -379,18 +408,18 @@ export type AgentEvent =
   | { type: "message_update"; message: Message; assistantMessageEvent: AssistantMessageEvent }
   | { type: "message_end"; message: Message }
   // Tool execution lifecycle
-  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: any }
+  | { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown }
   | {
       type: "tool_execution_update";
       toolCallId: string;
       toolName: string;
-      args: any;
-      partialResult: any;
+      args: unknown;
+      partialResult: unknown;
     }
   | {
       type: "tool_execution_end";
       toolCallId: string;
       toolName: string;
-      result: any;
+      result: AgentToolResult<unknown>;
       isError: boolean;
     };

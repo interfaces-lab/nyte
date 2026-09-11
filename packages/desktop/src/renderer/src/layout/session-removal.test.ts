@@ -37,6 +37,7 @@ test("Undo never replaces a newer chat or a new draft", () => {
   });
   const restoreSecond = controller.removeSessionWithUndo(second);
   controller.viewState.writeBlank("primary", {
+    ...controller.viewState.readBlank("primary"),
     composer: { draft: "Keep my draft", selectionStart: 13, selectionEnd: 13, focused: true },
   });
   assert.equal(restoreSecond(), false);

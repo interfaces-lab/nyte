@@ -1,0 +1,127 @@
+---
+title: Tokens
+description: "The --nyte-* custom properties every primitive is built from, read live from @nyte-ai/ui"
+---
+
+Tokens are the only values a primitive is allowed to paint with. They are declared once in
+`packages/ui/src/platform-tokens.stylex.ts` as `stylex.defineVars` groups, and every entry is a
+literal `--nyte-*` name so the same token can be read from StyleX, from Tailwind, and from plain CSS.
+
+```
+platform-tokens.stylex.ts    typed StyleX handles     tokens.color["--nyte-color-primary"]
+  └─ sync-platform-tokens.mjs
+       └─ platform-tokens.css   :root declarations     var(--nyte-color-primary)
+            └─ tailwind.css     @theme inline mapping   bg-primary, text-body, rounded-lg
+```
+
+`pnpm --dir packages/ui typecheck` runs `check:tokens` and fails if the CSS is stale. The tables on
+this page are read from the generated CSS at build time, so they cannot disagree with the package.
+
+## Rules
+
+- A primitive **must** read colors, radii, sizes, and motion through `tokens.*`. Literal colors in
+  `packages/ui/src/components` are a defect.
+- Colors are `light-dark()` pairs. The theme follows `color-scheme` on an ancestor, not a class.
+  A host that wants dark mode sets `color-scheme: dark`; it does not restyle tokens.
+- Consumers override tokens on an ancestor, ideally the app root, and only the ones that carry the
+  app's identity. See [Theming](/cloud/foundations/theming).
+- `--nyte-color-focus-ring` is `var(--nyte-color-ring)` by default and is the one token a host
+  is expected to zero out at runtime. See [Focus](/cloud/foundations/focus).
+
+## Color
+
+Semantic roles, not a palette. `primary` is the filled button; `muted` is the hover wash and the
+avatar background; `border` has four strengths; `bubble-*` and `sidebar` exist for the conversation
+surface.
+
+<TokenTable prefix="--nyte-color-" />
+
+## Font
+
+One UI family and a five-step type scale. `label` and `body` share a size and line height on
+purpose: labels sit beside fields, and mixed sizes on one row misalign.
+
+<TokenTable prefix="--nyte-font-" />
+
+<TokenTable prefix="--nyte-leading-" />
+
+## Radius
+
+`control` and `field` are the same today and are separate tokens so they can diverge. `avatar` is
+a percentage so it scales with the size steps; `pill` is the circle.
+
+<TokenTable prefix="--nyte-radius-" />
+
+## Control
+
+The geometry of anything you press or type into. `height-md` (28px) is the default button and
+input height; `height-sm` (24px) is the compact button and the icon button. `menu-inset` is the
+left padding that leaves room for a radio or checkbox indicator.
+
+<TokenTable prefix="--nyte-control-" />
+
+## Border
+
+<TokenTable prefix="--nyte-border-" />
+
+## Avatar
+
+<TokenTable prefix="--nyte-avatar-" />
+
+## Space
+
+Only three steps ship; layout spacing belongs to the app.
+
+<TokenTable prefix="--nyte-space-" />
+
+## Motion
+
+`fast` for state changes on controls, `normal` for popups. Every primitive collapses its transition
+to `0s` under `prefers-reduced-motion: reduce`.
+
+<TokenTable prefix="--nyte-motion-" />
+
+## Elevation
+
+Shadows are `light-dark()` too: the dark values are transparent, because on a dark surface a border
+does the separating.
+
+<TokenTable prefix="--nyte-elevation-" />
+
+## Overlay
+
+Sizes and stacking for dialogs and menus. `--nyte-menu-max-width` and `-max-height` read Base UI's
+`--available-width` / `--available-height`, which the Positioner sets from the viewport.
+
+<TokenTable prefix="--nyte-dialog-" />
+
+<TokenTable prefix="--nyte-menu-" />
+
+<TokenTable prefix="--nyte-layer-" />
+
+## Tailwind mapping
+
+`@nyte-ai/ui/tailwind.css` maps tokens into Tailwind v4's `@theme inline` so utilities resolve to
+the same variables. Import `@nyte-ai/ui/styles.css` for the tokens plus the mapping, or
+`@nyte-ai/ui/platform-tokens.css` for tokens only.
+
+| Tailwind token               | Reads                   |
+| ---------------------------- | ----------------------- |
+| `--font-sans`                | `--nyte-font-family-ui` |
+| `--color-primary`            | `--nyte-color-primary`  |
+| `--color-muted`              | `--nyte-color-muted`    |
+| `--color-border`             | `--nyte-color-border`   |
+| `--color-ring`               | `--nyte-color-ring`     |
+| `--text-body`                | `--nyte-font-size-body` |
+| `--text-body--line-height`   | `--nyte-leading-body`   |
+| `--radius-sm`, `--radius-md` | `--nyte-radius-control` |
+| `--radius-lg`                | `--nyte-radius-menu`    |
+| `--radius-xl`                | `--nyte-radius-dialog`  |
+
+The full list is the file itself: `packages/ui/src/tailwind.css`.
+
+## Desktop variables
+
+The desktop app does not consume these tokens directly. It defines its own `t.*` constants in
+`desktop/src/renderer/src/theme/vars.stylex.ts` over a separate runtime palette. See
+[Desktop › Theme variables](/cloud/desktop/theme).

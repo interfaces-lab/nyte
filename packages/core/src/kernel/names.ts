@@ -7,6 +7,7 @@
  *   refs/queues/<head>/<lane>/tip  newest submitted change in that lane
  *   refs/queues/<head>/<lane>/base last landed change; pending is (base, tip]
  *   refs/runs/<head>               the branch's current run
+ *   refs/compactions/<head>        active checkpoint work under the head lease
  *   refs/effects/<run>/<call>      one tool call's durable state
  *   refs/keys/<key>                idempotency receipt for a submission
  *   refs/facts/<key>               a small session value
@@ -18,7 +19,10 @@
  * landing policy, and the default head is the SDK's.
  */
 import { randomUUID } from "node:crypto";
+import { isHeadName } from "@nyte-ai/protocol";
 import type { Oid, RefName } from "./model.ts";
+
+export { isHeadName };
 
 export const DELETED_REF: RefName = "refs/deleted";
 
@@ -26,6 +30,7 @@ const HEADS = "refs/heads/";
 const STACKS = "refs/stacks/";
 const QUEUES = "refs/queues/";
 const RUNS = "refs/runs/";
+const COMPACTIONS = "refs/compactions/";
 const EFFECTS = "refs/effects/";
 const KEYS = "refs/keys/";
 const FACTS = "refs/facts/";
@@ -78,6 +83,16 @@ export function parseQueueRef(name: RefName): QueueRefParts | undefined {
 
 export function runRef(head: string): RefName {
   return RUNS + head;
+}
+
+export function compactionRef(head: string): RefName {
+  return COMPACTIONS + head;
+}
+
+export function parseCompactionRef(name: RefName): string | undefined {
+  if (!name.startsWith(COMPACTIONS)) return undefined;
+  const head = name.slice(COMPACTIONS.length);
+  return isHeadName(head) ? head : undefined;
 }
 
 export function effectRef(runId: string, callId: string): RefName {
@@ -139,11 +154,6 @@ export function isRefName(value: string): boolean {
     .every(
       (part) => part !== "" && part !== "@" && !part.startsWith(".") && !part.endsWith(".lock"),
     );
-}
-
-/** A branch name is one ref component: what `refs/heads/` may be followed by. */
-export function isHeadName(value: string): boolean {
-  return !value.includes("/") && isRefName(value);
 }
 
 /** A lane name is one ref component too: the segment between the head and `tip` or `base`. */

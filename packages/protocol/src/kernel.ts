@@ -6,6 +6,7 @@
  * (refs, leases, changes, effects) stays in core.
  */
 import type { JsonValue, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
+import type { JobInfo } from "./sdk.ts";
 
 /** SHA-256 hex over the object's canonical JSON. */
 export type Oid = string;
@@ -46,6 +47,8 @@ export type CommitBody =
       /** Agent selection travels with its message through submit, cancel, and redelivery. */
       readonly agent?: string;
     }
+  /** Background tool output, consumed by the model without impersonating user input. */
+  | { readonly kind: "completion"; readonly job: JobInfo }
   /** A context checkpoint. Projection starts at the newest one. */
   | {
       readonly kind: "checkpoint";
@@ -76,6 +79,11 @@ export type RunPhase =
   | { readonly kind: "done" }
   | { readonly kind: "aborted" }
   | { readonly kind: "failed"; readonly error: string };
+
+/** A run in a terminal phase will never advance; only a new run follows it. */
+export function isTerminalPhase(phase: RunPhase): boolean {
+  return phase.kind === "done" || phase.kind === "aborted" || phase.kind === "failed";
+}
 
 export interface ToolProgress {
   readonly text: string;

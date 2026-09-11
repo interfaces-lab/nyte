@@ -1,4 +1,7 @@
 import { setTimeout } from "node:timers/promises";
+import type { Landing } from "@nyte-ai/protocol";
+import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
+import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
 import { branchConfig, contextMessages } from "./context.ts";
 import { listEffects } from "./effects.ts";
 import { branch, contextCommits } from "./graph.ts";
@@ -19,12 +22,9 @@ import type { PendingChange } from "./queue.ts";
 import type { Commit, Lease, Obj, RefUpdate, Run, RunConfig, RunPhase } from "./model.ts";
 import type { Session } from "./store.ts";
 import type { ToolBatchOutcome, Turn } from "./turn.ts";
+import { startSpan } from "./telemetry.ts";
 
 const DEFAULT_TTL_MS = 30_000;
-
-/** The landing policy is client-visible (`Nyte.landing`), so its shape lives on the wire. */
-export type { Landing, LanePolicy } from "@nyte-ai/protocol";
-import type { Landing } from "@nyte-ai/protocol";
 
 export interface StepOptions {
   readonly head: string;
@@ -32,26 +32,31 @@ export interface StepOptions {
   readonly lease?: Lease;
   readonly ttlMs?: number;
   readonly signal?: AbortSignal;
+  readonly telemetry?: TelemetryContext;
   /** The response ceiling for a run, fixed or per run (an agent's own limit). */
   readonly steps?: number | ((run: Run) => number | undefined);
   /** Capture host-resolved inputs in the run before a response is attempted. */
   readonly resolveConfig?: (config: RunConfig) => RunConfig;
   readonly now?: () => number;
+  /** Validate host execution authority under the head lease, before landing or executing. */
+  readonly beforeStep?: () => Promise<void>;
 }
 
 export type StepOutcome =
   | { readonly kind: "idle" }
   | { readonly kind: "busy"; readonly holder: Lease }
   | { readonly kind: "continue" }
-  | { readonly kind: "waiting"; readonly run: Run }
+  /** `until`: the nearest deadline among the parked calls; a host steps again at it. */
+  | { readonly kind: "waiting"; readonly run: Run; readonly until?: number }
   | { readonly kind: "retry"; readonly run: Run; readonly at: number }
   | { readonly kind: "finished"; readonly run: Run }
   | { readonly kind: "fenced" };
 
-type PublishOutcome = "ok" | "conflict" | "fenced";
+export type PublishOutcome = "ok" | "conflict" | "fenced";
 
 interface StepContext {
   readonly session: Session;
+  readonly telemetry: TelemetryContext;
   readonly turn: Turn;
   readonly options: StepOptions;
   readonly lease: Lease;
@@ -116,6 +121,12 @@ async function publish(
 
 function withPhase(run: Run, phase: RunPhase, attempts = run.attempts): Run {
   return { ...run, phase, attempts };
+}
+
+/** A landing consumes the abort: the interrupted step is over and this message continues the run. */
+function resumed(run: Run): Run {
+  const { abortRequested: _consumed, ...rest } = run;
+  return rest;
 }
 
 function commitsFor(
@@ -199,7 +210,9 @@ async function land(
       kind: "run",
       id,
       head: context.options.head,
-      phase: changes.some((item) => item.change.body.kind === "message")
+      phase: changes.some(
+        (item) => item.change.body.kind === "message" || item.change.body.kind === "completion",
+      )
         ? { kind: "respond" }
         : { kind: "done" },
       startedAt: context.now(),
@@ -209,7 +222,7 @@ async function land(
     activeRun = nextRun;
   } else {
     landed = commitsFor(changes, context.tip, activeRun.id, context.now);
-    nextRun = activeRun;
+    nextRun = resumed(activeRun);
   }
 
   await context.session.objects.put([...landed.commits, nextRun]);
@@ -218,11 +231,7 @@ async function land(
   const updates: RefUpdate[] = [
     { name: headRef(context.options.head), from: context.tip, to: landed.tip },
     { name: baseName, from: base, to: last.oid },
-    {
-      name: runRef(context.options.head),
-      from: context.runOid,
-      to: context.run === undefined ? hashObject(nextRun) : context.runOid,
-    },
+    { name: runRef(context.options.head), from: context.runOid, to: hashObject(nextRun) },
     ...changes.map((item) => ({ name: cancelledRef(item.oid), from: null, to: null })),
   ];
   const outcome = await publish(context.session, {
@@ -323,22 +332,24 @@ async function afterConflict(
   if (current.run !== undefined && current.run.id !== context.run.id) return { kind: "fenced" };
 
   if (current.run?.id === context.run.id && current.run.abortRequested === true) {
-    const aborted = withPhase(current.run, { kind: "aborted" }, options.next.attempts);
-    await context.session.objects.put([aborted]);
+    // The abort raced this step. Keep its output and carry the flag to where it
+    // is honored: a tool batch settles its calls first, anything else goes to
+    // the response boundary, which lands a queued message or ends the run.
+    const phase: RunPhase =
+      options.next.phase.kind === "tools" || options.next.phase.kind === "waiting"
+        ? options.next.phase
+        : { kind: "respond" };
+    const interrupted = withPhase(current.run, phase, options.next.attempts);
+    await context.session.objects.put([interrupted]);
     const outcome = await publish(context.session, {
       lease: context.lease,
       updates: [
         ...options.outputUpdates,
-        {
-          name: runRef(context.options.head),
-          from: current.oid,
-          to: hashObject(aborted),
-        },
+        { name: runRef(context.options.head), from: current.oid, to: hashObject(interrupted) },
       ],
-      reason: "abort",
+      reason: "interrupt",
     });
-    if (outcome === "fenced") return { kind: "fenced" };
-    return outcome === "ok" ? { kind: "finished", run: aborted } : { kind: "continue" };
+    return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
   }
 
   if (current.tip !== context.tip && current.run?.id === context.run.id) {
@@ -390,47 +401,70 @@ async function publishCheckpoint(
   };
   const commitOid = hashObject(commit);
   await context.session.objects.put([commit]);
-  const outcome = await publish(context.session, {
-    lease: context.lease,
-    updates: [
-      { name: headRef(context.options.head), from: context.tip, to: commitOid },
-      { name: runRef(context.options.head), from: context.runOid, to: context.runOid },
-    ],
-    reason: "checkpoint",
-  });
+  const updates: RefUpdate[] = [
+    { name: headRef(context.options.head), from: context.tip, to: commitOid },
+    { name: runRef(context.options.head), from: context.runOid, to: context.runOid },
+    ...(await compactionClearUpdates(context.session, context.options.head)),
+  ];
+  const outcome = await startSpan(
+    context.telemetry,
+    "nyte.compaction.publish",
+    {
+      "nyte.session.id": context.session.id,
+      "nyte.head": context.options.head,
+      "nyte.run.id": context.run.id,
+    },
+    async (span) => {
+      const published = await publish(context.session, {
+        lease: context.lease,
+        updates,
+        reason: "checkpoint",
+      });
+      span.setAttributes({
+        "nyte.compaction.publication": published === "ok" ? "published" : published,
+      });
+      return published;
+    },
+  );
   return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
 }
 
-/** Whether the branch tail is a user message no response has followed yet. */
+/** A user input or completion at the branch tail still needs a response. */
 async function awaitingAnswer(context: StepContext): Promise<boolean> {
   if (context.tip === null) return false;
   const tip = await context.session.objects.get(context.tip);
-  return tip?.kind === "commit" && tip.body.kind === "message" && tip.body.message.role === "user";
+  return (
+    tip?.kind === "commit" &&
+    (tip.body.kind === "completion" ||
+      (tip.body.kind === "message" && tip.body.message.role === "user"))
+  );
 }
 
 function isStepCeilingResolver(
   steps: StepOptions["steps"],
 ): steps is (run: Run) => number | undefined {
-  return typeof steps === "function";
+  return steps instanceof Function;
 }
 
 async function respond(context: StepContext): Promise<StepOutcome> {
-  if (context.run.abortRequested === true) {
-    return storeRun(context, withPhase(context.run, { kind: "aborted" }), "abort");
+  // An abort interrupts the step, not the run: a message queued for this
+  // boundary continues the run in place of the interrupted answer. The run
+  // ends only when nothing is waiting.
+  const interrupted = context.run.abortRequested === true;
+  // Answer user inputs one at a time, but include completed work at this boundary
+  // even when another user input is waiting ahead of it in the lane policy.
+  const answering =
+    !interrupted && context.options.landing.drain === "one" && (await awaitingAnswer(context));
+  for (const lane of lanesThatLand(context.options.landing, "boundary")) {
+    const next = await nextToLand(context.session, {
+      head: context.options.head,
+      lanes: [lane],
+    });
+    if (next === undefined || (answering && next.change.body.kind !== "completion")) continue;
+    return land(context, lane);
   }
-
-  // A boundary lane lands before the next response. With `drain: "one"` a
-  // landed message is answered before the next one lands, so the model reads
-  // them one at a time; `"all"` lets every pending message in.
-  const boundary = await nextToLand(context.session, {
-    head: context.options.head,
-    lanes: lanesThatLand(context.options.landing, "boundary"),
-  });
-  if (
-    boundary !== undefined &&
-    (context.options.landing.drain === "all" || !(await awaitingAnswer(context)))
-  ) {
-    return land(context, boundary.lane);
+  if (interrupted) {
+    return storeRun(context, withPhase(context.run, { kind: "aborted" }), "abort");
   }
 
   const ceiling = isStepCeilingResolver(context.options.steps)
@@ -465,8 +499,10 @@ async function respond(context: StepContext): Promise<StepOutcome> {
   const called = await callTurn(context, false, (emit, signal) =>
     context.turn.respond({
       session: context.session,
+      telemetry: context.telemetry,
       lease: context.lease,
       run: context.run,
+      now: context.now(),
       attempt: context.run.attempts + 1,
       commits,
       emit,
@@ -558,16 +594,19 @@ async function publishTools(
   const next = withPhase(context.run, options.phase);
   const views = await listEffects(context.session, context.run.id);
   await context.session.objects.put([...commits, next]);
-  const outputUpdates: RefUpdate[] = [
-    { name: headRef(context.options.head), from: context.tip, to: outputTip },
-    ...views.map((view) => ({ name: view.ref, from: view.oid, to: null })),
-  ];
+  const headUpdate: RefUpdate = {
+    name: headRef(context.options.head),
+    from: context.tip,
+    to: outputTip,
+  };
+  const effectClears = views.map((view) => ({ name: view.ref, from: view.oid, to: null }));
+  const outputUpdates: RefUpdate[] = [headUpdate, ...effectClears];
   const outcome = await publish(context.session, {
     lease: context.lease,
     updates: [
-      { name: headRef(context.options.head), from: context.tip, to: outputTip },
+      headUpdate,
       { name: runRef(context.options.head), from: context.runOid, to: hashObject(next) },
-      ...views.map((view) => ({ name: view.ref, from: view.oid, to: null })),
+      ...effectClears,
     ],
     reason: options.reason,
   });
@@ -575,11 +614,7 @@ async function publishTools(
   if (outcome === "conflict") {
     return afterConflict(context, { next, outputUpdates });
   }
-  return next.phase.kind === "aborted"
-    ? { kind: "finished", run: next }
-    : options.outcome.kind === "failed"
-      ? { kind: "finished", run: next }
-      : { kind: "continue" };
+  return options.outcome.kind === "failed" ? { kind: "finished", run: next } : { kind: "continue" };
 }
 
 async function tools(context: StepContext): Promise<StepOutcome> {
@@ -608,8 +643,10 @@ async function tools(context: StepContext): Promise<StepOutcome> {
   const called = await callTurn(context, context.run.abortRequested === true, (emit, signal) =>
     context.turn.tools({
       session: context.session,
+      telemetry: context.telemetry,
       lease: context.lease,
       run: context.run,
+      now: context.now(),
       attempt: context.run.attempts,
       commits,
       assistant,
@@ -620,12 +657,12 @@ async function tools(context: StepContext): Promise<StepOutcome> {
   if (called.kind === "fenced") return { kind: "fenced" };
   const outcome = called.outcome;
   switch (outcome.kind) {
+    case "fenced":
+      return { kind: "fenced" };
+    case "conflict":
+      return { kind: "continue" };
     case "complete":
-      return publishTools(context, {
-        outcome,
-        phase: context.run.abortRequested === true ? { kind: "aborted" } : { kind: "respond" },
-        reason: "tools",
-      });
+      return publishTools(context, { outcome, phase: { kind: "respond" }, reason: "tools" });
     case "waiting": {
       const next = withPhase(context.run, { kind: "waiting" });
       await context.session.objects.put([next]);
@@ -661,6 +698,8 @@ async function runStep(
   options: StepOptions,
   lease: Lease,
 ): Promise<StepOutcome> {
+  await options.beforeStep?.();
+  if (!(await finishCompaction(session, { head: options.head, lease }))) return { kind: "fenced" };
   const [tip, runOid, deleted] = await Promise.all([
     session.refs.read(headRef(options.head)),
     session.refs.read(runRef(options.head)),
@@ -668,16 +707,28 @@ async function runStep(
   ]);
   const run = await readRun(session, runOid);
   if (deleted !== null) return { kind: "idle" };
-  const base = {
-    session,
-    turn,
-    options,
-    lease,
-    tip,
-    runOid,
-    now: options.now ?? Date.now,
-  };
-  const idleLanes = lanesThatLand(options.landing, "idle");
+  return startSpan(
+    options.telemetry ?? NOOP_TELEMETRY_CONTEXT,
+    "nyte.step",
+    {
+      "nyte.session.id": session.id,
+      "nyte.head": options.head,
+      "nyte.run.id": run?.id,
+      "nyte.run.phase": run?.phase.kind,
+    },
+    async (telemetry) => {
+      const outcome = await advance(
+        { session, telemetry, turn, options, lease, tip, runOid, now: options.now ?? Date.now },
+        run,
+      );
+      telemetry.setAttributes({ "nyte.step.outcome": outcome.kind });
+      return outcome;
+    },
+  );
+}
+
+async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Promise<StepOutcome> {
+  const idleLanes = lanesThatLand(base.options.landing, "idle");
   if (run === undefined) return landOrIdle(base, idleLanes);
   const context: StepContext = { ...base, run };
 
@@ -691,10 +742,23 @@ async function runStep(
     case "tools":
       return tools(context);
     case "waiting": {
-      const views = await listEffects(session, run.id);
+      const views = await listEffects(context.session, run.id);
+      const now = context.now();
+      const deadlines = views.flatMap((view) =>
+        view.effect.state === "waiting" && view.effect.until !== undefined
+          ? [view.effect.until]
+          : [],
+      );
       const wake =
-        run.abortRequested === true || views.some((view) => view.effect.state === "signal");
-      return wake ? tools(context) : { kind: "waiting", run };
+        run.abortRequested === true ||
+        views.some(
+          (view) => view.effect.state === "signal" || view.effect.state === "expired",
+        ) ||
+        deadlines.some((until) => until <= now);
+      if (wake) return tools(context);
+      return deadlines.length === 0
+        ? { kind: "waiting", run }
+        : { kind: "waiting", run, until: Math.min(...deadlines) };
     }
     case "retry":
       return context.now() < run.phase.at
@@ -725,7 +789,11 @@ export async function step(
   try {
     return await runStep(session, turn, options, lease);
   } finally {
-    if (acquiredHere) await session.leases.release(lease);
+    try {
+      await finishCompaction(session, { head: options.head, lease });
+    } finally {
+      if (acquiredHere) await session.leases.release(lease);
+    }
   }
 }
 
@@ -751,11 +819,16 @@ function signalAborted(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
 }
 
+/**
+ * Steps until the head rests. A cancelled drive answers `continue` as soon as
+ * its step does: the signal that cancelled one call must not cancel the calls
+ * of the work that follows, so the runner drives again with a fresh one.
+ */
 export async function drive(
   session: Session,
   turn: Turn,
   options: Omit<StepOptions, "lease">,
-): Promise<Exclude<StepOutcome, { readonly kind: "continue" }>> {
+): Promise<StepOutcome> {
   validateLanding(options.landing);
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const acquired = await session.leases.acquire(headRef(options.head), ttlMs);
@@ -765,7 +838,10 @@ export async function drive(
     for (;;) {
       if (!(await session.leases.renew(lease, ttlMs))) return { kind: "fenced" };
       const outcome = await step(session, turn, { ...options, lease });
-      if (outcome.kind === "continue") continue;
+      if (outcome.kind === "continue") {
+        if (options.signal?.aborted === true) return outcome;
+        continue;
+      }
       if (outcome.kind === "retry") {
         if (!(await waitUntil(outcome.at, options.now ?? Date.now, options.signal))) return outcome;
         continue;

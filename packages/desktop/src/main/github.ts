@@ -1,9 +1,12 @@
 /**
  * Optional GitHub enrichment over an existing `gh` installation. The module
  * starts no work until the renderer asks for provider state, and `gh auth
- * login` runs only through the explicit sign-in verb.
+ * login` runs only through the explicit sign-in operation.
  */
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import type {
   GitHubAccount,
   GitHubProviderState,
@@ -17,7 +20,6 @@ const COMMAND_OUTPUT_LIMIT = 1_000_000;
 const DETECTION_TIMEOUT_MS = 3_000;
 const QUERY_TIMEOUT_MS = 8_000;
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
-const STATE_CACHE_MS = 30_000;
 
 export type CommandResult =
   | {
@@ -72,12 +74,20 @@ export const runProviderCommand: CommandRunner = (request) =>
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      stdout.length = 0;
+      stderr.length = 0;
+      child.stdout.destroy();
+      child.stderr.destroy();
+      if (result.kind !== "completed") {
+        child.kill("SIGKILL");
+        child.unref();
+      }
       resolveResult(result);
     };
     const collect = (target: Buffer[], chunk: Buffer): void => {
+      if (settled) return;
       outputBytes += chunk.byteLength;
       if (outputBytes > COMMAND_OUTPUT_LIMIT) {
-        child.kill();
         finish({ kind: "output_limit" });
         return;
       }
@@ -89,6 +99,7 @@ export const runProviderCommand: CommandRunner = (request) =>
       finish(errorCode(error) === "ENOENT" ? { kind: "missing" } : { kind: "failed" });
     });
     child.on("close", (code) => {
+      if (settled) return;
       finish({
         kind: "completed",
         code: code ?? -1,
@@ -97,7 +108,6 @@ export const runProviderCommand: CommandRunner = (request) =>
       });
     });
     const timer = setTimeout(() => {
-      child.kill();
       finish({ kind: "timeout" });
     }, request.timeoutMs);
   });
@@ -176,118 +186,61 @@ async function detectRepository(
   return undefined;
 }
 
-function decodeJqTsvField(encoded: string): string | undefined {
-  let decoded = "";
-  for (let index = 0; index < encoded.length; index += 1) {
-    const character = encoded.charAt(index);
-    if (character !== "\\") {
-      decoded += character;
-      continue;
-    }
-    index += 1;
-    switch (encoded.charAt(index)) {
-      case "\\":
-        decoded += "\\";
-        break;
-      case "n":
-        decoded += "\n";
-        break;
-      case "r":
-        decoded += "\r";
-        break;
-      case "t":
-        decoded += "\t";
-        break;
-      default:
-        return undefined;
-    }
-  }
-  return decoded;
-}
+const authStatusSchema = Compile(
+  Type.Array(
+    Type.Object({
+      active: Type.Boolean(),
+      state: Type.Enum(["success", "error", "timeout"]),
+    }),
+  ),
+);
+const accountSchema = Compile(
+  Type.Object({
+    login: Type.String({ minLength: 1 }),
+    name: Type.Union([Type.String(), Type.Null()]),
+    avatar_url: Type.Union([Type.String(), Type.Null()]),
+  }),
+);
+const pullRequestSchema = Compile(
+  Type.Object({
+    number: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    title: Type.String({ minLength: 1 }),
+    url: Type.String(),
+    state: Type.Enum(["OPEN", "CLOSED", "MERGED"]),
+    isDraft: Type.Boolean(),
+    headRefName: Type.String({ minLength: 1 }),
+    baseRefName: Type.String({ minLength: 1 }),
+  }),
+);
 
-/** Decode the exact `gh api --jq ... | @tsv` account projection. */
 export function decodeGitHubAccountOutput(output: string): GitHubAccount | undefined {
-  const line = output.replace(/\r?\n$/u, "");
-  if (/[\r\n]/u.test(line)) return undefined;
-  const fields = line.split("\t");
-  const loginField = fields.at(0);
-  const nameField = fields.at(1);
-  const avatarField = fields.at(2);
-  if (
-    fields.length !== 3 ||
-    loginField === undefined ||
-    nameField === undefined ||
-    avatarField === undefined
-  ) {
+  try {
+    const account = accountSchema.Parse(JSON.parse(output));
+    const avatarUrl = account.avatar_url ? httpsUrl(account.avatar_url) : undefined;
+    if (account.avatar_url && avatarUrl === undefined) return undefined;
+    return { login: account.login, name: account.name || undefined, avatarUrl };
+  } catch {
     return undefined;
   }
-  const login = decodeJqTsvField(loginField);
-  const name = decodeJqTsvField(nameField);
-  const avatar = decodeJqTsvField(avatarField);
-  if (login === undefined || login === "" || name === undefined || avatar === undefined) {
-    return undefined;
-  }
-  const avatarUrl = avatar === "" ? undefined : httpsUrl(avatar);
-  if (avatar !== "" && avatarUrl === undefined) return undefined;
-  return {
-    login,
-    name: name === "" ? undefined : name,
-    avatarUrl,
-  };
 }
 
-/** Decode the exact `gh pr view --jq ... | @tsv` pull-request projection. */
 export function decodeGitHubPullRequestOutput(output: string): GitHubPullRequest | undefined {
-  const line = output.replace(/\r?\n$/u, "");
-  if (/[\r\n]/u.test(line)) return undefined;
-  const fields = line.split("\t");
-  if (fields.length !== 7) return undefined;
-  const numberText = fields.at(0);
-  const titleField = fields.at(1);
-  const urlField = fields.at(2);
-  const state = fields.at(3);
-  const draftText = fields.at(4);
-  const headField = fields.at(5);
-  const baseField = fields.at(6);
-  if (
-    numberText === undefined ||
-    titleField === undefined ||
-    urlField === undefined ||
-    state === undefined ||
-    draftText === undefined ||
-    headField === undefined ||
-    baseField === undefined
-  ) {
+  try {
+    const pull = pullRequestSchema.Parse(JSON.parse(output));
+    const url = httpsUrl(pull.url, "github.com");
+    if (url === undefined) return undefined;
+    return {
+      number: pull.number,
+      title: pull.title,
+      url,
+      state: pull.state,
+      draft: pull.isDraft,
+      headRefName: pull.headRefName,
+      baseRefName: pull.baseRefName,
+    };
+  } catch {
     return undefined;
   }
-  const title = decodeJqTsvField(titleField);
-  const rawUrl = decodeJqTsvField(urlField);
-  const headRefName = decodeJqTsvField(headField);
-  const baseRefName = decodeJqTsvField(baseField);
-  const url = rawUrl === undefined ? undefined : httpsUrl(rawUrl, "github.com");
-  if (
-    !/^[1-9]\d*$/u.test(numberText) ||
-    title === undefined ||
-    title === "" ||
-    url === undefined ||
-    (state !== "OPEN" && state !== "CLOSED" && state !== "MERGED") ||
-    (draftText !== "true" && draftText !== "false") ||
-    headRefName === undefined ||
-    headRefName === "" ||
-    baseRefName === undefined ||
-    baseRefName === ""
-  ) {
-    return undefined;
-  }
-  return {
-    number: Number.parseInt(numberText, 10),
-    title,
-    url,
-    state,
-    draft: draftText === "true",
-    headRefName,
-    baseRefName,
-  };
 }
 
 /**
@@ -304,49 +257,69 @@ const ACTION_RECOVERY: Readonly<Record<GitHubAction, string>> = {
 };
 
 function commandFailed(result: CommandResult, action: GitHubAction): string {
-  switch (result.kind) {
-    case "missing":
-      return "Install the GitHub CLI (gh), then try again.";
-    case "timeout":
-    case "output_limit":
-    case "failed":
-    case "completed":
-      return ACTION_RECOVERY[action];
-    default: {
-      const _exhaustive: never = result;
-      return _exhaustive;
-    }
-  }
+  return result.kind === "missing"
+    ? "Install the GitHub CLI (gh), then try again."
+    : ACTION_RECOVERY[action];
 }
 
 async function accountState(
   cwd: string,
-  repository: GitHubRepository,
+  repository: GitHubRepository | undefined,
   run: CommandRunner,
 ): Promise<GitHubProviderState> {
   const auth = await run({
     command: "gh",
-    args: ["auth", "status", "--hostname", "github.com"],
-    cwd,
+    args: [
+      "auth",
+      "status",
+      "--hostname",
+      "github.com",
+      "--json",
+      "hosts",
+      "--jq",
+      '[.hosts["github.com"][] | {active, state}]',
+    ],
+    cwd: homedir(),
     timeoutMs: DETECTION_TIMEOUT_MS,
   });
   if (auth.kind === "missing") return { kind: "cli_missing", repository };
-  if (auth.kind === "completed" && auth.code !== 0) return { kind: "signed_out", repository };
   if (auth.kind !== "completed") {
-    return { kind: "error", repository, message: commandFailed(auth, "sign-in") };
+    return { kind: "error", repository, message: commandFailed(auth, "account") };
+  }
+  if (auth.code !== 0 && /unknown flag: --(?:json|jq)\b/u.test(auth.stderr)) {
+    return {
+      kind: "error",
+      repository,
+      message:
+        "Update the GitHub CLI (gh) to a version that supports `gh auth status --json`, then try again.",
+    };
+  }
+  // gh versions differ on the exit code when no accounts are configured.
+  if ((auth.code === 0 || auth.code === 1) && auth.stdout.trim() === "") {
+    return { kind: "signed_out", repository };
+  }
+  if (auth.code !== 0) {
+    return { kind: "error", repository, message: ACTION_RECOVERY.account };
+  }
+  try {
+    const active = authStatusSchema.Parse(JSON.parse(auth.stdout)).find((entry) => entry.active);
+    if (active === undefined) return { kind: "signed_out", repository };
+    // JSON mode exits zero even for invalid credentials and network failures.
+    if (active.state !== "success") {
+      return {
+        kind: "error",
+        repository,
+        message: active.state === "error" ? ACTION_RECOVERY["sign-in"] : ACTION_RECOVERY.account,
+      };
+    }
+  } catch {
+    return { kind: "error", repository, message: ACTION_RECOVERY.account };
   }
 
   const accountResult = await run({
     command: "gh",
-    args: [
-      "api",
-      "--hostname",
-      "github.com",
-      "user",
-      "--jq",
-      '[.login, (.name // ""), (.avatar_url // "")] | @tsv',
-    ],
-    cwd,
+    args: ["api", "--hostname", "github.com", "user"],
+    cwd: homedir(),
     timeoutMs: QUERY_TIMEOUT_MS,
   });
   if (accountResult.kind !== "completed" || accountResult.code !== 0) {
@@ -361,17 +334,32 @@ async function accountState(
     return { kind: "error", repository, message: ACTION_RECOVERY.account };
   }
 
+  if (repository === undefined) {
+    return { kind: "ready", repository, account, pullRequest: { kind: "none" } };
+  }
+  const branch = await run({
+    command: "git",
+    args: ["symbolic-ref", "--quiet", "--short", "HEAD"],
+    cwd,
+    timeoutMs: DETECTION_TIMEOUT_MS,
+  });
+  if (branch.kind !== "completed" || branch.code !== 0 || branch.stdout.trim() === "") {
+    const pullRequest: GitHubPullRequestContext =
+      branch.kind === "completed" && branch.code === 1
+        ? { kind: "none" }
+        : { kind: "error", message: ACTION_RECOVERY["pull-request"] };
+    return { kind: "ready", repository, account, pullRequest };
+  }
   const pullResult = await run({
     command: "gh",
     args: [
       "pr",
       "view",
+      branch.stdout.trim(),
       "--repo",
       `${repository.owner}/${repository.name}`,
       "--json",
       "number,title,url,state,isDraft,headRefName,baseRefName",
-      "--jq",
-      "[.number, .title, .url, .state, .isDraft, .headRefName, .baseRefName] | @tsv",
     ],
     cwd,
     timeoutMs: QUERY_TIMEOUT_MS,
@@ -399,82 +387,46 @@ async function accountState(
 }
 
 export interface GitHubProvider {
-  readonly state: (refresh?: boolean) => Promise<GitHubProviderState>;
+  readonly state: () => Promise<GitHubProviderState>;
   readonly signIn: () => Promise<GitHubProviderState>;
   readonly signOut: () => Promise<GitHubProviderState>;
 }
 
 export function createGitHubProvider(
-  cwd: string,
+  workspace: string | undefined,
   run: CommandRunner = runProviderCommand,
 ): GitHubProvider {
-  let cached: { readonly at: number; readonly state: GitHubProviderState } | undefined;
-  let inFlight: Promise<GitHubProviderState> | undefined;
+  const cwd = workspace ?? homedir();
+  const repository = () =>
+    workspace === undefined ? Promise.resolve(undefined) : detectRepository(cwd, run);
+  const state = async (): Promise<GitHubProviderState> =>
+    accountState(cwd, await repository(), run);
 
-  const load = async (): Promise<GitHubProviderState> => {
-    const repository = await detectRepository(cwd, run);
-    if (repository === undefined) return { kind: "not_github" };
-    return accountState(cwd, repository, run);
-  };
-
-  const state = (refresh = false): Promise<GitHubProviderState> => {
-    if (!refresh && cached !== undefined && Date.now() - cached.at < STATE_CACHE_MS) {
-      return Promise.resolve(cached.state);
-    }
-    if (!refresh && inFlight !== undefined) return inFlight;
-    const request = load().then((next) => {
-      cached = { at: Date.now(), state: next };
-      return next;
+  const changeAuth = async (action: "sign-in" | "sign-out"): Promise<GitHubProviderState> => {
+    const result = await run({
+      command: "gh",
+      args:
+        action === "sign-in"
+          ? [
+              "auth",
+              "login",
+              "--hostname",
+              "github.com",
+              "--web",
+              "--clipboard",
+              "--git-protocol",
+              "https",
+              "--skip-ssh-key",
+            ]
+          : ["auth", "logout", "--hostname", "github.com"],
+      cwd: homedir(),
+      timeoutMs: action === "sign-in" ? SIGN_IN_TIMEOUT_MS : QUERY_TIMEOUT_MS,
     });
-    inFlight = request;
-    void request.finally(() => {
-      if (inFlight === request) inFlight = undefined;
-    });
-    return request;
+    if (result.kind === "completed" && result.code === 0) return state();
+    const detected = await repository();
+    return result.kind === "missing"
+      ? { kind: "cli_missing", repository: detected }
+      : { kind: "error", repository: detected, message: commandFailed(result, action) };
   };
-
-  return {
-    state,
-    async signIn() {
-      const repository = await detectRepository(cwd, run);
-      if (repository === undefined) return { kind: "not_github" };
-      const result = await run({
-        command: "gh",
-        args: [
-          "auth",
-          "login",
-          "--hostname",
-          "github.com",
-          "--web",
-          "--git-protocol",
-          "https",
-          "--skip-ssh-key",
-        ],
-        cwd,
-        timeoutMs: SIGN_IN_TIMEOUT_MS,
-      });
-      if (result.kind === "missing") return { kind: "cli_missing", repository };
-      if (result.kind !== "completed" || result.code !== 0) {
-        return { kind: "error", repository, message: commandFailed(result, "sign-in") };
-      }
-      cached = undefined;
-      return state(true);
-    },
-    async signOut() {
-      const repository = await detectRepository(cwd, run);
-      if (repository === undefined) return { kind: "not_github" };
-      const result = await run({
-        command: "gh",
-        args: ["auth", "logout", "--hostname", "github.com"],
-        cwd,
-        timeoutMs: QUERY_TIMEOUT_MS,
-      });
-      if (result.kind === "missing") return { kind: "cli_missing", repository };
-      if (result.kind !== "completed" || result.code !== 0) {
-        return { kind: "error", repository, message: commandFailed(result, "sign-out") };
-      }
-      cached = undefined;
-      return state(true);
-    },
-  };
+  return { state, signIn: () => changeAuth("sign-in"), signOut: () => changeAuth("sign-out") };
 }

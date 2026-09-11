@@ -87,6 +87,17 @@ export class TerminalSessions {
     this.processes.get(input.id)?.process.resize(input.cols, input.rows);
   }
 
+  /**
+   * The pty names the foreground process group leader, so an idle prompt reports the
+   * shell itself. Windows reports the spawned file instead, so it never claims idle.
+   */
+  idle(input: { readonly id: string }): boolean {
+    const entry = this.processes.get(input.id);
+    if (entry === undefined) return true;
+    if (process.platform === "win32") return false;
+    return basename(entry.process.process) === basename(this.shell);
+  }
+
   acknowledge(input: { readonly id: string; readonly length: number }): void {
     const entry = this.processes.get(input.id);
     if (entry === undefined) return;

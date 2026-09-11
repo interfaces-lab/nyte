@@ -5,10 +5,10 @@ description: The product Electron app composes createNyte. The demo desktop was 
 
 There are two Electron apps in this repo. They are not the same product.
 
-| Path                    | Package                 | What it is                                                                                       |
-| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `packages/desktop`      | `@nyte-ai/desktop`      | The product app. Main process hosts `createNyte`. Renderer talks SDK verbs over `window.nyte`.   |
-| `packages/demo/desktop` | `@nyte-ai/demo-desktop` | The leftover demo. Per-agent conversations and snapshots over the old harness, which is deleted. |
+| Path                    | Package                 | What it is                                                                                          |
+| ----------------------- | ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `packages/desktop`      | `@nyte-ai/desktop`      | The product app. Main process hosts `createNyte`. Renderer talks SDK operations over `window.nyte`. |
+| `packages/demo/desktop` | `@nyte-ai/demo-desktop` | The leftover demo. Per-agent conversations and snapshots over the old harness, which is deleted.    |
 
 Root `pnpm dev` still starts the **demo**. Until that script moves, start the product app from its package:
 
@@ -17,9 +17,9 @@ pnpm --dir packages/desktop dev
 pnpm --dir packages/demo/desktop dev   # also: pnpm dev
 ```
 
-The product desktop keeps workspace history in `~/.nyte/workspaces/<path-hash>/sessions.db`.
-On first open, it imports an existing `<workspace>/.nyte/sessions.db` with a SQLite backup and leaves
-the original intact. Later desktop chats use the local copy. `NYTE_HOME` overrides `~/.nyte`.
+Desktop and the TUI share one store per workspace at `~/.nyte/workspaces/<path-hash>/sessions.db`.
+On first open, a client imports an existing `<workspace>/.nyte/sessions.db` with a SQLite backup and
+leaves the original intact. `NYTE_HOME` overrides `~/.nyte`.
 Missing folders stay in the sidebar with dimmed names, and their saved chats remain available.
 Trust grants live in `~/.nyte/trust.json`, so a folder you trusted in the terminal stays trusted here.
 
@@ -29,21 +29,83 @@ Opening a workspace loads local history without checking trust. Sending resolves
 core and requests trust before loading project code. A missing path fails the send, which stays in
 the outbox for retry. The main process loads the same plugin set as the TUI (`system-prompt`,
 `rename`, `context-files`, `tools-fs`, `fast-mode`, `web-search` and its provider plugins,
-`skills`, plus user and project dirs), then `createNyte` and `attach()`. One workspace at a time.
+`skills`, plus user and project dirs), then `createNyte`. Runners attach per session. Switching
+workspaces keeps earlier sessions and their jobs open.
 
-The renderer never imports `@nyte-ai/core`. IPC is one `nyte:call` channel: verb path plus one input object,
-the same namespaces as the in-process SDK (`sessions`, `messages`, `runs`, `heads`, `workspace`,
+The renderer never imports `@nyte-ai/core`. IPC is one `nyte:call` channel: operation path plus one input object,
+the same namespaces as the in-process SDK (`sessions`, `messages`, `jobs`, `runs`, `heads`, `workspace`,
 `provider`, `plugins`). `watch` cannot be an AsyncIterable across IPC, so it is a start/stop pump with the
 same `afterSeq` / `live` cursors.
 
 What you get in the UI today: session list, composer send, plugin slash commands, abort, a pending strip
 with cancel and redeliver, and a context gauge from `runs.context`. What the bridge already exposes but the
 renderer does not draw: the session tree, `/usage` card, and run-end notifications. Those are TUI surfaces,
-not missing SDK verbs.
+not missing SDK operations.
 
-The renderer imports controls from `@nyte-ai/ui` and product-specific headless composites from
-`@nyte-ai/ui/primitives`. Desktop keeps Cursor-specific layout and StyleX overrides locally; the shared
-package owns the Base UI dependency, accessible interaction contracts, and reusable control defaults.
+The renderer imports controls from `@nyte-ai/ui` and each product-specific headless namespace from its
+direct component subpath, such as `@nyte-ai/ui/popover`. Desktop keeps Cursor-specific layout and StyleX
+overrides locally; the shared package owns the Base UI dependency, accessible interaction contracts,
+and reusable control defaults.
+
+## Subagent models
+
+The parent chooses an exact available `provider/model` for each delegated task. Tell it which
+model to use, or let it choose. There is no General/Explore task type or global subagent model
+setting. Unavailable models fail without substitution.
+
+Child sessions stay out of the sidebar and chat search. Inspect their progress and results from
+the parent task or jobs panel.
+
+## Web search
+
+TUI and desktop share the web-search plugin and saved search credentials. In `auto`, search
+prefers providers with keys and keeps the selected route for the session, including after a restart.
+HTTP 429 can switch to another eligible provider, once per provider per call. Keyed searches never
+fall back to anonymous access. Explicit provider selections never fail over.
+
+Before the first anonymous request, the run waits for a choice: allow automatic search, choose an
+installed provider, or turn search off. TUI uses its OpenTUI selection dialog; desktop shows consent
+controls above the composer. Escape, ordinary messages, and closing the client do not approve search.
+The choice is remembered for that session. Headless clients must reply through `runs.reply`.
+
+Search results identify the provider, credential source, and any rate-limit failover, without exposing
+keys. Routing details belong in the settings dialog, not the TUI footer. `/websearch-key <provider> [key]`
+saves a key; omitting the key removes the saved credential. Environment keys still apply, and a
+terminal-only environment variable may not reach the desktop app.
+
+## Jobs
+
+Each chat has a Jobs panel above the composer. It lists commands and subagents, their foreground or
+background mode, state, and expandable output. Running foreground jobs have **Run in background**
+and **Cancel job** buttons. Background jobs keep **Cancel job**; finished jobs keep their output.
+These buttons remain available while the parent run is parked. They target a job, not the entire run.
+
+```text
+Jobs panel -> window.nyte.jobs -> validated IPC -> owning workspace SDK
+job event  -> refresh jobs list
+```
+
+The panel refreshes on job events and polls every two seconds while mounted. Closing it or switching
+chats does not cancel work. Closing the owning host interrupts live jobs; recovery retains their
+records without rerunning them. Terminal background results arrive as user messages when the parent
+head is idle. Background agents inherit workspace trust and are not offered tools marked
+`availability: "foreground"`, regardless of tool name or whether a particular wait carries a
+selection.
+
+## GitHub account
+
+Accounts uses the installed GitHub CLI, including at Home without an open workspace. Browser
+sign-in copies the CLI's one-time code to the clipboard. Sign-out removes the shared CLI login,
+so it also affects terminal commands and other apps using that login. Local Git does not require it.
+
+Both dev and compiled desktop startup recover POSIX PATH from a bounded login-shell probe before
+starting the host. Windows keeps its inherited environment. Recovery reads only PATH; shell-only
+GitHub tokens and configuration overrides are not imported. Use `gh auth login` for stored CLI credentials.
+
+Set `NYTE_OTEL_ENDPOINT` in the app's launch environment to enable the existing OTLP exporter.
+GitHub commands emit `desktop.github.command` spans with an allowlisted operation, outcome,
+exit code, and duration. They never include command output, arguments, credentials, device codes,
+repository paths, or environment values. Export is off when the endpoint is unset.
 
 ## Demo desktop
 

@@ -3,6 +3,12 @@
  * a renderer, so tests can assert against them directly.
  */
 import process from "node:process";
+import { stringifyKeyStroke } from "@opentui/keymap";
+import type { KeyStrokeInput } from "@opentui/keymap";
+import { defaultBindingParser } from "@opentui/keymap/addons";
+
+/** Acceptance modes used by the slash command API, including mouse activation. */
+export const COMPLETION_METHODS = { accept: "return", fill: "tab" } as const;
 
 /**
  * The default key for each chat command, and the list of chat commands.
@@ -11,7 +17,18 @@ import process from "node:process";
  * key that no longer does anything.
  */
 export const CHAT_KEYBINDS = {
+  "chat.submit": "return,kpenter",
+  "chat.quit": "ctrl+c",
+  "completion.accept": `${COMPLETION_METHODS.accept},kpenter`,
+  "completion.fill": COMPLETION_METHODS.fill,
+  "completion.close": "escape",
+  "completion.previous": "up",
+  "completion.next": "down",
+  "completion.page.up": "pageup",
+  "completion.page.down": "pagedown",
   "chat.interrupt": "escape",
+  // Ctrl+B belongs to textarea cursor movement; Ctrl+Z is unbound in OpenTUI.
+  "chat.job.background": "ctrl+z",
   "chat.scroll.page.up": "pageup",
   "chat.scroll.page.down": "pagedown",
   "chat.message.previous": "ctrl+up",
@@ -38,9 +55,63 @@ export const CHAT_KEYBINDS = {
   "chat.commands.open": "ctrl+k",
   "chat.history.previous": "up",
   "chat.history.next": "down",
+  "composer.newline": "shift+return,shift+kpenter,meta+return,meta+kpenter,ctrl+j",
+  "picker.accept": "return",
+  "picker.close": "escape",
+  "picker.previous": "up,ctrl+p,shift+tab",
+  "picker.next": "down,ctrl+n,tab",
+  "picker.page.up": "pageup",
+  "picker.page.down": "pagedown",
+  "model.previous": "up,ctrl+p",
+  "model.next": "down,ctrl+n",
+  "model.decrease": "left",
+  "model.increase": "right",
+  "model.field.cycle": "tab,shift+tab",
+  "tree.close": "escape,ctrl+c",
+  "tree.page.up": "left,pageup",
+  "tree.page.down": "right,pagedown",
+  "tree.fold": "meta+left",
+  "tree.unfold": "meta+right",
+  "tree.filter.default": "ctrl+d",
+  "tree.filter.tools": "ctrl+t",
+  "tree.filter.users": "ctrl+u",
+  "tree.filter.all": "ctrl+a",
+  "tree.filter.next": "ctrl+o",
+  "tree.filter.previous": "ctrl+shift+o",
+  "tree.copy": "ctrl+x",
+  "auth.cancel": "escape,ctrl+c",
+  "auth.submit": "return",
+  "workspace.trust": "a",
+  "workspace.decline": "q,escape",
+  "workspace.accept": "return",
+  "workspace.toggle": "up,down,tab,shift+tab",
 } as const satisfies Readonly<Record<string, string>>;
 
 export type ChatCommand = keyof typeof CHAT_KEYBINDS;
+
+/** Parse single-stroke alternatives with the installed keymap grammar, not a second parser. */
+export function keyStrokes(command: ChatCommand): readonly KeyStrokeInput[] {
+  return CHAT_KEYBINDS[command].split(",").map((input) => {
+    const parsed = defaultBindingParser({
+      input,
+      index: 0,
+      layer: {},
+      tokens: new Map(),
+      patterns: new Map(),
+      normalizeTokenName: (name) => name,
+      createMatch: (id) => id,
+      parseObjectKey: (key) => {
+        const stroke = { ctrl: false, shift: false, meta: false, super: false, ...key };
+        const match = stringifyKeyStroke(stroke);
+        return { stroke, match, display: match };
+      },
+    });
+    const part = parsed?.parts[0];
+    if (part === undefined || parsed?.parts.length !== 1 || parsed.nextIndex !== input.length)
+      throw new Error(`Expected a single key stroke for ${command}: ${input}`);
+    return part.stroke;
+  });
+}
 
 /** Keycaps read the way they are printed: `esc` and `enter`, not `escape` and `return`. */
 const KEYCAP_NAMES: Readonly<Record<"escape" | "return", string>> = {
@@ -53,16 +124,20 @@ function isKeycapName(name: string): name is keyof typeof KEYCAP_NAMES {
 }
 
 /** The first of a command's keys, which is the one worth advertising. */
-export function keycap(command: ChatCommand): string {
+export function keycap(command: ChatCommand, style?: "symbol"): string {
   const [primary = ""] = CHAT_KEYBINDS[command].split(",");
+  if (style === "symbol")
+    return primary.replace(
+      /up|down|left|right|return/gu,
+      (name) => ({ up: "↑", down: "↓", left: "←", right: "→", return: "↵" })[name] ?? name,
+    );
   return primary.replace(/[^+]+$/u, (name) => (isKeycapName(name) ? KEYCAP_NAMES[name] : name));
 }
 
-export const IDLE_HINTS = `${keycap("chat.commands.open")} commands · ${keycap("chat.model.next")} model · ${keycap("chat.thinking.cycle")} thinking · ${keycap("chat.editor.open")} editor`;
-export const CTRL_C_EXIT_HINT = "ctrl+c again to quit";
 export const COMPOSER_PLACEHOLDER = "Plan, search, build anything";
-export const BUSY_COMPOSER_PLACEHOLDER = "Add a follow-up";
-export const ANSWER_COMPOSER_PLACEHOLDER = "Type an answer, or press Enter to pick one";
+/** Enter steers the live run; the hint row names the queue key. */
+export const BUSY_COMPOSER_PLACEHOLDER = "Steer the run";
+export const ANSWER_COMPOSER_PLACEHOLDER = `Type an answer, or press ${keycap("picker.accept").replace(/^./u, (letter) => letter.toUpperCase())} to pick one`;
 
 /** Fixed transcript vocabulary and layout values. */
 export const ACTIVITY_WORKING_LABEL = " Working";
@@ -80,6 +155,8 @@ export const ACTIVITY_RETRY_LABEL = " Retrying";
 export const MIN_REPORTED_DURATION_MS = 50;
 export const RESULT_PREVIEW_LINES = 3;
 export const RESULT_TAIL_LINES = 3;
+/** Rows a tail-only preview keeps; the label sits above them. */
+export const RESULT_TAIL_ONLY_LINES = 6;
 export const TOOL_INLINE_PREVIEW_LENGTH = 96;
 
 /**
@@ -148,22 +225,19 @@ export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", 
 export const SPINNER_INTERVAL_MS = 130;
 
 /**
+ * Rows a delegation card reserves from its first frame to its last. Its
+ * height never answers to content: a card that grew while the child worked
+ * and shrank when it settled would move every line below it, twice.
+ */
+export const DELEGATION_ROWS = 3;
+
+/**
  * The gutter's last row: the key that opens what is waiting, plus any rows the
  * height cap had to hide.
  */
 export function pendingHint(hidden: number): string {
   const open = `${keycap("chat.queue.open")} pending`;
   return hidden > 0 ? `+${String(hidden)} more · ${open}` : open;
-}
-
-/** Pressing a key and the state it produces read as the same word. */
-export function busyHints(lanes: { readonly steer: string; readonly queue: string }): string {
-  return `${keycap("chat.interrupt")} stop · enter ${lanes.steer} · ${keycap("chat.queue.submit")} ${lanes.queue}`;
-}
-
-/** While a call is parked on a question, Enter answers it; the queue lane still queues. */
-export function answerHints(lanes: { readonly queue: string }): string {
-  return `${keycap("chat.interrupt")} stop · enter answer · ${keycap("chat.queue.submit")} ${lanes.queue}`;
 }
 
 export const WORKSPACE_TRUST_TITLE = "Workspace Trust Required";

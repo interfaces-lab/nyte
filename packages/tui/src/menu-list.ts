@@ -1,3 +1,4 @@
+import { matchesKey, matchesKeyName } from "./keymap.ts";
 import { createTextAttributes, parseColor, Renderable, ScrollBoxRenderable } from "@opentui/core";
 import type {
   CliRenderer,
@@ -7,6 +8,7 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
+import type { Choice } from "@nyte-ai/core";
 import { GLYPHS } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
@@ -18,14 +20,13 @@ function truncate(text: string, width: number): string {
 
 export interface MenuStatus {
   readonly text: string;
-  readonly tone: "dim" | "ok";
+  readonly tone: "dim" | "ok" | "running" | "warning" | "error" | "muted";
 }
 
-export interface MenuItem {
-  readonly id: string;
-  readonly label: string;
-  readonly description?: string;
+export interface MenuItem extends Choice {
   readonly status?: MenuStatus;
+  /** One colored glyph before the label, such as a task's state. */
+  readonly mark?: MenuStatus;
 }
 
 interface MenuListOptions {
@@ -45,6 +46,7 @@ interface MenuListOptions {
 
 /** Prefix (`❯ ` on the selected row) plus the gap between label and description. */
 const PREFIX_WIDTH = 2;
+const MARK_WIDTH = 2;
 const LABEL_GAP = 4;
 /** Below this, a complete label is worth more than a clipped second column. */
 const DETAIL_MIN_WIDTH = 48;
@@ -53,6 +55,7 @@ interface MenuRowsOptions extends RenderableOptions<MenuRows> {
   readonly theme: CliTheme;
   readonly background: string;
   readonly onSelectionChanged: (index: number) => void;
+  readonly viewport: ScrollBoxRenderable["viewport"];
 }
 
 /**
@@ -63,6 +66,9 @@ interface MenuRowsOptions extends RenderableOptions<MenuRows> {
 class MenuRows extends Renderable {
   private items: readonly MenuItem[] = [];
   private selected = 0;
+  private widestLabel = 0;
+  private marked = false;
+  private readonly viewport: ScrollBoxRenderable["viewport"];
   private hovered: number | undefined;
   private readonly notifySelectionChanged: (index: number) => void;
   private rowBackground: RGBA;
@@ -70,20 +76,19 @@ class MenuRows extends Renderable {
   private selectedForeground: RGBA;
   private hoverBackground: RGBA;
   private foreground: RGBA;
-  private dim: RGBA;
-  private ok: RGBA;
+  private tones: Record<MenuStatus["tone"], RGBA>;
   private readonly boldAttributes = createTextAttributes({ bold: true });
 
   constructor(ctx: CliRenderer, options: MenuRowsOptions) {
     super(ctx, options);
     this.notifySelectionChanged = options.onSelectionChanged;
+    this.viewport = options.viewport;
     this.rowBackground = parseColor(options.background);
     this.selectedBackground = parseColor(options.theme.selectionBackground);
     this.selectedForeground = parseColor(options.theme.selectionForeground);
     this.hoverBackground = parseColor(options.theme.hover);
     this.foreground = parseColor(options.theme.foreground);
-    this.dim = parseColor(options.theme.dim);
-    this.ok = parseColor(options.theme.ok);
+    this.tones = toneColors(options.theme);
   }
 
   retheme(theme: CliTheme, background: string): void {
@@ -92,14 +97,15 @@ class MenuRows extends Renderable {
     this.selectedForeground = parseColor(theme.selectionForeground);
     this.hoverBackground = parseColor(theme.hover);
     this.foreground = parseColor(theme.foreground);
-    this.dim = parseColor(theme.dim);
-    this.ok = parseColor(theme.ok);
+    this.tones = toneColors(theme);
     this.requestRender();
   }
 
   setItems(items: readonly MenuItem[], selectedIndex: number): void {
     this.hovered = undefined;
     this.items = items;
+    this.widestLabel = items.reduce((width, item) => Math.max(width, displayWidth(item.label)), 0);
+    this.marked = items.some((item) => item.mark !== undefined);
     this.height = Math.max(1, items.length);
     this.setSelectedIndex(selectedIndex);
     this.requestRender();
@@ -139,9 +145,23 @@ class MenuRows extends Renderable {
     if (!this.visible) return;
     const left = this.x;
     const top = this.y;
-    buffer.fillRect(left, top, this.width, this.height, this.rowBackground);
-    const labelColumn = this.labelColumnWidth(this.width - PREFIX_WIDTH);
-    for (const [index, item] of this.items.entries()) {
+    const first = Math.max(0, this.viewport.screenY - this.screenY, -top);
+    const end = Math.min(
+      this.height,
+      this.viewport.screenY + this.viewport.height - this.screenY,
+      buffer.height - top,
+    );
+    if (end > first)
+      buffer.fillRect(left, top + first, this.width, end - first, this.rowBackground);
+    const markWidth = this.marked ? MARK_WIDTH : 0;
+    const labelLeft = left + PREFIX_WIDTH + markWidth;
+    const labelColumn = Math.max(
+      1,
+      Math.min(this.widestLabel, this.width - PREFIX_WIDTH - markWidth),
+    );
+    for (let index = first; index < end; index += 1) {
+      const item = this.items[index];
+      if (item === undefined) continue;
       const selected = index === this.selected;
       const background = selected
         ? this.selectedBackground
@@ -156,28 +176,37 @@ class MenuRows extends Renderable {
         selected ? this.selectedForeground : this.foreground,
         background,
       );
+      if (item.mark !== undefined) {
+        buffer.drawText(
+          padDisplay(truncate(item.mark.text, MARK_WIDTH), MARK_WIDTH),
+          left + PREFIX_WIDTH,
+          top + index,
+          this.tones[item.mark.tone],
+          background,
+        );
+      }
       buffer.drawText(
         padDisplay(truncate(item.label, labelColumn), labelColumn),
-        left + PREFIX_WIDTH,
+        labelLeft,
         top + index,
         selected ? this.selectedForeground : this.foreground,
         background,
         selected ? this.boldAttributes : undefined,
       );
-      const width = this.width - PREFIX_WIDTH - labelColumn - LABEL_GAP;
+      const width = this.width - PREFIX_WIDTH - markWidth - labelColumn - LABEL_GAP;
       const description = item.description ?? "";
       const separator = description === "" || item.status === undefined ? "" : " · ";
       const detail = `${description}${separator}${item.status?.text ?? ""}`;
       if (this.width < DETAIL_MIN_WIDTH || detail === "" || width <= 0) continue;
-      const descriptionLeft = left + PREFIX_WIDTH + labelColumn;
+      const descriptionLeft = labelLeft + labelColumn;
       buffer.drawText(
         `${" ".repeat(LABEL_GAP)}${truncate(detail, width)}`,
         descriptionLeft,
         top + index,
-        selected ? this.selectedForeground : this.dim,
+        selected ? this.selectedForeground : this.tones.dim,
         background,
       );
-      if (item.status?.tone === "ok") {
+      if (item.status !== undefined && item.status.tone !== "dim") {
         const statusOffset = displayWidth(`${description}${separator}`);
         const statusWidth = width - statusOffset;
         if (statusWidth > 0) {
@@ -185,18 +214,24 @@ class MenuRows extends Renderable {
             truncate(item.status.text, statusWidth),
             descriptionLeft + LABEL_GAP + statusOffset,
             top + index,
-            selected ? this.selectedForeground : this.ok,
+            selected ? this.selectedForeground : this.tones[item.status.tone],
             background,
           );
         }
       }
     }
   }
+}
 
-  private labelColumnWidth(contentWidth: number): number {
-    const widest = Math.max(0, ...this.items.map((item) => displayWidth(item.label)));
-    return Math.max(1, Math.min(widest, contentWidth));
-  }
+function toneColors(theme: CliTheme): Record<MenuStatus["tone"], RGBA> {
+  return {
+    dim: parseColor(theme.dim),
+    ok: parseColor(theme.ok),
+    running: parseColor(theme.running),
+    warning: parseColor(theme.warning),
+    error: parseColor(theme.error),
+    muted: parseColor(theme.muted),
+  };
 }
 
 /**
@@ -235,6 +270,7 @@ export class MenuList {
       height: 1,
       theme: options.theme,
       background: options.background,
+      viewport: this.container.viewport,
       onSelectionChanged: (index) => {
         this.scrollIntoView(index);
         const item = this.items[index];
@@ -254,6 +290,10 @@ export class MenuList {
 
   get selectedIndex(): number {
     return this.rows.getSelectedIndex();
+  }
+
+  set selectedIndex(index: number) {
+    this.rows.setSelectedIndex(index);
   }
 
   get selectedItem(): MenuItem | undefined {
@@ -286,21 +326,29 @@ export class MenuList {
   /** Arrow, emacs and tab navigation plus paging. Enter and plain letters are the caller's. */
   handleNavigationKey(key: KeyEvent): boolean {
     if (this.items.length === 0) return false;
+    if (matchesKey("picker.previous", key, "required")) return this.navigate("previous");
+    if (matchesKey("picker.next", key, "required")) return this.navigate("next");
+    if (matchesKeyName("picker.page.up", key)) return this.navigate("page-up");
+    if (matchesKeyName("picker.page.down", key)) return this.navigate("page-down");
+    return false;
+  }
+
+  navigate(direction: "previous" | "next" | "page-up" | "page-down"): boolean {
+    if (this.items.length === 0) return false;
     const page = Math.max(1, this.maxVisible - 1);
-    if (key.name === "up" || (key.name === "p" && key.ctrl) || (key.name === "tab" && key.shift)) {
-      this.rows.moveBy(-1);
-    } else if (
-      key.name === "down" ||
-      (key.name === "n" && key.ctrl) ||
-      (key.name === "tab" && !key.shift)
-    ) {
-      this.rows.moveBy(1);
-    } else if (key.name === "pageup") {
-      this.rows.setSelectedIndex(Math.max(0, this.selectedIndex - page));
-    } else if (key.name === "pagedown") {
-      this.rows.setSelectedIndex(Math.min(this.items.length - 1, this.selectedIndex + page));
-    } else {
-      return false;
+    switch (direction) {
+      case "previous":
+        this.rows.moveBy(-1);
+        break;
+      case "next":
+        this.rows.moveBy(1);
+        break;
+      case "page-up":
+        this.rows.setSelectedIndex(Math.max(0, this.selectedIndex - page));
+        break;
+      case "page-down":
+        this.rows.setSelectedIndex(Math.min(this.items.length - 1, this.selectedIndex + page));
+        break;
     }
     return true;
   }

@@ -1,26 +1,23 @@
 /**
- * Web search as opencode v2 arranges it: a tool that owns routing and
- * formatting, and one plugin per provider that joins it. The tool knows
- * nothing about Exa or Tavily; it asks the providers that registered.
+ * Shared search policy for every host. Auto prefers keyed providers and keeps
+ * its route in session storage. Only HTTP 429 can move it to another eligible
+ * provider; explicit selections never fail over. Anonymous requests require
+ * a durable user reply before any query leaves the host.
  *
- * Routing is the `websearch-provider` setting, opencode's `websearch:provider`
- * KV entry. `auto` is its `random` with one change the user asked for: a
- * provider that has a key is preferred over one that does not, and only when
- * several are keyed, or none are, does the choice become random. `off` is
- * opencode's `false` selection, and it withholds the tool rather than failing
- * the call, so a model never sees a capability the user turned off.
- *
- * Keys are host-owned. They ride `/websearch-key <provider> [key]` or the
- * provider's environment variable, and never enter the conversation.
- *
- * Based on https://github.com/anomalyco/opencode/blob/v2/packages/core/src/tool/plugin/websearch.ts
- * and https://github.com/anomalyco/opencode/blob/v2/packages/core/src/websearch.ts
+ * Based on https://github.com/anomalyco/opencode/tree/v2/packages/core/src/websearch.ts
  */
 import process from "node:process";
-import { definePlugin, ToolError } from "@nyte-ai/plugin";
-import type { AgentTool, SessionApi, SettingChoice } from "@nyte-ai/plugin";
+import {
+  acceptsSelectionReply,
+  definePlugin,
+  selectionReply,
+  ToolError,
+  ToolWait,
+} from "@nyte-ai/plugin";
+import type { AgentTool, Selection, SessionApi } from "@nyte-ai/plugin";
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { exaPlugin } from "./exa.ts";
 import { firecrawlPlugin } from "./firecrawl.ts";
 import { parallelPlugin } from "./parallel.ts";
@@ -31,7 +28,6 @@ import {
   WEB_SEARCH_TOOL_NAME,
   WebSearchRequestError,
   webSearchProviders,
-  withWebSearchChoice,
   type WebSearchProvider,
   type WebSearchProviderCarrier,
   type WebSearchResult,
@@ -39,6 +35,8 @@ import {
 
 export const WEB_SEARCH_PLUGIN_ID = "web-search";
 export const PROVIDER_KEY = "provider";
+const ROUTE_KEY = "route";
+const CONSENT_KEY = "anonymous-consent";
 /** Pick a keyed provider when there is one, otherwise pick at random. */
 export const WEB_SEARCH_AUTO = "auto";
 export const NO_RESULTS = "No search results found. Please try a different query.";
@@ -52,11 +50,47 @@ export const webSearchParameters = Type.Object(
 
 export type WebSearchQuery = Static<typeof webSearchParameters>;
 
+/** What an anonymous search parks on: the same choices the setting offers, plus the query at stake. */
+export function webSearchConsent(
+  query: string,
+  providers: readonly WebSearchProvider[],
+): Selection {
+  return {
+    title: `Allow anonymous web search for “${query}” in this session?`,
+    choices: [
+      {
+        id: WEB_SEARCH_AUTO,
+        label: "Allow automatic search",
+        description:
+          "Send search queries to installed search providers without a key. Switch providers on rate limits.",
+      },
+      ...providers.map((provider) => ({
+        id: provider.id,
+        label: `Use ${provider.name}`,
+        description: `Send search queries only to ${provider.name}. Remember this choice for this session.`,
+      })),
+      {
+        id: WEB_SEARCH_OFF,
+        label: "Off",
+        description: "Do not search. Hide the web search tool for this session.",
+      },
+    ],
+  };
+}
+
 /** What a client renders beside the call: who answered, and what they found. */
 export interface WebSearchDetails {
   readonly provider: string;
   readonly results: readonly WebSearchResult[];
+  readonly mode: "auto" | "explicit";
+  readonly credential: SearchCredential["source"];
+  /** Providers that returned HTTP 429 before this attempt. Never includes keys or raw errors. */
+  readonly rateLimited: readonly string[];
 }
+
+type SearchCredential =
+  | { readonly source: "anonymous"; readonly key: undefined }
+  | { readonly source: "saved key" | "environment key"; readonly key: string };
 
 export interface WebSearchCredentials {
   read(provider: string): Promise<string | undefined>;
@@ -79,19 +113,8 @@ export const webSearchDescription = `Search the web using the user's selected se
 
 The current year is ${String(new Date().getFullYear())}. Use this year when searching for recent information or current events.`;
 
-/** The runtime validated `params`; whitespace is the one thing the schema lets through. */
-function parseQuery(params: WebSearchQuery): string {
-  const query = params.query.trim();
-  if (query === "") throw new Error("Web search needs a non-empty query");
-  return query;
-}
-
 function present(value: string | undefined): string | undefined {
   return value === undefined || value === "" ? undefined : value;
-}
-
-function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
 }
 
 /** opencode's rendering of a result set, and its wording when there are none. */
@@ -124,76 +147,6 @@ function failureMessage(error: WebSearchRequestError, query: string): string {
   }
 }
 
-/** What the tool asks its host at call time, so routing reads live state, not a snapshot. */
-export interface WebSearchContext {
-  /** The providers on the rebuilt tool. Read per call: provider plugins join after this one. */
-  providers(): readonly WebSearchProvider[];
-  /** The stored routing choice: a provider id, `auto`, or `off`. */
-  selection(): Promise<string>;
-  /** A stored or environment key, or `undefined` for the provider's keyless route. */
-  key(provider: WebSearchProvider): Promise<string | undefined>;
-  /** Which provider answers when the choice is `auto`. */
-  route(providers: readonly WebSearchProvider[]): Promise<WebSearchProvider>;
-  /**
-   * opencode attaches the cause to its `ToolFailure` for logs while the model
-   * reads only the message. Nyte's equivalent of that second channel is a
-   * diagnostic, so the cause goes here and never into the transcript.
-   */
-  warn(message: string): void;
-}
-
-export function createWebSearchTool(
-  context: WebSearchContext,
-  fetch: typeof globalThis.fetch,
-): AgentTool<typeof webSearchParameters, WebSearchDetails> & WebSearchProviderCarrier {
-  return {
-    name: WEB_SEARCH_TOOL_NAME,
-    description: webSearchDescription,
-    parameters: webSearchParameters,
-    promptSnippet: "Search the web for current information",
-    replay: "safe",
-    providers: [],
-    async execute(_toolCallId, params, signal, onUpdate) {
-      const query = parseQuery(params);
-      const providers = context.providers();
-      if (providers.length === 0) throw new Error("No web search provider is installed");
-      const chosen = await context.selection();
-      const explicit = providers.find((provider) => provider.id === chosen);
-      const provider = explicit ?? (await context.route(providers));
-      onUpdate?.({
-        content: [{ type: "text", text: `Searching with ${provider.name}…` }],
-        details: { provider: provider.id, results: [] },
-        title: query,
-      });
-      try {
-        const results = await provider.execute({
-          query,
-          key: await context.key(provider),
-          fetch,
-          signal,
-        });
-        return {
-          content: [{ type: "text", text: formatResults(results) }],
-          details: { provider: provider.id, results },
-          title: query,
-        };
-      } catch (error) {
-        if (signal?.aborted === true) throw error;
-        const message =
-          error instanceof WebSearchRequestError
-            ? failureMessage(error, query)
-            : `Unable to search the web for ${query}`;
-        context.warn(`${provider.name} web search failed: ${errorMessage(error)}`);
-        throw new ToolError({
-          content: [{ type: "text", text: message }],
-          details: { provider: provider.id, results: [] },
-          title: query,
-        });
-      }
-    },
-  };
-}
-
 /**
  * A fact event names its ref, where every byte outside `[A-Za-z0-9_-]` is
  * percent-encoded. Decoding is what lets a plugin recognise its own key.
@@ -206,23 +159,11 @@ function factKey(name: string): string {
   }
 }
 
-function isStoredChoice(value: JsonValue | undefined): value is string {
-  return typeof value === "string" && value !== "";
-}
+const storedChoice = Type.String({ minLength: 1 });
 
-/** A stored choice is a provider id, `auto`, or `off`; anything else is `auto`. */
+/** Unknown or removed provider ids are resolved as automatic routing at call time. */
 function storedSelection(value: JsonValue | undefined): string {
-  return isStoredChoice(value) ? value : WEB_SEARCH_AUTO;
-}
-
-function chooseAtRandom(
-  providers: readonly WebSearchProvider[],
-  random: () => number,
-): WebSearchProvider {
-  const [first, ...rest] = providers;
-  if (first === undefined) throw new Error("No web search provider is installed");
-  const index = Math.floor(random() * (rest.length + 1));
-  return providers[index] ?? first;
+  return Value.Check(storedChoice, value) ? value : WEB_SEARCH_AUTO;
 }
 
 export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
@@ -230,9 +171,13 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
   const random = options.random ?? Math.random;
   const credentials = options.credentials;
 
-  const keyFor = async (provider: WebSearchProvider): Promise<string | undefined> => {
+  const credentialFor = async (provider: WebSearchProvider): Promise<SearchCredential> => {
     const stored = present(await credentials?.read(provider.id));
-    return stored ?? present(environment(provider.keyEnvironment));
+    if (stored !== undefined) return { source: "saved key", key: stored };
+    const key = present(environment(provider.keyEnvironment));
+    return key === undefined
+      ? { source: "anonymous", key: undefined }
+      : { source: "environment key", key };
   };
 
   return definePlugin({
@@ -240,25 +185,182 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
     async session(api: SessionApi) {
       const selection = async (): Promise<string> =>
         storedSelection(await api.storage.get(PROVIDER_KEY));
+      let lastRoute: string | undefined;
 
-      /**
-       * `auto`. opencode picks uniformly at random; a key is the user saying
-       * which route they want, so a keyed provider is preferred and the
-       * random pick decides only among equals.
-       */
-      const route = async (providers: readonly WebSearchProvider[]): Promise<WebSearchProvider> => {
-        const keys = await Promise.all(providers.map((provider) => keyFor(provider)));
-        const keyed = providers.filter((_, index) => keys[index] !== undefined);
-        return chooseAtRandom(keyed.length === 0 ? providers : keyed, random);
+      // Parallel tool calls share one routing decision, but perform HTTP requests
+      // independently. Keep the read and first-route write in the same queue.
+      let routing: Promise<void> = Promise.resolve();
+      const planSearch = (query: string) => {
+        const plan = routing.then(async () => {
+          const chosen = await selection();
+          if (chosen === WEB_SEARCH_OFF) throw new Error("Web search is off");
+          const providers = webSearchProviders(api.tools.list());
+          const explicit = providers.find((provider) => provider.id === chosen);
+          const mode: WebSearchDetails["mode"] = explicit === undefined ? "auto" : "explicit";
+          const routes = await Promise.all(
+            (explicit === undefined ? providers : [explicit]).map(async (provider) => ({
+              provider,
+              credential: await credentialFor(provider),
+            })),
+          );
+          const keyed = routes.filter((route) => route.credential.source !== "anonymous");
+          const eligible = keyed.length === 0 ? routes : keyed;
+          const remembered = await api.storage.get(ROUTE_KEY);
+          const first =
+            eligible.find((route) => route.provider.id === remembered) ??
+            eligible[Math.floor(random() * eligible.length)] ??
+            eligible[0];
+          if (first === undefined) throw new Error("No web search provider is installed");
+          const consent = explicit?.id ?? WEB_SEARCH_AUTO;
+          if (
+            first.credential.source === "anonymous" &&
+            (await api.storage.get(CONSENT_KEY)) !== consent
+          ) {
+            throw new ToolWait({ selection: webSearchConsent(query, providers) });
+          }
+
+          if (mode === "auto") await api.storage.set(ROUTE_KEY, first.provider.id);
+          return { mode, first, remaining: eligible.filter((route) => route !== first) };
+        });
+        routing = plan.then(
+          () => undefined,
+          () => undefined,
+        );
+        return plan;
       };
 
-      const context: WebSearchContext = {
-        providers: () => webSearchProviders(api.tools.list()),
-        selection,
-        key: keyFor,
-        route,
-        warn: (message) => {
-          api.diagnostics.warn(message);
+      const tool: AgentTool<typeof webSearchParameters, WebSearchDetails> &
+        WebSearchProviderCarrier = {
+        name: WEB_SEARCH_TOOL_NAME,
+        description: webSearchDescription,
+        parameters: webSearchParameters,
+        promptSnippet: "Search the web for current information",
+        replay: "safe",
+        providers: [],
+        async execute(_toolCallId, params, signal, onUpdate) {
+          const query = params.query.trim();
+          if (query === "") throw new Error("Web search needs a non-empty query");
+          signal?.throwIfAborted();
+          const { mode, first, remaining } = await planSearch(query);
+          // Snapshot the eligible pool once: never downgrade a keyed request to
+          // anonymous access during failover, and try each provider at most once.
+          const rateLimited: string[] = [];
+          let route = first;
+          for (;;) {
+            signal?.throwIfAborted();
+            if ((await selection()) === WEB_SEARCH_OFF) throw new Error("Web search is off");
+            const summary = `${mode === "auto" ? "Auto" : "Selected"} · ${route.provider.name} · ${route.credential.source}`;
+            lastRoute = summary;
+            api.settings.rebuild();
+            // Lead with the query like other tools lead with their subject; routing
+            // detail stays in the progress text and settings summary.
+            const title = `${query} · ${route.provider.name}`;
+            const details: WebSearchDetails = {
+              provider: route.provider.id,
+              results: [],
+              mode,
+              credential: route.credential.source,
+              rateLimited: [...rateLimited],
+            };
+            const failover =
+              rateLimited.length === 0 ? "" : `Rate limited: ${rateLimited.join(", ")}. `;
+            onUpdate?.({
+              content: [{ type: "text", text: `${failover}Searching with ${summary}…` }],
+              details,
+              title,
+            });
+            try {
+              signal?.throwIfAborted();
+              const results = await route.provider.execute({
+                query,
+                key: route.credential.key,
+                fetch: options.fetch ?? globalThis.fetch,
+                signal,
+              });
+              return {
+                content: [{ type: "text", text: `${failover}${formatResults(results)}` }],
+                details: { ...details, results },
+                title,
+              };
+            } catch (error) {
+              if (signal?.aborted === true) {
+                throw new ToolError({
+                  content: [{ type: "text", text: "Web search cancelled" }],
+                  details,
+                  title,
+                });
+              }
+              const message =
+                error instanceof WebSearchRequestError
+                  ? failureMessage(error, query)
+                  : `Unable to search the web for ${query}`;
+              // Provider errors can contain authenticated URLs or echoed keys.
+              api.diagnostics.warn(`${route.provider.name}: ${message}`);
+              const next =
+                mode === "auto" && error instanceof WebSearchRequestError && error.status === 429
+                  ? remaining.shift()
+                  : undefined;
+              if (next !== undefined) {
+                rateLimited.push(route.provider.id);
+                await api.storage.set(ROUTE_KEY, next.provider.id);
+                route = next;
+                continue;
+              }
+              throw new ToolError({
+                content: [{ type: "text", text: `${failover}${message}` }],
+                details,
+                title,
+              });
+            }
+          }
+        },
+        async wake(waiting, context) {
+          if (context.aborted || context.signal.aborted) {
+            throw new ToolError({
+              content: [{ type: "text", text: "Web search cancelled" }],
+              details: {},
+            });
+          }
+          if (context.reply === undefined) return { kind: "wait" };
+          if (!Value.Check(webSearchParameters, waiting.args))
+            throw new Error("Invalid web search arguments");
+          const providers = webSearchProviders(api.tools.list());
+          const selection = webSearchConsent(waiting.args.query, providers);
+          const structured = selectionReply(context.reply);
+          const chosen =
+            structured !== undefined && acceptsSelectionReply(selection, structured)
+              ? structured.choices[0]
+              : typeof context.reply === "string"
+                ? context.reply
+                : undefined;
+          const reply = [
+            WEB_SEARCH_AUTO,
+            WEB_SEARCH_OFF,
+            ...providers.map((provider) => provider.id),
+          ].find((choice) => choice === chosen);
+          if (reply === undefined) {
+            throw new ToolError({
+              content: [
+                {
+                  type: "text",
+                  text: "Web search was not approved. Choose a search option to allow anonymous requests.",
+                },
+              ],
+              details: {},
+            });
+          }
+          await api.storage.set(PROVIDER_KEY, reply);
+          await api.storage.set(CONSENT_KEY, reply === WEB_SEARCH_OFF ? null : reply);
+          if (reply === WEB_SEARCH_OFF) {
+            throw new ToolError({
+              content: [{ type: "text", text: "Web search is off" }],
+              details: {},
+            });
+          }
+          return {
+            kind: "settle",
+            result: await tool.execute(waiting.toolCallId, waiting.args, context.signal),
+          };
         },
       };
 
@@ -276,10 +378,7 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
 
       api.tools.add((tools) => {
         if (disabled) return;
-        tools.set(
-          WEB_SEARCH_TOOL_NAME,
-          createWebSearchTool(context, options.fetch ?? globalThis.fetch),
-        );
+        tools.set(WEB_SEARCH_TOOL_NAME, tool);
       });
 
       api.settings.add((settings) => {
@@ -287,26 +386,26 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         // tool are known here. The `web-search` plugin is the only writer:
         // a setting's storage key resolves under its owner's prefix, so a
         // provider plugin writing to it would move the key out from under this one.
-        let choices: [SettingChoice, ...SettingChoice[]] = [
-          {
-            id: WEB_SEARCH_AUTO,
-            label: "automatic",
-            description: "Prefer a provider you hold a key for, otherwise pick at random",
-          },
-          { id: WEB_SEARCH_OFF, label: "off", description: "Withhold the tool from the model" },
-        ];
-        for (const provider of webSearchProviders(api.tools.list())) {
-          choices = withWebSearchChoice(choices, {
-            id: provider.id,
-            label: provider.name,
-            description: `Always search with ${provider.name}`,
-          });
-        }
         settings.set(WEB_SEARCH_SETTING_ID, {
           label: "Web search",
           key: PROVIDER_KEY,
           fallback: WEB_SEARCH_AUTO,
-          choices,
+          choices: [
+            {
+              id: WEB_SEARCH_AUTO,
+              label: "automatic",
+              description:
+                lastRoute === undefined
+                  ? "Prefer keys and switch providers on rate limits. Ask before anonymous search."
+                  : `Last search: ${lastRoute}`,
+            },
+            ...webSearchProviders(api.tools.list()).map((provider) => ({
+              id: provider.id,
+              label: provider.name,
+              description: `Always search with ${provider.name}`,
+            })),
+            { id: WEB_SEARCH_OFF, label: "off", description: "Withhold the tool from the model" },
+          ],
         });
       });
 
@@ -328,6 +427,8 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
             }
             const key = rest.join(" ").trim();
             await credentials.write(provider.id, key === "" ? undefined : key);
+            lastRoute = undefined;
+            api.settings.rebuild();
             return key === ""
               ? `Removed the ${provider.name} API key.`
               : `Saved the ${provider.name} API key.`;

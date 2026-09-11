@@ -12,6 +12,8 @@ import { appearanceSettingsStyles as styles } from "./appearance-settings.stylex
 import { AccountsSettings } from "./accounts-settings.tsx";
 import { AppearanceSettings } from "./appearance-panel.tsx";
 import { ModelsSettings } from "./models-settings.tsx";
+import { ServerSettings } from "./server-settings.tsx";
+import { UsageSettings } from "./usage-settings.tsx";
 import { SettingsRow, SettingsSelect } from "./settings-controls.tsx";
 import { settingsTitle, type SettingsSection } from "./settings-navigation.tsx";
 
@@ -48,8 +50,12 @@ function SettingsPanel({ section }: { section: SettingsSection }): ReactElement 
       return <AppearanceSettings />;
     case "models":
       return <ModelsSettings />;
+    case "usage":
+      return <UsageSettings />;
     case "accounts":
       return <AccountsSettings />;
+    case "server":
+      return <ServerSettings />;
     default: {
       const _exhaustive: never = section;
       return _exhaustive;

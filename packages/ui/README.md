@@ -19,7 +19,7 @@ export default {
 
 Import `@nyte-ai/ui/platform-tokens.css` once for StyleX-only apps. Apps that also author Tailwind can import `@nyte-ai/ui/styles.css` instead; it includes the same tokens and maps them into Tailwind's theme.
 
-Product-specific composites may import headless namespaces from `@nyte-ai/ui/primitives`. This keeps the Base UI dependency and version behind the shared package while the product retains its own composition and geometry. Simple controls should use the styled root exports. Their `unstyled` mode is reserved for product surfaces that supply a complete `xstyle` treatment.
+Product-specific composites import each headless namespace from its direct component subpath, such as `@nyte-ai/ui/popover`. This keeps the Base UI dependency and version behind the shared package while the product retains its own composition and geometry. Simple controls should use the styled root exports. Their `unstyled` mode is reserved for product surfaces that supply a complete `xstyle` treatment.
 
 ## Theme it
 

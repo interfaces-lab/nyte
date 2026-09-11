@@ -1,4 +1,6 @@
 import type { JsonValue } from "@nyte-ai/schema";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { isThinkingLevel } from "../../types.ts";
 import { branchConfig } from "../context.ts";
 import type { Commit, Lease, Oid, Run } from "../model.ts";
@@ -11,6 +13,7 @@ import {
   type PendingItem,
   type RunConfig,
   type RunInfo,
+  type SessionActivationState,
   type SessionInfo,
   type SessionParent,
 } from "./types.ts";
@@ -20,40 +23,21 @@ export const PINNED_FACT = "pinned";
 export const ARCHIVED_FACT = "archived";
 export const PARENT_FACT = "parent";
 
-type SessionParentFact = {
-  readonly sessionId: string;
-  readonly runId: string;
-  readonly callId: string;
-  readonly agent: string;
-  readonly depth: number;
-};
-
-function isSessionParentFact(value: JsonValue | undefined): value is SessionParentFact {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    typeof value.sessionId === "string" &&
-    value.sessionId !== "" &&
-    typeof value.runId === "string" &&
-    typeof value.callId === "string" &&
-    typeof value.agent === "string" &&
-    typeof value.depth === "number"
-  );
-}
-
-function isStringFact(value: JsonValue | undefined): value is string {
-  return typeof value === "string";
-}
+const SessionParentFact = Type.Object({
+  sessionId: Type.String({ minLength: 1 }),
+  runId: Type.String(),
+  callId: Type.String(),
+  depth: Type.Number(),
+});
+const StringFact = Type.String();
 
 /** Parse the durable parent link without letting malformed fact data escape. */
 export function parentFromFact(value: JsonValue | undefined): SessionParent | undefined {
-  if (!isSessionParentFact(value)) return undefined;
+  if (!Value.Check(SessionParentFact, value)) return undefined;
   return {
     sessionId: sessionId(value.sessionId),
     runId: value.runId,
     callId: value.callId,
-    agent: value.agent,
     depth: value.depth,
   };
 }
@@ -96,7 +80,8 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
     : { ...withAbort, lease: { owner: lease.owner, expiresAt: lease.expiresAt } };
 }
 
-function pendingItem(item: PendingChange): PendingItem | undefined {
+/** Only submitted user messages are client-visible queue items; completions and the rest are not. */
+export function pendingItem(item: PendingChange): PendingItem | undefined {
   const body = item.change.body;
   switch (body.kind) {
     case "message":
@@ -119,6 +104,7 @@ function pendingItem(item: PendingChange): PendingItem | undefined {
           return _exhaustive;
         }
       }
+    case "completion":
     case "checkpoint":
     case "summary":
     case "config":
@@ -131,7 +117,6 @@ function pendingItem(item: PendingChange): PendingItem | undefined {
   }
 }
 
-/** Only submitted user messages are editable pending client items. */
 export function pendingItems(pending: readonly PendingChange[]): readonly PendingItem[] {
   const items: PendingItem[] = [];
   for (const change of pending) {
@@ -182,16 +167,18 @@ export function headConfig(commits: readonly Commit[], run: RunInfo | undefined)
   return { ...inherited, ...declared };
 }
 
-/** Build the session directory row and its declared main-branch configuration. */
+/** Build the session row and its selected main-branch inputs, including unlanded choices. */
 export function sessionInfo(input: {
   readonly id: string;
+  readonly activation: SessionActivationState;
   readonly createdAt: number;
   readonly heads: readonly HeadInfo[];
   readonly facts: ReadonlyMap<string, JsonValue>;
   readonly mainCommits: readonly Commit[];
+  readonly pendingChanges: readonly PendingChange[];
 }): SessionInfo {
   const nameFact = input.facts.get(NAME_FACT);
-  const name = isStringFact(nameFact) ? nameFact : undefined;
+  const name = Value.Check(StringFact, nameFact) ? nameFact : undefined;
   const directoryInput = {
     id: input.id,
     createdAt: input.createdAt,
@@ -202,15 +189,22 @@ export function sessionInfo(input: {
     name === undefined ? directoryInput : { ...directoryInput, name },
   );
   const parent = parentFromFact(input.facts.get(PARENT_FACT));
+  // A queued choice can land between the queue read and the branch read.
+  const landed = new Set(input.mainCommits.map((commit) => commit.change));
+  const selected = branchConfig([
+    ...input.mainCommits,
+    ...input.pendingChanges.filter((item) => !landed.has(item.oid)).map((item) => item.change),
+  ]);
 
   const base = {
     sessionId: sessionId(input.id),
+    activation: input.activation,
     createdAt: input.createdAt,
     lastActivityAt: row.lastActivity,
     pinned: input.facts.get(PINNED_FACT) === true,
     archived: input.facts.get(ARCHIVED_FACT) === true,
     heads: input.heads,
-    config: clientRunConfig(branchConfig(input.mainCommits)),
+    config: clientRunConfig(selected),
   };
   const withName = row.name === undefined ? base : { ...base, name: row.name };
   const withPreview = row.preview === undefined ? withName : { ...withName, preview: row.preview };

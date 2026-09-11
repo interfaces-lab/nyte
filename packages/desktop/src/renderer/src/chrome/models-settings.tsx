@@ -4,7 +4,7 @@
  * where it stands first and offers the one action that changes that.
  */
 import { Input } from "@nyte-ai/ui";
-import { Collapsible } from "@nyte-ai/ui/primitives";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
 import * as stylex from "@stylexjs/stylex";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";

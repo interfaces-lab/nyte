@@ -1,3 +1,5 @@
+import { TextBuffer } from "@opentui/core";
+import type { WidthMethod } from "@opentui/core";
 import stringWidth from "string-width";
 
 const segmenter = new Intl.Segmenter();
@@ -6,7 +8,7 @@ export function graphemes(text: string): string[] {
   return Array.from(segmenter.segment(text), (segment) => segment.segment);
 }
 
-/** Terminal cells occupied by plain text, using the same Unicode rules as OpenTUI. */
+/** Unicode display width for chrome, not native editor offsets. */
 export function displayWidth(text: string): number {
   return stringWidth(text);
 }
@@ -22,7 +24,7 @@ export function truncateDisplay(text: string, width: number, ellipsis = ""): str
   const budget = Math.max(0, width - displayWidth(ellipsis));
   let kept = "";
   let used = 0;
-  for (const grapheme of graphemes(text)) {
+  for (const { segment: grapheme } of segmenter.segment(text)) {
     const cells = displayWidth(grapheme);
     if (used + cells > budget) break;
     kept += grapheme;
@@ -31,24 +33,24 @@ export function truncateDisplay(text: string, width: number, ellipsis = ""): str
   return `${kept}${displayWidth(ellipsis) <= width ? ellipsis : ""}`;
 }
 
-/**
- * The offset OpenTUI's cursor counts in: terminal cells, with each newline
- * counting as one. Composer code moves between this space and plain string
- * indices constantly, so both directions live here.
- */
-export function cellOffset(text: string, index: number): number {
-  const lines = text.slice(0, index).split("\n");
-  return lines.reduce((sum, line) => sum + displayWidth(line), lines.length - 1);
-}
-
-/** The string index at a cell offset, rounded to the grapheme that holds it. */
-export function cellIndex(text: string, offset: number): number {
-  let cells = 0;
-  let index = 0;
-  for (const grapheme of graphemes(text)) {
-    if (cells >= offset) return index;
-    cells += grapheme === "\n" ? 1 : displayWidth(grapheme);
-    index += grapheme.length;
+/** Measure a string prefix in the editor's native cell space. */
+export function cellOffset(
+  text: string,
+  index: number,
+  widthMethod: WidthMethod,
+  tabWidth: number,
+): number {
+  const prefix = text.slice(0, index);
+  // Markers and ordinary ASCII need neither a native allocation nor segmentation.
+  if (/^[\x20-\x7e\n]*$/.test(prefix)) return prefix.length;
+  // Render-buffer encodeUnicode caps packed grapheme widths. Editor offsets
+  // need the uncapped width, notably for ZWJ emoji under wcwidth.
+  const buffer = TextBuffer.create(widthMethod);
+  try {
+    buffer.setTabWidth(tabWidth);
+    buffer.setText(prefix);
+    return buffer.length + buffer.getLineCount() - 1;
+  } finally {
+    buffer.destroy();
   }
-  return text.length;
 }

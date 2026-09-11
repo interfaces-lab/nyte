@@ -1,4 +1,4 @@
-import { AlertDialog } from "@nyte-ai/ui/primitives";
+import { AlertDialog } from "@nyte-ai/ui/alert-dialog";
 import * as stylex from "@stylexjs/stylex";
 import { useRef } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";

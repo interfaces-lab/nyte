@@ -231,6 +231,12 @@
   --nyte-stroke-tertiary: color-mix(in srgb, var(--nyte-base) 8%, transparent);
   --nyte-stroke-quaternary: color-mix(in srgb, var(--nyte-base) 4%, transparent);
   --nyte-stroke-focused: var(--nyte-accent);
+  /*
+   * Chromium matches `:focus-visible` on every text field focus, pointer
+   * included, so the color gates the ring where the selector cannot.
+   * focus-modality.ts writes the attribute the override at the foot reads.
+   */
+  --nyte-focus-ring: var(--nyte-stroke-focused);
   --nyte-shadow-secondary: color-mix(in srgb, var(--nyte-shadow-primary) 60%, transparent);
   --nyte-shadow-tertiary: color-mix(in srgb, var(--nyte-shadow-primary) 30%, transparent);
   --nyte-box-shadow-popup:
@@ -249,7 +255,8 @@
     0 4px 16px var(--nyte-shadow-tertiary), 0 1px 2px var(--nyte-shadow-tertiary);
   --sand-shadow-modal: var(--nyte-box-shadow-lg);
   --sand-shadow-workbench: var(--nyte-shadow-workbench);
-  --nyte-composer-background: var(--nyte-bg-editor);
+  /* Cursor's composer uses an even fill rather than a directional sheen. */
+  --nyte-composer-background: var(--nyte-bg-elevated);
   --nyte-composer-ring: var(--nyte-stroke-tertiary);
   --nyte-composer-ring-active: var(--nyte-stroke-secondary);
   --nyte-sidebar-background: color-mix(
@@ -277,15 +284,17 @@
 
   --nyte-font-size-xs: max(11px, calc(var(--nyte-font-size-base) - 2px));
   --nyte-font-size-sm: calc(var(--nyte-font-size-base) - 1px);
-  --nyte-font-size-lg: calc(var(--nyte-font-size-base) + 1px);
+  /* Chat, composer, and bubbles use 15px type on 13px chrome. */
+  --nyte-font-size-lg: calc(var(--nyte-font-size-base) + 2px);
   --nyte-font-size-xl: calc(var(--nyte-font-size-base) + 3px);
   --nyte-font-size-2xl: calc(var(--nyte-font-size-base) + 6px);
   --nyte-line-height-xs: calc(var(--nyte-font-size-base) + 1px);
   --nyte-line-height-sm: calc(var(--nyte-font-size-base) + 3px);
-  --nyte-line-height-base: calc(var(--nyte-font-size-base) + 5px);
-  --nyte-line-height-lg: calc(var(--nyte-font-size-base) + 9px);
-  --nyte-letter-spacing-base: -0.08px;
-  --nyte-letter-spacing-lg: -0.15px;
+  /* Conversation and markdown use 22px leading at 13px, not chrome's 18px. */
+  --nyte-line-height-base: calc(var(--nyte-font-size-base) + 9px);
+  --nyte-line-height-lg: calc(var(--nyte-font-size-base) + 11px);
+  --nyte-letter-spacing-base: 0px;
+  --nyte-letter-spacing-lg: -0.24px;
 
   /* ── scales ── */
   --nyte-radius-xs: 2px;
@@ -339,8 +348,8 @@
   --nyte-parameter-menu-width: 220px;
   --nyte-menu-max-height: min(320px, calc(100vh - 32px));
   --nyte-section-gap: 16px;
-  --nyte-conversation-measure: 640px;
-  --nyte-prose-measure: 640px;
+  --nyte-conversation-measure: 840px;
+  --nyte-prose-measure: 840px;
   --nyte-conversation-gutter: 16px;
   --nyte-conversation-header-height: 35px;
   --nyte-conversation-turn-gap: 14px;
@@ -352,7 +361,7 @@
   --nyte-workbench-rail-width: 210px;
   --nyte-workbench-panel-width: 384px;
   --nyte-workbench-header-height: 35px;
-  --nyte-workbench-file-list-width: 164px;
+  --nyte-workbench-file-list-width: 200px;
   --nyte-diff-line-height: 20px;
   --nyte-diff-preview-max-height: min(480px, 60vh);
 }
@@ -370,6 +379,18 @@
   );
 }
 
+:root[data-theme="dark"] {
+  --nyte-composer-background: color-mix(in srgb, var(--nyte-bg-elevated) 96%, #fff);
+}
+
 :root[data-reduce-transparency="true"] {
   --nyte-sidebar-background: var(--nyte-bg-sidebar);
+  --nyte-composer-background: var(--nyte-bg-elevated);
+}
+
+/* Ring for keyboard navigation only; a click into a field is not a request for one. */
+:root[data-nyte-focus-modality="pointer"] {
+  --nyte-focus-ring: transparent;
+  /* The kit's own ring: desktop loads platform-tokens.css without ui/index.css. */
+  --nyte-color-focus-ring: transparent;
 }

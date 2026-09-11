@@ -1,36 +1,31 @@
 # Nyte
 
 - Use pnpm. Runtime versions live in `mise.toml`.
-- Never run `pnpm dev`, including package-level dev scripts. 
-- Keep replies short and plain. Use the `show-me` skill  when explaining.
-  
+- Leave dev servers to the user. Build and test commands target individual packages.
+- Keep replies short and plain; diagrams help when they clarify something.
+
 ## Changes
 
-- Read affected files in full before editing or making broad conclusions.
-- Make the smallest complete fix. Preserve unrelated work and behavior.
-- Ask before removing functionality or code that appears intentional, unless its removal is already authorized.
-- Do not add backward compatibility unless requested.
-- Check installed dependency types in `node_modules` instead of guessing APIs. Do not remove functionality to accommodate outdated dependencies; update the dependency instead.
+- Preserve unrelated work and behavior. Prefer the smallest complete fix.
+- Check before removing intentional functionality outside the requested scope.
+- Add backward compatibility only when requested.
+- Check installed dependency APIs when needed. Update outdated dependencies rather than dropping functionality to fit them.
+- Work directly by default. Use subagents for substantial, independent tasks with clear scopes; synthesize their findings yourself.
+- Never run `git stash`; other agents edit this tree at the same time and a stash reverts their work.
 
 ## Code
 
-- Validate unknown input at its owning boundary; trust parsed values internally.
-- Avoid `any`. Derive types from their owner and rely on inference where clear.
-- Use only erasable TypeScript syntax in code checked by the root config: `packages/*/src`, `packages/*/test`, and `packages/demo/*/src`. No enums, parameter properties, namespaces, or other syntax requiring JavaScript emit.
-- Use top-level imports, including `import type`. No dynamic imports or type-position `import()`.
-- Do not use star imports or rename imports. An aliased type import is permitted only to resolve an unavoidable name collision.
-- Inline simple helpers with one caller. Extract complex boundary handling or a meaningful operation; keep supporting helpers near their caller.
-- Prefer `const`, early returns, and dot notation over unnecessary reassignment, `else`, or destructuring.
-- Keep names that explain a concept; inline trivial values used once.
-- Comment on non-obvious constraints and reasons, not visible control flow.
+- External input must be parsed at its boundary; trust parsed types internally.
+- Do not use `any` or type casts, including `as T`, chained assertions, and angle-bracket assertions. Use inference, narrowing, schema-derived types, or `satisfies`. `as const` preserves literals and is allowed.
+- Root-checked TypeScript must use erasable syntax. No enums, parameter properties, or namespaces in package source, tests, or demo source.
+- Imports must be top-level, including `import type`. No dynamic imports, type-position `import()`, star imports, or renamed imports. A type alias import is allowed only to resolve a name collision.
+- Inline trivial one-use helpers; extract meaningful operations and complex boundary handling.
+- Prefer `const`, early returns, and dot notation. Names must explain the concept; comments must explain constraints and reasons, not visible control flow.
 
 ## Verification
 
-```sh
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm format
-```
+Choose checks relevant to the change:
 
-`pnpm format` checks formatting; `pnpm format:fix` applies it.
+- Package tests: `pnpm --dir packages/<package> test`.
+- Workspace checks: `pnpm typecheck`, `pnpm lint`, `pnpm format`.
+- `pnpm format:fix` applies formatting. Report failures without fixing unrelated files.

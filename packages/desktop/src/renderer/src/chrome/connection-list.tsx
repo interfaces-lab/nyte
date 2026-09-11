@@ -53,9 +53,7 @@ const styles = stylex.create({
     color: t.textSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    overflowWrap: "anywhere",
   },
   status: {
     display: "inline-flex",

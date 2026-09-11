@@ -7,7 +7,7 @@
  * so baked and fetched models can never disagree on mapping; this script runs
  * that parser so a schema change fails here instead of at boot.
  *
- * Run: pnpm models:opencode:snapshot from the repository root.
+ * Run: pnpm --dir packages/ai models:opencode:snapshot from the repository root.
  */
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";

@@ -4,6 +4,7 @@
  * stays in `@nyte-ai/core/plugins`.
  */
 import type { Skill } from "@nyte-ai/schema";
+import type { Choice } from "./ui.ts";
 
 /** Where a plugin came from. Later sources replace earlier ones with the same id. */
 export type PluginSource = "builtin" | "user" | "project" | "inline";
@@ -15,10 +16,7 @@ export type PluginInfo = {
   readonly path?: string;
 } & ({ readonly status: "active" } | { readonly status: "failed"; readonly error: string });
 
-export interface SettingChoice {
-  readonly id: string;
-  readonly label: string;
-  readonly description?: string;
+export interface SettingChoice extends Choice {
   /** Badge a client shows while this choice is current. A choice without one contributes nothing. */
   readonly status?: string;
 }

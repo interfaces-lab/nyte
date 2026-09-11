@@ -1,12 +1,15 @@
-import { parsePatch } from "diff";
-import { presentTool as presentToolView, projectToolView } from "@nyte-ai/core/views";
-import type { ToolProgress, ToolTurnPart } from "@nyte-ai/core";
+import {
+  createPresenter,
+  parsePatchFacts,
+  projectToolView,
+  runActivityLabel,
+  type ParsedPatch,
+} from "@nyte-ai/core/views";
+import type { SessionId, ToolProgress, ToolTurnPart } from "@nyte-ai/core";
+import type { JsonValue } from "@nyte-ai/schema";
+import { sessionId } from "@nyte-ai/protocol";
 
-export interface ParsedDiff {
-  readonly patch: string;
-  readonly added: number;
-  readonly removed: number;
-}
+export type ParsedDiff = Pick<ParsedPatch, "patch" | "added" | "removed">;
 
 export type ToolBody =
   | { kind: "none" }
@@ -31,24 +34,57 @@ const VERBS = {
   ls: { running: "Listing", done: "Listed", failed: "List failed" },
 } satisfies Record<string, Record<ToolPresentation["state"], string>>;
 
-/** What a run of one tool is called when a group summarises several. */
-const NOUNS = {
-  read: { one: "read", many: "reads" },
-  bash: { one: "command", many: "commands" },
-  edit: { one: "edit", many: "edits" },
-  write: { one: "write", many: "writes" },
-  ls: { one: "listing", many: "listings" },
-} satisfies Record<keyof typeof VERBS, { readonly one: string; readonly many: string }>;
+/** The status verb for the tools currently running, newest last. */
+export function activityVerb(runningToolNames: readonly string[]): string | undefined {
+  const known = runActivityLabel(runningToolNames);
+  if (known !== undefined) return known;
+  const newest = runningToolNames.at(-1);
+  return newest === undefined ? undefined : `Running ${humanizeToolName(newest)}`;
+}
+
+function isJsonObject(
+  value: JsonValue | undefined,
+): value is { readonly [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export interface SubagentCall {
+  readonly title: string;
+  /** Known once the tool has reported the child it spawned. */
+  readonly childSessionId: SessionId | undefined;
+}
+
+/**
+ * What a task call says about its subagent. The title is the one the model
+ * gave the task, else the model it selected, which is also what the job
+ * and the child's result carry as their title.
+ */
+export function subagentCall(
+  part: ToolTurnPart,
+  progress: ToolProgress | undefined,
+): SubagentCall | undefined {
+  if (part.toolName !== "task") return undefined;
+  const args = isJsonObject(part.args) ? part.args : {};
+  const title = [args.title, args.model].find(
+    (value): value is string => typeof value === "string" && value !== "",
+  );
+  return { title: title ?? "Subagent", childSessionId: childSessionId(part, progress) };
+}
+
+function childSessionId(
+  part: ToolTurnPart,
+  progress: ToolProgress | undefined,
+): SessionId | undefined {
+  for (const details of [part.result?.details, progress?.details]) {
+    if (!isJsonObject(details)) continue;
+    const id = details.childSessionId;
+    if (typeof id === "string" && id !== "") return sessionId(id);
+  }
+  return undefined;
+}
 
 function isKnownToolName(name: string): name is keyof typeof VERBS {
   return Object.hasOwn(VERBS, name);
-}
-
-export function toolNoun(name: string, count: number): string {
-  const noun = isKnownToolName(name) ? NOUNS[name] : undefined;
-  if (noun !== undefined) return count === 1 ? noun.one : noun.many;
-  const label = name.startsWith("mcp__") ? humanizeToolName(name) : words(name).toLocaleLowerCase();
-  return count === 1 ? label : `${label}s`;
 }
 
 /**
@@ -56,7 +92,7 @@ export function toolNoun(name: string, count: number): string {
  * MCP names arrive as `mcp__server__tool`; everything else as snake or kebab
  * case.
  */
-export function humanizeToolName(name: string): string {
+function humanizeToolName(name: string): string {
   const mcp = /^mcp__(?<server>[^_]+(?:_[^_]+)*)__(?<tool>.+)$/.exec(name);
   if (mcp?.groups !== undefined) {
     const { server, tool } = mcp.groups;
@@ -99,38 +135,23 @@ export function parseUnifiedPatch(patch: string): ParsedDiff | undefined {
     patchCache.set(patch, cached);
     return cached ?? undefined;
   }
-  let files;
-  try {
-    files = parsePatch(patch);
-  } catch {
-    rememberPatch(patch, null);
-    return undefined;
-  }
-  let added = 0;
-  let removed = 0;
-  for (const file of files) {
-    for (const hunk of file.hunks) {
-      for (const raw of hunk.lines) {
-        const marker = raw[0];
-        if (marker === "+") {
-          added += 1;
-        } else if (marker === "-") {
-          removed += 1;
-        }
-      }
-    }
-  }
-  const parsed = added === 0 && removed === 0 ? null : { patch, added, removed };
+  const facts = parsePatchFacts(patch);
+  const parsed =
+    facts === undefined || (facts.added === 0 && facts.removed === 0)
+      ? null
+      : { patch: facts.patch, added: facts.added, removed: facts.removed };
   rememberPatch(patch, parsed);
   return parsed ?? undefined;
 }
+
+const presenter = createPresenter();
 
 export function presentTool(
   part: ToolTurnPart,
   progress: ToolProgress | undefined,
   cwd: string | undefined,
 ): ToolPresentation {
-  const presented = presentToolView(projectToolView(part, progress));
+  const presented = presenter.tool(projectToolView(part, progress));
   const verbs = isKnownToolName(presented.name) ? VERBS[presented.name] : undefined;
   const humanName = humanizeToolName(presented.name);
   const verb =
@@ -140,36 +161,33 @@ export function presentTool(
         : humanName
       : verbs[presented.status];
   const fullDetail =
-    presented.detail === undefined ? presented.title : tidyPath(presented.detail, cwd);
+    presented.name === "websearch" && presented.title !== undefined
+      ? presented.title
+      : presented.detail === undefined
+        ? presented.title
+        : tidyPath(presented.detail, cwd);
   const fileEdit = presented.name === "edit" || presented.name === "write";
   const detail = fileEdit && fullDetail !== undefined ? basename(fullDetail) : fullDetail;
   const detailTitle = detail === fullDetail ? undefined : fullDetail;
 
   if (presented.body.kind === "diff") {
-    const diff = parseUnifiedPatch(presented.body.patch);
-    if (diff !== undefined) {
-      return {
-        verb,
-        detail,
-        detailTitle,
-        state: presented.status,
-        added: diff.added === 0 ? undefined : diff.added,
-        removed: diff.removed === 0 ? undefined : diff.removed,
-        body: {
-          kind: "diff",
-          path: tidyPath(presented.body.path ?? fullDetail ?? presented.name, cwd),
-          diff,
-        },
-      };
-    }
+    const diff = presented.body;
+    return {
+      verb,
+      detail,
+      detailTitle,
+      state: presented.status,
+      added: diff.added === 0 ? undefined : diff.added,
+      removed: diff.removed === 0 ? undefined : diff.removed,
+      body: {
+        kind: "diff",
+        path: tidyPath(diff.path ?? fullDetail ?? presented.name, cwd),
+        diff,
+      },
+    };
   }
 
-  const text =
-    presented.body.kind === "text"
-      ? presented.body.text
-      : presented.body.kind === "diff"
-        ? (part.result?.output ?? "")
-        : "";
+  const text = presented.body.kind === "text" ? presented.body.text : "";
   return {
     verb,
     detail,

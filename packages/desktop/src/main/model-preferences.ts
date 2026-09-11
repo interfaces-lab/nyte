@@ -6,6 +6,7 @@
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -24,9 +25,7 @@ const preferencesType = Type.Object({
   defaults: Type.Optional(
     Type.Object({
       model: Type.Optional(Type.Object({ provider: Type.String(), id: Type.String() })),
-      thinkingLevel: Type.Optional(
-        Type.Enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
-      ),
+      thinkingLevel: Type.Optional(schemas.ThinkingLevel),
     }),
   ),
 });
@@ -34,7 +33,10 @@ const preferencesFile = Compile(preferencesType);
 
 export type ModelPreferences = Required<Static<typeof preferencesType>>;
 
-export const EMPTY_MODEL_PREFERENCES: ModelPreferences = { providers: {}, defaults: {} };
+export const EMPTY_MODEL_PREFERENCES: ModelPreferences = {
+  providers: {},
+  defaults: {},
+};
 
 export function parseModelPreferences(text: string): ModelPreferences {
   try {

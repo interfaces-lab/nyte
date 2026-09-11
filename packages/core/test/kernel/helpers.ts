@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
+import type { Landing } from "@nyte-ai/protocol";
 import type {
   AssistantMessage,
   Message,
@@ -27,8 +28,8 @@ import type {
 } from "../../src/kernel/model.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
-import type { Landing } from "../../src/kernel/step.ts";
-import type { Session } from "../../src/kernel/store.ts";
+import { WorkerStore } from "../../src/kernel/worker-store.ts";
+import type { Session, Store } from "../../src/kernel/store.ts";
 
 /**
  * The landing policy these suites run under. The lane names are deliberately
@@ -44,7 +45,7 @@ export const landing: Landing = {
 };
 
 const directories: string[] = [];
-const stores: SqliteStore[] = [];
+const stores: Store[] = [];
 
 afterEach(async () => {
   for (const store of stores.splice(0).reverse()) await store.close();
@@ -58,8 +59,26 @@ export function storePath(): string {
   return join(directory, "store.db");
 }
 
-/** A store on its own temp file. A second call with the same path is a second connection. */
-export function openStore(path = storePath()): SqliteStore {
+/**
+ * A store on its own temp file. A second call with the same path is a second
+ * connection. `NYTE_TEST_STORE=worker` runs the same suite through the worker
+ * bridge, so both backends answer to one set of expectations.
+ */
+export function openStore(path = storePath()): Store {
+  const store =
+    process.env.NYTE_TEST_STORE === "worker"
+      ? new WorkerStore({
+          path,
+          worker: new URL("../../src/kernel/store-worker.ts", import.meta.url),
+          watchPollIntervalMs: 5,
+        })
+      : openInProcessStore(path);
+  stores.push(store);
+  return store;
+}
+
+/** The in-process backend regardless of `NYTE_TEST_STORE`, for tests that drive its timers with fake time. */
+export function openInProcessStore(path = storePath()): SqliteStore {
   const store = new SqliteStore(path, { watchPollIntervalMs: 5 });
   stores.push(store);
   return store;

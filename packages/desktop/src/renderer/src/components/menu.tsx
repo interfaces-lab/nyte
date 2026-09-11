@@ -8,8 +8,8 @@
  * whether or not it uses them, so labels start and end on the same edges in
  * every menu.
  */
-import { Menu as Base } from "@nyte-ai/ui/primitives";
-import { ContextMenu as ContextBase } from "@nyte-ai/ui/primitives";
+import { ContextMenu as ContextBase } from "@nyte-ai/ui/context-menu";
+import { Menu as Base } from "@nyte-ai/ui/menu";
 import * as stylex from "@stylexjs/stylex";
 import { useId } from "react";
 import type { ReactElement, ReactNode, Ref } from "react";
@@ -31,8 +31,8 @@ const styles = stylex.create({
   popup: {
     display: "flex",
     flexDirection: "column",
-    minWidth: `min(${control.menuWidth}, var(--available-width))`,
-    maxWidth: "min(320px, var(--available-width))",
+    minWidth: `min(max(${control.menuWidth}, var(--anchor-width)), var(--available-width))`,
+    maxWidth: `min(max(320px, var(--anchor-width)), var(--available-width))`,
     maxHeight: "var(--available-height)",
     padding: 4,
     borderStyle: "none",
@@ -87,6 +87,7 @@ const styles = stylex.create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": t.bgCard,
+      "[data-checked]": t.bgHover,
       "[data-nyte-selected='true']": t.bgHover,
     },
     color: { default: t.textPrimary, "[data-disabled]": t.textDisabled },
@@ -106,7 +107,26 @@ const styles = stylex.create({
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
+  itemCompact: {
+    backgroundColor: {
+      default: "transparent",
+      "[data-checked]": "transparent",
+      "[data-highlighted]": t.bgCard,
+      "[data-checked][data-highlighted]": t.bgCard,
+    },
+    minHeight: 28,
+    paddingBlock: 4,
+    paddingInline: 8,
+    borderRadius: t.radiusSm,
+    lineHeight: "20px",
+  },
+  labelCompact: { lineHeight: "20px" },
+  metaCompact: { minHeight: 20, lineHeight: "20px" },
+  switchTrackCompact: { width: 24, height: 14 },
+  switchThumbCompact: { width: 10, height: 10 },
   itemPlain: { gridTemplateColumns: "minmax(0, 1fr) auto" },
+  itemRadio: { gridTemplateColumns: "14px minmax(0, 1fr) auto 14px" },
+  itemRadioPlain: { gridTemplateColumns: "minmax(0, 1fr) auto 14px" },
   itemDanger: { color: { default: t.textDanger, "[data-disabled]": t.textDisabled } },
   icon: {
     display: "inline-flex",
@@ -138,7 +158,16 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
   metaSmall: { minHeight: t.leadingBase },
+  radioIndicator: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 14,
+    minHeight: t.leadingBase,
+    color: t.textSecondary,
+  },
   separator: { height: 1, marginBlock: 3, marginInline: -4, backgroundColor: t.borderWeak },
+  separatorInset: { marginBlock: 4, marginInline: 8 },
   // The heading row owns the height; the label and the action are plain text
   // boxes with matching metrics, so they centre on the same line.
   groupHeading: { display: "flex", alignItems: "center", minHeight: control.compactHeight },
@@ -182,6 +211,7 @@ const styles = stylex.create({
     boxShadow: `inset 0 0 0 1px ${t.strokeTertiary}`,
   },
   switchTrackOn: { backgroundColor: t.fillAccent, boxShadow: "none" },
+  switchTrackGreen: { backgroundColor: t.switchActive },
   switchThumb: {
     width: 12,
     height: 12,
@@ -305,7 +335,7 @@ export function Menu({
   );
 }
 
-export type MenuSize = "medium" | "small";
+export type MenuSize = "medium" | "small" | "compact";
 
 interface ItemBodyProps {
   readonly icon?: IconName;
@@ -334,8 +364,24 @@ function ItemBody({
           {leading ?? (icon !== undefined && <Icon name={icon} size={small ? 12 : 14} />)}
         </span>
       )}
-      <span {...stylex.props(styles.label, small && styles.labelSmall)}>{children}</span>
-      <span {...stylex.props(styles.meta, small && styles.metaSmall)}>{meta}</span>
+      <span
+        {...stylex.props(
+          styles.label,
+          small && styles.labelSmall,
+          size === "compact" && styles.labelCompact,
+        )}
+      >
+        {children}
+      </span>
+      <span
+        {...stylex.props(
+          styles.meta,
+          small && styles.metaSmall,
+          size === "compact" && styles.metaCompact,
+        )}
+      >
+        {meta}
+      </span>
     </>
   );
 }
@@ -379,6 +425,7 @@ export function MenuItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
+        size === "compact" && styles.itemCompact,
         layout === "plain" && styles.itemPlain,
         danger && styles.itemDanger,
         itemStyle,
@@ -430,6 +477,7 @@ export function MenuRadioItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
+        size === "compact" && styles.itemCompact,
         layout === "plain" && styles.itemPlain,
       )}
     >
@@ -476,7 +524,11 @@ export function MenuCheckboxItem({
       disabled={disabled}
       closeOnClick={closeOnClick}
       onCheckedChange={(nextChecked) => onCheckedChange(nextChecked)}
-      {...stylex.props(styles.item, size === "small" && styles.itemSmall)}
+      {...stylex.props(
+        styles.item,
+        size === "small" && styles.itemSmall,
+        size === "compact" && styles.itemCompact,
+      )}
     >
       <ItemBody
         icon={icon}
@@ -498,12 +550,14 @@ export function MenuCheckboxItem({
 }
 
 export interface MenuSwitchItemProps extends Omit<ItemBodyProps, "meta"> {
+  readonly tone?: "accent" | "green";
   readonly checked: boolean;
   readonly disabled?: boolean;
   readonly onCheckedChange: (checked: boolean) => void;
 }
 
 export function MenuSwitchItem({
+  tone = "accent",
   checked,
   icon,
   leading,
@@ -522,6 +576,7 @@ export function MenuSwitchItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
+        size === "compact" && styles.itemCompact,
         layout === "plain" && styles.itemPlain,
       )}
     >
@@ -533,9 +588,20 @@ export function MenuSwitchItem({
         meta={
           <span
             aria-hidden="true"
-            {...stylex.props(styles.switchTrack, checked && styles.switchTrackOn)}
+            {...stylex.props(
+              styles.switchTrack,
+              size === "compact" && styles.switchTrackCompact,
+              checked && styles.switchTrackOn,
+              checked && tone === "green" && styles.switchTrackGreen,
+            )}
           >
-            <span {...stylex.props(styles.switchThumb, checked && styles.switchThumbOn)} />
+            <span
+              {...stylex.props(
+                styles.switchThumb,
+                size === "compact" && styles.switchThumbCompact,
+                checked && styles.switchThumbOn,
+              )}
+            />
           </span>
         }
       >
@@ -576,6 +642,7 @@ export function MenuSubmenu({
         {...stylex.props(
           styles.item,
           size === "small" && styles.itemSmall,
+          size === "compact" && styles.itemCompact,
           layout === "plain" && styles.itemPlain,
           styles.submenuTriggerOpen,
         )}
@@ -623,8 +690,8 @@ export function MenuSubmenu({
   );
 }
 
-export function MenuSeparator(): ReactElement {
-  return <Base.Separator {...stylex.props(styles.separator)} />;
+export function MenuSeparator({ inset = false }: { readonly inset?: boolean }): ReactElement {
+  return <Base.Separator {...stylex.props(styles.separator, inset && styles.separatorInset)} />;
 }
 
 export function ContextMenu({
@@ -676,6 +743,7 @@ export function ContextMenuItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
+        size === "compact" && styles.itemCompact,
         layout === "plain" && styles.itemPlain,
         danger && styles.itemDanger,
       )}

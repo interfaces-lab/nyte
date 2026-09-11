@@ -1,0 +1,24 @@
+{
+  "title": "Headless",
+  "pages": [
+    "index",
+    "alert-dialog",
+    "autocomplete",
+    "button",
+    "collapsible",
+    "context-menu",
+    "dialog",
+    "menu",
+    "number-field",
+    "popover",
+    "preview-card",
+    "select",
+    "slider",
+    "switch",
+    "tabs",
+    "toggle",
+    "toggle-group",
+    "toolbar",
+    "tooltip"
+  ]
+}

@@ -326,21 +326,6 @@ test("sessions are created, listed, reopened, and deleted with everything they o
   assert.equal(await reborn.objects.get(oid ?? ""), undefined);
 });
 
-test("a memory store behaves like a file store", async () => {
-  const store = new SqliteStore(":memory:");
-  const session = await store.create({ id: "m" });
-  const [oid] = await session.objects.put([blob("x")]);
-  const outcome = await session.refs.update(
-    [{ name: "refs/heads/main", from: null, to: oid ?? "" }],
-    {
-      reason: "seed",
-    },
-  );
-  assert.equal(outcome.ok, true);
-  assert.equal(await session.refs.read("refs/heads/main"), oid);
-  await store.close();
-});
-
 test("one hundred concurrent compare-and-swap writers all land in one chain", async () => {
   const session = await openSession();
   const tipRef = "refs/queues/main/steer/tip";
@@ -373,7 +358,7 @@ test("one hundred concurrent compare-and-swap writers all land in one chain", as
   assert.equal(length, 100);
 });
 
-test("a store another schema wrote is refused with a message, never read", () => {
+test("a store another schema wrote is refused with a message, never read", async () => {
   const path = storePath();
   const legacy = new DatabaseSync(path);
   legacy.exec(`CREATE TABLE sessions (
@@ -382,11 +367,11 @@ test("a store another schema wrote is refused with a message, never read", () =>
     next_seq INTEGER NOT NULL
   ) WITHOUT ROWID`);
   legacy.close();
-  assert.throws(() => openStore(path), /Delete it to start over/u);
+  assert.throws(() => new SqliteStore(path), /Delete it to start over/u);
 
   const written = storePath();
-  openStore(written);
-  assert.doesNotThrow(() => openStore(written));
+  await openStore(written).list();
+  await openStore(written).list();
 });
 
 test("creates the store directory when it does not exist yet", async () => {

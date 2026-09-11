@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useSyncExternalStore }
 import type { ReactElement, ReactNode } from "react";
 import { PaneController } from "./pane-controller.ts";
 import type { PaneControllerSnapshot } from "./pane-controller.ts";
-import { activeSelection } from "./pane-layout.ts";
+import { activePane, activeSelection, canSplitPane } from "./pane-layout.ts";
 import type {
   DropPlacement,
   PaneId,
@@ -13,6 +13,7 @@ import type {
   SplitDirection,
 } from "./pane-layout.ts";
 import type { SessionViewStateStore } from "./session-view-state.ts";
+import { shellActions } from "../chrome/shell-state.ts";
 
 const controllerCache = new Map<string, PaneController>();
 const PaneControllerContext = createContext<PaneController | undefined>(undefined);
@@ -61,6 +62,21 @@ export function usePaneControllerSnapshot(): PaneControllerSnapshot {
   return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
 }
 
+function windowWidth(): number {
+  return globalThis.window === undefined ? 0 : window.innerWidth;
+}
+
+function subscribeWindowWidth(listener: () => void): () => void {
+  window.addEventListener("resize", listener);
+  return () => window.removeEventListener("resize", listener);
+}
+
+export function useCanSplitPane(): boolean {
+  const { layout } = usePaneControllerSnapshot();
+  const width = useSyncExternalStore(subscribeWindowWidth, windowWidth, windowWidth);
+  return canSplitPane(layout, width);
+}
+
 export function usePaneViewStateStore(): SessionViewStateStore {
   return useController().viewState;
 }
@@ -78,6 +94,7 @@ export interface PaneActions {
   split(direction: SplitDirection): void;
   close(paneId: PaneId): void;
   focus(paneId: PaneId): void;
+  focusNext(): boolean;
   resize(ratio: number): void;
   drop(sessionId: SessionId, targetPaneId: PaneId, placement: DropPlacement): void;
   removeSession(sessionId: SessionId): void;
@@ -110,7 +127,8 @@ export function usePaneActions(): PaneActions {
         controller.syncSelection(selection);
       },
       newChat() {
-        navigateToActive(controller.selectBlank());
+        shellActions.showWorkspace();
+        navigateToActive(controller.newChat());
       },
       openSession(sessionId) {
         navigateToActive(controller.selectSession(sessionId));
@@ -119,6 +137,7 @@ export function usePaneActions(): PaneActions {
         navigateToActive(controller.selectSessionInPane(paneId, sessionId));
       },
       split(direction) {
+        if (!canSplitPane(controller.getSnapshot().layout, windowWidth())) return;
         navigateToActive(controller.split(direction));
       },
       close(paneId) {
@@ -128,6 +147,14 @@ export function usePaneActions(): PaneActions {
         const current = controller.getSnapshot().layout;
         const layout = controller.focus(paneId);
         if (layout !== current) navigateToActive(layout);
+      },
+      focusNext() {
+        const layout = controller.getSnapshot().layout;
+        if (layout.kind !== "split") return false;
+        navigateToActive(
+          controller.focus(activePane(layout).id === "primary" ? "secondary" : "primary"),
+        );
+        return true;
       },
       resize(ratio) {
         controller.resize(ratio);

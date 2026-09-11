@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage } from "@nyte-ai/schema";
+import { InMemoryTelemetryContext, type TelemetryContext } from "@nyte-ai/telemetry";
 import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import {
@@ -113,7 +114,11 @@ function plugins(): LoadedPlugin[] {
 
 async function open(
   streamFn: StreamFn = echo(),
-  extra: { readonly landing?: Landing; readonly store?: Store } = {},
+  extra: {
+    readonly landing?: Landing;
+    readonly store?: Store;
+    readonly telemetry?: TelemetryContext;
+  } = {},
 ): Promise<Nyte> {
   return createNyte({
     store: extra.store ?? openStore(),
@@ -121,6 +126,7 @@ async function open(
     models: {
       getModels: () => [model],
       getModel: (_provider, id) => (id === model.id ? model : undefined),
+      getAvailable: async () => [model],
     },
     model,
     plugins: plugins(),
@@ -180,6 +186,18 @@ async function transcript(nyte: Nyte, id: ReturnType<typeof sessionId>): Promise
         )
       : [turn.kind],
   );
+}
+
+async function waitIdFor(
+  nyte: Nyte,
+  id: ReturnType<typeof sessionId>,
+  callId: string,
+): Promise<string> {
+  const waiting = (await nyte.sessions.snapshot({ sessionId: id }))?.parked?.find(
+    (call) => call.callId === callId,
+  );
+  assert.ok(waiting);
+  return waiting.waitId;
 }
 
 /** Collect events until `until` says stop, or the timeout. */
@@ -267,31 +285,51 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
   }
 });
 
-test("an abort while the model is streaming ends the run and keeps what was said", async () => {
-  let release: (() => void) | undefined;
-  const opened = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const nyte = await open(echo({ gate: () => opened }));
+test("a stop with a steer waiting interrupts the answer and the same run answers the steer; a second stop ends it and keeps what was said", async () => {
+  const gates: (() => void)[] = [];
+  const nyte = await open(
+    echo({ gate: () => new Promise<void>((resolve) => gates.push(resolve)) }),
+  );
   try {
     const { sessionId: id } = await nyte.sessions.create();
     nyte.attach();
     await nyte.messages.send({ sessionId: id, content: "hello" });
     await collect(nyte, { sessionId: id, afterSeq: 0 }, (event) => event.kind === "text_delta");
+    const first = (await nyte.sessions.snapshot({ sessionId: id }))?.run;
+    assert.ok(first !== undefined);
 
-    const aborted = await nyte.runs.abort({ sessionId: id });
-    assert.equal(aborted.kind, "requested");
-    release?.();
-    const events = await collect(
+    await nyte.messages.send({ sessionId: id, content: "do this instead", lane: "steer" });
+    assert.equal((await nyte.runs.abort({ sessionId: id })).kind, "requested");
+    // The interrupted answer stays, the steer lands, and the model is asked again
+    // under the same run: the drive's cancelled signal did not cancel that call.
+    await collect(
+      nyte,
+      { sessionId: id, afterSeq: 0 },
+      (_event, seen) => seen.filter((item) => item.kind === "text_delta").length === 2,
+    );
+    const resumed = (await nyte.sessions.snapshot({ sessionId: id }))?.run;
+    assert.equal(resumed?.runId, first.runId);
+    assert.equal(resumed?.phase.kind, "respond");
+    assert.equal(resumed?.abortRequested, undefined);
+    assert.deepEqual(await nyte.messages.pending({ sessionId: id }), []);
+
+    assert.equal((await nyte.runs.abort({ sessionId: id })).kind, "requested");
+    await collect(
       nyte,
       { sessionId: id, afterSeq: 0 },
       (event) => event.kind === "run" && event.run.phase.kind === "aborted",
     );
-    assert.ok(events.length > 0);
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
     assert.deepEqual(await nyte.runs.abort({ sessionId: id }), { kind: "not_running" });
+    assert.deepEqual(await transcript(nyte, id), [
+      "user:hello",
+      "assistant:saw",
+      "user:do this instead",
+      "assistant:saw",
+    ]);
+    assert.equal(gates.length, 2);
   } finally {
-    release?.();
+    for (const release of gates) release();
     await nyte.close();
   }
 });
@@ -348,7 +386,19 @@ test("a tool that asks a question parks the run; the answer wakes it and the run
     const current = await nyte.runs.current({ sessionId: id });
     assert.equal(current?.phase.kind, "waiting");
 
-    const answered = await nyte.runs.reply({ sessionId: id, callId: "ask-1", reply: "blue" });
+    const waitId = await waitIdFor(nyte, id, "ask-1");
+    assert.deepEqual(
+      await Reflect.apply(nyte.runs.reply, nyte.runs, [
+        { sessionId: id, callId: "ask-1", reply: "stale" },
+      ]),
+      { kind: "not_waiting" },
+    );
+    const answered = await nyte.runs.reply({
+      sessionId: id,
+      callId: "ask-1",
+      waitId,
+      reply: "blue",
+    });
     assert.equal(answered.kind, "signalled");
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
     const lines = await transcript(nyte, id);
@@ -356,8 +406,105 @@ test("a tool that asks a question parks the run; the answer wakes it and the run
     assert.equal(lines.at(-1), "assistant:saw 1");
     // The settled call's effect is cleared with its result; a late answer has nothing to land on.
     assert.equal(
-      (await nyte.runs.reply({ sessionId: id, callId: "ask-1", reply: "red" })).kind,
+      (await nyte.runs.reply({ sessionId: id, callId: "ask-1", waitId, reply: "red" })).kind,
       "not_found",
+    );
+  } finally {
+    await nyte.close();
+  }
+});
+
+test("telemetry follows a run from response requests through a parked tool and completion", async () => {
+  const telemetry = new InMemoryTelemetryContext();
+  const nyte = await open(echo(), { telemetry });
+  try {
+    const { sessionId } = await nyte.sessions.create();
+    nyte.attach();
+    await nyte.messages.send({ sessionId, content: "ask" });
+    assert.equal((await nyte.runs.wait({ sessionId })).kind, "waiting");
+    await nyte.runs.reply({
+      sessionId,
+      callId: "ask-1",
+      waitId: await waitIdFor(nyte, sessionId, "ask-1"),
+      reply: "blue",
+    });
+    assert.deepEqual(await nyte.runs.wait({ sessionId }), { kind: "idle" });
+    const run = await nyte.runs.current({ sessionId });
+    assert.ok(run);
+    assert.equal(run.phase.kind, "done");
+
+    const spans = telemetry.spans();
+    const response = spans.find(
+      (span) => span.name === "nyte.respond" && span.attributes["nyte.respond.outcome"] === "tools",
+    );
+    assert.ok(response?.ended);
+    assert.partialDeepStrictEqual(response.attributes, {
+      "nyte.run.id": run.runId,
+      "nyte.attempt": 1,
+      "nyte.model.provider": model.provider,
+      "nyte.model.id": model.id,
+      "nyte.respond.outcome": "tools",
+      "nyte.stop_reason": "toolUse",
+    });
+    const responseStep = spans.find((span) => span.id === response.parentId);
+    assert.ok(responseStep?.ended);
+    assert.equal(responseStep.name, "nyte.step");
+    assert.equal(responseStep.parentId, undefined);
+    assert.partialDeepStrictEqual(responseStep.attributes, {
+      "nyte.session.id": sessionId,
+      "nyte.head": "main",
+      "nyte.run.id": run.runId,
+      "nyte.run.phase": "respond",
+      "nyte.step.outcome": "continue",
+    });
+    const request = spans.find(
+      (span) => span.name === "nyte.ai.request" && span.parentId === response.id,
+    );
+    assert.ok(request?.ended);
+    assert.partialDeepStrictEqual(request.attributes, {
+      "nyte.model.provider": model.provider,
+      "nyte.model.id": model.id,
+      "nyte.model.api": model.api,
+      "nyte.request.step": "assistant",
+      "nyte.stop_reason": "toolUse",
+    });
+    assert.ok(Number.isFinite(request.attributes["nyte.ai.time_to_first_event_ms"]));
+    assert.ok(Number.isSafeInteger(request.attributes["nyte.ai.event_count"]));
+    const tool = spans.find(
+      (span) => span.name === "nyte.tool" && span.attributes["nyte.tool.parked"] === true,
+    );
+    assert.ok(tool?.ended);
+    assert.deepEqual(tool.attributes, {
+      "nyte.run.id": run.runId,
+      "nyte.tool.name": "ask",
+      "nyte.call.id": "ask-1",
+      "nyte.tool.is_error": false,
+      "nyte.tool.parked": true,
+    });
+    const toolStep = spans.find((span) => span.id === tool.parentId);
+    assert.ok(toolStep?.ended);
+    assert.equal(toolStep.name, "nyte.step");
+    assert.equal(toolStep.parentId, undefined);
+    assert.partialDeepStrictEqual(toolStep.attributes, {
+      "nyte.session.id": sessionId,
+      "nyte.head": "main",
+      "nyte.run.id": run.runId,
+      "nyte.run.phase": "tools",
+      "nyte.step.outcome": "waiting",
+    });
+    assert.ok(
+      spans.some(
+        (span) =>
+          span.name === "nyte.respond" && span.attributes["nyte.respond.outcome"] === "complete",
+      ),
+    );
+    assert.ok(
+      spans.some(
+        (span) =>
+          span.name === "nyte.tool" &&
+          span.attributes["nyte.tool.parked"] === false &&
+          span.attributes["nyte.tool.is_error"] === false,
+      ),
     );
   } finally {
     await nyte.close();
@@ -501,7 +648,6 @@ test("closing while a run is still streaming does not hang", async () => {
   await collect(nyte, { sessionId: id, afterSeq: 0 }, (event) => event.kind === "text_delta");
   await within(nyte.close(), 5_000);
   release?.();
-  assert.equal(sessionId("x"), "x");
 });
 
 test("the prospective plugin catalog is sessionless, cached, and invalidated by setPlugins", async () => {
@@ -549,7 +695,7 @@ test("the prospective plugin catalog is sessionless, cached, and invalidated by 
   const nyte = await createNyte({
     store,
     streamFn: echo(),
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
     plugins: [catalogPlugin("first-plugin", "first")],
     env: { cwd: "/tmp/nowhere" },
@@ -612,7 +758,7 @@ test("the prospective inventory includes failed plugins without creating a chat"
   const nyte = await createNyte({
     store,
     streamFn: echo(),
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
     plugins: [
       inlinePlugin(
@@ -659,7 +805,7 @@ test("lazy activation resolves new-session and session targets explicitly", asyn
   const nyte = await createNyte({
     store: openStore(),
     streamFn: echo(),
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
     resolveActivation(target) {
       targets.push(
@@ -682,7 +828,7 @@ test("a plugin command may read messages, name its session, or answer with a cli
   const nyte = await createNyte({
     store: openStore(),
     streamFn: echo(),
-    models: { getModels: () => [model], getModel: () => model },
+    models: { getModels: () => [model], getModel: () => model, getAvailable: async () => [model] },
     model,
     plugins: [
       ...plugins(),
@@ -690,7 +836,6 @@ test("a plugin command may read messages, name its session, or answer with a cli
         definePlugin({
           id: "commands",
           session(api) {
-            assert.deepEqual(Object.keys(api.session).sort(), ["context", "info", "rename"]);
             api.commands.add((draft) => {
               draft.set("rename", {
                 description: "Name the chat",

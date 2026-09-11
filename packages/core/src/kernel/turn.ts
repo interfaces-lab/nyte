@@ -13,6 +13,10 @@
  */
 import { isRetryableAssistantError, retryDelayMs } from "@nyte-ai/ai";
 import type { Api, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
+import type { TelemetryContext } from "@nyte-ai/telemetry";
+import { schemas } from "@nyte-ai/protocol";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type {
   AssistantMessage,
   ImageContent,
@@ -37,31 +41,45 @@ import type {
   WaitingCall,
 } from "../types.ts";
 import { isToolWait } from "../types.ts";
+import type { ToolWaitOptions } from "../types.ts";
 import { ToolError, toolResultContent } from "../utils/tool-result.ts";
 import {
   DEFAULT_COMPACTION_SETTINGS,
+  finishCompaction,
   isOverflow,
+  retainCompactionUsage,
   shouldCompact,
+  startCompaction,
   summarizeCheckpoint,
   validateCompactionSettings,
 } from "./compaction.ts";
 import type { CompactionSettings, ProviderCompaction } from "./compaction.ts";
 import { contextMessages, modelContext } from "./context.ts";
 import {
+  decideRecovery,
+  expireEffect,
   openEffect,
   parkEffect,
-  decideRecovery,
   settleEffect,
   type EffectView,
 } from "./effects.ts";
 import { toJsonValue } from "./json.ts";
-import type { Commit, CommitBody, EventBody, Lease, Oid, Run, ToolProgress } from "./model.ts";
+import type { JsonValue } from "./json.ts";
+import type {
+  Choice,
+  Commit,
+  CommitBody,
+  EventBody,
+  Lease,
+  Oid,
+  Run,
+  Selection,
+  ToolProgress,
+} from "./model.ts";
 import type { Session } from "./store.ts";
-import {
-  calculateContextTokens,
-  estimateModelContextTokens,
-  lastAssistantUsageInfo,
-} from "./views/context.ts";
+import { startSpan } from "./telemetry.ts";
+import { estimateModelContextTokens, lastAssistantUsageInfo } from "./views/context.ts";
+import { usageTokens } from "./views/usage.ts";
 
 /** Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/config.ts */
 const DEFAULT_RETRY_POLICY: RetryPolicy = {
@@ -70,11 +88,37 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
   baseDelayMs: 1_000,
 };
 
+const NonNegativeNumber = Type.Number({ minimum: 0 });
+const ProgressPayloadSchema = Type.Object({
+  content: Type.Optional(
+    Type.Array(
+      Type.Union([
+        Type.Object({
+          type: Type.Literal("text"),
+          text: Type.String(),
+          textSignature: Type.Optional(Type.String()),
+        }),
+        Type.Object({
+          type: Type.Literal("image"),
+          data: Type.String(),
+          mimeType: Type.String(),
+        }),
+      ]),
+    ),
+  ),
+  title: Type.Optional(Type.String()),
+  details: Type.Optional(Type.Unknown()),
+});
+
 export interface TurnInput {
   readonly session: Session;
+  /** The step's span: the response, tool, and compaction spans nest under it. */
+  readonly telemetry: TelemetryContext;
   /** The runner's lease; every effect write carries it. */
   readonly lease: Lease;
   readonly run: Run;
+  /** One clock read from the step, shared by every deadline decision in this call. */
+  readonly now: number;
   /** The response this call produces: `run.attempts + 1`. Deltas key on it. */
   readonly attempt: number;
   /** The branch from its newest checkpoint to the tip, oldest first. */
@@ -104,6 +148,8 @@ export type RespondOutcome =
   | { readonly kind: "aborted"; readonly message: AssistantMessage };
 
 export type ToolBatchOutcome =
+  | { readonly kind: "fenced" }
+  | { readonly kind: "conflict" }
   /** Every call settled; one result per call, in the assistant message's call order. */
   | { readonly kind: "complete"; readonly messages: readonly ToolResultMessage[] }
   /** Some calls are parked on their effect refs. Nothing is committed until they settle. */
@@ -113,6 +159,7 @@ export type ToolBatchOutcome =
       readonly kind: "failed";
       readonly messages: readonly ToolResultMessage[];
       readonly error: string;
+      readonly cause?: unknown;
     };
 
 export interface Turn {
@@ -130,6 +177,7 @@ export interface TurnOptions {
     Omit<SimpleStreamOptions, "reasoning" | "signal">;
   readonly retry?: RetryPolicy;
   readonly compaction?: CompactionSettings;
+  readonly compactAt?: number;
   readonly compactionStreamFn?: StreamFn;
   readonly providerCompaction?: ProviderCompaction;
 }
@@ -138,7 +186,35 @@ export interface TurnOptions {
 export function bindTurn(options: TurnOptions): Turn {
   validateCompactionSettings(options.compaction ?? DEFAULT_COMPACTION_SETTINGS);
   return {
-    respond: async (input) => respond(options, input),
+    respond: (input) =>
+      startSpan(
+        input.telemetry,
+        "nyte.respond",
+        {
+          "nyte.run.id": input.run.id,
+          "nyte.attempt": input.attempt,
+          "nyte.model.provider": options.model.provider,
+          "nyte.model.id": options.model.id,
+        },
+        async (span) => {
+          const outcome = await respond(options, { ...input, telemetry: span });
+          span.setAttributes({ "nyte.respond.outcome": outcome.kind });
+          // Checkpoint outcomes carry no assistant; overflow responses are retained separately.
+          if (outcome.kind === "checkpoint") return outcome;
+          const { usage, stopReason } = outcome.message;
+          span.setAttributes({
+            "nyte.stop_reason": stopReason,
+            "nyte.usage.input_tokens": usage.input,
+            "nyte.usage.output_tokens": usage.output,
+            "nyte.usage.cache_read_tokens": usage.cacheRead,
+            "nyte.usage.cache_write_tokens": usage.cacheWrite,
+            "nyte.usage.total_tokens": usage.totalTokens,
+            "nyte.usage.cost": usage.cost.total,
+          });
+          if (stopReason === "error") span.setStatus({ status: "error" });
+          return outcome;
+        },
+      ),
     tools: async (input) => runTools(options, input),
   };
 }
@@ -155,12 +231,14 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
         ).tokens
       : usage === undefined
         ? undefined
-        : calculateContextTokens(usage);
+        : usageTokens(usage);
   if (
     !input.signal.aborted &&
     !newestIsRunCheckpoint(input) &&
     contextTokens !== undefined &&
-    shouldCompact(contextTokens, options.model.contextWindow, settings)
+    (options.compactAt === undefined
+      ? shouldCompact(contextTokens, options.model.contextWindow, settings)
+      : settings.enabled && contextTokens >= options.compactAt)
   ) {
     const checkpoint = await checkpointOutcome(options, input, settings, "threshold");
     if (checkpoint !== undefined) return checkpoint;
@@ -169,7 +247,7 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
   const context = agentContext({ options, input, tools: [...options.tools] });
   const message = await generateAssistant(
     context,
-    agentConfig(options),
+    agentConfig(options, input.telemetry),
     input.signal,
     (event) => emitAssistantDelta(input, event),
     options.streamFn,
@@ -182,7 +260,20 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
       const error = message.errorMessage ?? "Unknown error";
       if (settings.enabled && isOverflow(message, options.model) && !newestIsRunCheckpoint(input)) {
         const checkpoint = await checkpointOutcome(options, input, settings, "overflow");
-        if (checkpoint !== undefined) return checkpoint;
+        if (checkpoint !== undefined) {
+          // Recovery replaces this response with a checkpoint. Keep the original
+          // model spend without adding the failed response to the branch context.
+          await input.session.objects.put([
+            {
+              kind: "commit",
+              parent: input.commits.at(-1)?.oid ?? null,
+              body: { kind: "message", message },
+              run: input.run.id,
+              at: Date.now(),
+            },
+          ]);
+          return checkpoint;
+        }
       }
       const at = retryAt({
         policy: options.retry ?? DEFAULT_RETRY_POLICY,
@@ -233,20 +324,54 @@ async function checkpointOutcome(
   settings: CompactionSettings,
   reason: "threshold" | "overflow",
 ): Promise<Extract<RespondOutcome, { readonly kind: "checkpoint" }> | undefined> {
-  const summarized = await summarizeCheckpoint({
-    commits: input.commits,
-    streamFn: options.compactionStreamFn ?? options.streamFn,
-    model: options.model,
-    thinkingLevel: options.thinkingLevel,
-    settings,
-    reason,
-    signal: input.signal,
-    retry: options.retry,
-    providerCompaction: options.providerCompaction,
-    systemPrompt: options.systemPrompt,
-    tools: [...options.tools],
-  });
-  return summarized.ok ? { kind: "checkpoint", body: summarized.value } : undefined;
+  return startSpan(
+    input.telemetry,
+    "nyte.compaction",
+    { "nyte.run.id": input.run.id, "nyte.compaction.reason": reason },
+    async (span) => {
+      await startCompaction(input.session, {
+        head: input.run.head,
+        lease: input.lease,
+        reason,
+      });
+      const summarized = await summarizeCheckpoint({
+        commits: input.commits,
+        streamFn: (model, context, requestOptions) =>
+          (options.compactionStreamFn ?? options.streamFn)(model, context, {
+            ...requestOptions,
+            telemetryContext: span,
+          }),
+        model: options.model,
+        thinkingLevel: options.thinkingLevel,
+        settings,
+        reason,
+        signal: input.signal,
+        retry: options.retry,
+        providerCompaction: options.providerCompaction,
+        systemPrompt: options.systemPrompt,
+        tools: [...options.tools],
+      });
+      span.setAttributes({ "nyte.compaction.outcome": summarized.ok ? "summarized" : "skipped" });
+      if (summarized.ok) return { kind: "checkpoint", body: summarized.value };
+      await retainCompactionUsage(input.session, {
+        parent: input.commits.at(-1)?.oid ?? null,
+        usage: summarized.error.usage,
+      });
+      await finishCompaction(input.session, {
+        head: input.run.head,
+        lease: input.lease,
+      });
+      return undefined;
+    },
+  );
+}
+
+interface ToolBatchState {
+  stopped?: Extract<ToolBatchOutcome, { readonly kind: "fenced" | "conflict" | "failed" }>;
+}
+
+function stopBatch(state: ToolBatchState, outcome: NonNullable<ToolBatchState["stopped"]>): void {
+  if (state.stopped === undefined || outcome.kind === "fenced") state.stopped = outcome;
 }
 
 async function runTools(
@@ -263,15 +388,16 @@ async function runTools(
 
   const parked = new Set<string>();
   const settling = new Map<string, EffectView>();
-  const tools = durableTools({ options, input, parked, settling });
+  const state: ToolBatchState = {};
+  const tools = durableTools({ options, input, parked, settling, state });
   const context = agentContext({ options, input, tools });
   const callerBeforeToolCall = options.loop?.beforeToolCall;
   const callerAfterToolCall = options.loop?.afterToolCall;
-  const config = agentConfig(options, {
+  const config = agentConfig(options, input.telemetry, {
     beforeToolCall: async (hookContext, signal) =>
       callerBeforeToolCall?.(hookContext, signal ?? input.signal),
     afterToolCall: async (hookContext, signal) => {
-      if (!settling.has(hookContext.toolCall.id)) return undefined;
+      if (state.stopped !== undefined || !settling.has(hookContext.toolCall.id)) return undefined;
       return callerAfterToolCall?.(hookContext, signal ?? input.signal);
     },
   });
@@ -285,10 +411,18 @@ async function runTools(
       (event) => emitToolProgress(input, event),
       async ({ toolCall, result, isError }) => {
         const view = settling.get(toolCall.id);
-        if (view === undefined) return;
-        await settleOrThrow({ session: input.session, lease: input.lease, view, result, isError });
+        if (state.stopped !== undefined || view === undefined) return;
+        await settleCall({
+          session: input.session,
+          lease: input.lease,
+          view,
+          result,
+          isError,
+          state,
+        });
       },
     );
+    if (state.stopped !== undefined) return state.stopped;
     if (parked.size > 0) {
       return {
         kind: "waiting",
@@ -297,8 +431,10 @@ async function runTools(
     }
     return { kind: "complete", messages };
   } catch (error) {
+    if (state.stopped !== undefined) return state.stopped;
     return {
       kind: "failed",
+      cause: error,
       messages: [],
       error: error instanceof Error ? error.message : String(error),
     };
@@ -330,10 +466,12 @@ function agentContext(options: {
 
 function agentConfig(
   options: TurnOptions,
+  telemetryContext: TelemetryContext,
   hooks: Pick<AgentLoopConfig, "beforeToolCall" | "afterToolCall"> = {},
 ): AgentLoopConfig {
   return {
     ...options.loop,
+    telemetryContext,
     model: options.model,
     reasoning: options.thinkingLevel === "off" ? undefined : options.thinkingLevel,
     beforeToolCall: hooks.beforeToolCall ?? options.loop?.beforeToolCall,
@@ -398,7 +536,7 @@ function providerRetryDelayMs(message: AssistantMessage): number | undefined {
     if (details === undefined) continue;
     for (const key of ["retryAfterMs", "retryDelayMs"]) {
       const value = details[key];
-      if (isNonNegativeFiniteNumber(value)) return value;
+      if (Value.Check(NonNegativeNumber, value)) return value;
     }
   }
   const match = message.errorMessage?.match(/server requested ([0-9]+(?:\.[0-9]+)?)s retry delay/i);
@@ -407,30 +545,64 @@ function providerRetryDelayMs(message: AssistantMessage): number | undefined {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1_000 : undefined;
 }
 
-function isNonNegativeFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
-}
-
 function durableTools(options: {
   readonly options: TurnOptions;
   readonly input: TurnInput;
   readonly parked: Set<string>;
   readonly settling: Map<string, EffectView>;
+  readonly state: ToolBatchState;
 }): AgentTool[] {
-  return options.options.tools.map((tool) => ({
-    ...tool,
-    execute: async (callId, params, signal, onUpdate) => {
-      const opened = await openEffect(options.input.session, {
-        lease: options.input.lease,
-        runId: options.input.run.id,
-        callId,
-        tool: tool.name,
-        args: toJsonValue(params),
-        replay: tool.replay ?? "never",
-      });
-      const view = opened.view;
-      const recovery = opened.kind === "opened" ? "execute" : decideRecovery(view);
+  return options.options.tools.map((tool) => {
+    const execute: AgentTool["execute"] = async (callId, params, signal, onUpdate) => {
+      if (options.state.stopped !== undefined) return waitingResult();
+      const args = toJsonValue(params);
+      let opened;
+      try {
+        opened = await openEffect(options.input.session, {
+          lease: options.input.lease,
+          runId: options.input.run.id,
+          callId,
+          tool: tool.name,
+          args,
+          replay: tool.replay ?? "never",
+        });
+      } catch (cause) {
+        stopBatch(options.state, {
+          kind: "failed",
+          messages: [],
+          cause,
+          error: cause instanceof Error ? cause.message : String(cause),
+        });
+        return waitingResult();
+      }
+      if (opened.kind === "fenced" || opened.kind === "conflict") {
+        stopBatch(options.state, opened);
+        return waitingResult();
+      }
+      // Another call may have lost ownership while this open was in flight.
+      if (options.state.stopped !== undefined) return waitingResult();
+      let view = opened.view;
+      let recovery = opened.kind === "opened" ? "execute" : decideRecovery(view);
       const executionSignal = signal ?? options.input.signal;
+      if (
+        recovery === "blocked" &&
+        view.effect.state === "waiting" &&
+        view.effect.until !== undefined &&
+        view.effect.until <= options.input.now &&
+        !executionSignal.aborted
+      ) {
+        const expiration = await expireEffect(options.input.session, {
+          lease: options.input.lease,
+          view,
+          now: options.input.now,
+        });
+        if (expiration.kind !== "expired") {
+          stopBatch(options.state, expiration);
+          return waitingResult();
+        }
+        view = expiration.view;
+        recovery = "wake";
+      }
       if (recovery !== "reuse") options.settling.set(callId, view);
       const waiting = (): AgentToolResult<unknown> => {
         options.settling.delete(callId);
@@ -441,10 +613,19 @@ function durableTools(options: {
       switch (recovery) {
         case "execute": {
           try {
-            return await tool.execute(callId, params, executionSignal, onUpdate);
+            return await tool.execute(callId, params, executionSignal, onUpdate, {
+              runId: options.input.run.id,
+              head: options.input.run.head,
+            });
           } catch (error) {
             if (!isToolWait(error)) throw error;
-            await parkOrThrow({ session: options.input.session, lease: options.input.lease, view });
+            await parkCall({
+              session: options.input.session,
+              lease: options.input.lease,
+              view,
+              state: options.state,
+              ...parkedWait(tool.name, error),
+            });
             return waiting();
           }
         }
@@ -452,12 +633,13 @@ function durableTools(options: {
           throw new Error(
             `Tool call "${tool.name}" was interrupted before completing and was not replayed.`,
           );
-        case "blocked":
+        case "blocked": {
           if (!executionSignal.aborted) return waiting();
           if (tool.wake !== undefined) {
             const outcome = await tool.wake(waitingCall(view), {
               signal: executionSignal,
               aborted: true,
+              expired: false,
             });
             if (outcome.kind === "settle") {
               if (outcome.isError === true) throw new ToolError(outcome.result);
@@ -465,28 +647,46 @@ function durableTools(options: {
             }
           }
           throw new Error(`Tool call "${tool.name}" was aborted while waiting.`);
+        }
         case "wake": {
-          if (view.effect.state !== "signal") {
-            throw new Error(`Effect ${view.ref} was classified for wake without a signal`);
+          if (view.effect.state !== "signal" && view.effect.state !== "expired") {
+            throw new Error(
+              `Effect ${view.ref} was classified for wake without a signal or expiry`,
+            );
           }
           if (tool.wake === undefined) {
+            if (view.effect.state === "expired") {
+              throw new Error(`Tool call "${tool.name}" timed out while waiting.`);
+            }
             throw new Error(
               `Tool call "${tool.name}" cannot resume because it has no wake handler.`,
             );
           }
-          const outcome = await tool.wake(waitingCall(view), {
-            signal: executionSignal,
-            aborted: options.input.run.abortRequested === true,
-            reply: view.effect.signal,
-          });
+          const outcome = await tool.wake(
+            waitingCall(view),
+            view.effect.state === "expired"
+              ? {
+                  signal: executionSignal,
+                  aborted: executionSignal.aborted,
+                  expired: true,
+                }
+              : {
+                  signal: executionSignal,
+                  aborted: options.input.run.abortRequested === true,
+                  expired: false,
+                  reply: view.effect.signal,
+                },
+          );
           if (outcome.kind === "settle") {
             if (outcome.isError === true) throw new ToolError(outcome.result);
             return outcome.result;
           }
-          await parkOrThrow({
+          await parkCall({
             session: options.input.session,
             lease: options.input.lease,
             view,
+            state: options.state,
+            ...parkedWait(tool.name, outcome),
           });
           return waiting();
         }
@@ -509,42 +709,143 @@ function durableTools(options: {
           return _exhaustive;
         }
       }
-    },
-  }));
+    };
+    return {
+      ...tool,
+      execute: (callId, params, signal, onUpdate) =>
+        startSpan(
+          options.input.telemetry,
+          "nyte.tool",
+          {
+            "nyte.run.id": options.input.run.id,
+            "nyte.tool.name": tool.name,
+            "nyte.call.id": callId,
+          },
+          async (span) => {
+            try {
+              const result = await execute(callId, params, signal, onUpdate);
+              span.setAttributes({
+                "nyte.tool.is_error": false,
+                "nyte.tool.parked": options.parked.has(callId),
+              });
+              return result;
+            } catch (error) {
+              span.setAttributes({ "nyte.tool.is_error": true, "nyte.tool.parked": false });
+              throw error;
+            }
+          },
+        ),
+    };
+  });
 }
 
-async function settleOrThrow(options: {
+async function settleCall(options: {
   readonly session: Session;
   readonly lease: Lease;
   readonly view: EffectView;
   readonly result: AgentToolResult<unknown>;
   readonly isError: boolean;
+  readonly state: ToolBatchState;
 }): Promise<void> {
-  const outcome = await settleEffect(options.session, {
-    lease: options.lease,
-    view: options.view,
-    result: toolResultMessage(
-      { toolCallId: options.view.intent.callId, toolName: options.view.intent.tool },
-      options.result,
-      options.isError,
-    ),
-  });
-  if ("kind" in outcome) {
-    throw new Error(`Effect ${options.view.ref} changed before it could settle`);
+  try {
+    const outcome = await settleEffect(options.session, {
+      lease: options.lease,
+      view: options.view,
+      result: toolResultMessage(
+        { toolCallId: options.view.intent.callId, toolName: options.view.intent.tool },
+        options.result,
+        options.isError,
+      ),
+    });
+    if (outcome.kind !== "settled") stopBatch(options.state, outcome);
+  } catch (cause) {
+    stopBatch(options.state, {
+      kind: "failed",
+      messages: [],
+      cause,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
   }
 }
 
-async function parkOrThrow(options: {
+/** What a tool parked with, checked at the plugin boundary. */
+function parkedWait(
+  tool: string,
+  options: ToolWaitOptions,
+): { readonly selection: Selection | undefined; readonly until: number | undefined } {
+  const until: unknown = options.until;
+  if (until !== undefined && (typeof until !== "number" || !Number.isFinite(until))) {
+    throw new Error(`Tool "${tool}" parked with a malformed deadline`);
+  }
+  return { selection: parkedSelection(tool, options.selection), until };
+}
+
+/**
+ * A plugin is outside the type system's reach, so what it parks with is
+ * made durable before it is trusted: `toJsonValue` reads every field once,
+ * so a getter cannot answer the check with one value and the store with
+ * another, and the stored object is rebuilt from the checked fields alone,
+ * so nothing a plugin attached beside them reaches the ref. A malformed
+ * selection fails this call as a tool error rather than becoming an effect
+ * object no reader can parse.
+ */
+function parkedSelection(tool: string, selection: unknown): Selection | undefined {
+  if (selection === undefined) return undefined;
+  const malformed = (reason: string) =>
+    new Error(`Tool "${tool}" parked with a malformed selection: ${reason}`);
+  let json: JsonValue;
+  try {
+    json = toJsonValue(selection);
+  } catch (cause) {
+    throw malformed(cause instanceof Error ? cause.message : String(cause));
+  }
+  if (!Value.Check(schemas.Selection, json)) throw malformed("does not match the schema");
+  const ids = new Set<string>();
+  for (const choice of json.choices) {
+    if (choice.id === "") throw malformed("a choice has an empty id");
+    if (ids.has(choice.id)) throw malformed(`choice id "${choice.id}" appears twice`);
+    ids.add(choice.id);
+  }
+  const [first, ...rest] = json.choices;
+  const durable: Selection = {
+    title: json.title,
+    choices: [durableChoice(first), ...rest.map(durableChoice)],
+  };
+  const withMultiple: Selection =
+    json.multiple === undefined ? durable : { ...durable, multiple: true };
+  if (json.other === undefined) return withMultiple;
+  const withOther: Selection = { ...withMultiple, other: json.other };
+  return withOther;
+}
+
+function durableChoice({ id, label, description }: Choice): Choice {
+  return description === undefined ? { id, label } : { id, label, description };
+}
+
+async function parkCall(options: {
   readonly session: Session;
   readonly lease: Lease;
   readonly view: EffectView;
+  readonly state: ToolBatchState;
+  readonly selection: Selection | undefined;
+  readonly until: number | undefined;
 }): Promise<void> {
-  const outcome = await parkEffect(options.session, {
-    lease: options.lease,
-    view: options.view,
-  });
-  if ("kind" in outcome) {
-    throw new Error(`Effect ${options.view.ref} changed before it could park`);
+  if (options.state.stopped !== undefined) return;
+  try {
+    const outcome = await parkEffect(options.session, {
+      lease: options.lease,
+      view: options.view,
+      ...(options.selection === undefined ? {} : { selection: options.selection }),
+      ...(options.until === undefined ? {} : { until: options.until }),
+    });
+    if (outcome.kind !== "parked") stopBatch(options.state, outcome);
+  } catch (cause) {
+    stopBatch(options.state, {
+      kind: "failed",
+      messages: [],
+      cause,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
   }
 }
 
@@ -562,6 +863,7 @@ function waitingResult(): AgentToolResult<unknown> {
 }
 
 type ProgressPart = TextContent | ImageContent;
+type ToolExecutionUpdate = Extract<AgentEvent, { readonly type: "tool_execution_update" }>;
 
 /** The part of a tool's partial `AgentToolResult` that reaches the event stream. */
 interface ProgressPayload {
@@ -570,43 +872,9 @@ interface ProgressPayload {
   readonly details?: unknown;
 }
 
-function isObjectValue(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
-
-function isProgressPart(value: unknown): value is ProgressPart {
-  if (!isObjectValue(value) || !("type" in value)) return false;
-  if (value.type === "text") {
-    return (
-      "text" in value &&
-      typeof value.text === "string" &&
-      (!("textSignature" in value) ||
-        value.textSignature === undefined ||
-        typeof value.textSignature === "string")
-    );
-  }
-  if (value.type === "image") {
-    return (
-      "data" in value &&
-      typeof value.data === "string" &&
-      "mimeType" in value &&
-      typeof value.mimeType === "string"
-    );
-  }
-  return false;
-}
-
 /** Whether a partial tool result carries progress the event stream can carry. */
-export function isProgressPayload(value: unknown): value is ProgressPayload {
-  if (!isObjectValue(value)) return false;
-  if (
-    "content" in value &&
-    value.content !== undefined &&
-    !(Array.isArray(value.content) && value.content.every(isProgressPart))
-  ) {
-    return false;
-  }
-  return !("title" in value) || value.title === undefined || typeof value.title === "string";
+function isProgressPayload(value: ToolExecutionUpdate["partialResult"]): value is ProgressPayload {
+  return Value.Check(ProgressPayloadSchema, value);
 }
 
 /** Normalize a tool's partial result for the event stream. */

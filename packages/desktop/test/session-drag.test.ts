@@ -6,7 +6,7 @@ import {
 } from "../src/renderer/src/layout/session-dnd-geometry.ts";
 
 describe("session drag geometry", () => {
-  test("uses Cursor's eight-pixel pointer activation threshold", () => {
+  test("uses an eight-pixel pointer activation threshold", () => {
     assert.equal(SESSION_DRAG_ACTIVATION_DISTANCE, 8);
   });
 

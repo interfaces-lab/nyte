@@ -128,6 +128,7 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
           return _exhaustive;
         }
       }
+    case "completion":
     case "checkpoint":
     case "summary":
     case "config":

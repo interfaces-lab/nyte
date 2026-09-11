@@ -1,6 +1,8 @@
 # Desktop
 
 - Preserve the Electron main/preload/renderer boundary. Session behavior belongs in core.
-- Use Electron and Node APIs, not Bun-only APIs. Keep desktop-owned imports static;
-  this overrides the shared style's dynamic-import preference.
+- Ask for workspace trust once; child tasks inherit it. Extra approval checks belong
+  in plugins. Keep API/IPC input validation.
+- Background agents get no ask-question tool.
+- Use Electron and Node APIs, not Bun-only APIs. Keep desktop-owned imports static.
 - Use Vitest for state, host, and IPC behavior with real local fixtures where possible.

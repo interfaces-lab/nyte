@@ -3,3 +3,4 @@ dist
 out
 *.log*
 resources/adblock.bin
+benchmark/results/

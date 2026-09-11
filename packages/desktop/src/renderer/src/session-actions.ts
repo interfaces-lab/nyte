@@ -121,7 +121,7 @@ export class SessionActions {
           void this.#run(inverse).then((saved) => {
             if (this.#archiveVersions.get(sessionId) === inverse) {
               this.#archiveVersions.delete(sessionId);
-              if (!saved) {
+              if (!saved && this.#find(sessionId)?.archived === archived) {
                 if (session.archived) restoreUndo?.();
                 else hide?.(sessionId);
               }

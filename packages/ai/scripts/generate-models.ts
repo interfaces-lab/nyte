@@ -351,6 +351,7 @@ const ANT_LING_RING_THINKING_LEVEL_MAP = {
 
 const BEDROCK_INFERENCE_PROFILE_ONLY_MODEL_IDS = new Set(["anthropic.claude-opus-5"]);
 const MODELS_DEV_OPENAI_UNSUPPORTED_MODEL_IDS = new Set(["gpt-5.6"]);
+const OPENAI_DAYBREAK_BLUE_MODEL_ID = "gpt-daybreak-blue-latest";
 const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
   "gpt-5.4",
   "gpt-5.4-mini",
@@ -360,6 +361,7 @@ const OPENAI_TOOL_SEARCH_MODEL_IDS = new Set([
   "gpt-5.6-terra",
   "gpt-5.6-luna",
   "gpt-6-astra",
+  OPENAI_DAYBREAK_BLUE_MODEL_ID,
 ]);
 // Public OpenAI documents additional_tools for applications that load tools
 // outside the normal tool-search flow. Codex currently uses the input item for
@@ -371,6 +373,7 @@ const OPENAI_CODEX_ADDITIONAL_TOOLS_MODEL_IDS = new Set([
   "gpt-5.6-terra",
   "gpt-5.6-luna",
   "gpt-6-astra",
+  OPENAI_DAYBREAK_BLUE_MODEL_ID,
 ]);
 const OPENAI_LONG_CONTEXT_INPUT_THRESHOLD = 272000;
 const OPENAI_SHORT_CONTEXT_CAPPED_MODEL_IDS = new Set([
@@ -553,6 +556,10 @@ function getTogetherThinkingLevelMap(
   return { ...TOGETHER_TOGGLE_REASONING_LEVEL_MAP };
 }
 
+function isOpenAiDaybreakBlueModel(modelId: string): boolean {
+  return modelId === "gpt-daybreak-blue" || modelId === OPENAI_DAYBREAK_BLUE_MODEL_ID;
+}
+
 function supportsOpenAiXhigh(modelId: string): boolean {
   return (
     modelId.includes("gpt-5.2") ||
@@ -560,13 +567,16 @@ function supportsOpenAiXhigh(modelId: string): boolean {
     modelId.includes("gpt-5.4") ||
     modelId.includes("gpt-5.5") ||
     modelId.includes("gpt-5.6") ||
-    modelId === "gpt-6-astra"
+    modelId === "gpt-6-astra" ||
+    isOpenAiDaybreakBlueModel(modelId)
   );
 }
 
 function supportsOpenAiMax(model: Model<Api>): boolean {
   return (
-    (model.id.includes("gpt-5.6") || model.id === "gpt-6-astra") &&
+    (model.id.includes("gpt-5.6") ||
+      model.id === "gpt-6-astra" ||
+      isOpenAiDaybreakBlueModel(model.id)) &&
     (model.api === "openai-responses" ||
       model.api === "azure-openai-responses" ||
       model.api === "openai-codex-responses" ||
@@ -874,7 +884,7 @@ function applyOpenAIGrammarToolCompatMetadata(model: Model<Api>): void {
   )
     return;
   const match = /^gpt-(\d+)/.exec(model.id);
-  if (!match || Number(match[1]) < 5) return;
+  if (!(isOpenAiDaybreakBlueModel(model.id) || (match && Number(match[1]) >= 5))) return;
   model.compat = {
     ...(model.compat as OpenAIResponsesCompat | undefined),
     supportsOpenAIGrammarTools: true,
@@ -961,6 +971,9 @@ function applyThinkingLevelMetadata(model: Model<any>): void {
   }
   if (model.id === "gpt-6-astra") {
     mergeThinkingLevelMap(model, { off: null, minimal: null });
+  }
+  if (isOpenAiDaybreakBlueModel(model.id)) {
+    mergeThinkingLevelMap(model, { off: null });
   }
   if (model.id.endsWith("gpt-5.5-pro")) {
     mergeThinkingLevelMap(model, { off: null, minimal: null, low: null });
@@ -2914,6 +2927,26 @@ async function generateModels() {
       reasoning: true,
       input: ["text", "image"],
       cost: withOpenAiLongContextPricing(OPENAI_GPT_56_STANDARD_COSTS["gpt-5.6-terra"]),
+      contextWindow: CODEX_GPT_56_CONTEXT,
+      maxTokens: CODEX_MAX_TOKENS,
+    },
+    // Codex ships this as a hidden cyber-specialty alias of GPT-5.6 Sol.
+    // Nyte lists it so ChatGPT-authenticated TUI and desktop sessions can select it.
+    // https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json
+    {
+      id: OPENAI_DAYBREAK_BLUE_MODEL_ID,
+      name: "Daybreak Blue",
+      api: "openai-codex-responses",
+      provider: "openai-codex",
+      baseUrl: CODEX_BASE_URL,
+      reasoning: true,
+      input: ["text", "image"],
+      cost: withOpenAiLongContextPricing({
+        input: 5,
+        output: 30,
+        cacheRead: 0.5,
+        cacheWrite: 6.25,
+      }),
       contextWindow: CODEX_GPT_56_CONTEXT,
       maxTokens: CODEX_MAX_TOKENS,
     },

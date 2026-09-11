@@ -1,5 +1,5 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import { DocsNavTitle } from "@/components/docs-nav-title";
+import { DocsNavTitle } from "~/components/docs-nav-title";
 
 /*
  * Options for DocsLayout. The navbar itself is <SiteNav /> in the root

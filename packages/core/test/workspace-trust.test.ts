@@ -32,7 +32,7 @@ describe("WorkspaceTrustStore", () => {
     );
   });
 
-  test("inherits the closest trusted parent", async () => {
+  test("inherits the closest trusted parent until that decision is forgotten", async () => {
     const { root, store } = await fixture();
     const workspace = join(root, "workspace");
     const child = join(workspace, "packages", "core");
@@ -45,6 +45,10 @@ describe("WorkspaceTrustStore", () => {
       assert.equal(resolution.workspace.cwd, child);
       assert.equal(resolution.inheritedFrom, workspace);
     }
+
+    await store.forget(workspace);
+    assert.equal((await store.resolve(child)).kind, "unknown");
+    assert.equal((await store.resolve(workspace)).kind, "unknown");
   });
 
   test("uses one identity for symlinked workspaces", async () => {
@@ -56,16 +60,6 @@ describe("WorkspaceTrustStore", () => {
 
     await store.trust(alias);
     assert.equal((await store.require(workspace)).cwd, workspace);
-  });
-
-  test("forgets only the exact decision", async () => {
-    const { root, store } = await fixture();
-    const workspace = join(root, "workspace");
-    await mkdir(workspace);
-    await store.trust(workspace);
-    await store.forget(workspace);
-
-    assert.equal((await store.resolve(workspace)).kind, "unknown");
   });
 
   test("rejects malformed external state", async () => {

@@ -16,6 +16,7 @@ export const sidebarFilterStyles = stylex.create({
     color: t.iconTertiary,
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.45 },
+    lineHeight: 0,
   },
   actionActive: { backgroundColor: t.fillAccentSubtle, color: t.textAccent },
   popup: {

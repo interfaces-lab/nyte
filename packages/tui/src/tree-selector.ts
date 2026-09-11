@@ -1,3 +1,4 @@
+import { matchesKey, matchesKeyName } from "./keymap.ts";
 /**
  * The session tree as a picker: every commit on every branch, the head's path
  * marked, one row highlighted. Enter hands the highlighted commit back to the
@@ -30,7 +31,7 @@ import type {
 } from "@opentui/core";
 import type { Oid, SessionTree, SessionTreeNode } from "@nyte-ai/core";
 import type { JsonValue } from "@nyte-ai/schema";
-import { GLYPHS } from "./constants.ts";
+import { GLYPHS, keycap } from "./constants.ts";
 import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
 import type { CliTheme } from "./theme.ts";
@@ -164,6 +165,8 @@ function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSumm
         }
       }
     }
+    case "completion":
+      return { role: "tool", label: `[task: ${body.job.state}]`, text: oneLine(body.job.title) };
     case "checkpoint":
       return {
         role: "checkpoint",
@@ -383,6 +386,7 @@ const PADDING_RIGHT = 1;
 
 interface TreeRowsOptions extends RenderableOptions<TreeRows> {
   readonly theme: CliTheme;
+  readonly viewport: ScrollBoxRenderable["viewport"];
   readonly onSelectionChanged: (index: number) => void;
 }
 
@@ -393,6 +397,7 @@ class TreeRows extends Renderable {
   private hovered: number | undefined;
   private readonly notifySelectionChanged: (index: number) => void;
   private readonly theme: CliTheme;
+  private readonly viewport: ScrollBoxRenderable["viewport"];
   private readonly rowBackground: RGBA;
   private readonly selectedBackground: RGBA;
   private readonly hoverBackground: RGBA;
@@ -401,6 +406,7 @@ class TreeRows extends Renderable {
   constructor(ctx: CliRenderer, options: TreeRowsOptions) {
     super(ctx, options);
     this.theme = options.theme;
+    this.viewport = options.viewport;
     this.notifySelectionChanged = options.onSelectionChanged;
     this.rowBackground = parseColor(options.theme.transparent);
     this.selectedBackground = parseColor(options.theme.selectionBackground);
@@ -468,9 +474,18 @@ class TreeRows extends Renderable {
     if (!this.visible) return;
     const left = this.x;
     const top = this.y;
-    buffer.fillRect(left, top, this.width, this.height, this.rowBackground);
+    const first = Math.max(0, this.viewport.screenY - this.screenY, -top);
+    const end = Math.min(
+      this.height,
+      this.viewport.screenY + this.viewport.height - this.screenY,
+      buffer.height - top,
+    );
+    if (end > first)
+      buffer.fillRect(left, top + first, this.width, end - first, this.rowBackground);
     const textWidth = this.width - PREFIX_WIDTH;
-    for (const [index, row] of this.rows.entries()) {
+    for (let index = first; index < end; index += 1) {
+      const row = this.rows[index];
+      if (row === undefined) continue;
       const selected = index === this.selected;
       const background = selected
         ? this.selectedBackground
@@ -600,7 +615,7 @@ export class TreeSelector {
         "tree-help",
         new StyledText([
           fg(theme.dim)(
-            "↑/↓ move · ←/→ page · alt+←/→ fold · enter select · ctrl+x copy · esc close · ctrl+t/u/a/d filter · ctrl+o cycle",
+            `${keycap("picker.previous", "symbol")}/${keycap("picker.next", "symbol")} move · ${keycap("tree.page.up", "symbol")}/${keycap("tree.page.down", "symbol")} page · ${keycap("tree.fold", "symbol").replace("meta+", "alt+")}/${keycap("tree.unfold", "symbol").replace("meta+", "")} fold · ${keycap("picker.accept")} select · ${keycap("tree.copy")} copy · ${keycap("tree.close")} close · ${keycap("tree.filter.tools")}/${keycap("tree.filter.users").replace("ctrl+", "")}/${keycap("tree.filter.all").replace("ctrl+", "")}/${keycap("tree.filter.default").replace("ctrl+", "")} filter · ${keycap("tree.filter.next")} cycle`,
           ),
         ]),
       ),
@@ -642,6 +657,7 @@ export class TreeSelector {
       width: "100%",
       height: 1,
       theme,
+      viewport: this.scroll.viewport,
       onSelectionChanged: (selected) => {
         this.scrollIntoView(selected);
         this.lastSelected = this.layout[selected]?.oid ?? this.lastSelected;
@@ -654,6 +670,7 @@ export class TreeSelector {
       onMouseOut: () => this.list.setHovered(undefined),
     });
     this.scroll.add(this.list);
+    this.scroll.viewport.on("resize", () => this.scrollIntoView(this.list.getSelectedIndex()));
     this.empty = line("tree-empty", new StyledText([fg(theme.dim)("  No entries found")]));
     this.empty.visible = false;
     this.footer = line("tree-footer", "");
@@ -670,7 +687,7 @@ export class TreeSelector {
   }
 
   get hints(): string {
-    return "enter select · ↑↓ move · esc close";
+    return `${keycap("picker.accept")} select · ${keycap("picker.previous", "symbol")}${keycap("picker.next", "symbol")} move · ${keycap("tree.close")} close`;
   }
 
   get rows(): number {
@@ -756,7 +773,11 @@ export class TreeSelector {
 
   private readonly onResize = (_width: number, height: number): void => {
     this.maxVisible = this.maxVisibleForHeight(height);
-    this.relayout();
+    this.list.setHovered(undefined);
+    this.scroll.height = Math.max(1, Math.min(this.layout.length, this.maxVisible));
+    this.scroll.scrollTo(0);
+    this.scrollIntoView(this.list.getSelectedIndex());
+    this.onRows(this.rows);
   };
 
   private readonly onInput = (value: string): void => {
@@ -825,7 +846,7 @@ export class TreeSelector {
 
   private readonly onKeyPress = (key: KeyEvent): void => {
     if (this.destroyed || key.defaultPrevented) return;
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+    if (matchesKey("tree.close", key, "required")) {
       consume(key);
       if (this.query === "") this.onCancel();
       else {
@@ -835,29 +856,36 @@ export class TreeSelector {
       return;
     }
     if (key.ctrl) {
-      switch (key.name) {
-        case "d":
+      switch (true) {
+        case matchesKey("tree.filter.default", { name: key.name, ctrl: key.ctrl }):
           this.setFilter("default");
           break;
-        case "t":
+        case matchesKey("tree.filter.tools", { name: key.name, ctrl: key.ctrl }):
           this.toggleFilter("no-tools");
           break;
-        case "u":
+        case matchesKey("tree.filter.users", { name: key.name, ctrl: key.ctrl }):
           this.toggleFilter("users");
           break;
-        case "a":
+        case matchesKey("tree.filter.all", { name: key.name, ctrl: key.ctrl }):
           this.toggleFilter("all");
           break;
-        case "o":
-          this.cycleFilter(key.shift ? -1 : 1);
+        case matchesKey("tree.filter.previous", {
+          name: key.name,
+          ctrl: key.ctrl,
+          shift: key.shift,
+        }):
+          this.cycleFilter(-1);
           break;
-        case "x":
+        case matchesKey("tree.filter.next", { name: key.name, ctrl: key.ctrl }):
+          this.cycleFilter(1);
+          break;
+        case matchesKey("tree.copy", { name: key.name, ctrl: key.ctrl }):
           this.copySelected();
           break;
-        case "p":
+        case matchesKey("picker.previous", { name: key.name, ctrl: key.ctrl }):
           this.list.moveBy(-1);
           break;
-        case "n":
+        case matchesKey("picker.next", { name: key.name, ctrl: key.ctrl }):
           this.list.moveBy(1);
           break;
         default:
@@ -867,24 +895,24 @@ export class TreeSelector {
       return;
     }
     if (this.layout.length === 0) return;
-    if (key.name === "return") {
+    if (matchesKeyName("picker.accept", key)) {
       consume(key);
       const oid = this.selectedOid;
       if (oid !== undefined) this.onSelect(oid);
       return;
     }
     const page = Math.max(1, this.maxVisible);
-    if (key.name === "up" || (key.shift && key.name === "tab")) {
+    if (matchesKey("picker.previous", key, "required")) {
       this.list.moveBy(-1);
-    } else if (key.name === "down" || (key.name === "tab" && !key.shift)) {
+    } else if (matchesKey("picker.next", key, "required")) {
       this.list.moveBy(1);
-    } else if (key.name === "left" && (key.meta || key.option)) {
+    } else if (matchesKey("tree.fold", { name: key.name, meta: key.meta || key.option })) {
       this.foldOrUp();
-    } else if (key.name === "right" && (key.meta || key.option)) {
+    } else if (matchesKey("tree.unfold", { name: key.name, meta: key.meta || key.option })) {
       this.unfoldOrDown();
-    } else if (key.name === "left" || key.name === "pageup") {
+    } else if (matchesKeyName("tree.page.up", key)) {
       this.list.setSelectedIndex(Math.max(0, this.list.getSelectedIndex() - page));
-    } else if (key.name === "right" || key.name === "pagedown") {
+    } else if (matchesKeyName("tree.page.down", key)) {
       this.list.setSelectedIndex(
         Math.min(this.layout.length - 1, this.list.getSelectedIndex() + page),
       );

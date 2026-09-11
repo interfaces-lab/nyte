@@ -5,10 +5,13 @@ import { usePathname } from "next/navigation";
 import { IconGithub } from "central-icons";
 import { FullSearchTrigger } from "fumadocs-ui/layouts/shared/slots/search-trigger";
 import { ThemeSwitch } from "fumadocs-ui/layouts/shared/slots/theme-switch";
-import { NyteWordmark } from "@/components/brand/mark";
-import { docsRoute, gitConfig } from "@/lib/shared";
+import { NyteWordmark } from "~/components/brand/mark";
+import { cloudRoute, docsRoute, gitConfig } from "~/lib/shared";
 
-const links = [{ label: "Docs", href: `${docsRoute}/design`, match: docsRoute }];
+const links = [
+  { label: "Docs", href: `${docsRoute}/design`, match: docsRoute },
+  { label: "Cloud", href: `${cloudRoute}/introduction`, match: cloudRoute },
+];
 
 /*
  * One navbar for the whole site, rendered from the root layout so it never

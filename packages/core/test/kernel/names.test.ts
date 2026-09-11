@@ -12,8 +12,6 @@ import {
   isLaneName,
   isRefName,
   keyRef,
-  newOwnerId,
-  newRunId,
   parseQueueRef,
   queueBaseRef,
   queuePrefix,
@@ -91,10 +89,4 @@ test("ref names follow git's rules", () => {
   assert.equal(isLaneName("urgent"), true);
   assert.equal(isLaneName("a/b"), false);
   assert.equal(isLaneName(""), false);
-});
-
-test("generated ids say what they are and never repeat", () => {
-  assert.match(newRunId(), /^run_/u);
-  assert.match(newOwnerId(), /^owner_/u);
-  assert.notEqual(newRunId(), newRunId());
 });

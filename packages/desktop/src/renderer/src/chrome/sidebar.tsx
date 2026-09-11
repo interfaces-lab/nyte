@@ -15,11 +15,16 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
 import * as stylex from "@stylexjs/stylex";
-import { Button as BaseButton, Collapsible, Toggle } from "@nyte-ai/ui/primitives";
+import { Button as BaseButton } from "@nyte-ai/ui/button";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { Toggle } from "@nyte-ai/ui/toggle";
 import { useMatch, useRouter } from "@tanstack/react-router";
-import { useEffect, useId, useRef, useState } from "react";
+import { LayoutGroup, motion, MotionConfig } from "motion/react";
+import type { Transition } from "motion/react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/core";
+import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { Icon } from "../components/icons.tsx";
 import {
@@ -35,16 +40,20 @@ import {
   paneControllerForWorkspace,
   usePaneActions,
   usePaneControllerSnapshot,
+  usePaneViewStateStore,
 } from "../layout/pane-context.tsx";
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { activePane } from "../layout/pane-layout.ts";
 import { useSessionDraggable } from "../layout/session-dnd.tsx";
 import { macPlatform } from "../platform.ts";
 import {
+  keys,
+  queryClient,
   warmThread,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
+  useServerState,
   useSessionActions,
   useWorkspaceSessionDirectory,
   loadLocalResources,
@@ -52,7 +61,7 @@ import {
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
-import { useGitHubAccount, type GitHubAccountViewModel } from "./github-account.ts";
+import { useGitHubAccount } from "./github-account.ts";
 import { handleOpenOutcome } from "./open-workspace.tsx";
 import { SearchPalette } from "./search-palette.tsx";
 import { SessionPreviewCard, type SessionPreviewContext } from "./sidebar-session-preview.tsx";
@@ -61,24 +70,82 @@ import {
   clearSessionFilters,
   DEFAULT_SESSION_VIEW,
   needsCompleteSessionDirectory,
+  sessionMark,
+  sessionsForNavigation,
   sessionsForView,
   type SessionViewSettings,
 } from "./sidebar-view.ts";
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation.tsx";
 import { shellActions, useShellState } from "./shell-state.ts";
+import {
+  clientActionAriaShortcut,
+  clientActionKeys,
+  clientActionShortcut,
+  clientActions,
+} from "../../../shared/client-actions.ts";
+import { cloudSessions, localSessions } from "../../../shared/ipc.ts";
+
+/** Which list a sidebar panel shows: one local store, or the connected server's sessions. */
+type SessionPlace =
+  | { readonly kind: "local"; readonly path: string | null }
+  | { readonly kind: "cloud" };
 
 const REPORT_ISSUE_URL = "https://github.com/interfaces-lab/nyte/issues/new";
 
+function draftsMatchView(view: SessionViewSettings): boolean {
+  return (
+    view.statuses.includes("draft") &&
+    view.pullRequests.includes("none") &&
+    view.environments.includes("local") &&
+    view.sources.includes("desktop")
+  );
+}
+
+function sidebarLayoutTransition(node: HTMLElement): Transition {
+  const css = getComputedStyle(node);
+  const durationToken = css.getPropertyValue("--_sidebar-motion-duration").trim();
+  const duration = Number.parseFloat(durationToken) / (durationToken.endsWith("ms") ? 1000 : 1);
+  const curve = css.getPropertyValue("--_sidebar-motion-easing").trim();
+  const [x1, y1, x2, y2] =
+    curve
+      .match(/^cubic-bezier\(([^)]+)\)$/)?.[1]
+      ?.split(",")
+      .map(Number) ?? [];
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined)
+    return { duration: 0 };
+  return { type: "tween", duration, ease: [x1, y1, x2, y2] };
+}
+
 function SidebarContent({ children }: { readonly children: ReactNode }): ReactElement {
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
+  const contentRef = useRef<HTMLElement>(null);
+  const layoutId = useId();
+  const [transition, setTransition] = useState<Transition>({ duration: 0 });
+
+  useLayoutEffect(() => {
+    const node = contentRef.current;
+    if (node === null) return;
+    // Motion's useReducedMotion snapshots the preference at mount; this must stay live.
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = (): void =>
+      setTransition(reducedMotion.matches ? { duration: 0 } : sidebarLayoutTransition(node));
+    update();
+    reducedMotion.addEventListener("change", update);
+    return () => reducedMotion.removeEventListener("change", update);
+  }, []);
 
   return (
     <nav
+      ref={contentRef}
       aria-label={settings === undefined ? "Sessions and workspaces" : "Settings"}
       {...stylex.props(styles.content)}
     >
       <div hidden={settings !== undefined} {...stylex.props(styles.contentLayer)}>
-        {children}
+        <MotionConfig reducedMotion="never" transition={{ layout: transition }}>
+          <LayoutGroup id={layoutId} inherit={false}>
+            {children}
+          </LayoutGroup>
+        </MotionConfig>
       </div>
       {settings !== undefined && <SettingsNavigation section={settings.params.section} />}
     </nav>
@@ -100,7 +167,9 @@ function SettingsFooterToggle({ mac }: { readonly mac: boolean }): ReactElement 
           type="button"
           pressed={open}
           aria-label={open ? "Close settings" : "Open settings"}
-          aria-keyshortcuts={mac ? "Meta+," : "Control+,"}
+          aria-keyshortcuts={
+            open ? undefined : clientActionAriaShortcut(clientActions.settings, mac)
+          }
           onPressedChange={(pressed) => {
             if (pressed) {
               void router.navigate({ to: "/settings/$section", params: { section: "general" } });
@@ -150,11 +219,15 @@ export function Sidebar(): ReactElement {
   const workspacePath = open?.path;
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
+  const server = useServerState();
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
   const renameSession = useRenameSession();
   const forgetWorkspace = useForgetWorkspace();
   const { layout } = usePaneControllerSnapshot();
+  const draftStore = usePaneViewStateStore();
+  useSyncExternalStore(draftStore.subscribe, draftStore.getSnapshot, draftStore.getSnapshot);
+  const activeWorkspaceDrafts = draftStore.drafts();
   const [confirmation, setConfirmation] = useState<SidebarConfirmation>({ kind: "closed" });
   // Confirmations open from a context menu, which has no persistent trigger to
   // return focus to; the dialog falls back to the previously focused element.
@@ -162,15 +235,16 @@ export function Sidebar(): ReactElement {
   // The footer is the one always-visible account surface, so it reads the
   // GitHub state itself. A fixed placeholder keeps its geometry stable while
   // that loads or when the project has no GitHub remote.
-  const account = useGitHubAccount(open !== undefined);
+  const account = useGitHubAccount();
   const workspaceCollectionID = useId();
-  const { stage, homeVisible } = useShellState();
+  const [collectionExpanded, setCollectionExpanded] = useState(true);
+  const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
+  const { stage, homeVisible, sidebarVisible } = useShellState();
   const router = useRouter();
   const openSettings = (section: SettingsSection): void => {
     const replace = router.state.matches.some((match) => match.routeId === "/settings/$section");
     void router.navigate({ to: "/settings/$section", params: { section }, replace });
   };
-  const [workspacesOpen, setWorkspacesOpen] = useState(true);
   const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<ReadonlySet<string | null>>(
     () => new Set(),
   );
@@ -182,12 +256,34 @@ export function Sidebar(): ReactElement {
       return next;
     });
   };
+  const [cloudCollapsed, setCloudCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const selection = activePane(layout).selection;
   const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
+  const activeDraftId =
+    selection.kind === "blank"
+      ? paneControllerForWorkspace(workspacePath).viewState.readBlank(activePane(layout).id).id
+      : undefined;
   const mac = macPlatform(host.data?.platform);
   const completeDirectoryRequired = needsCompleteSessionDirectory(view);
+  // The next switch is most often to a neighbouring row; its snapshot is warm
+  // before the pointer or the arrow key gets there.
+  const activeWorkspaceSessions =
+    sessionDirectory.data === undefined
+      ? undefined
+      : localSessions(sessionDirectory.data, workspacePath ?? null);
+  useEffect(() => {
+    if (activeSessionId === undefined || activeWorkspaceSessions === undefined) return;
+    const ordered = sessionsForView(activeWorkspaceSessions, view).flatMap(
+      (group) => group.sessions,
+    );
+    const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
+    if (index === -1) return;
+    for (const neighbour of [ordered[index - 1], ordered[index + 1]]) {
+      if (neighbour !== undefined) warmThread(neighbour.sessionId);
+    }
+  }, [activeSessionId, activeWorkspaceSessions, view]);
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
@@ -209,22 +305,32 @@ export function Sidebar(): ReactElement {
   };
 
   const showSession = async (
-    path: string | null,
+    place: SessionPlace,
     sessionId: SessionId,
     beside = false,
   ): Promise<void> => {
-    if (!(await activateWorkspace(path))) return;
-    const controller = paneControllerForWorkspace(path ?? undefined);
+    // A local session selects its folder first. A server session opens in
+    // whichever folder's panes are showing; nothing local is selected.
+    if (place.kind === "local" && !(await activateWorkspace(place.path))) return;
+    const controller = paneControllerForWorkspace(
+      place.kind === "local" ? (place.path ?? undefined) : workspacePath,
+    );
     if (beside) controller.drop(sessionId, activePane(controller.getSnapshot().layout).id, "right");
     else controller.selectSession(sessionId);
     shellActions.showWorkspace();
     await router.navigate({ to: "/session/$sessionId", params: { sessionId } });
   };
 
+  const showDraft = async (draftId: string): Promise<void> => {
+    paneControllerForWorkspace(workspacePath).selectDraft(draftId);
+    shellActions.showWorkspace();
+    await router.navigate({ to: "/" });
+  };
+
   const newWorkspaceChat = async (path: string | null): Promise<void> => {
     if (!(await activateWorkspace(path))) return;
     setExpanded(path, true);
-    paneControllerForWorkspace(path ?? undefined).selectBlank();
+    paneControllerForWorkspace(path ?? undefined).newChat();
     shellActions.showWorkspace();
     await router.navigate({ to: "/" });
   };
@@ -233,29 +339,70 @@ export function Sidebar(): ReactElement {
     setConfirmation({ kind: "closed" });
   };
 
-  const sessionPanel = (path: string | null): ReactElement | null => {
-    const sessions = sessionDirectory.data?.find((entry) => entry.workspacePath === path)?.sessions;
-    if (sessions === undefined) return null;
-    const sessionGroups = sessionsForView(sessions, view);
+  const newCloudChat = async (): Promise<void> => {
+    setCloudCollapsed(false);
+    const session = await nyte.host.server.createSession();
+    await queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
+    await showSession({ kind: "cloud" }, session.sessionId);
+  };
+
+  const sessionPanel = (place: SessionPlace): ReactElement | null => {
+    // Drafts, drag, and pane bookkeeping belong to the folder whose panes are showing.
+    const path = place.kind === "local" ? place.path : (workspacePath ?? null);
+    const collapsed = place.kind === "local" ? collapsedWorkspaces.has(place.path) : cloudCollapsed;
+    const workspaceDrafts =
+      place.kind === "local" && path === (workspacePath ?? null) ? activeWorkspaceDrafts : [];
+    const showDrafts = draftsMatchView(view);
+    const drafts = showDrafts ? workspaceDrafts : [];
+    const sessions =
+      sessionDirectory.data === undefined
+        ? undefined
+        : place.kind === "local"
+          ? localSessions(sessionDirectory.data, place.path)
+          : cloudSessions(sessionDirectory.data);
+    if (sessions === undefined && drafts.length === 0) return null;
+    const sessionGroups = sessions === undefined ? [] : sessionsForView(sessions, view, place.kind);
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
-      0,
+      drafts.length,
     );
     const previewContext: SessionPreviewContext =
-      path === null
-        ? { kind: "home" }
-        : {
-            kind: "workspace",
-            path,
-            repository:
-              path === workspacePath &&
-              (account.kind === "signed_in" || account.kind === "signed_out")
-                ? account.repository
-                : undefined,
-          };
+      place.kind === "cloud"
+        ? { kind: "cloud" }
+        : place.path === null
+          ? { kind: "home" }
+          : {
+              kind: "workspace",
+              path: place.path,
+              repository:
+                place.path === workspacePath &&
+                (account.query.data?.kind === "ready" || account.query.data?.kind === "signed_out")
+                  ? account.query.data.repository
+                  : undefined,
+            };
     return (
       <>
-        {displayedSessionCount === 0 &&
+        {drafts.length > 0 && (
+          <div {...stylex.props(styles.section)}>
+            {view.grouping === "status" && (
+              <div {...stylex.props(styles.sessionGroupLabel)}>Draft</div>
+            )}
+            {drafts.map((draft) => (
+              <DraftRow
+                key={draft.id}
+                draft={draft}
+                selected={path === (workspacePath ?? null) && draft.id === activeDraftId}
+                layoutEnabled={
+                  sidebarVisible && settings === undefined && collectionExpanded && !collapsed
+                }
+                onOpen={() => void showDraft(draft.id)}
+                onDelete={() => paneControllerForWorkspace(workspacePath).removeDraft(draft.id)}
+              />
+            ))}
+          </div>
+        )}
+        {sessions !== undefined &&
+          displayedSessionCount === 0 &&
           (completeDirectoryRequired ? (
             <>
               <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>
@@ -284,9 +431,12 @@ export function Sidebar(): ReactElement {
                 draggable={path === (workspacePath ?? null)}
                 previewContext={previewContext}
                 selected={session.sessionId === activeSessionId}
+                layoutEnabled={
+                  sidebarVisible && settings === undefined && collectionExpanded && !collapsed
+                }
                 showUpdated={view.show.includes("updated")}
-                onOpen={() => void showSession(path, session.sessionId)}
-                onOpenBeside={() => void showSession(path, session.sessionId, true)}
+                onOpen={() => void showSession(place, session.sessionId)}
+                onOpenBeside={() => void showSession(place, session.sessionId, true)}
                 onHover={() => warmThread(session.sessionId)}
                 onRename={(name) => renameSession.mutate({ sessionId: session.sessionId, name })}
                 onDelete={() =>
@@ -316,7 +466,13 @@ export function Sidebar(): ReactElement {
     );
   };
 
-  const newChatActive = stage.kind === "workspace" && selection.kind === "blank" && !paletteOpen;
+  const activeDraftIsListed =
+    draftsMatchView(view) && activeWorkspaceDrafts.some((draft) => draft.id === activeDraftId);
+  const newChatActive =
+    stage.kind === "workspace" &&
+    selection.kind === "blank" &&
+    !activeDraftIsListed &&
+    !paletteOpen;
 
   return (
     <aside {...stylex.props(styles.rail)}>
@@ -331,17 +487,14 @@ export function Sidebar(): ReactElement {
                 focus.ringInset,
                 newChatActive && styles.navRowActive,
               )}
-              onClick={() => {
-                shellActions.showWorkspace();
-                panes.newChat();
-              }}
+              onClick={() => panes.newChat()}
             >
               <span {...stylex.props(styles.navIcon)}>
                 <Icon name="new-chat" size={14} />
               </span>
               <span {...stylex.props(styles.navLabel)}>New Chat</span>
               <span {...stylex.props(styles.shortcutSlot, styles.shortcutPersistent)}>
-                <Kbd keys={mac ? ["⌘", "N"] : ["Ctrl", "N"]} />
+                <Kbd keys={clientActionKeys(clientActions.newChat, mac)} />
               </span>
             </button>
 
@@ -354,10 +507,7 @@ export function Sidebar(): ReactElement {
                 shellActions.showWorkspace();
                 panes.openSession(sessionId);
               }}
-              onNewChat={() => {
-                shellActions.showWorkspace();
-                panes.newChat();
-              }}
+              onNewChat={() => panes.newChat()}
               onOpenFolder={() => void nyte.host.pickWorkspace().then(handleOpenOutcome)}
               onOpenHome={
                 open === undefined
@@ -376,7 +526,7 @@ export function Sidebar(): ReactElement {
                   </span>
                   <span {...stylex.props(styles.navLabel)}>Search</span>
                   <span {...stylex.props(styles.shortcutSlot)}>
-                    <Kbd keys={mac ? ["⌘", "K"] : ["Ctrl", "K"]} />
+                    <Kbd keys={clientActionKeys(clientActions.search, mac)} />
                   </span>
                 </button>
               }
@@ -400,28 +550,31 @@ export function Sidebar(): ReactElement {
             </button>
           </div>
 
-          <div data-nyte-scrollport {...stylex.props(styles.scroll)}>
+          <motion.div layoutScroll data-nyte-scrollport {...stylex.props(styles.scroll)}>
             <section aria-label="Workspaces" {...stylex.props(styles.section)}>
               <Collapsible.Root
-                open={workspacesOpen}
-                onOpenChange={setWorkspacesOpen}
+                open={collectionExpanded}
+                onOpenChange={setCollectionExpanded}
                 {...stylex.props(styles.section)}
               >
                 <div {...stylex.props(styles.sectionHeader)}>
                   <Collapsible.Trigger
                     aria-controls={workspaceCollectionID}
                     {...stylex.props(styles.sectionToggle, focus.ringInset)}
-                  >
-                    <span {...stylex.props(styles.sectionLabel)}>Workspaces</span>
-                    <span
-                      {...stylex.props(
-                        styles.sectionChevron,
-                        workspacesOpen && styles.sectionChevronOpen,
-                      )}
-                    >
-                      <Icon name="chevron-right" size={11} />
-                    </span>
-                  </Collapsible.Trigger>
+                    render={(props, state) => (
+                      <button {...props}>
+                        <span {...stylex.props(styles.sectionLabel)}>Workspaces</span>
+                        <span
+                          {...stylex.props(
+                            styles.sectionChevron,
+                            state.open && styles.sectionChevronOpen,
+                          )}
+                        >
+                          <Icon name="chevron-right" size={11} />
+                        </span>
+                      </button>
+                    )}
+                  />
                   <WorkspaceControls
                     value={view}
                     homeVisible={homeVisible}
@@ -453,9 +606,10 @@ export function Sidebar(): ReactElement {
                       const active =
                         entry.kind === "home" ? open === undefined : open?.path === entry.path;
                       const path = entry.kind === "home" ? null : entry.path;
-                      const sessions = sessionDirectory.data?.find(
-                        (directory) => directory.workspacePath === path,
-                      )?.sessions;
+                      const sessions =
+                        sessionDirectory.data === undefined
+                          ? undefined
+                          : localSessions(sessionDirectory.data, path);
                       return (
                         <WorkspaceRow
                           key={entry.kind === "home" ? "home" : entry.path}
@@ -474,9 +628,9 @@ export function Sidebar(): ReactElement {
                                     kind: "archive-all",
                                     workspaceName: entry.kind === "home" ? "Home" : entry.name,
                                     workspacePath: path,
-                                    sessionIds: sessions
-                                      .filter((session) => !session.archived)
-                                      .map((session) => session.sessionId),
+                                    sessionIds: sessionsForNavigation(sessions).map(
+                                      (session) => session.sessionId,
+                                    ),
                                   })
                           }
                           onRemove={
@@ -485,14 +639,29 @@ export function Sidebar(): ReactElement {
                               : () => forgetWorkspace.mutate(entry.path)
                           }
                         >
-                          {sessionPanel(path)}
+                          {sessionPanel({ kind: "local", path })}
                         </WorkspaceRow>
                       );
                     })}
+                  {host.data !== undefined && server.data?.kind === "configured" && (
+                    <WorkspaceRow
+                      name="Cloud"
+                      path={server.data.baseUrl}
+                      available
+                      active={false}
+                      expanded={!cloudCollapsed}
+                      onExpandedChange={(next) => setCloudCollapsed(!next)}
+                      onNewChat={() => void newCloudChat()}
+                      onArchiveAll={undefined}
+                      onRemove={() => void nyte.host.server.disconnect()}
+                    >
+                      {sessionPanel({ kind: "cloud" })}
+                    </WorkspaceRow>
+                  )}
                 </Collapsible.Panel>
               </Collapsible.Root>
             </section>
-          </div>
+          </motion.div>
         </>
       </SidebarContent>
 
@@ -500,7 +669,11 @@ export function Sidebar(): ReactElement {
         <div {...stylex.props(styles.footerRow)}>
           <AccountFooterMenu
             account={account}
-            mac={mac}
+            settingsShortcut={clientActionShortcut(
+              clientActions.settings,
+              mac,
+              settings === undefined ? stage.kind : "settings",
+            )}
             onOpenSettings={() => openSettings("general")}
           />
           <SettingsFooterToggle mac={mac} />
@@ -555,23 +728,18 @@ export function Sidebar(): ReactElement {
  */
 function AccountFooterMenu({
   account,
-  mac,
+  settingsShortcut,
   onOpenSettings,
 }: {
-  account: GitHubAccountViewModel;
-  mac: boolean;
+  account: ReturnType<typeof useGitHubAccount>;
+  settingsShortcut: string;
   onOpenSettings: (trigger: HTMLElement) => void;
 }): ReactElement {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
-  const avatarUrl = account.kind === "signed_in" ? account.account.avatarUrl : undefined;
-  const label =
-    account.kind === "signed_in"
-      ? account.account.login
-      : account.kind === "signed_out" || account.kind === "connecting"
-        ? "GitHub"
-        : "Accounts";
-  const shortcut = mac ? "⌘," : "Ctrl+,";
+  const state = account.query.data;
+  const avatarUrl = state?.kind === "ready" ? state.account.avatarUrl : undefined;
+  const label = state?.kind === "ready" ? state.account.login : "Accounts";
 
   return (
     <>
@@ -585,7 +753,7 @@ function AccountFooterMenu({
             ref={triggerRef}
             type="button"
             aria-label={`${label} menu`}
-            disabled={account.kind === "connecting"}
+            disabled={account.busy}
             {...stylex.props(styles.navRow, styles.accountButton, focus.ringInset)}
           >
             <span {...stylex.props(styles.navIcon, styles.avatarSlot)}>
@@ -601,7 +769,7 @@ function AccountFooterMenu({
       >
         <MenuItem
           icon="settings"
-          meta={shortcut}
+          meta={settingsShortcut}
           onSelect={() => {
             const trigger = triggerRef.current;
             if (trigger !== null) onOpenSettings(trigger);
@@ -616,7 +784,7 @@ function AccountFooterMenu({
         >
           Report issue
         </MenuItem>
-        {account.kind === "signed_in" && (
+        {state?.kind === "ready" && (
           <>
             <MenuSeparator />
             <MenuItem icon="arrow-wall-left" danger onSelect={() => setConfirmingSignOut(true)}>
@@ -625,18 +793,24 @@ function AccountFooterMenu({
           </>
         )}
       </Menu>
-      {account.kind === "signed_in" && (
+      {state?.kind === "ready" && (
         <ConfirmDialog
           open={confirmingSignOut}
-          pending={account.signingOut}
-          error={undefined}
+          pending={account.busy}
+          error={
+            account.auth.isError
+              ? "Sign-out failed. Run gh auth status in a terminal, then try again."
+              : undefined
+          }
           returnFocusRef={triggerRef}
-          title="Sign out of GitHub?"
-          description="You’ll need to sign in again to use GitHub account features."
+          title="Sign out of GitHub CLI?"
+          description={`This removes the CLI login for @${state.account.login} on github.com. Terminal commands and other apps using this login will also be signed out.`}
           confirmLabel="Sign out"
           pendingLabel="Signing out…"
           onOpenChange={setConfirmingSignOut}
-          onConfirm={account.signOut}
+          onConfirm={() =>
+            account.auth.mutate("signOut", { onSuccess: () => setConfirmingSignOut(false) })
+          }
         />
       )}
     </>
@@ -731,11 +905,99 @@ function WorkspaceRow({
   );
 }
 
+function DraftRow({
+  draft,
+  selected,
+  layoutEnabled,
+  onOpen,
+  onDelete,
+}: {
+  readonly draft: ChatDraft;
+  readonly selected: boolean;
+  readonly layoutEnabled: boolean;
+  readonly onOpen: () => void;
+  readonly onDelete: () => void;
+}): ReactElement {
+  const title =
+    draft.composer.draft.trim().split(/\r?\n/u)[0]?.replaceAll(/\s+/gu, " ").trim() ?? "Draft";
+  const row = (
+    <motion.div
+      layout={layoutEnabled ? "position" : false}
+      initial={false}
+      {...stylex.props(
+        styles.sessionRowShell,
+        styles.sessionRowShellTimed,
+        selected && styles.rowSelected,
+      )}
+    >
+      {selected && (
+        <motion.div
+          key={layoutEnabled ? "moving" : "static"}
+          aria-hidden="true"
+          initial={false}
+          layout={layoutEnabled ? "position" : false}
+          layoutId={layoutEnabled ? "selected-session" : undefined}
+          layoutCrossfade={false}
+          {...stylex.props(styles.sessionSelection)}
+        />
+      )}
+      <BaseButton
+        render={
+          <button
+            type="button"
+            title={`Draft: ${title}`}
+            aria-current={selected ? "page" : undefined}
+            onClick={onOpen}
+          />
+        }
+        {...stylex.props(
+          styles.row,
+          styles.sessionRow,
+          styles.draftRow,
+          focus.ringInset,
+          selected && styles.rowSelected,
+        )}
+      >
+        <span {...stylex.props(styles.rowIcon)}>
+          <span role="img" aria-label="Draft" {...stylex.props(styles.draftDot)} />
+        </span>
+        <span {...stylex.props(styles.rowTitle, styles.sessionTitle)}>{title}</span>
+      </BaseButton>
+      <span data-nyte-session-row-actions="" {...stylex.props(styles.sessionTrailing)}>
+        <span {...stylex.props(styles.rowActions)}>
+          <button
+            type="button"
+            aria-label={`Delete draft: ${title}`}
+            title="Delete draft"
+            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Icon name="trash" size={12} />
+          </button>
+        </span>
+        <span {...stylex.props(styles.rowMeta)}>{formatTimeAgo(draft.updatedAt)}</span>
+      </span>
+    </motion.div>
+  );
+
+  return (
+    <ContextMenu label={`Actions for draft: ${title}`} trigger={row}>
+      <ContextMenuItem icon="trash" danger onSelect={onDelete}>
+        Delete draft
+      </ContextMenuItem>
+    </ContextMenu>
+  );
+}
+
 interface SessionRowProps {
   session: SessionInfo;
   draggable: boolean;
   previewContext: SessionPreviewContext;
   selected: boolean;
+  layoutEnabled: boolean;
   showUpdated: boolean;
   onOpen: () => void;
   onOpenBeside: () => void;
@@ -751,6 +1013,7 @@ function SessionRow({
   draggable,
   previewContext,
   selected,
+  layoutEnabled,
   showUpdated,
   onOpen,
   onOpenBeside,
@@ -761,10 +1024,7 @@ function SessionRow({
   onDelete,
 }: SessionRowProps): ReactElement {
   const warmTimer = useRef<number | undefined>(undefined);
-  const working = session.heads.some(
-    (head) =>
-      head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
-  );
+  const mark = sessionMark(session);
   const title = sessionTitle(session);
   const [draftName, setDraftName] = useState<string | undefined>();
   const { isDragging, listeners, setNodeRef } = useSessionDraggable(
@@ -808,8 +1068,14 @@ function SessionRow({
 
   if (draftName !== undefined) {
     return (
-      <div {...stylex.props(styles.sessionRenameRow)}>
-        <span {...stylex.props(styles.rowIcon)}>{working && <StatusDot working />}</span>
+      <motion.div
+        layout={layoutEnabled ? "position" : false}
+        initial={false}
+        {...stylex.props(styles.sessionRenameRow)}
+      >
+        <span {...stylex.props(styles.rowIcon)}>
+          <StatusDot mark={mark} />
+        </span>
         <input
           aria-label={`Rename ${title}`}
           autoFocus
@@ -823,15 +1089,18 @@ function SessionRow({
             if (event.key === "Escape") setDraftName(undefined);
           }}
         />
-      </div>
+      </motion.div>
     );
   }
 
   const row = (
-    <div
+    <motion.div
       ref={setNodeRef}
+      layout={layoutEnabled ? "position" : false}
+      initial={false}
       {...stylex.props(
         styles.sessionRowShell,
+        showUpdated && styles.sessionRowShellTimed,
         selected && styles.rowSelected,
         isDragging && styles.rowDragging,
       )}
@@ -844,6 +1113,18 @@ function SessionRow({
       onPointerDownCapture={warmNow}
       onFocusCapture={warmNow}
     >
+      {selected && (
+        <motion.div
+          key={layoutEnabled ? "moving" : "static"}
+          aria-hidden="true"
+          initial={false}
+          layout={layoutEnabled ? "position" : false}
+          // Hidden panels must never become shared-layout destinations.
+          layoutId={layoutEnabled ? "selected-session" : undefined}
+          layoutCrossfade={false}
+          {...stylex.props(styles.sessionSelection)}
+        />
+      )}
       <BaseButton
         render={
           <button type="button" aria-current={selected ? "page" : undefined} onClick={onOpen} />
@@ -856,38 +1137,39 @@ function SessionRow({
           selected && styles.rowSelected,
         )}
       >
-        <span {...stylex.props(styles.rowIcon)}>{working && <StatusDot working />}</span>
-        <span {...stylex.props(styles.rowTitle)}>{title}</span>
-        <span {...stylex.props(styles.trailing, styles.sessionTrailing)}>
-          <span {...stylex.props(styles.rowMeta)}>
-            {showUpdated ? formatTimeAgo(session.lastActivityAt) : undefined}
-          </span>
+        <span {...stylex.props(styles.rowIcon)}>
+          <StatusDot mark={mark} />
         </span>
+        <span {...stylex.props(styles.rowTitle, styles.sessionTitle)}>{title}</span>
       </BaseButton>
-      <span
-        data-nyte-session-row-actions=""
-        {...stylex.props(styles.rowActions, styles.sessionRowActions)}
-      >
-        <button
-          type="button"
-          aria-label={session.pinned ? "Unpin" : "Pin"}
-          title={session.pinned ? "Unpin" : "Pin"}
-          {...stylex.props(styles.action, focus.ringInset)}
-          onClick={onPin}
-        >
-          <Icon name={session.pinned ? "unpin" : "pin"} size={12} />
-        </button>
-        <button
-          type="button"
-          aria-label={session.archived ? "Restore" : "Archive"}
-          title={session.archived ? "Restore" : "Archive"}
-          {...stylex.props(styles.action, focus.ringInset)}
-          onClick={onArchive}
-        >
-          <Icon name="archive" size={12} />
-        </button>
+      <span data-nyte-session-row-actions="" {...stylex.props(styles.sessionTrailing)}>
+        <span {...stylex.props(styles.rowActions)}>
+          <button
+            type="button"
+            aria-label={session.pinned ? "Unpin" : "Pin"}
+            title={session.pinned ? "Unpin" : "Pin"}
+            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+            onClick={onPin}
+          >
+            <Icon name={session.pinned ? "unpin" : "pin"} size={12} />
+          </button>
+          <button
+            type="button"
+            aria-label={session.archived ? "Restore" : "Archive"}
+            title={session.archived ? "Restore" : "Archive"}
+            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+            onClick={onArchive}
+          >
+            <span {...stylex.props(styles.actionGlyphArchive)}>
+              <Icon name="archive" size={12} />
+            </span>
+          </button>
+        </span>
+        {showUpdated ? (
+          <span {...stylex.props(styles.rowMeta)}>{formatTimeAgo(session.lastActivityAt)}</span>
+        ) : null}
       </span>
-    </div>
+    </motion.div>
   );
 
   return (

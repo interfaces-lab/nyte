@@ -1,0 +1,184 @@
+---
+title: Dropdown menu
+description: "A Base UI menu on the menu tokens: items, radio groups, submenus, labels, shortcuts, separators"
+---
+
+```ts title="Import"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@nyte-ai/ui";
+```
+
+Implemented in `packages/ui/src/components/ui/dropdown-menu.tsx`, wrapping
+[`@nyte-ai/ui/menu`](/cloud/headless/menu). `DropdownMenu`, `DropdownMenuTrigger`,
+`DropdownMenuRadioGroup`, and `DropdownMenuSub` are the Base UI parts (`Root`, `Trigger`,
+`RadioGroup`, `SubmenuRoot`) re-exported unstyled.
+
+The desktop app has its own richer menu tier (checkbox items, switch items, command menu). See
+[Desktop › Menu](/cloud/desktop/menu). This wrapper is for web hosts and demos.
+
+## Usage
+
+- Items are actions. For choosing one of several values, use a `DropdownMenuRadioGroup`; for a
+  form-style select, use the headless [Select](/cloud/headless/select).
+- `variant="destructive"` on the last item, after a separator.
+- `inset` on items and labels aligns their text with radio items in the same menu, which reserve
+  `--nyte-control-menu-inset` on the left for the indicator.
+- `DropdownMenuShortcut` is display only. It does not bind the key.
+
+## Anatomy
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger />
+  <DropdownMenuContent>
+    {/* Portal › Positioner › Popup */}
+    <DropdownMenuLabel />
+    <DropdownMenuItem>
+      <DropdownMenuShortcut />
+    </DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuRadioGroup>
+      <DropdownMenuRadioItem /> {/* includes the indicator */}
+    </DropdownMenuRadioGroup>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger /> {/* includes the chevron */}
+      <DropdownMenuSubContent /> {/* Content with side="right" */}
+    </DropdownMenuSub>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+## Example
+
+<Preview>
+  <DropdownMenuDemo />
+</Preview>
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger render={<Button variant="outline" />}>Session</DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem>
+      Rename
+      <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
+    </DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuRadioGroup value={effort} onValueChange={setEffort}>
+      <DropdownMenuLabel inset>Effort</DropdownMenuLabel>
+      <DropdownMenuRadioItem value="low">Low</DropdownMenuRadioItem>
+      <DropdownMenuRadioItem value="high">High</DropdownMenuRadioItem>
+    </DropdownMenuRadioGroup>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuItem>Archive</DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+    <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+## Props
+
+### DropdownMenu (Root)
+
+<include>../../base-ui-reference/menu/Root.md</include>
+
+### DropdownMenuContent
+
+`StyledProps<Menu.Popup.Props>` plus the positioning subset forwarded to `Menu.Positioner`:
+
+| Prop          | Type                                   | Default    | Description                     |
+| ------------- | -------------------------------------- | ---------- | ------------------------------- |
+| `side`        | `Menu.Positioner.Props["side"]`        | `"bottom"` | Which side of the trigger.      |
+| `align`       | `Menu.Positioner.Props["align"]`       | `"start"`  | Alignment along that side.      |
+| `sideOffset`  | `number`                               | `4`        | Gap from the trigger.           |
+| `alignOffset` | `Menu.Positioner.Props["alignOffset"]` | `0`        | Shift along the alignment axis. |
+
+`DropdownMenuSubContent` takes the same props with defaults `side="right"`, `align="start"`,
+`sideOffset={0}`, `alignOffset={-3}`.
+
+<include>../../base-ui-reference/menu/Popup.md</include>
+
+### DropdownMenuItem
+
+`StyledProps<Menu.Item.Props>` plus:
+
+| Prop      | Type                         | Default     | Description                                  |
+| --------- | ---------------------------- | ----------- | -------------------------------------------- |
+| `inset`   | `boolean`                    | `false`     | Left padding to align with radio items.      |
+| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color; highlighted wash matches. |
+
+Sets `data-slot="dropdown-menu-item"`, `data-variant`, and `data-inset`.
+
+<include>../../base-ui-reference/menu/Item.md</include>
+
+### DropdownMenuRadioGroup, DropdownMenuRadioItem
+
+`DropdownMenuRadioItem` is `StyledProps<Menu.RadioItem.Props>` plus `inset`. It renders the
+`RadioItemIndicator` with a check glyph in an [IconBox](/cloud/foundations/icons#iconbox).
+
+<include>../../base-ui-reference/menu/RadioGroup.md</include>
+
+<include>../../base-ui-reference/menu/RadioItem.md</include>
+
+### DropdownMenuSubTrigger
+
+`StyledProps<Menu.SubmenuTrigger.Props>` plus `inset`. Renders a trailing chevron.
+
+<include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
+
+### DropdownMenuLabel
+
+`StyledProps<Menu.GroupLabel.Props>` plus `inset`.
+
+<include>../../base-ui-reference/menu/GroupLabel.md</include>
+
+### DropdownMenuSeparator
+
+<include>../../base-ui-reference/menu/Separator.md</include>
+
+### DropdownMenuShortcut
+
+`StyledProps<React.ComponentProps<"span">>`. Pushed to the right with `margin-left: auto`, in
+`--nyte-color-muted-foreground` at `--nyte-font-size-detail`.
+
+## Accessibility
+
+Base UI's menu model, unchanged:
+
+- Popup has `role="menu"`; items `role="menuitem"`, radio items `role="menuitemradio"` with
+  `aria-checked`, submenu triggers `aria-haspopup="menu"` and `aria-expanded`.
+- Arrow Down/Up move the highlight and wrap; Home/End jump; typing matches item text
+  (override with `label`); Enter and Space activate; Escape closes and returns focus to the
+  trigger.
+- Arrow Right opens a submenu and moves focus into it; Arrow Left closes it. Submenus also open on
+  hover (`openOnHover`).
+- Disabled items are `aria-disabled`, skipped by keyboard navigation, and set `data-disabled`.
+- Separators are `role="separator"`.
+
+## Styling
+
+| Token                                                                 | Role                                                                 |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `--nyte-layer-menu`                                                   | z-index (60), above dialogs                                          |
+| `--nyte-menu-min-width`, `-max-width`, `-max-height`                  | Popup box, bound to `--available-*`                                  |
+| `--nyte-radius-menu`, `--nyte-elevation-menu`, `--nyte-color-popover` | Popup surface                                                        |
+| `--nyte-font-size-label` / `--nyte-leading-label`                     | Items                                                                |
+| `--nyte-color-muted-hover`                                            | `[data-highlighted]` and `[data-popup-open]`                         |
+| `--nyte-color-destructive`, `-muted`                                  | Destructive item and its highlight                                   |
+| `--nyte-control-menu-inset`                                           | Indicator gutter / `inset`                                           |
+| `--nyte-motion-normal`                                                | Fade + 0.98 scale on `[data-starting-style]` / `[data-ending-style]` |

@@ -5,22 +5,32 @@
  * streaming content exchange in place.
  */
 import * as stylex from "@stylexjs/stylex";
-import { Button as BaseButton, Textarea } from "@nyte-ai/ui";
-import { Collapsible } from "@nyte-ai/ui/primitives";
-import { memo, useState } from "react";
+import { Button as BaseButton } from "@nyte-ai/ui";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { presentNote, turnPartId } from "@nyte-ai/core/views";
-import type { ThinkingLevel, Turn, TurnPart, UserTurnPart } from "@nyte-ai/core";
+import { changesFromTurns, presentNote, turnPartId } from "@nyte-ai/core/views";
+import type { FileChange, ThinkingLevel, Turn, TurnPart, UserTurnPart } from "@nyte-ai/core";
+import { AnimatedNumber } from "../components/animated-number.tsx";
+import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
+import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
+import { ComposerFrame, readComposerImageAttachments } from "./composer.tsx";
+import type { ComposerImageAttachment } from "./composer.tsx";
+import { composerMessageContent } from "./composer-send.ts";
+import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
+import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
+import { messageDraftText } from "./message-references.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import { inlineTextStyles, turnStyles } from "./styles.stylex.ts";
+import { USER_MESSAGE_PREVIEW_HEIGHT, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import {
@@ -29,10 +39,71 @@ import {
   isFailureNotice,
   presentTranscriptNotice,
   userDisplayText,
-  userTextSegments,
 } from "./transcript-presentation.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
+
+function UserMessagePreview({ children }: { children: ReactNode }): ReactElement {
+  const id = useId();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    if (content === null) return undefined;
+    const measure = (): void => {
+      setOverflowing(content.scrollHeight > USER_MESSAGE_PREVIEW_HEIGHT);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <>
+      <div
+        id={id}
+        {...stylex.props(
+          turnStyles.userPreview,
+          !expanded && turnStyles.userPreviewCollapsed,
+          !expanded && overflowing && turnStyles.userPreviewFade,
+        )}
+      >
+        <div ref={contentRef}>{children}</div>
+      </div>
+      {overflowing && (
+        <BaseButton
+          unstyled
+          type="button"
+          aria-controls={id}
+          aria-expanded={expanded}
+          {...stylex.props(turnStyles.userPreviewToggle, focus.ring)}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded ? "Show less" : "Show more"}
+        </BaseButton>
+      )}
+    </>
+  );
+}
+
+function UserMessageImages({ content }: { content: UserTurnPart["content"] }): ReactElement | null {
+  const images = messageImages(content);
+  if (images.length === 0) return null;
+  return (
+    <div aria-label="Image attachments" {...stylex.props(turnStyles.userImages)}>
+      {images.map((item, index) => (
+        <ImagePreview
+          key={index}
+          src={`data:${item.mimeType};base64,${item.data}`}
+          name={`Image ${String(index + 1)}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
@@ -44,67 +115,37 @@ export interface BranchModelPicker extends BranchModelChoice {
   readonly catalog: DesktopCatalog | undefined;
 }
 
-function UserMessageContent({ content }: { content: UserTurnPart["content"] }): ReactElement {
-  const segments = userTextSegments(editableText(content));
-  return (
-    <>
-      {segments.map((segment, index) =>
-        segment.kind === "text" ? (
-          <span key={`text:${String(index)}`}>{segment.text}</span>
-        ) : (
-          <span
-            key={`reference:${String(index)}:${segment.label}`}
-            title={segment.target}
-            {...stylex.props(inlineTextStyles.skill)}
-          >
-            {segment.label}
-          </span>
-        ),
-      )}
-    </>
-  );
-}
+type ConversationTurnId = Extract<Turn, { kind: "turn" }>["id"];
 
-function editableText(content: UserTurnPart["content"]): string {
-  if (!Array.isArray(content)) return content;
-  return content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
-}
-
-function replaceText(content: UserTurnPart["content"], text: string): UserTurnPart["content"] {
-  if (!Array.isArray(content)) return text;
-  let inserted = false;
-  const next: Exclude<UserTurnPart["content"], string> = [];
-  for (const part of content) {
-    if (part.type === "image") {
-      next.push(part);
-      continue;
-    }
-    if (inserted) continue;
-    inserted = true;
-    if (text !== "") next.push({ type: "text", text });
-  }
-  if (!inserted && text !== "") next.unshift({ type: "text", text });
-  return next;
-}
+export type TurnChangesTarget =
+  | { readonly kind: "turn"; readonly turnId: ConversationTurnId }
+  | { readonly kind: "file"; readonly turnId: ConversationTurnId; readonly path: string };
 
 interface UserEditState extends BranchModelChoice {
-  readonly draft: string;
+  /** The message as a draft: its head sentences back as chips, edited in the composer's editor. */
+  readonly document: ComposerDocumentState;
+  readonly attachments: readonly ComposerImageAttachment[];
+  readonly attachmentReads: number;
+  readonly attachmentError: string | undefined;
   readonly saving: boolean;
   readonly error: string | undefined;
 }
 
-function focusAtEnd(input: HTMLTextAreaElement | null): void {
-  if (input === null) return;
-  input.focus();
-  const end = input.value.length;
-  input.setSelectionRange(end, end);
-  input.style.height = "auto";
-  input.style.height = `${String(Math.min(input.scrollHeight, 180))}px`;
+/** The message's own images become attachments the edit can keep or drop. */
+function attachmentsOf(content: UserTurnPart["content"]): readonly ComposerImageAttachment[] {
+  return messageImages(content).map((image, index) => ({
+    id: crypto.randomUUID(),
+    name: `Image ${String(index + 1)}`,
+    previewUrl: `data:${image.mimeType};base64,${image.data}`,
+    content: image,
+  }));
 }
 
 /**
  * One user row. Without `onEdit` it is read-only, which also draws a message
- * that has left the composer but has no commit yet.
+ * that has left the composer but has no commit yet. Editing is composing
+ * again from the sent content, so it is the same frame the composer uses:
+ * attachments, the `+` menu, `@` and `/` completion, the model picker.
  */
 export function UserMessageView({
   content,
@@ -116,14 +157,21 @@ export function UserMessageView({
   branchModel?: BranchModelPicker;
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
-  const original = editableText(content);
+  const original = userMessageText(content);
+  const pluginCatalog = usePluginCatalog();
+  // The edit sits in a thread, so a workspace is open behind it.
+  const workspaceFiles = useMentionFiles(edit !== undefined);
 
   const begin = (): void => {
     if (onEdit === undefined || edit !== undefined) return;
     const selection = window.getSelection();
     if (selection !== null && !selection.isCollapsed) return;
+    const text = messageDraftText(original);
     setEdit({
-      draft: original,
+      document: { text, selectionStart: text.length, selectionEnd: text.length },
+      attachments: attachmentsOf(content),
+      attachmentReads: 0,
+      attachmentError: undefined,
       saving: false,
       error: undefined,
       model: branchModel?.model,
@@ -132,171 +180,153 @@ export function UserMessageView({
     });
   };
 
-  const save = (): void => {
-    if (edit === undefined || edit.saving || onEdit === undefined) return;
-    const next = replaceText(content, edit.draft);
+  const patchEdit = (patch: (current: UserEditState) => UserEditState): void => {
+    setEdit((current) => (current === undefined ? current : patch(current)));
+  };
+
+  const addFiles = async (files: readonly File[]): Promise<void> => {
+    patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
+    try {
+      const result = await readComposerImageAttachments(files);
+      patchEdit((current) => ({
+        ...current,
+        attachments: [...current.attachments, ...result.attachments],
+        attachmentError: result.error,
+      }));
+    } finally {
+      patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 }));
+    }
+  };
+
+  const save = async (submission: ComposerSubmission): Promise<boolean> => {
+    if (edit === undefined || edit.saving || onEdit === undefined) return false;
+    const next = composerMessageContent(
+      submission.text.trim(),
+      edit.attachments,
+      submission.references,
+    );
     if (Array.isArray(next) ? next.length === 0 : next.trim() === "") {
       setEdit({ ...edit, error: "A message cannot be empty." });
-      return;
+      return false;
     }
     setEdit({ ...edit, saving: true, error: undefined });
-    void onEdit(next, {
-      model: edit.model,
-      thinkingLevel: edit.thinkingLevel,
-      fastEnabled: edit.fastEnabled,
-    })
-      .then(() => setEdit(undefined))
-      .catch((cause: unknown) => {
-        setEdit((current) =>
-          current === undefined
-            ? current
-            : {
-                ...current,
-                saving: false,
-                error: errorMessage(cause),
-              },
-        );
+    try {
+      await onEdit(next, {
+        model: edit.model,
+        thinkingLevel: edit.thinkingLevel,
+        fastEnabled: edit.fastEnabled,
       });
+      setEdit(undefined);
+      return true;
+    } catch (cause: unknown) {
+      patchEdit((current) => ({ ...current, saving: false, error: errorMessage(cause) }));
+      return false;
+    }
   };
+
+  const modelPicker =
+    edit === undefined || branchModel === undefined ? undefined : (
+      <ModelPicker
+        catalog={branchModel.catalog}
+        current={edit.model}
+        thinkingLevel={edit.thinkingLevel}
+        fastEnabled={edit.fastEnabled}
+        disabled={edit.saving}
+        onChange={(change: ModelPickerChange) => {
+          switch (change.kind) {
+            case "model":
+              setEdit({ ...edit, model: change.option, thinkingLevel: change.thinkingLevel });
+              return;
+            case "thinking":
+              setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
+              return;
+            case "fast": {
+              const fastEnabled = new Set(edit.fastEnabled);
+              if (change.enabled) fastEnabled.add(change.settingId);
+              else fastEnabled.delete(change.settingId);
+              setEdit({ ...edit, fastEnabled });
+              return;
+            }
+            default: {
+              const _exhaustive: never = change;
+              return _exhaustive;
+            }
+          }
+        }}
+      />
+    );
 
   return (
     <div data-sticky-user-message {...stylex.props(turnStyles.userRow)}>
       <div {...stylex.props(turnStyles.userPromptShell)}>
-        {onEdit === undefined ? (
-          <div {...stylex.props(turnStyles.userPrompt)}>
-            <UserMessageContent content={content} />
-          </div>
-        ) : edit === undefined ? (
-          <BaseButton
-            unstyled
-            type="button"
-            aria-label={
-              original === "" ? "Edit message" : `Edit message: ${userDisplayText(original)}`
-            }
-            {...stylex.props(turnStyles.userPrompt, turnStyles.userPromptEditable, focus.ring)}
-            onClick={begin}
-            onKeyDown={(event) => {
-              if (event.key !== "F2") return;
-              event.preventDefault();
-              begin();
-            }}
+        {edit === undefined ? (
+          <div
+            {...stylex.props(
+              turnStyles.userPrompt,
+              onEdit !== undefined && turnStyles.userPromptEditable,
+            )}
           >
-            <UserMessageContent content={content} />
-          </BaseButton>
-        ) : (
-          <form
-            aria-busy={edit.saving || undefined}
-            {...stylex.props(turnStyles.userEdit)}
-            onSubmit={(event) => {
-              event.preventDefault();
-              save();
-            }}
-          >
-            <Textarea
-              unstyled
-              ref={focusAtEnd}
-              aria-label="Edit message"
-              rows={1}
-              value={edit.draft}
-              disabled={edit.saving}
-              {...stylex.props(turnStyles.userEditInput)}
-              onChange={(event) => {
-                setEdit({ ...edit, draft: event.target.value, error: undefined });
-                event.target.style.height = "auto";
-                event.target.style.height = `${String(Math.min(event.target.scrollHeight, 180))}px`;
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  setEdit(undefined);
-                } else if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing
-                ) {
-                  event.preventDefault();
-                  save();
-                }
-              }}
-            />
-            <div {...stylex.props(turnStyles.userEditFooter)}>
-              {branchModel !== undefined && (
-                <ModelPicker
-                  catalog={branchModel.catalog}
-                  current={edit.model}
-                  thinkingLevel={edit.thinkingLevel}
-                  fastEnabled={edit.fastEnabled}
-                  disabled={edit.saving}
-                  onChange={(change: ModelPickerChange) => {
-                    switch (change.kind) {
-                      case "model":
-                        setEdit({
-                          ...edit,
-                          model: change.option,
-                          thinkingLevel: change.thinkingLevel,
-                        });
-                        return;
-                      case "thinking":
-                        setEdit({ ...edit, thinkingLevel: change.thinkingLevel });
-                        return;
-                      case "fast": {
-                        const fastEnabled = new Set(edit.fastEnabled);
-                        if (change.enabled) fastEnabled.add(change.settingId);
-                        else fastEnabled.delete(change.settingId);
-                        setEdit({ ...edit, fastEnabled });
-                        return;
-                      }
-                      default: {
-                        const _exhaustive: never = change;
-                        return _exhaustive;
-                      }
-                    }
-                  }}
-                />
-              )}
-              {edit.error !== undefined && (
-                <span role="alert" title={edit.error} {...stylex.props(turnStyles.userEditError)}>
-                  {edit.error}
-                </span>
-              )}
-              <div {...stylex.props(turnStyles.userEditActions)}>
+            <UserMessagePreview>
+              <UserMessageImages content={content} />
+              {onEdit === undefined ? (
+                <UserMessageText text={original} />
+              ) : (
                 <BaseButton
                   unstyled
                   type="button"
-                  disabled={edit.saving}
-                  {...stylex.props(turnStyles.userEditCancel, focus.ring)}
-                  onClick={() => setEdit(undefined)}
+                  aria-label={
+                    original === "" ? "Edit message" : `Edit message: ${userDisplayText(original)}`
+                  }
+                  {...stylex.props(turnStyles.userPromptHit, focus.ring)}
+                  onClick={begin}
+                  onKeyDown={(event) => {
+                    if (event.key !== "F2") return;
+                    event.preventDefault();
+                    begin();
+                  }}
                 >
-                  Cancel
+                  <UserMessageText text={original} />
                 </BaseButton>
-                <BaseButton
-                  unstyled
-                  type="submit"
-                  aria-label="Send edited message"
-                  disabled={edit.saving}
-                  {...stylex.props(turnStyles.userEditSubmit, focus.ring)}
-                >
-                  <Icon name={edit.saving ? "loader" : "arrow-up"} size={14} />
-                </BaseButton>
-              </div>
-            </div>
-          </form>
-        )}
-        {Array.isArray(content) && content.some((item) => item.type === "image") && (
-          <div aria-label="Image attachments" {...stylex.props(turnStyles.userImages)}>
-            {content.map((item, index) =>
-              item.type === "image" ? (
-                <ImagePreview
-                  key={index}
-                  src={`data:${item.mimeType};base64,${item.data}`}
-                  name={`Image ${String(index + 1)}`}
-                />
-              ) : null,
+              )}
+            </UserMessagePreview>
+          </div>
+        ) : (
+          <div aria-busy={edit.saving || undefined} {...stylex.props(turnStyles.userEdit)}>
+            {edit.error !== undefined && (
+              <span role="alert" title={edit.error} {...stylex.props(turnStyles.userEditError)}>
+                {edit.error}
+              </span>
             )}
+            <ComposerFrame
+              surface="follow-up"
+              document={edit.document}
+              onDocumentChange={(document) =>
+                patchEdit((current) => ({ ...current, document, error: undefined }))
+              }
+              onSubmit={save}
+              placeholder="Edit message"
+              autoFocus
+              disabled={edit.saving}
+              suggestionCatalog={composerSource(pluginCatalog.data, pluginCatalog.isError)}
+              mentionFiles={composerSource(workspaceFiles.data, workspaceFiles.isError)}
+              hasConversationContext
+              attachments={edit.attachments}
+              attachmentBusy={edit.attachmentReads !== 0}
+              attachmentError={edit.attachmentError}
+              onFilesSelected={(files) => void addFiles(files)}
+              onAttachmentRemove={(id) =>
+                patchEdit((current) => ({
+                  ...current,
+                  attachments: current.attachments.filter((attachment) => attachment.id !== id),
+                  attachmentError: undefined,
+                }))
+              }
+              model={modelPicker}
+              editing={{ kind: "message", onCancel: () => setEdit(undefined) }}
+            />
           </div>
         )}
       </div>
-      <div aria-hidden="true" data-sticky-message-fade {...stylex.props(turnStyles.userFade)} />
     </div>
   );
 }
@@ -353,15 +383,24 @@ function HistoryDisclosure({
   label: ReactNode;
   children: ReactNode;
 }): ReactElement {
-  const [open, setOpen] = useState(false);
   return (
-    <Collapsible.Root open={open} onOpenChange={setOpen} {...stylex.props(turnStyles.history)}>
-      <Collapsible.Trigger {...stylex.props(turnStyles.historyToggle, focus.ring)}>
-        <span {...stylex.props(turnStyles.historyChevron, open && turnStyles.historyChevronOpen)}>
-          <Icon name="chevron-right" size={11} />
-        </span>
-        {label}
-      </Collapsible.Trigger>
+    <Collapsible.Root {...stylex.props(turnStyles.history)}>
+      <Collapsible.Trigger
+        {...stylex.props(turnStyles.historyToggle, focus.ring)}
+        render={(props, state) => (
+          <button {...props}>
+            {label}
+            <span
+              {...stylex.props(
+                turnStyles.historyChevron,
+                state.open && turnStyles.historyChevronOpen,
+              )}
+            >
+              <Icon name="chevron-right" size={11} />
+            </span>
+          </button>
+        )}
+      />
       <Collapsible.Panel {...stylex.props(turnStyles.historyBody)}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
@@ -377,6 +416,81 @@ function Notice({ text }: { text: string }): ReactElement {
     >
       {notice.text}
     </div>
+  );
+}
+
+/**
+ * The frame mounts as soon as a run touches a file so the end of the run only
+ * fills the body in; the reader's place under the card never shifts.
+ */
+function TurnChangesCard({
+  files,
+  running,
+  onReview,
+  onOpenFile,
+}: {
+  readonly files: readonly FileChange[];
+  readonly running: boolean;
+  readonly onReview: () => void;
+  readonly onOpenFile: (path: string) => void;
+}): ReactElement {
+  const title = `${String(files.length)} ${files.length === 1 ? "File" : "Files"} Changed`;
+  return (
+    <section
+      aria-label={title}
+      aria-busy={running || undefined}
+      {...stylex.props(turnStyles.changesCard)}
+    >
+      <div {...stylex.props(turnStyles.changesHeader)}>
+        <span {...stylex.props(turnStyles.changesTitle)}>{title}</span>
+        <BaseButton
+          unstyled
+          type="button"
+          title="Open the Changes panel"
+          onClick={onReview}
+          {...stylex.props(turnStyles.changesReview, focus.ring)}
+        >
+          Review
+        </BaseButton>
+      </div>
+      {!running && (
+        <ul {...stylex.props(turnStyles.changesList)}>
+          {files.map((file) => (
+            <li key={file.path}>
+              <BaseButton
+                unstyled
+                type="button"
+                title={`Open ${file.path} in Changes`}
+                onClick={() => onOpenFile(file.path)}
+                {...stylex.props(turnStyles.changesFile, focus.ringInset)}
+              >
+                <span {...stylex.props(turnStyles.changesFileIcon)}>
+                  <FileTypeIcon path={file.path} />
+                </span>
+                <span {...stylex.props(turnStyles.changesPath)}>
+                  {file.path.split("/").at(-1) ?? file.path}
+                </span>
+                <span
+                  aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
+                  {...stylex.props(turnStyles.changesStats)}
+                >
+                  {file.added > 0 && (
+                    <span {...stylex.props(turnStyles.changesAdded)}>
+                      +<AnimatedNumber value={file.added} />
+                    </span>
+                  )}
+                  {file.removed > 0 && (
+                    <span {...stylex.props(turnStyles.changesRemoved)}>
+                      -<AnimatedNumber value={file.removed} />
+                    </span>
+                  )}
+                </span>
+              </BaseButton>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -441,6 +555,7 @@ export const TurnView = memo(function TurnView({
   cwd,
   onEditUser,
   branchModel,
+  onOpenChanges,
   running = false,
 }: {
   turn: Turn;
@@ -453,11 +568,22 @@ export const TurnView = memo(function TurnView({
     choice: BranchModelChoice,
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
+  /** Absent in read-only views, which then omit the changes card. */
+  onOpenChanges?: (target: TurnChangesTarget) => void;
   running?: boolean;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
+  const changes = useMemo(() => changesFromTurns([turn]), [turn]);
+  // Progress updates must reuse the settled grouping so summaries can update only live tools.
+  const display = useMemo(
+    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts) : []),
+    [turn],
+  );
   switch (turn.kind) {
     case "turn": {
+      // A completion's continuation turn draws nothing until its response
+      // lands; an empty completed turn must not leave a blank row behind.
+      if (turn.parts.length === 0 && turn.outcome === "completed") return null;
       const hasFailureNote = turn.parts.some(
         (part) => part.kind === "note" && isFailureNotice(part.text),
       );
@@ -466,18 +592,22 @@ export const TurnView = memo(function TurnView({
           data-sticky-turn={turn.parts.some((part) => part.kind === "user") || undefined}
           {...stylex.props(turnStyles.turn)}
         >
-          {displayTranscriptParts(turn.parts).map((item) => {
+          {display.map((item, index) => {
             if (item.kind === "work") {
               const first = item.parts[0];
+              // Only the trailing group carries the run; an earlier one is
+              // settled history, and the run's indicator belongs below the
+              // prose that follows it.
+              const trailing = index === display.length - 1;
               return (
                 <WorkGroupView
                   key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
                   parts={item.parts}
-                  live={live}
+                  live={trailing ? live : undefined}
                   liveTools={liveTools}
                   cwd={cwd}
                   durationMs={turn.durationMs}
-                  running={running}
+                  running={running && trailing}
                   density={appearance.toolCalls}
                 />
               );
@@ -506,19 +636,20 @@ export const TurnView = memo(function TurnView({
           })}
           {turn.outcome === "aborted" && !hasFailureNote && <Notice text="Run stopped." />}
           {turn.outcome === "failed" && !hasFailureNote && <Notice text="Error: Run failed." />}
+          {changes.length > 0 && onOpenChanges !== undefined && (
+            <TurnChangesCard
+              files={changes}
+              running={running}
+              onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}
+              onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.id, path })}
+            />
+          )}
         </div>
       );
     }
     case "checkpoint":
       return (
-        <HistoryDisclosure
-          label={
-            <>
-              <Icon name="sparkle" size={12} />
-              Chat context summarized
-            </>
-          }
-        >
+        <HistoryDisclosure label="Chat context summarized">
           <Prose markdown={turn.body.summary} />
         </HistoryDisclosure>
       );

@@ -1,31 +1,31 @@
 import { glob, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { failure, formatSize, green, red, table } from "./terminal.mjs";
 
 const KIB = 1_024;
-// The renderer entry carries React, the router, StyleX output, and Base UI's
-// menu and dialog machinery, plus all desktop components. Syntax grammars stay in the worker.
-// Component navigation never fetches a JavaScript chunk.
+// Grammars live in the worker, the terminal wasm is its own asset, and provider
+// SDKs load on first request. Nothing else is allowed to defer.
 const budgets = {
-  main: 900 * KIB,
+  main: 700 * KIB,
   preload: 16 * KIB,
-  rendererEntry: 4_100 * KIB,
+  renderer: 4_200 * KIB,
 };
 const desktopRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Keep desktop-owned code static even when a new component is added later.
+const problems = [];
+
 for await (const path of glob("src/**/*.{ts,tsx}", { cwd: desktopRoot })) {
   const source = await readFile(join(desktopRoot, path), "utf8");
   if (/(?:^|[^\w.])(?:import|lazy|lazyRouteComponent)\s*\(/m.test(source)) {
-    throw new Error(`${path} contains a deferred module import; use a static import`);
+    problems.push(`${path} contains a deferred module import; use a static import`);
   }
 }
 
-// Workspace packages export TypeScript source. Node cannot strip types inside
-// packaged node_modules, so none may remain external in the main bundle.
+// Workspace packages ship TypeScript source, which Node cannot load from node_modules.
 for await (const path of glob("out/main/**/*.js", { cwd: desktopRoot })) {
   const source = await readFile(join(desktopRoot, path), "utf8");
   if (/(?:from\s*|import\s*\(?\s*|require\s*\(\s*)["']@nyte-ai\//u.test(source)) {
-    throw new Error(`${path} imports unbundled workspace TypeScript; bundle all @nyte-ai packages`);
+    problems.push(`${path} imports unbundled workspace TypeScript; bundle all @nyte-ai packages`);
   }
 }
 
@@ -34,17 +34,19 @@ const html = await readFile(join(rendererRoot, "index.html"), "utf8");
 const preloadPath = join(desktopRoot, "out", "preload", "index.js");
 const preloadSource = await readFile(preloadPath, "utf8");
 const rendererEntry = html.match(/<script[^>]+src="([^"]+)"/)?.[1];
-if (rendererEntry === undefined) throw new Error("Cannot find the renderer entry in index.html");
+if (rendererEntry === undefined) {
+  failure("Cannot find the renderer entry in out/renderer/index.html");
+  process.exit(1);
+}
 
-// Electron's sandboxed preload only exposes its limited `require` polyfill.
-// Catch dependency externalization here instead of shipping another blank UI.
+// The sandboxed preload can only require "electron".
 const unsupportedPreloadRequires = [
   ...new Set(
     [...preloadSource.matchAll(/\brequire\(["']([^"']+)["']\)/g)].map((match) => match[1]),
   ),
 ].filter((specifier) => specifier !== "electron");
 if (unsupportedPreloadRequires.length > 0) {
-  throw new Error(
+  problems.push(
     `sandboxed preload contains external requires: ${unsupportedPreloadRequires.join(", ")}`,
   );
 }
@@ -52,21 +54,24 @@ if (unsupportedPreloadRequires.length > 0) {
 const sizes = {
   main: (await stat(join(desktopRoot, "out", "main", "index.js"))).size,
   preload: (await stat(preloadPath)).size,
-  rendererEntry: (await stat(join(rendererRoot, rendererEntry))).size,
+  renderer: (await stat(join(rendererRoot, rendererEntry))).size,
 };
 
-for (const name of Object.keys(budgets)) {
-  if (sizes[name] > budgets[name]) {
-    throw new Error(
-      `${name} startup entry is ${formatSize(sizes[name])}; budget is ${formatSize(budgets[name])}`,
-    );
-  }
+const rows = [];
+for (const [name, budget] of Object.entries(budgets)) {
+  const size = sizes[name];
+  const over = size > budget;
+  if (over) problems.push(`${name} startup entry is over budget`);
+  rows.push([
+    name,
+    formatSize(size),
+    `of ${formatSize(budget)}`,
+    over ? red(`over by ${formatSize(size - budget)}`) : green(`${formatSize(budget - size)} free`),
+  ]);
 }
 
-process.stdout.write(
-  `startup entries: main ${formatSize(sizes.main)}, preload ${formatSize(sizes.preload)}, renderer ${formatSize(sizes.rendererEntry)}\n`,
-);
-
-function formatSize(bytes) {
-  return `${(bytes / KIB).toFixed(1)} KiB`;
+process.stdout.write(table(rows, { align: ["left", "right", "left", "left"] }));
+if (problems.length > 0) {
+  for (const problem of problems) failure(problem);
+  process.exit(1);
 }

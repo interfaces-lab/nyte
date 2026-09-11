@@ -9,13 +9,12 @@
 
 import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { relative } from "node:path";
-import { Unsafe } from "typebox";
-import type { AgentTool, AgentToolResult } from "../types.ts";
+import { Type, type Static } from "typebox";
+import type { AgentTool, AgentToolCall, AgentToolResult } from "../types.ts";
 import { toolResultContent } from "../utils/tool-result.ts";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,
-  type Edit,
   type FileMutationDetails,
   generateFileMutationDetails,
   normalizeToLF,
@@ -23,45 +22,28 @@ import {
   stripBom,
 } from "./edit-diff.ts";
 export type { Edit } from "./edit-diff.ts";
+import { argumentParser } from "./support/arguments.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";
 import { resolveToCwd } from "./support/path-utils.ts";
 
-const editParametersSchema = Unsafe<EditToolInput>({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "Path to the file to edit (relative or absolute)",
-    },
-    edits: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          oldText: {
-            type: "string",
-            description:
-              "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
-          },
-          newText: {
-            type: "string",
-            description: "Replacement text for this targeted edit.",
-          },
-        },
-        required: ["oldText", "newText"],
-      },
+const editParameters = Type.Object({
+  path: Type.String({ description: "Path to the file to edit (relative or absolute)" }),
+  edits: Type.Array(
+    Type.Object({
+      oldText: Type.String({
+        description:
+          "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
+      }),
+      newText: Type.String({ description: "Replacement text for this targeted edit." }),
+    }),
+    {
       description:
         "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
     },
-  },
-  required: ["path", "edits"],
+  ),
 });
 
-export interface EditToolInput {
-  path: string;
-  edits: Edit[];
-}
-
+export type EditToolInput = Static<typeof editParameters>;
 export type EditToolDetails = FileMutationDetails;
 
 interface ErrorWithCode {
@@ -79,88 +61,34 @@ function editAccessError(path: string, cause: unknown): Error {
   });
 }
 
-interface EditInputFields {
-  readonly path?: unknown;
-  readonly edits?: unknown;
-  readonly oldText?: unknown;
-  readonly newText?: unknown;
-}
+const parseEditArguments = argumentParser(editParameters);
 
-function isEditInputObject(value: unknown): value is EditInputFields {
-  return typeof value === "object" && value !== null;
-}
-
-function hasEditPath(
-  value: EditInputFields,
-): value is EditInputFields & Pick<EditToolInput, "path"> {
-  return typeof value.path === "string";
-}
-
-function isStringValue(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-function isEditValue(value: unknown): value is Edit {
-  return (
-    isEditInputObject(value) &&
-    typeof value.oldText === "string" &&
-    typeof value.newText === "string"
-  );
-}
-
-function isUnknownArray(value: unknown): value is unknown[] {
-  return Array.isArray(value);
-}
-
-type EditArgumentPreparer = NonNullable<
-  AgentTool<typeof editParametersSchema, EditToolDetails>["prepareArguments"]
->;
-
-const parseEditInput: EditArgumentPreparer = (input) => {
-  if (!isEditInputObject(input)) {
-    throw new Error("Edit tool input is invalid. Expected an object.");
-  }
-
-  if (!hasEditPath(input)) {
-    throw new Error("Edit tool input is invalid. path must be a string.");
-  }
-
-  let editsValue = input.edits;
-  if (isStringValue(editsValue)) {
+/** Models sometimes send `edits` as a JSON string, or one replacement at the top level; both fold into `edits`. */
+function prepareEditInput(input: AgentToolCall["arguments"]): EditToolInput {
+  const raw: unknown = input.edits;
+  let listed: unknown = raw;
+  if (typeof raw === "string") {
     try {
-      editsValue = JSON.parse(editsValue);
+      listed = JSON.parse(raw);
     } catch {
-      // The validation below reports one stable error for malformed and non-array values.
+      // The strict check below reports the malformed value.
     }
   }
-
-  const edits = isUnknownArray(editsValue) ? [...editsValue] : [];
-  if (isEditValue(input)) {
-    edits.push({ oldText: input.oldText, newText: input.newText });
-  }
+  const single: unknown = input.oldText;
+  const singleNew: unknown = input.newText;
+  const edits: unknown[] = [
+    ...(Array.isArray(listed) ? listed : []),
+    ...(typeof single === "string" && typeof singleNew === "string"
+      ? [{ oldText: single, newText: singleNew }]
+      : []),
+  ];
   if (edits.length === 0) {
-    throw new Error("Edit tool input is invalid. edits must contain at least one replacement.");
+    throw new Error("Invalid arguments: edits must contain at least one replacement");
   }
+  return parseEditArguments({ ...input, edits });
+}
 
-  return {
-    path: input.path,
-    edits: edits.map((edit, index) => {
-      if (!isEditInputObject(edit)) {
-        throw new Error(`Edit tool input is invalid. edits[${index}] must be an object.`);
-      }
-      if (!isEditValue(edit)) {
-        throw new Error(
-          `Edit tool input is invalid. edits[${index}] must contain string oldText and newText.`,
-        );
-      }
-      return { oldText: edit.oldText, newText: edit.newText };
-    }),
-  };
-};
-
-export function createEditTool(
-  cwd: string,
-): AgentTool<typeof editParametersSchema, EditToolDetails> {
+export function createEditTool(cwd: string): AgentTool<typeof editParameters, EditToolDetails> {
   return {
     name: "edit",
     description:
@@ -173,8 +101,8 @@ export function createEditTool(
       "Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.",
       "Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.",
     ],
-    parameters: editParametersSchema,
-    prepareArguments: parseEditInput,
+    parameters: editParameters,
+    prepareArguments: prepareEditInput,
     async execute(_toolCallId, { path, edits }, signal): Promise<AgentToolResult<EditToolDetails>> {
       const absolutePath = resolveToCwd(path, cwd);
 

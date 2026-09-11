@@ -62,6 +62,7 @@ export function bindSessionApi(
     settings: registry(target.registries.settings),
     agents: agentRegistry(target.registries.agents),
     status: registry(target.registries.status),
+    modelContext: registry(target.registries.modelContext),
 
     hook<TName extends HookName>(name: TName, handler: HookHandler<TName>): Disposer {
       return scope.track(target.hooks.on(name, handler, { id: plugin.id }));
@@ -85,5 +86,6 @@ export function bindSessionApi(
         void target.emit({ kind: "notification", owner: plugin.id, ...notification });
       },
     },
+    signal: scope.signal,
   };
 }

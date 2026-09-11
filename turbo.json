@@ -6,6 +6,16 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", ".output/**", "dist/**", "out/**"]
     },
+    "@nyte-ai/tui#build": {
+      "outputs": ["../../bin/nyte", "../../bin/nyte.exe"]
+    },
+    "package": {
+      "dependsOn": ["build"],
+      "cache": false
+    },
+    "@nyte-ai/ai#models:generate": {
+      "cache": false
+    },
     "clean": {
       "cache": false
     },

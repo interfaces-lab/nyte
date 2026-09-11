@@ -22,7 +22,8 @@
     "access": "public"
   },
   "scripts": {
-    "clean": "rm -rf node_modules .turbo",
+    "clean": "rm -rf node_modules .turbo dist",
+    "package": "pnpm pack --pack-destination dist",
     "test": "vitest --run"
   },
   "devDependencies": {

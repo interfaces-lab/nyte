@@ -18,6 +18,8 @@ export const sidebarStyles = stylex.create({
     containerName: "nyte-sidebar",
   },
   content: {
+    "--_sidebar-motion-duration": t.durationNormal,
+    "--_sidebar-motion-easing": t.easeOutQuint,
     display: "flex",
     flexDirection: "column",
     flex: 1,
@@ -108,6 +110,7 @@ export const sidebarStyles = stylex.create({
   },
   shortcutPersistent: { opacity: 1 },
   scroll: {
+    position: "relative",
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
@@ -220,10 +223,7 @@ export const sidebarStyles = stylex.create({
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,
   },
-  /**
-   * The row is the drag source and the pulse keeps the leading slot; the
-   * hover actions replace the timestamp in the trailing column.
-   */
+  /** Time stays put while hover actions expand into a separate slot on its left. */
   sessionRowShell: {
     "--_row-actions-opacity": {
       default: "0",
@@ -235,22 +235,38 @@ export const sidebarStyles = stylex.create({
       ":hover": "auto",
       ":focus-within": "auto",
     },
-    "--_row-meta-opacity": {
-      default: "1",
-      ":hover": "0",
-      ":focus-within": "0",
+    "--_row-actions-max-width": {
+      default: "0px",
+      ":hover": "36px",
+      ":focus-within": "36px",
+    },
+    "--_row-meta-color": t.textTertiary,
+    "--_trailing-reserve": {
+      default: "0px",
+      ":hover": "40px",
+      ":focus-within": "40px",
     },
     "--_session-row-background": {
       default: "transparent",
       ":hover": t.fillGhostHover,
       ":focus-within": t.fillGhostHover,
     },
+    isolation: "isolate",
     position: "relative",
     width: "100%",
     minWidth: 0,
     borderRadius: t.radiusBase,
   },
+  sessionRowShellTimed: {
+    "--_trailing-reserve": {
+      default: "40px",
+      ":hover": "80px",
+      ":focus-within": "80px",
+    },
+  },
   sessionRow: {
+    paddingInlineEnd: `calc(${sidebar.rowPaddingInline} + var(--_trailing-reserve))`,
+    overflow: "hidden",
     backgroundColor: "var(--_session-row-background)",
     touchAction: "none",
     userSelect: "none",
@@ -282,14 +298,24 @@ export const sidebarStyles = stylex.create({
     lineHeight: t.leadingBase,
     outline: "none",
   },
+  sessionSelection: {
+    position: "absolute",
+    inset: 0,
+    zIndex: -1,
+    borderRadius: t.radiusBase,
+    backgroundColor: t.fillGhostSelected,
+    pointerEvents: "none",
+  },
   rowSelected: {
     "--_session-row-background": {
-      default: t.fillGhostSelected,
-      ":hover": t.fillGhostSelected,
-      ":focus-within": t.fillGhostSelected,
+      default: "transparent",
+      ":hover": "transparent",
+      ":focus-within": "transparent",
     },
+    "--_row-meta-color": t.textSecondary,
     color: t.textPrimary,
   },
+  draftRow: { color: t.textTertiary },
   rowIcon: {
     display: "grid",
     placeItems: "center",
@@ -297,6 +323,14 @@ export const sidebarStyles = stylex.create({
     height: sidebar.iconSlot,
     color: t.iconTertiary,
     flexShrink: 0,
+  },
+  draftDot: {
+    width: 9,
+    height: 9,
+    borderWidth: 1.5,
+    borderStyle: "solid",
+    borderColor: "currentColor",
+    borderRadius: t.radiusFull,
   },
   workspaceGlyph: {
     position: "relative",
@@ -328,40 +362,54 @@ export const sidebarStyles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
+  sessionTitle: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   workspaceUnavailable: { color: t.textTertiary },
-  trailing: {
-    display: "grid",
-    width: sidebar.trailingWidth,
-    marginInlineStart: "auto",
-    flexShrink: 0,
-  },
-  /** Wide enough for both hover actions, so the title never runs under them. */
   sessionTrailing: {
-    width: `max(${sidebar.trailingWidth}, calc(2 * ${sidebar.actionSize}))`,
-  },
-  rowMeta: {
-    gridArea: "1 / 1",
-    alignSelf: "center",
-    justifySelf: "end",
-    color: t.textTertiary,
-    fontSize: t.fontXs,
-    fontVariantNumeric: "tabular-nums",
-    opacity: "var(--_row-meta-opacity)",
-  },
-  rowActions: {
-    gridArea: "1 / 1",
-    display: "inline-flex",
-    justifySelf: "end",
-    alignItems: "center",
-    opacity: "var(--_row-actions-opacity)",
-    pointerEvents: "var(--_row-actions-pointer-events)",
-  },
-  sessionRowActions: {
     position: "absolute",
     zIndex: 1,
     insetInlineEnd: sidebar.rowPaddingInline,
     top: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 4,
     transform: "translateY(-50%)",
+    pointerEvents: "none",
+  },
+  rowMeta: {
+    flexShrink: 0,
+    color: "var(--_row-meta-color)",
+    fontSize: t.fontXs,
+    lineHeight: t.leadingXs,
+    letterSpacing: 0.07,
+    fontVariantNumeric: "tabular-nums",
+  },
+  rowActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    maxWidth: "var(--_row-actions-max-width)",
+    overflow: "hidden",
+    opacity: "var(--_row-actions-opacity)",
+    pointerEvents: "var(--_row-actions-pointer-events)",
+    flexShrink: 0,
+  },
+  /** 16px sits on the 14px caption line; 24px action slots stacked above the time. */
+  sessionAction: {
+    width: 16,
+    height: 16,
+  },
+  /** Archive's box+lid is heavy below the grid; lift the glyph, not the hit target. */
+  actionGlyphArchive: {
+    display: "grid",
+    placeItems: "center",
+    lineHeight: 0,
+    transform: "translateY(-1px)",
   },
   rowDragging: {
     cursor: "grabbing",
@@ -381,6 +429,7 @@ export const sidebarStyles = stylex.create({
     color: { default: t.iconTertiary, ":hover:not(:disabled)": t.iconPrimary },
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.5 },
+    lineHeight: 0,
   },
   workspaceRowShell: {
     "--_row-actions-opacity": {
@@ -420,6 +469,7 @@ export const sidebarStyles = stylex.create({
     opacity: "var(--_row-actions-opacity)",
     pointerEvents: "var(--_row-actions-pointer-events)",
     cursor: "pointer",
+    lineHeight: 0,
     transitionProperty: "opacity, background-color",
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,

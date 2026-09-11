@@ -239,10 +239,10 @@ export function WorkspaceControls({
                 icon={statusIcon(status)}
                 checked={value.statuses.includes(status)}
                 leading={
-                  status === "working" ? (
-                    <StatusDot working />
-                  ) : status === "done" ? (
-                    <StatusDot working={false} />
+                  status === "needs-attention" ? (
+                    <StatusDot mark="waiting" />
+                  ) : status === "working" ? (
+                    <StatusDot mark="working" />
                   ) : undefined
                 }
                 onCheckedChange={(checked) =>

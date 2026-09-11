@@ -52,7 +52,7 @@ export interface SessionViewSettings {
   readonly pullRequests: readonly SessionPullRequest[];
   readonly environments: readonly SessionEnvironment[];
   readonly sources: readonly SessionSource[];
-  /** Cursor's unchecked Archived item hides archived sessions. */
+  /** When unchecked, Archived hides archived sessions. */
   readonly archived: boolean;
 }
 
@@ -74,17 +74,47 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
+export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
+
+/**
+ * The sidebar mark summarizes busy, retry, permission, and idle states. One
+ * glyph carries that whole set; the filter labels stay coarser.
+ */
+/** Untitled chats with no preview are drafts; a name or preview is a finished row. */
+export function sessionIsDraft(session: SessionInfo): boolean {
+  return session.name === undefined && session.preview === undefined;
+}
+
+export function sessionMark(session: SessionInfo): SessionMark {
+  let failed = false;
+  for (const head of session.heads) {
+    const kind = head.run?.phase.kind;
+    if (kind === undefined) continue;
+    if (kind === "waiting") return "waiting";
+    if (kind === "retry") return "retry";
+    if (kind === "respond" || kind === "tools") return "working";
+    if (kind === "failed") failed = true;
+  }
+  return failed ? "failed" : "idle";
+}
+
 function statusOf(session: SessionInfo): SessionStatus {
-  if (session.heads.some((head) => head.run?.phase.kind === "waiting")) return "needs-attention";
-  if (
-    session.heads.some(
-      (head) =>
-        head.run !== undefined && !["done", "aborted", "failed"].includes(head.run.phase.kind),
-    )
-  )
-    return "working";
-  if (session.preview === undefined && session.name === undefined) return "draft";
-  return "done";
+  const mark = sessionMark(session);
+  switch (mark) {
+    case "waiting":
+      return "needs-attention";
+    case "retry":
+    case "working":
+      return "working";
+    case "failed":
+    case "idle":
+      if (sessionIsDraft(session)) return "draft";
+      return "done";
+    default: {
+      const _exhaustive: never = mark;
+      return _exhaustive;
+    }
+  }
 }
 
 function compareUpdated(left: SessionInfo, right: SessionInfo): number {
@@ -114,6 +144,7 @@ function compareStatus(left: SessionInfo, right: SessionInfo): number {
 function groupSessions(
   sessions: readonly SessionInfo[],
   grouping: SessionGrouping,
+  environment: SessionEnvironment,
   now: number,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
@@ -121,7 +152,9 @@ function groupSessions(
     case "workspace":
       return [{ key: grouping, label: undefined, sessions }];
     case "environment":
-      return sessions.length === 0 ? [] : [{ key: "local", label: "Local", sessions }];
+      return sessions.length === 0
+        ? []
+        : [{ key: environment, label: environment === "cloud" ? "Cloud" : "Local", sessions }];
     case "status": {
       const labels: Readonly<Record<SessionStatus, string>> = {
         "needs-attention": "Needs attention",
@@ -160,24 +193,34 @@ function groupSessions(
   }
 }
 
-/** Cursor ANDs dimensions and ORs checked values within one dimension. */
+/** Child sessions stay available to task/job inspection, but never become navigation rows. */
+export function sessionsForNavigation(
+  sessions: readonly SessionInfo[],
+  includeArchived = false,
+): readonly SessionInfo[] {
+  return sessions.filter(
+    (session) => session.parent === undefined && (includeArchived || !session.archived),
+  );
+}
+
+/** Dimensions are ANDed; checked values within one dimension are ORed. */
 export function sessionsForView(
   sessions: readonly SessionInfo[],
   settings: SessionViewSettings,
+  environment: SessionEnvironment = "local",
   now = Date.now(),
 ): readonly SessionViewGroup[] {
-  const filtered = sessions.filter(
+  const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
       settings.statuses.includes(statusOf(session)) &&
       settings.pullRequests.includes("none") &&
-      settings.environments.includes("local") &&
-      settings.sources.includes("desktop") &&
-      (settings.archived || !session.archived),
+      settings.environments.includes(environment) &&
+      settings.sources.includes("desktop"),
   );
   const ordered = filtered.toSorted(
     settings.ordering === "updated" ? compareUpdated : compareStatus,
   );
-  return groupSessions(ordered, settings.grouping, now);
+  return groupSessions(ordered, settings.grouping, environment, now);
 }
 
 function sameSelection<T extends string>(selected: readonly T[], all: readonly T[]): boolean {

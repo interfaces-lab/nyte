@@ -127,6 +127,44 @@ export class PaneController {
     return this.dispatch({ kind: "select", selection: { kind: "blank" } });
   }
 
+  newChat(): PaneLayout {
+    const before = this.#snapshot.layout;
+    const paneId = activePane(before).id;
+    this.#viewState.startNewDraft(paneId);
+    const layout = this.selectBlank();
+    if (layout === before) this.#requestFocus(paneId);
+    return layout;
+  }
+
+  selectDraft(draftId: string): PaneLayout {
+    const before = this.#snapshot.layout;
+    const visible = orderedPanes(before).find(
+      (pane) =>
+        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
+    );
+    if (visible !== undefined) {
+      const layout = this.focus(visible.id);
+      if (layout === before) this.#requestFocus(visible.id);
+      return layout;
+    }
+    const paneId = activePane(before).id;
+    if (!this.#viewState.activateDraft(paneId, draftId)) return before;
+    const layout = this.selectBlank();
+    if (layout === before) this.#requestFocus(paneId);
+    return layout;
+  }
+
+  removeDraft(draftId: string): PaneLayout {
+    const layout = this.#snapshot.layout;
+    const visible = orderedPanes(layout).find(
+      (pane) =>
+        pane.selection.kind === "blank" && this.#viewState.readBlank(pane.id).id === draftId,
+    );
+    if (!this.#viewState.removeDraft(draftId)) return layout;
+    if (visible !== undefined) this.#requestFocus(visible.id);
+    return layout;
+  }
+
   split(direction: SplitDirection): PaneLayout {
     return this.dispatch({ kind: "split", direction });
   }
@@ -174,6 +212,14 @@ export class PaneController {
       this.focus(active.selection.kind === "blank" ? focused : active.id);
       return true;
     };
+  }
+
+  #requestFocus(paneId: PaneId): void {
+    this.#snapshot = {
+      ...this.#snapshot,
+      focusRequest: { paneId, revision: this.#snapshot.focusRequest.revision + 1 },
+    };
+    for (const listener of this.#listeners) listener();
   }
 
   #rememberLayout(layout: PaneLayout): void {

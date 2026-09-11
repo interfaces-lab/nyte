@@ -2,7 +2,7 @@
  * Runtime schemas for every type that crosses the wire, one per interface.
  *
  * Inputs are strict (`additionalProperties: false`): a caller that sends a
- * key the verb does not read has a bug, and a `__proto__` key parsed from
+ * key the operation does not read has a bug, and a `__proto__` key parsed from
  * JSON is an own property this refuses. Outputs are open: a newer server may
  * add a field an older client ignores.
  *
@@ -34,6 +34,12 @@ import type {
 } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
 import type { Static, TProperties, TSchema, TUnsafe } from "typebox";
+import { HeadName } from "./names.ts";
+import type {
+  Choice as ChoiceType,
+  Selection as SelectionType,
+  SelectionReply as SelectionReplyType,
+} from "./ui.ts";
 import type {
   Actor as ActorType,
   Commit as CommitType,
@@ -52,9 +58,11 @@ import type {
   SettingInfo as SettingInfoType,
 } from "./plugins.ts";
 import type {
+  ActivationRequirement as ActivationRequirementType,
   AbortOutcome as AbortOutcomeType,
   CancelOutcome as CancelOutcomeType,
   ConfigureOutcome as ConfigureOutcomeType,
+  CompactionInfo as CompactionInfoType,
   HeadInfo as HeadInfoType,
   Landing as LandingType,
   MoveOutcome as MoveOutcomeType,
@@ -62,6 +70,7 @@ import type {
   ParkedCall as ParkedCallType,
   PendingItem as PendingItemType,
   RedeliverOutcome as RedeliverOutcomeType,
+  ReplyOutcome as ReplyOutcomeType,
   RunConfig as RunConfigType,
   RunInfo as RunInfoType,
   SendReceipt as SendReceiptType,
@@ -69,6 +78,7 @@ import type {
   SessionId as SessionIdType,
   SessionInfo as SessionInfoType,
   SessionParent as SessionParentType,
+  SessionActivationState as SessionActivationStateType,
   SessionSnapshot as SessionSnapshotType,
 } from "./sdk.ts";
 import type {
@@ -124,7 +134,7 @@ export const strict = <P extends TProperties>(properties: P) =>
 /** An output object: the named keys, extra keys tolerated. */
 const open = <P extends TProperties>(properties: P) => Type.Object(properties);
 
-/** A verb input that may be absent altogether. */
+/** An operation input that may be absent altogether. */
 export const optional = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Undefined()]);
 
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
@@ -143,7 +153,7 @@ const literals = <Values extends string[]>(values: readonly [...Values]) => Type
 export const SessionId = Unsafe<SessionIdType>({ type: "string", minLength: 1 });
 export const Oid = Type.String({ minLength: 1 });
 export const Seq = Type.Integer({ minimum: 0 });
-export const HeadName = Type.String({ minLength: 1 });
+export { HeadName };
 export const NonEmptyString = Type.String({ minLength: 1 });
 export const ThinkingLevel = Type.Enum(MODEL_THINKING_LEVELS);
 
@@ -164,6 +174,32 @@ export const JsonValue = typed<JsonValueType>()(
       "json",
     ),
   ),
+);
+
+// ---------------------------------------------------------------------------
+// UI shapes (ui.ts)
+// ---------------------------------------------------------------------------
+
+const ChoiceProperties = {
+  id: Type.String(),
+  label: Type.String(),
+  description: Type.Optional(Type.String()),
+};
+
+export const Choice = typed<ChoiceType>()(open(ChoiceProperties));
+
+export const Selection = typed<SelectionType>()(
+  open({
+    title: Type.String(),
+    // `minItems: 1` is the tuple's whole invariant, so the check earns the type.
+    choices: Unsafe<readonly [ChoiceType, ...ChoiceType[]]>(Type.Array(Choice, { minItems: 1 })),
+    multiple: Type.Optional(Type.Literal(true)),
+    other: Type.Optional(Type.String()),
+  }),
+);
+
+export const SelectionReply = typed<SelectionReplyType>()(
+  open({ choices: list(Type.String()), other: Type.Optional(Type.String()) }),
 );
 
 // ---------------------------------------------------------------------------
@@ -367,6 +403,25 @@ const NoteBody = open({
   data: Type.Optional(JsonValue),
 });
 
+const JobFields = {
+  id: Type.String(),
+  runId: Type.String(),
+  callId: Type.String(),
+  head: HeadName,
+  title: Type.String(),
+  mode: literals(["foreground", "background"]),
+  state: literals(["running", "completed", "failed", "cancelled", "interrupted"]),
+  startedAt: Type.Number(),
+  updatedAt: Type.Number(),
+  output: Type.String(),
+};
+
+/** Strict variants keep childSessionId exclusive to subagent jobs. */
+export const JobInfo = Type.Union([
+  strict({ ...JobFields, kind: Type.Literal("command") }),
+  strict({ ...JobFields, kind: Type.Literal("subagent"), childSessionId: SessionId }),
+]);
+
 export const CommitBody = typed<CommitBodyType>()(
   Type.Union([
     open({
@@ -374,6 +429,7 @@ export const CommitBody = typed<CommitBodyType>()(
       message: Message,
       agent: Type.Optional(Type.String()),
     }),
+    open({ kind: Type.Literal("completion"), job: JobInfo }),
     CheckpointBody,
     SummaryBody,
     ConfigBody,
@@ -418,6 +474,24 @@ export const ToolProgress = typed<ToolProgressType>()(
 // Sessions and runs
 // ---------------------------------------------------------------------------
 
+export const ActivationRequirement = typed<ActivationRequirementType>()(
+  open({
+    kind: Type.Literal("workspace_trust"),
+    cwd: Type.String({ minLength: 1 }),
+  }),
+);
+
+export const SessionActivationState = typed<SessionActivationStateType>()(
+  Type.Union([
+    open({ kind: Type.Literal("active") }),
+    open({ kind: Type.Literal("inactive") }),
+    open({
+      kind: Type.Literal("requires"),
+      requirement: ActivationRequirement,
+    }),
+  ]),
+);
+
 export const RunConfig = typed<RunConfigType>()(
   open({
     model: Type.Optional(ModelRef),
@@ -439,6 +513,20 @@ export const RunInfo = typed<RunInfoType>()(
   }),
 );
 
+export const CompactionInfo = typed<CompactionInfoType>()(
+  open({
+    id: Type.String(),
+    reason: literals(["threshold", "overflow", "manual"]),
+    startedAt: Type.Number(),
+  }),
+);
+
+export const JobActionOutcome = Type.Union([
+  open({ kind: Type.Literal("applied") }),
+  open({ kind: Type.Literal("not_found") }),
+  open({ kind: Type.Literal("finished") }),
+]);
+
 export const HeadInfo = typed<HeadInfoType>()(
   open({
     head: HeadName,
@@ -448,13 +536,12 @@ export const HeadInfo = typed<HeadInfoType>()(
   }),
 );
 
-/** Strict: it is also verb input (`sessions.create`). */
+/** Strict: it is also operation input (`sessions.create`). */
 export const SessionParent = typed<SessionParentType>()(
   strict({
     sessionId: SessionId,
     runId: Type.String(),
     callId: Type.String(),
-    agent: Type.String(),
     depth: Type.Number(),
   }),
 );
@@ -462,6 +549,7 @@ export const SessionParent = typed<SessionParentType>()(
 export const SessionInfo = typed<SessionInfoType>()(
   open({
     sessionId: SessionId,
+    activation: SessionActivationState,
     name: Type.Optional(Type.String()),
     preview: Type.Optional(Type.String()),
     createdAt: Type.Number(),
@@ -489,7 +577,15 @@ export const PendingItem = typed<PendingItemType>()(
 );
 
 export const ParkedCall = typed<ParkedCallType>()(
-  open({ runId: Type.String(), callId: Type.String(), tool: Type.String(), args: JsonValue }),
+  open({
+    runId: Type.String(),
+    callId: Type.String(),
+    waitId: Oid,
+    tool: Type.String(),
+    args: JsonValue,
+    selection: Type.Optional(Selection),
+    until: Type.Optional(Type.Number()),
+  }),
 );
 
 export const UserTurnPart = typed<UserTurnPartType>()(
@@ -586,6 +682,7 @@ export const SessionSnapshot = typed<SessionSnapshotType>()(
     transcript: Type.Array(Turn),
     pending: Type.Array(PendingItem),
     run: Type.Optional(RunInfo),
+    compaction: Type.Optional(CompactionInfo),
     parked: Type.Optional(Type.Array(ParkedCall)),
     context: ContextStatus,
   }),
@@ -634,6 +731,44 @@ export const AbortOutcome = typed<AbortOutcomeType>()(
   ]),
 );
 
+export const ReplyOutcome = typed<ReplyOutcomeType>()(
+  Type.Union([
+    open({ kind: Type.Literal("signalled") }),
+    open({ kind: Type.Literal("not_waiting") }),
+    open({ kind: Type.Literal("not_found") }),
+  ]),
+);
+
+/** Only opaque correlation data leaves the summary diagnostic boundary. */
+export const SummaryFailure = strict({
+  kind: Type.Literal("failed"),
+  code: Type.Literal("internal"),
+  message: Type.Literal("Internal error"),
+  correlationId: NonEmptyString,
+});
+
+export const SummaryStoppedFailure = strict({
+  kind: Type.Literal("failed"),
+  code: literals(["aborted", "nothing_to_compact"]),
+  message: Type.Literal("Summary unavailable"),
+});
+
+export const InactiveFailure = strict({
+  kind: Type.Literal("failed"),
+  code: Type.Literal("inactive"),
+  message: Type.Literal("Session is not active in this host"),
+});
+
+export const CheckpointFailure = Type.Union([
+  SummaryFailure,
+  InactiveFailure,
+  strict({
+    kind: Type.Literal("failed"),
+    code: literals(["busy", "conflict", "fenced"]),
+    message: Type.String(),
+  }),
+]);
+
 export const MoveOutcome = typed<MoveOutcomeType>()(
   Type.Union([
     open({
@@ -645,7 +780,9 @@ export const MoveOutcome = typed<MoveOutcomeType>()(
     open({ kind: Type.Literal("busy"), run: RunInfo }),
     open({ kind: Type.Literal("moved_since"), tip: nullable(Oid) }),
     open({ kind: Type.Literal("not_found") }),
-    open({ kind: Type.Literal("failed"), message: Type.String() }),
+    SummaryFailure,
+    SummaryStoppedFailure,
+    InactiveFailure,
   ]),
 );
 
@@ -668,12 +805,7 @@ export const PluginInfo = typed<PluginInfoType>()(
 );
 
 export const SettingChoice = typed<SettingChoiceType>()(
-  open({
-    id: Type.String(),
-    label: Type.String(),
-    description: Type.Optional(Type.String()),
-    status: Type.Optional(Type.String()),
-  }),
+  open({ ...ChoiceProperties, status: Type.Optional(Type.String()) }),
 );
 
 export const SettingInfo = typed<SettingInfoType>()(
@@ -772,6 +904,11 @@ export const SessionEvent = typed<SessionEventType>()(
   Type.Union([
     open({
       seq: Seq,
+      kind: Type.Literal("activation_changed"),
+      activation: SessionActivationState,
+    }),
+    open({
+      seq: Seq,
       kind: Type.Literal("commit"),
       head: HeadName,
       item: open({ oid: Oid, commit: Commit }),
@@ -786,6 +923,13 @@ export const SessionEvent = typed<SessionEventType>()(
       actor: Type.Optional(Actor),
     }),
     open({ seq: Seq, kind: Type.Literal("run"), head: HeadName, run: RunInfo }),
+    open({
+      seq: Seq,
+      kind: Type.Literal("compaction"),
+      head: HeadName,
+      compaction: nullable(CompactionInfo),
+    }),
+    open({ seq: Seq, kind: Type.Literal("job"), job: JobInfo }),
     open({ seq: Seq, kind: Type.Literal("queued"), head: HeadName, item: PendingItem }),
     open({ seq: Seq, kind: Type.Literal("landed"), head: HeadName, change: Oid }),
     open({ seq: Seq, kind: Type.Literal("queue_cancelled"), change: Oid }),
@@ -794,9 +938,21 @@ export const SessionEvent = typed<SessionEventType>()(
       kind: Type.Literal("effect"),
       runId: Type.String(),
       callId: Type.String(),
-      state: literals(["intent", "waiting", "signal", "result"]),
+      state: literals(["intent", "expired", "signal", "result"]),
       tool: Type.String(),
       args: JsonValue,
+    }),
+    open({
+      seq: Seq,
+      kind: Type.Literal("effect"),
+      runId: Type.String(),
+      callId: Type.String(),
+      state: Type.Literal("waiting"),
+      waitId: Oid,
+      tool: Type.String(),
+      args: JsonValue,
+      selection: Type.Optional(Selection),
+      until: Type.Optional(Type.Number()),
     }),
     open({
       seq: Seq,

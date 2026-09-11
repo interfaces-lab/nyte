@@ -1,8 +1,9 @@
-// TanStack Query over the SDK verbs. Startup seeds local data before mounting
-// the shell. Watches invalidate settled data; queries never poll except
-// for the session directory, which has no cross-session watch verb yet.
+// TanStack Query over the SDK operations. Startup seeds local data before mounting
+// the shell. Watches invalidate settled data; what has no watch operation yet
+// (the session directory, jobs, children, VCS status) polls on a slow interval.
 import {
   QueryClient,
+  queryOptions,
   useMutation,
   useMutationState,
   useQuery,
@@ -13,10 +14,16 @@ import { projectPreference } from "./preference-projection.ts";
 import { useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
 import { SessionActions } from "./session-actions.ts";
+import {
+  projectSessionConfiguration,
+  sessionConfigurationOptions,
+} from "./session-configuration.ts";
+import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
 export { keys } from "./query-keys.ts";
 import { toast } from "@nyte-ai/ui/sonner";
 import type {
   FileChange,
+  JobInfo,
   MentionFile,
   PluginCatalog,
   Seq,
@@ -24,17 +31,24 @@ import type {
   SessionInfo,
   SessionSnapshot,
   SettingInfo,
-  ThinkingLevel,
   VcsDiff,
 } from "@nyte-ai/core";
+import { localSessions } from "../../shared/ipc.ts";
 import type {
   DesktopCatalog,
   DesktopVcsSnapshot,
-  GitHubProviderState,
   PreferenceChange,
+  ServerState,
+  UsageSnapshot,
+  UsageWindow,
+  WorkspaceFileDocument,
+  WorkspaceSessionDirectory,
 } from "../../shared/ipc.ts";
 import { loadSessionDirectory, type SessionPage } from "./session-directory.ts";
 import { nyte } from "./nyte.ts";
+import { SessionObservations } from "./session-freshness.ts";
+import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
+import type { WorkspaceSearchInput } from "../../shared/workspace-editor.ts";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -75,9 +89,31 @@ const SNAPSHOT_WARM_MS = 1_000;
 
 const readHost = () => nyte.host.state();
 const readWorkspaces = () => nyte.workspace.list();
-const readSessionPreview = () => loadSessionDirectory((input) => nyte.sessions.list(input));
-const readSessionDirectory = () => nyte.host.sessionDirectory();
+const sessionObservations = new SessionObservations();
+
+function freshestSessionInfo(polled: SessionInfo, pollStartedAt: number): SessionInfo {
+  return sessionObservations.freshest(
+    polled,
+    pollStartedAt,
+    queryClient.getQueryData<SessionInfo | null>(keys.session(polled.sessionId)),
+  );
+}
+
+const readSessionPreview = async (): Promise<SessionPage> => {
+  const startedAt = performance.now();
+  const page = await loadSessionDirectory((input) => nyte.sessions.list(input));
+  return { ...page, items: page.items.map((item) => freshestSessionInfo(item, startedAt)) };
+};
+const readSessionDirectory = async (): Promise<readonly WorkspaceSessionDirectory[]> => {
+  const startedAt = performance.now();
+  const directories = await nyte.host.sessionDirectory();
+  return directories.map((directory) => ({
+    ...directory,
+    sessions: directory.sessions.map((item) => freshestSessionInfo(item, startedAt)),
+  }));
+};
 const readCatalog = () => nyte.host.catalog();
+const readUsage = (input: UsageWindow) => nyte.host.usage(input);
 const readPluginCatalog = (): Promise<PluginCatalog> => nyte.plugins.catalog();
 const readSession = async (sessionId: SessionId) =>
   (await nyte.sessions.get({ sessionId })) ?? null;
@@ -89,6 +125,13 @@ const readSnapshot = async (sessionId: SessionId): Promise<SessionSnapshot> => {
 
 export function useHostState() {
   return useQuery({ queryKey: keys.host, queryFn: readHost });
+}
+
+export function useServerState() {
+  return useQuery({
+    queryKey: keys.server,
+    queryFn: (): Promise<ServerState> => nyte.host.server.state(),
+  });
 }
 
 export function useWorkspaces() {
@@ -146,7 +189,7 @@ export function useSessionPreview(enabled = true) {
     queryFn: readSessionPreview,
     select: (page) => ({ ...page, items: projection.list(page.items) }),
     enabled,
-    // No directory watch verb yet; a slow tick keeps liveness honest.
+    // No directory watch operation yet; a slow tick keeps liveness honest.
     refetchInterval: enabled ? 5_000 : false,
   });
 }
@@ -156,7 +199,7 @@ export function useSessionSearch(search: string, enabled = true) {
   const normalized = search.trim();
   return useQuery({
     queryKey: keys.sessionSearch(normalized),
-    queryFn: () => nyte.sessions.list({ search: normalized, limit: 50 }),
+    queryFn: () => nyte.sessions.list({ search: normalized, parent: null, limit: 50 }),
     select: (page) => ({
       ...page,
       items: projection.list(page.items).filter((session) => !session.archived),
@@ -176,17 +219,38 @@ export function useSession(sessionId: SessionId) {
 
 export function useSessionSnapshot(sessionId: SessionId) {
   const projection = useSessionProjection();
+  const pending = useMutationState<PendingConfiguration>({
+    filters: { mutationKey: ["session", sessionId, "configure"], status: "pending" },
+  });
   return useQuery({
     queryKey: keys.snapshot(sessionId),
     queryFn: () => readSnapshot(sessionId),
     select: (snapshot) => ({
       ...snapshot,
-      session: projection.session(snapshot.session) ?? snapshot.session,
+      session: projectSessionConfiguration(
+        projection.session(snapshot.session) ?? snapshot.session,
+        pending,
+      ),
     }),
     // Cached content paints immediately. Old local data refreshes behind the
     // page instead of becoming a navigation gate.
     staleTime: SNAPSHOT_WARM_MS,
     refetchOnMount: true,
+  });
+}
+
+/**
+ * The jobs of one chat. Job events invalidate this; the poll while one runs
+ * covers a job that settles without an event reaching this window.
+ */
+export function useJobs(sessionId: SessionId | undefined) {
+  return useQuery({
+    queryKey: keys.jobs(sessionId),
+    queryFn: (): Promise<readonly JobInfo[]> =>
+      sessionId === undefined ? Promise.resolve([]) : nyte.jobs.list({ sessionId }),
+    enabled: sessionId !== undefined,
+    refetchInterval: (query) =>
+      query.state.data?.some((job) => job.state === "running") === true ? 2_000 : false,
   });
 }
 
@@ -232,6 +296,27 @@ export function useVcsDiff(identity: VcsDiffIdentity | undefined, enabled: boole
   });
 }
 
+export interface VcsDiffsIdentity {
+  readonly repositoryId: string;
+  readonly revision: string;
+  readonly paths: readonly string[];
+}
+
+export function useVcsDiffs(identity: VcsDiffsIdentity | undefined, enabled: boolean) {
+  const pathsKey = identity === undefined ? "" : [...identity.paths].toSorted().join("\0");
+  return useQuery<readonly VcsDiff[]>({
+    queryKey:
+      identity === undefined
+        ? keys.vcsDiffs("unavailable", "unavailable", "")
+        : keys.vcsDiffs(identity.repositoryId, identity.revision, pathsKey),
+    queryFn: async () => {
+      if (identity === undefined) return [];
+      return nyte.workspace.vcs.diff({ paths: [...identity.paths] });
+    },
+    enabled: enabled && identity !== undefined && identity.paths.length > 0,
+  });
+}
+
 export function refreshVcs(): void {
   void queryClient.invalidateQueries({ queryKey: ["vcs"] });
   void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
@@ -249,6 +334,98 @@ export function useMentionFiles(enabled: boolean) {
     staleTime: 10_000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useWorkspaceFile(path: string | undefined) {
+  return useQuery<WorkspaceFileDocument>({
+    queryKey: keys.workspaceFile(path ?? ""),
+    queryFn: () => {
+      if (path === undefined) throw new Error("Select a file to open it");
+      return nyte.host.files.read({ path });
+    },
+    enabled: path !== undefined,
+    staleTime: 1_000,
+  });
+}
+
+export function useWorkspaceSearch(
+  input: Omit<WorkspaceSearchInput, "requestId"> | undefined,
+  enabled = true,
+) {
+  const host = useHostState();
+  const workspacePath = host.data?.workspace?.path;
+  return useQuery({
+    queryKey: keys.workspaceSearch(workspacePath ?? "", input),
+    queryFn: async ({ signal }) => {
+      if (input === undefined || workspacePath === undefined)
+        throw new Error("Open a workspace to search");
+      signal.throwIfAborted();
+      const requestId = crypto.randomUUID();
+      const pending = nyte.host.files.search({ ...input, requestId });
+      const cancel = () => {
+        void nyte.host.files.cancelSearch({ requestId }).catch(() => undefined);
+      };
+      signal.addEventListener("abort", cancel, { once: true });
+      try {
+        return await pending;
+      } finally {
+        signal.removeEventListener("abort", cancel);
+      }
+    },
+    enabled:
+      enabled && workspacePath !== undefined && input !== undefined && input.query.length > 0,
+    staleTime: 0,
+    refetchOnMount: true,
+    gcTime: 0,
+  });
+}
+
+export function useWorkspaceBlame(path: string | undefined, enabled = true) {
+  const host = useHostState();
+  const workspacePath = host.data?.workspace?.path;
+  return useQuery({
+    queryKey: keys.workspaceBlame(workspacePath ?? "", path ?? ""),
+    queryFn: () => {
+      if (path === undefined) throw new Error("Select a file to view blame");
+      return nyte.host.files.blame({ path });
+    },
+    enabled: enabled && workspacePath !== undefined && path !== undefined,
+    staleTime: 1_000,
+    refetchOnMount: true,
+  });
+}
+
+/** Returns a formatted draft. Only useSaveWorkspaceFile writes to disk. */
+export function useFormatWorkspaceFile() {
+  return useMutation({
+    mutationKey: ["files", "format"],
+    mutationFn: (input: Parameters<typeof nyte.host.files.format>[0]) =>
+      nyte.host.files.format(input),
+  });
+}
+
+export function useSaveWorkspaceFile() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationKey: ["files", "save"],
+    mutationFn: (input: Parameters<typeof nyte.host.files.save>[0]) => nyte.host.files.save(input),
+    onSuccess: (outcome, input) => {
+      if (outcome.kind !== "saved") return;
+      client.setQueryData<WorkspaceFileDocument>(
+        keys.workspaceFile(input.path),
+        (): WorkspaceFileDocument => ({
+          kind: "text",
+          path: input.path,
+          contents: input.contents,
+          version: outcome.version,
+        }),
+      );
+      void client.invalidateQueries({ queryKey: ["vcs"] });
+      void client.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
+      void client.invalidateQueries({ queryKey: ["files", "search"] });
+      void client.invalidateQueries({ queryKey: ["files", "blame"] });
+    },
   });
 }
 
@@ -271,6 +448,59 @@ export function useCatalog() {
   });
 }
 
+/**
+ * Registered desktop history has no usage watch. Refresh on each visit or
+ * manually, not on a timer: the host walks stored commits for every read.
+ *
+ * The read is unbounded and the range is a view of it. The host walks every
+ * stored commit whatever window it is handed, so asking for one window bought
+ * nothing and made every range press a fresh multi-second read. One read
+ * answers all four ranges, and switching between them touches no I/O.
+ */
+export function usageReportOptions(untilDay: string) {
+  return queryOptions({
+    queryKey: keys.usage(untilDay),
+    queryFn: () => readUsage({ sinceDay: null, untilDay }),
+    gcTime: Infinity,
+    // The client never refetches on its own, so Usage opts back in on mount.
+    // What it does not do is re-read unconditionally: reopening the panel cost
+    // seconds for numbers that had not moved. The mount read waits for the same
+    // age at which the page starts offering to re-read, so "current" means one
+    // thing on this page.
+    refetchOnMount: true,
+    staleTime: USAGE_STALE_AFTER_MS,
+  });
+}
+
+/**
+ * A usage read, flattened to what the page actually branches on.
+ *
+ * A failed refresh keeps the last good report and reports the error alongside
+ * it: totals that were true a minute ago beat an empty screen, and the page
+ * says which they are.
+ */
+export interface UsageQueryView {
+  readonly report: UsageSnapshot | undefined;
+  readonly error: Error | null;
+  /** No report yet. Distinct from refreshing one that is already on screen. */
+  readonly isPending: boolean;
+  readonly isFetching: boolean;
+  readonly refresh: () => void;
+}
+
+export function useUsageReport(untilDay: string): UsageQueryView {
+  const query = useQuery(usageReportOptions(untilDay));
+  return {
+    report: query.data,
+    error: query.isError
+      ? (query.error ?? new Error("The host could not read local history."))
+      : null,
+    isPending: query.data === undefined && !query.isError,
+    isFetching: query.isFetching,
+    refresh: () => void query.refetch({ cancelRefetch: false }),
+  };
+}
+
 /** Commands and skills available before a chat exists. */
 export function usePluginCatalog() {
   return useQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog });
@@ -290,32 +520,6 @@ export function useSetPreference() {
     onSettled: () => client.invalidateQueries({ queryKey: keys.catalog, exact: true }),
     onError: () => toast.error("Couldn't save model preferences. Try again."),
   });
-}
-
-export function useGitHubState(enabled: boolean) {
-  return useQuery<GitHubProviderState>({
-    queryKey: keys.github,
-    queryFn: () => nyte.host.github.state(),
-    enabled,
-  });
-}
-
-export async function refreshGitHub(): Promise<GitHubProviderState> {
-  const state = await nyte.host.github.refresh();
-  queryClient.setQueryData(keys.github, state);
-  return state;
-}
-
-export async function signInGitHub(): Promise<GitHubProviderState> {
-  const state = await nyte.host.github.signIn();
-  queryClient.setQueryData(keys.github, state);
-  return state;
-}
-
-export async function signOutGitHub(): Promise<GitHubProviderState> {
-  const state = await nyte.host.github.signOut();
-  queryClient.setQueryData(keys.github, state);
-  return state;
 }
 
 let localLoadVersion = 0;
@@ -343,11 +547,8 @@ export async function loadLocalResources(): Promise<void> {
   queryClient.setQueryData(keys.catalog, catalog);
   if (pluginCatalog !== undefined) queryClient.setQueryData(keys.pluginCatalog, pluginCatalog);
   queryClient.setQueryData(keys.sessionDirectory, sessionDirectory);
-  const activeDirectory = sessionDirectory.find(
-    (entry) => entry.workspacePath === (host.workspace?.path ?? null),
-  );
   queryClient.setQueryData(keys.sessionPreview, {
-    items: activeDirectory?.sessions ?? [],
+    items: localSessions(sessionDirectory, host.workspace?.path ?? null) ?? [],
   } satisfies SessionPage);
   for (const directory of sessionDirectory) {
     for (const session of directory.sessions)
@@ -357,18 +558,29 @@ export async function loadLocalResources(): Promise<void> {
   queryClient.setQueryData(keys.host, host);
 }
 
-function cacheSnapshotSession(snapshot: SessionSnapshot): void {
-  queryClient.setQueryData(keys.session(snapshot.session.sessionId), snapshot.session);
+/**
+ * Every list that shows this session takes the new row now: the sidebar reads
+ * the directory, which otherwise only learns of a run's phase on its 5s poll,
+ * and a short run would end before that tick ever saw it start.
+ */
+function cacheSessionInfo(session: SessionInfo): void {
+  sessionObservations.observe(session.sessionId, performance.now());
+  const replace = (sessions: readonly SessionInfo[]): readonly SessionInfo[] =>
+    sessions.map((candidate) => (candidate.sessionId === session.sessionId ? session : candidate));
+  queryClient.setQueryData(keys.session(session.sessionId), session);
   queryClient.setQueryData<SessionPage>(keys.sessionPreview, (preview) =>
-    preview === undefined
-      ? preview
-      : {
-          ...preview,
-          items: preview.items.map((session) =>
-            session.sessionId === snapshot.session.sessionId ? snapshot.session : session,
-          ),
-        },
+    preview === undefined ? preview : { ...preview, items: replace(preview.items) },
   );
+  queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(
+    keys.sessionDirectory,
+    (directories) =>
+      directories?.map((directory) => ({ ...directory, sessions: replace(directory.sessions) })),
+  );
+}
+
+/** A snapshot carries the freshest `SessionInfo` there is. */
+function cacheSnapshotSession(snapshot: SessionSnapshot): void {
+  cacheSessionInfo(snapshot.session);
 }
 
 async function fetchThreadSnapshot(
@@ -442,76 +654,21 @@ export function warmThread(sessionId: SessionId): void {
   void fetchThreadSnapshot(sessionId, SNAPSHOT_WARM_MS).catch(() => undefined);
 }
 
-interface ConfigureSessionPatch {
-  readonly model?: { readonly provider: string; readonly id: string };
-  readonly thinkingLevel?: ThinkingLevel;
+/** Share pending configuration with the draft-to-session handoff. */
+export function configureSession(sessionId: SessionId, patch: ConfigureSessionPatch) {
+  return queryClient
+    .getMutationCache()
+    .build(
+      queryClient,
+      sessionConfigurationOptions({ client: queryClient, sessions: nyte.sessions, sessionId }),
+    )
+    .execute(patch);
 }
 
-interface ConfigureRollback {
-  readonly session: SessionInfo | null | undefined;
-  readonly snapshot: SessionSnapshot | undefined;
-  readonly sessionPreview: SessionPage | undefined;
-}
-
-function withSessionConfig(session: SessionInfo, patch: ConfigureSessionPatch): SessionInfo {
-  return { ...session, config: { ...session.config, ...patch } };
-}
-
-/** Configure live run inputs through Query so every session projection moves together. */
 export function useConfigureSession(sessionId: SessionId) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationKey: ["session", sessionId, "configure"],
-    scope: { id: `session-config:${sessionId}` },
-    mutationFn: async (patch: ConfigureSessionPatch) => {
-      const outcome = await nyte.sessions.configure({ sessionId, ...patch });
-      if (outcome.kind === "unknown_model") throw new Error("That model is no longer available");
-      return outcome;
-    },
-    onMutate: (patch): ConfigureRollback => {
-      const session = client.getQueryData<SessionInfo | null>(keys.session(sessionId));
-      const snapshot = client.getQueryData<SessionSnapshot>(keys.snapshot(sessionId));
-      const sessionPreview = client.getQueryData<SessionPage>(keys.sessionPreview);
-
-      client.setQueryData<SessionInfo | null>(keys.session(sessionId), (current) =>
-        current === null || current === undefined ? current : withSessionConfig(current, patch),
-      );
-      client.setQueryData<SessionSnapshot>(keys.snapshot(sessionId), (current) =>
-        current === undefined
-          ? current
-          : {
-              ...current,
-              session: withSessionConfig(current.session, patch),
-              config:
-                current.run !== undefined &&
-                !["done", "aborted", "failed"].includes(current.run.phase.kind)
-                  ? current.config
-                  : { ...current.config, ...patch },
-            },
-      );
-      client.setQueryData<SessionPage>(keys.sessionPreview, (current) =>
-        current === undefined
-          ? current
-          : {
-              ...current,
-              items: current.items.map((item) =>
-                item.sessionId === sessionId ? withSessionConfig(item, patch) : item,
-              ),
-            },
-      );
-      return { session, snapshot, sessionPreview };
-    },
-    onError: (_error, _patch, rollback) => {
-      if (rollback === undefined) return;
-      client.setQueryData(keys.session(sessionId), rollback.session);
-      client.setQueryData(keys.snapshot(sessionId), rollback.snapshot);
-      client.setQueryData(keys.sessionPreview, rollback.sessionPreview);
-    },
-    onSettled: () => {
-      refreshThread(sessionId);
-      void client.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
-    },
-  });
+  return useMutation(
+    sessionConfigurationOptions({ client: useQueryClient(), sessions: nyte.sessions, sessionId }),
+  );
 }
 
 export type CustomizeInventory = Pick<PluginCatalog, "plugins" | "settings" | "skills">;
@@ -543,6 +700,8 @@ export function usePluginSettings(sessionId: SessionId, enabled = true) {
     queryFn: () => nyte.plugins.settings.list({ sessionId }),
     select: project,
     enabled,
+    staleTime: SNAPSHOT_WARM_MS,
+    refetchOnMount: true,
   });
 }
 

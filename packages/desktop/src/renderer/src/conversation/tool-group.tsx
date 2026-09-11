@@ -1,17 +1,17 @@
 /**
- * Cursor's transcript treats intermediate narration, reasoning, and tool
- * calls as one work episode. Compact keeps the episode in a clipped window
+ * Intermediate narration, reasoning, and tool calls form one work episode.
+ * Compact mode keeps the episode in a clipped window
  * that follows new output; opening the group reveals the full list. The
  * final assistant response remains outside this component.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/ui/src/work-group.tsx
  */
 import * as stylex from "@stylexjs/stylex";
-import { Collapsible } from "@nyte-ai/ui/primitives";
-import { useLayoutEffect, useRef, useState } from "react";
-import type { ReactElement, ReactNode } from "react";
-import type { ToolTurnPart } from "@nyte-ai/core";
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement } from "react";
 import { turnPartId } from "@nyte-ai/core/views";
+import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import { Spinner } from "../components/spinner.tsx";
@@ -21,207 +21,75 @@ import type { ToolCallDensity } from "../theme/boot.ts";
 import { toolGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Prose } from "./prose.tsx";
-import { presentTool } from "./tool-detail.ts";
-import type { ToolPresentation } from "./tool-detail.ts";
-import { formatRunDuration } from "./transcript-presentation.ts";
 import type { WorkTurnPart } from "./transcript-presentation.ts";
-import { isAtScrollBottom, workGroupBody, type WorkGroupReveal } from "./work-group-body.ts";
+import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow.ts";
+import { WorkGroupWindow, opensWorkGroup, workGroupScrollport } from "./work-group-window.tsx";
+import { workGroupBody } from "./work-group-body.ts";
+import { createWorkGroupEntries } from "./work-group-entries.ts";
+import { createWorkGroupPresentation } from "./work-group-presentation.ts";
+import type { WorkGroupReveal } from "./work-group-body.ts";
 
-interface PresentedTool {
-  readonly part: ToolTurnPart;
-  readonly presentation: ToolPresentation;
+/** One row of the episode, keyed by core's part identity so rows never remount as output settles. */
+type WorkEntry =
+  | { readonly key: string; readonly kind: "part"; readonly part: WorkTurnPart }
+  | { readonly key: string; readonly kind: "live-thinking"; readonly text: string };
+
+function workEntryKey(part: WorkTurnPart): string {
+  return part.kind === "tool" ? part.callId : turnPartId(part);
 }
 
-interface WorkSummary {
-  readonly verb: string;
-  readonly detail: string | undefined;
-  readonly added: number;
-  readonly removed: number;
-}
-
-function quantity(count: number, singular: string, plural = `${singular}s`): string {
-  return `${String(count)} ${count === 1 ? singular : plural}`;
-}
-
-function oneDetailOrCount(
-  tools: readonly PresentedTool[],
-  singular: string,
-  plural = `${singular}s`,
-): string {
-  const only = tools.length === 1 ? tools[0] : undefined;
-  return only?.presentation.detail ?? quantity(tools.length, singular, plural);
-}
-
-function summarizeWork(
-  tools: readonly PresentedTool[],
-  duration: string | undefined,
-  running: boolean,
-  failed: boolean,
-): WorkSummary {
-  const added = tools.reduce((total, item) => total + (item.presentation.added ?? 0), 0);
-  const removed = tools.reduce((total, item) => total + (item.presentation.removed ?? 0), 0);
-  if (running) return { verb: "Working", detail: undefined, added, removed };
-  if (failed) return { verb: "Work failed", detail: undefined, added, removed };
-  if (tools.length === 0) {
-    return {
-      verb: "Worked",
-      detail: duration === undefined ? undefined : `for ${duration}`,
-      added,
-      removed,
-    };
-  }
-
-  const edits = tools.filter(({ part }) => part.toolName === "edit" || part.toolName === "write");
-  const commands = tools.filter(({ part }) => part.toolName === "bash");
-  const reads = tools.filter(({ part }) => part.toolName === "read");
-  const listings = tools.filter(({ part }) => part.toolName === "ls");
-
-  if (edits.length > 0) {
-    const edited = oneDetailOrCount(edits, "file");
-    const ran = commands.length > 0 ? `, ran ${quantity(commands.length, "command")}` : "";
-    return { verb: "Edited", detail: `${edited}${ran}`, added, removed };
-  }
-  if (commands.length > 0) {
-    return {
-      verb: "Ran",
-      detail: oneDetailOrCount(commands, "command"),
-      added,
-      removed,
-    };
-  }
-  if (reads.length > 0) {
-    return { verb: "Read", detail: oneDetailOrCount(reads, "file"), added, removed };
-  }
-  if (listings.length > 0) {
-    return {
-      verb: "Listed",
-      detail: oneDetailOrCount(listings, "directory", "directories"),
-      added,
-      removed,
-    };
-  }
-
-  const first = tools[0]?.presentation;
-  return tools.length === 1 && first !== undefined
-    ? { verb: first.verb, detail: first.detail, added, removed }
-    : { verb: "Worked", detail: quantity(tools.length, "action"), added, removed };
-}
-
-function WorkEntries({
-  parts,
-  live,
+function WorkEntryView({
+  entry,
   liveTools,
   cwd,
   density,
-  dim,
 }: {
-  parts: readonly WorkTurnPart[];
-  live: LiveSnapshot | undefined;
+  entry: WorkEntry;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
   density: ToolCallDensity;
-  dim: boolean;
 }): ReactElement {
-  return (
-    <>
-      {parts.map((part) => {
-        switch (part.kind) {
-          case "assistant":
-            return (
-              <div
-                key={turnPartId(part)}
-                {...stylex.props(toolGroupStyles.commentary, dim && toolGroupStyles.commentaryDim)}
-              >
-                <Prose markdown={part.text} />
-              </div>
-            );
-          case "thinking":
-            return (
-              <div key={turnPartId(part)} {...stylex.props(toolGroupStyles.thinking)}>
-                <span {...stylex.props(srOnly)}>Reasoning</span>
-                <Prose markdown={part.text} />
-              </div>
-            );
-          case "tool":
-            return (
-              <ToolCallView
-                key={part.callId}
-                part={part}
-                progress={liveTools.get(part.callId)?.progress}
-                cwd={cwd}
-                density={density}
-              />
-            );
-          default: {
-            const _exhaustive: never = part;
-            return _exhaustive;
-          }
-        }
-      })}
-      {live?.order.map((ref) => {
-        if (ref.kind !== "thinking") return null;
-        const key = livePartKey(ref.runId, ref.attempt, ref.index);
-        const text = live.thinking.get(key) ?? "";
-        return text === "" ? null : (
-          <div key={`live-thinking:${key}`} {...stylex.props(toolGroupStyles.thinking)}>
-            <span {...stylex.props(srOnly)}>Reasoning</span>
-            <Prose markdown={text} streaming />
-          </div>
-        );
-      })}
-    </>
-  );
+  if (entry.kind === "live-thinking") {
+    return (
+      <div {...stylex.props(toolGroupStyles.thinking)}>
+        <span {...stylex.props(srOnly)}>Reasoning</span>
+        <Prose markdown={entry.text} streaming />
+      </div>
+    );
+  }
+  const { part } = entry;
+  switch (part.kind) {
+    case "assistant":
+      return (
+        <div {...stylex.props(toolGroupStyles.commentary)}>
+          <Prose markdown={part.text} />
+        </div>
+      );
+    case "thinking":
+      return (
+        <div {...stylex.props(toolGroupStyles.thinking)}>
+          <span {...stylex.props(srOnly)}>Reasoning</span>
+          <Prose markdown={part.text} />
+        </div>
+      );
+    case "tool":
+      return (
+        <ToolCallView
+          part={part}
+          progress={liveTools.get(part.callId)?.progress}
+          cwd={cwd}
+          density={density}
+        />
+      );
+    default: {
+      const _exhaustive: never = part;
+      return _exhaustive;
+    }
+  }
 }
 
-function WorkPreview({
-  children,
-  onExpand,
-}: {
-  children: ReactNode;
-  onExpand: () => void;
-}): ReactElement {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const paused = useRef(false);
-  const [overflow, setOverflow] = useState(false);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (viewport === null) return undefined;
-
-    const sync = (): void => {
-      setOverflow(viewport.scrollHeight > viewport.clientHeight);
-      if (!paused.current) viewport.scrollTop = viewport.scrollHeight;
-    };
-    const onScroll = (): void => {
-      paused.current = !isAtScrollBottom({
-        scrollTop: viewport.scrollTop,
-        scrollHeight: viewport.scrollHeight,
-        clientHeight: viewport.clientHeight,
-      });
-    };
-
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(viewport);
-    for (const child of viewport.children) observer.observe(child);
-    viewport.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", onScroll);
-    };
-  }, []);
-
-  return (
-    <div
-      ref={viewportRef}
-      data-nyte-scrollport
-      onClick={onExpand}
-      {...stylex.props(toolGroupStyles.preview, overflow && toolGroupStyles.previewFade)}
-    >
-      <div {...stylex.props(toolGroupStyles.calls, toolGroupStyles.previewCalls)}>{children}</div>
-    </div>
-  );
-}
+/** Silence this long with nothing streaming reads as stuck, so the label says so. */
+const STALE_AFTER_MS = 15_000;
 
 export function WorkGroupView({
   parts,
@@ -240,72 +108,191 @@ export function WorkGroupView({
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const duration = formatRunDuration(durationMs);
-  const tools = parts.flatMap((part): ToolTurnPart[] => (part.kind === "tool" ? [part] : []));
-  const presented = tools.map((part): PresentedTool => ({
-    part,
-    presentation: presentTool(part, liveTools.get(part.callId)?.progress, cwd),
-  }));
-  const active = running || presented.some(({ presentation }) => presentation.state === "running");
-  const [reveal, setReveal] = useState<WorkGroupReveal>("default");
-  const hasContent =
-    parts.length > 0 ||
-    (live !== undefined &&
-      live.order.some((ref) => {
-        if (ref.kind !== "thinking") return false;
-        return (live.thinking.get(livePartKey(ref.runId, ref.attempt, ref.index)) ?? "") !== "";
-      }));
-  const body = workGroupBody({ density, active, reveal, hasContent });
-  const failed = presented.some(({ presentation }) => presentation.state === "failed");
-  const summary = summarizeWork(presented, duration, active, failed);
-  const entries = (
-    <WorkEntries
-      parts={parts}
-      live={live}
-      liveTools={liveTools}
-      cwd={cwd}
-      density={density}
-      dim={body === "preview"}
-    />
+  const [projectWork] = useState(createWorkGroupPresentation);
+  // The timer marks the frame it saw; any newer live frame makes that mark stale.
+  const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
+  const stale = live !== undefined && staleFrame === live;
+  const { active, failed, summary } = projectWork({
+    parts,
+    liveTools,
+    cwd,
+    durationMs,
+    running,
+    live,
+    stale,
+  });
+  useEffect(() => {
+    if (!active || live === undefined) return undefined;
+    const timer = window.setTimeout(() => setStaleFrame(live), STALE_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, live]);
+  const [joinEntries] = useState(() => createWorkGroupEntries<WorkEntry>());
+  const settledEntries = useMemo(
+    () => parts.map((part): WorkEntry => ({ key: workEntryKey(part), kind: "part", part })),
+    [parts],
   );
+  const liveThinking =
+    live?.order.flatMap((ref): WorkEntry[] => {
+      if (ref.kind !== "thinking") return [];
+      const key = livePartKey(ref.runId, ref.attempt, ref.index);
+      const text = live.thinking.get(key) ?? "";
+      return text === "" ? [] : [{ key: `live-thinking:${key}`, kind: "live-thinking", text }];
+    }) ?? [];
+  const entries = joinEntries(settledEntries, liveThinking);
+  // The first settled part names the group; later parts append after it.
+  const first = parts[0];
+  const groupKey = first === undefined ? undefined : workEntryKey(first);
+  const [reveal, setReveal] = useState<WorkGroupReveal>("default");
+  const hasContent = entries.count > 0;
+  const body = workGroupBody({
+    density,
+    active,
+    reveal,
+    hasContent,
+  });
+  const preview = body === "preview";
+  const openedWindow = reveal === "open" && density === "compact" && active;
+
+  // The preview follows new output. Scrolling away or opening the full list
+  // pauses that; ten seconds without another input returns to the window.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null || (!preview && !openedWindow)) return undefined;
+
+    let paused = false;
+    let resumeTimer = 0;
+    const clearResume = (): void => {
+      if (resumeTimer === 0) return;
+      window.clearTimeout(resumeTimer);
+      resumeTimer = 0;
+    };
+    const follow = (): void => {
+      paused = false;
+      viewport.scrollTop = viewport.scrollHeight;
+    };
+    const resume = (): void => {
+      clearResume();
+      if (openedWindow) {
+        setReveal("default");
+        return;
+      }
+      follow();
+    };
+    const arm = (): void => {
+      clearResume();
+      resumeTimer = window.setTimeout(resume, FOLLOW_RESUME_MS);
+    };
+    const sync = (): void => {
+      viewport.toggleAttribute("data-overflow", overflows(viewport));
+      if (preview && !paused) viewport.scrollTop = viewport.scrollHeight;
+    };
+    const onScroll = (): void => {
+      const step = followOnScroll(openedWindow ? "opened" : "preview", paused, viewport);
+      paused = step.paused;
+      if (step.resumeTimer === "arm") arm();
+      else clearResume();
+    };
+
+    const scrollport = openedWindow ? workGroupScrollport(viewport) : viewport;
+    if (openedWindow) {
+      arm();
+      scrollport.addEventListener("pointerdown", arm);
+      scrollport.addEventListener("keydown", arm);
+      scrollport.addEventListener("wheel", arm, { passive: true });
+    }
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(viewport);
+    for (const child of viewport.children) observer.observe(child);
+    scrollport.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      clearResume();
+      observer.disconnect();
+      scrollport.removeEventListener("scroll", onScroll);
+      scrollport.removeEventListener("pointerdown", arm);
+      scrollport.removeEventListener("keydown", arm);
+      scrollport.removeEventListener("wheel", arm);
+    };
+  }, [openedWindow, preview]);
+
+  const summaryLine = (
+    <>
+      {active && <Spinner />}
+      <span {...stylex.props(toolGroupStyles.verb)}>{summary.verb}</span>
+      {summary.detail !== undefined && (
+        <span {...stylex.props(toolGroupStyles.summary)}>{summary.detail}</span>
+      )}
+      {(summary.added > 0 || summary.removed > 0) && (
+        <span {...stylex.props(toolGroupStyles.stats)}>
+          {summary.added > 0 && (
+            <span {...stylex.props(toolGroupStyles.added)}>
+              +<AnimatedNumber value={summary.added} />
+            </span>
+          )}
+          {summary.removed > 0 && (
+            <span {...stylex.props(toolGroupStyles.removed)}>
+              -<AnimatedNumber value={summary.removed} />
+            </span>
+          )}
+        </span>
+      )}
+    </>
+  );
+
+  if (!hasContent) {
+    return (
+      <div
+        aria-busy={active || undefined}
+        {...stylex.props(toolGroupStyles.root, toolGroupStyles.status)}
+      >
+        {summaryLine}
+      </div>
+    );
+  }
 
   return (
     <Collapsible.Root
-      open={body === "list"}
-      onOpenChange={(open) => setReveal(open ? "open" : "closed")}
+      open={body !== "none"}
+      onOpenChange={() => setReveal(body === "list" ? "closed" : "open")}
       aria-busy={active || undefined}
       {...stylex.props(toolGroupStyles.root)}
     >
       <Collapsible.Trigger
         {...stylex.props(toolGroupStyles.toggle, focus.ring, failed && toolGroupStyles.failed)}
       >
-        {active && <Spinner />}
-        <span {...stylex.props(toolGroupStyles.verb)}>{summary.verb}</span>
-        {summary.detail !== undefined && (
-          <span {...stylex.props(toolGroupStyles.summary)}>{summary.detail}</span>
-        )}
-        {(summary.added > 0 || summary.removed > 0) && (
-          <span {...stylex.props(toolGroupStyles.stats)}>
-            {summary.added > 0 && (
-              <span {...stylex.props(toolGroupStyles.added)}>+{summary.added}</span>
-            )}
-            {summary.removed > 0 && (
-              <span {...stylex.props(toolGroupStyles.removed)}>-{summary.removed}</span>
-            )}
-          </span>
-        )}
+        {summaryLine}
         <span
           {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
         >
           <Icon name="chevron-right" size={11} />
         </span>
       </Collapsible.Trigger>
-      {body === "preview" && (
-        <WorkPreview onExpand={() => setReveal("open")}>{entries}</WorkPreview>
-      )}
-      {body === "list" && (
-        <Collapsible.Panel {...stylex.props(toolGroupStyles.calls)}>{entries}</Collapsible.Panel>
-      )}
+      <Collapsible.Panel
+        ref={viewportRef}
+        data-nyte-scrollport={preview || undefined}
+        onClick={
+          preview
+            ? (event) => {
+                if (opensWorkGroup(event.target, window.getSelection()?.toString() ?? ""))
+                  setReveal("open");
+              }
+            : undefined
+        }
+        {...stylex.props(preview && toolGroupStyles.preview)}
+      >
+        <div {...stylex.props(toolGroupStyles.calls)}>
+          <WorkGroupWindow
+            groupKey={groupKey}
+            entries={entries}
+            viewportRef={viewportRef}
+            preview={preview}
+            renderEntry={(entry) => (
+              <WorkEntryView entry={entry} liveTools={liveTools} cwd={cwd} density={density} />
+            )}
+          />
+        </div>
+      </Collapsible.Panel>
     </Collapsible.Root>
   );
 }

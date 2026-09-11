@@ -3,6 +3,8 @@
  * replays every contribution over a fresh draft in plugin order; removing a
  * plugin means dropping its contributions and rebuilding. There is no undo.
  */
+import type { TSchema } from "typebox";
+import { bindTool } from "../tools/bind-tool.ts";
 import type { AgentTool } from "../types.ts";
 import type { Disposer, Draft, RegistryDiff, ToolDraft } from "./types.ts";
 
@@ -56,6 +58,19 @@ export class MapDraft<T> implements Draft<T> {
 }
 
 export class ToolMapDraft extends MapDraft<AgentTool> implements ToolDraft {
+  private readonly bindings: WeakMap<object, AgentTool>;
+
+  constructor(bindings = new WeakMap<object, AgentTool>()) {
+    super();
+    this.bindings = bindings;
+  }
+
+  override set<T extends TSchema, Details>(id: string, tool: AgentTool<T, Details>): void {
+    const bound = this.bindings.get(tool) ?? bindTool(tool);
+    this.bindings.set(tool, bound);
+    super.set(id, bound);
+  }
+
   wrap(id: string, wrap: (inner: AgentTool["execute"]) => AgentTool["execute"]): void {
     this.update(id, (tool) => ({ ...tool, execute: wrap(tool.execute) }));
   }

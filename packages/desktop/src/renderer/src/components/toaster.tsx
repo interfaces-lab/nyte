@@ -39,7 +39,7 @@ const styles = stylex.create({
     letterSpacing: t.letterBase,
     outlineStyle: { default: "none", ":focus-visible": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: 1,
     "--_toast-icon-color": t.iconSecondary,
   },

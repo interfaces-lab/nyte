@@ -1,10 +1,10 @@
 ---
 title: SDK
-description: createNyte is how a host talks to Nyte. A store, a stream function, a catalog, and plugins go in; verbs and one event stream come out
+description: createNyte is how a host talks to Nyte. A store, a stream function, a catalog, and plugins go in; operations and one event stream come out
 ---
 
 A product attaches to Nyte by composing one `Nyte` over a store, a stream function, a model catalog, and
-a plugin list. Clients call verbs on that object and fold its events. The TUI and the desktop app both do
+a plugin list. Clients call operations on that object and fold its events. The TUI and the desktop app both do
 this. The full contract is in the [design record](/docs/design#the-sdk); this page is the copy-paste path.
 
 Send does not start a run. It admits a message into a lane. A host that called `attach()` is the process
@@ -13,26 +13,27 @@ already stored.
 
 ## Three entries
 
-| Entry                 | Imports                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `@nyte-ai/core`       | `createNyte`, the whole wire contract, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose. |
-| `@nyte-ai/core/store` | `SqliteStore` and the `Store` contract a backend implements. Hosts name their storage here; clients never import it.            |
-| `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                       |
+| Entry                 | Imports                                                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@nyte-ai/core`       | `createNyte`, the whole wire contract, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose.                                                                        |
+| `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here; clients never import it. |
+| `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                                                                                              |
 
 Plugin authoring is `@nyte-ai/core/plugins`; `@nyte-ai/plugin` re-exports it and adds `define`
 for local TUI plugins. `SqliteStore`
-takes one file path; the session file lives at `<workspace>/.nyte/sessions.db`.
+takes one file path; Nyte's clients share `~/.nyte/workspaces/<path-hash>/sessions.db` per
+workspace, resolved by `workspaceStorePath` from `@nyte-ai/host`.
 
 ```ts title="host.ts"
-import { join } from "node:path";
 import process from "node:process";
 import { createModels, FileCredentialStore, openaiCodexProvider } from "@nyte-ai/ai";
 import { createNyte, DEFAULT_LANDING, MAIN } from "@nyte-ai/core";
 import { inlinePlugin, systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
+import { workspaceStorePath } from "@nyte-ai/host";
 
 const cwd = process.cwd();
-const store = new SqliteStore(join(cwd, ".nyte", "sessions.db"));
+const store = new SqliteStore(await workspaceStorePath(cwd));
 const models = createModels({ credentials: new FileCredentialStore() });
 models.setProvider(openaiCodexProvider());
 const model = models.getModel("openai-codex", "gpt-5.6-luna");
@@ -69,8 +70,8 @@ await nyte.close();
 await store.close();
 ```
 
-`landing` is the host's lane policy. Leaving it out means `DEFAULT_LANDING`. `head` defaults to `MAIN`
-on every verb, so the send above could omit it.
+`landing` is the host's lane policy. Leaving it out means `DEFAULT_LANDING`. The send above could
+omit `head` to use `MAIN`. `jobs.list` without a head filter lists jobs across the session's heads.
 
 ## The client loop
 
@@ -171,24 +172,78 @@ racing a landing settles as `cancelled` or `landed`, never both.
 
 ## Runs
 
-| Verb           | Outcome                                                              | Use                                                                       |
+| Operation      | Outcome                                                              | Use                                                                       |
 | -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `runs.wait`    | `idle` \| `waiting { runId }`                                        | Block until the head is free, or until a tool parks on a question.        |
-| `runs.reply`   | `signalled` \| `not_waiting` \| `not_found`                          | Answer a parked call by `callId`. The first reply wins; later ones miss.  |
+| `runs.wait`    | `idle` \| `waiting { runId }` \| `cancelled`                         | Block until the head is free, a tool parks, or the caller cancels.        |
+| `runs.reply`   | `signalled` \| `not_waiting` \| `not_found`                          | Answer the exact parked generation by `callId` and `waitId`.              |
 | `runs.abort`   | `requested { runId }` \| `not_running`                               | Stop the live run. What was already said is kept.                         |
 | `runs.compact` | `compacted { commit }` \| `nothing_to_compact` \| `busy` \| `failed` | Write one checkpoint now, with the branch's own model and thinking level. |
 
 ```ts
 const outcome = await sdk.runs.wait({ sessionId });
 if (outcome.kind === "waiting") {
-  await sdk.runs.reply({ sessionId, runId: outcome.runId, callId: "ask-1", reply: "blue" });
+  const snapshot = await sdk.sessions.snapshot({ sessionId });
+  const parked = snapshot?.parked?.find((call) => call.selection !== undefined);
+  if (parked !== undefined) {
+    await sdk.runs.reply({
+      sessionId,
+      runId: parked.runId,
+      callId: parked.callId,
+      waitId: parked.waitId,
+      reply: { choices: ["blue"] },
+    });
+  }
 }
 const compacted = await sdk.runs.compact({ sessionId, customInstructions: "keep file paths" });
 ```
 
-A waiting run needs no live process. Its refs hold everything, so a phone can answer an hour later and
-whichever runner next acquires the head wakes the call. `runs.context` is the token gauge; `runs.changes`
-is the per-run file diff.
+A parked participant selection needs no live process. Its refs hold the choices, optional own-answer
+placeholder, optional deadline, and a `waitId` for that exact wait generation, so a phone can answer
+later and whichever runner next acquires the head wakes the call. Re-parking the same call changes
+`waitId`, which tells clients to clear local picks and open the replacement. Running jobs still need
+their owning host.
+`runs.context` is the token gauge; `runs.changes` is the per-run file diff.
+
+## Jobs
+
+Core tracks `bash` commands and `task` subagents as jobs. Both tools accept `background: true`.
+To move already-running work to background, use its job ID, not its run ID:
+
+```ts title="jobs.ts"
+import type { Nyte, SessionId } from "@nyte-ai/core";
+
+async function backgroundWork(sdk: Nyte, sessionId: SessionId) {
+  const jobs = await sdk.jobs.list({ sessionId, head: "main" });
+  const job = jobs.find((job) => job.state === "running" && job.mode === "foreground");
+  if (job === undefined) return;
+  return sdk.jobs.background({ sessionId, jobId: job.id });
+}
+
+async function cancelJob(sdk: Nyte, sessionId: SessionId, jobId: string) {
+  return sdk.jobs.cancel({ sessionId, jobId });
+}
+```
+
+`jobs.background` and `jobs.cancel` return `applied`, `finished`, or `not_found`. Backgrounding
+keeps the same work running and releases the parked parent call with a receipt. Cancelling targets
+only that job. `runs.abort` cancels parked foreground work but does not cancel background jobs.
+These controls work while the parent run is waiting; do not gate them on an idle composer.
+
+`JobInfo` includes `id`, `head`, `runId`, `callId`, `title`, `mode`, `state`, timestamps, and `output`.
+Its kind is `command` or `subagent`; only subagents include `childSessionId`. State is `running`,
+`completed`, `failed`, `cancelled`, or `interrupted`. Output retains the last 50,000 characters.
+Read jobs with `jobs.list` and refresh on `job` events. Job data is separate from the session snapshot.
+
+Jobs survive closing a panel or switching chats. Their records and output are durable, but work does
+not survive the owning host closing. Host close or recovery marks abandoned work `interrupted`
+without rerunning it. A terminal background job delivers its state and output as an idempotent user
+message on the originating head, through core's private idle-only `background` lane. Clients do not
+need to add that lane to their landing policy or send completion messages themselves.
+
+Background children inherit workspace trust but are not offered tools marked
+`availability: "foreground"`. Use that capability for tools that require a participant or other
+foreground-only host service; filtering does not depend on the tool's name or whether a particular
+wait carries a selection.
 
 ## Heads
 
@@ -219,18 +274,19 @@ a view that was already stale. `heads.create` cuts a stacked head from another h
 
 Every event carries `seq`. A client keeps the last one it applied as its cursor.
 
-| Kind                                    | Fold                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                      |
-| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.             |
-| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.     |
-| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.        |
-| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.   |
-| `tool_progress` / `effect`              | A call's live output and its durable state: intent, waiting, signal, result.  |
-| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away.                 |
-| `synced`                                | Replay is over; what follows is live.                                         |
-| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                             |
-| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model. |
+| Kind                                    | Fold                                                                              |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                          |
+| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                 |
+| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.         |
+| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                             |
+| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.            |
+| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.       |
+| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result. |
+| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away.                     |
+| `synced`                                | Replay is over; what follows is live.                                             |
+| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                 |
+| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.     |
 
 There is no compaction event. A checkpoint arrives as an ordinary `commit`.
 
@@ -242,7 +298,10 @@ There is no compaction event. A checkpoint arrives as an ordinary `commit`.
 2. Gate project plugins on workspace trust (`WorkspaceTrustStore`). The grant lives in
    `~/.nyte/trust.json` and is inherited from a trusted ancestor. Print mode will not grant trust.
 3. Resolve the plugin list with `resolvePlugins`: built-ins, then `~/.nyte/plugins`, then
-   `<cwd>/.nyte/plugins`, filtered by `.nyte/nyte.json`.
+   `<cwd>/.nyte/plugins`, filtered by the merged `nyte.json` manifests (`~/.nyte` and
+   `<cwd>/.nyte`), which also name MCP servers. Watch those sources with
+   `watchPluginDirectories` and pass `nyte.holdPlugins` as its `hold`, so a runner's next step
+   waits for `setPlugins` and the model sees a plugin it just wrote.
 4. Pass that list, `streamFn`, `store`, and `env.cwd` into `createNyte`, or pass `resolveActivation`
    to load plugins the first time a session activates.
 5. Call `attach()` in the process that should run tools.

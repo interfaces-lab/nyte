@@ -83,6 +83,8 @@ export const t = stylex.defineConsts({
   strokeTertiary: "var(--nyte-stroke-tertiary)",
   strokeQuaternary: "var(--nyte-stroke-quaternary)",
   strokeFocused: "var(--nyte-stroke-focused)",
+  /** The accent ring, resolved to `transparent` while focus came from a pointer. */
+  focusRing: "var(--nyte-focus-ring)",
 
   // status colors
   accent: "var(--nyte-accent)",

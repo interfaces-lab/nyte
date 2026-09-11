@@ -36,7 +36,7 @@ export const customizeStyles = stylex.create({
     color: t.iconTertiary,
     outlineStyle: { default: "none", ":focus-within": "solid" },
     outlineWidth: 2,
-    outlineColor: t.strokeFocused,
+    outlineColor: t.focusRing,
     outlineOffset: -2,
   },
   searchInput: {

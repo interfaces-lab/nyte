@@ -1,4 +1,4 @@
-import { Tabs } from "@nyte-ai/ui/primitives";
+import { Tabs } from "@nyte-ai/ui/tabs";
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -7,10 +7,15 @@ import { CommandMenu, MenuItem } from "../components/menu.tsx";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { focus, formatTimeAgo, Kbd, srOnly, StatusDot } from "../components/ui.tsx";
 import { macPlatform } from "../platform.ts";
-import { isOption } from "./sidebar-view.ts";
+import { isOption, sessionMark, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionPreview, useSessionSearch } from "../queries.ts";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
 import type { SettingsSection } from "./settings-navigation.tsx";
+import {
+  clientActionKeys,
+  clientActions,
+  resolveClientAction,
+} from "../../../shared/client-actions.ts";
 
 const TABS = ["all", "agents", "files", "actions", "settings"] as const;
 type PaletteTab = (typeof TABS)[number];
@@ -34,6 +39,7 @@ interface PaletteAction {
   readonly label: string;
   readonly keywords: string;
   readonly icon: IconName;
+  readonly group: "actions" | "settings";
   readonly meta?: ReactNode;
   readonly run: () => void;
 }
@@ -92,85 +98,52 @@ export function SearchPalette({
   const searchingAgents = includesAgents && query.trim() !== "";
   const recentSessions = useSessionPreview(open && sessionQueriesAvailable && includesAgents);
   const sessionSearch = useSessionSearch(query, open && sessionQueriesAvailable && searchingAgents);
-  const sessions = (
-    searchingAgents ? (sessionSearch.data?.items ?? []) : (recentSessions.data?.items ?? [])
-  ).filter((session) => !session.archived);
+  const sessions = sessionsForNavigation(
+    searchingAgents ? (sessionSearch.data?.items ?? []) : (recentSessions.data?.items ?? []),
+  );
   const mac = macPlatform(platform);
 
-  const actions: readonly PaletteAction[] = [
-    {
-      key: "new-chat",
-      label: "New chat",
-      keywords: "start create conversation session",
-      icon: "plus",
-      meta: <Kbd keys={mac ? ["⌘", "N"] : ["Ctrl", "N"]} plain />,
-      run: onNewChat,
-    },
-    {
-      key: "open-folder",
-      label: "Open folder…",
-      keywords: "workspace project directory choose",
-      icon: "folder-open",
-      run: onOpenFolder,
-    },
-    ...(onOpenHome === undefined
-      ? []
-      : [
-          {
-            key: "open-home",
-            label: "Open home",
-            keywords: "workspace projectless activate",
-            icon: "folder" as const,
-            run: onOpenHome,
-          },
-        ]),
-  ];
-  const settings: readonly PaletteAction[] = [
-    {
-      key: "general-settings",
-      label: "General settings",
-      keywords: "preferences configuration",
-      icon: "settings",
-      run: () => onOpenSettings("general"),
-    },
-    {
-      key: "appearance-settings",
-      label: "Appearance",
-      keywords: "theme color interface",
-      icon: "sparkle",
-      run: () => onOpenSettings("appearance"),
-    },
-    {
-      key: "model-settings",
-      label: "Models",
-      keywords: "providers api key sign in anthropic openai default reasoning",
-      icon: "layers",
-      run: () => onOpenSettings("models"),
-    },
-    {
-      key: "account-settings",
-      label: "Accounts",
-      keywords: "github login authentication",
-      icon: "user",
-      run: () => onOpenSettings("accounts"),
-    },
-    {
-      key: "customize-settings",
-      label: "Customize",
-      keywords: "agents skills rules mcp",
-      icon: "customize",
-      run: onOpenCustomize,
-    },
-  ];
-  const visibleActions = (
-    tab === "actions"
-      ? actions
-      : tab === "settings"
-        ? settings
-        : tab === "all"
-          ? [...actions, ...settings]
-          : []
-  ).filter((action) => matches(action, query));
+  const actions: readonly PaletteAction[] = Object.values(clientActions).flatMap((action) => {
+    if (!("palette" in action)) return [];
+    if (action.id === "open-home" && onOpenHome === undefined) return [];
+    const run = (): void => {
+      switch (action.id) {
+        case "new-chat":
+          return onNewChat();
+        case "open-folder":
+          return onOpenFolder();
+        case "open-home":
+          return onOpenHome?.();
+        case "general-settings":
+          return onOpenSettings("general");
+        case "appearance-settings":
+          return onOpenSettings("appearance");
+        case "model-settings":
+          return onOpenSettings("models");
+        case "account-settings":
+          return onOpenSettings("accounts");
+        case "customize-settings":
+          return onOpenCustomize();
+        default: {
+          const _exhaustive: never = action;
+          return _exhaustive;
+        }
+      }
+    };
+    const keys = clientActionKeys(action, mac);
+    return [
+      {
+        key: action.id,
+        label: action.label,
+        ...action.palette,
+        meta: keys.length === 0 ? undefined : <Kbd keys={keys} plain />,
+        run,
+      },
+    ];
+  });
+  const visibleActions = actions.filter(
+    (action) => (tab === "all" || tab === action.group) && matches(action, query),
+  );
   // One stable node the whole time the palette is open: a live region that
   // appears and disappears with the list announces nothing.
   const resultCount =
@@ -195,18 +168,7 @@ export function SearchPalette({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      const commandModifier = mac
-        ? event.metaKey
-        : platform === undefined
-          ? event.metaKey || event.ctrlKey
-          : event.ctrlKey;
-      if (
-        !commandModifier ||
-        event.altKey ||
-        event.shiftKey ||
-        event.key.toLocaleLowerCase() !== "k"
-      )
-        return;
+      if (resolveClientAction(event, mac, "workspace")?.id !== "search") return;
       event.preventDefault();
       changeOpen(!open);
     };
@@ -260,15 +222,7 @@ export function SearchPalette({
           <MenuItem
             key={session.sessionId}
             itemStyle={styles.result}
-            leading={
-              <StatusDot
-                working={session.heads.some(
-                  (head) =>
-                    head.run !== undefined &&
-                    !["done", "aborted", "failed"].includes(head.run.phase.kind),
-                )}
-              />
-            }
+            leading={<StatusDot mark={sessionMark(session)} />}
             meta={formatTimeAgo(session.lastActivityAt)}
             textValue={sessionTitle(session)}
             onSelect={() => run(() => onOpenSession(session.sessionId))}
@@ -317,7 +271,7 @@ export function SearchPalette({
               }
             }}
           />
-          <Kbd keys={mac ? ["⌘", "K"] : ["Ctrl", "K"]} />
+          <Kbd keys={clientActionKeys(clientActions.search, mac)} />
         </search>
         <Tabs.List aria-label="Search categories" {...stylex.props(styles.tabs)}>
           {TABS.map((option) => (

@@ -1,0 +1,66 @@
+---
+title: Diff view
+description: "One diff surface for transcript receipts, the Changes panel, and stacked review"
+---
+
+<HostMatrix
+  primitive="none"
+  desktop={{ label: "conversation/diff-view.tsx", note: "DiffView over @pierre/diffs PatchDiff" }}
+  terminal={{ label: "transcript.ts + output-diff.ts", note: "DiffRenderable (later pass)" }}
+/>
+
+## `DiffView`
+
+File: `packages/desktop/src/renderer/src/conversation/diff-view.tsx`, memoized. From its header:
+
+> One diff surface shared by transcript receipts and the Changes workbench. Pierre renders the
+> patch inside a shadow root; Nyte's tokens reach it as inherited custom properties on the host,
+> so only rules that must live in the shadow tree go through `unsafeCSS`.
+
+| Prop      | Type                                   | Description                                                                                                |
+| --------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `path`    | `string`                               | Header path / title.                                                                                       |
+| `label`   | `string`                               | Header label override.                                                                                     |
+| `diff`    | `ParsedDiff` (`patch, added, removed`) |                                                                                                            |
+| `variant` | `"inline" \| "workbench" \| "stack"`   | `inline` inside a tool call; `workbench` adds header and stats; `stack` wraps lines and has no scrollport. |
+
+Options are fixed in `PATCH_OPTIONS`: unified layout, classic `+`/`-` indicators, file header
+disabled, word-level diff, `shiki-js` highlighting, worker pool disabled. Theme follows
+`useAppearanceSettings().theme`; "Themed Diff Backgrounds" in Appearance toggles the
+`t.diffAdded*` / `t.diffRemoved*` line backgrounds.
+
+Constraint kept in `onPostRender`:
+
+> Pierre leaves the old `<pre>` in a React-managed shadow root on clean-up. StrictMode detaches and
+> re-attaches the ref on mount, so the replacement instance would find that empty `<pre>`, treat
+> it as prerendered HTML, and never render.
+
+## Where it appears
+
+| Place                         | Variant     | Source                                                            |
+| ----------------------------- | ----------- | ----------------------------------------------------------------- |
+| Tool call panel (edit tools)  | `inline`    | `ToolCallView`, panel `keepMounted`                               |
+| Changes panel, single file    | `workbench` | `ChangesPanel` with `useVcsDiffs` / `useRunChanges`               |
+| Changes panel, stacked review | `stack`     | `ChangesStack` (`workbench/changes-stack.tsx`, `stacked-diff.ts`) |
+
+## Changes panel
+
+`ChangesPanel` (`workbench/changes-panel.tsx`): "Local working-tree and per-turn declared
+changes. GitHub never participates in this path."
+
+| Prop                                                                               | Type                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `sessionId`                                                                        | `SessionId \| undefined` (undefined → uncommitted only) |
+| `scope`                                                                            | `"uncommitted" \| "turn"`                               |
+| `selectedPath`                                                                     | `string \| undefined`                                   |
+| `revealPathRevision`                                                               | `number` (bump to re-scroll)                            |
+| `scrollTop`                                                                        | `number`                                                |
+| `fileTreeVisible`                                                                  | `boolean`                                               |
+| `onScopeChange`, `onToggleFileTree`, `onSelectPath`, `onRevealPath`, `onScrollTop` | callbacks                                               |
+
+Toolbar is [`@nyte-ai/ui/toolbar`](/cloud/headless/toolbar) labelled "Changes actions" with a
+scope `Menu` (`MenuRadioItem`s with stat `meta`, a `MenuCheckboxItem` "Show all turns"), a Refresh
+`IconButton`, and a file-tree `ToggleIconButton` with `PanelToggleIcon side="right"`. The file
+list is `role="tree"` labelled "Changed files"; rows are `role="treeitem"` with `aria-expanded`
+on directories and `aria-selected` on files; labels are middle-truncated by measured width
+(`pretext.ts`).

@@ -73,7 +73,9 @@ test("a finished turn and a parked question notify; the sound follows the settin
   );
 
   await sdk.plugins.settings.apply({ sessionId, id: NOTIFICATIONS_SETTING_ID, choiceId: "sound" });
-  await sdk.runs.reply({ sessionId, callId: "q-1", reply: "that one" });
+  const waiting = (await sdk.sessions.snapshot({ sessionId }))?.parked?.[0];
+  assert.ok(waiting);
+  await sdk.runs.reply({ sessionId, callId: "q-1", waitId: waiting.waitId, reply: "that one" });
   await sdk.runs.wait({ sessionId });
   await settle();
   assert.deepEqual(
@@ -100,7 +102,7 @@ test("off silences a chat, and a child chat never notifies", async () => {
   quiet.stop();
 
   const child = await sdk.sessions.create({
-    parent: { sessionId, runId: "run", callId: "call", agent: "general", depth: 1 },
+    parent: { sessionId, runId: "run", callId: "call", depth: 1 },
   });
   const childLive = collect(sdk, child.sessionId);
   await settle();

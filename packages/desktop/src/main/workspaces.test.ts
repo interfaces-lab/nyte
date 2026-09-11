@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { WorkspaceRegistry } from "@nyte-ai/core";
-import { projectSessionPath } from "./workspaces.ts";
+import { workspaceStorePath } from "@nyte-ai/host";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -28,7 +28,7 @@ test("desktop imports committed WAL history once and retains it after the projec
   const legacy = new SqliteStore(join(cwd, ".nyte", "sessions.db"));
   try {
     await (await legacy.create({ id: "existing-chat" })).close();
-    const path = await projectSessionPath(cwd);
+    const path = await workspaceStorePath(cwd);
     const local = new SqliteStore(path);
     try {
       assert.deepEqual(
@@ -43,12 +43,12 @@ test("desktop imports committed WAL history once and retains it after the projec
       (await legacy.list()).map((session) => session.id),
       ["existing-chat"],
     );
-    assert.equal(await projectSessionPath(cwd), path);
+    assert.equal(await workspaceStorePath(cwd), path);
   } finally {
     await legacy.close();
   }
   await rm(cwd, { recursive: true });
-  const reopened = new SqliteStore(await projectSessionPath(cwd));
+  const reopened = new SqliteStore(await workspaceStorePath(cwd));
   try {
     assert.deepEqual(
       (await reopened.list()).map((session) => session.id),
@@ -65,8 +65,8 @@ test("missing and non-directory projects can have separate local histories witho
   const missing = join(root, "missing");
   const file = join(root, "file");
   await writeFile(file, "not a directory");
-  const missingPath = await projectSessionPath(missing);
-  const filePath = await projectSessionPath(file);
+  const missingPath = await workspaceStorePath(missing);
+  const filePath = await workspaceStorePath(file);
   assert.notEqual(missingPath, filePath);
   const store = new SqliteStore(missingPath);
   await store.close();

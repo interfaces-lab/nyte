@@ -3,22 +3,28 @@
  * clients only filter and display, so the walk lives here where the TUI and
  * the desktop main process both reach it.
  */
-import { readdir } from "node:fs/promises";
-import { basename, join, relative, sep } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import ignorePackage, { type Ignore, type Options } from "ignore";
 
 const MAX_MENTION_FILES = 5_000;
 
-const SKIPPED_DIRECTORIES = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  ".nyte",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-]);
+type IgnoreFactory = (options?: Options) => Ignore;
+
+// CommonJS default types differ between NodeNext and Bundler consumers.
+function resolveIgnoreFactory(
+  source: IgnoreFactory | { readonly default: IgnoreFactory },
+): IgnoreFactory {
+  return "default" in source ? source.default : source;
+}
+
+const createIgnore = resolveIgnoreFactory(ignorePackage);
+
+interface IgnoreScope {
+  readonly directory: string;
+  readonly matcher: Ignore;
+}
 
 export interface MentionFile {
   /** Absolute path. Directories carry a trailing separator. */
@@ -31,21 +37,47 @@ export interface MentionFile {
   readonly label: string;
 }
 
-/** Files and folders offered by `@` completion. Common generated trees are skipped. */
+/** Files and folders offered by `@`, respecting workspace .gitignore files.
+ * Git metadata and symlinks are excluded; ignored directories are never traversed.
+ */
 export async function discoverMentionFiles(cwd: string): Promise<MentionFile[]> {
+  const root = resolve(cwd);
   const files: MentionFile[] = [];
-  const pending = [cwd];
+  const pending: { directory: string; scopes: readonly IgnoreScope[] }[] = [
+    { directory: root, scopes: [] },
+  ];
   while (pending.length > 0 && files.length < MAX_MENTION_FILES) {
-    const directory = pending.pop();
-    if (directory === undefined) break;
-    const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+    const current = pending.pop();
+    if (current === undefined) break;
+    const entries = await readdir(current.directory, { withFileTypes: true }).catch(() => []);
+    const scopes = [...current.scopes];
+    // Git does not follow symlinked .gitignore files.
+    if (entries.some((entry) => entry.name === ".gitignore" && entry.isFile())) {
+      const patterns = await readFile(join(current.directory, ".gitignore"), "utf8").catch(
+        () => "",
+      );
+      scopes.push({
+        directory: current.directory,
+        matcher: createIgnore({ ignorecase: false }).add(patterns),
+      });
+    }
     for (const entry of entries) {
       if (files.length >= MAX_MENTION_FILES) break;
-      const path = join(directory, entry.name);
-      const displayPath = relative(cwd, path).split("\\").join("/");
+      if (entry.name === ".git" || (!entry.isDirectory() && !entry.isFile())) continue;
+      const path = join(current.directory, entry.name);
+      let ignored = false;
+      for (const scope of scopes) {
+        const result = scope.matcher.test(
+          relative(scope.directory, path).split(sep).join("/") + (entry.isDirectory() ? "/" : ""),
+        );
+        // Deeper rules override ancestors only when they explicitly match.
+        if (result.ignored || result.unignored) ignored = result.ignored;
+      }
+      // A negation cannot restore a file beneath an excluded parent directory.
+      if (ignored) continue;
+      const displayPath = relative(root, path).split(sep).join("/");
       if (entry.isDirectory()) {
-        if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-        pending.push(path);
+        pending.push({ directory: path, scopes });
         files.push({
           path: path + sep,
           url: pathToFileURL(path).href,
@@ -54,7 +86,6 @@ export async function discoverMentionFiles(cwd: string): Promise<MentionFile[]> 
         });
         continue;
       }
-      if (!entry.isFile()) continue;
       files.push({ path, url: pathToFileURL(path).href, displayPath, label: basename(path) });
     }
   }

@@ -1,36 +1,27 @@
 /**
- * The input surface, shaped like Cursor's Agents composer (layout reference
- * only; no code ported): the new-chat field stacks above its controls while
- * the follow-up field is one compact row. The frame and behavior stay shared.
+ * The input surface has two layouts: the new-chat field stacks above its
+ * controls while the follow-up field is one compact row. Attachments stay
+ * inside its frame, above the editor, while queued follow-ups use the separate
+ * toolbar card.
+ * The frame and behavior stay shared.
  *
  * Admission is open (invariant 5): sending while a run is live is not an
- * error — it steers, and the receipt's disposition is the only difference the
- * client sees. The strip above the field shows still-pending queue items with
- * cancel and "send now" (`redeliver`), and Esc requests a durable abort.
+ * error. Enter sends to the lane that lands at the next response boundary (it
+ * steers), Cmd/Ctrl+Enter to the lane that waits for an idle head (it queues a
+ * follow-up), both read from the landing policy. The toolbar card shows
+ * still-pending queue items with edit, cancel, and "send now"
+ * (`redeliver`), and Esc requests a durable abort.
  */
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
-import { Popover, PreviewCard } from "@nyte-ai/ui/primitives";
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useDeferredValue,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { DragEvent, ReactElement, ReactNode } from "react";
-import { completionTrigger } from "@nyte-ai/core/views";
-import type { MentionFile } from "@nyte-ai/core/views";
-import type { CommandInfo, PendingItem, PluginCatalog, SessionId } from "@nyte-ai/core";
-import type { ImageContent, Skill, TextContent, UserMessage } from "@nyte-ai/schema";
-import { Icon, type IconName } from "../components/icons.tsx";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
+import type { Lane, PendingItem, SessionId } from "@nyte-ai/core";
+import type { ImageContent } from "@nyte-ai/schema";
+import { errorMessage } from "../../../shared/errors.ts";
+import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
-import { floatingSurfaceStyles } from "../theme/floating-surface.stylex.ts";
 import {
   keys,
   queryClient,
@@ -38,6 +29,7 @@ import {
   useApplyPluginSetting,
   useCatalog,
   useConfigureSession,
+  useHostState,
   useMentionFiles,
   usePluginCatalog,
   usePluginSettings,
@@ -46,28 +38,32 @@ import {
 import { nyte } from "../nyte.ts";
 import type { OutboxRow, OutboxRowState } from "../outbox.ts";
 import { outbox } from "../use-outbox.ts";
+import { macPlatform } from "../platform.ts";
+import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
 import type { ComposerViewState } from "../layout/session-view-state.ts";
 import { formatContextWindow } from "./model-picker-state.ts";
 import { ModelPicker, type ModelPickerChange } from "./model-picker.tsx";
-import { parsePluginCommand } from "./plugin-command.ts";
 import { ImagePreview } from "./image-preview.tsx";
+import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
 import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
+import { composerSource, useComposerSuggestions } from "./composer-suggestions.tsx";
+import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
+import { acceptedImageFiles, bindComposerFileDrop, carriesFiles } from "./composer-file-drop.ts";
+import {
+  composerEnterAction,
+  laneRoles,
+  modifierKeyLabel,
+  submissionLane,
+} from "./composer-keys.ts";
+import type { SubmitAction } from "./composer-keys.ts";
+import { composerMessageContent, composerSendInput, composerSendPlan } from "./composer-send.ts";
+import { UserMessageText, messageImages, userMessageText } from "./message-content.tsx";
+import { messageDraftText } from "./message-references.ts";
+import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 const DROP_PLACEHOLDER = "Drop here to attach…";
-const ACCEPTED_IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
-/** The popup lists this many workspace entries at most; typing narrows the rest. */
-const MAX_FILE_SUGGESTIONS = 20;
-const NONE: readonly never[] = [];
-
-function boundaryLane(): string {
-  const policy = nyte.landing.lanes.find((candidate) => candidate.lands === "boundary");
-  if (policy === undefined) throw new Error("The landing policy has no boundary lane");
-  return policy.lane;
-}
-
-const STEER_LANE = boundaryLane();
 
 export type ComposerSurface = "new-chat" | "follow-up";
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
@@ -77,156 +73,6 @@ export interface ComposerImageAttachment {
   readonly name: string;
   readonly previewUrl: string;
   readonly content: ImageContent;
-}
-
-interface CommandSuggestion {
-  readonly kind: "command";
-  readonly id: "plan" | "debug" | "ask" | "multitask";
-  readonly label: string;
-  readonly description: string;
-  readonly icon: IconName;
-  readonly instruction: string;
-}
-
-interface SkillSuggestion {
-  readonly kind: "skill";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "skills";
-  readonly skill: Skill;
-}
-
-interface PluginCommandSuggestion {
-  readonly kind: "plugin-command";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "sparkle";
-  readonly command: CommandInfo;
-}
-
-interface MentionSuggestion {
-  readonly kind: "mention";
-  readonly id: "current-conversation";
-  readonly label: "Current conversation";
-  readonly description: "Use this conversation as context";
-  readonly icon: "more";
-}
-
-interface FileSuggestion {
-  readonly kind: "file";
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly icon: "file" | "folder";
-  readonly file: MentionFile;
-}
-
-type ComposerSuggestion =
-  | CommandSuggestion
-  | PluginCommandSuggestion
-  | SkillSuggestion
-  | MentionSuggestion
-  | FileSuggestion;
-
-/** Suggestions that become chips; the rest rewrite the token in place. */
-type ChipSuggestion = Exclude<ComposerSuggestion, PluginCommandSuggestion>;
-
-export type ComposerChip =
-  | (Pick<FileSuggestion, "kind" | "id" | "label" | "file"> & { readonly tokenId: string })
-  | (Pick<CommandSuggestion, "kind" | "id" | "label" | "instruction"> & {
-      readonly tokenId: string;
-    })
-  | {
-      readonly kind: "skill";
-      readonly id: string;
-      readonly label: string;
-      readonly tokenId: string;
-      readonly skill: Skill;
-    }
-  | {
-      readonly kind: "mention";
-      readonly id: MentionSuggestion["id"];
-      readonly label: MentionSuggestion["label"];
-      readonly tokenId: string;
-    };
-
-type SuggestionMenuState =
-  | {
-      readonly kind: "mention";
-      readonly start: number;
-      readonly end: number;
-      readonly query: string;
-    }
-  | {
-      readonly kind: "slash";
-      readonly start: number;
-      readonly end: number;
-      readonly query: string;
-    };
-
-/** A fetched input the popup renders truthfully: loading and failure are states, not empty lists. */
-export type ComposerSource<T> =
-  | { readonly status: "loading" }
-  | { readonly status: "error" }
-  | { readonly status: "ready"; readonly data: T };
-
-export type ComposerSuggestionCatalog = ComposerSource<PluginCatalog>;
-export type ComposerMentionFiles = ComposerSource<readonly MentionFile[]>;
-
-export function composerSource<T>(data: T | undefined, failed: boolean): ComposerSource<T> {
-  if (data !== undefined) return { status: "ready", data };
-  return failed ? { status: "error" } : { status: "loading" };
-}
-
-const PLAN_SUGGESTION = {
-  kind: "command",
-  id: "plan",
-  label: "Plan",
-  description: "Ask for an implementation plan",
-  icon: "square-checklist",
-  instruction: "Create an implementation plan.",
-} satisfies CommandSuggestion;
-
-const MULTITASK_SUGGESTION = {
-  kind: "command",
-  id: "multitask",
-  label: "Multitask",
-  description: "Run independent parts of the task in parallel",
-  icon: "circles",
-  instruction: "Break this task into parallel subtasks when useful.",
-} satisfies CommandSuggestion;
-
-const DEBUG_SUGGESTION = {
-  kind: "command",
-  id: "debug",
-  label: "Debug",
-  description: "Pinpoint the root cause of an issue",
-  icon: "bug",
-  instruction: "Investigate this problem before changing code.",
-} satisfies CommandSuggestion;
-
-const ASK_SUGGESTION = {
-  kind: "command",
-  id: "ask",
-  label: "Ask",
-  description: "Answer questions without making edits",
-  icon: "bubble-question",
-  instruction: "Answer this question without making edits.",
-} satisfies CommandSuggestion;
-
-const BUILTIN_SLASH_SUGGESTIONS = [
-  PLAN_SUGGESTION,
-  DEBUG_SUGGESTION,
-  MULTITASK_SUGGESTION,
-  ASK_SUGGESTION,
-] satisfies readonly ComposerSuggestion[];
-
-const NYTE_COMMAND_OWNERS = new Set(["", "fast-mode", "rename", "web-search"]);
-
-function isAcceptedImage(file: File): boolean {
-  return ACCEPTED_IMAGE_TYPES.has(file.type);
 }
 
 function isTextFileReaderResult(result: FileReader["result"]): result is string {
@@ -277,296 +123,11 @@ function readImageAttachment(file: File): Promise<ComposerImageAttachment> {
   });
 }
 
-/**
- * Scroll the popup's own list so the option is visible. `scrollIntoView` also
- * walks the fixed popup's ancestors and can drag the thread or the window with
- * it; this touches nothing but the list.
- */
-function revealSuggestion(list: HTMLElement | null, option: HTMLElement): void {
-  if (list === null) return;
-  // The list is positioned, so offsets are relative to it.
-  const top = option.offsetTop;
-  const bottom = top + option.offsetHeight;
-  if (top < list.scrollTop) list.scrollTop = top;
-  else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
-}
-
-function suggestionAt(value: string, caret: number): SuggestionMenuState | undefined {
-  const trigger = completionTrigger(value, caret);
-  if (trigger === undefined) return undefined;
-  return {
-    kind: trigger.kind === "@" ? "mention" : "slash",
-    start: trigger.start,
-    end: trigger.end,
-    query: trigger.query,
-  };
-}
-
-function isFolder(file: MentionFile): boolean {
-  return file.label.endsWith("/");
-}
-
-function fileSuggestion(file: MentionFile): FileSuggestion {
-  return {
-    kind: "file",
-    id: `file:${file.path}`,
-    label: file.label,
-    description: file.displayPath,
-    icon: isFolder(file) ? "folder" : "file",
-    file,
-  };
-}
-
-/** The text a picked file becomes: the same `@file://` spelling the TUI sends. */
-export function fileMentionText(file: MentionFile): string {
-  return `@${file.url}`;
-}
-
-interface RankedSuggestion {
-  readonly suggestion: ComposerSuggestion;
-  readonly index: number;
-  readonly rank: number;
-}
-
-function rankSuggestions(
-  suggestions: readonly ComposerSuggestion[],
-  query: string,
-): readonly ComposerSuggestion[] {
-  if (query === "") return suggestions;
-  return suggestions
-    .flatMap((suggestion, index): RankedSuggestion[] => {
-      const label = suggestion.label.toLocaleLowerCase();
-      const description = suggestion.description.toLocaleLowerCase();
-      const rank = label.startsWith(query)
-        ? 0
-        : label.includes(query)
-          ? 1
-          : description.includes(query)
-            ? 2
-            : undefined;
-      return rank === undefined ? [] : [{ suggestion, index, rank }];
-    })
-    .sort((left, right) => left.rank - right.rank || left.index - right.index)
-    .map(({ suggestion }) => suggestion);
-}
-
-function suggestionsFor(
-  kind: SuggestionMenuState["kind"],
-  rawQuery: string,
-  commands: readonly CommandInfo[],
-  skills: readonly Skill[],
-  files: readonly MentionFile[],
-  hasConversationContext: boolean,
-): readonly ComposerSuggestion[] {
-  const query = rawQuery.trim().toLocaleLowerCase();
-  if (kind === "mention") {
-    const context: readonly ComposerSuggestion[] = hasConversationContext
-      ? [
-          {
-            kind: "mention",
-            id: "current-conversation",
-            label: "Current conversation",
-            description: "Use this conversation as context",
-            icon: "more",
-          },
-        ]
-      : [];
-    // Files rank among themselves so a long tree never buries the context entry.
-    return [
-      ...rankSuggestions(context, query),
-      ...rankSuggestions(files.map(fileSuggestion), query).slice(0, MAX_FILE_SUGGESTIONS),
-    ];
-  }
-  const commandNames = new Set(commands.map((command) => command.name));
-  return rankSuggestions(
-    [
-      ...commands.map((command): ComposerSuggestion => ({
-        kind: "plugin-command",
-        id: `plugin-command:${command.name}`,
-        label: command.name,
-        description: command.description,
-        icon: "sparkle",
-        command,
-      })),
-      ...BUILTIN_SLASH_SUGGESTIONS.filter((suggestion) => !commandNames.has(suggestion.id)),
-      ...skills.map((skill): ComposerSuggestion => ({
-        kind: "skill",
-        id: `skill:${skill.name}`,
-        label: skill.name,
-        description: skill.description,
-        icon: "skills",
-        skill,
-      })),
-    ],
-    query,
-  );
-}
-
-type SuggestionGroup = "context" | "files" | "commands" | "modes" | "skills";
-
-function suggestionGroup(suggestion: ComposerSuggestion): SuggestionGroup {
-  switch (suggestion.kind) {
-    case "mention":
-      return "context";
-    case "file":
-      return "files";
-    case "plugin-command":
-      return "commands";
-    case "command":
-      return "modes";
-    case "skill":
-      return "skills";
-    default: {
-      const _exhaustive: never = suggestion;
-      return _exhaustive;
-    }
-  }
-}
-
-function suggestionPreviewTitle(suggestion: ComposerSuggestion): string {
-  if (suggestion.kind !== "skill") return suggestion.label;
-  return suggestion.label
-    .split(/[-_]/u)
-    .filter((part) => part !== "")
-    .map((part) => `${part.slice(0, 1).toLocaleUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
-function suggestionAttribution(suggestion: ComposerSuggestion): string {
-  switch (suggestion.kind) {
-    case "command":
-      return "Created by Nyte";
-    case "plugin-command":
-      return NYTE_COMMAND_OWNERS.has(suggestion.command.owner)
-        ? "Created by Nyte"
-        : `Created by ${suggestion.command.owner}`;
-    case "skill":
-      return suggestion.skill.filePath;
-    case "mention":
-      return "Conversation context";
-    case "file":
-      return isFolder(suggestion.file) ? "Workspace folder" : "Workspace file";
-    default: {
-      const _exhaustive: never = suggestion;
-      return _exhaustive;
-    }
-  }
-}
-
-function suggestionEmptyText(
-  kind: SuggestionMenuState["kind"],
-  source: ComposerSource<unknown>,
-): string {
-  switch (source.status) {
-    case "loading":
-      return kind === "mention" ? "Loading files…" : "Loading commands and skills…";
-    case "error":
-      return kind === "mention"
-        ? "Couldn’t load workspace files"
-        : "Couldn’t load commands and skills";
-    case "ready":
-      return kind === "mention" ? "No Context Found" : "No Matches Found";
-    default: {
-      const _exhaustive: never = source;
-      return _exhaustive;
-    }
-  }
-}
-
-function descriptionExcerpt(description: string, query: string): string {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (normalizedQuery === "") return description;
-  const match = description.toLocaleLowerCase().indexOf(normalizedQuery);
-  if (match <= 36) return description;
-  const start = Math.max(0, match - 24);
-  return `${start === 0 ? "" : "…"}${description.slice(start)}`;
-}
-
-function HighlightedSuggestionText({
-  text,
-  query,
-}: {
-  readonly text: string;
-  readonly query: string;
-}): ReactElement {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const match = normalizedQuery === "" ? -1 : text.toLocaleLowerCase().indexOf(normalizedQuery);
-  if (match === -1) return <>{text}</>;
-  const end = match + normalizedQuery.length;
-  return (
-    <>
-      {text.slice(0, match)}
-      <span {...stylex.props(composerStyles.suggestionMatch)}>{text.slice(match, end)}</span>
-      {text.slice(end)}
-    </>
-  );
-}
-
-function SuggestionPreview({
-  suggestion,
-}: {
-  readonly suggestion: ComposerSuggestion;
-}): ReactElement {
-  return (
-    <>
-      <div {...stylex.props(composerStyles.suggestionPreviewTitle)}>
-        {suggestionPreviewTitle(suggestion)}
-      </div>
-      <div {...stylex.props(composerStyles.suggestionPreviewAttribution)}>
-        <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewIcon)}>
-          <Icon name={suggestion.icon} size={12} />
-        </span>
-        {suggestionAttribution(suggestion)}
-      </div>
-      <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
-        {suggestion.description}
-      </div>
-    </>
-  );
-}
-
-function chipInstruction(chip: ComposerChip): string | undefined {
-  switch (chip.kind) {
-    case "command":
-      return chip.instruction;
-    case "skill":
-      return `Use the ${chip.skill.name} skill.`;
-    case "mention":
-    case "file":
-      return undefined;
-    default: {
-      const _exhaustive: never = chip;
-      return _exhaustive;
-    }
-  }
-}
-
-export function composerPromptText(text: string, chips: readonly ComposerChip[] = []): string {
-  const instructions = chips.flatMap((chip) => {
-    const instruction = chipInstruction(chip);
-    return instruction === undefined ? [] : [instruction];
-  });
-  return [...instructions, text].filter((part) => part !== "").join("\n\n");
-}
-
-export function composerMessageContent(
-  text: string,
-  attachments: readonly ComposerImageAttachment[],
-  chips: readonly ComposerChip[] = [],
-): UserMessage["content"] {
-  const prompt = composerPromptText(text, chips);
-  if (attachments.length === 0) return prompt;
-  const parts: (TextContent | ImageContent)[] = [];
-  if (prompt !== "") parts.push({ type: "text", text: prompt });
-  for (const attachment of attachments) parts.push(attachment.content);
-  return parts;
-}
-
 export async function readComposerImageAttachments(files: readonly File[]): Promise<{
   readonly attachments: readonly ComposerImageAttachment[];
   readonly error: string | undefined;
 }> {
-  const imageFiles = files.filter(isAcceptedImage);
+  const imageFiles = acceptedImageFiles({ files });
   if (imageFiles.length === 0) {
     return {
       attachments: [],
@@ -587,10 +148,9 @@ export async function readComposerImageAttachments(files: readonly File[]): Prom
 }
 
 /**
- * Session-bound chip: reads the executing host's inputs from core and
- * configures on pick. The context gauge sits
- * beside it because the two describe the same thing: how much of this model
- * the conversation has used.
+ * Session-bound chip: shows the selected inputs for the next message, even
+ * while an older run is still executing. The context gauge continues to
+ * describe that run's context.
  */
 const SessionModelChip = memo(function SessionModelChip({
   sessionId,
@@ -602,7 +162,7 @@ const SessionModelChip = memo(function SessionModelChip({
   const configure = useConfigureSession(sessionId);
   const context = snapshot.data?.context;
   const options = catalog.data?.models ?? [];
-  const configured = snapshot.data?.config.model;
+  const configured = snapshot.data?.session.config.model ?? snapshot.data?.config.model;
   const current = options.find(
     (option) =>
       option.id === configured?.id &&
@@ -654,7 +214,9 @@ const SessionModelChip = memo(function SessionModelChip({
       <ModelPicker
         catalog={catalog.data}
         current={current}
-        thinkingLevel={snapshot.data?.config.thinkingLevel}
+        thinkingLevel={
+          snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel
+        }
         fastEnabled={fastEnabled}
         disabled={configure.isPending}
         onChange={handleChange}
@@ -675,24 +237,52 @@ const SessionModelChip = memo(function SessionModelChip({
   );
 });
 
+/** What the frame is editing instead of composing anew. */
+export type ComposerEditing =
+  | {
+      readonly kind: "queued";
+      /** The queued item's lane: Enter keeps it, the modifier swaps it for the other role. */
+      readonly lane: Lane;
+      readonly onCancel: () => void;
+    }
+  | {
+      /** A sent message: sending branches the conversation from that point. */
+      readonly kind: "message";
+      readonly onCancel: () => void;
+    };
+
+function editingNoticeText(editing: ComposerEditing): string {
+  switch (editing.kind) {
+    case "queued":
+      return "Editing a queued message";
+    case "message":
+      return "Editing a sent message";
+    default: {
+      const _exhaustive: never = editing;
+      return _exhaustive;
+    }
+  }
+}
+
 export interface ComposerFrameProps {
   /** Placement is caller intent; the follow-up surface derives its own geometry. */
   readonly surface: ComposerSurface;
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: (chips: readonly ComposerChip[]) => boolean | Promise<boolean>;
+  /** The draft to show. The frame reports every edit back; the parent owns the value. */
+  document: ComposerDocumentState;
+  onDocumentChange: (document: ComposerDocumentState) => void;
+  /** Resolves once the send is accepted or refused. The parent clears the document itself. */
+  onSubmit: (submission: ComposerSubmission, lane: Lane) => boolean | Promise<boolean>;
   placeholder: string;
   autoFocus?: boolean;
   disabled?: boolean;
   /** A run is live: empty-input Esc and the idle button both request an abort. */
   busy?: boolean;
   onAbort?: () => void;
+  /** An open composer tray handles Escape before the empty-input abort shortcut. */
+  onDismissTray?: () => boolean;
   /** The model chip slot, left side of the controls row. */
   model?: ReactNode;
-  inputRef?: (element: HTMLDivElement | null) => void;
-  selectionStart?: number;
-  selectionEnd?: number;
-  onSelectionChange?: (start: number, end: number) => void;
+  inputRef?: (element: ComposerEditorHandle | null) => void;
   onFocusChange?: (focused: boolean) => void;
   suggestionCatalog: ComposerSuggestionCatalog;
   /** Workspace entries behind `@`. Callers without an open workspace pass an empty ready list. */
@@ -703,27 +293,23 @@ export interface ComposerFrameProps {
   attachmentError?: string;
   onFilesSelected?: (files: readonly File[]) => void;
   onAttachmentRemove?: (id: string) => void;
+  editing?: ComposerEditing;
 }
 
-const carriesFiles = (event: DragEvent<HTMLFormElement>): boolean =>
-  Array.from(event.dataTransfer.types).includes("Files");
-
-/** The frame both composers share: autosizing textarea plus the same controls. */
+/** The frame both composers share: autosizing inline editor and shared controls. */
 export function ComposerFrame({
   surface,
-  value,
-  onChange,
+  document,
+  onDocumentChange,
   onSubmit,
   placeholder,
   autoFocus = false,
   disabled = false,
   busy = false,
   onAbort,
+  onDismissTray,
   model,
   inputRef,
-  selectionStart,
-  selectionEnd,
-  onSelectionChange,
   onFocusChange,
   suggestionCatalog,
   mentionFiles,
@@ -733,252 +319,151 @@ export function ComposerFrame({
   attachmentError,
   onFilesSelected,
   onAttachmentRemove,
+  editing,
 }: ComposerFrameProps): ReactElement {
   const frameRef = useRef<HTMLFormElement>(null);
   const areaRef = useRef<ComposerEditorHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const suggestionListRef = useRef<HTMLDivElement>(null);
+  const host = useHostState();
   const [dragging, setDragging] = useState(false);
   const [editorNeedsExpansion, setEditorNeedsExpansion] = useState(false);
-  const [chips, setChips] = useState<readonly ComposerChip[]>([]);
+  const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [suggestionMenu, setSuggestionMenu] = useState<SuggestionMenuState>();
-  const [suggestionIndex, setSuggestionIndex] = useState(0);
-  const suggestionPopupId = useId();
-  const [suggestionPreviewHandle] = useState(() => PreviewCard.createHandle<ComposerSuggestion>());
+  const suggestionMenu = useComposerSuggestions({
+    editorRef: areaRef,
+    anchorRef: frameRef,
+    side: surface === "new-chat" ? "bottom" : "top",
+    suggestionCatalog,
+    mentionFiles,
+    hasConversationContext,
+    references,
+  });
+  const roles = useMemo(() => laneRoles(nyte.landing), []);
   const canAttach = onFilesSelected !== undefined;
-  const hasInstructionChip = chips.some((chip) => chip.kind !== "mention");
+  const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
   const canSubmit =
     !disabled &&
     !submitting &&
     !attachmentBusy &&
-    (value.trim() !== "" || attachments.length > 0 || hasInstructionChip);
-  const deferredSuggestionQuery = useDeferredValue(suggestionMenu?.query ?? "");
-  const commands = suggestionCatalog.status === "ready" ? suggestionCatalog.data.commands : NONE;
-  const skills = suggestionCatalog.status === "ready" ? suggestionCatalog.data.skills : NONE;
-  const files = mentionFiles.status === "ready" ? mentionFiles.data : NONE;
-  const suggestionMenuKind = suggestionMenu?.kind;
-  // Up to thousands of files rank per keystroke; keep that off the render path
-  // for renders that changed nothing the ranking reads.
-  const suggestions = useMemo(
-    () =>
-      suggestionMenuKind === undefined
-        ? NONE
-        : suggestionsFor(
-            suggestionMenuKind,
-            deferredSuggestionQuery,
-            commands,
-            skills,
-            files,
-            hasConversationContext,
-          ),
-    [suggestionMenuKind, deferredSuggestionQuery, commands, skills, files, hasConversationContext],
-  );
-  const activeSuggestionIndex = Math.min(suggestionIndex, Math.max(0, suggestions.length - 1));
-  const externallyExpanded =
-    dragging || attachments.length > 0 || attachmentError !== undefined || chips.length > 0;
+    (document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip);
   const geometry: ComposerGeometry =
     surface === "new-chat"
       ? "new-chat"
-      : editorNeedsExpansion || externallyExpanded
+      : editorNeedsExpansion
         ? "follow-up-expanded"
         : "follow-up-compact";
   const compact = geometry === "follow-up-compact";
   const followUpExpanded = geometry === "follow-up-expanded";
-  const openSuggestionPreview = (index: number): void => {
-    requestAnimationFrame(() => {
-      const optionId = `${suggestionPopupId}-${String(index)}`;
-      const option = document.getElementById(optionId);
-      if (option === null) return;
-      revealSuggestion(suggestionListRef.current, option);
-      suggestionPreviewHandle.open(optionId);
-      // The textarea owns the combobox. PreviewCard associates its popup with
-      // a result trigger, but that result must never become the typing target.
-      areaRef.current?.focus({ preventScroll: true });
-    });
-  };
-  const showSuggestions = (next: SuggestionMenuState | undefined): void => {
-    const continuesCurrentToken =
-      suggestionMenu !== undefined &&
-      next !== undefined &&
-      suggestionMenu.kind === next.kind &&
-      suggestionMenu.start === next.start;
-    if (!continuesCurrentToken) {
-      suggestionPreviewHandle.close();
-      setSuggestionIndex(0);
-      if (next !== undefined) openSuggestionPreview(0);
-    }
-    setSuggestionMenu(next);
-  };
-  const activateSuggestion = (nextIndex: number): void => {
-    setSuggestionIndex(nextIndex);
-    openSuggestionPreview(nextIndex);
-  };
+  const followUpCard =
+    surface === "follow-up" &&
+    (followUpExpanded ||
+      attachments.length > 0 ||
+      attachmentError !== undefined ||
+      editing !== undefined);
+  const modifier = modifierKeyLabel(macPlatform(host.data?.platform));
+  const sendLabel =
+    editing?.kind === "queued"
+      ? "Update queued message"
+      : editing?.kind === "message"
+        ? "Send edited message"
+        : busy
+          ? "Send now"
+          : "Send";
+  const sendTitle =
+    editing?.kind === "queued"
+      ? editing.lane === roles.steer
+        ? `Update (Enter) · Queue for later instead (${modifier}Enter)`
+        : `Update (Enter) · Send now instead (${modifier}Enter)`
+      : editing?.kind === "message"
+        ? "Send edited message (Enter)"
+        : busy
+          ? `Send now (Enter) · Queue for later (${modifier}Enter)`
+          : "Send (Enter)";
 
-  useLayoutEffect(() => {
-    const area = areaRef.current;
-    if (area === null || selectionStart === undefined || selectionEnd === undefined) return;
-    if (area.selectionStart === selectionStart && area.selectionEnd === selectionEnd) return;
-    area.setSelectionRange(selectionStart, selectionEnd);
-  }, [selectionEnd, selectionStart, value]);
-
+  // Follow-up text scrolls on one line like Cursor's compact composer. An explicit
+  // line break expands the card; width alone must not make the controls overflow.
   const resize = useCallback(
-    (area: HTMLDivElement): void => {
-      area.style.height = "auto";
-      area.style.height = `${String(Math.min(area.scrollHeight, 180))}px`;
-      if (surface === "new-chat") return;
-      if (area.textContent?.length === 0) {
+    (text?: string): void => {
+      const area = areaRef.current?.element;
+      if (surface === "new-chat" || area === null || area === undefined) return;
+      if ((text ?? area.textContent).length === 0) {
         setEditorNeedsExpansion(false);
         return;
       }
-      if (externallyExpanded && !editorNeedsExpansion) return;
-      if (
-        area.innerText.includes("\n") ||
-        area.scrollWidth > area.clientWidth ||
-        area.scrollHeight > 24
-      ) {
+      if (editorNeedsExpansion) return;
+      if (area.scrollHeight > Number.parseFloat(getComputedStyle(area).lineHeight) * 1.5) {
         setEditorNeedsExpansion(true);
       }
     },
-    [editorNeedsExpansion, externallyExpanded, surface],
+    [surface, editorNeedsExpansion],
   );
 
   useLayoutEffect(() => {
     const area = areaRef.current?.element;
-    if (area === null || area === undefined) return;
-    resize(area);
-  }, [resize, value]);
-
-  useLayoutEffect(() => {
-    const area = areaRef.current?.element;
     if (area === null || area === undefined) return undefined;
-    const observer = new ResizeObserver(() => resize(area));
+    resize();
+    const observer = new ResizeObserver(() => resize());
     observer.observe(area);
     return () => observer.disconnect();
   }, [resize]);
 
-  const focusAt = (caret: number): void => {
-    requestAnimationFrame(() => {
-      const area = areaRef.current;
-      if (area === null) return;
-      area.focus();
-      area.setSelectionRange(caret, caret);
-      if (area.element !== null) resize(area.element);
-    });
-  };
-
-  const addSuggestionChip = (suggestion: ChipSuggestion, start?: number, end?: number): void => {
-    const tokenId = crypto.randomUUID();
-    if (
-      suggestion.kind !== "file" &&
-      chips.some((chip) => chip.kind === suggestion.kind && chip.id === suggestion.id)
-    ) {
-      if (start !== undefined) areaRef.current?.replaceText(start, end ?? start, "");
-      return;
-    }
-    switch (suggestion.kind) {
-      case "command":
-        areaRef.current?.insertChip(
-          {
-            kind: "command",
-            id: suggestion.id,
-            label: suggestion.label,
-            instruction: suggestion.instruction,
-            tokenId,
-          },
-          start,
-          end,
-        );
-        return;
-      case "skill":
-        areaRef.current?.insertChip(
-          {
-            kind: "skill",
-            id: suggestion.id,
-            label: suggestion.label,
-            skill: suggestion.skill,
-            tokenId,
-          },
-          start,
-          end,
-        );
-        return;
-      case "mention":
-        areaRef.current?.insertChip(
-          { kind: "mention", id: suggestion.id, label: suggestion.label, tokenId },
-          start,
-          end,
-        );
-        return;
-      case "file":
-        areaRef.current?.insertChip(
-          {
-            kind: "file",
-            id: suggestion.id,
-            label: suggestion.label,
-            file: suggestion.file,
-            tokenId,
-          },
-          start,
-          end,
-        );
-        return;
-      default: {
-        const exhaustive: never = suggestion;
-        return exhaustive;
-      }
-    }
-  };
-
-  const selectSuggestion = (suggestion: ComposerSuggestion): void => {
-    if (suggestionMenu === undefined) return;
-    if (suggestion.kind === "plugin-command") {
-      areaRef.current?.replaceText(
-        suggestionMenu.start,
-        suggestionMenu.end,
-        `/${suggestion.command.name} `,
-      );
-    } else {
-      addSuggestionChip(suggestion, suggestionMenu.start, suggestionMenu.end);
-    }
-    showSuggestions(undefined);
-    areaRef.current?.focus();
-  };
-
-  const selectQuickSuggestion = (suggestion: CommandSuggestion): void => {
-    addSuggestionChip(suggestion);
-    areaRef.current?.focus();
-  };
-
-  const insertTrigger = (trigger: "@" | "/"): void => {
-    const area = areaRef.current;
-    const start = area?.selectionStart ?? value.length;
-    const end = area?.selectionEnd ?? start;
-    const leadingSpace = start > 0 && !/\s/.test(value[start - 1] ?? "") ? " " : "";
-    const insertion = `${leadingSpace}${trigger}`;
-    const caret = start + insertion.length;
-    areaRef.current?.replaceText(start, end, insertion);
-    showSuggestions({
-      kind: trigger === "@" ? "mention" : "slash",
-      start: caret - 1,
-      end: caret,
-      query: "",
-    });
-    focusAt(caret);
-  };
-
-  const submit = async (): Promise<void> => {
+  const submit = async (action: SubmitAction): Promise<void> => {
     if (!canSubmit) return;
+    const submission = areaRef.current?.read();
+    if (submission === undefined) return;
     setSubmitting(true);
     try {
-      if (!(await onSubmit(chips))) return;
-      setChips([]);
-      areaRef.current?.clear();
-      setEditorNeedsExpansion(false);
+      await onSubmit(
+        submission,
+        submissionLane(action, roles, editing?.kind === "queued" ? editing.lane : undefined),
+      );
     } finally {
       setSubmitting(false);
     }
   };
+
+  const attachmentList =
+    attachments.length === 0 ? undefined : (
+      <ul
+        aria-label="Image attachments"
+        {...stylex.props(
+          composerStyles.attachments,
+          surface === "follow-up" && composerStyles.attachmentsInset,
+          compact && composerStyles.attachmentsInsetCompact,
+        )}
+      >
+        {attachments.map((attachment) => (
+          <li key={attachment.id} {...stylex.props(composerStyles.attachment)}>
+            <ImagePreview src={attachment.previewUrl} name={attachment.name} compact />
+            {onAttachmentRemove !== undefined && (
+              <Button
+                unstyled
+                type="button"
+                aria-label={`Remove ${attachment.name}`}
+                disabled={disabled}
+                onClick={() => onAttachmentRemove(attachment.id)}
+                {...stylex.props(composerStyles.attachmentRemove, focus.ring)}
+              >
+                <Icon name="x" size={12} />
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  const attachmentAlert =
+    attachmentError === undefined ? undefined : (
+      <div
+        role="alert"
+        {...stylex.props(
+          composerStyles.attachmentError,
+          surface === "follow-up" && composerStyles.attachmentErrorInset,
+          compact && composerStyles.attachmentErrorInsetCompact,
+        )}
+      >
+        {attachmentError}
+      </div>
+    );
 
   return (
     <>
@@ -987,7 +472,7 @@ export function ComposerFrame({
         aria-label="Message composer"
         onSubmit={(event) => {
           event.preventDefault();
-          void submit();
+          void submit("submit");
         }}
         onDragEnter={(event) => {
           if (!disabled && canAttach && carriesFiles(event)) {
@@ -1011,6 +496,8 @@ export function ComposerFrame({
           setDragging(false);
           if (disabled || !canAttach || !carriesFiles(event)) return;
           event.preventDefault();
+          // A parent transcript may also bind addFiles; don't enqueue twice.
+          event.stopPropagation();
           onFilesSelected(Array.from(event.dataTransfer.files));
         }}
         onDragEnd={() => setDragging(false)}
@@ -1018,7 +505,7 @@ export function ComposerFrame({
           composerStyles.frame,
           geometry === "new-chat" && composerStyles.frameNewChat,
           compact && composerStyles.frameFollowUpCompact,
-          followUpExpanded && composerStyles.frameFollowUpExpanded,
+          followUpCard && composerStyles.frameFollowUpExpanded,
           dragging && composerStyles.frameDragging,
         )}
       >
@@ -1033,48 +520,26 @@ export function ComposerFrame({
             tabIndex={-1}
             {...stylex.props(composerStyles.fileInput)}
             onChange={(event) => {
-              const files = Array.from(event.currentTarget.files ?? []);
+              const picked = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
-              if (files.length > 0) onFilesSelected(files);
+              if (picked.length > 0) onFilesSelected(picked);
             }}
           />
         )}
-        {attachments.length > 0 && (
-          <ul
-            aria-label="Image attachments"
-            {...stylex.props(
-              composerStyles.attachments,
-              followUpExpanded && composerStyles.attachmentsInset,
-            )}
-          >
-            {attachments.map((attachment) => (
-              <li key={attachment.id} {...stylex.props(composerStyles.attachment)}>
-                <ImagePreview src={attachment.previewUrl} name={attachment.name} compact />
-                {onAttachmentRemove !== undefined && (
-                  <Button
-                    unstyled
-                    type="button"
-                    aria-label={`Remove ${attachment.name}`}
-                    disabled={disabled}
-                    onClick={() => onAttachmentRemove(attachment.id)}
-                    {...stylex.props(composerStyles.attachmentRemove, focus.ring)}
-                  >
-                    <Icon name="x" size={12} />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {attachmentError !== undefined && (
-          <div
-            role="alert"
-            {...stylex.props(
-              composerStyles.attachmentError,
-              followUpExpanded && composerStyles.attachmentErrorInset,
-            )}
-          >
-            {attachmentError}
+        {attachmentList}
+        {attachmentAlert}
+        {editing !== undefined && (
+          <div role="status" {...stylex.props(composerStyles.editingNotice)}>
+            <Icon name="pencil" size={12} />
+            <span {...stylex.props(composerStyles.queuedText)}>{editingNoticeText(editing)}</span>
+            <Button
+              unstyled
+              type="button"
+              onClick={editing.onCancel}
+              {...stylex.props(composerStyles.queuedAction, focus.ring)}
+            >
+              Cancel
+            </Button>
           </div>
         )}
         <div
@@ -1101,120 +566,43 @@ export function ComposerFrame({
                   compact && composerStyles.inputCompact,
                 ).className
               }
-              files={files}
-              expanded={suggestionMenu !== undefined}
-              popupId={suggestionMenu === undefined ? undefined : suggestionPopupId}
-              activeOption={
-                suggestionMenu === undefined || suggestions.length === 0
-                  ? undefined
-                  : `${suggestionPopupId}-${String(activeSuggestionIndex)}`
-              }
+              files={suggestionMenu.files}
+              combobox={suggestionMenu.combobox}
               placeholder={dragging ? DROP_PLACEHOLDER : placeholder}
-              value={value}
+              document={document}
               autoFocus={autoFocus && !disabled}
               disabled={disabled}
-              onChange={(next, start, end, nextChips) => {
-                onChange(next);
-                setChips(nextChips);
-                onSelectionChange?.(start, end);
-                const area = areaRef.current?.element;
-                if (area !== null && area !== undefined) resize(area);
-                showSuggestions(start === end ? suggestionAt(next, start) : undefined);
+              onReferencesChange={setReferences}
+              onDocumentChange={(next, completion) => {
+                onDocumentChange(next);
+                resize(next.text);
+                suggestionMenu.onCompletionChange(completion);
               }}
               onFilesSelected={onFilesSelected}
               onFocusChange={onFocusChange}
               onKeyDown={(event) => {
-                if (suggestionMenu !== undefined) {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    showSuggestions(undefined);
-                    return;
-                  }
-                  const down =
-                    event.key === "ArrowDown" ||
-                    (event.ctrlKey && (event.key === "n" || event.key === "j"));
-                  const up =
-                    event.key === "ArrowUp" ||
-                    (event.ctrlKey && (event.key === "p" || event.key === "k"));
-                  if (down || up) {
-                    event.preventDefault();
-                    if (suggestions.length === 0) return;
-                    const direction = down ? 1 : -1;
-                    activateSuggestion(
-                      Math.max(
-                        0,
-                        Math.min(suggestions.length - 1, activeSuggestionIndex + direction),
-                      ),
-                    );
-                    return;
-                  }
-                  if (event.key === "Home" || event.key === "End") {
-                    event.preventDefault();
-                    activateSuggestion(
-                      event.key === "Home" ? 0 : Math.max(0, suggestions.length - 1),
-                    );
-                    return;
-                  }
-                  if (event.key === "PageDown" || event.key === "PageUp") {
-                    event.preventDefault();
-                    const direction = event.key === "PageDown" ? 9 : -9;
-                    activateSuggestion(
-                      Math.max(
-                        0,
-                        Math.min(suggestions.length - 1, activeSuggestionIndex + direction),
-                      ),
-                    );
-                    return;
-                  }
-                  const activeSuggestion = suggestions[activeSuggestionIndex];
-                  const usesModeShortcut =
-                    event.key === "Enter" &&
-                    event.altKey &&
-                    activeSuggestion !== undefined &&
-                    (activeSuggestion.kind === "command" || activeSuggestion.kind === "skill");
-                  const activatesSuggestion =
-                    (event.key === "Enter" &&
-                      !event.shiftKey &&
-                      !event.metaKey &&
-                      !event.ctrlKey &&
-                      !event.altKey) ||
-                    (event.key === "Tab" && !event.shiftKey) ||
-                    usesModeShortcut;
-                  if (activatesSuggestion && !event.isComposing) {
-                    if (activeSuggestion !== undefined) {
-                      event.preventDefault();
-                      selectSuggestion(activeSuggestion);
-                    }
-                    return;
-                  }
-                }
-                if (
-                  surface === "new-chat" &&
-                  suggestionMenu === undefined &&
-                  event.key === "Tab" &&
-                  event.shiftKey
-                ) {
+                if (suggestionMenu.onKeyDown(event)) return;
+                const enter = composerEnterAction(event);
+                if (enter === "submit" || enter === "submit-alternate") {
                   event.preventDefault();
-                  selectQuickSuggestion(PLAN_SUGGESTION);
+                  void submit(enter);
+                  return;
+                }
+                if (event.key !== "Escape" || suggestionMenu.open || disabled) return;
+                if (editing !== undefined) {
+                  event.preventDefault();
+                  editing.onCancel();
+                  return;
+                }
+                if (onDismissTray?.()) {
+                  event.preventDefault();
                   return;
                 }
                 if (
-                  event.key === "Enter" &&
-                  suggestionMenu === undefined &&
-                  !event.shiftKey &&
-                  !event.isComposing
-                ) {
-                  event.preventDefault();
-                  void submit();
-                }
-                if (
-                  event.key === "Escape" &&
-                  suggestionMenu === undefined &&
                   busy &&
-                  value.trim() === "" &&
+                  document.text.trim() === "" &&
                   attachments.length === 0 &&
-                  chips.length === 0 &&
-                  !disabled &&
+                  references.length === 0 &&
                   onAbort !== undefined
                 ) {
                   event.preventDefault();
@@ -1223,165 +611,7 @@ export function ComposerFrame({
               }}
             />
           </div>
-          <Popover.Root
-            open={suggestionMenu !== undefined}
-            modal={false}
-            onOpenChange={(open, details) => {
-              if (open) return;
-              // The textarea drives this popup. A press or focus move inside
-              // the frame is editing, not dismissal; `onSelect` decides then.
-              const target = details.event.target;
-              if (
-                (details.reason === "outside-press" || details.reason === "focus-out") &&
-                target instanceof Node &&
-                frameRef.current?.contains(target) === true
-              ) {
-                details.cancel();
-                return;
-              }
-              showSuggestions(undefined);
-            }}
-          >
-            <Popover.Portal>
-              <Popover.Positioner
-                positionMethod="fixed"
-                anchor={frameRef}
-                side={surface === "new-chat" ? "bottom" : "top"}
-                align="start"
-                sideOffset={8}
-                collisionPadding={8}
-                collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-                {...stylex.props(composerStyles.suggestionPositioner)}
-              >
-                <Popover.Popup
-                  id={suggestionPopupId}
-                  role="listbox"
-                  initialFocus={false}
-                  finalFocus={false}
-                  aria-busy={
-                    suggestionMenu?.kind === "mention"
-                      ? mentionFiles.status === "loading"
-                      : suggestionCatalog.status === "loading"
-                  }
-                  aria-label={
-                    suggestionMenu?.kind === "mention"
-                      ? "Mention files and context"
-                      : "Commands, skills, and prompts"
-                  }
-                  onMouseDown={(event) => event.preventDefault()}
-                  {...stylex.props(floatingSurfaceStyles.popup, composerStyles.suggestionMenu)}
-                >
-                  <div ref={suggestionListRef} {...stylex.props(composerStyles.suggestionList)}>
-                    {suggestions.length === 0 ? (
-                      <div role="status" {...stylex.props(composerStyles.suggestionEmpty)}>
-                        {suggestionMenu === undefined
-                          ? undefined
-                          : suggestionEmptyText(
-                              suggestionMenu.kind,
-                              suggestionMenu.kind === "mention" ? mentionFiles : suggestionCatalog,
-                            )}
-                      </div>
-                    ) : (
-                      suggestions.map((suggestion, index) => {
-                        const previous = suggestions[index - 1];
-                        const optionId = `${suggestionPopupId}-${String(index)}`;
-                        const selected = activeSuggestionIndex === index;
-                        const query = deferredSuggestionQuery;
-                        const description = descriptionExcerpt(suggestion.description, query);
-                        return (
-                          <Fragment key={suggestion.id}>
-                            {previous !== undefined &&
-                              suggestionGroup(previous) !== suggestionGroup(suggestion) && (
-                                <div
-                                  role="separator"
-                                  {...stylex.props(composerStyles.suggestionDivider)}
-                                />
-                              )}
-                            <PreviewCard.Trigger
-                              id={optionId}
-                              handle={suggestionPreviewHandle}
-                              payload={suggestion}
-                              delay={0}
-                              closeDelay={100}
-                              render={
-                                <div
-                                  role="option"
-                                  tabIndex={-1}
-                                  aria-selected={selected}
-                                  {...stylex.props(composerStyles.suggestionItem)}
-                                  onPointerMove={() => {
-                                    if (!selected) setSuggestionIndex(index);
-                                  }}
-                                  onPointerDown={(event) => event.preventDefault()}
-                                  onClick={() => selectSuggestion(suggestion)}
-                                >
-                                  <span
-                                    aria-hidden="true"
-                                    {...stylex.props(composerStyles.suggestionIcon)}
-                                  >
-                                    <Icon name={suggestion.icon} size={12} />
-                                  </span>
-                                  <span {...stylex.props(composerStyles.suggestionText)}>
-                                    <span {...stylex.props(composerStyles.suggestionLabel)}>
-                                      <HighlightedSuggestionText
-                                        text={suggestion.label}
-                                        query={query}
-                                      />
-                                    </span>
-                                    <span {...stylex.props(composerStyles.suggestionDescription)}>
-                                      <HighlightedSuggestionText text={description} query={query} />
-                                    </span>
-                                  </span>
-                                  {selected &&
-                                    (suggestion.kind === "command" ||
-                                      suggestion.kind === "skill") && (
-                                      <span {...stylex.props(composerStyles.suggestionShortcut)}>
-                                        ⌥↵ to Use as Mode
-                                      </span>
-                                    )}
-                                </div>
-                              }
-                            />
-                          </Fragment>
-                        );
-                      })
-                    )}
-                  </div>
-                </Popover.Popup>
-              </Popover.Positioner>
-            </Popover.Portal>
-          </Popover.Root>
-          <PreviewCard.Root handle={suggestionPreviewHandle}>
-            {({ payload }) =>
-              payload === undefined ? null : (
-                <PreviewCard.Portal>
-                  <PreviewCard.Positioner
-                    positionMethod="fixed"
-                    side="right"
-                    align="end"
-                    sideOffset={6}
-                    collisionPadding={8}
-                    collisionAvoidance={{
-                      side: "flip",
-                      align: "shift",
-                      fallbackAxisSide: "none",
-                    }}
-                    {...stylex.props(composerStyles.suggestionPreviewPositioner)}
-                  >
-                    <PreviewCard.Popup
-                      aria-label={`Details for ${payload.label}`}
-                      {...stylex.props(
-                        floatingSurfaceStyles.popup,
-                        composerStyles.suggestionPreview,
-                      )}
-                    >
-                      <SuggestionPreview suggestion={payload} />
-                    </PreviewCard.Popup>
-                  </PreviewCard.Positioner>
-                </PreviewCard.Portal>
-              )
-            }
-          </PreviewCard.Root>
+          {suggestionMenu.menu}
           <div
             {...stylex.props(
               composerStyles.controls,
@@ -1397,7 +627,7 @@ export function ComposerFrame({
                   unstyled
                   type="button"
                   aria-label="Add agents, context, tools"
-                  title="Modes, skills, MCPs and more (/)"
+                  title="Skills, MCPs and more (/)"
                   disabled={disabled}
                   {...stylex.props(
                     composerStyles.addButton,
@@ -1410,33 +640,8 @@ export function ComposerFrame({
                 </Button>
               }
             >
-              <MenuItem icon="search" meta="/" onSelect={() => insertTrigger("/")}>
+              <MenuItem icon="search" meta="/" onSelect={() => suggestionMenu.insertTrigger("/")}>
                 Search skills and prompts…
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem
-                icon={PLAN_SUGGESTION.icon}
-                onSelect={() => selectQuickSuggestion(PLAN_SUGGESTION)}
-              >
-                Plan
-              </MenuItem>
-              <MenuItem
-                icon={DEBUG_SUGGESTION.icon}
-                onSelect={() => selectQuickSuggestion(DEBUG_SUGGESTION)}
-              >
-                Debug
-              </MenuItem>
-              <MenuItem
-                icon={MULTITASK_SUGGESTION.icon}
-                onSelect={() => selectQuickSuggestion(MULTITASK_SUGGESTION)}
-              >
-                Multitask
-              </MenuItem>
-              <MenuItem
-                icon={ASK_SUGGESTION.icon}
-                onSelect={() => selectQuickSuggestion(ASK_SUGGESTION)}
-              >
-                Ask
               </MenuItem>
               <MenuSeparator />
               {canAttach && (
@@ -1447,10 +652,10 @@ export function ComposerFrame({
                   <MenuSeparator />
                 </>
               )}
-              <MenuItem icon="more" meta="@" onSelect={() => insertTrigger("@")}>
+              <MenuItem icon="more" meta="@" onSelect={() => suggestionMenu.insertTrigger("@")}>
                 Mention context
               </MenuItem>
-              <MenuItem icon="skills" meta="/" onSelect={() => insertTrigger("/")}>
+              <MenuItem icon="skills" meta="/" onSelect={() => suggestionMenu.insertTrigger("/")}>
                 Use a skill or prompt
               </MenuItem>
             </Menu>
@@ -1466,9 +671,10 @@ export function ComposerFrame({
               {...stylex.props(composerStyles.spacer, compact && composerStyles.spacerCompact)}
             />
             {busy &&
-            value.trim() === "" &&
+            editing === undefined &&
+            document.text.trim() === "" &&
             attachments.length === 0 &&
-            chips.length === 0 &&
+            references.length === 0 &&
             onAbort !== undefined ? (
               <Button
                 unstyled
@@ -1482,7 +688,6 @@ export function ComposerFrame({
                   composerStyles.controlHitArea,
                   compact && composerStyles.sendCompact,
                   focus.ring,
-                  composerStyles.stop,
                 )}
               >
                 <Icon name="square" size={12} />
@@ -1491,8 +696,8 @@ export function ComposerFrame({
               <Button
                 unstyled
                 type="submit"
-                aria-label="Send"
-                title="Send (Enter)"
+                aria-label={sendLabel}
+                title={sendTitle}
                 disabled={!canSubmit}
                 {...stylex.props(
                   composerStyles.send,
@@ -1507,41 +712,30 @@ export function ComposerFrame({
           </div>
         </div>
       </form>
-      {surface === "new-chat" && (
-        <div aria-label="Prompt modes" {...stylex.props(composerStyles.quickActions)}>
-          <Button
-            unstyled
-            type="button"
-            disabled={disabled}
-            {...stylex.props(composerStyles.quickAction, focus.ring)}
-            onClick={() => selectQuickSuggestion(PLAN_SUGGESTION)}
-          >
-            Plan New Idea
-            <span aria-hidden="true" {...stylex.props(composerStyles.quickActionMeta)}>
-              ⇧Tab
-            </span>
-          </Button>
-          <Button
-            unstyled
-            type="button"
-            disabled={disabled}
-            {...stylex.props(composerStyles.quickAction, focus.ring)}
-            onClick={() => selectQuickSuggestion(MULTITASK_SUGGESTION)}
-          >
-            Multitask
-          </Button>
-        </div>
-      )}
     </>
   );
 }
 
-function pendingText(content: PendingItem["content"]): string {
-  if (!Array.isArray(content)) return content;
-  const text = content.map((part) => (part.type === "text" ? part.text : "")).join("");
-  if (text !== "") return text;
-  const imageCount = content.filter((part) => part.type === "image").length;
-  return imageCount === 1 ? "1 image" : `${String(imageCount)} images`;
+function QueuedMessageContent({
+  content,
+}: {
+  readonly content: PendingItem["content"];
+}): ReactElement {
+  const text = userMessageText(content);
+  if (text === "") {
+    const imageCount = messageImages(content).length;
+    const summary = imageCount === 1 ? "1 image" : `${String(imageCount)} images`;
+    return (
+      <span title={summary} {...stylex.props(composerStyles.queuePreview)}>
+        {summary}
+      </span>
+    );
+  }
+  return (
+    <span title={text} {...stylex.props(composerStyles.queuePreview)}>
+      <UserMessageText text={text} />
+    </span>
+  );
 }
 
 function unsentStateText(state: OutboxRowState): string {
@@ -1559,9 +753,29 @@ function unsentStateText(state: OutboxRowState): string {
   }
 }
 
-type CommandFeedback =
-  | { readonly kind: "status"; readonly message: string }
-  | { readonly kind: "error"; readonly message: string };
+interface ComposerFeedback {
+  readonly kind: "status" | "error";
+  readonly message: string;
+  /** Puts a draft the send refused back in front of whatever was typed since. */
+  readonly restore?: () => void;
+}
+
+/** What one queued row is doing right now; absent means idle. */
+type PendingRowAction =
+  | { readonly kind: "cancelling" }
+  | { readonly kind: "sending" }
+  | { readonly kind: "failed"; readonly message: string };
+
+interface PendingEdit {
+  readonly change: PendingItem["change"];
+  readonly lane: Lane;
+  readonly content: PendingItem["content"];
+}
+
+function draftWith(document: ComposerDocumentState, text: string): ComposerDocumentState {
+  const joined = document.text === "" ? text : `${text}\n${document.text}`;
+  return { text: joined, selectionStart: joined.length, selectionEnd: joined.length };
+}
 
 export function Composer({
   sessionId,
@@ -1569,10 +783,13 @@ export function Composer({
   pending,
   unsent,
   disabled = false,
-  viewState,
+  initialViewState = DEFAULT_COMPOSER_VIEW_STATE,
   onViewStateChange,
   inputRef,
   autoFocus = true,
+  fileDropRoot,
+  backgroundWork,
+  onScrollToBottom,
 }: {
   sessionId: SessionId;
   working: boolean;
@@ -1581,34 +798,63 @@ export function Composer({
   /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
   unsent: readonly OutboxRow[];
   disabled?: boolean;
-  viewState?: ComposerViewState;
-  onViewStateChange?: (update: (current: ComposerViewState) => ComposerViewState) => void;
-  inputRef?: (element: HTMLDivElement | null) => void;
+  /**
+   * The draft to start from. The composer owns the draft while mounted and
+   * reports each change; a keystroke must not re-render the transcript behind
+   * it, so the parent persists without redrawing. Remount (key) to reseed.
+   */
+  initialViewState?: ComposerViewState;
+  onViewStateChange?: (state: ComposerViewState) => void;
+  inputRef?: (element: ComposerEditorHandle | null) => void;
   autoFocus?: boolean;
+  fileDropRoot?: RefObject<HTMLElement | null>;
+  backgroundWork?: { readonly content: ReactNode; readonly onEscape: () => boolean };
+  onScrollToBottom?: () => void;
 }): ReactElement {
-  const [localViewState, setLocalViewState] = useState<ComposerViewState>({
-    draft: "",
-    selectionStart: 0,
-    selectionEnd: 0,
-    focused: false,
-  });
+  const [currentViewState, setCurrentViewState] = useState(initialViewState);
   const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
-  const [commandFeedback, setCommandFeedback] = useState<CommandFeedback>();
+  const [feedback, setFeedback] = useState<ComposerFeedback>();
+  const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
+  const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
+  const activePendingEdit =
+    pendingEdit !== undefined && pending.some((item) => item.change === pendingEdit.change)
+      ? pendingEdit
+      : undefined;
+  const editorRef = useRef<ComposerEditorHandle | null>(null);
   const pluginCatalog = usePluginCatalog();
   const suggestionCatalog = composerSource(pluginCatalog.data, pluginCatalog.isError);
   // A thread always has an open project behind it.
   const workspaceFiles = useMentionFiles(true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
-  const currentViewState = viewState ?? localViewState;
+  const roles = useMemo(() => laneRoles(nyte.landing), []);
+  // Sends settle later than the render that started them; they read the draft as it is then.
+  const latestViewState = useRef(currentViewState);
 
   const updateViewState = (update: (current: ComposerViewState) => ComposerViewState): void => {
-    if (viewState === undefined) setLocalViewState(update);
-    onViewStateChange?.(update);
+    const next = update(latestViewState.current);
+    latestViewState.current = next;
+    setCurrentViewState(next);
+    onViewStateChange?.(next);
   };
+  const setDocument = (document: ComposerDocumentState): void => {
+    updateViewState((current) => ({
+      ...current,
+      draft: document.text,
+      selectionStart: document.selectionStart,
+      selectionEnd: document.selectionEnd,
+    }));
+  };
+  const attachInput = useCallback(
+    (handle: ComposerEditorHandle | null) => {
+      editorRef.current = handle;
+      inputRef?.(handle);
+    },
+    [inputRef],
+  );
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
+  const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
     try {
       const result = await readComposerImageAttachments(files);
@@ -1619,31 +865,131 @@ export function Composer({
     } finally {
       setAttachmentReads((count) => count - 1);
     }
+  }, []);
+
+  useLayoutEffect(() => {
+    const root = fileDropRoot?.current;
+    if (root === undefined || root === null) return undefined;
+    return bindComposerFileDrop({
+      element: root,
+      disabled,
+      onFiles: (files) => {
+        void addFiles(files);
+      },
+    });
+  }, [addFiles, disabled, fileDropRoot]);
+
+  const setRowAction = (change: string, action: PendingRowAction | undefined): void => {
+    setRowActions((current) => {
+      const next = new Map(current);
+      if (action === undefined) next.delete(change);
+      else next.set(change, action);
+      return next;
+    });
   };
 
-  const send = async (chips: readonly ComposerChip[]): Promise<boolean> => {
-    const text = currentViewState.draft.trim();
-    const sentAttachments = attachments;
-    const prompt = composerPromptText(text, chips);
-    if (disabled || attachmentReads !== 0 || (prompt === "" && sentAttachments.length === 0)) {
-      return false;
+  /** A refused send puts its draft back, unless something newer is there; then the row offers it. */
+  const refuse = (
+    message: string,
+    sent: {
+      readonly document: ComposerDocumentState;
+      readonly attachments: readonly ComposerImageAttachment[];
+    },
+  ): void => {
+    const restore = (): void => {
+      updateViewState((current) => {
+        const document = draftWith(
+          {
+            text: current.draft,
+            selectionStart: current.selectionStart,
+            selectionEnd: current.selectionEnd,
+          },
+          sent.document.text,
+        );
+        return {
+          ...current,
+          draft: document.text,
+          selectionStart: document.selectionStart,
+          selectionEnd: document.selectionEnd,
+        };
+      });
+      setAttachments((current) => [...sent.attachments, ...current]);
+      setFeedback({ kind: "error", message });
+    };
+    if (latestViewState.current.draft === "") {
+      restore();
+      return;
     }
-    const command =
-      chips.every((chip) => chip.kind === "file") && sentAttachments.length === 0
-        ? parsePluginCommand(text, pluginCatalog.data?.commands ?? [])
-        : undefined;
-    if (command !== undefined) {
+    setFeedback({ kind: "error", message, restore });
+  };
+
+  const send = async (submission: ComposerSubmission, lane: Lane): Promise<boolean> => {
+    if (disabled || attachmentReads !== 0) return false;
+    const sentAttachments = attachments;
+    const plan = composerSendPlan({
+      submission,
+      attachments: sentAttachments,
+      commands: pluginCatalog.data?.commands ?? [],
+      lane,
+    });
+    if (plan.kind === "empty") return false;
+    const edit = activePendingEdit;
+    const sent = {
+      document: {
+        text: latestViewState.current.draft,
+        selectionStart: latestViewState.current.selectionStart,
+        selectionEnd: latestViewState.current.selectionEnd,
+      },
+      attachments: sentAttachments,
+    };
+    // Clear at once: the outbox row already shows the message, and the next thought never waits.
+    setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
+    setAttachments((current) =>
+      current.filter((attachment) => !sentAttachments.includes(attachment)),
+    );
+    setAttachmentError(undefined);
+    setFeedback(undefined);
+    setPendingEdit(undefined);
+    if (edit !== undefined) {
+      const content = composerMessageContent(
+        submission.text.trim(),
+        [...messageImages(edit.content).map((image) => ({ content: image })), ...sentAttachments],
+        submission.references,
+      );
       try {
-        const outcome = await nyte.plugins.commands.run({ sessionId, ...command });
+        const outcome = await nyte.messages.redeliver({
+          sessionId,
+          change: edit.change,
+          lane,
+          content,
+        });
+        refreshThread(sessionId);
+        switch (outcome.kind) {
+          case "redelivered":
+          case "unchanged":
+            return true;
+          case "landed":
+            refuse("That message was already sent; it is in the conversation.", sent);
+            return false;
+          case "not_found":
+            refuse("That queued message is gone.", sent);
+            return false;
+          default: {
+            const _exhaustive: never = outcome;
+            return _exhaustive;
+          }
+        }
+      } catch (cause: unknown) {
+        refuse(`Couldn't update the message: ${errorMessage(cause)}`, sent);
+        return false;
+      }
+    }
+    if (plan.kind === "command") {
+      try {
+        const outcome = await nyte.plugins.commands.run({ sessionId, ...plan.command });
         switch (outcome.kind) {
           case "ran":
-            updateViewState((current) => ({
-              ...current,
-              draft: "",
-              selectionStart: 0,
-              selectionEnd: 0,
-            }));
-            setCommandFeedback(
+            setFeedback(
               outcome.output === undefined
                 ? undefined
                 : { kind: "status", message: outcome.output },
@@ -1655,19 +1001,12 @@ export function Composer({
             });
             return true;
           case "prompt":
-            await outbox.submitDurably({ sessionId, content: outcome.prompt });
-            updateViewState((current) => ({
-              ...current,
-              draft: "",
-              selectionStart: 0,
-              selectionEnd: 0,
-            }));
-            setCommandFeedback(undefined);
+            await outbox.submit({ sessionId, content: outcome.prompt, lane: plan.lane });
             return true;
           case "not_found":
             break;
           case "failed":
-            setCommandFeedback({ kind: "error", message: outcome.message });
+            refuse(outcome.message, sent);
             return false;
           default: {
             const _exhaustive: never = outcome;
@@ -1675,29 +1014,20 @@ export function Composer({
           }
         }
       } catch (cause: unknown) {
-        setCommandFeedback({
-          kind: "error",
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
+        refuse(errorMessage(cause), sent);
         return false;
       }
     }
-    const content = composerMessageContent(text, sentAttachments, chips);
+    // A command line the plugin no longer knows is sent as the message it reads as.
+    const content =
+      plan.kind === "message"
+        ? plan.content
+        : composerMessageContent(submission.text.trim(), sentAttachments, submission.references);
     try {
-      await outbox.submitDurably({ sessionId, content });
-      updateViewState((current) => ({ ...current, draft: "", selectionStart: 0, selectionEnd: 0 }));
-      setAttachments([]);
-      setAttachmentError(undefined);
-      setCommandFeedback(undefined);
+      await outbox.submit(composerSendInput(sessionId, { kind: "message", content, lane }));
       return true;
     } catch (cause: unknown) {
-      setCommandFeedback({
-        kind: "error",
-        message:
-          cause instanceof Error
-            ? `Couldn't save the message: ${cause.message}`
-            : "Couldn't save the message.",
-      });
+      refuse(`Couldn't save the message: ${errorMessage(cause)}`, sent);
       return false;
     }
   };
@@ -1707,97 +1037,270 @@ export function Composer({
     void nyte.runs.abort({ sessionId });
   };
 
-  return (
-    <div role="region" aria-label="Conversation input" {...stylex.props(composerStyles.region)}>
-      {pending.map((item) => (
-        <div role="status" key={item.change} {...stylex.props(composerStyles.queued)}>
-          <Icon name="clock" size={12} />
-          <span {...stylex.props(composerStyles.queuedText)}>{pendingText(item.content)}</span>
-          {item.lane !== STEER_LANE && (
-            <Button
-              unstyled
-              type="button"
-              {...stylex.props(composerStyles.queuedAction, focus.ring)}
-              onClick={() =>
-                void nyte.messages.redeliver({
-                  sessionId,
-                  change: item.change,
-                  lane: STEER_LANE,
-                })
-              }
-            >
-              Send now
-            </Button>
-          )}
-          <IconButton
-            icon="x"
-            label="Cancel queued message"
-            size={12}
-            onClick={() => void nyte.messages.cancel({ sessionId, change: item.change })}
-          />
-        </div>
-      ))}
-      {unsent.map((row) => (
-        <div role="status" key={row.key} {...stylex.props(composerStyles.queued)}>
-          <Icon name="clock" size={12} />
-          <span {...stylex.props(composerStyles.queuedText)}>{pendingText(row.content)}</span>
-          <span {...stylex.props(composerStyles.queuedState)}>{unsentStateText(row.state)}</span>
-          <IconButton
-            icon="x"
-            label="Cancel unsent message"
-            size={12}
-            onClick={() => outbox.cancel(row.key)}
-          />
-        </div>
-      ))}
-      {commandFeedback !== undefined && (
-        <div
-          role={commandFeedback.kind === "error" ? "alert" : "status"}
-          {...stylex.props(composerStyles.queued)}
-        >
-          <Icon name={commandFeedback.kind === "error" ? "bubble-question" : "sparkle"} size={12} />
-          <span {...stylex.props(composerStyles.queuedText)}>{commandFeedback.message}</span>
-        </div>
-      )}
+  const cancelPending = async (item: PendingItem): Promise<void> => {
+    setRowAction(item.change, { kind: "cancelling" });
+    try {
+      const outcome = await nyte.messages.cancel({ sessionId, change: item.change });
+      refreshThread(sessionId);
+      setRowAction(
+        item.change,
+        outcome.kind === "landed"
+          ? { kind: "failed", message: "Already sent; it is in the conversation." }
+          : undefined,
+      );
+    } catch (cause: unknown) {
+      setRowAction(item.change, {
+        kind: "failed",
+        message: `Couldn't cancel: ${errorMessage(cause)}`,
+      });
+    }
+  };
 
-      <ComposerFrame
-        surface="follow-up"
-        value={currentViewState.draft}
-        onChange={(draft) => {
-          setCommandFeedback(undefined);
-          updateViewState((current) => ({
-            ...current,
-            draft,
-            selectionStart: Math.min(current.selectionStart, draft.length),
-            selectionEnd: Math.min(current.selectionEnd, draft.length),
-          }));
-        }}
-        onSubmit={send}
-        placeholder={FOLLOW_UP_PLACEHOLDER}
-        autoFocus={autoFocus}
-        disabled={disabled}
-        busy={working}
-        onAbort={abort}
-        suggestionCatalog={suggestionCatalog}
-        mentionFiles={mentionFiles}
-        hasConversationContext
-        attachments={attachments}
-        attachmentBusy={attachmentReads !== 0}
-        attachmentError={attachmentError}
-        onFilesSelected={(files) => void addFiles(files)}
-        onAttachmentRemove={(id) => {
-          setAttachments((current) => current.filter((attachment) => attachment.id !== id));
-          setAttachmentError(undefined);
-        }}
-        model={disabled ? undefined : <SessionModelChip sessionId={sessionId} />}
-        inputRef={inputRef}
-        selectionStart={currentViewState.selectionStart}
-        selectionEnd={currentViewState.selectionEnd}
-        onSelectionChange={(selectionStart, selectionEnd) =>
-          updateViewState((current) => ({ ...current, selectionStart, selectionEnd }))
-        }
-        onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}
-      />
+  const sendPendingNow = async (item: PendingItem): Promise<void> => {
+    setRowAction(item.change, { kind: "sending" });
+    try {
+      const outcome = await nyte.messages.redeliver({
+        sessionId,
+        change: item.change,
+        lane: roles.steer,
+      });
+      refreshThread(sessionId);
+      setRowAction(
+        item.change,
+        outcome.kind === "landed"
+          ? { kind: "failed", message: "Already sent; it is in the conversation." }
+          : undefined,
+      );
+    } catch (cause: unknown) {
+      setRowAction(item.change, {
+        kind: "failed",
+        message: `Couldn't send: ${errorMessage(cause)}`,
+      });
+    }
+  };
+
+  const canBeginEdit = currentViewState.draft === "" && attachments.length === 0 && !disabled;
+  const beginEdit = (item: PendingItem): void => {
+    if (!canBeginEdit) return;
+    const text = messageDraftText(userMessageText(item.content));
+    setPendingEdit({ change: item.change, lane: item.lane, content: item.content });
+    setFeedback(undefined);
+    setDocument({ text, selectionStart: text.length, selectionEnd: text.length });
+    editorRef.current?.focus();
+  };
+  const cancelEdit = (): void => {
+    setPendingEdit(undefined);
+    setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
+  };
+
+  const queuedMessageCount = pending.length + unsent.length;
+  const queuedMessages =
+    queuedMessageCount === 0 ? undefined : (
+      <section aria-label="Queued messages" {...stylex.props(composerStyles.queueCard)}>
+        <div {...stylex.props(composerStyles.queueHeader)}>
+          {String(queuedMessageCount)} Queued {queuedMessageCount === 1 ? "Message" : "Messages"}
+        </div>
+        <div {...stylex.props(composerStyles.queueList)}>
+          {pending.map((item) => {
+            const action = rowActions.get(item.change);
+            const editingThis = activePendingEdit?.change === item.change;
+            const busyRow = action?.kind === "cancelling" || action?.kind === "sending";
+            const steering = item.lane === roles.steer;
+            return (
+              <div
+                role="status"
+                key={item.change}
+                data-editing={editingThis}
+                data-error={action?.kind === "failed"}
+                {...stylex.props(composerStyles.queueRow)}
+              >
+                <span aria-hidden="true" {...stylex.props(composerStyles.queueIndicator)}>
+                  <Icon name="clock" size={12} />
+                </span>
+                <div {...stylex.props(composerStyles.queueMessage)}>
+                  <QueuedMessageContent content={item.content} />
+                  {action?.kind === "cancelling" && (
+                    <span {...stylex.props(composerStyles.queuedState)}>Cancelling…</span>
+                  )}
+                  {action?.kind === "sending" && (
+                    <span {...stylex.props(composerStyles.queuedState)}>Sending…</span>
+                  )}
+                  {action?.kind === "failed" && (
+                    <span
+                      role="alert"
+                      {...stylex.props(composerStyles.queuedState, composerStyles.queuedError)}
+                    >
+                      {action.message}
+                    </span>
+                  )}
+                  {editingThis && (
+                    <span {...stylex.props(composerStyles.queuedState)}>Editing…</span>
+                  )}
+                </div>
+                <span
+                  title={
+                    steering
+                      ? "Sends without interrupting the current run"
+                      : "Sends after the current run"
+                  }
+                  {...stylex.props(composerStyles.queueLane)}
+                >
+                  {steering ? "Steer" : "Queued"}
+                </span>
+                {!busyRow && !editingThis && (
+                  <div {...stylex.props(composerStyles.queueActions)}>
+                    <IconButton
+                      icon="pencil"
+                      label={
+                        canBeginEdit
+                          ? "Edit queued message"
+                          : "Send or clear your draft to edit this"
+                      }
+                      size={12}
+                      disabled={!canBeginEdit}
+                      onClick={() => beginEdit(item)}
+                    />
+                    {!steering && (
+                      <Button
+                        unstyled
+                        type="button"
+                        {...stylex.props(
+                          composerStyles.queuedAction,
+                          composerStyles.queueSend,
+                          focus.ring,
+                        )}
+                        onClick={() => void sendPendingNow(item)}
+                      >
+                        Send now
+                      </Button>
+                    )}
+                    <IconButton
+                      icon="x"
+                      label="Cancel queued message"
+                      size={12}
+                      onClick={() => void cancelPending(item)}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {unsent.map((row) => (
+            <div
+              role="status"
+              key={row.key}
+              data-error={row.state.kind === "failed"}
+              {...stylex.props(composerStyles.queueRow)}
+            >
+              <span aria-hidden="true" {...stylex.props(composerStyles.queueIndicator)}>
+                <Icon name="clock" size={12} />
+              </span>
+              <div {...stylex.props(composerStyles.queueMessage)}>
+                <QueuedMessageContent content={row.content} />
+                <span
+                  {...stylex.props(
+                    composerStyles.queuedState,
+                    row.state.kind === "failed" && composerStyles.queuedError,
+                  )}
+                >
+                  {unsentStateText(row.state)}
+                </span>
+              </div>
+              <div {...stylex.props(composerStyles.queueActions)}>
+                <IconButton
+                  icon="x"
+                  label="Cancel unsent message"
+                  size={12}
+                  onClick={() => outbox.cancel(row.key)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+
+  return (
+    <div {...stylex.props(composerStyles.dock)}>
+      {onScrollToBottom !== undefined && (
+        <Button
+          unstyled
+          type="button"
+          aria-label="Scroll to latest message"
+          title="Scroll to latest message"
+          onClick={onScrollToBottom}
+          {...stylex.props(
+            composerStyles.controlHitArea,
+            composerStyles.scrollToBottom,
+            focus.ring,
+          )}
+        >
+          <Icon name="chevron-down" size={13} />
+        </Button>
+      )}
+      <div role="region" aria-label="Conversation input" {...stylex.props(composerStyles.region)}>
+        {feedback !== undefined && (
+          <div
+            role={feedback.kind === "error" ? "alert" : "status"}
+            {...stylex.props(composerStyles.queued)}
+          >
+            <Icon name={feedback.kind === "error" ? "bubble-question" : "sparkle"} size={12} />
+            <span {...stylex.props(composerStyles.queuedText)}>{feedback.message}</span>
+            {feedback.restore !== undefined && (
+              <Button
+                unstyled
+                type="button"
+                onClick={feedback.restore}
+                {...stylex.props(composerStyles.queuedAction, focus.ring)}
+              >
+                Restore draft
+              </Button>
+            )}
+            <IconButton icon="x" label="Dismiss" size={12} onClick={() => setFeedback(undefined)} />
+          </div>
+        )}
+
+        {queuedMessages}
+        {backgroundWork?.content}
+        <ComposerFrame
+          surface="follow-up"
+          document={{
+            text: currentViewState.draft,
+            selectionStart: currentViewState.selectionStart,
+            selectionEnd: currentViewState.selectionEnd,
+          }}
+          onDocumentChange={(document) => {
+            setFeedback((current) => (current?.kind === "status" ? undefined : current));
+            setDocument(document);
+          }}
+          onSubmit={send}
+          placeholder={FOLLOW_UP_PLACEHOLDER}
+          autoFocus={autoFocus}
+          disabled={disabled}
+          busy={working}
+          onAbort={abort}
+          onDismissTray={backgroundWork?.onEscape}
+          suggestionCatalog={suggestionCatalog}
+          mentionFiles={mentionFiles}
+          hasConversationContext
+          attachments={attachments}
+          attachmentBusy={attachmentReads !== 0}
+          attachmentError={attachmentError}
+          onFilesSelected={(files) => void addFiles(files)}
+          onAttachmentRemove={(id) => {
+            setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+            setAttachmentError(undefined);
+          }}
+          model={disabled ? undefined : <SessionModelChip sessionId={sessionId} />}
+          inputRef={attachInput}
+          onFocusChange={(focused) => updateViewState((current) => ({ ...current, focused }))}
+          editing={
+            activePendingEdit === undefined
+              ? undefined
+              : { kind: "queued", lane: activePendingEdit.lane, onCancel: cancelEdit }
+          }
+        />
+      </div>
     </div>
   );
 }

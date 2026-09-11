@@ -30,5 +30,12 @@ export type {
   ProviderStatus,
   SignInMethod,
   ThemePreference,
+  UsageEntry,
+  UsageReport,
+  UsageSession,
+  UsageSource,
+  UsageSubject,
+  UsageTotals,
+  UsageWindow,
   WatchInput,
 } from "../../shared/ipc.ts";

@@ -14,11 +14,13 @@ import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
 import { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";
 import { PluginScope } from "./scope.ts";
+import { ModelContextDraft } from "./model-context.ts";
 import type {
   Agent,
   Command,
   Disposer,
   LoadedPlugin,
+  ModelContextPolicy,
   Notification,
   PluginEnv,
   PluginEvents,
@@ -36,17 +38,21 @@ export interface PluginRegistries {
   readonly resources: ContributionRegistry<Skill, MapDraft<Skill>>;
   readonly settings: ContributionRegistry<PluginSetting, MapDraft<PluginSetting>>;
   readonly status: ContributionRegistry<StatusItem, MapDraft<StatusItem>>;
+  readonly modelContext: ContributionRegistry<ModelContextPolicy, ModelContextDraft>;
 }
 
 export function createRegistries(): PluginRegistries {
+  // Binding must not make an unchanged contribution appear changed on every rebuild.
+  const toolBindings = new WeakMap<object, AgentTool>();
   return {
     agents: new ContributionRegistry(() => new MapDraft<Agent>()),
-    tools: new ContributionRegistry(() => new ToolMapDraft()),
+    tools: new ContributionRegistry(() => new ToolMapDraft(toolBindings)),
     commands: new ContributionRegistry(() => new MapDraft<Command>()),
     prompt: new ContributionRegistry(() => new MapDraft<PromptSection>()),
     resources: new ContributionRegistry(() => new MapDraft<Skill>()),
     settings: new ContributionRegistry(() => new MapDraft<PluginSetting>()),
     status: new ContributionRegistry(() => new MapDraft<StatusItem>()),
+    modelContext: new ContributionRegistry(() => new ModelContextDraft()),
   };
 }
 

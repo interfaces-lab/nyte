@@ -1,6 +1,6 @@
 /**
  * `window.nyte`: the SDK interfaces verbatim (design record, "What each client
- * deletes" — desktop). Every verb is one `invoke` carrying its path and input
+ * deletes" — desktop). Every operation is one `invoke` carrying its path and input
  * object; `watch` is the one transport adaptation, an AsyncIterable become a
  * push subscription with the same cursor semantics.
  *
@@ -10,6 +10,8 @@
 import { DEFAULT_LANDING } from "@nyte-ai/core";
 import type { SessionEvent } from "@nyte-ai/core";
 import { contextBridge, ipcRenderer } from "electron";
+import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
+import type { AppMenuCommand } from "../shared/app-menu.ts";
 import {
   BROWSER_BOUNDS_CHANNEL,
   CALL_CHANNEL,
@@ -18,6 +20,7 @@ import {
   WATCH_EVENT_CHANNEL,
   WATCH_START_CHANNEL,
   WATCH_STOP_CHANNEL,
+  WORKSPACE_EDITOR_CHANNEL,
 } from "../shared/ipc.ts";
 import type {
   BrowserBoundsMessage,
@@ -30,20 +33,37 @@ import type {
   WatchEnvelope,
   WatchInput,
   WatchStartInput,
+  WorkspaceEditorInput,
+  WorkspaceEditorOperation,
+  WorkspaceEditorOutput,
+  WorkspaceEditorReply,
 } from "../shared/ipc.ts";
-import { errorMessage } from "../shared/errors.ts";
+import { bridgeError } from "../shared/errors.ts";
+import type { IpcResult } from "../shared/errors.ts";
 
 async function call<P extends CallPath>(path: P, input: CallInput<P>): Promise<CallOutput<P>> {
   // SAFETY: only Nyte's main process handles CALL_CHANNEL; it decodes the path-specific
   // request and echoes that path in the matching CallReplyFor<P> envelope.
   const result = (await ipcRenderer.invoke(CALL_CHANNEL, { path, input })) as CallReplyFor<P>;
+  if (!result.ok) return Promise.reject(bridgeError(result.error));
   if (result.path !== path) throw new Error("Malformed reply from the host: path mismatch");
-  if (!result.ok) throw new Error(result.message);
   return result.value;
 }
 
-function verb<P extends CallPath>(path: P): (input: CallInput<P>) => Promise<CallOutput<P>> {
+function operation<P extends CallPath>(path: P): (input: CallInput<P>) => Promise<CallOutput<P>> {
   return (input) => call(path, input);
+}
+
+function editorOperation<P extends WorkspaceEditorOperation>(operation: P) {
+  return async (input: WorkspaceEditorInput<P>): Promise<WorkspaceEditorOutput<P>> => {
+    // SAFETY: the private main handler validates the operation's input and owns its reply.
+    const result = (await ipcRenderer.invoke(WORKSPACE_EDITOR_CHANNEL, {
+      operation,
+      input,
+    })) as WorkspaceEditorReply<P>;
+    if (!result.ok) return Promise.reject(bridgeError(result.error));
+    return result.value;
+  };
 }
 
 const bridge = {
@@ -51,30 +71,37 @@ const bridge = {
   landing: DEFAULT_LANDING,
   sessions: {
     create: (input) => call("sessions.create", input),
-    get: verb("sessions.get"),
-    snapshot: verb("sessions.snapshot"),
+    get: operation("sessions.get"),
+    snapshot: operation("sessions.snapshot"),
     list: (input) => call("sessions.list", input),
-    rename: verb("sessions.rename"),
-    setPinned: verb("sessions.setPinned"),
-    setArchived: verb("sessions.setArchived"),
-    delete: verb("sessions.delete"),
-    configure: verb("sessions.configure"),
+    rename: operation("sessions.rename"),
+    setPinned: operation("sessions.setPinned"),
+    setArchived: operation("sessions.setArchived"),
+    delete: operation("sessions.delete"),
+    configure: operation("sessions.configure"),
   },
   messages: {
-    send: verb("messages.send"),
-    cancel: verb("messages.cancel"),
-    redeliver: verb("messages.redeliver"),
+    send: operation("messages.send"),
+    cancel: operation("messages.cancel"),
+    redeliver: operation("messages.redeliver"),
+  },
+  jobs: {
+    list: operation("jobs.list"),
+    start: operation("jobs.start"),
+    background: operation("jobs.background"),
+    cancel: operation("jobs.cancel"),
   },
   runs: {
-    abort: verb("runs.abort"),
-    changes: verb("runs.changes"),
+    abort: operation("runs.abort"),
+    reply: operation("runs.reply"),
+    changes: operation("runs.changes"),
   },
   heads: {
-    move: verb("heads.move"),
+    move: operation("heads.move"),
   },
   workspace: {
     list: () => call("workspace.list", undefined),
-    forget: verb("workspace.forget"),
+    forget: operation("workspace.forget"),
     vcs: {
       diff: (input) => call("workspace.vcs.diff", input),
     },
@@ -86,16 +113,16 @@ const bridge = {
   },
   plugins: {
     catalog: () => call("plugins.catalog", undefined),
-    list: verb("plugins.list"),
+    list: operation("plugins.list"),
     commands: {
-      list: verb("plugins.commands.list"),
-      run: verb("plugins.commands.run"),
+      list: operation("plugins.commands.list"),
+      run: operation("plugins.commands.run"),
     },
     settings: {
-      list: verb("plugins.settings.list"),
-      apply: verb("plugins.settings.apply"),
+      list: operation("plugins.settings.list"),
+      apply: operation("plugins.settings.apply"),
     },
-    resources: { list: verb("plugins.resources.list") },
+    resources: { list: operation("plugins.resources.list") },
   },
   watch(
     input: WatchInput,
@@ -104,10 +131,10 @@ const bridge = {
   ) {
     const watchId = crypto.randomUUID();
     let ended = false;
-    const fail = (message: string): void => {
+    const fail = (error: Error): void => {
       if (ended) return;
       ended = true;
-      onError?.(new Error(message));
+      onError?.(error);
     };
     // WATCH_EVENT_CHANNEL is private to Nyte main and emits only WatchEnvelope.
     const listener = (_event: Electron.IpcRendererEvent, frame: WatchEnvelope): void => {
@@ -116,8 +143,8 @@ const bridge = {
         onEvent(frame.event);
         return;
       }
-      if (frame.error !== undefined) fail(frame.error);
-      else fail("Watch ended unexpectedly");
+      if (frame.error !== undefined) fail(bridgeError(frame.error));
+      else fail(new Error("Watch ended unexpectedly"));
     };
     ipcRenderer.on(WATCH_EVENT_CHANNEL, listener);
     const start: WatchStartInput =
@@ -127,9 +154,12 @@ const bridge = {
           ? { watchId, sessionId: input.sessionId }
           : { watchId, sessionId: input.sessionId, afterSeq: input.afterSeq };
     // A refused start (bad cursor, no workspace) is a watch that ended before it began.
-    const started = ipcRenderer.invoke(WATCH_START_CHANNEL, start).catch((error) => {
-      fail(errorMessage(error));
-    });
+    const started = ipcRenderer
+      .invoke(WATCH_START_CHANNEL, start)
+      .then((result: IpcResult<void>) => {
+        if (!result.ok) fail(bridgeError(result.error));
+      })
+      .catch(() => fail(new Error("The host watch could not start.")));
     return () => {
       ended = true;
       ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
@@ -141,40 +171,64 @@ const bridge = {
     };
   },
   host: {
+    onMenuCommand(listener: (command: AppMenuCommand) => void) {
+      // Only the main process sends this private channel; never expose the IPC event.
+      const wrapped = (_event: Electron.IpcRendererEvent, command: AppMenuCommand): void => {
+        listener(command);
+      };
+      ipcRenderer.on(APP_MENU_COMMAND_CHANNEL, wrapped);
+      ipcRenderer.send(APP_MENU_READY_CHANNEL);
+      return () => ipcRenderer.removeListener(APP_MENU_COMMAND_CHANNEL, wrapped);
+    },
     setThemePreference: (preference) => ipcRenderer.send(THEME_PREFERENCE_CHANNEL, preference),
     state: () => call("host.state", undefined),
     sessionDirectory: () => call("host.sessionDirectory", undefined),
     fonts: () => call("host.fonts", undefined),
-    openWorkspace: verb("host.openWorkspace"),
+    openWorkspace: operation("host.openWorkspace"),
     pickWorkspace: () => call("host.pickWorkspace", undefined),
-    trustWorkspace: verb("host.trustWorkspace"),
+    trustWorkspace: operation("host.trustWorkspace"),
     closeWorkspace: () => call("host.closeWorkspace", undefined),
     catalog: () => call("host.catalog", undefined),
-    login: verb("host.login"),
-    logout: verb("host.logout"),
-    setPreference: verb("host.setPreference"),
+    usage: operation("host.usage"),
+    login: operation("host.login"),
+    logout: operation("host.logout"),
+    setPreference: operation("host.setPreference"),
     vcs: { snapshot: () => call("host.vcs.snapshot", undefined) },
-    files: { list: () => call("host.files.list", undefined) },
+    files: {
+      list: () => call("host.files.list", undefined),
+      read: operation("host.files.read"),
+      save: operation("host.files.save"),
+      search: editorOperation("search"),
+      cancelSearch: editorOperation("cancelSearch"),
+      blame: editorOperation("blame"),
+      format: editorOperation("format"),
+    },
     github: {
       state: () => call("host.github.state", undefined),
-      refresh: () => call("host.github.refresh", undefined),
       signIn: () => call("host.github.signIn", undefined),
       signOut: () => call("host.github.signOut", undefined),
     },
-    openExternal: verb("host.openExternal"),
+    server: {
+      state: () => call("host.server.state", undefined),
+      connect: (input) => call("host.server.connect", input),
+      disconnect: () => call("host.server.disconnect", undefined),
+      createSession: () => call("host.server.createSession", undefined),
+    },
+    openExternal: operation("host.openExternal"),
     terminal: {
-      create: verb("host.terminal.create"),
-      write: verb("host.terminal.write"),
-      resize: verb("host.terminal.resize"),
-      acknowledge: verb("host.terminal.acknowledge"),
-      close: verb("host.terminal.close"),
+      create: operation("host.terminal.create"),
+      write: operation("host.terminal.write"),
+      resize: operation("host.terminal.resize"),
+      acknowledge: operation("host.terminal.acknowledge"),
+      idle: operation("host.terminal.idle"),
+      close: operation("host.terminal.close"),
     },
     browser: {
-      open: verb("host.browser.open"),
-      navigate: verb("host.browser.navigate"),
-      menu: verb("host.browser.menu"),
-      perform: verb("host.browser.perform"),
-      close: verb("host.browser.close"),
+      open: operation("host.browser.open"),
+      navigate: operation("host.browser.navigate"),
+      menu: operation("host.browser.menu"),
+      perform: operation("host.browser.perform"),
+      close: operation("host.browser.close"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
     },

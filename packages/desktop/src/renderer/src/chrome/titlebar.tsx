@@ -10,7 +10,11 @@ import type { SessionId } from "@nyte-ai/core";
 import { PanelToggleIcon } from "../components/icons.tsx";
 import { Menu, MenuItem } from "../components/menu.tsx";
 import { HintIconButton, HintToggleIconButton, IconButton } from "../components/ui.tsx";
-import { usePaneActions, usePaneControllerSnapshot } from "../layout/pane-context.tsx";
+import {
+  useCanSplitPane,
+  usePaneActions,
+  usePaneControllerSnapshot,
+} from "../layout/pane-context.tsx";
 import { activePane } from "../layout/pane-layout.ts";
 import { macPlatform } from "../platform.ts";
 import { useHostState, useSession } from "../queries.ts";
@@ -27,6 +31,12 @@ import {
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { terminalActions, useTerminals } from "../workbench/terminal-store.ts";
 import { shellActions, useShellState } from "./shell-state.ts";
+import {
+  clientActionAriaShortcut,
+  clientActionShortcut,
+  clientActions,
+  resolveClientAction,
+} from "../../../shared/client-actions.ts";
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 
@@ -85,7 +95,7 @@ const styles = stylex.create({
   titleSlotWorkbenchOpen: {
     insetInlineEnd: "calc(var(--nyte-active-workbench-width, 500px) + 44px)",
   },
-  // Cursor reserves a 72px traffic-light lane at 100% zoom.
+  // macOS reserves a 72px traffic-light lane at 100% zoom.
   barMac: { paddingInlineStart: 72 },
   actionTrack: {
     display: "inline-flex",
@@ -152,13 +162,12 @@ export function Titlebar(): ReactElement {
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
   const panes = usePaneActions();
+  const canSplit = useCanSplitPane();
   const workbench = useWorkbenchSnapshot();
   const { sidebarVisible, stage } = useShellState();
   const mac = macPlatform(host.data?.platform);
   const selection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
-  const modifier = mac ? "⌘" : "Ctrl+";
-  const shift = mac ? "⇧" : "Shift+";
   const target: WorkbenchTarget =
     selection.kind === "session"
       ? { kind: "session", sessionId: selection.sessionId }
@@ -170,49 +179,46 @@ export function Titlebar(): ReactElement {
   const terminalCount = useTerminals(viewKey).tabs.length;
   const terminalWorkspacePath = target.kind === "home" ? null : (workspacePath ?? null);
   const scope = workbenchScopeForTarget(target, workspacePath);
-  const workbenchOpen = view.expanded && activeWorkbenchTab(view, scope) !== null;
-  const toggleWorkbench = (): void => {
-    if (view.expanded && !workbenchOpen) workbenchController.actions.openTab(viewKey, "browser");
-    else workbenchController.actions.toggle(viewKey);
-  };
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
+  const workspaceVisible = !settingsOpen && stage.kind === "workspace";
+  const workbenchOpen =
+    workspaceVisible && view.expanded && activeWorkbenchTab(view, scope) !== null;
   const canGoBack = stage.kind === "customize" || settingsOpen || shellRouter.history.canGoBack();
   const historyIndex = shellRouter.history.location.state.__TSR_index;
   const canGoForward = historyIndex < shellRouter.history.length - 1;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (settingsOpen) return;
-      if (event.ctrlKey && !event.altKey && !event.metaKey && event.code === "Backquote") {
+      if (!workspaceVisible) return;
+      const action = resolveClientAction(event, mac, "workspace");
+      if (action?.id === "terminal" || action?.id === "new-terminal") {
         event.preventDefault();
-        if (!event.shiftKey && workbenchOpen && view.activeTab === "terminal") {
+        if (action.id === "terminal" && workbenchOpen && view.activeTab === "terminal") {
           workbenchController.actions.toggle(viewKey);
         } else {
-          if (event.shiftKey || terminalCount === 0) {
+          if (action.id === "new-terminal" || terminalCount === 0) {
             void terminalActions.create(viewKey, terminalWorkspacePath);
           }
           workbenchController.actions.openTab(viewKey, "terminal");
         }
         return;
       }
-      const platformModifier = mac ? event.metaKey : event.ctrlKey;
-      if (event.key.toLowerCase() !== "b" || !event.altKey || !platformModifier) {
-        return;
-      }
+      if (action?.id !== "workbench") return;
       event.preventDefault();
-      workbenchController.actions.toggle(viewKey);
+      workbenchController.actions.toggleWorkbench(viewKey, scope);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     mac,
-    settingsOpen,
+    workspaceVisible,
     viewKey,
     workbenchOpen,
     view.activeTab,
     terminalCount,
     terminalWorkspacePath,
+    scope,
   ]);
 
   if (settingsOpen) {
@@ -233,9 +239,9 @@ export function Titlebar(): ReactElement {
         <HintToggleIconButton
           icon={<PanelToggleIcon side="left" visible={sidebarVisible} />}
           label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
-          hint={`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${modifier}B`}
+          hint={`${sidebarVisible ? "Hide Sidebar" : "Show Sidebar"} ${clientActionShortcut(clientActions.sidebar, mac)}`}
           pressed={sidebarVisible}
-          aria-keyshortcuts={mac ? "Meta+B" : "Control+B"}
+          aria-keyshortcuts={clientActionAriaShortcut(clientActions.sidebar, mac)}
           onPressedChange={() => shellActions.toggleSidebar()}
         />
       </span>
@@ -244,9 +250,9 @@ export function Titlebar(): ReactElement {
           <HintIconButton
             icon="arrow-left"
             label="Go back"
-            hint={`Go Back ${modifier}[`}
+            hint={`Go Back ${clientActionShortcut(clientActions.back, mac)}`}
             disabled={!canGoBack}
-            aria-keyshortcuts={mac ? "Meta+[" : "Control+["}
+            aria-keyshortcuts={clientActionAriaShortcut(clientActions.back, mac)}
             onClick={() => {
               if (stage.kind === "customize") {
                 shellActions.showWorkspace();
@@ -258,9 +264,9 @@ export function Titlebar(): ReactElement {
           <HintIconButton
             icon="arrow-right"
             label="Go forward"
-            hint={`Go Forward ${modifier}]`}
+            hint={`Go Forward ${clientActionShortcut(clientActions.forward, mac)}`}
             disabled={!canGoForward}
-            aria-keyshortcuts={mac ? "Meta+]" : "Control+]"}
+            aria-keyshortcuts={clientActionAriaShortcut(clientActions.forward, mac)}
             onClick={() => {
               shellActions.showWorkspace();
               shellRouter.history.forward();
@@ -268,7 +274,7 @@ export function Titlebar(): ReactElement {
           />
         </span>
       )}
-      {selection.kind === "session" && (
+      {workspaceVisible && selection.kind === "session" && (
         <span
           {...stylex.props(
             styles.titleSlot,
@@ -281,7 +287,7 @@ export function Titlebar(): ReactElement {
         </span>
       )}
       <span {...stylex.props(styles.spacer)} />
-      {layout.kind === "single" && !(workbenchOpen && view.maximized) && (
+      {workspaceVisible && layout.kind === "single" && !(workbenchOpen && view.maximized) && (
         <span {...stylex.props(styles.actionTrack)}>
           <Menu
             label="Chat actions"
@@ -290,58 +296,62 @@ export function Titlebar(): ReactElement {
           >
             <MenuItem
               icon="split-down"
-              meta={`${shift}${modifier}D`}
+              meta={clientActionShortcut(clientActions.splitDown, mac)}
+              disabled={!canSplit}
               onSelect={() => panes.split("down")}
             >
-              Split down
+              {clientActions.splitDown.label}
             </MenuItem>
             <MenuItem
               icon="split-right"
-              meta={`${modifier}D`}
+              meta={clientActionShortcut(clientActions.splitRight, mac)}
+              disabled={!canSplit}
               onSelect={() => panes.split("right")}
             >
-              Split right
+              {clientActions.splitRight.label}
             </MenuItem>
           </Menu>
         </span>
       )}
       {workbenchOpen && <span aria-hidden="true" {...stylex.props(styles.workbenchReservation)} />}
-      <div
-        {...stylex.props(
-          workbenchOpen ? styles.workbenchTrack : styles.actionTrack,
-          workbenchOpen &&
-            !sidebarVisible &&
-            (mac ? styles.workbenchTrackSidebarHiddenMac : styles.workbenchTrackSidebarHidden),
-        )}
-      >
-        {workbenchOpen && (
-          <>
-            <WorkbenchTabStrip
-              key={viewKey}
-              viewKey={viewKey}
-              view={view}
-              scope={scope}
-              workspacePath={terminalWorkspacePath}
-            />
-            <HintToggleIconButton
-              icon={view.maximized ? "minimize" : "expand"}
-              label={view.maximized ? "Restore workbench width" : "Expand workbench"}
-              hint={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
-              pressed={view.maximized}
-              onPressedChange={() => workbenchController.actions.toggleMaximized(viewKey)}
-            />
-          </>
-        )}
-        <HintToggleIconButton
-          id="workbench-toggle"
-          icon={<PanelToggleIcon side="right" visible={workbenchOpen} />}
-          label={workbenchOpen ? "Hide workbench" : "Show workbench"}
-          hint={`${workbenchOpen ? "Hide Workbench" : "Show Workbench"} ${mac ? "⌥⌘B" : "Alt+Ctrl+B"}`}
-          pressed={workbenchOpen}
-          aria-keyshortcuts={mac ? "Meta+Alt+B" : "Control+Alt+B"}
-          onPressedChange={toggleWorkbench}
-        />
-      </div>
+      {workspaceVisible && (
+        <div
+          {...stylex.props(
+            workbenchOpen ? styles.workbenchTrack : styles.actionTrack,
+            workbenchOpen &&
+              !sidebarVisible &&
+              (mac ? styles.workbenchTrackSidebarHiddenMac : styles.workbenchTrackSidebarHidden),
+          )}
+        >
+          {workbenchOpen && (
+            <>
+              <WorkbenchTabStrip
+                key={viewKey}
+                viewKey={viewKey}
+                view={view}
+                scope={scope}
+                workspacePath={terminalWorkspacePath}
+              />
+              <HintToggleIconButton
+                icon={view.maximized ? "minimize" : "expand"}
+                label={view.maximized ? "Restore workbench width" : "Expand workbench"}
+                hint={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
+                pressed={view.maximized}
+                onPressedChange={() => workbenchController.actions.toggleMaximized(viewKey)}
+              />
+            </>
+          )}
+          <HintToggleIconButton
+            id="workbench-toggle"
+            icon={<PanelToggleIcon side="right" visible={workbenchOpen} />}
+            label={workbenchOpen ? "Hide workbench" : "Show workbench"}
+            hint={`${workbenchOpen ? "Hide Workbench" : "Show Workbench"} ${clientActionShortcut(clientActions.workbench, mac)}`}
+            pressed={workbenchOpen}
+            aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
+            onPressedChange={() => workbenchController.actions.toggleWorkbench(viewKey, scope)}
+          />
+        </div>
+      )}
     </header>
   );
 }

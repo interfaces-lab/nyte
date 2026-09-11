@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { BrowserSurfaceState, HostEvent } from "../../../shared/ipc.ts";
+import { workbenchController } from "./controller.ts";
 
 export interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
@@ -42,6 +43,13 @@ export function applyBrowserEvent(
           ]
         : current.history;
     set(event.surface, { state, refusedDownload, history });
+    // Closed tabs can still receive native events during the surface's close grace period.
+    for (const [key, view] of workbenchController.getSnapshot().views) {
+      if (key === event.surface && view.openTabs.includes("browser") && state.url !== "") {
+        workbenchController.actions.setBrowserUrl(key, state.url);
+        break;
+      }
+    }
     return;
   }
   set(event.surface, { ...current, refusedDownload: event.url });

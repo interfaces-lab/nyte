@@ -1,0 +1,59 @@
+---
+title: Overview
+description: "The desktop renderer's own component tier: headless Base UI under StyleX on the desktop palette"
+---
+
+The desktop app (`packages/desktop`, Electron + React 19) does not use the styled wrappers from
+`@nyte-ai/ui`. It imports the headless subpaths and styles a tier of its own in
+`src/renderer/src/components`, on a separate runtime palette read through `t.*` constants. This is
+the tier a desktop feature composes from.
+
+```
+@nyte-ai/ui/<headless>
+  └─ components/ui.tsx           Button, IconButton, ToggleIconButton, Hint*, StatusDot, Kbd, focus, srOnly
+     components/menu.tsx         Menu, MenuItem, MenuRadioItem, MenuCheckboxItem, MenuSwitchItem, MenuSubmenu,
+                                 MenuGroup, MenuSeparator, ContextMenu*, CommandMenu
+     components/confirm-dialog.tsx
+     components/toaster.tsx
+     components/spinner.tsx, animated-number.tsx
+     components/icons.tsx, file-type-icon.tsx
+     chrome/settings-controls.tsx SettingsRow, SettingsSelect, SettingsSwitch, SettingsStepper
+       └─ surfaces                see /cloud/surfaces
+```
+
+## What this tier owns
+
+- **Geometry and color once.** The header of `menu.tsx` says it: Base UI handles positioning,
+  focus, typeahead, dismissal, and roving tab index; the file decides geometry and color so the
+  pane header, the sidebar filter, and the model chip all open the same surface.
+- **The focus ring.** `focus.ring` and `focus.ringInset` in `ui.tsx` are the only two focus
+  treatments. Every focusable in the desktop applies one of them.
+- **Icons by semantic name.** Feature code never imports a glyph; it names one from `IconName`.
+
+## Rules
+
+- Compose from this tier, not from `@nyte-ai/ui`'s styled wrappers. Mixing the two palettes on
+  one surface is a defect.
+- Every control **must** apply `focus.ring` or `focus.ringInset`. Rows and menu items that sit
+  flush inside a scroll container use the inset ring, because an outset ring would clip.
+- Icon-only controls **must** carry `label`, which becomes `aria-label` and `title`.
+- Structural geometry (widths, row heights) comes from `theme/schema.stylex.ts`; runtime
+  appearance (colors, fonts, radii, motion) from `theme/vars.stylex.ts`. Do not put a literal
+  color in a component.
+
+## Examples
+
+These pages show code only. Desktop components read `t.*` variables that resolve against the
+desktop's `theme/tokens.css`, which is not loaded on this site, and several import the app's
+query and IPC layer. Rendering them here would show the wrong palette.
+
+## Pages
+
+- [Theme variables](/cloud/desktop/theme)
+- [Button and focus](/cloud/desktop/button)
+- [Menu](/cloud/desktop/menu)
+- [Confirm dialog](/cloud/desktop/confirm-dialog)
+- [Toaster](/cloud/desktop/toaster)
+- [Spinner and animated number](/cloud/desktop/feedback)
+- [Icons](/cloud/desktop/icons)
+- [Settings controls](/cloud/desktop/settings-controls)

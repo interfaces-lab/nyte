@@ -11,10 +11,18 @@ export {
 export { projectContextStatus, type ContextStatus } from "./context.ts";
 export { sessionDirectoryEntry, type SessionDirectoryEntry } from "./directory.ts";
 export {
+  EMPTY_LIVE_PARTS,
+  foldLiveParts,
+  livePartKey,
+  type LivePart,
+  type LiveParts,
+} from "./live-parts.ts";
+export {
   createPresenter,
   presentNote,
   presentTool,
   projectToolView,
+  runActivityLabel,
   type NotePresentation,
   type NoteRefiner,
   type NoteView,
@@ -49,9 +57,12 @@ export {
   type SessionTreeNode,
 } from "./tree.ts";
 export {
+  commitUsage,
+  usageTokens,
   emptyUsageSummary,
   mergeUsageSummaries,
   projectUsage,
   type ModelUsage,
   type UsageSummary,
+  type UsageSubject,
 } from "./usage.ts";

@@ -10,9 +10,10 @@
 import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
-import { Unsafe } from "typebox";
+import { Type } from "typebox";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "../types.ts";
 import { toolResultContent } from "../utils/tool-result.ts";
+import { argumentParser } from "./support/arguments.ts";
 import { OutputAccumulator } from "./support/output-accumulator.ts";
 import {
   getShellConfig,
@@ -44,63 +45,23 @@ function resolveTimeoutMs(timeout: number | undefined): number | undefined {
   return timeoutMs;
 }
 
-/** JSON Schema for the bash tool arguments (hand-converted from pi's TypeBox schema). */
-const bashParameters = Unsafe<BashToolInput>({
-  type: "object",
-  properties: {
-    command: { type: "string", description: "Bash command to execute" },
-    timeout: { type: "number", description: "Timeout in seconds (optional, no default timeout)" },
-  },
-  required: ["command"],
+const bashParameters = Type.Object({
+  command: Type.String({ description: "Bash command to execute" }),
+  timeout: Type.Optional(
+    Type.Number({ description: "Timeout in seconds (optional, no default timeout)" }),
+  ),
+  background: Type.Optional(
+    Type.Boolean({
+      description:
+        "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands. The command keeps running across turns; its exit is reported in a later message. Do not use it to speed up ordinary commands.",
+    }),
+  ),
 });
-
-export interface BashToolInput {
-  command: string;
-  timeout?: number;
-}
 
 export interface BashToolDetails {
   truncation?: TruncationResult;
   fullOutputPath?: string;
 }
-
-interface BashInputFields {
-  readonly command?: unknown;
-  readonly timeout?: unknown;
-}
-
-function isBashInputObject(value: unknown): value is BashInputFields {
-  return typeof value === "object" && value !== null;
-}
-
-function hasBashCommand(
-  value: BashInputFields,
-): value is BashInputFields & Pick<BashToolInput, "command"> {
-  return typeof value.command === "string";
-}
-
-function hasValidBashTimeout(
-  value: BashInputFields,
-): value is BashInputFields & Pick<BashToolInput, "timeout"> {
-  return value.timeout === undefined || typeof value.timeout === "number";
-}
-
-type BashArgumentPreparer = NonNullable<
-  AgentTool<typeof bashParameters, BashToolDetails | undefined>["prepareArguments"]
->;
-
-const parseBashToolInput: BashArgumentPreparer = (params) => {
-  if (!isBashInputObject(params)) {
-    throw new Error("Invalid arguments: expected an object with a command string");
-  }
-  if (!hasBashCommand(params)) {
-    throw new Error("Invalid arguments: command must be a string");
-  }
-  if (!hasValidBashTimeout(params)) {
-    throw new Error("Invalid arguments: timeout must be a number of seconds");
-  }
-  return { command: params.command, timeout: params.timeout };
-};
 
 /**
  * Pluggable operations for the bash tool.
@@ -245,10 +206,10 @@ export function createBashTool(
     description: `Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.`,
     promptSnippet: "Execute bash commands (ls, grep, find, etc.)",
     parameters: bashParameters,
-    prepareArguments: parseBashToolInput,
+    prepareArguments: argumentParser(bashParameters),
     async execute(
       _toolCallId: string,
-      { command, timeout }: BashToolInput,
+      { command, timeout },
       signal?: AbortSignal,
       onUpdate?: AgentToolUpdateCallback<BashToolDetails | undefined>,
     ): Promise<AgentToolResult<BashToolDetails | undefined>> {

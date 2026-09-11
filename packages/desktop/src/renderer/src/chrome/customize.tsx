@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { Tabs } from "@nyte-ai/ui/primitives";
+import { Tabs } from "@nyte-ai/ui/tabs";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
@@ -53,7 +53,11 @@ function filterInventory(inventory: CustomizeInventory, query: string): Customiz
         query,
         setting.label,
         setting.owner,
-        ...setting.choices.flatMap((choice) => [choice.label, choice.description ?? ""]),
+        ...setting.choices.flatMap((choice) => [
+          choice.label,
+          choice.description ?? "",
+          choice.status ?? "",
+        ]),
       ),
     ),
   };
@@ -91,7 +95,7 @@ function InventoryLoading(): ReactElement {
   );
 }
 
-function PluginSettings({
+export function PluginSettings({
   sessionId,
   settings,
 }: {
@@ -104,26 +108,35 @@ function PluginSettings({
   return (
     <>
       <div {...stylex.props(styles.list)}>
-        {settings.map((setting) => (
-          <div key={setting.id} {...stylex.props(styles.row)}>
-            <span {...stylex.props(styles.rowBody)}>
-              <span {...stylex.props(styles.rowTitle)}>{setting.label}</span>
-              <span {...stylex.props(styles.rowDetail)}>{setting.owner}</span>
-            </span>
-            <SettingsSelect
-              label={setting.label}
-              disabled={sessionId === undefined || apply.isPending}
-              value={setting.current}
-              options={setting.choices.map((choice) => ({
-                value: choice.id,
-                label: choice.label,
-              }))}
-              onValueChange={(choiceId) => {
-                if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
-              }}
-            />
-          </div>
-        ))}
+        {settings.map((setting) => {
+          const choice = setting.choices.find((choice) => choice.id === setting.current);
+          const detail = choice?.status ?? choice?.description;
+          return (
+            <div key={setting.id} {...stylex.props(styles.row)}>
+              <span {...stylex.props(styles.rowBody)}>
+                <span {...stylex.props(styles.rowTitle)}>{setting.label}</span>
+                <span {...stylex.props(styles.rowDetail)}>{setting.owner}</span>
+                {detail !== undefined && (
+                  <span title={detail} {...stylex.props(styles.rowDetail)}>
+                    {detail}
+                  </span>
+                )}
+              </span>
+              <SettingsSelect
+                label={setting.label}
+                disabled={sessionId === undefined || apply.isPending}
+                value={setting.current}
+                options={setting.choices.map((choice) => ({
+                  value: choice.id,
+                  label: choice.label,
+                }))}
+                onValueChange={(choiceId) => {
+                  if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
+                }}
+              />
+            </div>
+          );
+        })}
       </div>
       {sessionId === undefined && (
         <div {...stylex.props(styles.settingsNote)}>

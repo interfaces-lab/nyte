@@ -1,15 +1,12 @@
+import { isTerminalPhase } from "@nyte-ai/core";
 /**
  * Non-interactive mode: send one prompt, stream the answer to stdout, and
- * exit with the run's outcome. The same SDK verbs the shell uses, over an
+ * exit with the run's outcome. The same SDK operations the shell uses, over an
  * output the caller supplies, so a test drives it with a scripted provider.
  */
-import type { Nyte, RunInfo, SessionId } from "@nyte-ai/core";
-
-export type PrintJsonEvent =
-  | { readonly type: "text"; readonly text: string }
-  | { readonly type: "tool"; readonly name: string }
-  | { readonly type: "result"; readonly session: string; readonly kind: string }
-  | { readonly type: "error"; readonly message: string };
+import type { Nyte, RunInfo, SessionEvent, SessionId } from "@nyte-ai/core";
+import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/core/views";
+import { sessionRecovery } from "./flags.ts";
 
 export interface PrintOutput {
   write(text: string): void;
@@ -34,12 +31,9 @@ export interface PrintOptions {
 export type PrintOutcome =
   | { readonly kind: "completed" }
   | { readonly kind: "aborted" }
-  | { readonly kind: "failed"; readonly message: string }
-  | { readonly kind: "cancelled" };
-
-function encode(event: PrintJsonEvent): string {
-  return `${JSON.stringify(event)}\n`;
-}
+  | { readonly kind: "failed"; readonly message: string; readonly code?: string }
+  | { readonly kind: "cancelled"; readonly signal?: "SIGINT" | "SIGTERM" }
+  | { readonly kind: "input-required" };
 
 /** The run's durable outcome, read back from the run ref once it is terminal. */
 function outcomeOf(run: RunInfo | undefined): PrintOutcome {
@@ -73,104 +67,224 @@ async function waitForRun(
     if (signal.aborted) return "cancelled";
     const waiting = await nyte.runs.wait({ sessionId, signal });
     if (signal.aborted) return "cancelled";
+    if (waiting.kind === "cancelled") return "cancelled";
     if (waiting.kind === "idle") return "idle";
 
     const snapshot = await nyte.sessions.snapshot({ sessionId });
-    if (
-      snapshot?.run === undefined ||
-      ["done", "aborted", "failed"].includes(snapshot.run.phase.kind)
-    )
-      return "idle";
-    if (snapshot.parked?.some((call) => call.tool === "question") === true) return "question";
+    if (snapshot?.run === undefined || isTerminalPhase(snapshot.run.phase)) return "idle";
+    if (snapshot.parked?.some((call) => call.selection !== undefined) === true) return "question";
+    let changed = false;
     for await (const event of nyte.watch({ sessionId, afterSeq: snapshot.seq, signal })) {
       const effectChanged = event.kind === "effect" && event.runId === waiting.runId;
       const runChanged = event.kind === "run" && event.run.runId === waiting.runId;
-      if (effectChanged || runChanged) break;
+      if (effectChanged || runChanged) {
+        changed = true;
+        break;
+      }
     }
+    if (!changed && !signal.aborted)
+      throw new Error("Output watch ended while a tool was waiting.");
   }
 }
 
 export async function printRun(options: PrintOptions): Promise<PrintOutcome> {
   const { nyte, sessionId, output } = options;
+  if (options.signal?.aborted === true) return { kind: "cancelled" };
+  if (options.configure !== undefined) {
+    const configured = await nyte.sessions.configure({ sessionId, ...options.configure });
+    if (configured.kind !== "queued") {
+      return { kind: "failed", code: "configuration_failed", message: configured.kind };
+    }
+  }
+  if (options.signal?.aborted) return { kind: "cancelled" };
+  const before = await nyte.sessions.snapshot({ sessionId });
+  if (before === undefined) throw new Error(`Session not found: ${sessionId}`);
   const stop = new AbortController();
   const signal =
     options.signal === undefined ? stop.signal : AbortSignal.any([options.signal, stop.signal]);
+  let parts = EMPTY_LIVE_PARTS;
+  const delivered = new Set<string>();
+  const runs = new Set(before.run === undefined ? [] : [before.run.runId]);
   let lineOpen = false;
-  const endLine = (): void => {
-    if (!lineOpen) return;
-    lineOpen = false;
-    output.write("\n");
+  const writeText = (text: string): void => {
+    if (text === "") return;
+    if (options.json) output.write(`${JSON.stringify({ type: "text", text })}\n`);
+    else {
+      output.write(text);
+      lineOpen = !text.endsWith("\n");
+    }
   };
+  const deliver = (event: SessionEvent): void => {
+    if (event.kind === "run") {
+      if (event.head !== before.head) return;
+      runs.add(event.run.runId);
+      if (
+        event.run.phase.kind === "retry" &&
+        parts.some((part) => part.kind === "text" && part.runId === event.run.runId)
+      ) {
+        throw new Error(
+          "The provider retried after text was delivered. Open the session to inspect the answer.",
+        );
+      }
+    }
+    if (event.kind === "text_delta") {
+      if (!runs.has(event.runId)) return;
+      writeText(event.delta);
+    }
+    if (event.kind === "commit" && event.head === before.head) {
+      const { oid, commit } = event.item;
+      if (delivered.has(oid)) return;
+      delivered.add(oid);
+      const body = commit.body;
+      if (body.kind === "message" && body.message.role === "assistant") {
+        const text = body.message.content
+          .flatMap((part) => (part.type === "text" ? [part.text] : []))
+          .join("");
+        const prefix = parts
+          .flatMap((part) => (part.kind === "text" && part.runId === commit.run ? [part.text] : []))
+          .join("");
+        if (!text.startsWith(prefix)) {
+          throw new Error(
+            "Committed answer differs from delivered text. Open the session to inspect it.",
+          );
+        }
+        writeText(text.slice(prefix.length));
+        for (const part of body.message.content) {
+          if (part.type !== "toolCall" || options.quiet) continue;
+          if (options.json) output.write(`${JSON.stringify({ type: "tool", name: part.name })}\n`);
+          else output.error(part.name);
+        }
+      }
+    }
+    parts = foldLiveParts(parts, event);
+  };
+  let deliveryFailure: { readonly cause: unknown } | undefined;
   const streaming = (async (): Promise<void> => {
-    for await (const event of nyte.watch({ sessionId, live: true, signal })) {
-      if (event.kind === "text_delta") {
-        if (options.json) output.write(encode({ type: "text", text: event.delta }));
-        else {
-          output.write(event.delta);
-          lineOpen = true;
-        }
-        continue;
+    try {
+      for await (const event of nyte.watch({ sessionId, afterSeq: before.seq, signal })) {
+        deliver(event);
       }
-      if (event.kind !== "commit" || options.quiet) continue;
-      const { body } = event.item.commit;
-      if (body.kind !== "message" || body.message.role !== "assistant") continue;
-      for (const part of body.message.content) {
-        if (part.type !== "toolCall") continue;
-        if (options.json) output.write(encode({ type: "tool", name: part.name }));
-        else {
-          endLine();
-          output.write(`${part.name}\n`);
-        }
-      }
+      if (!signal.aborted) throw new Error("Output watch ended before delivery completed.");
+    } catch (cause) {
+      if (signal.aborted && cause instanceof Error && cause.name === "AbortError") return;
+      deliveryFailure = { cause };
+      stop.abort();
     }
-  })().catch(() => undefined);
-
+  })();
   try {
-    if (options.signal?.aborted === true) return { kind: "cancelled" };
-    if (options.configure !== undefined) {
-      await nyte.sessions.configure({ sessionId, ...options.configure });
-      if (signal.aborted) return { kind: "cancelled" };
-    }
+    signal.throwIfAborted();
     await nyte.messages.send({ sessionId, content: options.content, key: crypto.randomUUID() });
     const waited = await waitForRun(nyte, sessionId, signal);
-    if (waited === "cancelled") return { kind: "cancelled" };
+    if (options.signal?.aborted) {
+      await nyte.runs.abort({ sessionId });
+      return { kind: "cancelled" };
+    }
     if (waited === "question") {
       await nyte.runs.abort({ sessionId });
-      await nyte.runs.wait({ sessionId });
+      // Print deliberately aborts questions and consent. Caller cancellation is
+      // not durable settlement, so this wait must not use the output signal.
+      const settled = await nyte.runs.wait({ sessionId });
+      const run = await nyte.runs.current({ sessionId });
+      if (settled.kind !== "idle" || run?.phase.kind !== "aborted") {
+        return {
+          kind: "failed",
+          code: "input_abort_failed",
+          message:
+            "The input-required run did not settle as aborted. Open the session to inspect it.",
+        };
+      }
     }
-    return outcomeOf(await nyte.runs.current({ sessionId }));
+    stop.abort();
+    await streaming;
+    if (deliveryFailure !== undefined) throw deliveryFailure.cause;
+    if (waited === "cancelled") return { kind: "cancelled" };
+
+    // The first watch preserves live output. Replay only durable commits to the
+    // SDK's synced barrier to drain writes the waiter saw before our watcher did.
+    // Oids identify commits; seq alone would drop siblings in one head move.
+    let synced = false;
+    for await (const event of nyte.watch({
+      sessionId,
+      afterSeq: before.seq,
+      signal: options.signal,
+    })) {
+      if (event.kind === "synced") {
+        synced = true;
+        break;
+      }
+      if (event.kind === "commit") deliver(event);
+    }
+    if (options.signal?.aborted) return { kind: "cancelled" };
+    if (!synced) throw new Error("Output replay ended before delivery completed.");
+    return waited === "question"
+      ? { kind: "input-required" }
+      : outcomeOf(await nyte.runs.current({ sessionId }));
+  } catch (cause) {
+    if (options.signal?.aborted) {
+      await nyte.runs.abort({ sessionId });
+      return { kind: "cancelled" };
+    }
+    const error = deliveryFailure === undefined ? cause : deliveryFailure.cause;
+    return {
+      kind: "failed",
+      code: "delivery_failed",
+      message: error instanceof Error ? error.message : String(error),
+    };
   } finally {
     stop.abort();
     await streaming;
-    endLine();
+    if (lineOpen) output.write("\n");
   }
 }
 
-/** Say how the run ended, on stderr for a human and as the last JSON line otherwise. */
+/** Called once by the invocation owner, after all resource cleanup. */
 export function reportPrintOutcome(
   outcome: PrintOutcome,
-  options: { readonly sessionId: SessionId; readonly json: boolean; readonly output: PrintOutput },
+  options: { readonly sessionId?: SessionId; readonly json: boolean; readonly output: PrintOutput },
 ): number {
-  const { output } = options;
+  const next = options.sessionId === undefined ? undefined : sessionRecovery(options.sessionId);
+  const code =
+    outcome.kind === "failed"
+      ? (outcome.code ?? "run_failed")
+      : outcome.kind === "cancelled"
+        ? "local_cancelled"
+        : outcome.kind === "input-required"
+          ? "input_required"
+          : outcome.kind;
+  if (options.json) {
+    options.output.write(
+      `${JSON.stringify({
+        type: "result",
+        kind: outcome.kind,
+        code,
+        session: options.sessionId,
+        message: outcome.kind === "failed" ? outcome.message : undefined,
+        signal: outcome.kind === "cancelled" ? outcome.signal : undefined,
+        next,
+      })}\n`,
+    );
+  } else {
+    options.output.error(
+      outcome.kind === "failed"
+        ? `error: ${outcome.message}`
+        : `${options.sessionId === undefined ? "" : `session ${options.sessionId} · `}${outcome.kind}`,
+    );
+    if (next !== undefined) options.output.error(`open in a terminal: ${next.command}`);
+  }
   switch (outcome.kind) {
     case "completed":
-    case "aborted":
-      if (options.json) {
-        output.write(encode({ type: "result", session: options.sessionId, kind: outcome.kind }));
-      } else {
-        output.error(`session ${options.sessionId} · ${outcome.kind}`);
-        output.error(`resume with: nyte -p --resume ${options.sessionId}`);
-      }
-      return outcome.kind === "completed" ? 0 : 130;
+      return 0;
     case "failed":
-      if (options.json) output.write(encode({ type: "error", message: outcome.message }));
-      else output.error(`error: ${outcome.message}`);
       return 1;
-    case "cancelled":
+    case "input-required":
+      return 2;
+    case "aborted":
       return 130;
+    case "cancelled":
+      return outcome.signal === "SIGTERM" ? 143 : 130;
     default: {
-      const _exhaustive: never = outcome;
-      return _exhaustive;
+      const exhaustive: never = outcome;
+      return exhaustive;
     }
   }
 }

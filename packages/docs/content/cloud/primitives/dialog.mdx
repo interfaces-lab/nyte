@@ -1,0 +1,144 @@
+---
+title: Dialog
+description: "A modal on the popover tokens: portal, scrim, centered popup, and a built-in close button"
+---
+
+```ts title="Import"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@nyte-ai/ui";
+import { Dialog as DialogPrimitive } from "@nyte-ai/ui/dialog";
+```
+
+Implemented in `packages/ui/src/components/ui/dialog.tsx`, wrapping
+[`@nyte-ai/ui/dialog`](/cloud/headless/dialog). `Dialog` is `Dialog.Root` re-exported. The
+wrapper does not export a styled Trigger or Close; use `DialogPrimitive.Trigger` and
+`DialogPrimitive.Close` with `render={<Button … />}`.
+
+## Usage
+
+- Every dialog **must** have a `DialogTitle`. It becomes the accessible name. If the title is
+  visually redundant, hide it with your own visually-hidden style rather than omitting it.
+- Use `DialogDescription` for the one sentence that explains the consequence. Longer content goes
+  in the body.
+- Confirmations that destroy something use [Alert dialog](/cloud/primitives/alert-dialog), which
+  does not dismiss on outside press.
+- `showCloseButton` is on by default. Turn it off only when the footer already has a Cancel and the
+  dialog is small enough that the ✕ would crowd the title.
+
+## Anatomy
+
+```tsx
+<Dialog>
+  <DialogPrimitive.Trigger />
+  <DialogContent>
+    {/* Portal › Backdrop › Popup, plus Close */}
+    <DialogHeader>
+      <DialogTitle />
+      <DialogDescription />
+    </DialogHeader>
+    …
+    <DialogFooter />
+  </DialogContent>
+</Dialog>
+```
+
+`DialogContent` renders `Dialog.Portal › Dialog.Backdrop › Dialog.Popup` and, when
+`showCloseButton`, a `Dialog.Close` rendered as `<Button size="icon-sm" variant="ghost">` with
+`aria-label="Close"` in the top-right corner. `DialogHeader` reserves `--nyte-control-height-sm` of
+right padding so the title clears that button.
+
+## Example
+
+<Preview>
+  <DialogDemo />
+</Preview>
+
+```tsx
+<Dialog>
+  <DialogPrimitive.Trigger render={<Button variant="outline" />}>
+    Rename session
+  </DialogPrimitive.Trigger>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Rename session</DialogTitle>
+      <DialogDescription>The name shows in the sidebar and in the window title.</DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <DialogPrimitive.Close render={<Button variant="ghost" />}>Cancel</DialogPrimitive.Close>
+      <DialogPrimitive.Close render={<Button />}>Save</DialogPrimitive.Close>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+## Props
+
+### Dialog (Root)
+
+<include>../../base-ui-reference/dialog/Root.md</include>
+
+### DialogContent
+
+`DialogContentProps` is `StyledProps<Dialog.Popup.Props>` plus:
+
+| Prop              | Type      | Default | Description                                        |
+| ----------------- | --------- | ------- | -------------------------------------------------- |
+| `showCloseButton` | `boolean` | `true`  | Render the ✕ close button in the top-right corner. |
+
+The styling channels (`className`, `style`, `xstyle`) apply to the Popup. The Backdrop is not
+exposed; theme `--nyte-color-scrim` to change it.
+
+<include>../../base-ui-reference/dialog/Popup.md</include>
+
+### DialogTitle
+
+<include>../../base-ui-reference/dialog/Title.md</include>
+
+### DialogDescription
+
+<include>../../base-ui-reference/dialog/Description.md</include>
+
+### DialogHeader, DialogFooter
+
+Plain `<div>`s with `StyledProps<React.ComponentProps<"div">>`. Header is a column with
+`--nyte-space-1` gap; footer is a right-aligned row with `--nyte-space-2` gap.
+
+### Trigger and Close
+
+From `@nyte-ai/ui/dialog`:
+
+<include>../../base-ui-reference/dialog/Trigger.md</include>
+
+<include>../../base-ui-reference/dialog/Close.md</include>
+
+## Accessibility
+
+Base UI's dialog behavior, unchanged by the wrapper:
+
+- The popup has `role="dialog"` and `aria-modal="true"`, and is labelled by `DialogTitle` and
+  described by `DialogDescription` automatically.
+- Focus moves into the popup on open (first tabbable element, or the popup itself when opened by
+  touch) and returns to the trigger on close. Tab cycles inside the popup.
+- Escape closes. Outside press closes unless `disablePointerDismissal` is set on Root.
+- Content outside the dialog is inert while it is open, and background scroll is locked.
+
+## Styling
+
+| Token                                                                     | Role                                                                                               |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `--nyte-layer-dialog`                                                     | z-index of backdrop and popup (50)                                                                 |
+| `--nyte-color-scrim`                                                      | Backdrop                                                                                           |
+| `--nyte-dialog-width`, `-max-width`, `-max-height`                        | Popup box                                                                                          |
+| `--nyte-radius-dialog`, `--nyte-elevation-dialog`, `--nyte-color-popover` | Popup surface                                                                                      |
+| `--nyte-space-4`                                                          | Popup padding and grid gap                                                                         |
+| `--nyte-font-size-title` / `--nyte-leading-title`                         | Title                                                                                              |
+| `--nyte-color-muted-foreground`                                           | Description                                                                                        |
+| `--nyte-motion-normal`                                                    | Fade and 0.98 scale via `[data-starting-style]` / `[data-ending-style]`; `0s` under reduced motion |
+
+`dialogStyles` is exported so Alert dialog renders the same surface.

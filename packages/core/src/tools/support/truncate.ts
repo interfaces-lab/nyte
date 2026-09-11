@@ -191,7 +191,7 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
     };
   }
 
-  // Work backwards from the end
+  // Work backwards from the end, collecting newest first and reversing once.
   const outputLinesArr: string[] = [];
   let outputBytesCount = 0;
   let truncatedBy: "lines" | "bytes" = "lines";
@@ -207,16 +207,17 @@ export function truncateTail(content: string, options: TruncationOptions = {}): 
       // take the end of the line (partial)
       if (outputLinesArr.length === 0) {
         const truncatedLine = truncateStringToBytesFromEnd(line, maxBytes);
-        outputLinesArr.unshift(truncatedLine);
+        outputLinesArr.push(truncatedLine);
         outputBytesCount = Buffer.byteLength(truncatedLine, "utf-8");
         lastLinePartial = true;
       }
       break;
     }
 
-    outputLinesArr.unshift(line);
+    outputLinesArr.push(line);
     outputBytesCount += lineBytes;
   }
+  outputLinesArr.reverse();
 
   // If we exited due to line limit
   if (outputLinesArr.length >= maxLines && outputBytesCount <= maxBytes) {

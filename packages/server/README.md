@@ -1,19 +1,27 @@
 # @nyte-ai/server
 
 A Web `Request -> Response` handler over a `Nyte` SDK, speaking the
-`@nyte-ai/protocol` wire: JSON calls on `POST /v1/call/{verb}` and a
+`@nyte-ai/protocol` wire: `GET /v1/info` says which release and wire version
+is answering, JSON calls on `POST /v1/call/{operation}`, and a
 server-sent-event stream on `GET /v1/watch`. It listens on nothing itself;
 you hand `server.fetch` to whatever serves `Request` objects.
 
 ## Composition
 
 ```ts
-import { createNyte } from "@nyte-ai/core";
+import { createNyteModels } from "@nyte-ai/ai";
 import { SqliteStore } from "@nyte-ai/core/store";
+import { createHost, resolveModel } from "@nyte-ai/host";
 import { createNyteServer } from "@nyte-ai/server";
 
+const models = createNyteModels(); // credentials from `nyte login` or provider env keys
 const store = new SqliteStore("/path/to/store.db");
-const nyte = await createNyte({ store, streamFn, models, model, plugins, env });
+const nyte = await createHost({
+  models,
+  model: await resolveModel(models, "anthropic/claude-opus-5"),
+  store,
+  plugins: { kind: "chat" }, // no filesystem tools, no project plugins, no trust
+});
 const detach = nyte.attach(); // this host runs the sessions; the server never does
 
 const token = process.env.NYTE_TOKEN;
@@ -21,9 +29,10 @@ if (token === undefined) throw new Error("NYTE_TOKEN is required");
 
 const server = createNyteServer({
   sdk: nyte,
+  version: "0.0.2", // the host's release, answered on /v1/info
   auth: { kind: "token", token }, // 16+ characters
   // browserOrigins: ["https://app.example"],  // only if a browser page calls in
-  onError: (failure) => console.error(failure.route, failure.verb, failure.cause),
+  onError: (failure) => console.error(failure.route, failure.operation, failure.cause),
 });
 
 // The handler is a function; the listener is yours. Bind it to loopback:
@@ -49,9 +58,9 @@ nothing else.
 - Every request: browser origin, then credential, then route and method.
 - Every call: `content-type: application/json`, body size (`maxBodyBytes`,
   default 1 MiB, enforced while reading), valid UTF-8 and JSON, the
-  `{"input": ...}` envelope with no other key, and the verb's input schema
+  `{"input": ...}` envelope with no other key, and the operation's input schema
   with `additionalProperties: false`. An own `__proto__` key parsed from JSON
-  is an extra key and is refused. Verb names are matched with `Object.hasOwn`.
+  is an extra key and is refused. Operation names are matched with `Object.hasOwn`.
 - `messages.send` and `messages.redeliver`: the lane is in the SDK's landing
   policy, reported as `invalid_input` at `/lane` before the SDK is called.
 - Every watch: exactly the query keys `sessionId`, and one of `after` (a
@@ -98,7 +107,7 @@ or host, list the public origin.
 
 - One credential, all sessions. Nothing scopes which session ids a caller
   may name; multi-tenant access control is out of scope for this revision.
-- The verb set is the desktop's SDK subset plus `landing` (see the protocol
+- The operation set is the desktop's SDK subset plus `landing` (see the protocol
   README). `runs.wait` and `runs.compact` are not served.
 - No rate limiting, no request logging beyond `onError`.
 - No listener. Bind whatever you attach it to on a loopback address unless

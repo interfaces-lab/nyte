@@ -5,6 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./openai-compaction": "./src/openai-compaction.ts",
+    "./openai-astra-context": "./src/openai-astra-context.ts",
+    "./mcp": "./src/mcp.ts",
     "./examples/fast-mode": "./examples/fast-mode.ts",
     "./examples/notifications": "./examples/notifications.ts",
     "./examples/question": "./examples/question.ts",
@@ -18,14 +20,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
-    "@opentui/core": "^0.5.10",
-    "typebox": "1.3.7"
+    "@opentui/core": "^0.5.11",
+    "typebox": "1.3.7",
+    "zod": "4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }

@@ -1,4 +1,9 @@
-import { compactOpenAICodexContext, compactOpenAIResponsesContext, type Models } from "@nyte-ai/ai";
+import {
+  compactOpenAICodexContext,
+  compactOpenAIResponsesContext,
+  OpenAICodexCompactionError,
+  type Models,
+} from "@nyte-ai/ai";
 import { definePlugin } from "@nyte-ai/core/plugins";
 
 export const OPENAI_COMPACTION_PLUGIN_ID = "openai/compaction";
@@ -24,12 +29,20 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
         ) {
           return undefined;
         }
-        const timeout = AbortSignal.timeout(COMPACTION_TIMEOUT_MS);
+        // Codex owns a streaming idle timeout, not a total compaction deadline.
+        const timeout =
+          model.api === "openai-codex-responses"
+            ? undefined
+            : AbortSignal.timeout(COMPACTION_TIMEOUT_MS);
         const signal =
-          parentSignal === undefined ? timeout : AbortSignal.any([parentSignal, timeout]);
-        signal.throwIfAborted();
+          timeout === undefined
+            ? parentSignal
+            : parentSignal === undefined
+              ? timeout
+              : AbortSignal.any([parentSignal, timeout]);
+        signal?.throwIfAborted();
         const auth = await models.getAuth(model, { signal });
-        signal.throwIfAborted();
+        signal?.throwIfAborted();
         if (auth === undefined) return undefined;
         const requestModel = { ...model, baseUrl: auth.auth.baseUrl ?? model.baseUrl };
         const context =
@@ -42,29 +55,34 @@ export function openaiCompactionPlugin({ models }: OpenAICompactionOptions) {
                   .join("\n\n"),
               };
         const options = { apiKey: auth.auth.apiKey, headers: auth.auth.headers, signal };
-        const compacted =
-          model.api === "openai-codex-responses"
-            ? await compactOpenAICodexContext(
-                { ...requestModel, api: "openai-codex-responses" },
-                context,
-                options,
-              )
-            : await compactOpenAIResponsesContext(
-                { ...requestModel, api: "openai-responses" },
-                context,
-                options,
-              );
-        signal.throwIfAborted();
-        return {
-          material: {
-            type: "provider",
-            provider: model.provider,
-            api: model.api,
-            model: model.id,
-            data: compacted.data,
-          },
-          usage: compacted.usage,
-        };
+        try {
+          const compacted =
+            model.api === "openai-codex-responses"
+              ? await compactOpenAICodexContext(
+                  { ...requestModel, api: "openai-codex-responses" },
+                  context,
+                  options,
+                )
+              : await compactOpenAIResponsesContext(
+                  { ...requestModel, api: "openai-responses" },
+                  context,
+                  options,
+                );
+          // Core checks cancellation before publishing and retains reported usage.
+          return {
+            material: {
+              type: "provider",
+              provider: model.provider,
+              api: model.api,
+              model: model.id,
+              data: compacted.data,
+            },
+            usage: compacted.usage,
+          };
+        } catch (error) {
+          if (!(error instanceof OpenAICodexCompactionError)) throw error;
+          return { error: error.message, usage: error.usage };
+        }
       });
     },
   });

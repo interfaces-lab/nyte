@@ -1,5 +1,5 @@
 import { effectPrefix, effectRef } from "./names.ts";
-import type { Actor, Effect, Lease, Oid, RefName, RefUpdateOutcome } from "./model.ts";
+import type { Actor, Effect, Lease, Oid, RefName, RefUpdateOutcome, Selection } from "./model.ts";
 import type { Session } from "./store.ts";
 
 type EffectIntent = Extract<Effect, { readonly state: "intent" }>;
@@ -9,6 +9,39 @@ export interface EffectView {
   readonly oid: Oid;
   readonly effect: Effect;
   readonly intent: Extract<Effect, { readonly state: "intent" }>;
+}
+
+export type OpenEffectOutcome =
+  | { readonly kind: "opened"; readonly view: EffectView }
+  | { readonly kind: "exists"; readonly view: EffectView }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "fenced" };
+
+export type ParkEffectOutcome =
+  | { readonly kind: "parked"; readonly view: EffectView }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "fenced" };
+
+export type ExpireEffectOutcome =
+  | { readonly kind: "expired"; readonly view: EffectView }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "fenced" };
+
+export type SettleEffectOutcome =
+  | { readonly kind: "settled"; readonly view: EffectView }
+  | { readonly kind: "conflict" }
+  | { readonly kind: "fenced" };
+
+async function assertExistingEffect(
+  session: Session,
+  lease: Lease,
+  view: EffectView,
+): Promise<OpenEffectOutcome> {
+  const outcome = await session.refs.update([{ name: view.ref, from: view.oid, to: view.oid }], {
+    reason: "effect",
+    lease,
+  });
+  return outcome.ok ? { kind: "exists", view } : { kind: outcome.reason };
 }
 
 function isEffect(effect: Awaited<ReturnType<Session["objects"]["get"]>>): effect is Effect {
@@ -53,6 +86,7 @@ function intentOidForPark(view: EffectView): Oid {
     case "intent":
       return view.oid;
     case "signal":
+    case "expired":
       return view.effect.intent;
     case "waiting":
     case "result":
@@ -70,6 +104,7 @@ function intentOidForSettlement(view: EffectView): Oid {
       return view.oid;
     case "waiting":
     case "signal":
+    case "expired":
       return view.effect.intent;
     case "result":
       throw new TypeError("Cannot settle an effect that already has a result");
@@ -78,6 +113,11 @@ function intentOidForSettlement(view: EffectView): Oid {
       return _exhaustive;
     }
   }
+}
+
+function effectTimeAfter(view: EffectView, now: number): number {
+  // Distinct causal times keep identical re-parks content-addressed as different generations.
+  return Math.max(now, view.effect.at + 1);
 }
 
 export async function readEffect(
@@ -107,15 +147,9 @@ export async function openEffect(
     readonly args: EffectIntent["args"];
     readonly replay: EffectIntent["replay"];
   },
-): Promise<
-  | { readonly kind: "opened"; readonly view: EffectView }
-  | {
-      readonly kind: "exists";
-      readonly view: EffectView;
-    }
-> {
+): Promise<OpenEffectOutcome> {
   const existing = await readEffect(session, options);
-  if (existing !== undefined) return { kind: "exists", view: existing };
+  if (existing !== undefined) return assertExistingEffect(session, options.lease, existing);
 
   const effect: EffectIntent = {
     kind: "effect",
@@ -135,39 +169,70 @@ export async function openEffect(
   });
   if (outcome.ok) return { kind: "opened", view: { ref, oid, effect, intent: effect } };
 
+  if (outcome.reason === "fenced") return { kind: "fenced" };
   const winner = await readEffect(session, options);
-  if (winner !== undefined) return { kind: "exists", view: winner };
-
-  switch (outcome.reason) {
-    case "conflict":
-      throw new Error(`Effect ${ref} disappeared after its open conflicted`);
-    case "fenced":
-      throw new Error(`Effect ${ref} could not open because its lease was fenced`);
-    default: {
-      const _exhaustive: never = outcome;
-      return _exhaustive;
-    }
-  }
+  return winner === undefined
+    ? { kind: "conflict" }
+    : assertExistingEffect(session, options.lease, winner);
 }
 
 export async function parkEffect(
   session: Session,
-  options: { readonly lease: Lease; readonly view: EffectView },
-): Promise<EffectView | { readonly kind: "conflict" }> {
-  const effect: Effect = {
+  options: {
+    readonly lease: Lease;
+    readonly view: EffectView;
+    readonly selection?: Selection;
+    readonly until?: number;
+  },
+): Promise<ParkEffectOutcome> {
+  const parked = {
     kind: "effect",
     state: "waiting",
     intent: intentOidForPark(options.view),
-    at: Date.now(),
-  };
+    at: effectTimeAfter(options.view, Date.now()),
+  } as const;
+  const selected =
+    options.selection === undefined ? parked : { ...parked, selection: options.selection };
+  const effect: Effect =
+    options.until === undefined ? selected : { ...selected, until: options.until };
   const oid = await putEffect(session, effect);
   const outcome = await session.refs.update(
     [{ name: options.view.ref, from: options.view.oid, to: oid }],
     { reason: "effect", lease: options.lease },
   );
   return outcome.ok
-    ? { ref: options.view.ref, oid, effect, intent: options.view.intent }
-    : { kind: "conflict" };
+    ? { kind: "parked", view: { ref: options.view.ref, oid, effect, intent: options.view.intent } }
+    : { kind: outcome.reason };
+}
+
+export async function expireEffect(
+  session: Session,
+  options: { readonly lease: Lease; readonly view: EffectView; readonly now: number },
+): Promise<ExpireEffectOutcome> {
+  if (
+    options.view.effect.state !== "waiting" ||
+    options.view.effect.until === undefined ||
+    options.view.effect.until > options.now
+  ) {
+    return { kind: "conflict" };
+  }
+  const effect: Effect = {
+    kind: "effect",
+    state: "expired",
+    intent: options.view.effect.intent,
+    at: effectTimeAfter(options.view, options.now),
+  };
+  const oid = await putEffect(session, effect);
+  const outcome = await session.refs.update(
+    [{ name: options.view.ref, from: options.view.oid, to: oid }],
+    { reason: "expired", lease: options.lease },
+  );
+  return outcome.ok
+    ? {
+        kind: "expired",
+        view: { ref: options.view.ref, oid, effect, intent: options.view.intent },
+      }
+    : { kind: outcome.reason };
 }
 
 export async function signalEffect(
@@ -175,6 +240,8 @@ export async function signalEffect(
   options: {
     readonly runId: string;
     readonly callId: string;
+    /** When supplied, signal only this exact waiting generation. */
+    readonly waitId?: Oid;
     readonly signal: Extract<Effect, { readonly state: "signal" }>["signal"];
     readonly actor?: Actor;
   },
@@ -186,13 +253,20 @@ export async function signalEffect(
   const view = await readEffect(session, options);
   if (view === undefined) return { kind: "not_found" };
   if (view.effect.state !== "waiting") return { kind: "not_waiting", view };
+  if ("waitId" in options && options.waitId !== view.oid) {
+    return { kind: "not_waiting", view };
+  }
+  const now = Date.now();
+  if (view.effect.until !== undefined && view.effect.until <= now) {
+    return { kind: "not_waiting", view };
+  }
 
   const baseEffect: Effect = {
     kind: "effect",
     state: "signal",
     intent: view.effect.intent,
     signal: options.signal,
-    at: Date.now(),
+    at: effectTimeAfter(view, now),
   };
   const effect: Effect =
     options.actor === undefined ? baseEffect : { ...baseEffect, author: options.actor };
@@ -221,13 +295,13 @@ export async function settleEffect(
     readonly view: EffectView;
     readonly result: Extract<Effect, { readonly state: "result" }>["result"];
   },
-): Promise<EffectView | { readonly kind: "conflict" }> {
+): Promise<SettleEffectOutcome> {
   const effect: Effect = {
     kind: "effect",
     state: "result",
     intent: intentOidForSettlement(options.view),
     result: options.result,
-    at: Date.now(),
+    at: effectTimeAfter(options.view, Date.now()),
   };
   const oid = await putEffect(session, effect);
   const outcome = await session.refs.update(
@@ -235,8 +309,8 @@ export async function settleEffect(
     { reason: "effect", lease: options.lease },
   );
   return outcome.ok
-    ? { ref: options.view.ref, oid, effect, intent: options.view.intent }
-    : { kind: "conflict" };
+    ? { kind: "settled", view: { ref: options.view.ref, oid, effect, intent: options.view.intent } }
+    : { kind: outcome.reason };
 }
 
 export async function clearEffects(
@@ -255,7 +329,8 @@ export async function clearEffects(
 
 /**
  * Recovery depends only on the durable state. An unstarted intent follows its replay policy, a
- * parked call stays blocked, a signal enters the wake handler, and a settled result is reused.
+ * parked call stays blocked until signalled or expired, either wake state enters the handler, and a
+ * settled result is reused.
  * This avoids guessing whether the uncertain work ran after a process disappeared.
  */
 export function decideRecovery(
@@ -275,6 +350,7 @@ export function decideRecovery(
       }
     case "waiting":
       return "blocked";
+    case "expired":
     case "signal":
       return "wake";
     case "result":
