@@ -48,26 +48,40 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
 
 ## Delegated models
 
-Desktop and CLI delegation use the same host catalog. The host checks the exact
-selection against `models.getAvailable()` before creating the child. Provider auth
-and `filterModels` determine availability.
+A task call may select an exact `provider/model`. When it omits the model, Nyte uses
+`openai-codex/gpt-5.6-sol`; when it omits the thinking level, Nyte uses `high`. Users can
+request another model or thinking level, and the parent passes that explicit choice for the call.
+There is no global subagent setting.
 
-The parent chooses an exact `provider/model` for each task call. Users can instruct it
-which model to use. There is no global subagent model override. An unavailable
-selection returns a task error before child creation; Nyte never substitutes another
-model or provider.
+The host checks the resolved selection against `models.getAvailable()` before creating the child.
+Provider auth and `filterModels` determine availability. An unavailable explicit choice or default
+returns a task error before child creation; Nyte never substitutes another model or provider.
 
 The child config records the resolved model before its prompt runs. Missing or
 catalog-blocked ids return a task error without creating a child. Provider errors
 not reflected in catalog availability remain request errors, not automatic
 model-switch retries.
 
-## Claude Code local history
+## Local tool usage
 
-`@nyte-ai/host/usage` exports `readClaudeCodeUsage`, `ClaudeCodeUsageOptions`,
-and `ClaudeCodeUsage`. This is an on-demand filesystem scan, not account limits
-or subscription billing. Display it in a separate Claude Code section across
-all local projects. Do not merge it into Nyte totals.
+`@nyte-ai/host/usage` exports `readLocalUsage` for desktop and TUI. It reads
+Claude Code and Codex local history together, returning independent `claudeCode`
+and `codex` results. Each result is `LocalHistoryUsage`: missing, failed, or ready
+with token consumption, per-model totals, estimated API cost, and scan warnings.
+Usage measures recorded consumption, not subscription limits or remaining quota.
+These all-time tool summaries stay separate from Nyte's own totals.
+
+Both clients use the same read and pricing logic. Desktop runs it in its existing
+scan worker with persisted file caches; TUI reuses in-memory file caches between
+visits to `/usage`. Neither needs a login, credentials, network request, or a CLI
+executable on PATH. Closing the TUI panel cancels the scan.
+
+`readCodexUsage` reads `sessions` and `archived_sessions` under explicit `homeDir`,
+then nonblank `CODEX_HOME`, then `~/.codex`. `readClaudeCodeUsage` is also available
+for callers reading only Claude Code. `readLocalUsage` accepts `models`, an optional
+`signal`, and optional `caches` from `createUsageScanCaches()`.
+
+The following details describe the Claude Code reader:
 
 ```ts
 import type { Models } from "@nyte-ai/ai";
@@ -93,8 +107,9 @@ The directory is explicit `configDir`, then nonblank `CLAUDE_CONFIG_DIR`, then
 `~/.claude`. Only regular `.jsonl` files beneath its `projects` directory are
 read, recursively, including subagents. Child symlink entries are skipped;
 the configured root and its ancestors may be symlinks. Nothing executes and no credentials,
-authentication, network calls, core sessions, commits, or persistent caches are
-involved. Only the catalog's synchronous `getModels("anthropic")` is called.
+authentication, network calls, core sessions, or commits are involved. Optional
+scan caches reuse unchanged files. Only the catalog's synchronous
+`getModels("anthropic")` is called.
 
 Assistant usage is validated as nonnegative safe integers. The deduplication
 key is the `message.id` / `requestId` tuple across files and projects, with
@@ -122,6 +137,19 @@ final line without a newline is treated as an in-progress append until the next
 scan. A complete final object counts without a newline. Files are streamed only
 to their size at open.
 Cancellation rejects with the signal's reason and never returns partial totals.
+
+## Account usage
+
+`readAccountUsage` from `@nyte-ai/host/usage` reads subscription windows for
+`anthropic` or `openai-codex` through Nyte's existing model authentication and AI
+adapters. It returns `ready` with `AccountLimits`, `unavailable`, or `failed` with a
+sanitized message. The caller supplies models, provider, and an abort signal.
+Cancellation propagates; timeout produces a failed read. Model-specific windows
+are retained, including Claude Fable when reported by the provider.
+
+This read is separate from `readLocalUsage`: it requires a subscription login and
+network access and does not contribute token counts or estimated costs. It uses
+the account signed into Nyte, not credentials discovered from an external CLI.
 
 ## Telemetry export
 

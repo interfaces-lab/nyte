@@ -122,6 +122,23 @@ export async function run(): Promise<string> {
       handle.readDocument().text === "" && references.length === 0,
       "clear reports removed references",
     );
+    draft = { ...draft };
+    render();
+    await paint();
+    area.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+    flushSync(() => handle.replaceText(0, 0, "unreported composition"));
+    await paint();
+    check(draft.text === "", "composition defers the parent document report");
+    draft = { ...draft };
+    render();
+    await paint();
+    check(
+      handle.readDocument().text === "",
+      "the parent document clears editor text missed during composition",
+    );
+    area.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+    await paint();
+    check(handle.readDocument().text === "", "composition end keeps the parent-owned clear");
     flushSync(() => handle.insertReference({ kind: "file", file }));
     await paint();
     check(references.length === 1, "insertion reports new reference");

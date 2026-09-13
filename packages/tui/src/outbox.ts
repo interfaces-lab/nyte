@@ -37,6 +37,8 @@ export interface OutboxDependencies {
   readonly mintKey?: () => string;
   /** Called whenever the set of sending entries changes. */
   readonly onChange?: (entries: readonly OutboxEntry[]) => void;
+  /** Called with the store's answer, just before the entry leaves `entries`. */
+  readonly onReceipt?: (entry: OutboxEntry, receipt: SendReceipt) => void;
 }
 
 const FIRST_DELAY_MS = 250;
@@ -130,6 +132,7 @@ export class Outbox {
       this.changed();
       try {
         const receipt = await this.dependencies.send({ key, lane, content });
+        this.dependencies.onReceipt?.(flight.entry, receipt);
         return this.settle(flight, { kind: "durable", change: receipt.change, key });
       } catch (cause) {
         flight.entry = { ...flight.entry, lastError: errorMessage(cause) };

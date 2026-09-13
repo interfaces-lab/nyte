@@ -30,4 +30,4 @@ pnpm lint
 pnpm typecheck
 ```
 
-Build and test individual packages. See the [design record](packages/docs/content/docs/design.mdx) for architecture and [AGENTS.md](AGENTS.md) for repository conventions.
+Build and test individual packages. See [CONTRIBUTING.md](CONTRIBUTING.md) for the package map, checks, and commit conventions, the [design record](packages/docs/content/docs/design.mdx) for architecture, and [AGENTS.md](AGENTS.md) for agent instructions.

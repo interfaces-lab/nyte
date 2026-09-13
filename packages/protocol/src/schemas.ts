@@ -79,6 +79,7 @@ import type {
   SessionInfo as SessionInfoType,
   SessionParent as SessionParentType,
   SessionActivationState as SessionActivationStateType,
+  SessionMetadata as SessionMetadataType,
   SessionSnapshot as SessionSnapshotType,
 } from "./sdk.ts";
 import type {
@@ -443,6 +444,7 @@ export const Commit = typed<CommitType>()(
     parent: nullable(Oid),
     imports: Type.Optional(Type.Array(Oid)),
     change: Type.Optional(Oid),
+    key: Type.Optional(Type.String()),
     run: Type.Optional(Type.String()),
     body: CommitBody,
     at: Type.Number(),
@@ -573,6 +575,7 @@ export const PendingItem = typed<PendingItemType>()(
     at: Type.Number(),
     content: UserContent,
     author: Type.Optional(Actor),
+    key: Type.Optional(Type.String()),
   }),
 );
 
@@ -594,6 +597,7 @@ export const UserTurnPart = typed<UserTurnPartType>()(
     commit: Oid,
     parent: nullable(Oid),
     content: UserContent,
+    key: Type.Optional(Type.String()),
   }),
 );
 
@@ -672,19 +676,25 @@ export const FileChange = typed<FileChangeType>()(
   open({ path: Type.String(), added: Type.Number(), removed: Type.Number(), lastCommit: Oid }),
 );
 
+const sessionMetadata = {
+  session: SessionInfo,
+  head: HeadName,
+  config: RunConfig,
+  context: ContextStatus,
+};
+
+export const SessionMetadata = typed<SessionMetadataType>()(open(sessionMetadata));
+
 export const SessionSnapshot = typed<SessionSnapshotType>()(
   open({
+    ...sessionMetadata,
     seq: Seq,
-    session: SessionInfo,
-    head: HeadName,
     tip: nullable(Oid),
-    config: RunConfig,
     transcript: Type.Array(Turn),
     pending: Type.Array(PendingItem),
     run: Type.Optional(RunInfo),
     compaction: Type.Optional(CompactionInfo),
     parked: Type.Optional(Type.Array(ParkedCall)),
-    context: ContextStatus,
   }),
 );
 
@@ -879,7 +889,14 @@ export const ModelInfo = typed<ModelInfoType>()(
     id: Type.String(),
     provider: Type.String(),
     name: Type.String(),
-    contextWindow: Type.Optional(Type.Number()),
+    contextWindow: Type.Number(),
+    cost: open({
+      input: Type.Number(),
+      output: Type.Number(),
+      cacheRead: Type.Number(),
+      cacheWrite: Type.Number(),
+    }),
+    thinkingLevels: Type.Array(ThinkingLevel),
   }),
 );
 
@@ -933,6 +950,7 @@ export const SessionEvent = typed<SessionEventType>()(
     open({ seq: Seq, kind: Type.Literal("queued"), head: HeadName, item: PendingItem }),
     open({ seq: Seq, kind: Type.Literal("landed"), head: HeadName, change: Oid }),
     open({ seq: Seq, kind: Type.Literal("queue_cancelled"), change: Oid }),
+    open({ seq: Seq, kind: Type.Literal("config_queued"), head: HeadName, change: Oid }),
     open({
       seq: Seq,
       kind: Type.Literal("effect"),

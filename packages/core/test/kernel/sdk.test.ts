@@ -43,17 +43,22 @@ const model: Model<Api> = {
 
 /**
  * Answers with how many user messages it saw, after `gate` (if any) opens.
- * The tail message decides: a user message with text "ask" makes the model
- * call the `ask` tool once.
+ * The tail message decides: `ask` makes the model call one waiting tool;
+ * `ask many` calls two whose IDs do not sort in call order.
  */
 function echo(options: { readonly gate?: () => Promise<void> } = {}): StreamFn {
   return (_model, context, streamOptions) => {
     const users = context.messages.filter((item) => item.role === "user").length;
     const tail = context.messages.at(-1);
-    const wantsTool =
-      tail?.role === "user" && !Array.isArray(tail.content) && tail.content === "ask";
+    const tailText =
+      tail?.role === "user" && !Array.isArray(tail.content) ? tail.content : undefined;
+    const wantsTool = tailText === "ask" || tailText === "ask many";
+    const calls =
+      tailText === "ask many"
+        ? [call("z", "ask", { question: "first" }), call("a", "ask", { question: "second" })]
+        : [call("ask-1", "ask", { question: "which?" })];
     const answer: AssistantMessage = wantsTool
-      ? assistant("", { calls: [call("ask-1", "ask", { question: "which?" })] })
+      ? assistant("", { calls })
       : assistant(`saw ${String(users)}`, { usage });
     const stream = createAssistantMessageEventStream();
     // A real provider stream ends when its request is aborted; so does this one.
@@ -261,6 +266,8 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
     assert.deepEqual(snapshot.transcript, []);
 
     nyte.attach();
+    const choice = await nyte.sessions.configure({ sessionId: id, thinkingLevel: "high" });
+    assert.ok(choice.kind === "queued");
     await nyte.messages.send({ sessionId: id, content: "hello" });
     const events = await collect(
       nyte,
@@ -271,12 +278,28 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
       events.some((event) => event.kind === "synced"),
       "replay ends with synced",
     );
+    // The choice is announced when queued, before the landing that commits it.
+    const queuedChoice = events.findIndex(
+      (event) => event.kind === "config_queued" && event.change === choice.change,
+    );
+    const landedChoice = events.findIndex(
+      (event) => event.kind === "landed" && event.change === choice.change,
+    );
+    assert.ok(queuedChoice !== -1 && landedChoice > queuedChoice);
+    assert.equal(
+      events[queuedChoice]?.kind === "config_queued" && events[queuedChoice].head,
+      "main",
+    );
     const commits = events.flatMap((event) =>
       event.kind === "commit"
-        ? [event.item.commit.body.kind === "message" ? event.item.commit.body.message.role : "?"]
+        ? [
+            event.item.commit.body.kind === "message"
+              ? event.item.commit.body.message.role
+              : event.item.commit.body.kind,
+          ]
         : [],
     );
-    assert.deepEqual(commits, ["user", "assistant"]);
+    assert.deepEqual(commits, ["config", "user", "assistant"]);
     assert.ok(events.some((event) => event.kind === "text_delta" && event.delta === "saw"));
     assert.ok(events.some((event) => event.kind === "queued"));
     assert.ok(events.some((event) => event.kind === "landed"));
@@ -285,7 +308,7 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
   }
 });
 
-test("a stop with a steer waiting interrupts the answer and the same run answers the steer; a second stop ends it and keeps what was said", async () => {
+test("a stop with a steer waiting ends the run; a new run answers the steer, and a second stop ends that one too", async () => {
   const gates: (() => void)[] = [];
   const nyte = await open(
     echo({ gate: () => new Promise<void>((resolve) => gates.push(resolve)) }),
@@ -300,24 +323,37 @@ test("a stop with a steer waiting interrupts the answer and the same run answers
 
     await nyte.messages.send({ sessionId: id, content: "do this instead", lane: "steer" });
     assert.equal((await nyte.runs.abort({ sessionId: id })).kind, "requested");
-    // The interrupted answer stays, the steer lands, and the model is asked again
-    // under the same run: the drive's cancelled signal did not cancel that call.
-    await collect(
+    // The interrupted answer stays and the stopped run ends. The steer lands as
+    // a new run, asked under a fresh signal: the stop did not cancel that call.
+    const seen = await collect(
       nyte,
       { sessionId: id, afterSeq: 0 },
       (_event, seen) => seen.filter((item) => item.kind === "text_delta").length === 2,
     );
-    const resumed = (await nyte.sessions.snapshot({ sessionId: id }))?.run;
-    assert.equal(resumed?.runId, first.runId);
-    assert.equal(resumed?.phase.kind, "respond");
-    assert.equal(resumed?.abortRequested, undefined);
+    assert.ok(
+      seen.some(
+        (event) =>
+          event.kind === "run" &&
+          event.run.runId === first.runId &&
+          event.run.phase.kind === "aborted",
+      ),
+    );
+    const steered = (await nyte.sessions.snapshot({ sessionId: id }))?.run;
+    assert.ok(steered !== undefined);
+    assert.notEqual(steered.runId, first.runId);
+    assert.equal(steered.phase.kind, "respond");
+    assert.equal(steered.abortRequested, undefined);
     assert.deepEqual(await nyte.messages.pending({ sessionId: id }), []);
 
+    const afterSteer = seen.at(-1)?.seq ?? 0;
     assert.equal((await nyte.runs.abort({ sessionId: id })).kind, "requested");
     await collect(
       nyte,
-      { sessionId: id, afterSeq: 0 },
-      (event) => event.kind === "run" && event.run.phase.kind === "aborted",
+      { sessionId: id, afterSeq: afterSteer },
+      (event) =>
+        event.kind === "run" &&
+        event.run.runId === steered.runId &&
+        event.run.phase.kind === "aborted",
     );
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
     assert.deepEqual(await nyte.runs.abort({ sessionId: id }), { kind: "not_running" });
@@ -375,6 +411,85 @@ test("pending messages can be taken back or moved between lanes while a run is l
   }
 });
 
+test("a submission key follows the message from the queue into the record, outside its content", async () => {
+  let release: (() => void) | undefined;
+  const opened = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const nyte = await open(echo({ gate: () => opened }));
+  try {
+    const { sessionId: id } = await nyte.sessions.create();
+    nyte.attach();
+    await nyte.messages.send({ sessionId: id, content: "first" });
+    await collect(nyte, { sessionId: id, afterSeq: 0 }, (event) => event.kind === "text_delta");
+    const before = await nyte.sessions.snapshot({ sessionId: id });
+    assert.ok(before !== undefined);
+
+    const keyed = await nyte.messages.send({
+      sessionId: id,
+      content: "keyed",
+      lane: "queue",
+      key: "outbox-1",
+    });
+    assert.equal(keyed.kind, "queued");
+    const queuedItem = (await nyte.messages.pending({ sessionId: id })).find(
+      (item) => item.change === keyed.change,
+    );
+    assert.equal(queuedItem?.key, "outbox-1");
+    const held = await nyte.sessions.snapshot({ sessionId: id });
+    assert.deepEqual(
+      held?.pending.map((item) => [item.change, item.key]),
+      [[keyed.change, "outbox-1"]],
+    );
+
+    release?.();
+    const events = await collect(
+      nyte,
+      { sessionId: id, afterSeq: before.seq },
+      (event) => event.kind === "landed" && event.change === keyed.change,
+    );
+    const queued = events.find((event) => event.kind === "queued");
+    assert.ok(queued?.kind === "queued");
+    assert.deepEqual([queued.item.change, queued.item.key], [keyed.change, "outbox-1"]);
+    const landing = events.find(
+      (event) => event.kind === "commit" && event.item.commit.change === keyed.change,
+    );
+    assert.ok(landing?.kind === "commit");
+    assert.equal(landing.item.commit.key, "outbox-1");
+    // The key is commit metadata: the model's message is untouched.
+    assert.ok(landing.item.commit.body.kind === "message");
+    assert.deepEqual(Object.keys(landing.item.commit.body.message).sort(), [
+      "content",
+      "role",
+      "timestamp",
+    ]);
+    assert.equal(landing.item.commit.body.message.content, "keyed");
+
+    assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
+    const after = await nyte.sessions.snapshot({ sessionId: id });
+    const userParts =
+      after?.transcript.flatMap((turn) =>
+        turn.kind === "turn"
+          ? turn.parts.flatMap((part) =>
+              part.kind === "user" ? [[part.commit, part.content, part.key]] : [],
+            )
+          : [],
+      ) ?? [];
+    assert.deepEqual(
+      userParts.map(([, content, key]) => [content, key]),
+      [
+        ["first", undefined],
+        ["keyed", "outbox-1"],
+      ],
+    );
+    assert.equal(userParts[1]?.[0], landing.item.oid);
+    assert.deepEqual(after?.pending, []);
+  } finally {
+    release?.();
+    await nyte.close();
+  }
+});
+
 test("a tool that asks a question parks the run; the answer wakes it and the run finishes", async () => {
   const nyte = await open();
   try {
@@ -387,12 +502,10 @@ test("a tool that asks a question parks the run; the answer wakes it and the run
     assert.equal(current?.phase.kind, "waiting");
 
     const waitId = await waitIdFor(nyte, id, "ask-1");
-    assert.deepEqual(
-      await Reflect.apply(nyte.runs.reply, nyte.runs, [
-        { sessionId: id, callId: "ask-1", reply: "stale" },
-      ]),
-      { kind: "not_waiting" },
-    );
+    // @ts-expect-error A JavaScript caller can omit a required TypeScript field.
+    assert.deepEqual(await nyte.runs.reply({ sessionId: id, callId: "ask-1", reply: "stale" }), {
+      kind: "not_waiting",
+    });
     const answered = await nyte.runs.reply({
       sessionId: id,
       callId: "ask-1",
@@ -408,6 +521,22 @@ test("a tool that asks a question parks the run; the answer wakes it and the run
     assert.equal(
       (await nyte.runs.reply({ sessionId: id, callId: "ask-1", waitId, reply: "red" })).kind,
       "not_found",
+    );
+  } finally {
+    await nyte.close();
+  }
+});
+
+test("parked calls keep the assistant tool-call order instead of sorting opaque IDs", async () => {
+  const nyte = await open();
+  try {
+    const { sessionId: id } = await nyte.sessions.create();
+    nyte.attach();
+    await nyte.messages.send({ sessionId: id, content: "ask many" });
+    assert.equal((await nyte.runs.wait({ sessionId: id })).kind, "waiting");
+    assert.deepEqual(
+      (await nyte.sessions.snapshot({ sessionId: id }))?.parked?.map((call) => call.callId),
+      ["z", "a"],
     );
   } finally {
     await nyte.close();
@@ -886,6 +1015,37 @@ test("a plugin command may read messages, name its session, or answer with a cli
         prompt: "Review it",
       },
     );
+  } finally {
+    await nyte.close();
+  }
+});
+
+test("a directory list served from its cached row still reflects every write made since", async () => {
+  const nyte = await open();
+  try {
+    const { sessionId: id } = await nyte.sessions.create();
+    const row = async () =>
+      (await nyte.sessions.list({ includeArchived: true })).items.find(
+        (item) => item.sessionId === id,
+      );
+    assert.equal((await row())?.name, undefined);
+    // The second list is answered from the row kept by the first; a rename, a
+    // pin, an archive, and a message each move the cursor it is keyed by.
+    assert.equal((await row())?.name, undefined);
+    await nyte.sessions.rename({ sessionId: id, name: "Renamed" });
+    assert.equal((await row())?.name, "Renamed");
+    await nyte.sessions.setPinned({ sessionId: id, pinned: true });
+    assert.equal((await row())?.pinned, true);
+    await nyte.sessions.setArchived({ sessionId: id, archived: true });
+    assert.equal((await row())?.archived, true);
+    assert.equal(
+      (await nyte.sessions.list()).items.some((item) => item.sessionId === id),
+      false,
+    );
+    nyte.attach();
+    await nyte.messages.send({ sessionId: id, content: "hello" });
+    assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
+    assert.equal((await row())?.preview, "saw 1");
   } finally {
     await nyte.close();
   }

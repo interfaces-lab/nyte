@@ -4,11 +4,19 @@
  * its view-state owner.
  */
 import * as stylex from "@stylexjs/stylex";
-import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { isTerminalPhase } from "@nyte-ai/core/views";
+import { changesFromTurns, isTerminalPhase } from "@nyte-ai/core/views";
 import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/core";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
@@ -21,7 +29,10 @@ import {
 import type { ComposerImageAttachment } from "../conversation/composer.tsx";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
 import { dropHandlers } from "../conversation/composer-file-drop.ts";
-import type { ComposerSubmission } from "../conversation/composer-document.ts";
+import type {
+  ComposerDocumentState,
+  ComposerSubmission,
+} from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { composerSendInput, composerSendPlan } from "../conversation/composer-send.ts";
 import type {
@@ -53,12 +64,11 @@ import type { PaneId, PaneLayout, PaneState, SplitDirection } from "../layout/pa
 import { useSessionDropTarget, useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import type { SessionDropTarget } from "../layout/session-dnd.tsx";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import { useSessionLive } from "../live.ts";
+import { loadThread, useSessionLive } from "../live.ts";
 import type { LiveToolProgress } from "../live-fold.ts";
 import {
   keys,
   configureSession,
-  loadThread,
   queryClient,
   useCatalog,
   useSessionActions,
@@ -78,6 +88,7 @@ import { outbox, useOutboxRows } from "../use-outbox.ts";
 import { conversation, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
+import { sessionReadState } from "../session-read-state.ts";
 
 import { BackgroundWork } from "../conversation/jobs-panel.tsx";
 import type { BackgroundWorkSection } from "../conversation/jobs-panel.tsx";
@@ -91,6 +102,7 @@ import { displayTranscriptParts } from "../conversation/transcript-presentation.
 import {
   estimateRowSize,
   promptRowCount,
+  rendersInTranscript,
   rowHasPrompt,
   transcriptRows,
 } from "../conversation/transcript-rows.ts";
@@ -185,7 +197,7 @@ const styles = stylex.create({
     borderRadius: t.radiusSm,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: { default: t.borderWeak, ":focus-visible": t.strokeFocused },
+    borderColor: { default: t.strokeSecondary, ":focus-visible": t.strokeFocused },
     backgroundColor: t.bgElevated,
     color: t.textPrimary,
     fontSize: t.fontBase,
@@ -356,15 +368,12 @@ function setDataState(element: HTMLElement, name: string, active: boolean): void
  * gap padding, so a scroll tick reads no rects. The scrollport learns whether
  * it is scrolled so it can fade its top edge under the stuck prompt.
  */
-function syncStickyUserMessage(
-  scroll: HTMLDivElement,
-  plane: HTMLDivElement,
-  virtualizer: TranscriptVirtualizer,
-): void {
+function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVirtualizer): void {
   setDataState(scroll, "scrolled", scroll.scrollTop > 0);
   // Item starts are computed lazily; the total forces the cache current.
   virtualizer.getTotalSize();
-  const rows = plane.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
+  // Only turn rows carry the marker, so the scrollport is a safe query root.
+  const rows = scroll.querySelectorAll<HTMLElement>("[data-sticky-user-message]");
   const candidates: StickyCandidate[] = [];
   const candidateRows: HTMLElement[] = [];
 
@@ -422,7 +431,6 @@ function TranscriptPlane({
   renderRow: (row: TranscriptRow) => ReactNode;
 }): ReactElement {
   const viewStore = usePaneViewStateStore();
-  const planeRef = useRef<HTMLDivElement>(null);
   const dockHeight = useRef(0);
   const promptTrack = useRef<{ sessionId: SessionId | undefined; count: number }>({
     sessionId: undefined,
@@ -450,12 +458,20 @@ function TranscriptPlane({
       }),
     };
   });
+  // The key extractor is a dependency of the virtualizer's measurement memo;
+  // a fresh closure per render would rebuild every item's layout.
+  const getItemKey = useCallback((index: number) => rows[index]?.key ?? index, [rows]);
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimateRowSize(rows[index]),
-    getItemKey: (index) => rows[index]?.key ?? index,
+    getItemKey,
+    // The virtualizer owns the plane height and row tops, so a scroll tick
+    // rerenders only when the visible range changes. `position` keeps `top`
+    // so the sticky prompt pins to the scrollport, not to a transformed row.
+    directDomUpdates: true,
+    directDomUpdatesMode: "position",
     initialMeasurementsCache: restore.measurements,
     initialRect: restore.rect,
     initialOffset: restore.offset,
@@ -466,8 +482,7 @@ function TranscriptPlane({
     // under the stuck prompt, and a growing reply eats into the reserve.
     onChange: (instance) => {
       const scroll = scrollRef.current;
-      const plane = planeRef.current;
-      if (scroll !== null && plane !== null) syncStickyUserMessage(scroll, plane, instance);
+      if (scroll !== null) syncStickyUserMessage(scroll, instance);
       if (overscroll === undefined || overscroll.sessionId !== sessionId) return;
       const next = remainingOverscroll({
         initial: overscroll.initial,
@@ -507,18 +522,21 @@ function TranscriptPlane({
 
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
-    const plane = planeRef.current;
-    if (scroll === null || plane === null) return undefined;
-    // The composer dock is the scrollport's last child; the plane comes first.
+    // The plane is the scrollport's first child; the composer dock is its last.
+    const plane = scroll?.firstElementChild;
+    if (scroll === null || !(plane instanceof HTMLElement)) return undefined;
     const last = scroll.lastElementChild;
     const dock = last instanceof HTMLElement ? last : undefined;
     dockHeight.current = dock?.offsetHeight ?? 0;
     const restored = viewStore.readSession(sessionId, paneId).scroll;
-    if (restored.bottomPinned) scroll.scrollTop = scroll.scrollHeight;
+    // Restoration must go through the virtualizer so its scroll target moves
+    // too; a direct scrollTop write is undone by its initial reconcile.
+    if (restored.bottomPinned) virtualizer.scrollToEnd();
     else virtualizer.scrollToOffset(restored.top);
-    syncStickyUserMessage(scroll, plane, virtualizer);
 
-    const sync = (): void => syncStickyUserMessage(scroll, plane, virtualizer);
+    // The commit effect below and the observer's initial delivery both sync
+    // the sticky prompt, so no explicit sync is needed here.
+    const sync = (): void => syncStickyUserMessage(scroll, virtualizer);
     // Streamed text, late highlights, a growing composer, and a shrinking
     // scrollport all move the bottom; a reader pinned there follows it. A
     // reader elsewhere keeps what they are looking at: the dock grows over
@@ -528,9 +546,9 @@ function TranscriptPlane({
       if (dock !== undefined && entries.some((entry) => entry.target === dock)) {
         const delta = dock.offsetHeight - dockHeight.current;
         dockHeight.current = dock.offsetHeight;
-        if (!pinned) scroll.scrollTop += delta;
+        if (!pinned) virtualizer.scrollToOffset(scroll.scrollTop + delta);
       }
-      if (pinned) scroll.scrollTop = scroll.scrollHeight;
+      if (pinned) virtualizer.scrollToEnd();
       sync();
     });
     observer.observe(scroll);
@@ -547,9 +565,8 @@ function TranscriptPlane({
   // virtualizer's totals are current for the reserve arithmetic below.
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
-    const plane = planeRef.current;
-    if (scroll === null || plane === null) return;
-    syncStickyUserMessage(scroll, plane, virtualizer);
+    if (scroll === null) return;
+    syncStickyUserMessage(scroll, virtualizer);
 
     // The reserve from the previous commit is in the DOM now; the prompt can
     // reach the top edge.
@@ -587,11 +604,7 @@ function TranscriptPlane({
   }, [overscroll, paneId, rows, scrollRef, sessionId, viewStore, virtualizer]);
 
   return (
-    <div
-      ref={planeRef}
-      {...stylex.props(styles.transcript)}
-      style={{ height: virtualizer.getTotalSize() }}
-    >
+    <div ref={virtualizer.containerRef} {...stylex.props(styles.transcript)}>
       {virtualizer.getVirtualItems().map((item) => {
         const row = rows[item.index];
         if (row === undefined) return null;
@@ -601,7 +614,6 @@ function TranscriptPlane({
             ref={virtualizer.measureElement}
             data-index={item.index}
             {...stylex.props(styles.row, item.index === 0 && styles.rowFirst)}
-            style={{ top: item.start }}
           >
             {renderRow(row)}
           </div>
@@ -638,6 +650,7 @@ function useBlankViewBinding(
   paneId: PaneId,
 ): readonly [ChatDraft, (update: BlankViewUpdate) => void] {
   const store = usePaneViewStateStore();
+  useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [, redraw] = useReducer((value: number) => value + 1, 0);
   const state = store.readBlank(paneId);
   const update = useCallback(
@@ -714,7 +727,7 @@ function SessionConversation({
   const host = useHostState();
   const { layout } = usePaneControllerSnapshot();
   const session = useSession(sessionId);
-  const catalog = useCatalog();
+  const catalog = useCatalog(sessionId);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
@@ -729,8 +742,14 @@ function SessionConversation({
     backgroundWork?.sessionId === sessionId ? backgroundWork.section : undefined;
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
+  const snapshotSession = snapshot.data?.session;
+  useLayoutEffect(() => {
+    if (session.data !== undefined && session.data !== null)
+      sessionReadState.markRead(session.data);
+    if (snapshotSession !== undefined) sessionReadState.markRead(snapshotSession);
+  }, [session.data, snapshotSession]);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
-  const live = useSessionLive(sessionId, snapshot.data?.seq);
+  const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
   const settledRun =
     snapshot.data !== undefined &&
@@ -787,7 +806,15 @@ function SessionConversation({
     thinkingLevel: snapshot.data?.config.thinkingLevel,
     fastEnabled,
   };
-  const lastTurn = turns.at(-1);
+  // The indicator belongs under the last turn the transcript draws, which is
+  // not always the last turn in the snapshot.
+  const lastTurn = turns.findLast(rendersInTranscript);
+  // The card belongs to the newest turn that actually wrote files. Keying it
+  // to the newest turn instead took the review away whenever the next message
+  // settled without changes, which is most follow-ups.
+  const latestChangedTurn = turns.findLast(
+    (turn) => turn.kind === "turn" && changesFromTurns([turn]).length > 0,
+  );
   // A turn that ends in a work group already draws the run's indicator there.
   // One that ends in prose needs it below the prose, or the model looks idle
   // while it prepares its next step.
@@ -945,7 +972,7 @@ function SessionConversation({
             cwd={cwd}
             onEditUser={editUserMessage}
             branchModel={branchModel}
-            onOpenChanges={openChanges}
+            onOpenChanges={!working && row.turn === latestChangedTurn ? openChanges : undefined}
             running={working && row.trailing}
           />
         );
@@ -1166,13 +1193,29 @@ function BlankConversation({
       option.provider === configuration?.model.provider && option.id === configuration.model.id,
   );
 
-  const start = async (submission: ComposerSubmission, lane: Lane): Promise<boolean> => {
+  const start = async (
+    submission: ComposerSubmission,
+    lane: Lane,
+    document: ComposerDocumentState,
+  ): Promise<boolean> => {
     if (sending || attachmentReads !== 0) return false;
     // A new chat has no plugin commands active yet; its first message is always a message.
     const plan = composerSendPlan({ submission, attachments, commands: [], lane });
     if (plan.kind !== "message") return false;
     setSending(true);
     setStartFailure(undefined);
+    const submitted = viewStore.takeBlank(paneId, {
+      ...viewStore.readBlank(paneId).composer,
+      draft: document.text,
+      selectionStart: document.selectionStart,
+      selectionEnd: document.selectionEnd,
+    });
+    const submittedConfiguration = submitted.configuration ?? catalog.data?.defaults;
+    const submittedModel = catalog.data?.models.find(
+      (option) =>
+        option.provider === submittedConfiguration?.model.provider &&
+        option.id === submittedConfiguration.model.id,
+    );
     let session: { readonly sessionId: SessionId } | undefined;
     try {
       session = await nyte.sessions.create();
@@ -1181,28 +1224,28 @@ function BlankConversation({
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void loadThread(session.sessionId).catch(() => undefined);
       const configuring =
-        configuration === undefined
+        submittedConfiguration === undefined
           ? undefined
-          : configureSession(session.sessionId, configuration);
+          : configureSession(session.sessionId, submittedConfiguration);
       actions.openSessionInPane(paneId, session.sessionId);
       await configuring;
       if (
-        current?.fastMode.kind === "available" &&
-        viewState.fastSettings.has(current.fastMode.settingId)
+        submittedModel?.fastMode.kind === "available" &&
+        submitted.fastSettings.has(submittedModel.fastMode.settingId)
       ) {
         const outcome = await nyte.plugins.settings.apply({
           sessionId: session.sessionId,
-          id: current.fastMode.settingId,
+          id: submittedModel.fastMode.settingId,
           choiceId: "on",
         });
         if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
       }
       await outbox.submit(composerSendInput(session.sessionId, plan));
-      viewStore.removeDraft(viewState.id);
       setAttachments([]);
       setAttachmentError(undefined);
       return true;
     } catch (cause: unknown) {
+      viewStore.restoreBlank(paneId, submitted);
       setSending(false);
       setStartFailure(errorMessage(cause));
       // Past the pane switch this composer is gone; the draft stays on Home.
@@ -1460,6 +1503,7 @@ function PaneHost({
   const actions = usePaneActions();
   const { focusRequest } = usePaneControllerSnapshot();
   const viewStore = usePaneViewStateStore();
+  useSyncExternalStore(viewStore.subscribe, viewStore.getSnapshot, viewStore.getSnapshot);
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
   const attachInput = useCallback((element: ComposerEditorHandle | null) => {
@@ -1633,7 +1677,14 @@ export function ThreadScreen({
         ? { kind: "home" }
         : { kind: "workspace", workspacePath };
 
+  const syncedRoute = useRef<{ readonly sessionId: SessionId | undefined } | undefined>(undefined);
   useLayoutEffect(() => {
+    // A folder switch rebinds `actions` to a controller whose selection was
+    // made before the switch; the route follows it. Only a changed route
+    // reselects, and the first run aligns a restored layout with the route.
+    const synced = syncedRoute.current;
+    if (synced !== undefined && synced.sessionId === routeSessionId) return;
+    syncedRoute.current = { sessionId: routeSessionId };
     actions.syncRoute(
       routeSessionId === undefined
         ? BLANK_SELECTION

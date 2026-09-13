@@ -12,8 +12,9 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import { discoverMentionFiles, dispatch, WorkspaceTrustRequired } from "@nyte-ai/core";
-import type { Disposer, SessionId, Nyte, WorkspaceInfo } from "@nyte-ai/core";
+import { dispatch, isTerminalPhase, WorkspaceTrustRequired } from "@nyte-ai/core";
+import type { Disposer, SessionId, SessionInfo, Nyte, WorkspaceInfo } from "@nyte-ai/core";
+import { discoverMentionFiles, readWorkspaceFile, saveWorkspaceFile } from "@nyte-ai/core/files";
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 // Hosts name their storage backend through the store entry; the worker keeps
@@ -34,10 +35,12 @@ import type {
   CallOutput,
   CallPath,
   DesktopCatalog,
+  LoginOutcome,
   HostEvent,
   HostState,
   GitHubProviderState,
   LocalFontCatalog,
+  MobileShareState,
   OpenWorkspaceOutcome,
   PreferenceChange,
   SdkOperationPath,
@@ -61,18 +64,32 @@ import { ExpectedHostError, ipcFailure, retainDiagnostic } from "./errors.ts";
 import type { IpcFailure } from "../shared/errors.ts";
 import { catalogForUsage, UsageScanner } from "./usage-scan.ts";
 import type { StoreLocation, UsageScan, UsageScanReader } from "./usage-scan.ts";
+import { readAccountUsage } from "@nyte-ai/host/usage";
+import type { AccountUsage } from "@nyte-ai/host/usage";
 import { projectUsageReport } from "./usage.ts";
 import type { StoreRead } from "./usage.ts";
 import { createGitVcs } from "./vcs.ts";
 import type { DesktopGitVcs } from "./vcs.ts";
+import { startMobileShare } from "./mobile-share.ts";
+import type { MobileShare } from "./mobile-share.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
+import { serverCatalog, serverConnectionProblem } from "./server-connection.ts";
 import { createModelPreferencesStore, readLastWorkspace, rememberWorkspace } from "./workspaces.ts";
-import { readWorkspaceFile, saveWorkspaceFile } from "./workspace-files.ts";
+
+export type DesktopUpdateActivity =
+  | { readonly kind: "idle" }
+  | {
+      readonly kind: "busy";
+      readonly taskCount: number;
+      readonly terminalCommandCount: number;
+    };
 
 export interface DesktopHostDependencies {
   /** The provider catalog this host answers from. Tests inject an offline one. */
   createModels(): MutableModels;
+  /** The release a shared SDK reports on `/v1/info`; absent outside the packaged app. */
+  readonly appVersion?: string;
   /** Where usage history is scanned. The app uses a worker thread. */
   readonly usageScan?: UsageScanReader;
   readonly createHost?: typeof createHost;
@@ -91,6 +108,13 @@ export interface DesktopHostDependencies {
   pickFolder(): Promise<string | undefined>;
 }
 
+interface LoginAttempt {
+  readonly provider: string;
+  readonly controller: AbortController;
+  /** Resolves once the flow has stopped, whichever way it ended. */
+  readonly settled: Promise<void>;
+}
+
 interface OpenTargetBase {
   readonly sdk: Nyte;
   readonly store: Store;
@@ -107,11 +131,19 @@ interface OpenProjectTarget extends OpenTargetBase {
   readonly vcs: DesktopGitVcs;
 }
 
+type CloudAvailability = Extract<
+  WorkspaceSessionDirectory,
+  { environment: "cloud" }
+>["availability"];
+
 /** The configured server: its own store, its own runner; the desktop only speaks the wire to it. */
 interface OpenServerTarget {
   readonly kind: "server";
   readonly baseUrl: string;
   readonly sdk: NyteClient;
+  sessions: readonly SessionInfo[];
+  /** What the last completed list read said; a read still in flight does not change it. */
+  availability: CloudAvailability;
 }
 
 type OpenLocalTarget = OpenHomeTarget | OpenProjectTarget;
@@ -132,8 +164,35 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
   return {
     kind: "server",
     baseUrl: settings.baseUrl,
-    sdk: createNyteClient({ baseUrl: settings.baseUrl, token: settings.token }),
+    sdk: createNyteClient({
+      baseUrl: settings.baseUrl,
+      token: settings.token,
+      fetch: (input, init) => {
+        // Watches stay open; finite reads and writes must not leave the desktop waiting forever.
+        if (new Headers(init?.headers).get("accept") === "text/event-stream")
+          return fetch(input, init);
+        const timeout = AbortSignal.timeout(15_000);
+        const signal = init?.signal == null ? timeout : AbortSignal.any([init.signal, timeout]);
+        return fetch(input, { ...init, signal });
+      },
+    }),
+    sessions: [],
+    availability: { kind: "ready" },
   };
+}
+
+/**
+ * How long a directory read waits for the server's list before answering with
+ * the last one. Local folders answer in milliseconds; a slow or unreachable
+ * server must not hold the sidebar, startup, or a folder switch behind its
+ * 15s request timeout. The read keeps going and the next poll reports it.
+ */
+const DIRECTORY_SERVER_BUDGET_MS = 1_500;
+
+/** The share and the local target it was frozen to; selection may move on without it. */
+interface ActiveMobileShare {
+  readonly share: MobileShare;
+  readonly open: OpenLocalTarget;
 }
 
 /** A store the page will read, with what only the SDK can say about it. */
@@ -142,6 +201,9 @@ interface NamedStore {
   readonly names: ReadonlyMap<SessionId, string | undefined>;
   readonly failure: IpcFailure | null;
 }
+
+/** Long enough for a provider round trip, short enough that Usage still paints. */
+const ACCOUNT_LIMITS_TIMEOUT_MS = 10_000;
 
 /** The bridge's own SDK subset: `landing` is a protocol operation the desktop never carries. */
 const SDK_OPERATIONS: ReadonlySet<string> = new Set(SDK_OPERATION_PATHS);
@@ -163,9 +225,20 @@ export class DesktopHost {
   private open: OpenLocalTarget | undefined;
   private readonly openTargets = new Map<string | null, OpenLocalTarget>();
   private server: OpenServerTarget | undefined;
+  /** One server list read at a time; overlapping directory reads share it. */
+  private serverDirectoryRead: Promise<WorkspaceSessionDirectory | undefined> | undefined;
+  /** In flight from start until stopped, so two Start presses share one listener. */
+  private mobileShare: Promise<ActiveMobileShare> | undefined;
   private readonly sessionOwners = new Map<SessionId, OpenTarget>();
   private lifecycle: Promise<void> = Promise.resolve();
+  private readonly mentionRequests = new Map<string, AbortController>();
   private readonly watches = new Map<string, AbortController>();
+  /**
+   * Sign-ins by the renderer's attempt ID, kept until the flow has settled so
+   * a cancelled attempt's cleanup can never erase a newer entry and an ID
+   * cannot be reused while its first flow still winds down.
+   */
+  private readonly loginAttempts = new Map<string, LoginAttempt>();
   private closed = false;
   private terminalsPromise: Promise<TerminalSessions> | undefined;
   private terminalGeneration = 0;
@@ -203,15 +276,32 @@ export class DesktopHost {
       case "host.closeWorkspace":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.closeWorkspace();
-      case "host.catalog":
-        CALL_INPUT_SCHEMAS[path].Parse(input);
-        return (await this.catalog()).catalog;
+      case "host.catalog": {
+        const query = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const owner = query === undefined ? undefined : await this.owner(query.sessionId);
+        if (owner?.kind !== "server") return (await this.catalog()).catalog;
+        const [models, defaultModel] = await Promise.all([
+          owner.sdk.provider.models.list(),
+          owner.sdk.provider.models.default(),
+        ]);
+        if (defaultModel === undefined) {
+          throw new ExpectedHostError({
+            code: "not_found",
+            message: "This server does not report a default model.",
+          });
+        }
+        return serverCatalog(models, defaultModel);
+      }
       case "host.usage":
         return this.usage(CALL_INPUT_SCHEMAS[path].Parse(input));
-      case "host.login": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        return this.login(decoded.provider, decoded.method);
-      }
+      case "host.accountLimits":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.accountLimits();
+      case "host.login":
+        return this.login(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.cancelLogin":
+        this.cancelLogin(CALL_INPUT_SCHEMAS[path].Parse(input).attempt);
+        return undefined;
       case "host.logout":
         return this.logout(CALL_INPUT_SCHEMAS[path].Parse(input).provider);
       case "host.setPreference":
@@ -219,9 +309,26 @@ export class DesktopHost {
       case "host.vcs.snapshot":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.requireProject().vcs.snapshot();
-      case "host.files.list":
-        CALL_INPUT_SCHEMAS[path].Parse(input);
-        return discoverMentionFiles(this.requireProject().workspace.path);
+      case "host.files.list": {
+        const { requestId } = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const cwd = this.requireProject().workspace.path;
+        if (this.mentionRequests.has(requestId) || this.mentionRequests.size >= 4)
+          throw new ExpectedHostError({
+            code: "invalid_input",
+            message: "Mention request is already active or the request limit was reached.",
+            issues: [],
+          });
+        const controller = new AbortController();
+        this.mentionRequests.set(requestId, controller);
+        try {
+          return await discoverMentionFiles(cwd, controller.signal);
+        } finally {
+          this.mentionRequests.delete(requestId);
+        }
+      }
+      case "host.files.cancelList":
+        this.mentionRequests.get(CALL_INPUT_SCHEMAS[path].Parse(input).requestId)?.abort();
+        return undefined;
       case "host.files.read": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const project = this.requireProject();
@@ -259,6 +366,15 @@ export class DesktopHost {
         this.sessionOwners.set(session.sessionId, server);
         return session;
       }
+      case "host.mobile.state":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.mobileShareState();
+      case "host.mobile.start":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.startMobileShare();
+      case "host.mobile.stop":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.stopMobileShare();
       case "host.openExternal": {
         const { url } = CALL_INPUT_SCHEMAS[path].Parse(input);
         this.dependencies.openExternal(safeExternalUrl(url));
@@ -331,13 +447,12 @@ export class DesktopHost {
       // directory choice just so the blank composer can render truthfully.
       case "provider.models.default": {
         CALL_INPUT_SCHEMAS[path].Parse(input);
-        const { defaultModel: model } = await this.catalog();
-        return {
-          id: model.id,
-          provider: model.provider,
-          name: model.name,
-          contextWindow: model.contextWindow,
-        };
+        const { catalog } = await this.catalog();
+        return catalog.models.find(
+          (model) =>
+            model.id === catalog.defaults.model.id &&
+            model.provider === catalog.defaults.model.provider,
+        );
       }
       case "sessions.create": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
@@ -422,6 +537,8 @@ export class DesktopHost {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    this.cancelLogins();
+    for (const controller of this.mentionRequests.values()) controller.abort();
     try {
       await this.closeTerminals();
       await this.serialize(() => this.teardownOpen());
@@ -435,6 +552,39 @@ export class DesktopHost {
     const pending = this.terminalsPromise;
     this.terminalsPromise = undefined;
     if (pending !== undefined) (await pending).dispose();
+  }
+
+  async updateActivity(): Promise<DesktopUpdateActivity> {
+    const terminalCommandCount =
+      this.terminalsPromise === undefined ? 0 : (await this.terminalsPromise).busyCount();
+    const taskCount = await this.serialize(async () => {
+      const counts = await Promise.all(
+        [...this.openTargets.values()].map((open) => this.updateTaskCount(open)),
+      );
+      return counts.reduce((total, count) => total + count, 0);
+    });
+    return taskCount === 0 && terminalCommandCount === 0
+      ? { kind: "idle" }
+      : { kind: "busy", taskCount, terminalCommandCount };
+  }
+
+  private async updateTaskCount(open: OpenLocalTarget): Promise<number> {
+    const { items } = await open.sdk.sessions.list({ includeArchived: true });
+    const active = await Promise.all(
+      items.map(async (session) => {
+        if (
+          session.heads.some((head) => head.run !== undefined && !isTerminalPhase(head.run.phase))
+        )
+          return true;
+        const jobs = await Promise.all(
+          session.heads.map((head) =>
+            open.sdk.jobs.list({ sessionId: session.sessionId, head: head.head }),
+          ),
+        );
+        return jobs.some((group) => group.some((job) => job.state === "running"));
+      }),
+    );
+    return active.filter((value) => value).length;
   }
 
   private terminals(): Promise<TerminalSessions> {
@@ -684,9 +834,15 @@ export class DesktopHost {
     });
   }
 
-  /** Read every folder without selecting it or stopping another folder's work. */
-  private sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
-    return this.serialize(async () => {
+  /**
+   * Read every folder without selecting it or stopping another folder's work.
+   * Only composing a store needs the lifecycle lock, and each store composes
+   * once; the list reads run outside it so a poll never blocks a folder
+   * switch, and the server read runs beside them on its own budget.
+   */
+  private async sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
+    const server = this.serverDirectory();
+    const opens = await this.serialize(async () => {
       const workspaces = await this.registry.list();
       const targets: WorkspaceTarget[] = [
         { kind: "home" },
@@ -694,35 +850,70 @@ export class DesktopHost {
           (workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget,
         ),
       ];
-      const local = targets.map(async (target): Promise<WorkspaceSessionDirectory> => {
-        const open = await this.compose(target);
-        // Roots only; a subagent child shows inside its parent's task call.
-        const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
-        for (const session of items) this.sessionOwners.set(session.sessionId, open);
-        return {
-          environment: "local",
-          workspacePath: target.kind === "home" ? null : target.workspace.path,
-          sessions: items,
-        };
-      });
-      return Promise.all([...local, this.serverDirectory()]).then((directories) =>
-        directories.filter((directory) => directory !== undefined),
+      return Promise.all(
+        targets.map(async (target) => ({ target, open: await this.compose(target) })),
       );
     });
+    const local = opens.map(async ({ target, open }): Promise<WorkspaceSessionDirectory> => {
+      // Roots only; a subagent child shows inside its parent's task call.
+      const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
+      for (const session of items) this.sessionOwners.set(session.sessionId, open);
+      return {
+        environment: "local",
+        workspacePath: target.kind === "home" ? null : target.workspace.path,
+        sessions: items,
+      };
+    });
+    const directories = await Promise.all([...local, server]);
+    return directories.filter((directory) => directory !== undefined);
   }
 
-  /** The server's sessions, or an empty Cloud group while it does not answer. */
+  /** The server's list within the budget, else its last known one; the read continues for the next poll. */
   private async serverDirectory(): Promise<WorkspaceSessionDirectory | undefined> {
     const server = await this.openServer();
     if (server === undefined) return undefined;
+    const read = (this.serverDirectoryRead ??= this.readServerDirectory(server).finally(() => {
+      this.serverDirectoryRead = undefined;
+    }));
+    let budget: ReturnType<typeof setTimeout> | undefined;
+    const lastKnown = new Promise<WorkspaceSessionDirectory>((resolve) => {
+      budget = setTimeout(
+        () =>
+          resolve({
+            environment: "cloud",
+            sessions: server.sessions,
+            availability: server.availability,
+          }),
+        DIRECTORY_SERVER_BUDGET_MS,
+      );
+    });
+    try {
+      return await Promise.race([read, lastKnown]);
+    } finally {
+      clearTimeout(budget);
+    }
+  }
+
+  /** Keep the last known chats visible when a remote read fails, with its failure shown separately. */
+  private async readServerDirectory(
+    server: OpenServerTarget,
+  ): Promise<WorkspaceSessionDirectory | undefined> {
     try {
       const { items } = await server.sdk.sessions.list({ parent: null, includeArchived: true });
+      // The server was replaced or disconnected during the read; its list is nobody's.
+      if (this.server !== server) return undefined;
       for (const session of items) this.sessionOwners.set(session.sessionId, server);
-      return { environment: "cloud", sessions: items };
+      server.sessions = items;
+      server.availability = { kind: "ready" };
     } catch (cause) {
+      if (this.server !== server) return undefined;
       retainDiagnostic({ correlationId: `server:${server.baseUrl}`, cause });
-      return { environment: "cloud", sessions: [] };
+      server.availability = {
+        kind: "unavailable",
+        message: serverConnectionProblem(cause).message,
+      };
     }
+    return { environment: "cloud", sessions: server.sessions, availability: server.availability };
   }
 
   private async openServer(): Promise<OpenServerTarget | undefined> {
@@ -735,9 +926,18 @@ export class DesktopHost {
 
   private async serverState(): Promise<ServerState> {
     const server = await this.openServer();
-    return server === undefined
-      ? { kind: "none" }
-      : { kind: "configured", baseUrl: server.baseUrl };
+    if (server === undefined) return { kind: "none" };
+    try {
+      const info = await server.sdk.info();
+      return { kind: "connected", baseUrl: server.baseUrl, info };
+    } catch (cause) {
+      retainDiagnostic({ correlationId: `server:${server.baseUrl}`, cause });
+      return {
+        kind: "unavailable",
+        baseUrl: server.baseUrl,
+        problem: serverConnectionProblem(cause),
+      };
+    }
   }
 
   private async connectServer(settings: ServerSettings): Promise<ServerConnectOutcome> {
@@ -750,7 +950,8 @@ export class DesktopHost {
       this.dependencies.emitHostEvent({ kind: "server_changed" });
       return { kind: "connected", baseUrl: candidate.baseUrl, version: info.version };
     } catch (cause) {
-      return { kind: "failed", message: ipcFailure(cause).message };
+      retainDiagnostic({ correlationId: `server:${candidate.baseUrl}`, cause });
+      return { kind: "failed", message: serverConnectionProblem(cause).message };
     }
   }
 
@@ -759,6 +960,96 @@ export class DesktopHost {
     this.forgetServerSessions();
     this.server = undefined;
     this.dependencies.emitHostEvent({ kind: "server_changed" });
+  }
+
+  private async mobileShareState(): Promise<MobileShareState> {
+    const active = await this.activeMobileShare();
+    if (active === undefined) return { kind: "off" };
+    return {
+      kind: "sharing",
+      address: active.share.address,
+      token: active.share.token,
+      target:
+        active.open.kind === "home"
+          ? { kind: "home" }
+          : { kind: "project", workspace: active.open.workspace },
+    };
+  }
+
+  /** The running share, or nothing once a start has failed. */
+  private async activeMobileShare(): Promise<ActiveMobileShare | undefined> {
+    const pending = this.mobileShare;
+    if (pending === undefined) return undefined;
+    try {
+      return await pending;
+    } catch {
+      if (this.mobileShare === pending) this.mobileShare = undefined;
+      return undefined;
+    }
+  }
+
+  /**
+   * Serve the selected local target as it stands now. The share keeps this
+   * SDK even after the desktop selects another folder: what the phone sees
+   * changes only when the user stops and starts again. A folder is served
+   * only once trusted; the server target is never a candidate because
+   * selection is always local.
+   */
+  private async startMobileShare(): Promise<MobileShareState> {
+    if (this.closed)
+      throw new ExpectedHostError({ code: "closed", message: "The window closed before sharing" });
+    if (this.mobileShare === undefined) {
+      const pending = (async (): Promise<ActiveMobileShare> => {
+        const open = await this.prepare();
+        if (open.kind === "project") await this.requireTrust(open.workspace.path);
+        if (this.closed)
+          throw new ExpectedHostError({
+            code: "closed",
+            message: "The window closed before sharing",
+          });
+        const share = await startMobileShare({
+          sdk: {
+            ...open.sdk,
+            provider: {
+              models: {
+                ...open.sdk.provider.models,
+                list: async () => {
+                  const [{ catalog }, models] = await Promise.all([
+                    this.catalog(),
+                    open.sdk.provider.models.list(),
+                  ]);
+                  const listed = new Set(
+                    catalog.models.filter((model) => model.listed).map((model) => model.key),
+                  );
+                  return models.filter((model) => listed.has(`${model.provider}/${model.id}`));
+                },
+              },
+            },
+          },
+          version: this.dependencies.appVersion ?? "dev",
+          attach: (sessionId) => this.attachSession(open, sessionId),
+        });
+        return { share, open };
+      })();
+      this.mobileShare = pending;
+      try {
+        await pending;
+      } catch (cause) {
+        if (this.mobileShare === pending) this.mobileShare = undefined;
+        throw cause;
+      }
+    }
+    const state = await this.mobileShareState();
+    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    return state;
+  }
+
+  private async stopMobileShare(): Promise<void> {
+    const active = await this.activeMobileShare();
+    if (active === undefined) return;
+    this.mobileShare = undefined;
+    await active.share.stop();
+    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
   }
 
   /** Watches on the old server end; the renderer resumes them against the new one or not at all. */
@@ -823,6 +1114,21 @@ export class DesktopHost {
     };
   }
 
+  /**
+   * Subscription windows from the providers themselves. Each provider answers
+   * for itself, so one that is signed out or slow leaves the other's windows
+   * on the page; the timeout keeps a stalled provider from holding the read.
+   */
+  private accountLimits(): Promise<readonly AccountUsage[]> {
+    const signal = AbortSignal.timeout(ACCOUNT_LIMITS_TIMEOUT_MS);
+    return this.models().then((models) =>
+      Promise.all([
+        readAccountUsage({ models, provider: "anthropic", signal }),
+        readAccountUsage({ models, provider: "openai-codex", signal }),
+      ]),
+    );
+  }
+
   /** Every store the page reads, with the names the SDK holds for its sessions. */
   private async usageStores(): Promise<readonly NamedStore[]> {
     const workspaces = await this.registry.list();
@@ -850,6 +1156,8 @@ export class DesktopHost {
 
   private async teardownOpen(): Promise<void> {
     this.open = undefined;
+    // The phone's streams end before the SDK they read from closes.
+    await this.stopMobileShare();
     for (const stop of this.watches.values()) stop.abort();
     this.watches.clear();
     this.sessionOwners.clear();
@@ -863,18 +1171,81 @@ export class DesktopHost {
     this.server = undefined;
   }
 
-  private async login(
-    provider: string,
-    method: { kind: "browser" } | { kind: "api_key"; key: string },
-  ): Promise<void> {
-    await login(await this.models(), provider, method, {
-      openExternal: (url) => this.dependencies.openExternal(url),
-      notifyStatus: (message) => this.dependencies.emitHostEvent({ kind: "status", message }),
+  private async login(input: {
+    provider: string;
+    method: { kind: "browser" } | { kind: "api_key"; key: string };
+    attempt: string;
+  }): Promise<LoginOutcome> {
+    const { provider, method, attempt } = input;
+    if (this.closed)
+      throw new ExpectedHostError({ code: "closed", message: "The window closed before sign-in" });
+    if (this.loginAttempts.has(attempt))
+      throw new ExpectedHostError({
+        code: "invalid_input",
+        message: "A sign-in with this attempt ID is already running.",
+        issues: [{ path: "/attempt", message: "Attempt IDs must be unique" }],
+      });
+    // A new sign-in for the same provider supersedes one the renderer lost
+    // track of. Its flow must settle first: a credential it was already
+    // committing would otherwise land beside the new attempt's.
+    const superseded = [...this.loginAttempts.values()].filter(
+      (running) => running.provider === provider,
+    );
+    for (const running of superseded) running.controller.abort();
+    const controller = new AbortController();
+    const running = (async (): Promise<LoginOutcome> => {
+      await Promise.all(superseded.map((previous) => previous.settled));
+      // Superseded in turn, or the window closed, while waiting its turn.
+      if (controller.signal.aborted) return { kind: "cancelled" };
+      return login(await this.models(), provider, method, {
+        signal: controller.signal,
+        openExternal: (url) => this.dependencies.openExternal(url),
+        report: (progress) =>
+          this.dependencies.emitHostEvent({ kind: "login_progress", attempt, provider, progress }),
+      });
+    })();
+    const entry: LoginAttempt = {
+      provider,
+      controller,
+      settled: running.then(
+        () => undefined,
+        () => undefined,
+      ),
+    };
+    this.loginAttempts.set(attempt, entry);
+    void entry.settled.then(() => {
+      if (this.loginAttempts.get(attempt) === entry) this.loginAttempts.delete(attempt);
     });
-    this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+    const outcome = await running;
+    if (outcome.kind === "connected") this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+    return outcome;
+  }
+
+  /** Abort the attempt; its entry stays until the flow has actually stopped. */
+  private cancelLogin(attempt: string): void {
+    this.loginAttempts.get(attempt)?.controller.abort();
+  }
+
+  /** The window that could show a device code is gone; stop polling for it. */
+  cancelLogins(): void {
+    for (const attempt of this.loginAttempts.keys()) this.cancelLogin(attempt);
+  }
+
+  /**
+   * Abort every attempt for the provider and wait until each has settled. A
+   * commit that already started finishes before the caller touches the store.
+   */
+  private async settleLogins(provider: string): Promise<void> {
+    const pending = [...this.loginAttempts.values()].filter(
+      (running) => running.provider === provider,
+    );
+    for (const running of pending) running.controller.abort();
+    await Promise.all(pending.map((running) => running.settled));
   }
 
   private async logout(provider: string): Promise<void> {
+    // A sign-in mid-approval must not save a credential after this delete.
+    await this.settleLogins(provider);
     await (await this.models()).logout(provider);
     this.dependencies.emitHostEvent({ kind: "catalog_changed" });
   }

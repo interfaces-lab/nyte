@@ -8,7 +8,6 @@ import {
   GROUPINGS,
   ORDERINGS,
   sessionIsDraft,
-  sessionMark,
   sessionsForNavigation,
   sessionsForView,
   type SessionViewGroup,
@@ -284,20 +283,6 @@ describe("sidebar session ordering and grouping", () => {
 });
 
 describe("session marks", () => {
-  test("waiting beats retry and working; a failed run stays a failed mark", () => {
-    assert.equal(sessionMark(session({ id: "idle", updatedAt: NOW })), "idle");
-    assert.equal(
-      sessionMark(session({ id: "work", updatedAt: NOW, status: "working" })),
-      "working",
-    );
-    assert.equal(
-      sessionMark(session({ id: "wait", updatedAt: NOW, status: "needs-attention" })),
-      "waiting",
-    );
-    assert.equal(sessionMark(session({ id: "retry", updatedAt: NOW, status: "retry" })), "retry");
-    assert.equal(sessionMark(session({ id: "fail", updatedAt: NOW, status: "failed" })), "failed");
-  });
-
   test("untitled chats without a preview are drafts", () => {
     assert.equal(sessionIsDraft(session({ id: "draft", updatedAt: NOW, status: "draft" })), true);
     assert.equal(sessionIsDraft(session({ id: "done", updatedAt: NOW, status: "done" })), false);

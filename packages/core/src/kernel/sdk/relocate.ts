@@ -3,10 +3,12 @@
  * the session and its children must be quiet, the head leases are held through
  * plugin activation, and only then is the saved directory replaced.
  */
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { DEFAULT_LANDING, isTerminalPhase } from "@nyte-ai/protocol";
 import type { LoadedPlugin } from "../../plugins/types.ts";
 import type { TrustedWorkspace } from "../../workspace-trust.ts";
+import { landsNow } from "../admission.ts";
 import { withLeaseRenewal } from "../lease.ts";
+import type { Run } from "../model.ts";
 import { headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import type { Session } from "../store.ts";
@@ -27,6 +29,13 @@ export function createRelocation(input: {
 }) {
   const { options, pool, runners } = input;
   const { jobsFor, pluginsFor } = input.subagents;
+  const drain = (options.landing ?? DEFAULT_LANDING).drain;
+  /** Queued work the runner would land now. A completion waiting for user input is not. */
+  const queuedWork = async (
+    session: Session,
+    head: HeadName,
+    run: Run | undefined,
+  ): Promise<boolean> => landsNow(run, await pending(session, head), drain);
 
   const sessionCwd = async (input: {
     readonly sessionId: SessionId;
@@ -82,7 +91,7 @@ export function createRelocation(input: {
           if (
             (!restoring && run !== undefined && !isTerminalPhase(run.run.phase)) ||
             (await entry.session.leases.read(headRef(head.head))) !== undefined ||
-            (!restoring && (await pending(entry.session, head.head)).length > 0)
+            (!restoring && (await queuedWork(entry.session, head.head, run?.run)))
           )
             return { kind: "busy" };
         }
@@ -147,7 +156,7 @@ export function createRelocation(input: {
           if (
             !restoring &&
             ((run !== undefined && !isTerminalPhase(run.run.phase)) ||
-              (await pending(target.session, target.head)).length > 0)
+              (await queuedWork(target.session, target.head, run?.run)))
           )
             return { kind: "busy" };
           return await withLeaseRenewal(

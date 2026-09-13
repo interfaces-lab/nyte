@@ -2,12 +2,13 @@
  * Read tool ported from pi's read tool, bound to Nyte's AgentTool
  * contract and direct filesystem access (pi routes reads through its
  * ExecutionEnv effects boundary). Images are detected by content (magic
- * bytes) and returned as image content parts as-is; core carries no image
- * library, so BMP, which providers reject, is omitted.
+ * bytes), converted when necessary, and resized to Pi's inline image limits.
  *
- * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/read.ts
+ * Based on https://github.com/earendil-works/pi/blob/71dca871bc80b6bc97be37f0ca3189399d651fff/packages/agent/src/harness/tools/read.ts
  */
-import { readFile as fsReadFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { PhotonImage, SamplingFilter, fliph, flipv, resize, rotate } from "@cf-wasm/photon/node";
+import { orientation } from "exifr";
 import { relative } from "node:path";
 import { Type } from "typebox";
 import type { AgentTool, AgentToolResult } from "../types.ts";
@@ -40,7 +41,7 @@ export function createReadTool(
 ): AgentTool<typeof readParameters, ReadToolDetails | undefined> {
   return {
     name: "read",
-    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
+    description: `Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments, resized to fit inline limits; BMP is converted to a supported format. For text files, output is truncated to ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.`,
     promptSnippet: "Read file contents",
     promptGuidelines: ["Use read to examine files instead of cat or sed."],
     parameters: readParameters,
@@ -54,12 +55,14 @@ export function createReadTool(
       const absolutePath = await resolveReadPathAsync(path, cwd);
       const title = relative(cwd, absolutePath);
       throwIfAborted();
-      const buffer = await fsReadFile(absolutePath);
+      const buffer = await readFile(absolutePath);
       throwIfAborted();
 
       const mimeType = detectSupportedImageMimeType(buffer);
       if (mimeType !== undefined) {
-        return { ...readImage(buffer, mimeType), title };
+        const image = await readImage(buffer, mimeType);
+        throwIfAborted();
+        return { ...image, title };
       }
 
       const textContent = buffer.toString("utf-8");
@@ -118,21 +121,103 @@ export function createReadTool(
   };
 }
 
-function readImage(buffer: Buffer, mimeType: string): AgentToolResult<ReadToolDetails | undefined> {
-  // BMP is not accepted by providers; converting it needs an image library.
-  if (mimeType === "image/bmp") {
-    return {
-      content: toolResultContent(
-        "Read image file [image/bmp]\n[Image omitted: BMP images are not supported.]",
-      ),
-      details: undefined,
-    };
+// Match Pi's 2,000px bounds and 4.5 MiB base64 budget without its worker/asset loader.
+const MAX_IMAGE_DIMENSION = 2000;
+const MAX_IMAGE_BASE64_BYTES = 4.5 * 1024 * 1024;
+
+async function readImage(
+  buffer: Buffer,
+  mimeType: string,
+): Promise<AgentToolResult<ReadToolDetails | undefined>> {
+  let image: PhotonImage | undefined;
+  try {
+    image = PhotonImage.new_from_byteslice(buffer);
+    if (
+      mimeType !== "image/bmp" &&
+      image.get_width() <= MAX_IMAGE_DIMENSION &&
+      image.get_height() <= MAX_IMAGE_DIMENSION &&
+      Math.ceil(buffer.length / 3) * 4 <= MAX_IMAGE_BASE64_BYTES
+    ) {
+      return {
+        content: [
+          { type: "text", text: `Read image file [${mimeType}]` },
+          { type: "image", data: buffer.toString("base64"), mimeType },
+        ],
+        details: undefined,
+      };
+    }
+
+    // Re-encoding drops EXIF, so apply its orientation to the pixels first.
+    const exifOrientation = await orientation(buffer).catch(() => undefined);
+    if (
+      exifOrientation === 5 ||
+      exifOrientation === 6 ||
+      exifOrientation === 7 ||
+      exifOrientation === 8
+    ) {
+      const rotated = rotate(image, exifOrientation <= 6 ? 90 : 270);
+      image.free();
+      image = rotated;
+    }
+    if (
+      exifOrientation === 2 ||
+      exifOrientation === 3 ||
+      exifOrientation === 5 ||
+      exifOrientation === 7
+    )
+      fliph(image);
+    if (exifOrientation === 3 || exifOrientation === 4) flipv(image);
+
+    const originalWidth = image.get_width();
+    const originalHeight = image.get_height();
+    const scale = Math.min(
+      1,
+      MAX_IMAGE_DIMENSION / originalWidth,
+      MAX_IMAGE_DIMENSION / originalHeight,
+    );
+    let width = Math.max(1, Math.round(originalWidth * scale));
+    let height = Math.max(1, Math.round(originalHeight * scale));
+    while (true) {
+      const resized = resize(image, width, height, SamplingFilter.Lanczos3);
+      try {
+        // Keep PNG lossless when it fits; use JPEG before reducing dimensions further.
+        for (const quality of [undefined, 80, 60, 40]) {
+          const bytes =
+            quality === undefined ? resized.get_bytes() : resized.get_bytes_jpeg(quality);
+          const data = Buffer.from(bytes).toString("base64");
+          if (data.length > MAX_IMAGE_BASE64_BYTES) continue;
+          const outputMimeType = quality === undefined ? "image/png" : "image/jpeg";
+          const notes = [`Read image file [${mimeType}]`];
+          if (mimeType !== outputMimeType) notes.push(`[Image converted to ${outputMimeType}.]`);
+          if (width !== originalWidth || height !== originalHeight) {
+            notes.push(
+              `[Image resized from ${originalWidth}x${originalHeight} to ${width}x${height}.]`,
+            );
+          }
+          return {
+            content: [
+              { type: "text", text: notes.join("\n") },
+              { type: "image", data, mimeType: outputMimeType },
+            ],
+            details: undefined,
+          };
+        }
+      } finally {
+        resized.free();
+      }
+      if (width === 1 && height === 1) break;
+      width = Math.max(1, Math.floor(width * 0.75));
+      height = Math.max(1, Math.floor(height * 0.75));
+    }
+  } catch {
+    // Failed decoding/conversion must not send corrupt or oversized attachments.
+  } finally {
+    image?.free();
   }
   return {
-    content: [
-      { type: "text", text: `Read image file [${mimeType}]` },
-      { type: "image", data: buffer.toString("base64"), mimeType },
-    ],
+    content: toolResultContent(
+      `Read image file [${mimeType}]\n[Image omitted: could not be processed within inline image limits.]`,
+    ),
     details: undefined,
   };
 }

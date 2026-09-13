@@ -1,36 +1,16 @@
-import { Fragment } from "react";
 import type { ReactElement } from "react";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
-import { ComposerChipView } from "./composer-chip.tsx";
-import { messageParts } from "./message-references.ts";
+import { ComposerReadOnly } from "./composer-surface.tsx";
 
 /**
  * A sent or queued message, drawn with the chips its text stands for. The
  * text is the provider's; only its presentation is compact.
  */
 export function UserMessageText({ text }: { readonly text: string }): ReactElement {
-  const parts = messageParts(text.replaceAll(/\n{3,}/gu, "\n\n"), { form: "message" });
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (part.kind === "text") return <Fragment key={index}>{part.text}</Fragment>;
-        const next = parts[index + 1];
-        // Head sentences sit on their own line; the body that follows starts a new one.
-        const separator = !part.source.endsWith("\n\n")
-          ? null
-          : next?.kind === "text"
-            ? "\n"
-            : next?.kind === "reference"
-              ? " "
-              : null;
-        return (
-          <Fragment key={index}>
-            <ComposerChipView reference={part.reference} />
-            {separator}
-          </Fragment>
-        );
-      })}
-    </>
+  return text.length > 100_000 ? (
+    <>Message is too long to display</>
+  ) : (
+    <ComposerReadOnly text={text} />
   );
 }
 

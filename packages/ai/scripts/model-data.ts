@@ -11,6 +11,7 @@ export const MODEL_DATA_MANIFEST_FILE = ".manifest.json";
 /** Static provider catalogs Nyte checks in and exposes through explicit factories. */
 export const GENERATED_MODEL_PROVIDER_IDS: readonly KnownProvider[] = [
   "anthropic",
+  "github-copilot",
   "openai",
   "openai-codex",
 ];

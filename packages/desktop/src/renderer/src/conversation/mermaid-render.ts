@@ -18,7 +18,7 @@ export function renderDiagram(source: string): DiagramResult {
       fg: "var(--nyte-text-primary)",
       accent: "var(--nyte-accent)",
       muted: "var(--nyte-text-tertiary)",
-      surface: "var(--sand-bg-elevated)",
+      surface: "var(--nyte-bg-raised)",
       border: "var(--nyte-stroke-secondary)",
       font: "var(--nyte-font-family-sans)",
       padding: 24,

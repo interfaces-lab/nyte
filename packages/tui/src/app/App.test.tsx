@@ -18,6 +18,7 @@ import {
   openPanel,
   patchStatus,
   releaseSlot,
+  selectSelection,
   setHints,
   type EphemeralPanel,
   type Shell,
@@ -133,6 +134,31 @@ describe("screen", () => {
     expect(() => openPanel(shell, panel(shell, "second", 1))).toThrow(
       "Another panel is already open",
     );
+  });
+
+  test("a multi-selection keeps picked choices and the typed answer", async () => {
+    const { setup, shell } = await mount();
+    mounted.push(setup);
+    const answer = selectSelection(shell, {
+      title: "Choose changes",
+      choices: [
+        { id: "small", label: "Small patch" },
+        { id: "large", label: "Broad rewrite" },
+      ],
+      multiple: true,
+      other: "Or type another change",
+    });
+    await setup.flush();
+
+    setup.mockInput.pressEnter();
+    await setup.mockInput.typeText("Wait for the migration");
+    setup.mockInput.pressEnter({ ctrl: true });
+
+    expect(await answer).toEqual({
+      choices: ["small"],
+      other: "Wait for the migration",
+    });
+    expect(shell.ui.selecting).toBe(false);
   });
 
   test("the completion dropdown borrows the slot without taking the keyboard", async () => {

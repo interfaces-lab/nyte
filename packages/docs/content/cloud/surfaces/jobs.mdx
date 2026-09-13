@@ -65,5 +65,6 @@ failure is `role="alert"`. On settle the jobs query is invalidated.
 - Output is a native `<details>` so it is collapsible without JavaScript state; the summary carries
   `focus.ring`.
 - Counts use `tabular-nums`.
-- The parent selects an exact [subagent model](/cloud/surfaces/model-picker#subagent-models) for each task.
-  Unavailable models fail without substitution.
+- A task may select an exact [subagent model](/cloud/surfaces/model-picker#subagent-models).
+  Omitting it uses the task default. An unavailable explicit choice or default fails without
+  substitution.

@@ -1,9 +1,10 @@
 import { setTimeout } from "node:timers/promises";
-import type { Landing } from "@nyte-ai/protocol";
+import { isTerminalPhase, type Landing } from "@nyte-ai/protocol";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
+import { admissionFor, admits, isUserInput, nextBatch, startsResponse } from "./admission.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
 import { branchConfig, contextMessages } from "./context.ts";
-import { listEffects } from "./effects.ts";
+import { listEffects, waitingBatchReady } from "./effects.ts";
 import { branch, contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";
 import { LeaseLost, withLeaseRenewal } from "./lease.ts";
@@ -17,7 +18,7 @@ import {
   runRef,
 } from "./names.ts";
 import { createOutbox } from "./outbox.ts";
-import { nextToLand, pendingIn } from "./queue.ts";
+import { pendingIn } from "./queue.ts";
 import type { PendingChange } from "./queue.ts";
 import type { Commit, Lease, Obj, RefUpdate, Run, RunConfig, RunPhase } from "./model.ts";
 import type { Session } from "./store.ts";
@@ -120,13 +121,32 @@ async function publish(
 }
 
 function withPhase(run: Run, phase: RunPhase, attempts = run.attempts): Run {
-  return { ...run, phase, attempts };
+  return { ...run, phase: endingPhase(run, phase), attempts };
 }
 
-/** A landing consumes the abort: the interrupted step is over and this message continues the run. */
-function resumed(run: Run): Run {
-  const { abortRequested: _consumed, ...rest } = run;
-  return rest;
+/**
+ * A stop is one-way: a flagged run can end only `aborted`, whatever its last
+ * step found, so the queue never reads a stopped run as open. Every phase a
+ * step publishes passes through here.
+ */
+function endingPhase(run: Run, phase: RunPhase): RunPhase {
+  return run.abortRequested === true && isTerminalPhase(phase) ? { kind: "aborted" } : phase;
+}
+
+/** The failure a stop overrides is still worth reading; it is kept as a diagnostic, not as the phase. */
+async function noteOverriddenFailure(context: StepContext, phase: RunPhase): Promise<void> {
+  if (phase.kind !== "failed" || endingPhase(context.run, phase).kind === "failed") return;
+  await context.session.events.append(
+    [
+      {
+        kind: "notice",
+        level: "error",
+        owner: "runner",
+        message: `Run ${context.run.id} was stopped while failing: ${phase.error}`,
+      },
+    ],
+    { lease: context.lease },
+  );
 }
 
 function commitsFor(
@@ -146,8 +166,10 @@ function commitsFor(
       run: runId,
       at: now(),
     };
+    const keyed: Commit =
+      item.change.key === undefined ? baseCommit : { ...baseCommit, key: item.change.key };
     const commit: Commit =
-      item.change.author === undefined ? baseCommit : { ...baseCommit, author: item.change.author };
+      item.change.author === undefined ? keyed : { ...keyed, author: item.change.author };
     previous = hashObject(commit);
     commits.push(commit);
   }
@@ -155,40 +177,49 @@ function commitsFor(
   return { commits, tip: previous };
 }
 
-function takePending(
-  changes: readonly PendingChange[],
-  drain: "one" | "all",
-): readonly PendingChange[] {
-  if (drain === "all") return changes;
-  const message = changes.findIndex((item) => item.change.body.kind === "message");
-  return message === -1 ? changes : changes.slice(0, message + 1);
+/** Completed work ahead of the batch's first input: what may join while that input's answer is still due. */
+function leadingCompletions(changes: readonly PendingChange[]): readonly PendingChange[] {
+  const end = changes.findIndex((item) => item.change.body.kind !== "completion");
+  return end === -1 ? changes : changes.slice(0, end);
+}
+
+interface LandingRequest {
+  readonly lane: string;
+  /** The head's current run when it has one: live at a response boundary, or terminal. */
+  readonly run: Run | undefined;
+  /** `completions`: the tip still awaits its answer, so only completed work joins ahead of it. */
+  readonly take: "batch" | "completions";
 }
 
 async function land(
-  context: Omit<StepContext, "run"> & { readonly run?: Run },
-  lane: string,
+  context: Omit<StepContext, "run">,
+  request: LandingRequest,
 ): Promise<StepOutcome> {
-  const changes = takePending(
+  const { lane, run } = request;
+  const batch = nextBatch(
     await pendingIn(context.session, { head: context.options.head, lane }),
     context.options.landing.drain,
   );
-  if (changes.length === 0) return { kind: "continue" };
+  const changes = request.take === "completions" ? leadingCompletions(batch) : batch;
+  const admission = admissionFor(run);
+  if (!admits(admission, changes)) return { kind: "idle" };
 
   const baseName = queueBaseRef(context.options.head, lane);
   const base = await context.session.refs.read(baseName);
-  if (context.run !== undefined) {
-    let agent = context.run.config.agent;
+  const live = admission.kind === "live" ? run : undefined;
+  if (live !== undefined) {
+    let agent = live.config.agent;
     for (const { change } of changes) {
       if (change.body.kind === "message" && change.body.agent !== undefined) {
         agent = change.body.agent;
       }
     }
-    if (agent !== context.run.config.agent) {
+    if (agent !== live.config.agent) {
       // Keep this batch queued. Its selected agent starts a new run after
       // the current run ends, with its own config and response ceiling.
       return storeRun(
-        { ...context, run: context.run },
-        withPhase(context.run, { kind: "done" }),
+        { ...context, run: live },
+        withPhase(live, { kind: "done" }),
         "agent changed",
         [
           { name: headRef(context.options.head), from: context.tip, to: context.tip },
@@ -198,10 +229,19 @@ async function land(
       );
     }
   }
-  let activeRun = context.run;
   let nextRun: Run;
   let landed: ReturnType<typeof commitsFor>;
-  if (activeRun === undefined) {
+  if (live !== undefined) {
+    // The batch joins the run in progress. The run object is unchanged: a stop
+    // is never consumed by a landing, and a stopping run lands nothing.
+    landed = commitsFor(changes, context.tip, live.id, context.now);
+    nextRun = live;
+  } else if (run !== undefined && !changes.some(startsResponse)) {
+    // Configuration and notes on an idle head apply under the run that ended,
+    // whose phase is history. A new run is only ever started by user input.
+    landed = commitsFor(changes, context.tip, run.id, context.now);
+    nextRun = run;
+  } else {
     const id = newRunId();
     landed = commitsFor(changes, context.tip, id, context.now);
     const prior = await branch(context.session.objects, context.tip);
@@ -210,19 +250,11 @@ async function land(
       kind: "run",
       id,
       head: context.options.head,
-      phase: changes.some(
-        (item) => item.change.body.kind === "message" || item.change.body.kind === "completion",
-      )
-        ? { kind: "respond" }
-        : { kind: "done" },
+      phase: changes.some(isUserInput) ? { kind: "respond" } : { kind: "done" },
       startedAt: context.now(),
       attempts: 0,
       config: context.options.resolveConfig?.(config) ?? config,
     };
-    activeRun = nextRun;
-  } else {
-    landed = commitsFor(changes, context.tip, activeRun.id, context.now);
-    nextRun = resumed(activeRun);
   }
 
   await context.session.objects.put([...landed.commits, nextRun]);
@@ -243,12 +275,16 @@ async function land(
   return { kind: "continue" };
 }
 
+/** Land the first lane, in policy order, whose next batch the head admits. */
 async function landOrIdle(
-  context: Omit<StepContext, "run"> & { readonly run?: Run },
-  lanes: readonly string[],
+  context: Omit<StepContext, "run">,
+  options: { readonly lanes: readonly string[]; readonly run: Run | undefined },
 ): Promise<StepOutcome> {
-  const next = await nextToLand(context.session, { head: context.options.head, lanes });
-  return next === undefined ? { kind: "idle" } : land(context, next.lane);
+  for (const lane of options.lanes) {
+    const outcome = await land(context, { lane, run: options.run, take: "batch" });
+    if (outcome.kind !== "idle") return outcome;
+  }
+  return { kind: "idle" };
 }
 
 async function storeRun(
@@ -268,6 +304,12 @@ async function storeRun(
   });
   if (outcome === "fenced") return { kind: "fenced" };
   return outcome === "ok" ? { kind: "finished", run } : { kind: "continue" };
+}
+
+/** Publish the run's terminal phase with no other output. */
+async function endRun(context: StepContext, phase: RunPhase, reason: string): Promise<StepOutcome> {
+  await noteOverriddenFailure(context, phase);
+  return storeRun(context, withPhase(context.run, phase), reason);
 }
 
 async function callTurn<T>(
@@ -334,7 +376,7 @@ async function afterConflict(
   if (current.run?.id === context.run.id && current.run.abortRequested === true) {
     // The abort raced this step. Keep its output and carry the flag to where it
     // is honored: a tool batch settles its calls first, anything else goes to
-    // the response boundary, which lands a queued message or ends the run.
+    // the response boundary, which ends the run `aborted`.
     const phase: RunPhase =
       options.next.phase.kind === "tools" || options.next.phase.kind === "waiting"
         ? options.next.phase
@@ -447,42 +489,35 @@ function isStepCeilingResolver(
 }
 
 async function respond(context: StepContext): Promise<StepOutcome> {
-  // An abort interrupts the step, not the run: a message queued for this
-  // boundary continues the run in place of the interrupted answer. The run
-  // ends only when nothing is waiting.
-  const interrupted = context.run.abortRequested === true;
+  // A stop is one-way: the run ends here, and whatever is queued waits for the
+  // terminal run to admit it. Nothing lands into a run that is stopping.
+  if (context.run.abortRequested === true) {
+    return endRun(context, { kind: "aborted" }, "abort");
+  }
   // Answer user inputs one at a time, but include completed work at this boundary
   // even when another user input is waiting ahead of it in the lane policy.
-  const answering =
-    !interrupted && context.options.landing.drain === "one" && (await awaitingAnswer(context));
+  const answering = context.options.landing.drain === "one" && (await awaitingAnswer(context));
   for (const lane of lanesThatLand(context.options.landing, "boundary")) {
-    const next = await nextToLand(context.session, {
-      head: context.options.head,
-      lanes: [lane],
+    const outcome = await land(context, {
+      lane,
+      run: context.run,
+      take: answering ? "completions" : "batch",
     });
-    if (next === undefined || (answering && next.change.body.kind !== "completion")) continue;
-    return land(context, lane);
-  }
-  if (interrupted) {
-    return storeRun(context, withPhase(context.run, { kind: "aborted" }), "abort");
+    if (outcome.kind !== "idle") return outcome;
   }
 
   const ceiling = isStepCeilingResolver(context.options.steps)
     ? context.options.steps(context.run)
     : context.options.steps;
   if (ceiling !== undefined && context.run.attempts >= ceiling) {
-    return storeRun(
-      context,
-      withPhase(context.run, { kind: "failed", error: "step ceiling" }),
-      "fail",
-    );
+    return endRun(context, { kind: "failed", error: "step ceiling" }, "fail");
   }
 
   const commits = await contextCommits(context.session.objects, context.tip);
   const messages = contextMessages(commits.map((entry) => entry.commit));
   const last = messages[messages.length - 1];
   if (last === undefined || (last.role !== "user" && last.role !== "toolResult")) {
-    return storeRun(context, withPhase(context.run, { kind: "done" }), "done");
+    return endRun(context, { kind: "done" }, "done");
   }
 
   // Older runs have only declared inputs. A successor may also lack the
@@ -591,6 +626,7 @@ async function publishTools(
   const commits = toolCommits(options.outcome.messages, context.tip, context.run.id, context.now);
   const finalCommit = commits.at(-1);
   const outputTip = finalCommit === undefined ? context.tip : hashObject(finalCommit);
+  await noteOverriddenFailure(context, options.phase);
   const next = withPhase(context.run, options.phase);
   const views = await listEffects(context.session, context.run.id);
   await context.session.objects.put([...commits, next]);
@@ -619,9 +655,9 @@ async function publishTools(
 
 async function tools(context: StepContext): Promise<StepOutcome> {
   if (context.tip === null) {
-    return storeRun(
+    return endRun(
       context,
-      withPhase(context.run, { kind: "failed", error: "tools phase has no assistant message" }),
+      { kind: "failed", error: "tools phase has no assistant message" },
       "fail",
     );
   }
@@ -632,9 +668,9 @@ async function tools(context: StepContext): Promise<StepOutcome> {
     object.body.kind !== "message" ||
     object.body.message.role !== "assistant"
   ) {
-    return storeRun(
+    return endRun(
       context,
-      withPhase(context.run, { kind: "failed", error: "tools phase has no assistant message" }),
+      { kind: "failed", error: "tools phase has no assistant message" },
       "fail",
     );
   }
@@ -729,14 +765,14 @@ async function runStep(
 
 async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Promise<StepOutcome> {
   const idleLanes = lanesThatLand(base.options.landing, "idle");
-  if (run === undefined) return landOrIdle(base, idleLanes);
+  if (run === undefined) return landOrIdle(base, { lanes: idleLanes, run });
   const context: StepContext = { ...base, run };
 
   switch (run.phase.kind) {
     case "done":
     case "failed":
     case "aborted":
-      return landOrIdle(base, idleLanes);
+      return landOrIdle(base, { lanes: idleLanes, run });
     case "respond":
       return respond(context);
     case "tools":
@@ -751,9 +787,7 @@ async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Pr
       );
       const wake =
         run.abortRequested === true ||
-        views.some(
-          (view) => view.effect.state === "signal" || view.effect.state === "expired",
-        ) ||
+        waitingBatchReady(views) ||
         deadlines.some((until) => until <= now);
       if (wake) return tools(context);
       return deadlines.length === 0
@@ -761,7 +795,8 @@ async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Pr
         : { kind: "waiting", run, until: Math.min(...deadlines) };
     }
     case "retry":
-      return context.now() < run.phase.at
+      // A stop does not wait out the backoff; the boundary ends the run at once.
+      return run.abortRequested !== true && context.now() < run.phase.at
         ? { kind: "retry", run, at: run.phase.at }
         : respond(context);
     default: {

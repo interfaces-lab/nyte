@@ -11,9 +11,8 @@
     <style>
       /*
        * Startup shell. Paints before any module runs, so it carries its own
-       * palette. Each value falls back to tokens.css once that loads; until
-       * then light-dark() follows the color scheme boot.ts sets on <html>,
-       * or the OS when no preference is stored yet.
+       * palette. App tokens take over once loaded. Before boot.ts applies the
+       * stored theme on <html>, light-dark() follows the OS color scheme.
        */
       html {
         color-scheme: light dark;
@@ -30,125 +29,87 @@
         height: 100%;
       }
       #startup {
-        --startup-bg: var(--sand-bg-base, light-dark(#f5f5f6, #131417));
-        --startup-text: var(--sand-text-primary, light-dark(#141414, #fcfcfc));
-        --startup-muted: var(--sand-text-tertiary, light-dark(#14141499, #fcfcfc66));
-        --startup-fill: var(--sand-fill-primary, light-dark(#070707, #fafafa));
-        --startup-fill-hover: var(--sand-fill-primary-hover, light-dark(#2f2f2f, #d5d5d5));
-        --startup-on-fill: var(--sand-text-on-primary, light-dark(#fcfcfc, #141414));
+        --startup-bg: var(--nyte-bg-chrome, light-dark(#f8f8f8, #111111));
+        --startup-text: var(--nyte-text-primary, light-dark(#141414, #fcfcfc));
+        --startup-fill: var(--nyte-fill-primary, light-dark(#141414, #fcfcfc));
+        --startup-fill-hover: var(--nyte-fill-primary-hover, light-dark(#2a2a2a, #dedede));
+        --startup-on-fill: var(--nyte-text-invert, light-dark(#fcfcfc, #141414));
         --startup-accent: var(--nyte-accent-base, #1084fe);
+        --startup-moon-color: light-dark(#ff9800, #ffc663);
         box-sizing: border-box;
         height: 100dvh;
-        overflow: auto;
+        overflow: hidden;
         display: grid;
         grid-template-rows: auto 1fr;
         background: var(--startup-bg);
         color: var(--startup-text);
-        font-family: var(--nyte-font-family-sans, "Inter Variable", system-ui, sans-serif);
+        font-family: var(--nyte-font-family-sans, system-ui, sans-serif);
         font-size: 13px;
         -webkit-font-smoothing: antialiased;
       }
-      /* Mirrors the shell titlebar: same height, draggable, clear of the traffic lights. */
-      .startup-brand {
-        display: flex;
-        align-items: center;
+      /* Empty stand-in for the shell titlebar so the window stays draggable while it boots. */
+      .startup-drag {
         height: 35px;
-        padding-left: calc(env(titlebar-area-x, 68px) + 10px);
-        font-size: 13px;
-        font-weight: 600;
-        letter-spacing: -0.2px;
         -webkit-app-region: drag;
-        user-select: none;
       }
       .startup-content {
         display: flex;
         flex-direction: column;
         align-items: center;
-        width: min(100%, 320px);
         margin: auto;
-        padding: 24px 0 59px; /* keeps the optical center level with the brand row above */
-        text-align: center;
+        padding-bottom: 35px; /* offsets the titlebar row so the moon sits on the window center */
+        user-select: none;
       }
-      .startup-spinner {
-        width: 24px;
-        height: 24px;
-        margin-bottom: 20px;
-        color: var(--startup-accent);
+      /*
+       * ASCII moon: twelve phases stacked in one grid cell and shown one at a
+       * time, waxing from a crescent to full and back without an empty phase.
+       * A 23-column by 12-row disc balances monospace cells at 1.15 line-height.
+       * Keep the system font stable while bundled fonts load. Reduced motion
+       * rests on the first, near-quarter phase.
+       */
+      .startup-moon {
+        display: grid;
+        color: var(--startup-moon-color);
+        font-family: ui-monospace, monospace;
+        width: 23ch;
+        font-size: 12px;
+        line-height: 1.15;
       }
-      .startup-spinner rect {
-        opacity: 0.7;
-        animation: startup-pulse 1.4s ease-in-out infinite both;
+      .startup-moon span {
+        grid-area: 1 / 1;
+        white-space: pre;
+        opacity: 0;
+        animation: startup-moon 1.2s steps(1, end) infinite;
+        animation-delay: calc(var(--frame, 0) * 0.1s - 1.2s);
       }
-      .startup-spinner rect:nth-child(1) {
-        animation-delay: 0s;
-      }
-      .startup-spinner rect:nth-child(2) {
-        animation-delay: 0.1s;
-      }
-      .startup-spinner rect:nth-child(3) {
-        animation-delay: 0.9s;
-      }
-      .startup-spinner rect:nth-child(4) {
-        animation-delay: 0.2s;
-      }
-      .startup-spinner rect:nth-child(5) {
-        animation-delay: 0.6s;
-      }
-      .startup-spinner rect:nth-child(6) {
-        animation-delay: 1.1s;
-      }
-      .startup-spinner rect:nth-child(7) {
-        animation-delay: 0.4s;
-      }
-      .startup-spinner rect:nth-child(8) {
-        animation-delay: 0.8s;
-      }
-      .startup-spinner rect:nth-child(9) {
-        animation-delay: 0.3s;
-      }
-      .startup-spinner rect:nth-child(10) {
-        animation-delay: 1.2s;
-      }
-      .startup-spinner rect:nth-child(11) {
-        animation-delay: 0.5s;
-      }
-      .startup-spinner rect:nth-child(12) {
-        animation-delay: 0.7s;
-      }
-      @keyframes startup-pulse {
-        0%,
-        100% {
-          opacity: 0.25;
-        }
-        50% {
+      @keyframes startup-moon {
+        0% {
           opacity: 1;
+        }
+        8.333333333333%,
+        100% {
+          opacity: 0;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .startup-spinner rect {
+        .startup-moon span {
           animation: none;
         }
+        .startup-moon span:first-child {
+          opacity: 1;
+        }
       }
-      #startup-title {
-        margin: 0;
-        font-size: 15px;
-        line-height: 1.4;
+      #startup-message {
+        margin: 20px 0 0;
+        font-size: 13px;
         font-weight: 500;
         letter-spacing: -0.2px;
-        text-wrap: balance;
-      }
-      #startup-status {
-        margin: 6px 0 0;
-        color: var(--startup-muted);
-        font-size: 13px;
-        line-height: 1.5;
-        text-wrap: pretty;
       }
       #startup-retry {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        margin-top: 20px;
+        margin-top: 16px;
         height: 32px;
         padding: 0 14px;
         border: 0;
@@ -170,8 +131,15 @@
         outline: 2px solid var(--startup-accent);
         outline-offset: 2px;
       }
-      #startup[data-state="loading"] :is(#startup-status, #startup-retry),
-      #startup[data-state="error"] .startup-spinner {
+      .startup-assistive {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+      }
+      #startup[data-state="loading"] :is(#startup-message, #startup-retry),
+      #startup[data-state="error"] :is(.startup-moon, .startup-assistive) {
         display: none;
       }
     </style>
@@ -179,25 +147,69 @@
   <body>
     <div id="root">
       <main id="startup" data-state="loading">
-        <header class="startup-brand">Nyte</header>
+        <div class="startup-drag"></div>
         <section class="startup-content" role="status" aria-live="polite" aria-atomic="true">
-          <!-- Same 4×4 pulse grid as components/spinner.tsx, minus the corners. -->
-          <svg class="startup-spinner" viewBox="0 0 15 15" fill="currentColor" aria-hidden="true">
-            <rect x="4" y="0" width="3" height="3" rx="1" />
-            <rect x="8" y="0" width="3" height="3" rx="1" />
-            <rect x="0" y="4" width="3" height="3" rx="1" />
-            <rect x="4" y="4" width="3" height="3" rx="1" />
-            <rect x="8" y="4" width="3" height="3" rx="1" />
-            <rect x="12" y="4" width="3" height="3" rx="1" />
-            <rect x="0" y="8" width="3" height="3" rx="1" />
-            <rect x="4" y="8" width="3" height="3" rx="1" />
-            <rect x="8" y="8" width="3" height="3" rx="1" />
-            <rect x="12" y="8" width="3" height="3" rx="1" />
-            <rect x="4" y="12" width="3" height="3" rx="1" />
-            <rect x="8" y="12" width="3" height="3" rx="1" />
-          </svg>
-          <h1 id="startup-title">Opening your workspace…</h1>
-          <p id="startup-status"></p>
+          <div class="startup-moon" aria-hidden="true">
+            <span style="--frame: 0">
+              **# ***### **####@ +++###@@ +++###@@@ ***####@@ ***####@@ *++###@@@ ++++##@@ **####@
+              ***### **#</span
+            >
+            <span style="--frame: 1">
+              ***## ***####@ ***#####@@@ **+++++#@@@@ **+++++#@@@@@ ***#####@@@@@ ***#####@@@@@
+              ***##++#@@@@@ ***#++++@@@@ ***#####@@@ ***####@ ***##</span
+            >
+            <span style="--frame: 2">
+              ***#### ***######@@ ***#####@@@@@@ **###++***@@@@@ ***###++***@@@@@@ ***#####@@@@@@@@@
+              ++++####@@@@@@@@@ ++++####@**@@@@@@ ++#####****@@@@ ***#####@@@@@@ ***######@@
+              ***####</span
+            >
+            <span style="--frame: 3">
+              ***##### **#######@@@# ***#####@@@@@@@@@ **#####@*****@@@@@ **#####@@*****@@@@@@
+              **#####@@@@@@@@@@@@@ **+++++@@@@@@@@@@@@@ **+++++@@@@@**@@@@@@ **+++##@@@****@@@@
+              ***#####@@@@@@@@@ **#######@@@# ***#####</span
+            >
+            <span style="--frame: 4">
+              **####### **######@@@@### *#####@@@@@@@@@@@# *####@@@@@*****@@@@#
+              **###@@@@@@*****@@@@@# *####@@@@@@@@@@@@@@@@# *###+****@@@@@@@@@@@@#
+              **##+****@@@@@**@@@@@# *###+**@@@@@****@@@# *#####@@@@@@@@@@@# **######@@@@###
+              **#######</span
+            >
+            <span style="--frame: 5">
+              *#######* *####@@@@@####* *###@@@@@@@@@@@###* ###@@@@@@@@*****@@###
+              *##@@@@@@@@@*****@@@##* ###@@@@@@@@@@@@@@@@@### ###@@*****@@@@@@@@@@###
+              *##@@*****@@@@@**@@@##* ###@@***@@@@@****@### *###@@@@@@@@@@@###* *####@@@@@####*
+              *#######*</span
+            >
+            <span style="--frame: 6">
+              **####### **######@@@@### *#####@@@@@@@@@@@# *####@@@@@*****@@@@#
+              **###@@@@@@*****@@@@@# *####@@@@@@@@@@@@@@@@# *###+****@@@@@@@@@@@@#
+              **##+****@@@@@**@@@@@# *###+**@@@@@****@@@# *#####@@@@@@@@@@@# **######@@@@###
+              **#######</span
+            >
+            <span style="--frame: 7">
+              ***##### **#######@@@# ***#####@@@@@@@@@ **#####@*****@@@@@ **#####@@*****@@@@@@
+              **#####@@@@@@@@@@@@@ **+++++@@@@@@@@@@@@@ **+++++@@@@@**@@@@@@ **+++##@@@****@@@@
+              ***#####@@@@@@@@@ **#######@@@# ***#####</span
+            >
+            <span style="--frame: 8">
+              ***#### ***######@@ ***#####@@@@@@ **###++***@@@@@ ***###++***@@@@@@ ***#####@@@@@@@@@
+              ++++####@@@@@@@@@ ++++####@**@@@@@@ ++#####****@@@@ ***#####@@@@@@ ***######@@
+              ***####</span
+            >
+            <span style="--frame: 9">
+              ***## ***####@ ***#####@@@ **+++++#@@@@ **+++++#@@@@@ ***#####@@@@@ ***#####@@@@@
+              ***##++#@@@@@ ***#++++@@@@ ***#####@@@ ***####@ ***##</span
+            >
+            <span style="--frame: 10">
+              **# ***### **####@ +++###@@ +++###@@@ ***####@@ ***####@@ *++###@@@ ++++##@@ **####@
+              ***### **#</span
+            >
+            <span style="--frame: 11">
+              ** **# **## ***## **##@ **##@ **##@ **##@ +**## **## **# **</span
+            >
+          </div>
+          <span class="startup-assistive">Loading</span>
+          <p id="startup-message"></p>
           <button id="startup-retry" type="button">
             <!-- Central Icons: IconArrowRotateClockwise -->
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">

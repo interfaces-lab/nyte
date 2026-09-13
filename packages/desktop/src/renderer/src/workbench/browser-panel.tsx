@@ -39,7 +39,7 @@ const styles = stylex.create({
     paddingInline: 6,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
+    borderBottomColor: t.strokeTertiary,
   },
   bookmarks: {
     display: "flex",
@@ -51,7 +51,7 @@ const styles = stylex.create({
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
+    borderBottomColor: t.strokeTertiary,
   },
   bookmark: { display: "flex", alignItems: "center", flexShrink: 0, maxWidth: 220 },
   bookmarkLabel: {
@@ -77,7 +77,7 @@ const styles = stylex.create({
     paddingInline: 8,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderWeak,
+    borderColor: t.strokeSecondary,
     borderRadius: t.radiusLg,
     backgroundColor: t.bgElevated,
     // The ring belongs on the rounded field, not on the square input nested
@@ -130,7 +130,7 @@ const styles = stylex.create({
     padding: 5,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSubtle,
+    borderInlineStartColor: t.strokeTertiary,
     backgroundColor: t.bgSubtle,
   },
   historyHeading: {
@@ -190,7 +190,7 @@ const styles = stylex.create({
     paddingInline: 10,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
+    borderBottomColor: t.strokeTertiary,
     backgroundColor: t.bgSubtle,
     color: t.textSecondary,
     fontSize: t.fontSm,
@@ -207,7 +207,7 @@ const styles = stylex.create({
     paddingInline: 10,
     borderStyle: "none",
     borderRadius: t.radiusLg,
-    backgroundColor: { default: t.fillSecondary, ":hover": t.fillSecondaryHover },
+    backgroundColor: { default: t.fillSecondary, ":hover": t.fillGhostHover },
     color: t.textPrimary,
     fontSize: t.fontSm,
     cursor: "pointer",

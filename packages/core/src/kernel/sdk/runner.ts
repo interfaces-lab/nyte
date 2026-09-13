@@ -4,7 +4,7 @@
  * Participants abort a run through `requestAbortAtRef`, which also cancels the
  * local drive when this host owns it.
  */
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { isTerminalPhase, validateHeadName } from "@nyte-ai/protocol";
 import type { Api, Model } from "@nyte-ai/schema";
 import type { AgentTool } from "../../types.ts";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
@@ -12,7 +12,8 @@ import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.
 import { failedAssistant } from "./requests.ts";
 import { factRef, parseHeadRef, isHeadName, parseQueueRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
-import { drive } from "../step.ts";
+import { drive, type StepOptions } from "../step.ts";
+import { advanceStep } from "./advance.ts";
 import { turnFor, type Activation } from "./activation.ts";
 import { JOB_PREFIX, JOBS_CANCELLED_REF, type createJobs } from "./jobs.ts";
 import {
@@ -22,11 +23,24 @@ import {
   type Pooled,
   type SessionPool,
 } from "./session-pool.ts";
-import type { Disposer, HeadName, Landing, NyteOptions, SessionId } from "./types.ts";
+import {
+  MAIN,
+  type Disposer,
+  type HeadName,
+  type Landing,
+  type Nyte,
+  type NyteOptions,
+  type SessionId,
+} from "./types.ts";
 
 const EFFECT_PREFIX = "refs/effects/";
 const RUNNER_RESTART_DELAY_MS = 1000;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+interface ActiveAdvance {
+  readonly controller: AbortController;
+  readonly done: Promise<void>;
+}
 
 export function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -84,6 +98,8 @@ export function createRunners(input: {
   const runnerDone = new WeakMap<Disposer, Promise<void>>();
   /** Every loop still running, including those of retired sessions; `settle` waits for all. */
   const runnerLoops = new Set<Promise<void>>();
+  const stopAdvances = new AbortController();
+  const advances = new WeakMap<Pooled, Set<ActiveAdvance>>();
 
   async function emitRunnerDiagnostic(session: Session, cause: unknown): Promise<void> {
     await session.events
@@ -98,11 +114,26 @@ export function createRunners(input: {
       .catch(() => undefined);
   }
 
-  const createRunner = (id: SessionId, pooled: Pooled, activation: Activation): Disposer => {
-    const stop = new AbortController();
-    const states = new Map<HeadName, DriveState>();
-    pooled.drives = states;
-    const tasks = new Set<Promise<void>>();
+  const handleSessionRef = async (
+    id: SessionId,
+    pooled: Pooled,
+    event: Extract<Event, { readonly kind: "ref" }>,
+  ): Promise<boolean> => {
+    if (
+      event.name === factRef("job-background") &&
+      (await pool.readFact(pooled.session, "job-background")) === true
+    ) {
+      await input.backgroundChild(id);
+      return true;
+    }
+    if (event.name.startsWith(JOB_PREFIX)) {
+      await input.jobsFor(id, pooled).sync(event.name.slice(JOB_PREFIX.length));
+      return true;
+    }
+    return false;
+  };
+
+  const prepareExecution = (id: SessionId, pooled: Pooled, activation: Activation) => {
     const foregroundTools = new Map<AgentTool, AgentTool>();
     const bound = turnFor(
       {
@@ -161,7 +192,6 @@ export function createRunners(input: {
         compaction: options.compaction,
       },
     );
-    let stopped = false;
     const cwd =
       pooled.activationState?.kind === "active" ? pooled.activationState.env.cwd : undefined;
     const requireRunnerLocation = async (): Promise<void> => {
@@ -213,6 +243,95 @@ export function createRunners(input: {
       },
     };
 
+    const optionsFor = (head: HeadName, signal: AbortSignal): StepOptions => {
+      const executionLanding = { ...input.landing };
+      return {
+        head,
+        landing: executionLanding,
+        telemetry: options.telemetry,
+        signal,
+        steps: (run) =>
+          missingChildModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
+        resolveConfig: (config) =>
+          missingChildModel(config) === undefined ? bound.resolveConfig(config) : config,
+        beforeStep: async () => {
+          if (pooled.retired || pooled.relocating)
+            throw new Error("Session is unavailable for execution");
+          await requireRunnerLocation();
+          if ((await pooled.session.refs.read(JOBS_CANCELLED_REF)) !== null) {
+            // A cancelled child may still have a completion in flight.
+            // Settle its active run, but never land more delegated work.
+            executionLanding.lanes = [];
+            await requestAbortAtRef(pooled, runRef(head));
+          }
+        },
+      };
+    };
+    return { turn, optionsFor };
+  };
+
+  const advance: Nyte["advance"] = async (request) => {
+    pool.alive();
+    const head = request.head ?? MAIN;
+    validateHeadName(head);
+    const controller = new AbortController();
+    const signal = AbortSignal.any([
+      controller.signal,
+      stopAdvances.signal,
+      ...(request.signal === undefined ? [] : [request.signal]),
+    ]);
+    const { promise: done, resolve: finish } = Promise.withResolvers<void>();
+    const task = (async () => {
+      signal.throwIfAborted();
+      const pooled = await pool.open(request.sessionId);
+      const activation = await pool.activationFor(request.sessionId, pooled);
+      if (activation === undefined) throw new Error("Session is not active in this host");
+      if (pooled.parent !== undefined) {
+        const parent = await pool.open(pooled.parent.sessionId);
+        await input.jobsFor(pooled.parent.sessionId, parent).recover();
+      }
+      await input.jobsFor(request.sessionId, pooled).recover();
+      signal.throwIfAborted();
+      const active = advances.get(pooled) ?? new Set<ActiveAdvance>();
+      advances.set(pooled, active);
+      const execution = { controller, done };
+      active.add(execution);
+      pooled.runnerTasks.add(done);
+      try {
+        const prepared = prepareExecution(request.sessionId, pooled, activation);
+        return await advanceStep({
+          session: pooled.session,
+          turn: prepared.turn,
+          options: prepared.optionsFor(head, signal),
+          readRun: async () => (await pool.readRun(pooled.session, head))?.run,
+          recheckJobs: (runId) => input.jobsFor(request.sessionId, pooled).recheck(runId),
+          onRef: async (event) => {
+            await handleSessionRef(request.sessionId, pooled, event);
+          },
+        });
+      } finally {
+        active.delete(execution);
+        pooled.runnerTasks.delete(done);
+      }
+    })();
+    // Explicit callers receive their own errors. Shutdown only waits for cleanup.
+    void task.then(
+      () => finish(),
+      () => finish(),
+    );
+    runnerLoops.add(done);
+    void done.then(() => runnerLoops.delete(done));
+    return task;
+  };
+
+  const createRunner = (id: SessionId, pooled: Pooled, activation: Activation): Disposer => {
+    const stop = new AbortController();
+    const states = new Map<HeadName, DriveState>();
+    pooled.drives = states;
+    const tasks = new Set<Promise<void>>();
+    const prepared = prepareExecution(id, pooled, activation);
+    let stopped = false;
+
     const stateFor = (head: HeadName): DriveState => {
       const found = states.get(head);
       if (found !== undefined) return found;
@@ -243,26 +362,11 @@ export function createRunners(input: {
             state.controller = controller;
             state.runId = await readActiveRunId(head);
             try {
-              const executionLanding = { ...input.landing };
-              const outcome = await drive(pooled.session, turn, {
-                head,
-                landing: executionLanding,
-                telemetry: options.telemetry,
-                signal: controller.signal,
-                steps: (run) =>
-                  missingChildModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
-                resolveConfig: (config) =>
-                  missingChildModel(config) === undefined ? bound.resolveConfig(config) : config,
-                beforeStep: async () => {
-                  await requireRunnerLocation();
-                  if ((await pooled.session.refs.read(JOBS_CANCELLED_REF)) !== null) {
-                    // A cancelled child may still have a completion in flight.
-                    // Settle its active run, but never land more delegated work.
-                    executionLanding.lanes = [];
-                    await requestAbortAtRef(pooled, runRef(head));
-                  }
-                },
-              });
+              const outcome = await drive(
+                pooled.session,
+                prepared.turn,
+                prepared.optionsFor(head, controller.signal),
+              );
               if (outcome.kind === "busy") return;
               // A job that finished while its call was being parked signalled a
               // not-yet-waiting effect. Recheck only this run's parked calls.
@@ -309,26 +413,23 @@ export function createRunners(input: {
 
     const inspectRunEvent = async (head: HeadName, event: Event): Promise<void> => {
       if (event.kind !== "ref" || event.name !== runRef(head)) return;
-      const run = await runAtRef(pooled.session, event.to);
-      if (run === undefined) return;
       const state = states.get(head);
-      if (state?.controller === undefined) return;
-      if (state.runId === undefined) state.runId = run.id;
-      if (state.runId === run.id && run.abortRequested === true) state.controller.abort();
+      const controller = state?.controller;
+      if (state === undefined || controller === undefined) return;
+      // The event names an immutable object that may already be history: a
+      // stopped run keeps its flag after it ends, and the drive may have started
+      // the next run since. Only the ref says which run this drive is on.
+      const stored = await pool.readRun(pooled.session, head);
+      // The drive this read was taken for may have ended while it was in flight.
+      // Its successor reads the ref for itself; what was read here is not its run.
+      if (state.controller !== controller) return;
+      if (stored === undefined || isTerminalPhase(stored.run.phase)) return;
+      if (state.runId === undefined) state.runId = stored.run.id;
+      if (state.runId === stored.run.id && stored.run.abortRequested === true) controller.abort();
     };
 
     const handleRef = async (event: Extract<Event, { readonly kind: "ref" }>): Promise<void> => {
-      if (
-        event.name === factRef("job-background") &&
-        (await pool.readFact(pooled.session, "job-background")) === true
-      ) {
-        await input.backgroundChild(id);
-        return;
-      }
-      if (event.name.startsWith(JOB_PREFIX)) {
-        await input.jobsFor(id, pooled).sync(event.name.slice(JOB_PREFIX.length));
-        return;
-      }
+      if (await handleSessionRef(id, pooled, event)) return;
       const directHead =
         parseHeadRef(event.name) ?? queueHead(event.name) ?? headFromRunRef(event.name);
       if (directHead !== undefined) {
@@ -393,11 +494,15 @@ export function createRunners(input: {
   };
 
   const stopRunner = async (pooled: Pooled): Promise<void> => {
+    const active = [...(advances.get(pooled) ?? [])];
+    for (const execution of active) execution.controller.abort();
     const runner = pooled.runner;
-    if (runner === undefined) return;
-    pooled.runner = undefined;
-    runner();
-    await runnerDone.get(runner)?.catch(() => undefined);
+    if (runner !== undefined) {
+      pooled.runner = undefined;
+      runner();
+      await runnerDone.get(runner)?.catch(() => undefined);
+    }
+    await Promise.all(active.map((execution) => execution.done));
   };
 
   function reconcileRunner(id: SessionId, pooled: Pooled): Promise<void> {
@@ -484,15 +589,18 @@ export function createRunners(input: {
   }
 
   return {
+    advance,
     reconcileRunner,
     stopRunner,
     requestAbortAtRef,
     emitRunnerDiagnostic,
     /** Wait for every loop to end; the rejections are returned, not thrown. */
-    settle: async (): Promise<readonly unknown[]> =>
-      (await Promise.allSettled(runnerLoops)).flatMap((outcome) =>
+    settle: async (): Promise<readonly unknown[]> => {
+      stopAdvances.abort();
+      return (await Promise.allSettled(runnerLoops)).flatMap((outcome) =>
         outcome.status === "rejected" ? [outcome.reason] : [],
-      ),
+      );
+    },
   };
 }
 

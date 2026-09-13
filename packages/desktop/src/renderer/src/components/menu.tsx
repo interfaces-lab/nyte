@@ -87,8 +87,8 @@ const styles = stylex.create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": t.bgCard,
-      "[data-checked]": t.bgHover,
-      "[data-nyte-selected='true']": t.bgHover,
+      "[data-checked]": t.fillGhostHover,
+      "[data-nyte-selected='true']": t.fillGhostHover,
     },
     color: { default: t.textPrimary, "[data-disabled]": t.textDisabled },
     fontSize: t.fontBase,
@@ -166,7 +166,7 @@ const styles = stylex.create({
     minHeight: t.leadingBase,
     color: t.textSecondary,
   },
-  separator: { height: 1, marginBlock: 3, marginInline: -4, backgroundColor: t.borderWeak },
+  separator: { height: 1, marginBlock: 3, marginInline: -4, backgroundColor: t.strokeSecondary },
   separatorInset: { marginBlock: 4, marginInline: 8 },
   // The heading row owns the height; the label and the action are plain text
   // boxes with matching metrics, so they centre on the same line.
@@ -207,17 +207,16 @@ const styles = stylex.create({
     height: 16,
     padding: 2,
     borderRadius: t.radiusFull,
-    backgroundColor: t.bgActive,
-    boxShadow: `inset 0 0 0 1px ${t.strokeTertiary}`,
+    backgroundColor: t.fillGhostSelected,
   },
-  switchTrackOn: { backgroundColor: t.fillAccent, boxShadow: "none" },
+  switchTrackOn: { backgroundColor: t.fillAccent },
   switchTrackGreen: { backgroundColor: t.switchActive },
   switchThumb: {
     width: 12,
     height: 12,
     borderRadius: t.radiusFull,
-    backgroundColor: t.bgElevated,
-    boxShadow: `0 1px 2px ${t.shadowControlColor}`,
+    backgroundColor: t.switchThumb,
+
     transform: "translateX(0)",
   },
   switchThumbOn: { transform: "translateX(10px)" },

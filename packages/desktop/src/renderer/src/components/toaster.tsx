@@ -83,7 +83,7 @@ const styles = stylex.create({
     borderRadius: t.radiusBase,
     backgroundColor: {
       default: t.fillSecondary,
-      ":hover": { "@media (hover: hover)": t.fillSecondaryHover },
+      ":hover": { "@media (hover: hover)": t.fillGhostHover },
     },
     color: t.textPrimary,
     fontFamily: t.fontSans,

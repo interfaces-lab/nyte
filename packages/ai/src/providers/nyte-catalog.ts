@@ -11,6 +11,7 @@ import { FileCredentialStore } from "../auth/store.ts";
 import { FileModelsStore } from "../file-models-store.ts";
 import { createModels, type MutableModels, type Provider } from "../models.ts";
 import { anthropicProvider } from "./anthropic.ts";
+import { githubCopilotProvider } from "./github-copilot.ts";
 import { openaiCodexProvider } from "./openai-codex.ts";
 import { openaiProvider } from "./openai.ts";
 import { opencodeGoProvider } from "./opencode-go.ts";
@@ -23,6 +24,7 @@ const NYTE_PROVIDERS: readonly (() => Provider)[] = [
   anthropicProvider,
   opencodeProvider,
   opencodeGoProvider,
+  githubCopilotProvider,
 ];
 
 /**

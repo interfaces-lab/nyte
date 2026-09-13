@@ -59,7 +59,7 @@ import {
   resolveGrammarConstrainedSampling,
   resolveJsonSchemaStrictSampling,
 } from "./constrained-sampling.ts";
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
+import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import {
   buildBaseOptions,
@@ -241,9 +241,30 @@ type OpenAICompletionsReasoningField = (typeof OPENAI_COMPLETIONS_REASONING_FIEL
 
 const OpenAICompletionsReasoningFieldSchema = Type.Enum(OPENAI_COMPLETIONS_REASONING_FIELDS);
 
+/**
+ * Copilot continues a model's reasoning across turns only when the assistant
+ * message replays `reasoning_opaque`; it rides in the thinking signature.
+ */
+const CopilotReasoningSignatureSchema = Type.Object({
+  reasoning_opaque: Type.String({ minLength: 1 }),
+});
+
+function parseCopilotReasoningOpaque(signature: string | undefined): string | undefined {
+  if (!signature) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(signature);
+    return Value.Check(CopilotReasoningSignatureSchema, parsed)
+      ? parsed.reasoning_opaque
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type ChatCompletionAssistantMessageParamWithReasoning = ChatCompletionAssistantMessageParam &
   Partial<Record<OpenAICompletionsReasoningField, string>> & {
     reasoning_details?: JsonValue[];
+    reasoning_opaque?: string;
   };
 
 type ChatCompletionTextPartWithCacheControl = ChatCompletionContentPartText & {
@@ -298,16 +319,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         compat.supportsOpenAIGrammarTools,
       );
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-      const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
-      const client = createClient(
-        model,
-        context,
-        apiKey,
-        options?.headers,
-        options?.fetch,
-        cacheSessionId,
-        compat,
-      );
+      const client = createClient({ model, context, apiKey, options, cacheRetention, compat });
       let params = buildParams(
         model,
         context,
@@ -326,7 +338,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
       };
       // The SDK rejects a present-but-undefined timeout instead of using its default.
       if (options?.timeoutMs !== undefined) requestOptions.timeout = options.timeoutMs;
-      const { data: openaiStream, response } = await retryProviderRequest(
+      const result = await retryProviderRequest(
         () => client.chat.completions.create(params, requestOptions).withResponse(),
         {
           maxRetries: options?.maxRetries,
@@ -335,7 +347,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         },
       );
       await options?.onResponse?.(
-        { status: response.status, headers: headersToRecord(response.headers) },
+        { status: result.response.status, headers: headersToRecord(result.response.headers) },
         model,
       );
       stream.push({ type: "start", partial: output });
@@ -350,6 +362,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
 
       let textBlock: TextContent | null = null;
       let thinkingBlock: ThinkingContent | null = null;
+      let copilotReasoningOpaque: string | undefined;
       let hasFinishReason = false;
       const toolCallBlocksByIndex = new Map<number, StreamingToolCallBlock>();
       const toolCallBlocksById = new Map<string, StreamingToolCallBlock>();
@@ -514,7 +527,7 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
         return block;
       };
 
-      for await (const chunk of openaiStream) {
+      for await (const chunk of result.data) {
         if (!chunk || typeof chunk !== "object") continue;
 
         // OpenAI documents ChatCompletionChunk.id as the unique chat completion identifier,
@@ -593,6 +606,30 @@ export const stream: StreamFunction<"openai-completions", OpenAICompletionsOptio
                 partial: output,
               });
             }
+          }
+
+          // Copilot may deliver the opaque state in the same chunk as the first
+          // text delta, or after all reasoning text; it is never a display delta.
+          // It lives in the thinking signature, which later reasoning text
+          // never rewrites because `ensureThinkingBlock` keeps an existing block.
+          // One response carries one state, as in OpenCode's Copilot adapter.
+          const reasoningOpaque = deltaFields["reasoning_opaque"];
+          if (
+            model.provider === "github-copilot" &&
+            typeof reasoningOpaque === "string" &&
+            reasoningOpaque.length > 0
+          ) {
+            if (
+              copilotReasoningOpaque !== undefined &&
+              copilotReasoningOpaque !== reasoningOpaque
+            ) {
+              throw new Error(
+                "GitHub Copilot sent multiple reasoning_opaque values in one response",
+              );
+            }
+            copilotReasoningOpaque = reasoningOpaque;
+            const block = ensureThinkingBlock("");
+            block.thinkingSignature = JSON.stringify({ reasoning_opaque: reasoningOpaque });
           }
 
           if (choice?.delta?.tool_calls) {
@@ -713,47 +750,46 @@ export const streamSimple: StreamFunction<"openai-completions", SimpleStreamOpti
   } satisfies OpenAICompletionsOptions);
 };
 
-function createClient(
-  model: Model<"openai-completions">,
-  context: Context,
-  apiKey: string,
-  optionsHeaders?: ProviderHeaders,
-  fetch?: typeof globalThis.fetch,
-  sessionId?: string,
-  compat: ResolvedOpenAICompletionsCompat = getCompat(model),
-) {
-  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...model.headers };
-  if (model.provider === "github-copilot") {
-    const hasImages = hasCopilotVisionInput(context.messages);
+function createClient(input: {
+  model: Model<"openai-completions">;
+  context: Context;
+  apiKey: string;
+  options: Pick<OpenAICompletionsOptions, "fetch" | "headers" | "sessionId"> | undefined;
+  cacheRetention: CacheRetention;
+  compat: ResolvedOpenAICompletionsCompat;
+}) {
+  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...input.model.headers };
+  if (input.model.provider === "github-copilot") {
     const copilotHeaders = buildCopilotDynamicHeaders({
-      messages: context.messages,
-      hasImages,
+      messages: input.context.messages,
+      sessionId: input.options?.sessionId,
     });
     Object.assign(headers, copilotHeaders);
   }
 
-  if (sessionId && compat.sendSessionAffinityHeaders) {
-    if (compat.sessionAffinityFormat === "openrouter") {
-      headers["x-session-id"] = sessionId;
+  const cacheSessionId = input.cacheRetention === "none" ? undefined : input.options?.sessionId;
+  if (cacheSessionId && input.compat.sendSessionAffinityHeaders) {
+    if (input.compat.sessionAffinityFormat === "openrouter") {
+      headers["x-session-id"] = cacheSessionId;
     } else {
-      if (compat.sessionAffinityFormat === "openai") {
-        headers.session_id = sessionId;
+      if (input.compat.sessionAffinityFormat === "openai") {
+        headers.session_id = cacheSessionId;
       }
-      headers["x-client-request-id"] = sessionId;
-      headers["x-session-affinity"] = sessionId;
+      headers["x-client-request-id"] = cacheSessionId;
+      headers["x-session-affinity"] = cacheSessionId;
     }
   }
 
   // Merge options headers last so they can override defaults
-  if (optionsHeaders) {
-    Object.assign(headers, optionsHeaders);
+  if (input.options?.headers) {
+    Object.assign(headers, input.options.headers);
   }
 
   return new OpenAI({
-    apiKey,
-    baseURL: model.baseUrl,
+    apiKey: input.apiKey,
+    baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
-    fetch,
+    fetch: input.options?.fetch,
     defaultHeaders: headers,
   });
 }
@@ -1291,7 +1327,27 @@ export function convertMessages(
       const nonEmptyThinkingBlocks = thinkingBlocks.filter(
         (block) => block.thinking.trim().length > 0,
       );
-      if (nonEmptyThinkingBlocks.length > 0) {
+      const copilotReasoningOpaque =
+        model.provider === "github-copilot"
+          ? thinkingBlocks
+              .map((block) => parseCopilotReasoningOpaque(block.thinkingSignature))
+              .find((opaque) => opaque !== undefined)
+          : undefined;
+      if (model.provider === "github-copilot") {
+        if (assistantText.length > 0) {
+          assistantMsg.content = assistantText;
+        }
+        // Copilot accepts reasoning text only alongside its opaque state; text
+        // without state is dropped rather than replayed as a bare field.
+        if (copilotReasoningOpaque !== undefined) {
+          assistantMsg.reasoning_opaque = copilotReasoningOpaque;
+          if (nonEmptyThinkingBlocks.length > 0) {
+            assistantMsg.reasoning_text = nonEmptyThinkingBlocks
+              .map((block) => block.thinking)
+              .join("\n");
+          }
+        }
+      } else if (nonEmptyThinkingBlocks.length > 0) {
         if (compat.requiresThinkingAsText) {
           // Convert thinking blocks to plain text (no tags to avoid model mimicking them)
           const thinkingText = nonEmptyThinkingBlocks

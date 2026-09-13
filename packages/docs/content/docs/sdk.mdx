@@ -207,6 +207,11 @@ their owning host.
 ## Jobs
 
 Core tracks `bash` commands and `task` subagents as jobs. Both tools accept `background: true`.
+A parent agent can call `wait_task({ jobId })` to join an existing background subagent and
+continue the same run when its report is ready. This is a tool, not an SDK `jobs.wait` method.
+It observes the job without re-running or taking ownership of it. Cancelling only the wait
+does not cancel the observed task; aborting a run still cancels that run's own jobs.
+
 To move already-running work to background, use its job ID, not its run ID:
 
 ```ts title="jobs.ts"
@@ -226,8 +231,9 @@ async function cancelJob(sdk: Nyte, sessionId: SessionId, jobId: string) {
 
 `jobs.background` and `jobs.cancel` return `applied`, `finished`, or `not_found`. Backgrounding
 keeps the same work running and releases the parked parent call with a receipt. Cancelling targets
-only that job. `runs.abort` cancels parked foreground work but does not cancel background jobs.
-These controls work while the parent run is waiting; do not gate them on an idle composer.
+only that job. `runs.abort` cancels foreground and background work owned by that run, but leaves
+independent user jobs running. These controls work while the parent run is waiting; do not gate
+them on an idle composer.
 
 `JobInfo` includes `id`, `head`, `runId`, `callId`, `title`, `mode`, `state`, timestamps, and `output`.
 Its kind is `command` or `subagent`; only subagents include `childSessionId`. State is `running`,
@@ -236,9 +242,11 @@ Read jobs with `jobs.list` and refresh on `job` events. Job data is separate fro
 
 Jobs survive closing a panel or switching chats. Their records and output are durable, but work does
 not survive the owning host closing. Host close or recovery marks abandoned work `interrupted`
-without rerunning it. A terminal background job delivers its state and output as an idempotent user
-message on the originating head, through core's private idle-only `background` lane. Clients do not
-need to add that lane to their landing policy or send completion messages themselves.
+without rerunning it. A terminal background job submits its state and output as an idempotent
+completion on the originating head, through core's private `background` lane. It can join an
+active run at a response boundary, but cannot start model work on its own. Without an active run,
+it waits for explicit user input. Completions are separate from editable user messages. Clients
+do not need to add that lane to their landing policy or send completion messages themselves.
 
 Background children inherit workspace trust but are not offered tools marked
 `availability: "foreground"`. Use that capability for tools that require a participant or other

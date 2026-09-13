@@ -1,11 +1,16 @@
 /*
- * The desktop palette. Two tiers, following the Grok Bot 0.18 token system as
- * a design reference (values only; no code is ported from it):
+ * The desktop palette. One tier, `--nyte-*`, in two layers:
  *
- * - `--nyte-*`: the core palette per mode plus derived text/icon/bg/stroke
- *   steps mixed from `--nyte-base`, so the whole surface re-tints from a
- *   handful of anchors.
- * - `--sand-*`: semantic fills, borders, and text the components name.
+ * - Anchors, declared per mode: base, chrome, editor, sidebar, accent, and the
+ *   named hues.
+ * - Everything else, declared once and mixed from those anchors, so a mode
+ *   swap or a tint moves every step together instead of drifting.
+ *
+ * Steps carry fixed ratios (text 74/60/36, icon 66/52/28, backgrounds
+ * 20/14/8/6/4, strokes 20/12/8/4), so a step reads the same on every surface.
+ *
+ * A literal belongs in an anchor. Anything a component names is derived, which
+ * is what keeps light and dark from disagreeing.
  *
  * The renderer sets `data-theme` on <html> before first paint.
  */
@@ -40,55 +45,18 @@
   --nyte-image-outline: oklch(0 0 0 / 0.1);
   --nyte-switch-active-background: oklch(0.479 0.116 156.327);
   --nyte-switch-thumb-background: #ffffff;
-
-  /* ── sand semantic tier (light) ── */
-  --sand-bg-base: #f5f5f6;
-  --sand-bg-subtle: #f8f8f8;
-  --sand-bg-elevated: #fcfcfc;
-  --sand-bg-scrim: rgba(0, 0, 0, 0.4);
-  --sand-text-primary: #141414;
-  --sand-text-secondary: #141414bd;
-  --sand-text-tertiary: #14141499;
-  --sand-text-disabled: #1414144d;
-  --sand-text-on-primary: #fcfcfc;
-  --sand-text-on-color: #fcfcfc;
-  --sand-text-accent: #0b5cb0;
-  --sand-text-success: #00804a;
-  --sand-text-warning: #a35f00;
-  --sand-text-danger: #c21d2e;
-  --sand-text-shimmer-base: #14141466;
-  --sand-text-shimmer-highlight: #141414;
-  --sand-border-subtle: #1414140d;
-  --sand-border-weak: #1414141a;
-  --sand-border-default: #14141426;
-  --sand-border-strong: #1414144d;
-  --sand-border-focus: #14141466;
-  --sand-border-accent: #459ffe;
-  --sand-border-accent-subtle: #1084fe2b;
-  --sand-border-danger-subtle: #ff263c2b;
-  --sand-fill-primary: #070707;
-  --sand-fill-primary-hover: #2f2f2f;
-  --sand-fill-primary-disabled: #14141426;
-  --sand-fill-secondary: #1414140a;
-  --sand-fill-secondary-hover: #14141412;
-  --sand-fill-secondary-solid: #f3f3f3;
-  --sand-fill-ghost-hover: #1414140a;
-  --sand-fill-ghost-selected: #1414140f;
-  --sand-fill-elevated: #fcfcfc;
-  --sand-fill-bubble-agent: #eeeeee;
-  --sand-fill-bubble-user: #070707;
-  --sand-fill-neutral: #777777;
-  --sand-fill-accent: #1084fe;
-  --sand-fill-accent-hover: #0c64c1;
-  --sand-fill-accent-subtle: #1084fe17;
-  --sand-fill-accent-subtle-hover: #1084fe2b;
-  --sand-fill-success: #00c972;
-  --sand-fill-success-subtle: #00c97217;
-  --sand-fill-warning: #ff9800;
-  --sand-fill-warning-subtle: #ff980017;
-  --sand-fill-danger: #ff263c;
-  --sand-fill-danger-hover: #c21d2e;
-  --sand-fill-danger-subtle: #ff263c17;
+  /* Text laid over a saturated fill, where the surface ramp does not apply. */
+  --nyte-action-label: #fcfcfc;
+  /*
+   * Coloured text and raised surfaces carry a per-mode value. The ramp mixes
+   * one hue against one page, so a single derived step cannot hold contrast on
+   * both: raw green and orange fail against a light page, and a raised card
+   * needs to sit above the editor tone rather than match it.
+   */
+  --nyte-text-accent: #0b5cb0;
+  --nyte-text-success: #00804a;
+  --nyte-text-warning: #a35f00;
+  --nyte-bg-raised: #fcfcfc;
   /* conversation */
   --nyte-conversation-technical-background: #14141405;
   --nyte-conversation-technical-ring: #14141414;
@@ -113,50 +81,11 @@
   --nyte-diff-removed-text-background: oklch(0.5 0.2 9.842 / 0.133);
   --nyte-shadow-primary: #00000033;
   --nyte-switch-active-background: oklch(0.638 0.129 153.739);
-
-  /* ── sand semantic tier (dark) ── */
-  --sand-bg-base: #131417;
-  --sand-bg-subtle: #16161a;
-  --sand-bg-elevated: #1f1f24;
-  --sand-bg-scrim: rgba(0, 0, 0, 0.4);
-  --sand-text-primary: #fcfcfc;
-  --sand-text-secondary: #fcfcfc99;
-  --sand-text-tertiary: #fcfcfc66;
-  --sand-text-disabled: #fcfcfc4d;
-  --sand-text-on-primary: #141414;
-  --sand-text-on-color: #fcfcfc;
-  --sand-text-accent: #459ffe;
-  --sand-text-success: #38d591;
-  --sand-text-warning: #ffaf38;
-  --sand-text-danger: #ff5667;
-  --sand-text-shimmer-base: #fcfcfc66;
-  --sand-text-shimmer-highlight: #fcfcfc;
-  --sand-border-subtle: #fcfcfc0d;
-  --sand-border-weak: #fcfcfc1a;
-  --sand-border-default: #fcfcfc26;
-  --sand-border-strong: #fcfcfc4d;
-  --sand-border-focus: #fcfcfc66;
-  --sand-border-accent: #0c64c1;
-  --sand-border-accent-subtle: #1084fe52;
-  --sand-border-danger-subtle: #ff263c52;
-  --sand-fill-primary: #fafafa;
-  --sand-fill-primary-hover: #d5d5d5;
-  --sand-fill-primary-disabled: #fcfcfc26;
-  --sand-fill-secondary: #ffffff0a;
-  --sand-fill-secondary-hover: #ffffff12;
-  --sand-fill-secondary-solid: #1f1f24;
-  --sand-fill-ghost-hover: #ffffff0d;
-  --sand-fill-ghost-selected: #ffffff12;
-  --sand-fill-elevated: #2f2f2f;
-  --sand-fill-bubble-agent: #262626;
-  --sand-fill-bubble-user: #5a5a5a;
-  --sand-fill-accent-hover: #459ffe;
-  --sand-fill-accent-subtle: #1084fe2c;
-  --sand-fill-accent-subtle-hover: #1084fe52;
-  --sand-fill-success-subtle: #00c9722c;
-  --sand-fill-warning-subtle: #ff98002c;
-  --sand-fill-danger-hover: #ff5667;
-  --sand-fill-danger-subtle: #ff263c2c;
+  --nyte-action-label: #ffffff;
+  --nyte-text-accent: #459ffe;
+  --nyte-text-success: #38d591;
+  --nyte-text-warning: #ffaf38;
+  --nyte-bg-raised: #1f1f24;
   /* conversation */
   --nyte-conversation-technical-background: #f0f0f007;
   --nyte-conversation-technical-ring: #f0f0f01c;
@@ -194,7 +123,8 @@
   --nyte-text-tertiary: color-mix(in srgb, var(--nyte-base) 60%, transparent);
   --nyte-text-quaternary: color-mix(in srgb, var(--nyte-base) 36%, transparent);
   --nyte-text-invert: var(--nyte-editor);
-  --nyte-text-accent: var(--nyte-accent);
+  --nyte-text-danger: var(--nyte-danger);
+  --nyte-text-shimmer: color-mix(in srgb, var(--nyte-base) 40%, transparent);
   --nyte-icon-primary: var(--nyte-base);
   --nyte-icon-secondary: color-mix(in srgb, var(--nyte-base) 66%, transparent);
   --nyte-icon-tertiary: color-mix(in srgb, var(--nyte-base) 52%, transparent);
@@ -210,6 +140,20 @@
   --nyte-bg-card: var(--nyte-bg-quaternary);
   --nyte-bg-editor: var(--nyte-editor);
   --nyte-bg-accent: var(--nyte-accent);
+  /* One solid step between the window and an editor surface. */
+  --nyte-bg-subtle: color-mix(in srgb, var(--nyte-chrome) 50%, var(--nyte-editor));
+  --nyte-bg-scrim: rgb(0 0 0 / 40%);
+  /* A hue reading as a wash behind text rather than as a fill. */
+  --nyte-bg-accent-subtle: color-mix(in srgb, var(--nyte-accent) 12%, transparent);
+  --nyte-bg-warning-subtle: color-mix(in srgb, var(--nyte-warn) 12%, transparent);
+  --nyte-bg-danger-subtle: color-mix(in srgb, var(--nyte-red) 12%, transparent);
+  /*
+   * The one fill that inverts against the page: a primary button, a drag
+   * handle, a caret. Hover lets the page through rather than picking a
+   * second literal.
+   */
+  --nyte-fill-primary: var(--nyte-base);
+  --nyte-fill-primary-hover: color-mix(in srgb, var(--nyte-editor) 14%, var(--nyte-base));
   --nyte-conversation-user-shell-background: color-mix(
     in srgb,
     var(--nyte-sidebar) 60%,
@@ -225,7 +169,9 @@
     var(--nyte-conversation-user-background) 96%,
     var(--nyte-editor)
   );
-  --nyte-conversation-user-ring: var(--nyte-stroke-secondary);
+  --nyte-conversation-user-ring: var(--nyte-stroke-tertiary);
+  --nyte-conversation-user-ring-active: var(--nyte-stroke-secondary);
+  --nyte-conversation-user-shadow: 0 1px 2px rgb(0 0 0 / 5%);
   --nyte-stroke-primary: color-mix(in srgb, var(--nyte-base) 20%, transparent);
   --nyte-stroke-secondary: color-mix(in srgb, var(--nyte-base) 12%, transparent);
   --nyte-stroke-tertiary: color-mix(in srgb, var(--nyte-base) 8%, transparent);
@@ -239,6 +185,7 @@
   --nyte-focus-ring: var(--nyte-stroke-focused);
   --nyte-shadow-secondary: color-mix(in srgb, var(--nyte-shadow-primary) 60%, transparent);
   --nyte-shadow-tertiary: color-mix(in srgb, var(--nyte-shadow-primary) 30%, transparent);
+  --nyte-box-shadow-soft: 0 0 8px 2px var(--nyte-shadow-tertiary);
   --nyte-box-shadow-popup:
     0 3px 8px var(--nyte-shadow-secondary), 0 2px 5px var(--nyte-shadow-secondary),
     0 1px 1px var(--nyte-shadow-secondary);
@@ -249,13 +196,12 @@
     color-mix(in srgb, var(--nyte-shadow-primary) 40%, transparent);
   --nyte-scrollbar-thumb: color-mix(in srgb, var(--nyte-base) 14%, transparent);
   --nyte-scrollbar-thumb-hover: color-mix(in srgb, var(--nyte-base) 22%, transparent);
-  --sand-shadow-control: var(--nyte-shadow-secondary);
+  --nyte-shadow-control: var(--nyte-shadow-secondary);
   /* Menus float on one soft layer; the surface's inset hairline draws the edge. */
-  --sand-shadow-popover:
+  --nyte-shadow-popover:
     0 4px 16px var(--nyte-shadow-tertiary), 0 1px 2px var(--nyte-shadow-tertiary);
-  --sand-shadow-modal: var(--nyte-box-shadow-lg);
-  --sand-shadow-workbench: var(--nyte-shadow-workbench);
-  /* Cursor's composer uses an even fill rather than a directional sheen. */
+  --nyte-shadow-modal: var(--nyte-box-shadow-lg);
+  /* The composer takes an even fill rather than a directional sheen. */
   --nyte-composer-background: var(--nyte-bg-elevated);
   --nyte-composer-ring: var(--nyte-stroke-tertiary);
   --nyte-composer-ring-active: var(--nyte-stroke-secondary);
@@ -329,6 +275,9 @@
   /* One trailing column for shortcuts, timestamps, and hover actions, so every
      row label ends on the same edge. */
   --nyte-sidebar-trailing-width: 44px;
+  /* The relative-time column. Wide enough for "now" through "Sep 30" so the
+     action slot beside it starts on the same edge on every timed row. */
+  --nyte-sidebar-meta-width: 40px;
   --nyte-settings-content-width: 680px;
   --nyte-settings-content-gutter: 16px;
   --nyte-settings-row-min-height: 61px;
@@ -355,6 +304,21 @@
   --nyte-conversation-turn-gap: 14px;
   --nyte-conversation-row-gap: 8px;
   --nyte-conversation-row-min-height: 22px;
+  /* Queue, agents, and terminals share one tray geometry. */
+  --nyte-tray-radius: var(--nyte-radius-xl);
+  /*
+   * A tray stacks directly above the composer, so both take one fill. Dark
+   * mode lightens that fill; `--nyte-bg-elevated` alone lands within a percent
+   * of the page behind it, which left a hovered row looking like a loose bar.
+   */
+  --nyte-tray-background: var(--nyte-composer-background);
+  --nyte-tray-shadow: var(--nyte-box-shadow-soft);
+  --nyte-tray-gap: 6px;
+  --nyte-tray-padding-inline: 12px;
+  --nyte-tray-header-height: 36px;
+  --nyte-tray-row-height: 28px;
+  --nyte-tray-row-inset: 6px;
+  --nyte-tray-line-height: calc(var(--nyte-font-size-base) + 5px);
   --nyte-composer-inset: 14px;
   --nyte-composer-new-chat-radius: 22px;
   --nyte-composer-expanded-radius: 18px;

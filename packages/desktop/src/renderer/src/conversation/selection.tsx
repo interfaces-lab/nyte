@@ -5,7 +5,8 @@ import type { ReactElement } from "react";
 import type { SelectionReply, SessionId, SessionSnapshot } from "@nyte-ai/core";
 import { Button, focus } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
-import { keys, loadThread } from "../queries.ts";
+import { loadThread } from "../live.ts";
+import { keys } from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { childSelectionOptions, parkedSelections, selectionReplyOptions } from "./selection.ts";
 import type { ParkedSelection } from "./selection.ts";
@@ -42,7 +43,7 @@ const styles = create({
     font: "inherit",
     lineHeight: t.leadingBase,
     color: t.textSecondary,
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": t.bgFaint },
+    backgroundColor: { default: "transparent", ":hover:not(:disabled)": t.fillSecondary },
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { ":disabled": 0.5 },
     transitionProperty: "background-color, color, opacity",
@@ -51,7 +52,7 @@ const styles = create({
   },
   choiceSelected: {
     color: t.textPrimary,
-    backgroundColor: { default: t.bgCard, ":hover:not(:disabled)": t.bgHover },
+    backgroundColor: { default: t.bgCard, ":hover:not(:disabled)": t.fillGhostHover },
   },
   choiceLine: { display: "flex", alignItems: "center", gap: 6 },
   choiceIndicator: {
@@ -69,7 +70,7 @@ const styles = create({
     fontSize: t.fontXs,
     lineHeight: "14px",
   },
-  choiceIndicatorSelected: { borderColor: t.strokeSecondary, backgroundColor: t.bgActive },
+  choiceIndicatorSelected: { borderColor: t.strokeSecondary, backgroundColor: t.fillGhostSelected },
   description: {
     color: t.textSecondary,
     fontSize: t.fontSm,
@@ -87,7 +88,7 @@ const styles = create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: t.strokeSecondary,
-    backgroundColor: t.bgFaint,
+    backgroundColor: t.fillSecondary,
     color: { default: t.textPrimary, "::placeholder": t.textTertiary },
     font: "inherit",
     outline: "none",
@@ -146,6 +147,11 @@ function SelectionCard({
   const { selection } = call;
   const refresh = useMutation({
     mutationFn: async () => {
+      // These are not duplicates of the rebase reconciliation in live.ts. A
+      // delegated child is answered through its parent's card, so `sessionId`
+      // is the child while `threadSessionId` is the parent whose children
+      // query feeds it, and nobody observes the child: `loadThread` opens its
+      // observer, whose first read is a bootstrap and reconciles nothing.
       await Promise.all([
         loadThread(sessionId),
         queryClient.invalidateQueries(
@@ -209,9 +215,7 @@ function SelectionCard({
         {selection.title}
       </h2>
       {remaining !== undefined && (
-        <div role="status" {...props(styles.deadline)}>
-          Closes in {deadlineLabel(remaining)}
-        </div>
+        <div {...props(styles.deadline)}>Closes in {deadlineLabel(remaining)}</div>
       )}
       <div
         role="group"

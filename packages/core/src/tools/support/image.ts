@@ -1,7 +1,6 @@
 /**
  * Content-based image detection for the read tool, ported from pi
- * (earendil-works). Detection only: base64 encoding uses Buffer, and
- * conversion/resizing is the injectable ReadImageProcessor's job.
+ * (earendil-works). Conversion and resizing are handled by the read tool.
  *
  * Based on https://github.com/earendil-works/pi/blob/main/packages/agent/src/harness/tools/image.ts
  */

@@ -87,6 +87,7 @@ test("a restored snapshot renders every selection from its own words, escaped", 
     assert.match(text, /Change one owner/);
     assert.match(text, /Do not search/);
     assert.match(text, /Closes in 1m/);
+    assert.doesNotMatch(html, /role="status"/);
     assert.match(html, /aria-pressed="false"/);
     assert.doesNotMatch(text, /general/);
     assert.doesNotMatch(render(client, []), /implementation/);

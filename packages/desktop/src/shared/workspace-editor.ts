@@ -1,46 +1,14 @@
-/** Desktop editor operations. Paths are absolute and confined to the selected workspace. */
-export interface WorkspaceSearchInput {
+import type {
+  WorkspaceSearchInput as CoreWorkspaceSearchInput,
+  WorkspaceSearchResult,
+} from "@nyte-ai/core/files";
+export type { WorkspaceSearchMatch, WorkspaceSearchResult } from "@nyte-ai/core/files";
+
+/** Desktop search request with a window-owned cancellation ID. */
+export type WorkspaceSearchInput = CoreWorkspaceSearchInput & {
   /** Unique per invocation; cancelSearch targets this id. */
   readonly requestId: string;
-  readonly query: string;
-  readonly caseSensitive?: boolean;
-  readonly wholeWord?: boolean;
-  /** JavaScript regex, evaluated per line with a time limit. */
-  readonly regex?: boolean;
-  /** Workspace-relative glob patterns; includes are ORed, excludes always win. */
-  readonly include?: readonly string[];
-  readonly exclude?: readonly string[];
-  readonly maxMatches?: number;
-  /** Overrides existing, eligible files only. At most 10 drafts, 2 MB combined. */
-  readonly drafts?: readonly { readonly path: string; readonly contents: string }[];
-}
-
-export interface WorkspaceSearchMatch {
-  /** One-based line and UTF-16 column, as used by editor selections. */
-  readonly line: number;
-  readonly column: number;
-  readonly length: number;
-  readonly snippet: string;
-  /** One-based column where the bounded snippet begins. */
-  readonly snippetColumn: number;
-}
-
-export interface WorkspaceSearchResult {
-  readonly files: readonly {
-    readonly path: string;
-    readonly displayPath: string;
-    readonly source: "disk" | "draft";
-    readonly matches: readonly WorkspaceSearchMatch[];
-  }[];
-  readonly matchCount: number;
-  /** Candidate, match, byte or time limits stopped the search. Never implies completeness. */
-  readonly truncated: boolean;
-  readonly skipped: {
-    readonly binary: number;
-    readonly tooLarge: number;
-    readonly unreadable: number;
-  };
-}
+};
 
 export interface WorkspaceBlameLine {
   readonly line: number;

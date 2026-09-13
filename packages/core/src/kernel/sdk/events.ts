@@ -19,6 +19,7 @@ import {
   FACT_PREFIX,
   HEAD_PREFIX,
   STACK_PREFIX,
+  decodeFactKey,
   parseCompactionRef,
   parseQueueRef,
   type QueueRefParts,
@@ -170,6 +171,10 @@ async function projectQueueRef(
     case "tip": {
       const changes = await changesBetween(read, event.from, event.to);
       return (changes ?? []).flatMap(({ oid, change }): SessionEvent[] => {
+        // A queued choice already counts among the session's selected inputs; the event names it so a client re-reads them.
+        if (change.body.kind === "config") {
+          return [{ seq: event.seq, kind: "config_queued", head: parts.head, change: oid }];
+        }
         const item = pendingItem({ oid, change, lane: parts.lane });
         return item === undefined
           ? []
@@ -276,14 +281,16 @@ async function projectRef(
     ];
   }
 
-  const factKey = suffix(event.name, FACT_PREFIX);
-  if (factKey !== undefined) {
+  const factRefKey = suffix(event.name, FACT_PREFIX);
+  if (factRefKey !== undefined) {
+    // Plugin storage escapes its keys; clients and plugins see the key they wrote.
+    const key = decodeFactKey(factRefKey);
     if (event.to === null) {
-      return [{ seq: event.seq, kind: "fact", key: factKey, value: undefined }];
+      return [{ seq: event.seq, kind: "fact", key, value: undefined }];
     }
     const fact = await read.get(event.to);
     if (!isBlob(fact)) throw new Error(`Corrupt fact ref at ${event.to}`);
-    return [{ seq: event.seq, kind: "fact", key: factKey, value: fact.value }];
+    return [{ seq: event.seq, kind: "fact", key, value: fact.value }];
   }
 
   if (event.name === DELETED_REF) {

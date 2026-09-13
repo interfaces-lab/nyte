@@ -38,6 +38,7 @@ function fixture() {
   };
   const response = Promise.withResolvers<Awaited<ReturnType<SessionsBridge["configure"]>>>();
   const requested = Promise.withResolvers<Parameters<SessionsBridge["configure"]>[0]>();
+  const versions: string[] = [];
   const mutation = client.getMutationCache().build(
     client,
     sessionConfigurationOptions({
@@ -47,6 +48,15 @@ function fixture() {
         configure: async (input) => {
           requested.resolve(input);
           return response.promise;
+        },
+      },
+      selection: {
+        request: () => {
+          versions.push("requested");
+        },
+        acknowledge: () => {
+          versions.push("acknowledged");
+          return Promise.resolve();
         },
       },
     }),
@@ -59,13 +69,16 @@ function fixture() {
       mutation.state.status === "pending" ? [mutation.state] : [],
     );
   };
-  return { client, session, snapshot, response, requested, mutation, read };
+  return { client, session, snapshot, response, requested, mutation, read, versions };
 }
 
 test("draft choice wins over initial and repeated default snapshots until acknowledgement", async () => {
   const f = fixture();
   const saving = f.mutation.execute(selected);
   assert.deepEqual(await f.requested.promise, { sessionId: id, ...selected });
+  // The observer hears of the request before the write, so a read begun
+  // earlier cannot answer it; the acknowledgement follows core's reply.
+  assert.deepEqual(f.versions, ["requested"]);
   // The first snapshot arrives only after the draft has handed off to a session.
   f.client.setQueryData(keys.snapshot(id), f.snapshot);
   assert.deepEqual(f.read().config, selected);
@@ -73,6 +86,7 @@ test("draft choice wins over initial and repeated default snapshots until acknow
   assert.deepEqual(f.read().config, selected);
   f.response.resolve({ kind: "queued", change: "configuration-change" });
   await saving;
+  assert.deepEqual(f.versions, ["requested", "acknowledged"]);
   assert.deepEqual(f.read().config, selected);
   f.client.clear();
 });

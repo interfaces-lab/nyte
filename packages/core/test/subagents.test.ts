@@ -257,8 +257,42 @@ const opus: Model<Api> = {
   reasoning: true,
 };
 const astra: Model<Api> = { ...model, id: "gpt-astra", name: "GPT Astra", reasoning: true };
+const defaultTaskModel: Model<Api> = {
+  ...model,
+  provider: "openai-codex",
+  id: "gpt-5.6-sol",
+  name: "GPT 5.6 Sol",
+  reasoning: true,
+};
 // Same id under another provider catches dispatch that matches only the model id.
 const decoy: Model<Api> = { ...astra, provider: "other" };
+
+test("task defaults to Codex GPT 5.6 Sol with high thinking", async () => {
+  const scripted = script({ taskArguments: { prompt: CHILD_PROMPT } });
+  const nyte = await open(scripted.streamFn, { catalog: [model, defaultTaskModel] });
+  try {
+    const parent = await nyte.sessions.create();
+    await nyte.sessions.configure({ sessionId: parent.sessionId, thinkingLevel: "low" });
+    nyte.attach();
+    await nyte.messages.send({ sessionId: parent.sessionId, content: "delegate default" });
+    await untilIdle(nyte, parent.sessionId);
+
+    const child = await onlyChild(nyte, parent.sessionId);
+    assert.deepEqual(scripted.selected.get(CHILD_PROMPT), defaultTaskModel);
+    assert.deepEqual(child.config.model, {
+      provider: "openai-codex",
+      id: "gpt-5.6-sol",
+    });
+    assert.equal(child.config.thinkingLevel, "high");
+    assert.equal(scripted.reasoning.get(CHILD_PROMPT), "high");
+    assert.deepEqual(
+      (await nyte.jobs.list({ sessionId: parent.sessionId })).map((job) => job.title),
+      ["openai-codex/gpt-5.6-sol"],
+    );
+  } finally {
+    await nyte.close();
+  }
+});
 
 for (const selected of [opus, astra]) {
   test(`task dispatches and persists exactly ${selected.provider}/${selected.id}`, async () => {
@@ -368,7 +402,7 @@ test("every parent request advertises all currently available cross-provider mod
       assert.deepEqual(selection.enum, expected);
       assert.ok(!("agent" in properties));
       assert.ok("required" in schema && Array.isArray(schema.required));
-      assert.deepEqual(new Set(schema.required), new Set(["model", "prompt"]));
+      assert.deepEqual(new Set(schema.required), new Set(["prompt"]));
       assert.ok("additionalProperties" in schema && schema.additionalProperties === false);
     }
   } finally {
@@ -379,7 +413,6 @@ test("every parent request advertises all currently available cross-provider mod
 for (const args of [
   { model: "openai/script-model", prompt: CHILD_PROMPT, thinkingLevel: "invalid" },
   { model: "openai/script-model", prompt: CHILD_PROMPT, thinkingLevel: 42 },
-  { prompt: CHILD_PROMPT },
   { model: "gpt-astra", prompt: CHILD_PROMPT },
   { model: "/gpt-astra", prompt: CHILD_PROMPT },
   { model: "openai/", prompt: CHILD_PROMPT },
@@ -409,6 +442,29 @@ for (const args of [
     }
   });
 }
+
+test("an unavailable default fails without using another available model", async () => {
+  const scripted = script({ taskArguments: { prompt: CHILD_PROMPT } });
+  const nyte = await open(scripted.streamFn, { catalog: [model] });
+  try {
+    const parent = await nyte.sessions.create();
+    nyte.attach();
+    await nyte.messages.send({ sessionId: parent.sessionId, content: "delegate default" });
+    await untilIdle(nyte, parent.sessionId);
+
+    assert.equal((await nyte.sessions.list({ parent: parent.sessionId })).items.length, 0);
+    assert.equal(scripted.selected.has(CHILD_PROMPT), false);
+    assert.ok(
+      (await transcript(nyte, parent.sessionId)).some((line) =>
+        line.includes(
+          "Subagent model is unavailable: openai-codex/gpt-5.6-sol. Choose an available model or connect its provider.",
+        ),
+      ),
+    );
+  } finally {
+    await nyte.close();
+  }
+});
 
 for (const selected of ["openai/gpt-astra", "anthropic/claude-opus-5", "unknown/script-model"]) {
   test(`unavailable selection ${selected} fails without a child or fallback`, async () => {

@@ -17,7 +17,7 @@ export const searchPaletteStyles = stylex.create({
     paddingInline: 18,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderWeak,
+    borderBottomColor: t.strokeSecondary,
     color: t.iconSecondary,
   },
   input: {
@@ -43,7 +43,7 @@ export const searchPaletteStyles = stylex.create({
     overflowX: "auto",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderWeak,
+    borderBottomColor: t.strokeSecondary,
   },
   tab: {
     display: "inline-flex",

@@ -694,6 +694,8 @@ class ModelsImpl implements MutableModels {
         cause: error,
       });
     }
+    // Discovery started for the previous credential must not publish over the new one.
+    this.supersedeProviderRefresh(providerId);
     return credential;
   }
 
@@ -708,6 +710,7 @@ class ModelsImpl implements MutableModels {
         cause: error,
       });
     }
+    this.supersedeProviderRefresh(providerId);
   }
 
   private requireProvider(model: Model<Api>): Provider {

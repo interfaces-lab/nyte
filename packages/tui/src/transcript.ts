@@ -34,11 +34,13 @@ import type {
   MarkdownCodeBlockRenderer,
   MarkdownOptions,
   Renderable,
+  ScrollUnit,
   Selection,
   SimpleHighlight,
   TextChunk,
   OptimizedBuffer,
 } from "@opentui/core";
+import { Edge } from "@opentui/core/yoga";
 import {
   presentNote,
   presentTool,
@@ -105,6 +107,7 @@ import { diffFromOutput, type ChangedLinePair, type OutputDiff } from "./output-
 import { isJsonObject, isJsonString } from "./json.ts";
 import type { LabelSyntax } from "./label-syntax.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
+import { waitingCall } from "@nyte-ai/core/client";
 import type { SessionState } from "@nyte-ai/core/client";
 import { livePartKey, type LivePart } from "@nyte-ai/core/views";
 import { extractSkillInvocations } from "./slash.ts";
@@ -131,7 +134,7 @@ class TranscriptCodeRenderable extends CodeRenderable {
 
 const repaints = new WeakMap<Renderable, () => void>();
 
-function repaintTree(root: Renderable): void {
+export function repaintTree(root: Renderable): void {
   repaints.get(root)?.();
   for (const child of root.getChildren()) repaintTree(child);
 }
@@ -592,6 +595,8 @@ export interface Transcript {
   /** Width for user cards, which sit inside the scroll padding. */
   readonly userBlocks: Set<BoxRenderable>;
   readonly userBlockWidth: () => number;
+  /** Told whether output growth owns the viewport, for the latest control. */
+  readonly onFollowModeChange: (followingLatest: boolean) => void;
 }
 
 type SectionOptions = Pick<
@@ -880,7 +885,8 @@ function addShellTag(
   block.add(body);
 }
 
-function appendUser(
+/** The request block of a turn; a pending message draws the same block ahead of its turn. */
+export function appendUser(
   transcript: Transcript,
   content: UserMessage["content"],
   parent: Renderable,
@@ -1261,7 +1267,12 @@ class ReasoningBlock implements ExpandableToolOutput {
   }
 }
 
-type ActivityMode = "working" | "thinking" | "waiting" | "retrying" | "compacting";
+/** `unanswered` holds the row blank: the space a run's status takes, before there is a run. */
+type ActivityMode = "unanswered" | "working" | "thinking" | "waiting" | "retrying" | "compacting";
+
+function spins(mode: ActivityMode): boolean {
+  return mode !== "waiting" && mode !== "unanswered";
+}
 
 /** The turn's single live status row. It never competes with another spinner. */
 class ActivityBlock {
@@ -1269,18 +1280,24 @@ class ActivityBlock {
   private readonly section: BoxRenderable;
   private readonly line: TextRenderable;
   private readonly spinner: SpinnerRenderable;
-  private readonly startedAt = performance.now();
+  private startedAt = performance.now();
   private readonly durationMs: number;
-  private mode: ActivityMode | "settled" = "working";
+  private mode: ActivityMode | "settled";
   private workingLabel = ACTIVITY_WORKING_LABEL;
 
   get anchor(): Renderable {
     return this.section;
   }
 
-  constructor(transcript: Transcript, parent: TurnSection, durationMs: number) {
+  constructor(
+    transcript: Transcript,
+    parent: TurnSection,
+    durationMs: number,
+    mode: ActivityMode = "working",
+  ) {
     this.transcript = transcript;
     this.durationMs = durationMs;
+    this.mode = mode;
     this.section = section(transcript, "activity", {}, parent);
     this.section.flexDirection = "row";
     this.section.height = 1;
@@ -1301,7 +1318,8 @@ class ActivityBlock {
     this.section.add(this.line);
     repaints.set(this.line, () => this.paint());
     this.paint();
-    this.spinner.start();
+    this.spinner.visible = spins(mode);
+    if (spins(mode)) this.spinner.start();
   }
 
   /** `activity` names the wait behind the running tools; absent, the row says Working. */
@@ -1309,12 +1327,14 @@ class ActivityBlock {
     if (this.mode === "settled") return;
     const workingLabel = activity === undefined ? ACTIVITY_WORKING_LABEL : ` ${activity}`;
     if (this.mode === mode && this.workingLabel === workingLabel) return;
+    // The wait for a run is not the run's time.
+    if (this.mode === "unanswered") this.startedAt = performance.now();
     this.workingLabel = workingLabel;
     this.mode = mode;
-    if (mode === "waiting") this.spinner.stop();
-    this.spinner.visible = mode !== "waiting";
+    if (!spins(mode)) this.spinner.stop();
+    this.spinner.visible = spins(mode);
     this.paint();
-    if (mode !== "waiting") this.spinner.start();
+    if (spins(mode)) this.spinner.start();
   }
 
   settle(outcome: TurnOutcome): void {
@@ -1379,6 +1399,9 @@ class ActivityBlock {
       case "retrying":
         this.spinner.color = theme.warning;
         this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_RETRY_LABEL)]);
+        return;
+      case "unanswered":
+        this.line.content = "";
         return;
       case "settled":
         return;
@@ -1959,9 +1982,10 @@ export class ToolCard {
 
 /**
  * What the status row shows: the run's phase while it is live, the record's
- * outcome after. A request nothing has answered yet gets no row: the commit
- * lands one event before its run starts, and "Worked" in that gap is a lie
- * the block could never take back.
+ * outcome after. A request nothing has answered yet keeps the row blank: the
+ * commit lands one event before its run starts, and "Worked" in that gap is a
+ * lie the block could never take back, while dropping the row would move the
+ * message the run is about to answer.
  */
 export type TurnStatus =
   | {
@@ -2028,8 +2052,7 @@ export class TurnBlock {
       }
       case "unanswered":
         this.syncLive([]);
-        this.activity?.remove();
-        this.activity = undefined;
+        this.ensureActivity("unanswered").setMode("unanswered");
         return;
       case "compacting": {
         this.syncLive([]);
@@ -2187,8 +2210,8 @@ export class TurnBlock {
     this.ensureActivity().settle(outcome);
   }
 
-  private ensureActivity(): ActivityBlock {
-    this.activity ??= new ActivityBlock(this.transcript, this.root, this.durationMs);
+  private ensureActivity(initial: ActivityMode = "working"): ActivityBlock {
+    this.activity ??= new ActivityBlock(this.transcript, this.root, this.durationMs, initial);
     return this.activity;
   }
 
@@ -2202,7 +2225,7 @@ export class TurnBlock {
     return runActivityLabel(running);
   }
 
-  /** A turn with a status row keeps it last, so content lands above it; the row itself waits for a run. */
+  /** A turn with a status row keeps it last, so content lands above it. */
   private contentAnchor(): Renderable | undefined {
     return this.closed ? undefined : this.activity?.anchor;
   }
@@ -2467,34 +2490,64 @@ export class TranscriptView {
   private changingLayout = false;
   private pendingAnchor: ReadingAnchor | "bottom" | undefined;
   private reading: { readonly top: number; readonly anchor: ReadingAnchor | "bottom" } | undefined;
+  private followMode: "latest" | "history" = "latest";
+  /** The turn selected with Ctrl+Up/Down; it survives physical clamping near the tail. */
+  private navigationKey: string | undefined;
+  /** Blank rows after the tail so a selected turn can reach the viewport top. */
+  private readonly navigationSpacer: BoxRenderable;
+  private navigationSlack = 0;
   private selectionRange:
     | { readonly selection: Selection; readonly start: number; readonly end: number }
     | undefined;
   private liveTurn: { readonly key: string; readonly block: TurnBlock } | undefined;
+  /** Content after the last turn that is not a turn: the messages still waiting to become one. */
+  private readonly tail: Renderable | undefined;
   /** The user's `!` jobs on this head. Jobs, not commits: they join the items by start time. */
   private readonly shellEntries = new Map<string, ShellEntry>();
   private shellChanged = false;
   private readonly shellPositions = new Map<string, number>();
 
-  constructor(transcript: Transcript) {
+  constructor(transcript: Transcript, options: { readonly tail?: Renderable } = {}) {
     this.transcript = transcript;
+    this.tail = options.tail;
+    this.navigationSpacer = new BoxRenderable(transcript.renderer, {
+      id: transcript.nextId("navigation-slack"),
+      width: "100%",
+      height: 0,
+      flexShrink: 0,
+    });
     transcript.renderer.setFrameCallback(this.beforeFrame);
-    transcript.renderer.root.on(LayoutEvents.LAYOUT_CHANGED, this.restoreTextAnchor);
+    transcript.renderer.root.on(LayoutEvents.LAYOUT_CHANGED, this.restoreAnchor);
     transcript.renderer.on(CliRenderEvents.FRAME, this.scheduleLayout);
     transcript.renderer.on(CliRenderEvents.SELECTION, this.scheduleLayout);
     transcript.container.once(RenderableEvents.DESTROYED, () => {
       transcript.renderer.removeFrameCallback(this.beforeFrame);
-      transcript.renderer.root.off(LayoutEvents.LAYOUT_CHANGED, this.restoreTextAnchor);
+      transcript.renderer.root.off(LayoutEvents.LAYOUT_CHANGED, this.restoreAnchor);
       transcript.renderer.off(CliRenderEvents.FRAME, this.scheduleLayout);
       transcript.renderer.off(CliRenderEvents.SELECTION, this.scheduleLayout);
       this.heights.clear();
       this.clear();
+      this.navigationSpacer.destroy();
     });
   }
 
   /** Diagnostic count; cached widths are bounded independently of durable history. */
   get cachedHeightCount(): number {
     return this.heights.size;
+  }
+
+  /** Diagnostic count; the mounted window stays bounded independently of durable history. */
+  get mountedItemCount(): number {
+    return this.mounted.size;
+  }
+
+  /** Temporary space exists only while turn navigation needs to align the tail. */
+  get navigationSlackRows(): number {
+    return this.navigationSlack;
+  }
+
+  get isFollowingLatest(): boolean {
+    return this.followMode === "latest";
   }
 
   get openTurn(): TurnBlock | undefined {
@@ -2641,7 +2694,7 @@ export class TranscriptView {
         kind: "open",
         phase: state.run.phase,
         live: state.overlay,
-        waitingForUser: state.waiting !== undefined,
+        waitingForUser: waitingCall(state) !== undefined,
       });
     } else if (this.liveTurn !== undefined) {
       this.liveTurn.block.remove();
@@ -2653,18 +2706,60 @@ export class TranscriptView {
 
   /** Logical navigation includes turns that have no renderable yet. */
   jumpTurn(direction: "previous" | "next"): boolean {
-    const top = this.transcript.container.scrollTop;
     const indices = this.items.flatMap((item, index) => (item.item.kind === "turn" ? [index] : []));
+    const selected = indices.findIndex((index) => this.items[index]?.key === this.navigationKey);
+    const top = this.transcript.container.scrollTop;
     const index =
-      direction === "next"
-        ? indices.find((candidate) => this.offset(candidate) + SPACING.block > top)
-        : indices.findLast((candidate) => this.offset(candidate) + SPACING.block < top);
-    if (index === undefined) return false;
+      selected >= 0
+        ? indices[selected + (direction === "next" ? 1 : -1)]
+        : direction === "next"
+          ? indices.find((candidate) => this.offset(candidate) + SPACING.block > top)
+          : indices.findLast((candidate) => this.offset(candidate) + SPACING.block < top);
+    const item = index === undefined ? undefined : this.items[index];
+    if (index === undefined || item === undefined) return false;
+
+    this.setFollowMode("history");
+    this.navigationKey = item.key;
+    this.reading = undefined;
+    const target = this.offset(index) + SPACING.block;
+    // A tail target clamps until the spacer is laid out; restoreAnchor applies it in-frame.
     this.pendingAnchor = { index, row: SPACING.block };
-    this.transcript.container.scrollTo(this.offset(index) + SPACING.block);
+    this.setNavigationSlack(this.slackForTarget(target));
+    this.transcript.container.scrollTo(target);
+    this.reconcileWindow(target);
+    this.scheduleLayout();
+    this.transcript.renderer.requestRender();
+    return true;
+  }
+
+  /** Page keys take physical ownership and end logical turn navigation. */
+  scrollBy(delta: number, unit: ScrollUnit = "absolute"): void {
+    this.beginManualScroll();
+    this.transcript.container.scrollBy(delta, unit);
+  }
+
+  /**
+   * Called before OpenTUI moves this viewport for a wheel event. A stale anchor
+   * must not scroll back over the user's move, so the new one is captured after.
+   */
+  beginManualScroll(): void {
+    this.endNavigation();
+    this.setFollowMode("history");
+    this.pendingAnchor = undefined;
+    this.reading = undefined;
+    queueMicrotask(this.finishManualScroll);
+  }
+
+  /** Clear all viewport ownership and follow subsequent output at the tail. */
+  returnToLatest(): void {
+    this.endNavigation();
+    this.pendingAnchor = "bottom";
+    this.reading = undefined;
+    this.setFollowMode("latest");
+    this.transcript.container.scrollTo(Infinity);
     this.reconcileWindow();
     this.scheduleLayout();
-    return true;
+    this.transcript.renderer.requestRender();
   }
 
   clear(): void {
@@ -2677,6 +2772,7 @@ export class TranscriptView {
       spacer.parent?.remove(spacer);
       spacer.destroy();
     }
+    this.endNavigation();
     this.liveTurn?.block.remove();
     this.liveTurn = undefined;
     this.shellEntries.clear();
@@ -2689,6 +2785,67 @@ export class TranscriptView {
     this.selectionRange = undefined;
     this.reading = undefined;
     this.pendingAnchor = "bottom";
+    this.setFollowMode("latest");
+  }
+
+  /** OpenTUI's bottom pin is on exactly while output growth owns the viewport. */
+  private setFollowMode(mode: "latest" | "history"): void {
+    if (this.followMode === mode) return;
+    this.followMode = mode;
+    this.transcript.container.stickyScroll = mode === "latest";
+    this.transcript.onFollowModeChange(mode === "latest");
+  }
+
+  /**
+   * Content rows without navigation space. scrollHeight comes from the last Yoga
+   * pass, so subtract the slack that pass measured (NaN before the first pass)
+   * rather than the rows requested since.
+   */
+  private naturalHeight(): number {
+    const measuredSlack = this.navigationSpacer.getLayoutNode().getComputedLayout().height || 0;
+    return this.transcript.container.scrollHeight - measuredSlack;
+  }
+
+  /** Compares against the requested slack; a wheel step that cancels navigation lands on the natural tail. */
+  private atBottom(): boolean {
+    const scroll = this.transcript.container;
+    const bottom = this.naturalHeight() + this.navigationSlack - scroll.viewport.height;
+    return scroll.scrollTop >= Math.max(0, bottom) - 1;
+  }
+
+  private viewportRows(): number {
+    return Math.max(
+      1,
+      this.transcript.container.viewport.height || this.transcript.renderer.height,
+    );
+  }
+
+  /** Runs after OpenTUI moved the viewport, unless another owner took over meanwhile. */
+  private readonly finishManualScroll = (): void => {
+    if (this.followMode !== "history" || this.navigationKey !== undefined) return;
+    if (this.transcript.container.isDestroyed) return;
+    if (this.atBottom()) {
+      this.returnToLatest();
+      return;
+    }
+    this.pendingAnchor ??= this.captureReadingAnchor();
+    this.reconcileWindow();
+    this.scheduleLayout();
+    this.transcript.renderer.requestRender();
+  };
+
+  private slackForTarget(target: number): number {
+    return Math.max(0, target + this.viewportRows() - this.naturalHeight());
+  }
+
+  private setNavigationSlack(rows: number): void {
+    this.navigationSlack = rows;
+    this.navigationSpacer.height = rows;
+  }
+
+  private endNavigation(): void {
+    this.navigationKey = undefined;
+    this.setNavigationSlack(0);
   }
 
   private running(): boolean {
@@ -2715,7 +2872,7 @@ export class TranscriptView {
               kind: "open",
               phase: state.run.phase,
               live: state.overlay,
-              waitingForUser: state.waiting !== undefined,
+              waitingForUser: waitingCall(state) !== undefined,
             }
         : settledStatus(item, last ? state.run : undefined),
     );
@@ -2745,13 +2902,14 @@ export class TranscriptView {
   }
 
   private anchor(): ReadingAnchor | "bottom" {
+    if (this.followMode === "latest") return "bottom";
     const scroll = this.transcript.container;
     if (this.reading?.top === scroll.scrollTop) return this.reading.anchor;
-    if (
-      scroll.stickyScroll &&
-      scroll.scrollTop >= Math.max(0, scroll.scrollHeight - scroll.viewport.height) - 1
-    )
-      return "bottom";
+    return this.captureReadingAnchor();
+  }
+
+  private captureReadingAnchor(): ReadingAnchor {
+    const scroll = this.transcript.container;
     const index = this.indexAt(scroll.scrollTop);
     const row = scroll.scrollTop - this.offset(index);
     const root = this.mounted.get(index)?.root;
@@ -2831,11 +2989,12 @@ export class TranscriptView {
     );
   }
 
-  private readonly restoreTextAnchor = (): void => {
+  private readonly restoreAnchor = (): void => {
     const anchor = this.pendingAnchor;
-    if (anchor === undefined || anchor === "bottom" || anchor.text === undefined) return;
+    if (anchor === undefined || anchor === "bottom") return;
     const scroll = this.transcript.container;
-    const target = this.textTarget(anchor, true);
+    const target =
+      anchor.text === undefined ? this.indexTarget(anchor) : this.textTarget(anchor, true);
     if (target === undefined) return;
     // Apply the scroll ancestors first. Otherwise viewport resize clamps against
     // the old content height and falsely re-engages the native bottom pin.
@@ -2846,10 +3005,29 @@ export class TranscriptView {
     scroll.scrollTo(target);
   };
 
+  /**
+   * In-frame, a mounted item's Yoga position beats the prefix offsets: an
+   * overscan item mounted above it may have just measured taller than its
+   * estimate, which the offsets only learn on the next layout pass.
+   */
+  private indexTarget(anchor: ReadingAnchor): number {
+    const root = this.mounted.get(anchor.index)?.root;
+    if (root === undefined || !root.visible) return this.offset(anchor.index) + anchor.row;
+    const scroll = this.transcript.container;
+    return (
+      scroll.scrollTop +
+      layoutY(root) -
+      layoutY(scroll.viewport) -
+      root.getLayoutNode().getComputedMargin(Edge.Top) +
+      anchor.row
+    );
+  }
+
   private readonly beforeFrame = (): Promise<void> => {
     // Capture against the old geometry before Yoga can clamp a shrinking scroll
     // range or re-engage OpenTUI's bottom pin during reflow.
     if (!this.changingLayout && this.state !== undefined) {
+      if (this.followMode === "latest" && !this.atBottom()) this.setFollowMode("history");
       this.pendingAnchor ??= this.anchor();
       this.reconcileWindow();
     }
@@ -2890,8 +3068,10 @@ export class TranscriptView {
       }
       for (const [index, mounted] of this.mounted) {
         const item = this.items[index];
-        if (item === undefined) continue;
-        const height = Math.max(1, mounted.root.height + SPACING.block);
+        // A root just mounted outside a frame reads 0 until Yoga measures it;
+        // its estimate must stand or every offset below it shifts for one frame.
+        if (item === undefined || mounted.root.height === 0) continue;
+        const height = mounted.root.height + SPACING.block;
         if (item.height !== height) {
           item.height = height;
           firstChanged = Math.min(firstChanged, index);
@@ -2907,6 +3087,16 @@ export class TranscriptView {
       }
       // A growing live tail changes just the final offset, not the history prefix.
       if (firstChanged < this.items.length) this.reindex(firstChanged);
+      if (this.navigationKey !== undefined) {
+        const navigationIndex = this.items.findIndex(
+          (item) => item.key === this.navigationKey && item.item.kind === "turn",
+        );
+        if (navigationIndex === -1) this.endNavigation();
+        else
+          this.setNavigationSlack(
+            this.slackForTarget(this.offset(navigationIndex) + SPACING.block),
+          );
+      }
       // Rebase before deciding the window, otherwise newly measured overscan can
       // evict the very turn the reader was looking at.
       const target =
@@ -2916,17 +3106,9 @@ export class TranscriptView {
       this.reconcileWindow(
         target ?? Math.max(0, this.offset(this.items.length) - scroll.viewport.height),
       );
-      if (anchor === "bottom") {
-        scroll.stickyScroll = true;
-        scroll.scrollTo(Infinity);
-      } else if (target !== undefined && target !== scroll.scrollTop) {
-        scroll.scrollTo(target);
-        if (
-          scroll.scrollTop !== target &&
-          target <= this.offset(this.items.length) - scroll.viewport.height
-        )
-          this.pendingAnchor = anchor;
-      }
+      if (anchor === "bottom") scroll.scrollTo(Infinity);
+      else if (target !== undefined && target !== scroll.scrollTop) scroll.scrollTo(target);
+      // beforeFrame re-reads this anchor, so a clamped target is retried before the next frame.
       this.reading = { top: scroll.scrollTop, anchor };
     } finally {
       this.changingLayout = false;
@@ -2935,7 +3117,7 @@ export class TranscriptView {
 
   private reconcileWindow(top = this.transcript.container.scrollTop): void {
     const scroll = this.transcript.container;
-    const viewport = Math.max(1, scroll.viewport.height || this.transcript.renderer.height);
+    const viewport = this.viewportRows();
     const atBottom = this.pendingAnchor === "bottom";
     const position = atBottom ? Math.max(0, this.offset(this.items.length) - viewport) : top;
     const start = this.indexAt(Math.max(0, position - viewport));
@@ -3034,8 +3216,8 @@ export class TranscriptView {
           });
           this.spacers.push(spacer);
         }
-        const height = this.offset(index) - this.offset(cursor);
-        if (spacer.height !== height) spacer.height = height;
+        // The getter reads the last layout, so it cannot dedupe a request; the setter does.
+        spacer.height = this.offset(index) - this.offset(cursor);
         children.push(spacer);
         gaps += 1;
       }
@@ -3047,6 +3229,8 @@ export class TranscriptView {
       spacer.destroy();
     }
     if (this.liveTurn !== undefined) children.push(this.liveTurn.block.root);
+    if (this.tail !== undefined) children.push(this.tail);
+    children.push(this.navigationSpacer);
     const current = scroll.getChildren();
     if (
       current.length === children.length &&

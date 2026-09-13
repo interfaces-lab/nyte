@@ -12,6 +12,7 @@
  * still-pending queue items with edit, cancel, and "send now"
  * (`redeliver`), and Esc requests a durable abort.
  */
+import { trayStyles } from "../theme/tray.stylex.ts";
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -22,10 +23,10 @@ import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
+import { refreshThread } from "../live.ts";
 import {
   keys,
   queryClient,
-  refreshThread,
   useApplyPluginSetting,
   useCatalog,
   useConfigureSession,
@@ -157,7 +158,7 @@ const SessionModelChip = memo(function SessionModelChip({
 }: {
   sessionId: SessionId;
 }): ReactElement | null {
-  const catalog = useCatalog();
+  const catalog = useCatalog(sessionId);
   const snapshot = useSessionSnapshot(sessionId);
   const configure = useConfigureSession(sessionId);
   const context = snapshot.data?.context;
@@ -218,7 +219,7 @@ const SessionModelChip = memo(function SessionModelChip({
           snapshot.data?.session.config.thinkingLevel ?? snapshot.data?.config.thinkingLevel
         }
         fastEnabled={fastEnabled}
-        disabled={configure.isPending}
+        disabled={configure.isPending || catalog.isError || catalog.isPending}
         onChange={handleChange}
       />
       {context?.percent !== undefined && (
@@ -251,27 +252,18 @@ export type ComposerEditing =
       readonly onCancel: () => void;
     };
 
-function editingNoticeText(editing: ComposerEditing): string {
-  switch (editing.kind) {
-    case "queued":
-      return "Editing a queued message";
-    case "message":
-      return "Editing a sent message";
-    default: {
-      const _exhaustive: never = editing;
-      return _exhaustive;
-    }
-  }
-}
-
 export interface ComposerFrameProps {
   /** Placement is caller intent; the follow-up surface derives its own geometry. */
   readonly surface: ComposerSurface;
   /** The draft to show. The frame reports every edit back; the parent owns the value. */
   document: ComposerDocumentState;
   onDocumentChange: (document: ComposerDocumentState) => void;
-  /** Resolves once the send is accepted or refused. The parent clears the document itself. */
-  onSubmit: (submission: ComposerSubmission, lane: Lane) => boolean | Promise<boolean>;
+  /** The parent clears the exact live document passed here and restores it if the send is refused. */
+  onSubmit: (
+    submission: ComposerSubmission,
+    lane: Lane,
+    document: ComposerDocumentState,
+  ) => boolean | Promise<boolean>;
   placeholder: string;
   autoFocus?: boolean;
   disabled?: boolean;
@@ -380,7 +372,7 @@ export function ComposerFrame({
           ? `Send now (Enter) · Queue for later (${modifier}Enter)`
           : "Send (Enter)";
 
-  // Follow-up text scrolls on one line like Cursor's compact composer. An explicit
+  // Follow-up text scrolls on one line so the composer stays compact. An explicit
   // line break expands the card; width alone must not make the controls overflow.
   const resize = useCallback(
     (text?: string): void => {
@@ -409,13 +401,16 @@ export function ComposerFrame({
 
   const submit = async (action: SubmitAction): Promise<void> => {
     if (!canSubmit) return;
-    const submission = areaRef.current?.read();
-    if (submission === undefined) return;
+    const area = areaRef.current;
+    if (area === null) return;
+    const submission = area.read();
+    const currentDocument = area.readDocument();
     setSubmitting(true);
     try {
       await onSubmit(
         submission,
         submissionLane(action, roles, editing?.kind === "queued" ? editing.lane : undefined),
+        currentDocument,
       );
     } finally {
       setSubmitting(false);
@@ -468,8 +463,22 @@ export function ComposerFrame({
   return (
     <>
       <form
+        data-composer-frame
         ref={frameRef}
         aria-label="Message composer"
+        onKeyDown={(event) => {
+          if (
+            event.key !== "Escape" ||
+            event.defaultPrevented ||
+            disabled ||
+            suggestionMenu.open ||
+            editing === undefined
+          )
+            return;
+          event.preventDefault();
+          event.stopPropagation();
+          editing.onCancel();
+        }}
         onSubmit={(event) => {
           event.preventDefault();
           void submit("submit");
@@ -528,20 +537,6 @@ export function ComposerFrame({
         )}
         {attachmentList}
         {attachmentAlert}
-        {editing !== undefined && (
-          <div role="status" {...stylex.props(composerStyles.editingNotice)}>
-            <Icon name="pencil" size={12} />
-            <span {...stylex.props(composerStyles.queuedText)}>{editingNoticeText(editing)}</span>
-            <Button
-              unstyled
-              type="button"
-              onClick={editing.onCancel}
-              {...stylex.props(composerStyles.queuedAction, focus.ring)}
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
         <div
           {...stylex.props(
             composerStyles.layout,
@@ -589,11 +584,7 @@ export function ComposerFrame({
                   return;
                 }
                 if (event.key !== "Escape" || suggestionMenu.open || disabled) return;
-                if (editing !== undefined) {
-                  event.preventDefault();
-                  editing.onCancel();
-                  return;
-                }
+                if (editing !== undefined) return;
                 if (onDismissTray?.()) {
                   event.preventDefault();
                   return;
@@ -923,7 +914,11 @@ export function Composer({
     setFeedback({ kind: "error", message, restore });
   };
 
-  const send = async (submission: ComposerSubmission, lane: Lane): Promise<boolean> => {
+  const send = async (
+    submission: ComposerSubmission,
+    lane: Lane,
+    document: ComposerDocumentState,
+  ): Promise<boolean> => {
     if (disabled || attachmentReads !== 0) return false;
     const sentAttachments = attachments;
     const plan = composerSendPlan({
@@ -934,14 +929,7 @@ export function Composer({
     });
     if (plan.kind === "empty") return false;
     const edit = activePendingEdit;
-    const sent = {
-      document: {
-        text: latestViewState.current.draft,
-        selectionStart: latestViewState.current.selectionStart,
-        selectionEnd: latestViewState.current.selectionEnd,
-      },
-      attachments: sentAttachments,
-    };
+    const sent = { document, attachments: sentAttachments };
     // Clear at once: the outbox row already shows the message, and the next thought never waits.
     setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
     setAttachments((current) =>
@@ -1096,11 +1084,13 @@ export function Composer({
   const queuedMessageCount = pending.length + unsent.length;
   const queuedMessages =
     queuedMessageCount === 0 ? undefined : (
-      <section aria-label="Queued messages" {...stylex.props(composerStyles.queueCard)}>
-        <div {...stylex.props(composerStyles.queueHeader)}>
-          {String(queuedMessageCount)} Queued {queuedMessageCount === 1 ? "Message" : "Messages"}
+      <section aria-label="Queued messages" {...stylex.props(trayStyles.surface)}>
+        <div {...stylex.props(trayStyles.header)}>
+          <span {...stylex.props(trayStyles.title)}>
+            {String(queuedMessageCount)} Queued {queuedMessageCount === 1 ? "Message" : "Messages"}
+          </span>
         </div>
-        <div {...stylex.props(composerStyles.queueList)}>
+        <div {...stylex.props(trayStyles.list, composerStyles.queueList)}>
           {pending.map((item) => {
             const action = rowActions.get(item.change);
             const editingThis = activePendingEdit?.change === item.change;
@@ -1114,9 +1104,6 @@ export function Composer({
                 data-error={action?.kind === "failed"}
                 {...stylex.props(composerStyles.queueRow)}
               >
-                <span aria-hidden="true" {...stylex.props(composerStyles.queueIndicator)}>
-                  <Icon name="clock" size={12} />
-                </span>
                 <div {...stylex.props(composerStyles.queueMessage)}>
                   <QueuedMessageContent content={item.content} />
                   {action?.kind === "cancelling" && (
@@ -1133,20 +1120,7 @@ export function Composer({
                       {action.message}
                     </span>
                   )}
-                  {editingThis && (
-                    <span {...stylex.props(composerStyles.queuedState)}>Editing…</span>
-                  )}
                 </div>
-                <span
-                  title={
-                    steering
-                      ? "Sends without interrupting the current run"
-                      : "Sends after the current run"
-                  }
-                  {...stylex.props(composerStyles.queueLane)}
-                >
-                  {steering ? "Steer" : "Queued"}
-                </span>
                 {!busyRow && !editingThis && (
                   <div {...stylex.props(composerStyles.queueActions)}>
                     <IconButton
@@ -1161,22 +1135,16 @@ export function Composer({
                       onClick={() => beginEdit(item)}
                     />
                     {!steering && (
-                      <Button
-                        unstyled
-                        type="button"
-                        {...stylex.props(
-                          composerStyles.queuedAction,
-                          composerStyles.queueSend,
-                          focus.ring,
-                        )}
+                      <IconButton
+                        icon="arrow-up"
+                        label="Send now"
+                        size={14}
                         onClick={() => void sendPendingNow(item)}
-                      >
-                        Send now
-                      </Button>
+                      />
                     )}
                     <IconButton
-                      icon="x"
-                      label="Cancel queued message"
+                      icon="trash"
+                      label="Remove queued message"
                       size={12}
                       onClick={() => void cancelPending(item)}
                     />
@@ -1192,9 +1160,6 @@ export function Composer({
               data-error={row.state.kind === "failed"}
               {...stylex.props(composerStyles.queueRow)}
             >
-              <span aria-hidden="true" {...stylex.props(composerStyles.queueIndicator)}>
-                <Icon name="clock" size={12} />
-              </span>
               <div {...stylex.props(composerStyles.queueMessage)}>
                 <QueuedMessageContent content={row.content} />
                 <span
@@ -1208,8 +1173,8 @@ export function Composer({
               </div>
               <div {...stylex.props(composerStyles.queueActions)}>
                 <IconButton
-                  icon="x"
-                  label="Cancel unsent message"
+                  icon="trash"
+                  label="Remove unsent message"
                   size={12}
                   onClick={() => outbox.cancel(row.key)}
                 />

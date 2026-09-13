@@ -431,13 +431,6 @@ describe("Codex V2 compaction", () => {
   });
 
   test.each([
-    ["missing checkpoint", sse(completed())],
-    ["duplicate checkpoint", sse(itemDone(), itemDone(), completed())],
-    ["empty checkpoint", sse(itemDone({ type: "compaction", encrypted_content: "" }), completed())],
-    [
-      "invalid checkpoint",
-      sse(itemDone({ type: "compaction", encrypted_content: 42 }), completed()),
-    ],
     ["missing completion", sse(itemDone())],
     [
       "missing response ID",
@@ -502,6 +495,7 @@ describe("Codex V2 compaction", () => {
     ["invalid output item", [itemDone(null)]],
   ])("preserves terminal usage after %s without retrying", async (_name, items) => {
     await using server = await serve(async (response) => {
+      response.setHeader("x-request-id", "req_failure");
       response.write(sse(...items));
       await setTimeout(10);
       response.end(sse(completed()));
@@ -510,6 +504,10 @@ describe("Codex V2 compaction", () => {
       compactOpenAICodexContext(server.model, context, { apiKey, maxRetries: 2 }),
       (error) => {
         assert.ok(error instanceof OpenAICodexCompactionError);
+        assert.match(error.message, /HTTP 200/);
+        assert.match(error.message, /request ID req_failure/);
+        assert.ok(!JSON.stringify(error).includes("secret prompt"));
+        assert.ok(!error.message.includes("secret prompt"));
         expect(error.usage).toMatchObject({
           input: 60,
           output: 20,

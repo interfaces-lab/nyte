@@ -134,6 +134,7 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
     case "queued":
     case "landed":
     case "queue_cancelled":
+    case "config_queued":
     case "stack":
     case "fact":
     case "deleted":

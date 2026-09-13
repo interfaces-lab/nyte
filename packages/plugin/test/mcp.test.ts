@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { afterEach, test } from "vitest";
+import { afterEach, test, vi } from "vitest";
 import type { SessionEvent, StreamFn } from "@nyte-ai/core";
 import { inlinePlugin } from "@nyte-ai/plugin";
 import {
@@ -13,6 +13,7 @@ import {
   bridgedToolName,
   mcpConfigVersion,
   mcpPlugin,
+  mcpServerSettingId,
   type McpServerConfig,
 } from "../src/mcp.ts";
 import {
@@ -20,6 +21,7 @@ import {
   prompt,
   respond,
   runCommand,
+  settingOf,
   testModel,
   toolCall,
   toolParts,
@@ -29,6 +31,16 @@ const echoServer: McpServerConfig = {
   command: process.execPath,
   args: [fileURLToPath(new URL("./fixtures/mcp-echo-server.ts", import.meta.url))],
 };
+
+/** The tools a stream saw that came over MCP; core offers its own tools alongside them. */
+function bridgedNames(tools: readonly { readonly name: string }[]): string[] {
+  const bridged = new Set(
+    ["echo", "off"].flatMap((server) =>
+      ["echo", "fail"].map((tool) => bridgedToolName(server, tool)),
+    ),
+  );
+  return tools.map((tool) => tool.name).filter((name) => bridged.has(name));
+}
 
 const workspaces: TestWorkspace[] = [];
 const pools: McpServers[] = [];
@@ -88,7 +100,7 @@ test("the plugin offers the server's tools to the model and runs a call through 
   const { workspace, servers } = open("nyte-mcp-plugin-");
   const offered: string[][] = [];
   const streamFn: StreamFn = (model, context) => {
-    offered.push((context.tools ?? []).map((tool) => tool.name));
+    offered.push(bridgedNames(context.tools ?? []));
     return offered.length === 1
       ? respond(model, [toolCall("c1", bridgedToolName("echo", "echo"), { text: "there" })])
       : respond(model, [{ type: "text", text: "done" }]);
@@ -110,7 +122,51 @@ test("the plugin offers the server's tools to the model and runs a call through 
     parts.map((part) => [part.toolName, part.result?.output, part.result?.isError]),
     [[bridgedToolName("echo", "echo"), "echo: there", false]],
   );
-  assert.equal(await runCommand(sdk, sessionId, "mcp"), "echo: 2 tools");
+  assert.equal(await runCommand(sdk, sessionId, "mcp"), "echo: 2 tools\noff: off");
+});
+
+test("a server's setting turns it off and on for the session", async () => {
+  const { workspace, servers } = open("nyte-mcp-setting-");
+  const offered: string[][] = [];
+  const streamFn: StreamFn = (model, context) => {
+    offered.push(bridgedNames(context.tools ?? []));
+    return respond(model, [{ type: "text", text: "ok" }]);
+  };
+  const config = { echo: echoServer, off: { ...echoServer, disabled: true } };
+  const sdk = await workspace.open({
+    streamFn,
+    model: testModel,
+    plugins: [inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) })],
+  });
+  const { sessionId } = workspace;
+  const echoSetting = mcpServerSettingId("echo");
+  const offSetting = mcpServerSettingId("off");
+  // The manifest's `disabled` is only the default the setting starts from.
+  assert.equal(await settingOf(sdk, sessionId, echoSetting), "on");
+  assert.equal(await settingOf(sdk, sessionId, offSetting), "off");
+
+  assert.deepEqual(
+    await sdk.plugins.settings.apply({ sessionId, id: echoSetting, choiceId: "off" }),
+    { kind: "applied" },
+  );
+  await vi.waitFor(async () => {
+    assert.equal(await runCommand(sdk, sessionId, "mcp"), "echo: off\noff: off");
+  });
+  assert.deepEqual(await prompt(sdk, sessionId, "nothing bridged"), { kind: "idle" });
+  assert.deepEqual(offered.at(-1), []);
+
+  assert.deepEqual(
+    await sdk.plugins.settings.apply({ sessionId, id: offSetting, choiceId: "on" }),
+    { kind: "applied" },
+  );
+  await vi.waitFor(async () => {
+    assert.equal(await runCommand(sdk, sessionId, "mcp"), "echo: off\noff: 2 tools");
+  });
+  assert.deepEqual(await prompt(sdk, sessionId, "the other one"), { kind: "idle" });
+  assert.deepEqual(offered.at(-1), [
+    bridgedToolName("off", "echo"),
+    bridgedToolName("off", "fail"),
+  ]);
 });
 
 test("a failing server is a warning the client sees, and the session still answers", async () => {

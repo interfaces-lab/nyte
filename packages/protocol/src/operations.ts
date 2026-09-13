@@ -40,6 +40,7 @@ import {
   SendReceipt,
   SessionId,
   SessionInfo,
+  SessionMetadata,
   SessionPage,
   SessionParent,
   SessionSnapshot,
@@ -85,6 +86,7 @@ export const OPERATIONS = Object.freeze({
   ),
   "sessions.get": operation(sessionOnly, optional(SessionInfo)),
   "sessions.snapshot": operation(sessionHead, optional(SessionSnapshot)),
+  "sessions.metadata": operation(sessionHead, optional(SessionMetadata)),
   "sessions.list": operation(
     optional(
       strict({
@@ -209,6 +211,7 @@ export const OPERATIONS = Object.freeze({
     list(VcsDiff),
   ),
 
+  "provider.models.list": operation(none, list(ModelInfo)),
   "provider.models.default": operation(none, optional(ModelInfo)),
 
   "plugins.catalog": operation(none, PluginCatalog),

@@ -1,5 +1,5 @@
 import { toJsonValue } from "../json.ts";
-import type { Turn, TurnOutcome, TurnPart } from "@nyte-ai/protocol";
+import type { Turn, TurnOutcome, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { Commit, CommitBody, Oid } from "../model.ts";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
@@ -116,15 +116,19 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
 
 /** A request opens a turn whatever the commits before it were doing. */
 function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void {
+  const part: UserTurnPart = {
+    kind: "user",
+    commit: item.oid,
+    parent: item.commit.parent,
+    content: message.content,
+  };
   items.push({
     kind: "turn",
     id: item.oid,
     outcome: "completed",
     startedAt: item.commit.at,
     durationMs: 0,
-    parts: [
-      { kind: "user", commit: item.oid, parent: item.commit.parent, content: message.content },
-    ],
+    parts: [item.commit.key === undefined ? part : { ...part, key: item.commit.key }],
   });
 }
 

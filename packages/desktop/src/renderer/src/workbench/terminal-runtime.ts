@@ -37,7 +37,9 @@ function terminalTheme(): ITheme {
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("Canvas rendering is unavailable");
   document.documentElement.append(probe);
-  const background = getComputedStyle(document.documentElement).getPropertyValue("--sand-bg-base");
+  const background = getComputedStyle(document.documentElement).getPropertyValue(
+    "--nyte-bg-chrome",
+  );
   const color = (variable: string): string => {
     probe.style.color = "var(" + variable + ")";
     context.clearRect(0, 0, 1, 1);
@@ -55,15 +57,15 @@ function terminalTheme(): ITheme {
   };
   try {
     return {
-      background: color("--sand-bg-base"),
+      background: color("--nyte-bg-chrome"),
       foreground: color("--nyte-text-primary"),
       cursor: color("--nyte-text-primary"),
       selectionBackground: color("--nyte-bg-secondary"),
       black: "#141414",
-      red: color("--sand-text-danger"),
-      green: color("--sand-text-success"),
-      yellow: color("--sand-text-warning"),
-      blue: color("--sand-text-accent"),
+      red: color("--nyte-text-danger"),
+      green: color("--nyte-text-success"),
+      yellow: color("--nyte-text-warning"),
+      blue: color("--nyte-text-accent"),
       magenta: color("--nyte-purple"),
       cyan: color("--nyte-text-cyan-primary"),
       white: "#eeeeee",

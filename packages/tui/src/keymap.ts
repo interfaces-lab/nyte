@@ -12,7 +12,7 @@
  * Based on OpenCode's keymap wiring:
  * https://github.com/anomalyco/opencode/blob/main/packages/tui/src/keymap.tsx
  */
-import { CliRenderEvents } from "@opentui/core";
+import { MouseButton } from "@opentui/core";
 import type { CliRenderer, KeyEvent, Renderable } from "@opentui/core";
 import { stringifyKeyStroke } from "@opentui/keymap";
 import type { KeyStrokeInput, Command, Keymap, KeymapEvent } from "@opentui/keymap";
@@ -26,13 +26,6 @@ import { registerBaseLayoutFallback } from "@opentui/keymap/addons/opentui";
 import { commandBindings } from "@opentui/keymap/extras";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
 import { CHAT_KEYBINDS, keyStrokes, type ChatCommand } from "./constants.ts";
-
-/**
- * A drag selection answers escape and copy itself, so its layer sits above the
- * chat layer. Both keys mean something else the moment the selection is gone,
- * and the layer's `enabled` is what says so.
- */
-const SELECTION_PRIORITY = 10;
 
 export interface ChatCommandSpec {
   readonly title: string;
@@ -144,8 +137,8 @@ function isChatCommand(name: string): name is ChatCommand {
   return Object.hasOwn(CHAT_KEYBINDS, name);
 }
 
-/** Based on https://github.com/anomalyco/opencode/blob/8381153418faa32396af98ec173228d7eb16ea5f/packages/tui/src/util/selection.ts */
-export function copy(renderer: CliRenderer, write: (text: string) => void): boolean {
+/** Based on https://github.com/anomalyco/opencode/blob/0643a5638e0cd02234e73f176771527d7600faf7/packages/tui/src/util/selection.ts */
+function copy(renderer: CliRenderer, write: (text: string) => void): boolean {
   const selection = renderer.getSelection();
   if (selection === null || (selection.isStart && selection.behavior === "cell")) return false;
   const text = selection.getSelectedText();
@@ -155,122 +148,67 @@ export function copy(renderer: CliRenderer, write: (text: string) => void): bool
   return true;
 }
 
-export function copyOnSelectRelease(renderer: CliRenderer, write: (text: string) => void): boolean {
-  return copy(renderer, write);
-}
-
-function selectionCopyAction(renderer: CliRenderer, copyOnSelect: boolean): "copy" | "clear" {
-  const selection = renderer.getSelection();
-  if (selection === null || (selection.isStart && selection.behavior === "cell")) return "clear";
-  const focus = renderer.currentFocusedEditor;
-  const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
-  return (copyOnSelect && !editing) || selection.getSelectedText() === "" ? "clear" : "copy";
-}
-
-export function handleSelectionKey(
+/**
+ * Ported from OpenCode v2 util/selection.ts and app.tsx at
+ * 0643a5638e0cd02234e73f176771527d7600faf7. Selection runs before app bindings.
+ */
+function handleSelectionKey(
   renderer: CliRenderer,
   write: (text: string) => void,
-  command: "selection.copy" | "selection.clear",
+  event: KeyEvent,
   copyOnSelect: boolean,
-): boolean {
+): void {
   const selection = renderer.getSelection();
-  if (selection === null) return false;
-  if (command === "selection.copy") {
-    if (selectionCopyAction(renderer, copyOnSelect) === "clear" || !copy(renderer, write)) {
+  if (!selection) return;
+  const focus = renderer.currentFocusedEditor;
+  const editing = focus?.hasSelection() && selection.selectedRenderables.includes(focus);
+
+  // Kitty can report a non-Latin key name with a Latin base-layout C.
+  if (event.ctrl && (event.name === "c" || event.baseCode === 99 || event.baseCode === 67)) {
+    if ((copyOnSelect && !editing) || !copy(renderer, write)) {
       renderer.clearSelection();
-      return false;
+      return;
     }
-    return true;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
   }
-  const text =
-    selection.isStart && selection.behavior === "cell" ? "" : selection.getSelectedText();
+  if (event.name === "escape") {
+    const text =
+      selection.isStart && selection.behavior === "cell" ? "" : selection.getSelectedText();
+    renderer.clearSelection();
+    if (!text) return;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (editing) return;
   renderer.clearSelection();
-  return text !== "";
 }
 
-export function registerSelectionLayer(
+export function registerSelectionKeys(
   keymap: Keymap<Renderable, KeyEvent>,
   renderer: CliRenderer,
   options: { readonly copy: (text: string) => void; readonly copyOnSelect: () => boolean },
 ): () => void {
-  let previousSelection = renderer.getSelection();
-  let previousState = "";
-  let revision = 0;
-  let active = true;
-  const syncSelection = (): void => {
-    if (!active || renderer.isDestroyed) return;
-    const selection = renderer.getSelection();
-    const editor = renderer.currentFocusedEditor;
-    const state = `${String(selection?.isDragging)}:${String(selection?.isStart)}:${String(selection?.focus.x)}:${String(selection?.focus.y)}:${String(editor?.hasSelection())}:${String(options.copyOnSelect())}`;
-    if (selection === previousSelection && state === previousState) return;
-    previousSelection = selection;
-    previousState = state;
-    keymap.setData("selection.revision", ++revision);
+  const offSelectionKeys = keymap.intercept(
+    "key",
+    ({ event }) => handleSelectionKey(renderer, options.copy, event, options.copyOnSelect()),
+    { priority: 101 },
+  );
+  renderer.root.onMouseDown = (event) => {
+    if (options.copyOnSelect() || event.button !== Number(MouseButton.RIGHT)) return;
+    if (!copy(renderer, options.copy)) return;
+    event.preventDefault();
+    event.stopPropagation();
   };
-  // Native selection events cover mouse release, but not selectAll or clearSelection.
-  const selectionFrame = async (): Promise<void> => syncSelection();
-  const onSelection = (): void => {
-    if (options.copyOnSelect()) copyOnSelectRelease(renderer, options.copy);
-    queueMicrotask(syncSelection);
+  renderer.root.onMouseUp = (event) => {
+    if (options.copyOnSelect() && event.isDragging) copy(renderer, options.copy);
   };
-  const onKey = (event: KeyEvent): void => {
-    if (event.defaultPrevented) return;
-    const selection = renderer.getSelection();
-    const focus = renderer.currentFocusedEditor;
-    if (focus?.hasSelection() && selection?.selectedRenderables.includes(focus)) return;
-    renderer.clearSelection();
-    syncSelection();
-  };
-  renderer.on(CliRenderEvents.SELECTION, onSelection);
-  renderer.keyInput.on("keypress", onKey);
-  renderer.setFrameCallback(selectionFrame);
-  const unregister = keymap.registerLayer({
-    priority: SELECTION_PRIORITY,
-    enabled: () => renderer.hasSelection,
-    commands: [
-      {
-        name: "selection.copy",
-        namespace: "selection",
-        get hint() {
-          return `${selectionCopyAction(renderer, options.copyOnSelect())} selection`;
-        },
-        placement: "primary",
-        category: "Selection",
-        get title() {
-          return `${selectionCopyAction(renderer, options.copyOnSelect())} selection`;
-        },
-        run: () => {
-          handleSelectionKey(renderer, options.copy, "selection.copy", options.copyOnSelect());
-          syncSelection();
-          return true;
-        },
-      },
-      {
-        name: "selection.clear",
-        namespace: "selection",
-        hint: "clear selection",
-        placement: "cancel",
-        category: "Selection",
-        title: "Dismiss the selection",
-        run: () => {
-          handleSelectionKey(renderer, options.copy, "selection.clear", options.copyOnSelect());
-          syncSelection();
-          return true;
-        },
-      },
-    ],
-    bindings: commandBindings({
-      "selection.copy": CHAT_KEYBINDS["selection.copy"],
-      "selection.clear": CHAT_KEYBINDS["selection.clear"],
-    }),
-  });
   return () => {
-    active = false;
-    renderer.off(CliRenderEvents.SELECTION, onSelection);
-    renderer.keyInput.off("keypress", onKey);
-    renderer.removeFrameCallback(selectionFrame);
-    unregister();
-    keymap.setData("selection.revision", undefined);
+    offSelectionKeys();
+    renderer.root.onMouseDown = undefined;
+    renderer.root.onMouseUp = undefined;
   };
 }
 

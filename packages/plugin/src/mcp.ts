@@ -1,37 +1,52 @@
 /**
- * MCP servers as a host-owned service and the plugin that projects them.
+ * The process owns MCP connections; a session owns the choice of which to use.
+ * `McpServers` pools one connection per server config for every session, and
+ * `mcpPlugin` turns a session's on/off settings into acquire and release on
+ * that pool, offering whatever is connected as tools.
  *
- * `McpServers` holds one connection per distinct server configuration for the
- * whole process; sessions acquire and release it, so a server outlives any one
- * session and a plugin reload that leaves its config alone never reconnects.
- * `mcpPlugin` is what a session activates: it acquires the servers named in
- * the manifest, contributes their tools and instructions, and warns when a
- * server fails. Its version is the config's hash, so it reloads (and the pool
- * reconnects) only when the config changes.
+ * A server therefore outlives any one session, and a plugin reload that leaves
+ * its config alone never reconnects: the plugin's version is the config's hash.
  *
  * Modeled on opencode v2 `packages/core/src/mcp` and `tool/mcp.ts`, without
  * OAuth, resources, or prompts: connect, list tools, call tools.
  */
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import {
-  StdioClientTransport,
-  getDefaultEnvironment,
-} from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import {
-  CallToolResultSchema,
-  ToolListChangedNotificationSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
-import { definePlugin } from "@nyte-ai/core/plugins";
+import { definePlugin, pluginFactKey } from "@nyte-ai/core/plugins";
 import type { AgentTool, Disposer } from "@nyte-ai/core/plugins";
 import type { ImageContent, JsonValue, TextContent } from "@nyte-ai/schema";
 import { Type, Unsafe } from "typebox";
 import type { Static } from "typebox";
 
 export const MCP_PLUGIN_ID = "mcp";
+
+// The SDK brings zod, ajv, and its transports: a third of the desktop's main
+// bundle. It loads on the first connection, the way provider SDKs do.
+async function importSdk() {
+  const [client, stdio, http, types] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/stdio.js"),
+    import("@modelcontextprotocol/sdk/client/streamableHttp.js"),
+    import("@modelcontextprotocol/sdk/types.js"),
+  ]);
+  return {
+    Client: client.Client,
+    StdioClientTransport: stdio.StdioClientTransport,
+    getDefaultEnvironment: stdio.getDefaultEnvironment,
+    StreamableHTTPClientTransport: http.StreamableHTTPClientTransport,
+    CallToolResultSchema: types.CallToolResultSchema,
+    ToolListChangedNotificationSchema: types.ToolListChangedNotificationSchema,
+  };
+}
+type Sdk = Awaited<ReturnType<typeof importSdk>>;
+
+let sdk: Promise<Sdk> | undefined;
+function loadSdk(): Promise<Sdk> {
+  sdk ??= importSdk();
+  return sdk;
+}
 
 /** A server the host starts over stdio, or one it reaches over streamable HTTP. */
 export const McpServerConfig = Type.Union([
@@ -80,6 +95,7 @@ export interface McpServerHandle {
   status(): McpServerStatus;
   /** Resolves once the server is connected or has failed; never rejects. */
   ready(): Promise<void>;
+  /** Fires on every status change until the handle is released. */
   subscribe(listener: () => void): Disposer;
   release(): void;
 }
@@ -128,12 +144,14 @@ export class McpServers {
     clearTimeout(held.linger);
     held.linger = undefined;
     let released = false;
+    const listeners = new Set<() => void>();
     return {
       name,
       status: () => held.connection.status,
       ready: () => held.connection.ready,
       subscribe: (listener) => {
         held.listeners.add(listener);
+        listeners.add(listener);
         return () => {
           held.listeners.delete(listener);
         };
@@ -141,6 +159,7 @@ export class McpServers {
       release: () => {
         if (released) return;
         released = true;
+        for (const listener of listeners) held.listeners.delete(listener);
         held.refs -= 1;
         if (held.refs > 0) return;
         held.linger = setTimeout(() => {
@@ -206,6 +225,8 @@ function fail(slot: Slot, connection: Connection, error: string): void {
 
 async function connectServer(slot: Slot, connection: Connection): Promise<void> {
   const { config, cwd } = slot;
+  const { Client, StdioClientTransport, getDefaultEnvironment, StreamableHTTPClientTransport } =
+    await loadSdk();
   const client = new Client({ name: "nyte", version: "0" });
   let stderrTail = "";
   const transport =
@@ -252,6 +273,7 @@ async function connectServer(slot: Slot, connection: Connection): Promise<void> 
     };
     if (slot.connection === connection) notify(slot);
   };
+  const { ToolListChangedNotificationSchema } = await loadSdk();
   client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
     void refresh().catch((cause: unknown) => {
       if (connection.client === client) fail(slot, connection, describe(errorMessage(cause)));
@@ -291,6 +313,7 @@ function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
       // The registry validated `params` against `inputSchema`, an object schema.
       if (!isRecord(params)) throw new Error(`${name} expects an object`);
       // The client's return type is a union with the legacy shape; parse the modern one.
+      const { CallToolResultSchema } = await loadSdk();
       const result = CallToolResultSchema.parse(
         await client.callTool({ name: tool.name, arguments: params }, CallToolResultSchema, {
           signal,
@@ -357,34 +380,99 @@ export function mcpConfigVersion(config: McpConfig): string {
   return `mcp:${createHash("sha256").update(canonical).digest("hex").slice(0, 16)}`;
 }
 
+/** The session setting that turns one configured server on or off. */
+export function mcpServerSettingId(name: string): string {
+  return `mcp:${name}`;
+}
+
+function enabledKey(name: string): string {
+  return `enabled:${name}`;
+}
+
+/** The manifest's `disabled` is only the choice a session starts from. */
+function defaultChoice(config: McpServerConfig): "on" | "off" {
+  return config.disabled === true ? "off" : "on";
+}
+
+function isEnabled(stored: JsonValue | undefined, config: McpServerConfig): boolean {
+  return (stored === "on" || stored === "off" ? stored : defaultChoice(config)) === "on";
+}
+
 export function mcpPlugin(input: { readonly servers: McpServers; readonly config: McpConfig }) {
   return definePlugin({
     id: MCP_PLUGIN_ID,
     async session(api) {
-      const handles = Object.entries(input.config)
-        .filter(([, config]) => config.disabled !== true)
-        .map(([name, config]) => input.servers.acquire(name, config, api.env.cwd));
-      api.signal.addEventListener("abort", () => {
-        for (const handle of handles) handle.release();
+      const configured = Object.entries(input.config);
+
+      // 1. Each server is a setting; the manifest's `disabled` is its default.
+      api.settings.add((draft) => {
+        for (const [name, config] of configured) {
+          draft.set(mcpServerSettingId(name), {
+            label: `MCP · ${name}`,
+            key: enabledKey(name),
+            fallback: defaultChoice(config),
+            choices: [
+              { id: "on", label: "on", description: "Connected; its tools are offered" },
+              { id: "off", label: "off", description: "Disconnected; its tools are hidden" },
+            ],
+          });
+        }
       });
+
+      // 2. One pool handle per server that is on; a failure is warned once.
+      const active = new Map<string, McpServerHandle>();
       const reported = new Map<string, string>();
-      const report = (): void => {
-        for (const handle of handles) {
+      const refresh = (): void => {
+        for (const handle of active.values()) {
           const status = handle.status();
           if (status.kind !== "failed" || reported.get(handle.name) === status.error) continue;
           reported.set(handle.name, status.error);
           api.diagnostics.warn(`MCP server ${handle.name}: ${status.error}`);
         }
+        api.tools.rebuild();
+        api.prompt.rebuild();
       };
+      const apply = (name: string, config: McpServerConfig, enabled: boolean): void => {
+        const current = active.get(name);
+        if (enabled && current === undefined) {
+          const handle = input.servers.acquire(name, config, api.env.cwd);
+          handle.subscribe(refresh);
+          active.set(name, handle);
+        } else if (!enabled && current !== undefined) {
+          active.delete(name);
+          reported.delete(name);
+          current.release();
+        }
+      };
+      // 3. A choice is a session fact, so its event carries the new value.
+      const byFact = new Map(
+        configured.map((entry) => [pluginFactKey(MCP_PLUGIN_ID, enabledKey(entry[0])), entry]),
+      );
+      api.signal.addEventListener(
+        "abort",
+        api.events.subscribe((event) => {
+          if (event.kind !== "fact") return;
+          const entry = byFact.get(event.key);
+          if (entry === undefined) return;
+          const [name, config] = entry;
+          apply(name, config, isEnabled(event.value, config));
+          refresh();
+        }),
+      );
+      api.signal.addEventListener("abort", () => {
+        for (const handle of active.values()) handle.release();
+      });
+
+      // 4. What the session sees: connected servers' tools and instructions, and `/mcp`.
       api.tools.add((draft) => {
-        for (const handle of handles) {
+        for (const handle of active.values()) {
           const status = handle.status();
           if (status.kind !== "connected") continue;
           for (const tool of status.tools) draft.set(tool.name, tool);
         }
       });
       api.prompt.add((draft) => {
-        for (const handle of handles) {
+        for (const handle of active.values()) {
           const status = handle.status();
           if (status.kind !== "connected" || status.instructions === undefined) continue;
           draft.set(`mcp:${handle.name}`, {
@@ -401,23 +489,26 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
               input.servers.reconnectFailed();
               return "Reconnecting failed MCP servers.";
             }
-            if (handles.length === 0) return "No MCP servers configured.";
-            return handles.map((handle) => describeStatus(handle)).join("\n");
+            if (configured.length === 0) return "No MCP servers configured.";
+            return configured
+              .map(([name]) => {
+                const handle = active.get(name);
+                return handle === undefined ? `${name}: off` : describeStatus(handle);
+              })
+              .join("\n");
           },
         });
       });
-      for (const handle of handles) {
-        api.signal.addEventListener(
-          "abort",
-          handle.subscribe(() => {
-            report();
-            api.tools.rebuild();
-          }),
-        );
-      }
-      // A step that starts after activation sees every server that will answer.
-      await Promise.all(handles.map((handle) => handle.ready()));
-      report();
+
+      // 5. Start from the stored choices. A step that starts after activation
+      //    sees every server that will answer.
+      await Promise.all(
+        configured.map(async ([name, config]) => {
+          apply(name, config, isEnabled(await api.storage.get(enabledKey(name)), config));
+        }),
+      );
+      await Promise.all(Array.from(active.values(), (handle) => handle.ready()));
+      refresh();
     },
   });
 }

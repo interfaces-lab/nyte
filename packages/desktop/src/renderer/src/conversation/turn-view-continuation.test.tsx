@@ -1,7 +1,17 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Turn } from "@nyte-ai/core";
+import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
+
+// Read-only transcript rendering does not use the browser's message outbox.
+vi.mock("../outbox-storage.ts", () => ({
+  createIndexedDbOutboxStorage: () => ({
+    load: async () => [],
+    put: async () => undefined,
+    remove: async () => undefined,
+  }),
+}));
 
 vi.hoisted(() => {
   const query = {
@@ -29,7 +39,7 @@ vi.hoisted(() => {
 });
 afterAll(() => vi.unstubAllGlobals());
 
-function render(turn: Turn): string {
+function render(turn: RenderedTurn): string {
   return renderToStaticMarkup(
     <TurnView turn={turn} liveTools={new Map()} cwd={undefined} onOpenChanges={() => {}} />,
   );

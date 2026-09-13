@@ -64,7 +64,11 @@ Login requires terminal stdin and stderr before provider login starts, even when
 provider and method are explicit. Redirecting stdout is supported. Prompts, masked secret
 input, authentication instructions, and progress use stderr. Login and logout receipts
 use stdout. SIGINT and Ctrl+C cancel login with exit 130; SIGTERM exits 143. Cancelling
-an active secret prompt does not save a credential.
+an active secret prompt does not save a credential. GitHub Copilot discovers the account's
+available model IDs before saving its OAuth credential. If discovery fails, login fails and
+saves nothing. Later catalog reads combine generated model definitions with that account filter
+without network access or token refresh. A signed-out interactive launch still uses baked model
+definitions so the shell can open and offer `/login`; sending a request still requires auth.
 
 `nyte logout <provider>` works without a terminal and removes only that stored credential.
 Its receipt reports credentials still available through environment variables or other tools.
@@ -75,6 +79,27 @@ Unknown, duplicate, and incompatible options fail before the operation starts.
 `nyte update`, `nyte update <version>`, and `nyte update --check` select latest install,
 versioned install, and check-only respectively. Update progress uses stderr; results use stdout.
 `--json` is supported for print and status, not login, logout, or update.
+
+When an interactive login displays a browser URL or device code, Enter or `o` opens that URL.
+`c` copies the device code, or the URL when there is no device code.
+Enter-to-open is Nyte's addition to the upstream login shortcuts.
+
+## Text selection and copying
+
+Selection follows [OpenCode v2](https://github.com/anomalyco/opencode/blob/0643a5638e0cd02234e73f176771527d7600faf7/packages/tui/src/util/selection.ts).
+Copy-on-select defaults to on for macOS and Linux, and off for Windows. Change it with
+`/copy-on-select on` or `/copy-on-select off`; the `copyOnSelect` setting supports global
+and workspace overrides.
+
+With copy-on-select on, releasing a mouse selection copies it. With it off, Ctrl+C or
+right-click copies highlighted text. Copy keeps the highlight and double/triple-click selection
+history. Successful writes show `Copied to clipboard` and target both the host and terminal clipboard.
+
+Selection keys run before app bindings. Escape clears a nonempty selection without cancelling
+or closing anything. In copy-on-select mode, Ctrl+C clears a transcript highlight and reaches
+the current app action, including cancellation. Editor selections still copy with Ctrl+C in
+either mode. Other keys clear transcript selections but preserve editor selection handling.
+There is no app-level Cmd+C binding, matching OpenCode; native Cmd+C belongs to the terminal.
 
 ## Working directory
 
@@ -93,11 +118,55 @@ New chats start in the current directory.
 History stays in the original workspace's database. To resume after quitting, launch Nyte from
 that original workspace. The chat remembers its new working directory and checks trust again.
 
+## Transcript scrolling
+
+Mouse-wheel events move three rows by default. `/scroll-acceleration on` enables timing-based
+acceleration and `/scroll-acceleration off` restores the fixed step. The choice is saved in
+`~/.nyte/settings.json` as `scrollAcceleration`; a workspace can override it in
+`.nyte/settings.json`.
+
+Page Up and Page Down move half a viewport. Ctrl+Up and Ctrl+Down visit conversation turns, even
+when the selected turn is near the end of a short transcript. While reading older output, Nyte
+keeps the visible text at the same screen row as new output arrives. Press Ctrl+End or use the
+`ctrl+end latest ↓` row to follow live output again. Plain Up and Down still browse composer
+history at the start and end of a draft.
+
+Notices, completion lists, and pickers use rows below the transcript. They do not cover transcript
+or composer cells.
+
+## Pending messages
+
+Enter steers the live run; Ctrl+Enter queues a follow-up for after it. The two wait in different
+places.
+
+A steer message is drawn once, at the end of the conversation, in the shape of the turn it becomes:
+the same user block, with a lane row (`… sending`, then `↑ steer`) where the run's status row will
+go. The store's receipt and the admission each change only that row; the message keeps its screen
+row and its block, and the next draft stays in the composer. An admitted request whose run has not
+started yet keeps that row blank rather than dropping it, so nothing moves when the run arrives.
+A message the store has accepted stays drawn until the watch shows it, matched by its change, never
+by its text; a receipt that arrives after the watch already landed or cancelled the change draws
+nothing. When a fresh snapshot cannot place an accepted message, the session is re-read in full and
+the row stays until that read is on screen: it then shows the message pending or in the record, or
+the row goes because the message was cancelled.
+
+Follow-ups take compact rows between the transcript and the composer: one row each with the
+message, its lane, and on the last row the key that opens the queue. The rows never take more than
+about a third of the terminal; the rest is counted as `+N more`.
+
+Ctrl+Q opens the queue to send, edit, remove, or reorder pending messages. Clicking a row or a
+steer block opens the queue on that message; dragging one onto another reorders within a lane.
+
 ## Tasks
 
 `/tasks` is the single work browser. It lists unfinished subagents and background commands.
 Foreground bash stays in the conversation, including after it finishes. Commands inside a
 subagent stay inside that subagent's transcript, not in the parent Tasks list.
+
+The agent's `task` tool waits by default. If it starts independent work in the background,
+`wait_task` can later join that same task by job ID and continue the parent conversation.
+The agent should join reports it needs before finishing, rather than poll or start another task.
+A result arriving after the parent has finished remains queued for your next message.
 
 The composer shows `2 running in background · ↓ view` for unfinished background work only.
 The row disappears at zero. Foreground subagents remain accessible through `/tasks` without
@@ -125,6 +194,9 @@ background count disappears. Inspect conversation opens the child's full chat.
 Task metadata and output are durable, but processes are not. Closing the owning host interrupts
 live work. Recovery marks abandoned work `interrupted` and never reruns it. Core records
 background completion separately from user messages; completion never enters the user queue.
+A result may join an active run, but never starts a new run on its own. When the chat is idle,
+it waits for your next message and remains available in Tasks. Compaction may continue an active
+run, but cannot restart a stopped one.
 
 Child tasks inherit workspace trust. Background agents are not offered tools marked
 `availability: "foreground"`, regardless of their name. That capability means the tool needs a
@@ -133,9 +205,10 @@ selection.
 
 ## Subagent models
 
-The parent chooses an exact `provider/model` for each task call. You can instruct it which model
-to use. An unavailable selection fails before child creation; Nyte never substitutes another
-model or provider.
+A delegated task defaults to `openai-codex/gpt-5.6-sol` with `high` thinking. Ask for another
+model or thinking level when needed; the parent passes that explicit choice for the task call.
+There is no global subagent setting. An unavailable explicit choice or default fails before child
+creation, and Nyte never substitutes another model or provider.
 
 ## Verification
 
@@ -175,3 +248,32 @@ Commands run by `!` are owned by this TUI, not core jobs: they are not backgroun
 by Ctrl+Z or listed in `/tasks`. Those controls still apply to agent tools and
 subagents. Local cards and unsent results last only for this TUI instance; output
 already sent in a prompt remains in the saved conversation.
+
+## Usage
+
+`/usage` opens a scrollable panel below the composer, capped at 16 rows and roughly
+40% of terminal height. The conversation stays visible. One loading line remains
+until the complete report is ready; sections do not load progressively. Escape
+closes the panel, restores composer focus, and cancels outstanding reads.
+
+Claude and Codex account sections show 5-hour, weekly, and provider-reported
+model-specific windows, including Claude Fable. Each meter labels the percentage
+used and remaining, with the reset time when known. Account reads use Nyte's
+existing provider logins, independently of the selected model. Missing login or
+request failure produces an explicit message. Percentages always come from the
+provider; no quota is inferred from local token history. Account reads time out
+after ten seconds so an unavailable endpoint cannot hold the report indefinitely.
+
+The same panel shows Nyte workspace consumption and separate Claude Code and Codex
+local history, grouped by model with token counts, input/output and cache breakdowns,
+and estimated API cost. Tool histories are all-time across projects and do not
+contribute to Nyte's workspace totals. API cost estimates are not subscription charges.
+Missing prices and unreadable records are called out.
+
+Local history uses the shared host reader with `CLAUDE_CONFIG_DIR` and `CODEX_HOME`.
+These filesystem reads need no login or network call. Reopening `/usage` refreshes
+the report and reuses unchanged file scans.
+
+## Filename search
+
+The TUI's `@` mentions use core's ripgrep file discovery and fuzzy ranking on every platform. Core owns executable resolution, ignore rules, and cancellation. No native filename library is embedded in the CLI.

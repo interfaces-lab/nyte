@@ -12,7 +12,7 @@ import {
   workspacePartition,
 } from "./outbox.ts";
 import { createIndexedDbOutboxStorage } from "./outbox-storage.ts";
-import { loadThread } from "./queries.ts";
+import { loadThread } from "./live.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { nyte } from "./nyte.ts";
 

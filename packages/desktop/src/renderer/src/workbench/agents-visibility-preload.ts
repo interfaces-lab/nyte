@@ -90,6 +90,10 @@ const snapshot: NyteBridge["sessions"]["snapshot"] = async () => {
   if (agentVisibilityScript.failSnapshot) throw new Error("Scripted snapshot failure");
   return agentVisibilityScript.snapshot;
 };
+const metadata: NyteBridge["sessions"]["metadata"] = async () => {
+  const { session, head, config, context } = agentVisibilityScript.snapshot;
+  return { session, head, config, context };
+};
 const list: NyteBridge["jobs"]["list"] = async () => {
   agentVisibilityScript.jobsReads += 1;
   return agentVisibilityScript.jobs;
@@ -111,7 +115,7 @@ const watch: NyteBridge["watch"] = (input) => {
 Object.defineProperty(window, "nyte", {
   configurable: true,
   value: {
-    sessions: { snapshot },
+    sessions: { snapshot, metadata },
     jobs: { list, cancel, background: async () => {} },
     watch,
     host: {

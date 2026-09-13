@@ -12,28 +12,32 @@ import type { SessionId } from "@nyte-ai/core";
 import { activePane } from "../layout/pane-layout.ts";
 import { paneControllerForWorkspace } from "../layout/pane-context.tsx";
 import { nyte } from "../nyte.ts";
-import { loadLocalResources, useHostState } from "../queries.ts";
+import { commitHostWorkspace, keys, queryClient } from "../queries.ts";
+import type { HostState } from "../nyte.ts";
 import { handleOpenOutcome } from "./open-workspace.tsx";
 import { shellActions } from "./shell-state.ts";
 
-/** Make a folder current. Returns false when the reader declined or trust failed. */
-export function useActivateWorkspace(): (path: string | null) => Promise<boolean> {
-  const host = useHostState();
-  const current = host.data?.workspace?.path ?? null;
-  return useCallback(
-    async (path: string | null): Promise<boolean> => {
-      if (path === current) return true;
-      if (path === null) await nyte.host.closeWorkspace();
-      else {
-        const outcome = await nyte.host.openWorkspace({ path });
-        handleOpenOutcome(outcome);
-        if (outcome.kind !== "opened") return false;
-      }
-      await loadLocalResources();
-      return true;
-    },
-    [current],
-  );
+/**
+ * Make a folder current. Returns false when the reader declined or trust failed.
+ *
+ * The host answers as soon as it has switched; the stage rebinds to the
+ * folder's panes on that answer. The `workspace_opened` event the host sends
+ * with it refills the folder's caches behind the mounted screen, so a switch
+ * never waits on a directory read or a plugin activation.
+ */
+export async function activateWorkspace(path: string | null): Promise<boolean> {
+  const current = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path ?? null;
+  if (path === current) return true;
+  if (path === null) {
+    await nyte.host.closeWorkspace();
+    commitHostWorkspace(undefined);
+    return true;
+  }
+  const outcome = await nyte.host.openWorkspace({ path });
+  handleOpenOutcome(outcome);
+  if (outcome.kind !== "opened") return false;
+  commitHostWorkspace(outcome.workspace);
+  return true;
 }
 
 export function useShowSession(): (
@@ -42,7 +46,6 @@ export function useShowSession(): (
   beside?: boolean,
 ) => Promise<void> {
   const router = useRouter();
-  const activateWorkspace = useActivateWorkspace();
   return useCallback(
     async (path: string | null, sessionId: SessionId, beside = false): Promise<void> => {
       if (!(await activateWorkspace(path))) return;
@@ -55,6 +58,6 @@ export function useShowSession(): (
       shellActions.showWorkspace();
       await router.navigate({ to: "/session/$sessionId", params: { sessionId } });
     },
-    [activateWorkspace, router],
+    [router],
   );
 }

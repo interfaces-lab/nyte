@@ -288,7 +288,7 @@ test("a runner that lost its lease can no longer move an effect", async () => {
   );
 });
 
-test("a run's effects list in call order and clear together", async () => {
+test("a run's effects list deterministically and clear together", async () => {
   const session = await openSession();
   const held = await lease(session, "main");
   await open(session, held, "c2");

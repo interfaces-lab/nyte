@@ -93,9 +93,15 @@ export class TerminalSessions {
    */
   idle(input: { readonly id: string }): boolean {
     const entry = this.processes.get(input.id);
-    if (entry === undefined) return true;
-    if (process.platform === "win32") return false;
-    return basename(entry.process.process) === basename(this.shell);
+    return entry === undefined || this.processIsIdle(entry);
+  }
+
+  busyCount(): number {
+    let count = 0;
+    for (const entry of this.processes.values()) {
+      if (!this.processIsIdle(entry)) count++;
+    }
+    return count;
   }
 
   acknowledge(input: { readonly id: string; readonly length: number }): void {
@@ -118,5 +124,10 @@ export class TerminalSessions {
 
   dispose(): void {
     for (const id of this.processes.keys()) this.close({ id });
+  }
+
+  private processIsIdle(entry: TerminalProcess): boolean {
+    if (process.platform === "win32") return false;
+    return basename(entry.process.process) === basename(this.shell);
   }
 }

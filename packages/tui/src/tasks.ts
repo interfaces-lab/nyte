@@ -11,7 +11,7 @@ import {
 import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
-import { SessionFollower } from "@nyte-ai/core/client";
+import { SessionObserver } from "@nyte-ai/core/client";
 import type { SessionState } from "@nyte-ai/core/client";
 
 export type Task =
@@ -222,7 +222,7 @@ interface TaskIndexOptions {
 }
 
 /**
- * One follower per child. The task tool's progress names a spawned child only
+ * One observer per child. The task tool's progress names a spawned child only
  * after its setup finished, so that signal follows it directly; the session
  * listing runs only at deliberate boundaries (initial load, reconnect,
  * opening Tasks) to recover children with no live progress. Job events carry
@@ -230,7 +230,7 @@ interface TaskIndexOptions {
  */
 export class TaskIndex {
   private parent: SessionState | undefined;
-  private readonly followers = new Map<SessionId, SessionFollower>();
+  private readonly followers = new Map<SessionId, SessionObserver>();
   private readonly children = new Map<SessionId, SessionState>();
   private closed = false;
   private listing = false;
@@ -296,20 +296,21 @@ export class TaskIndex {
   }
 
   private async start(id: SessionId): Promise<void> {
-    const follower = new SessionFollower(this.options.nyte, {
+    const observer = new SessionObserver(this.options.nyte, {
       sessionId: id,
-      onUpdate: ({ state }) => {
-        if (this.closed || this.followers.get(id) !== follower) return;
-        this.children.set(id, state);
-        this.options.onChange();
-      },
       onError: this.options.onError,
     });
-    this.followers.set(id, follower);
+    observer.subscribe(({ state }) => {
+      if (this.closed || this.followers.get(id) !== observer) return;
+      this.children.set(id, state);
+      this.options.onChange();
+    });
+    this.followers.set(id, observer);
     try {
-      await follower.start();
+      // Rejects only when the index closed before the first read landed; the caller ignores a closed index.
+      await observer.start();
     } catch (error) {
-      follower.close();
+      observer.close();
       this.followers.delete(id);
       throw error;
     }

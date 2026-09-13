@@ -142,7 +142,7 @@ const styles = stylex.create({
     backgroundColor: {
       default: "transparent",
       "[data-highlighted]": t.bgCard,
-      "[data-nyte-selected='true']": t.bgHover,
+      "[data-nyte-selected='true']": t.fillGhostHover,
     },
     color: t.textPrimary,
     fontSize: t.fontBase,
@@ -319,6 +319,11 @@ function ModelPickerView({
               <div {...stylex.props(styles.empty)}>
                 {search.trim() !== "" ? (
                   <span {...stylex.props(styles.emptyTitle)}>No models match</span>
+                ) : catalog?.source === "server" ? (
+                  <>
+                    <span {...stylex.props(styles.emptyTitle)}>No server models available</span>
+                    <span>Configure provider credentials on the server.</span>
+                  </>
                 ) : connected ? (
                   <>
                     <span {...stylex.props(styles.emptyTitle)}>Every model is hidden</span>
@@ -372,10 +377,17 @@ function ModelPickerView({
         <MenuItem
           layout="plain"
           onSelect={() =>
-            void navigate({ to: "/settings/$section", params: { section: "models" } })
+            void navigate({
+              to: "/settings/$section",
+              params: { section: catalog?.source === "server" ? "server" : "models" },
+            })
           }
         >
-          {connected ? "Manage models…" : "Connect a provider…"}
+          {catalog?.source === "server"
+            ? "Server settings…"
+            : connected
+              ? "Manage models…"
+              : "Connect a provider…"}
         </MenuItem>
       </MenuSubmenu>
     </Menu>

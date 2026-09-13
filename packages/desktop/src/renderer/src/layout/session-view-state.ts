@@ -52,6 +52,8 @@ export interface ChatDraft extends BlankViewState {
   readonly updatedAt: number;
 }
 
+export type ClaimedChatDraft = Omit<ChatDraft, "id">;
+
 export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   draft: "",
   selectionStart: 0,
@@ -73,17 +75,26 @@ function draftHasContent(draft: BlankViewState): boolean {
   return draft.composer.draft.trim() !== "";
 }
 
+/** A draft lives in exactly one slot: active or parked under one pane. */
+interface PaneDraftState {
+  active: ChatDraft;
+  readonly parked: Map<string, ChatDraft>;
+}
+
+type LocatedDraft =
+  | { readonly kind: "active"; readonly paneId: PaneId; readonly draft: ChatDraft }
+  | { readonly kind: "parked"; readonly paneId: PaneId; readonly draft: ChatDraft };
+
 export class SessionViewStateStore {
   readonly #sessions = new Map<SessionId, SessionViewState>();
-  readonly #activeDrafts = new Map<PaneId, ChatDraft>();
-  readonly #drafts = new Map<string, ChatDraft>();
+  readonly #drafts = new Map<PaneId, PaneDraftState>();
   readonly #listeners = new Set<() => void>();
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
   #revision = 0;
 
   constructor() {
-    this.#replaceDraft("primary");
-    this.#replaceDraft("secondary");
+    this.#draftState("primary");
+    this.#draftState("secondary");
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -112,11 +123,12 @@ export class SessionViewStateStore {
   }
 
   readBlank(paneId: PaneId): ChatDraft {
-    return this.#activeDrafts.get(paneId) ?? this.#replaceDraft(paneId);
+    return this.#draftState(paneId).active;
   }
 
   writeBlank(paneId: PaneId, state: BlankViewState): void {
-    const current = this.readBlank(paneId);
+    const drafts = this.#draftState(paneId);
+    const current = drafts.active;
     if (current === state) return;
     const contentChanged = current.composer.draft !== state.composer.draft;
     const next: ChatDraft = {
@@ -124,56 +136,116 @@ export class SessionViewStateStore {
       id: current.id,
       updatedAt: contentChanged ? Date.now() : current.updatedAt,
     };
-    this.#activeDrafts.set(paneId, next);
-    if (draftHasContent(next)) this.#drafts.set(next.id, next);
-    else this.#drafts.delete(next.id);
+    drafts.active = next;
     if (contentChanged) this.#schedulePublish();
   }
 
   drafts(): readonly ChatDraft[] {
-    return [...this.#drafts.values()].toSorted(
+    const drafts: ChatDraft[] = [];
+    for (const state of this.#drafts.values()) {
+      if (draftHasContent(state.active)) drafts.push(state.active);
+      for (const parked of state.parked.values()) {
+        if (draftHasContent(parked)) drafts.push(parked);
+      }
+    }
+    return drafts.toSorted(
       (left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id),
     );
   }
 
   startNewDraft(paneId: PaneId): void {
-    const current = this.readBlank(paneId);
+    const drafts = this.#draftState(paneId);
+    const current = drafts.active;
     if (!draftHasContent(current)) return;
-    this.#replaceDraft(paneId);
+    drafts.parked.set(current.id, current);
+    drafts.active = this.#createDraft();
     this.#emit();
   }
 
   activateDraft(paneId: PaneId, draftId: string): boolean {
-    const draft = this.#drafts.get(draftId);
-    if (draft === undefined) return false;
-    if (this.readBlank(paneId).id === draftId) return true;
-    for (const [otherPaneId, otherDraft] of this.#activeDrafts) {
-      if (otherPaneId !== paneId && otherDraft.id === draftId) this.#replaceDraft(otherPaneId);
+    const located = this.#findDraft(draftId);
+    if (located === undefined || !draftHasContent(located.draft)) return false;
+    if (located.kind === "active" && located.paneId === paneId) return true;
+
+    const target = this.#draftState(paneId);
+    if (draftHasContent(target.active)) {
+      target.parked.set(target.active.id, target.active);
     }
-    this.#activeDrafts.set(paneId, draft);
+    if (located.kind === "active") {
+      this.#draftState(located.paneId).active = this.#createDraft();
+    } else {
+      this.#draftState(located.paneId).parked.delete(draftId);
+    }
+    target.active = located.draft;
     this.#emit();
     return true;
   }
 
   removeDraft(draftId: string): boolean {
-    if (!this.#drafts.delete(draftId)) return false;
-    for (const [paneId, draft] of this.#activeDrafts) {
-      if (draft.id === draftId) this.#replaceDraft(paneId);
+    const located = this.#findDraft(draftId);
+    if (located === undefined) return false;
+    const drafts = this.#draftState(located.paneId);
+    if (located.kind === "active") {
+      drafts.active = this.#createDraft();
+    } else {
+      drafts.parked.delete(draftId);
     }
     this.#emit();
     return true;
   }
 
-  #replaceDraft(paneId: PaneId): ChatDraft {
-    const draft: ChatDraft = {
+  takeBlank(paneId: PaneId, composer: ComposerViewState): ClaimedChatDraft {
+    const drafts = this.#draftState(paneId);
+    const current = drafts.active;
+    const submitted: ClaimedChatDraft = {
+      composer,
+      configuration: current.configuration,
+      fastSettings: current.fastSettings,
+      updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
+    };
+    drafts.active = this.#createDraft(current.id);
+    this.#emit();
+    return submitted;
+  }
+
+  restoreBlank(paneId: PaneId, submitted: ClaimedChatDraft): void {
+    const drafts = this.#draftState(paneId);
+    if (!draftHasContent(drafts.active)) {
+      drafts.active = { ...submitted, id: drafts.active.id, updatedAt: Date.now() };
+    } else if (draftHasContent(submitted)) {
+      const parked = { ...submitted, id: crypto.randomUUID(), updatedAt: Date.now() };
+      drafts.parked.set(parked.id, parked);
+    }
+    this.#emit();
+  }
+
+  #draftState(paneId: PaneId): PaneDraftState {
+    const current = this.#drafts.get(paneId);
+    if (current !== undefined) return current;
+    const created = { active: this.#createDraft(), parked: new Map<string, ChatDraft>() };
+    this.#drafts.set(paneId, created);
+    return created;
+  }
+
+  #findDraft(draftId: string): LocatedDraft | undefined {
+    for (const [paneId, state] of this.#drafts) {
+      if (state.active.id === draftId) {
+        return { kind: "active", paneId, draft: state.active };
+      }
+      const parked = state.parked.get(draftId);
+      if (parked !== undefined) return { kind: "parked", paneId, draft: parked };
+    }
+    return undefined;
+  }
+
+  #createDraft(id: string = crypto.randomUUID()): ChatDraft {
+    return {
       composer: DEFAULT_COMPOSER_VIEW_STATE,
       configuration: undefined,
       fastSettings: new Set<string>(),
-      id: crypto.randomUUID(),
+      id,
       updatedAt: Date.now(),
     };
-    this.#activeDrafts.set(paneId, draft);
-    return draft;
   }
 
   #schedulePublish(): void {

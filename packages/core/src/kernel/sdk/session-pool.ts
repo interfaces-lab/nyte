@@ -47,7 +47,9 @@ import {
   type SessionActivationResolver,
   type SessionActivationState,
   type SessionId,
+  type SessionInfo,
   type SessionParent,
+  type Seq,
 } from "./types.ts";
 import type { HostNotice, NoticeListener } from "./watch.ts";
 
@@ -69,6 +71,17 @@ export interface Pooled {
   readonly parent: SessionParent | undefined;
   /** Immutable, so one store listing per pooled session answers every later read. */
   createdAt?: number;
+  /**
+   * The directory row as of `seq`, for the host answer it was built with.
+   * Every store write appends an event, so an unchanged `events.last()` means
+   * the row's inputs (facts, refs, queue, main branch) are unchanged too, and
+   * a list need not read the branch again.
+   */
+  listed?: {
+    readonly seq: Seq;
+    readonly activation: SessionActivation | undefined;
+    readonly info: SessionInfo;
+  };
   /** The host's answer for this session, once asked; `reactivate` clears a blocked one. */
   activationState?: SessionActivation;
   resolving?: Promise<SessionActivation>;

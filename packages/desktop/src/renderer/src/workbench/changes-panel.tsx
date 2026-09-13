@@ -5,6 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/core";
+import { changesFromTurns } from "@nyte-ai/core/views";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon, FileTypeIconSprite } from "../components/file-type-icon";
 import { Icon, PanelToggleIcon } from "../components/icons.tsx";
@@ -17,13 +18,7 @@ import {
 } from "../components/menu.tsx";
 import { focus, IconButton, ToggleIconButton } from "../components/ui";
 import { parseUnifiedPatch } from "../conversation/tool-detail.ts";
-import {
-  refreshVcs,
-  useRunChanges,
-  useSessionSnapshot,
-  useVcsDiffs,
-  useVcsSnapshot,
-} from "../queries.ts";
+import { refreshVcs, useSessionSnapshot, useVcsDiffs, useVcsSnapshot } from "../queries.ts";
 import { control, workbench } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -90,7 +85,7 @@ const styles = stylex.create({
     paddingInline: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
+    borderBottomColor: t.strokeTertiary,
   },
   scopeTrigger: {
     appearance: "none",
@@ -151,7 +146,7 @@ const styles = stylex.create({
     padding: 5,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSubtle,
+    borderInlineStartColor: t.strokeTertiary,
     backgroundColor: t.bgSubtle,
   },
   filesHidden: { display: "none" },
@@ -399,13 +394,12 @@ export interface ChangesPanelProps {
   readonly onScrollTop: (scrollTop: number) => void;
 }
 
-interface ChangesPanelViewProps extends ChangesPanelProps {
+interface ChangesPanelViewProps extends Omit<ChangesPanelProps, "sessionId"> {
   readonly turns: readonly Turn[];
   readonly turnsError: Error | null;
 }
 
 function ChangesPanelView({
-  sessionId,
   scope,
   selectedPath,
   revealPathRevision,
@@ -419,7 +413,9 @@ function ChangesPanelView({
   turns,
   turnsError,
 }: ChangesPanelViewProps): ReactElement {
-  const declared = useRunChanges(sessionId);
+  // The declared changes are a fold of the transcript this panel already
+  // holds; asking the session for them again would reread the whole branch.
+  const declared = useMemo(() => changesFromTurns(turns), [turns]);
   const snapshot = useVcsSnapshot(true);
   const status = snapshot.data?.status;
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
@@ -431,10 +427,7 @@ function ChangesPanelView({
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurn?.scope.turnId);
   const hasEmptyTurns = turnOptions.some((option) => !turnHasChanges(option));
   const activeScope = selectedTurn?.scope ?? UNCOMMITTED_SCOPE;
-  const uncommittedRows = useMemo(
-    () => changeRows(status, declared.data ?? []),
-    [declared.data, status],
-  );
+  const uncommittedRows = useMemo(() => changeRows(status, declared), [declared, status]);
   const rows: readonly ChangeRow[] =
     selectedTurn === undefined
       ? uncommittedRows
@@ -518,9 +511,7 @@ function ChangesPanelView({
     );
   };
   const unavailable =
-    activeScope.kind === "turn"
-      ? queryError(turnsError)
-      : queryError(snapshot.error, declared.error);
+    activeScope.kind === "turn" ? queryError(turnsError) : queryError(snapshot.error, turnsError);
   const activeScopeValue = scopeValue(activeScope);
   const activeLabel = selectedTurn?.label ?? "Uncommitted";
   const appearance = useAppearanceSettings();

@@ -19,7 +19,7 @@ import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
 import { formatSkillInvocation } from "@nyte-ai/core/plugins";
 import { createTrustStore, pluginWatchTargets, resolveHostPlugins } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
-import { readClaudeCodeUsage } from "@nyte-ai/host/usage";
+import { createUsageScanCaches, readAccountUsage, readLocalUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import {
@@ -96,14 +96,15 @@ import {
   matchesKeyName,
   nextThinkingLevel,
   registerChatLayer,
-  registerSelectionLayer,
+  registerSelectionKeys,
 } from "./keymap.ts";
 import { laneRoles, nextToSteer } from "./lanes.ts";
 import type { LaneRoles } from "./lanes.ts";
 import { Outbox } from "./outbox.ts";
+import { SentMessages } from "./sent-messages.ts";
 import { ModelPicker } from "./model-picker.ts";
 import type { ModelSelection } from "./model-picker.ts";
-import { gutterRows, laneMark, queuedPromptText } from "./pending-gutter.ts";
+import { gutterRows, laneMark, queuedPromptText, rowLane } from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
 import { PluginProvider } from "./plugins.ts";
@@ -120,7 +121,7 @@ import type { Runtime } from "./run.ts";
 import { TUI_RENDERER_CONFIG } from "./rendering.ts";
 import { SessionConfigurator } from "./session-config.ts";
 import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
-import { SessionFollower } from "@nyte-ai/core/client";
+import { SessionObserver, waitingCall } from "@nyte-ai/core/client";
 import { TaskBrowser } from "./task-browser.ts";
 import type { SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/core/client";
 import { FileSettingsStore } from "./settings.ts";
@@ -166,8 +167,7 @@ import { describeUpdateOutcome, selfUpdate } from "./update.ts";
 import type { UpdateProgress } from "./update.ts";
 import { updateSeverity } from "./cli-style.ts";
 import { UsagePanel } from "./usage-panel.ts";
-import { fetchAccountLimits, hasHeadroom, usageCard } from "./usage.ts";
-import type { UsageCardOptions } from "./usage.ts";
+import { usageCard } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
 import { requestWorkspaceTrust } from "./workspace-trust.ts";
@@ -329,12 +329,14 @@ type Handback = (
 
 /**
  * Everything the shell knows about the followed session, rebuilt on a switch.
- * The follower publishes state; the outbox publishes what is still sending.
+ * The observer publishes state; the outbox publishes what is still sending;
+ * `sent` bridges the two by identity.
  */
 interface FollowedSession {
   readonly sessionId: SessionId;
-  readonly follower: SessionFollower;
+  readonly observer: SessionObserver;
   readonly outbox: Outbox;
+  readonly sent: SentMessages;
   /** What the user asked the next run to use, ahead of core's acknowledgement. */
   readonly config: SessionConfigurator;
   state: SessionState;
@@ -456,6 +458,7 @@ export async function runTui(
     const settingsStore = new FileSettingsStore();
     const settings = await settingsStore.read(workspace.cwd);
     if (startupAbort.signal.aborted) return;
+    shell.setScrollAcceleration(settings.scrollAcceleration);
     renderer.off(CliRenderEvents.THEME_MODE, onStartupTheme);
     const updateTheme = (): void => {
       shell.setTheme(themeForMode(resolveThemeMode(settings.theme, renderer.themeMode)));
@@ -470,6 +473,14 @@ export async function runTui(
     const runtime = signedIn ?? (await signedOutRuntime(flags, settings));
     if (startupAbort.signal.aborted) return;
     if (signedIn === undefined) bootNotices.push("Not signed in. /login connects a provider.");
+    if (
+      signedIn === undefined &&
+      flags.provider !== undefined &&
+      runtime.provider.id !== flags.provider
+    )
+      bootNotices.push(
+        `${flags.provider} has no models until you sign in; opened on ${runtime.provider.id} instead. /login ${flags.provider} connects it.`,
+      );
     const fallback = hostFallbacks(runtime, settings, flags);
     patchStatus(shell, {
       provider: fallback.model.provider,
@@ -570,6 +581,7 @@ interface InteractiveOptions {
 }
 
 export class Interactive {
+  private readonly usageCaches = createUsageScanCaches();
   private readonly tasks: TaskBrowser;
   private tuiPlugins: PluginProvider;
   private readonly renderer: CliRenderer;
@@ -609,7 +621,7 @@ export class Interactive {
   private autocomplete: SlashAutocomplete | undefined;
   private composerActions: ComposerActions | undefined;
   private mentionFiles: readonly MentionFile[] = [];
-  private mentionGeneration = 0;
+  private mentionController: AbortController | undefined;
   private readonly disposers: (() => void)[] = [];
   /** Sessions this process drives; a run started here keeps going after switching away. */
   private readonly attachments = new Map<SessionId, () => void>();
@@ -621,6 +633,7 @@ export class Interactive {
   private waiting: WaitingCall | undefined;
   private compaction: AbortController | undefined;
   private authenticating: AbortController | undefined;
+  private authenticationLink: { readonly url: string; readonly copy: string } | undefined;
   /** Local commands belong to this TUI, never to a core run or task. */
   private readonly shellCommands = new Map<
     string,
@@ -709,6 +722,8 @@ export class Interactive {
         this.reportError,
       );
     };
+    options.shell.pendingTail.onOpen = options.shell.pendingGutter.onOpen;
+    options.shell.pendingTail.onReorder = options.shell.pendingGutter.onReorder;
   }
 
   get sessionId(): SessionId | undefined {
@@ -743,6 +758,7 @@ export class Interactive {
   dispose(): Promise<void> {
     if (this.closing !== undefined) return this.closing;
     this.disposed = true;
+    this.mentionController?.abort();
     this.cancelPasteSubmission();
     this.pendingVisual = undefined;
     this.stopped.abort();
@@ -837,28 +853,31 @@ export class Interactive {
     let current: FollowedSession | undefined;
     const outbox = new Outbox({
       send: (input) => this.host.nyte.messages.send({ sessionId: info.sessionId, ...input }),
-      onChange: () => {
-        if (current !== undefined && this.session === current) this.syncGutter(current.state);
+      onReceipt: (entry, receipt) => current?.sent.receipt(entry, receipt),
+      onChange: (entries) => {
+        if (current === undefined) return;
+        current.sent.sending(entries);
+        if (this.session === current) this.syncGutter(current);
       },
     });
-    const follower = new SessionFollower(this.host.nyte, {
+    const observer = new SessionObserver(this.host.nyte, {
       sessionId: info.sessionId,
       head: MAIN,
       selectionVersion: () => current?.config.version ?? 0,
-      onUpdate: (update) => {
-        const { state, selectedVersion } = update;
-        if (current === undefined || this.session !== current) return;
-        const previous = current.state;
-        current.state = state;
-        if (selectedVersion !== undefined) current.config.observeSelected(selectedVersion);
-        if (update.kind === "selected") this.refreshStatus(current);
-        else this.render(current, previous, update);
-      },
       onError: (error) => {
         if (this.session === current)
           notice(this.shell, `Session watch failed: ${error.message}`, this.shell.theme.error);
       },
       retryMs: 500,
+    });
+    observer.subscribe((update) => {
+      const { state, selectedVersion } = update;
+      if (current === undefined || this.session !== current) return;
+      const previous = current.state;
+      current.state = state;
+      if (selectedVersion !== undefined) current.config.observeSelected(selectedVersion);
+      if (update.kind === "metadata") this.refreshStatus(current);
+      else this.render(current, previous, update);
     });
     const config = new SessionConfigurator({
       configure: (patch) =>
@@ -884,13 +903,20 @@ export class Interactive {
       onAcknowledged: (choice, patch) => {
         if (current === undefined || this.session !== current) return;
         this.persistChoice(choice, patch);
-        void follower.refreshSelected().catch(this.reportError);
+        observer.refresh();
       },
     });
     const followed: FollowedSession = {
       sessionId: info.sessionId,
-      follower,
+      observer,
       outbox,
+      sent: new SentMessages({
+        // The same observer `render` hears: its snapshot reaches `sent.snapshot` before the promise settles.
+        resync: () => observer.resync(),
+        onChange: () => {
+          if (current !== undefined && this.session === current) this.syncGutter(current);
+        },
+      }),
       config,
       state: {
         sessionId: info.sessionId,
@@ -903,7 +929,7 @@ export class Interactive {
         run: undefined,
         compaction: undefined,
         overlay: [],
-        waiting: undefined,
+        parked: [],
         context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
         expectedTip: undefined,
       },
@@ -913,14 +939,21 @@ export class Interactive {
       completionCommands: [],
       statusItems: [],
       stop: () => {
-        follower.close();
+        observer.close();
         config.dispose();
       },
     };
     current = followed;
     this.session = followed;
     this.refreshHints();
-    await follower.start();
+    try {
+      await observer.start();
+    } catch (cause) {
+      // The observer retries a failed read itself; its start rejects only once
+      // `stop` closed it, which a switch or shutdown does before the read lands.
+      if (this.session === followed) throw cause;
+      return;
+    }
     if (this.session !== followed) return;
     this.promptHistory.replace(userPrompts(followed.state));
     this.tuiPlugins.refresh();
@@ -967,11 +1000,12 @@ export class Interactive {
   private render(
     session: FollowedSession,
     previous: SessionState | undefined,
-    update: Exclude<SessionUpdate, { kind: "selected" }>,
+    update: Exclude<SessionUpdate, { kind: "metadata" }>,
   ): void {
     const { state } = session;
     const event = update.kind === "event" ? update.event : undefined;
     const snapshot = update.kind === "snapshot";
+    if (snapshot) session.sent.snapshot(state.pending, state.transcript.items);
     // Fold and react to every event, but reconcile only the latest visual state
     // before a frame. A resnapshot must still reset even if deltas follow it.
     this.pendingVisual = {
@@ -987,6 +1021,7 @@ export class Interactive {
     this.tasks.update(state, event);
     if (event === undefined) return;
     this.tuiPlugins.emit(event);
+    if (session.sent.event(event, state.head)) this.syncGutter(session);
     switch (event.kind) {
       case "activation_changed":
         return;
@@ -1059,10 +1094,11 @@ export class Interactive {
         session.statusItems = event.items;
         this.applySettingsList(session, session.settings);
         return;
-      case "head_moved":
-      case "queued":
       case "landed":
       case "queue_cancelled":
+      case "queued":
+      case "config_queued":
+      case "head_moved":
       case "stack":
       case "fact":
       case "synced":
@@ -1113,7 +1149,7 @@ export class Interactive {
         } else this.handBack(handback.content, handback.notice);
       }
     }
-    if (state.pending !== pending.previous?.pending) this.syncGutter(state);
+    if (state.pending !== pending.previous?.pending) this.syncGutter(pending.session);
     if (
       state.info.config !== pending.previous?.info.config ||
       state.config !== pending.previous?.config ||
@@ -1122,7 +1158,7 @@ export class Interactive {
       this.refreshStatus(pending.session);
     if (!this.shell.ui.prompting) {
       this.shell.input.placeholder =
-        state.waiting?.selection.other !== undefined
+        waitingCall(state)?.selection.other !== undefined
           ? ANSWER_COMPOSER_PLACEHOLDER
           : this.busy
             ? BUSY_COMPOSER_PLACEHOLDER
@@ -1187,7 +1223,7 @@ export class Interactive {
   private refreshQuestion(): void {
     const session = this.session;
     if (this.disposed || session === undefined) return;
-    const waiting = session.state.waiting ?? this.tasks.waiting;
+    const waiting = waitingCall(session.state) ?? this.tasks.waiting;
     if (waiting?.sessionId === this.waiting?.sessionId && waiting?.waitId === this.waiting?.waitId)
       return;
     this.waiting = waiting;
@@ -1264,9 +1300,13 @@ export class Interactive {
     }
   }
 
-  private syncGutter(state: SessionState): void {
-    const rows = gutterRows(state.pending, this.session?.outbox.entries ?? []);
-    this.shell.pendingGutter.sync(rows);
+  private syncGutter(session: FollowedSession): void {
+    const rows = sessionRows(session);
+    // Enter's messages take the shape of the turns they become; ctrl+enter's wait in the compact rows.
+    const steering = rows.filter((row) => rowLane(row) === this.roles.steer);
+    const queued = rows.filter((row) => rowLane(row) !== this.roles.steer);
+    this.shell.pendingTail.sync(steering, { hint: queued.length === 0 });
+    this.shell.pendingGutter.sync(queued);
     if (this.queueMenu !== undefined || this.queueSelection !== undefined) {
       const choices = this.queueChoices();
       this.queueMenu?.setChoices(choices, this.queueSelection);
@@ -1346,7 +1386,12 @@ export class Interactive {
   private paintHints(): void {
     if (this.disposed || this.shell.root.isDestroyed) return;
     if (this.authenticating !== undefined) {
-      setHints(this.shell, "esc cancel authentication");
+      setHints(
+        this.shell,
+        this.authenticationLink === undefined
+          ? "esc cancel authentication"
+          : `${keycap("auth.open")} open browser · ${keycap("auth.copy")} copy · esc cancel authentication`,
+      );
       return;
     }
     if (this.shell.ui.selecting || this.shell.ui.prompting) return;
@@ -1483,11 +1528,19 @@ export class Interactive {
   }
 
   private async refreshMentionFiles(): Promise<void> {
-    const generation = ++this.mentionGeneration;
-    const files = await discoverMentionFiles(this.workspace.cwd);
-    if (generation !== this.mentionGeneration || this.disposed) return;
-    this.mentionFiles = files;
-    this.refreshAutocomplete();
+    this.mentionController?.abort();
+    const controller = new AbortController();
+    this.mentionController = controller;
+    try {
+      const files = await discoverMentionFiles(this.workspace.cwd, controller.signal);
+      if (controller.signal.aborted || this.disposed) return;
+      this.mentionFiles = files;
+      this.refreshAutocomplete();
+    } catch (error) {
+      if (!controller.signal.aborted) this.reportError(error);
+    } finally {
+      if (this.mentionController === controller) this.mentionController = undefined;
+    }
   }
 
   private handlePaste(event: PasteEvent): void {
@@ -1951,7 +2004,7 @@ export class Interactive {
     content: SessionState["pending"][number]["content"],
     lane: string,
   ): Promise<void> {
-    const waiting = session.state.waiting;
+    const waiting = waitingCall(session.state);
     if (waiting?.selection.other !== undefined && lane === this.roles.steer) {
       if (!Array.isArray(content)) return this.answer(waiting, { choices: [], other: content });
       notice(
@@ -1966,10 +2019,7 @@ export class Interactive {
   }
 
   private scrollToEnd(): void {
-    // OpenTUI follows subsequent layout changes until the user scrolls away.
-    // A delayed jump could override that scroll or land in another session.
-    this.shell.scroll.stickyScroll = true;
-    this.shell.scroll.scrollTo(this.shell.scroll.scrollHeight);
+    this.shell.view.returnToLatest();
   }
 
   private steerFirstQueued(session: FollowedSession): void {
@@ -2009,7 +2059,7 @@ export class Interactive {
   private queueChoices(): Choice[] {
     const session = this.session;
     if (session === undefined) return [];
-    return gutterRows(session.state.pending, session.outbox.entries).map((row, index) => ({
+    return sessionRows(session).map((row, index) => ({
       id: rowId(row),
       label: queuedPromptText(row.kind === "pending" ? row.item.content : row.entry.content),
       description: `${String(index + 1)} · ${row.kind === "pending" ? laneMark(row.item.lane, this.roles, this.shell.theme).label : "sending"}`,
@@ -2029,7 +2079,7 @@ export class Interactive {
   private async openQueue(selectedId?: string): Promise<void> {
     const session = this.requireSession();
     if (this.queueMenu !== undefined || this.shell.ui.selecting || this.shell.ui.prompting) return;
-    const rows = () => gutterRows(session.state.pending, session.outbox.entries);
+    const rows = () => sessionRows(session);
     if (rows().length === 0) {
       notice(this.shell, "Nothing is queued");
       return;
@@ -2130,7 +2180,7 @@ export class Interactive {
     });
     if (outcome.kind === "redelivered") {
       this.queueSelection = `pending:${outcome.change}`;
-      this.syncGutter(session.state);
+      this.syncGutter(session);
     } else if (outcome.kind !== "unchanged") {
       notice(this.shell, "The queue changed. Try again.");
     }
@@ -2221,12 +2271,13 @@ export class Interactive {
         const blocked = this.composerBlocked();
         const draft = blocked === undefined ? this.document.read() : this.document.latest;
         const input = draft === undefined ? undefined : parseComposerSubmission(draft.text);
+        const asked = this.state === undefined ? undefined : waitingCall(this.state);
         return {
           busy: this.busy,
           shell: this.activeShell !== undefined,
           shellInput: input?.kind === "shell" ? (input.retain ? "include" : "exclude") : undefined,
-          waiting: this.waiting !== undefined || this.state?.waiting !== undefined,
-          question: this.state?.waiting?.selection.other !== undefined,
+          waiting: this.waiting !== undefined || asked !== undefined,
+          question: asked?.selection.other !== undefined,
           draft: draft?.kind ?? "empty",
           editingLane:
             this.session === undefined
@@ -2307,10 +2358,13 @@ export class Interactive {
       }),
     );
     this.disposers.push(
-      registerSelectionLayer(keymap, this.renderer, {
+      registerSelectionKeys(keymap, this.renderer, {
         copyOnSelect: () => this.settings.copyOnSelect,
         copy: (text) => {
-          void this.clipboard.write(text).catch(this.reportError);
+          void this.clipboard
+            .write(text)
+            .then(() => notice(this.shell, "Copied to clipboard"))
+            .catch(this.reportError);
         },
       }),
     );
@@ -2348,14 +2402,21 @@ export class Interactive {
           "chat.scroll.page.up": {
             title: "Scroll the transcript up",
             run: () => {
-              this.shell.scroll.scrollBy(-0.5, "viewport");
+              this.shell.view.scrollBy(-0.5, "viewport");
               return true;
             },
           },
           "chat.scroll.page.down": {
             title: "Scroll the transcript down",
             run: () => {
-              this.shell.scroll.scrollBy(0.5, "viewport");
+              this.shell.view.scrollBy(0.5, "viewport");
+              return true;
+            },
+          },
+          "chat.scroll.latest": {
+            title: "Jump to latest",
+            run: () => {
+              this.shell.view.returnToLatest();
               return true;
             },
           },
@@ -2454,6 +2515,35 @@ export class Interactive {
               if (browseHistory(this.shell.input, this.promptHistory, "next")) return true;
               if (!viewsTasks()) return false;
               this.tasks.open();
+              return true;
+            },
+          },
+        },
+      }),
+    );
+    this.disposers.push(
+      registerChatLayer(keymap, {
+        enabled: () =>
+          this.authenticating !== undefined &&
+          this.authenticationLink !== undefined &&
+          !this.shell.ui.prompting &&
+          !this.shell.ui.selecting,
+        commands: {
+          "auth.open": {
+            title: "Open authentication URL",
+            run: () => {
+              const link = this.authenticationLink;
+              if (link === undefined) return false;
+              void open(link.url).catch(this.reportError);
+              return true;
+            },
+          },
+          "auth.copy": {
+            title: "Copy authentication details",
+            run: () => {
+              const link = this.authenticationLink;
+              if (link === undefined) return false;
+              void this.clipboard.write(link.copy).catch(this.reportError);
               return true;
             },
           },
@@ -2754,6 +2844,7 @@ export class Interactive {
 
   private async useWorkspace(workspace: TrustedWorkspace): Promise<void> {
     if (workspace.cwd === this.workspace.cwd) return;
+    this.mentionController?.abort();
     this.stopPluginWatch?.();
     await this.tuiPlugins.dispose();
     if (this.disposed) return;
@@ -2976,7 +3067,7 @@ export class Interactive {
         this.flushShellMarkers();
       };
       const onKeyPress = (key: KeyEvent): void => {
-        if (settled || !matchesKey("auth.cancel", key, "required")) return;
+        if (settled || key.defaultPrevented || !matchesKey("auth.cancel", key, "required")) return;
         key.preventDefault();
         key.stopPropagation();
         settled = true;
@@ -3203,12 +3294,25 @@ export class Interactive {
         },
       },
       {
+        id: "scroll-acceleration",
+        label: "Scroll acceleration",
+        current: () => (this.settings.scrollAcceleration ? "on" : "off"),
+        choices: () => [
+          { id: "off", label: "off", description: "Move three rows per wheel event" },
+          { id: "on", label: "on", description: "Accelerate during rapid wheel scrolling" },
+        ],
+        apply: async (choiceId) => {
+          this.shell.setScrollAcceleration(choiceId === "on");
+          this.updateSettings({ scrollAcceleration: choiceId === "on" });
+        },
+      },
+      {
         id: "copy-on-select",
         label: "Copy on select",
         current: () => (this.settings.copyOnSelect ? "on" : "off"),
         choices: () => [
           { id: "on", label: "on", description: "Copy text when the mouse selection ends" },
-          { id: "off", label: "off", description: "Copy selected text with Ctrl+C" },
+          { id: "off", label: "off", description: "Copy selected text with Ctrl+C or right-click" },
         ],
         apply: async (choiceId) => this.updateSettings({ copyOnSelect: choiceId === "on" }),
       },
@@ -3410,17 +3514,23 @@ export class Interactive {
         if (signal.aborted || this.disposed) return;
         switch (event.type) {
           case "auth_url":
+            this.authenticationLink = { url: event.url, copy: event.url };
+            this.refreshHints();
             notice(this.shell, [event.instructions ?? "Open this URL to continue:", event.url]);
             void open(event.url).catch(() => undefined);
             return;
           case "device_code":
-            notice(
-              this.shell,
+            this.authenticationLink = { url: event.verificationUri, copy: event.userCode };
+            this.refreshHints();
+            notice(this.shell, [
+              ...(event.instructions === undefined ? [] : [event.instructions]),
               `Visit ${event.verificationUri} and enter the code ${event.userCode}`,
-            );
+            ]);
             return;
           case "info":
           case "progress":
+            this.authenticationLink = undefined;
+            this.refreshHints();
             notice(this.shell, event.message);
             return;
           default: {
@@ -3505,11 +3615,7 @@ export class Interactive {
           );
           return;
         }
-        const preferred = defaultModel(models, first.provider);
-        const selected =
-          candidates.find(
-            (model) => model.provider === preferred.provider && model.id === preferred.id,
-          ) ?? first;
+        const selected = defaultModel(candidates, first.provider);
         await this.changeModel(selected);
         notice(
           this.shell,
@@ -3535,7 +3641,10 @@ export class Interactive {
       throw cause;
     } finally {
       controller.abort();
-      if (this.authenticating === controller) this.authenticating = undefined;
+      if (this.authenticating === controller) {
+        this.authenticating = undefined;
+        this.authenticationLink = undefined;
+      }
       if (!this.disposed) {
         this.refreshHints();
         if (this.session !== undefined && this.waiting !== undefined)
@@ -3544,75 +3653,56 @@ export class Interactive {
     }
   }
 
-  /** Local history and account limits load independently without blocking the report. */
+  /** Read once, then display the complete report in the composer panel. */
   private async openUsage(): Promise<void> {
     const session = this.requireSession();
     if (this.disposed || this.shell.ui.selecting || this.shell.ui.prompting) return;
-    const activeProvider = this.config.model.provider;
-    const checking = hasHeadroom(activeProvider);
     const controller = new AbortController();
     const close = (): void => {
       controller.abort();
       if (this.shell.dismissInfoPanel !== close) return;
       this.shell.dismissInfoPanel = undefined;
       if (panel.container.isDestroyed) return;
-      this.shell.setUi("overlay", undefined);
       closePanel(this.shell, panel);
       this.refreshHints();
     };
-    let options: UsageCardOptions = {
-      activeProvider,
-      headroom: checking ? { kind: "checking" } : { kind: "none" },
-      claudeCode: { kind: "checking" },
-    };
-    const panel = openPanel(this.shell, new UsagePanel(this.shell, close));
-    // Cover the chat without changing its layout or scroll position. The shell
-    // still owns dismissal, composer focus, and notices queued behind the panel.
-    this.shell.setUi("overlay", panel.container);
+    const panel = openPanel(
+      this.shell,
+      new UsagePanel(this.shell, close, (rows) => setSlotRows(this.shell, rows)),
+    );
     this.shell.dismissInfoPanel = close;
     const active = (): boolean =>
       this.session === session &&
       !this.disposed &&
       !controller.signal.aborted &&
       this.shell.dismissInfoPanel === close;
-    let report: Awaited<ReturnType<Host["workspaceUsage"]>>;
     try {
-      report = await this.host.workspaceUsage(session.sessionId);
+      const accountSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]);
+      const [report, local, accounts] = await Promise.all([
+        this.host.workspaceUsage(session.sessionId),
+        readLocalUsage({
+          models: this.runtime.models,
+          signal: controller.signal,
+          caches: this.usageCaches,
+        }),
+        Promise.all([
+          readAccountUsage({
+            models: this.runtime.models,
+            provider: "anthropic",
+            signal: accountSignal,
+          }),
+          readAccountUsage({
+            models: this.runtime.models,
+            provider: "openai-codex",
+            signal: accountSignal,
+          }),
+        ]),
+      ]);
+      if (active()) panel.update({ kind: "ready", card: usageCard(report, local, accounts) });
     } catch (cause) {
       if (active()) panel.update({ kind: "failed", message: errorMessage(cause) });
-      return;
-    }
-    if (!active()) return;
-    const update = (patch: Partial<UsageCardOptions>): void => {
-      if (!active()) return;
-      options = { ...options, ...patch };
-      panel.update({ kind: "ready", card: usageCard(report, options) });
-    };
-    update({});
-    try {
-      await Promise.all([
-        readClaudeCodeUsage({ models: this.runtime.models, signal: controller.signal }).then(
-          (claudeCode) => update({ claudeCode }),
-          (cause: unknown) =>
-            update({
-              claudeCode: {
-                kind: "failed",
-                message: `Failed to read local history: ${errorMessage(cause)}`,
-              },
-            }),
-        ),
-        checking
-          ? fetchAccountLimits(this.runtime.models, activeProvider, controller.signal).then(
-              (limits) =>
-                update({
-                  headroom:
-                    limits === undefined ? { kind: "unavailable" } : { kind: "known", limits },
-                }),
-            )
-          : undefined,
-      ]);
-    } catch (cause) {
-      if (active()) throw cause;
+    } finally {
+      controller.abort();
     }
   }
 
@@ -3823,8 +3913,8 @@ export class Interactive {
         noArgument();
         whenIdle("reloading");
         await this.reloadPlugins();
-        // Repaint changed TUI extensions without rebuilding transcript state.
-        this.renderer.requestFullRepaint();
+        // Plugin renderables mark themselves dirty during reconciliation.
+        this.renderer.requestRender();
         const pluginCount = (await this.host.nyte.plugins.list({ sessionId: session.sessionId }))
           .length;
         notice(
@@ -3880,4 +3970,9 @@ type SlashTarget =
 
 function rowId(row: ReturnType<typeof gutterRows>[number]): string {
   return row.kind === "pending" ? `pending:${row.item.change}` : `sending:${row.entry.key}`;
+}
+
+/** The fold's pending items, then receipts the fold has not caught up with, then what is still sending. */
+function sessionRows(session: FollowedSession): ReturnType<typeof gutterRows> {
+  return session.sent.rows(session.state.pending, session.outbox.entries);
 }

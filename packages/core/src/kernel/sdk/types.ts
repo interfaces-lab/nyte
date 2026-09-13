@@ -51,6 +51,7 @@ import type {
   SessionEvent,
   SessionId,
   SessionInfo,
+  SessionMetadata,
   SessionParent,
   SessionActivationState,
   SessionSnapshot,
@@ -71,7 +72,8 @@ import type { StreamFn, StreamOptions, ThinkingLevel } from "../../types.ts";
 import type { WorkspaceRegistryBackend } from "../../workspace-registry.ts";
 import type { TrustedWorkspace } from "../../workspace-trust.ts";
 import type { CompactionSettings } from "../compaction.ts";
-import type { Actor } from "../model.ts";
+import type { Actor, Run } from "../model.ts";
+import type { StepOutcome } from "../step.ts";
 import type { Store } from "../store.ts";
 
 export {
@@ -122,6 +124,7 @@ export {
   type SessionEvent,
   type SessionId,
   type SessionInfo,
+  type SessionMetadata,
   type SessionParent,
   type SessionActivationState,
   type SessionSnapshot,
@@ -149,6 +152,11 @@ export interface Sessions {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
   }): Promise<SessionSnapshot | undefined>;
+  /** The snapshot's session row, head inputs, and context, without its transcript or queue. */
+  metadata(input: {
+    readonly sessionId: SessionId;
+    readonly head?: HeadName;
+  }): Promise<SessionMetadata | undefined>;
   list(input?: {
     readonly search?: string;
     readonly limit?: number;
@@ -284,6 +292,7 @@ export interface Workspace {
 
 export interface Provider {
   models: {
+    /** Model choices permitted by the host's current credentials and provider restrictions. */
     list(): Promise<readonly ModelInfo[]>;
     default(): Promise<ModelInfo | undefined>;
   };
@@ -342,6 +351,17 @@ export type { Disposer };
 export interface AttachOptions {
   readonly sessions?: readonly SessionId[];
 }
+
+/** Host scheduler state. It contains no credentials, provider output, or kernel objects. */
+export type AdvanceOutcome =
+  | Exclude<StepOutcome, { readonly run: Run } | { readonly kind: "busy" }>
+  | Omit<Extract<StepOutcome, { readonly kind: "finished" }>, "run">
+  | Omit<Extract<StepOutcome, { readonly kind: "waiting" }>, "run">
+  | Omit<Extract<StepOutcome, { readonly kind: "retry" }>, "run">
+  | {
+      readonly kind: "busy";
+      readonly until: Extract<StepOutcome, { readonly kind: "busy" }>["holder"]["expiresAt"];
+    };
 
 /** Host-only cause; never send this record over IPC, events, or telemetry. */
 export type SummaryDiagnostic = Extract<MoveOutcome, { readonly code: "internal" }> & {
@@ -420,6 +440,12 @@ export interface Nyte {
     ),
   ): AsyncIterable<SessionEvent>;
   attach(input?: AttachOptions): Disposer;
+  /** Host-only, one leased kernel step. The caller schedules further steps and deadlines. */
+  advance(input: {
+    readonly sessionId: SessionId;
+    readonly head?: HeadName;
+    readonly signal?: AbortSignal;
+  }): Promise<AdvanceOutcome>;
   reactivate(): Promise<void>;
   /** Host-only location read. A saved path is not a trust grant. */
   sessionCwd(input: { readonly sessionId: SessionId }): Promise<string | undefined>;

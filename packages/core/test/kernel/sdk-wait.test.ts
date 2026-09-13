@@ -7,6 +7,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { waitForHead } from "../../src/kernel/sdk/wait.ts";
 import { headRef, runRef } from "../../src/kernel/names.ts";
+import type { Run } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
 import { ToolWait } from "../../src/types.ts";
@@ -102,6 +103,46 @@ test("pre-aborted SDK waits cancel even on an empty head and leave no listeners"
   } finally {
     await nyte.close();
   }
+});
+
+test("a run change during observation cannot return a stale waiting outcome", async () => {
+  const session = await openSession();
+  const waiting: Run = {
+    kind: "run",
+    id: "run",
+    head: "main",
+    phase: { kind: "waiting" },
+    startedAt: 0,
+    attempts: 1,
+    config: {},
+  };
+  const done: Run = { ...waiting, phase: { kind: "done" } };
+  const [waitingOid, doneOid] = await session.objects.put([waiting, done]);
+  assert.ok(waitingOid && doneOid);
+  await session.refs.update([{ name: runRef("main"), from: null, to: waitingOid }], {
+    reason: "test",
+  });
+
+  let moved = false;
+  const observed: Session = {
+    ...session,
+    close: () => session.close(),
+    leases: {
+      acquire: (...args) => session.leases.acquire(...args),
+      renew: (...args) => session.leases.renew(...args),
+      release: (...args) => session.leases.release(...args),
+      read: async (...args) => {
+        if (!moved) {
+          moved = true;
+          await session.refs.update([{ name: runRef("main"), from: waitingOid, to: doneOid }], {
+            reason: "test",
+          });
+        }
+        return session.leases.read(...args);
+      },
+    },
+  };
+  assert.deepEqual(await waitForHead(observed, { head: "main" }), { kind: "idle" });
 });
 
 test("abort after live watch starts closes the watch and lets the provider finish", async () => {

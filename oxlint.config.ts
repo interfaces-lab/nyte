@@ -72,7 +72,6 @@ export default defineConfig({
         "packages/ai/scripts/**",
         "packages/ai/src/env-api-keys.ts",
         "packages/ai/src/session-resources.ts",
-        "packages/ai/test/upstream/**",
       ],
       rules: {
         "typescript/no-floating-promises": "off",
@@ -112,14 +111,16 @@ export default defineConfig({
               {
                 name: "@nyte-ai/core",
                 allowTypeImports: true,
-                message: "Renderer value imports use the browser-safe @nyte-ai/core/views entry.",
+                message:
+                  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.",
               },
             ],
             patterns: [
               {
-                group: ["@nyte-ai/core/*", "!@nyte-ai/core/views"],
+                group: ["@nyte-ai/core/*", "!@nyte-ai/core/views", "!@nyte-ai/core/client"],
                 allowTypeImports: true,
-                message: "Renderer value imports use the browser-safe @nyte-ai/core/views entry.",
+                message:
+                  "Renderer value imports use the browser-safe @nyte-ai/core/views and @nyte-ai/core/client entries.",
               },
             ],
           },

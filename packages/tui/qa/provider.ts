@@ -72,7 +72,7 @@ export type ProviderAction =
 
 export interface ProviderStep {
   readonly name: string;
-  /** Match the last user message, not tool results or the system prompt. */
+  /** Match one of the newest user messages, not the history or the system prompt. */
   readonly prompt?: string;
   readonly model?: string;
   readonly action: ProviderAction;
@@ -117,6 +117,30 @@ export interface ProviderController {
   close(): Promise<void>;
 }
 
+type ProviderMessage = ProviderPayload["messages"][number];
+
+function messageText(message: ProviderMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return (
+    message.content?.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n") ?? ""
+  );
+}
+
+/**
+ * The input this request answers: the newest run of adjacent user messages,
+ * newest last. A finished background job lands as a user message beside the
+ * message it rides with, and a tool continuation repeats that whole run, so the
+ * newest message alone does not name the input a step answers. Everything
+ * before the run stays out, so an earlier prompt cannot match a second time.
+ */
+function newestInputs(messages: readonly ProviderMessage[]): string[] {
+  const last = messages.findLastIndex((message) => message.role === "user");
+  if (last === -1) return [];
+  let first = last;
+  while (first > 0 && messages[first - 1]?.role === "user") first -= 1;
+  return messages.slice(first, last + 1).map(messageText);
+}
+
 /** Chat-completions SSE as consumed by Nyte's installed OpenAI 6.40 adapter.
  * No provider code runs in this process. Requests arrive from the compiled binary.
  */
@@ -155,22 +179,18 @@ export async function openProvider(
         `Invalid chat-completions request: ${JSON.stringify(requestParser.Errors(raw))}`,
       );
     const payload = raw;
-    const user = payload.messages.findLast((message) => message.role === "user");
-    const prompt =
-      typeof user?.content === "string"
-        ? user.content
-        : (user?.content?.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n") ??
-          "");
+    const inputs = newestInputs(payload.messages);
+    const prompt = inputs.at(-1) ?? "";
     const inputImages = payload.messages.flatMap((message) =>
       Array.isArray(message.content)
         ? message.content.flatMap((part) => (part.type === "image_url" ? [part.image_url.url] : []))
         : [],
     );
-    const index = queue.findIndex(
-      (step) =>
-        (step.model === undefined || step.model === payload.model) &&
-        (step.prompt === undefined || prompt.includes(step.prompt)),
-    );
+    const index = queue.findIndex((step) => {
+      if (step.model !== undefined && step.model !== payload.model) return false;
+      const wanted = step.prompt;
+      return wanted === undefined || inputs.some((input) => input.includes(wanted));
+    });
     const title =
       payload.model === FIXTURE_TITLE_MODEL &&
       payload.messages.some(

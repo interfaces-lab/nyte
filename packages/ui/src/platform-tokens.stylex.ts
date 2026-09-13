@@ -12,6 +12,8 @@ const colorDefaults = {
   "--nyte-color-muted-hover": "light-dark(#7777772b, #77777752)",
   "--nyte-color-muted-foreground": "light-dark(#14141499, #fcfcfc99)",
   "--nyte-color-tertiary-foreground": "light-dark(#14141466, #fcfcfc66)",
+  "--nyte-color-accent": "light-dark(#0c64c1, #459ffe)",
+  "--nyte-color-success": "light-dark(#009957, #38d591)",
   "--nyte-color-destructive": "light-dark(#c21d2e, #ff5667)",
   "--nyte-color-destructive-muted": "light-dark(#ff263c17, #ff263c2c)",
   "--nyte-color-destructive-hover": "light-dark(#ff263c2b, #ff263c52)",

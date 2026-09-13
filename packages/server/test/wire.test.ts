@@ -10,18 +10,19 @@ import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/cl
 import {
   createNyte,
   type Nyte,
+  type ModelCatalog,
   type JobInfo,
   type SessionActivationResolver,
   type SessionEvent,
   type SessionId,
 } from "@nyte-ai/core";
-import { CallReplySchema, sessionId as parseSessionId } from "@nyte-ai/protocol";
+import { CallReplySchema, sessionId, type ServerDescription } from "@nyte-ai/protocol";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { Value } from "typebox/value";
 import type { Api, Model } from "@nyte-ai/schema";
 import { createNyteServer, type NyteServerOptions, type ServerFailure } from "../src/index.ts";
 
-const TOKEN = "test-token-0123456789abcdef";
+const TOKEN = "café-token-0123456789abcdef";
 const BASE = "http://nyte.test";
 const VERSION = "0.0.2-test";
 
@@ -33,9 +34,14 @@ const model: Model<Api> = {
   baseUrl: "https://example.invalid",
   reasoning: false,
   input: ["text"],
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  cost: { input: 2, output: 7, cacheRead: 0.2, cacheWrite: 1 },
   contextWindow: 100_000,
   maxTokens: 1_000,
+};
+
+const description: ServerDescription = {
+  capabilities: { workspace: false },
+  persistence: "durable",
 };
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -44,6 +50,7 @@ afterEach(async () => {
 });
 
 interface FixtureOptions {
+  readonly models?: ModelCatalog;
   /** Wrap the real SDK before the server sees it, to observe or to fail an operation. */
   readonly wrap?: (sdk: Nyte) => Nyte;
   readonly server?: Partial<Omit<NyteServerOptions, "sdk">>;
@@ -58,7 +65,7 @@ async function fixture(options: FixtureOptions = {}) {
     streamFn: () => {
       throw new Error("These scenes never reach a model");
     },
-    models: {
+    models: options.models ?? {
       getModels: () => [model],
       getModel: (_provider: string, id: string) => (id === model.id ? model : undefined),
       getAvailable: async () => [model],
@@ -171,6 +178,44 @@ async function landCommit(store: SqliteStore, sessionId: SessionId, text: string
 // Calls
 // ---------------------------------------------------------------------------
 
+test("remote model choices use current host availability and persist selected inputs", async () => {
+  const unavailable = { ...model, id: "unconfigured", name: "Unconfigured" };
+  const catalog = [model, unavailable];
+  let available = [model];
+  const { client } = await fixture({
+    models: {
+      getModels: () => catalog,
+      getModel: (provider, id) =>
+        catalog.find((entry) => entry.provider === provider && entry.id === id),
+      getAvailable: async () => available,
+    },
+  });
+  const choices = await client.provider.models.list();
+  assert.deepEqual(
+    choices.map((choice) => choice.id),
+    [model.id],
+  );
+  assert.equal(choices[0]?.cost.input, model.cost.input);
+  assert.deepEqual(choices[0]?.thinkingLevels, ["off"]);
+  assert.doesNotMatch(JSON.stringify(choices), /example\.invalid/);
+  const created = await client.sessions.create();
+  assert.equal(
+    (
+      await client.sessions.configure({
+        sessionId: created.sessionId,
+        model: { provider: model.provider, id: model.id },
+      })
+    ).kind,
+    "queued",
+  );
+  assert.deepEqual((await client.sessions.get({ sessionId: created.sessionId }))?.config.model, {
+    provider: model.provider,
+    id: model.id,
+  });
+  available = [];
+  assert.deepEqual(await client.provider.models.list(), []);
+});
+
 test("create, read, list, snapshot, and rename a session through the client", async () => {
   const { client } = await fixture();
   const created = await client.sessions.create({ name: "first" });
@@ -180,7 +225,7 @@ test("create, read, list, snapshot, and rename a session through the client", as
   const read = await client.sessions.get({ sessionId: created.sessionId });
   assert.deepEqual(read, created);
   assert.equal(
-    await client.sessions.get({ sessionId: parseSessionId(`${created.sessionId}-missing`) }),
+    await client.sessions.get({ sessionId: sessionId(`${created.sessionId}-missing`) }),
     undefined,
   );
 
@@ -202,7 +247,7 @@ test("create, read, list, snapshot, and rename a session through the client", as
 
 test("a session id with dots, slashes, and percent signs survives the query string", async () => {
   const { client } = await fixture();
-  const created = await client.sessions.create({ sessionId: parseSessionId("../odd/id#1%25 ?&=") });
+  const created = await client.sessions.create({ sessionId: sessionId("../odd/id#1%25 ?&=") });
   assert.equal(created.sessionId, "../odd/id#1%25 ?&=");
   assert.equal(
     (await client.sessions.get({ sessionId: created.sessionId }))?.sessionId,
@@ -274,11 +319,13 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
     updatedAt: 2,
     output: "partial output\n",
   };
+  const childSessionId = sessionId("child");
   const calls: unknown[] = [];
   const { client, raw } = await fixture({
     wrap: (sdk) => ({
       ...sdk,
       jobs: {
+        ...sdk.jobs,
         async list(input) {
           calls.push(["list", input]);
           return [job];
@@ -297,28 +344,34 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
         yield {
           seq: 3,
           kind: "job",
-          job: { ...job, kind: "subagent", childSessionId: parseSessionId("child") },
+          job: { ...job, kind: "subagent", childSessionId },
         };
       },
     }),
   });
-  const { sessionId } = await client.sessions.create();
-  assert.deepEqual(await client.jobs.list({ sessionId }), [job]);
-  assert.deepEqual(await client.jobs.list({ sessionId, head: "branch" }), [job]);
-  assert.deepEqual(await client.jobs.background({ sessionId, jobId: job.id }), { kind: "applied" });
-  assert.deepEqual(await client.jobs.cancel({ sessionId, jobId: job.id }), { kind: "finished" });
+  const { sessionId: parentSessionId } = await client.sessions.create();
+  assert.deepEqual(await client.jobs.list({ sessionId: parentSessionId }), [job]);
+  assert.deepEqual(await client.jobs.list({ sessionId: parentSessionId, head: "branch" }), [job]);
+  assert.deepEqual(await client.jobs.background({ sessionId: parentSessionId, jobId: job.id }), {
+    kind: "applied",
+  });
+  assert.deepEqual(await client.jobs.cancel({ sessionId: parentSessionId, jobId: job.id }), {
+    kind: "finished",
+  });
   assert.deepEqual(calls, [
-    ["list", { sessionId }],
-    ["list", { sessionId, head: "branch" }],
-    ["background", { sessionId, jobId: job.id }],
-    ["cancel", { sessionId, jobId: job.id }],
+    ["list", { sessionId: parentSessionId }],
+    ["list", { sessionId: parentSessionId, head: "branch" }],
+    ["background", { sessionId: parentSessionId, jobId: job.id }],
+    ["cancel", { sessionId: parentSessionId, jobId: job.id }],
   ]);
   for (const operation of ["jobs.background", "jobs.cancel"]) {
     assert.deepEqual(
       await errorOf(
         await raw(
           `/v1/call/${operation}`,
-          post(JSON.stringify({ input: { sessionId, jobId: job.id, head: "main" } })),
+          post(
+            JSON.stringify({ input: { sessionId: parentSessionId, jobId: job.id, head: "main" } }),
+          ),
         ),
       ),
       { status: 400, code: "invalid_input" },
@@ -326,7 +379,8 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
   }
   assert.equal(calls.length, 4);
   const events: SessionEvent[] = [];
-  for await (const event of client.watch({ sessionId, live: true })) events.push(event);
+  for await (const event of client.watch({ sessionId: parentSessionId, live: true }))
+    events.push(event);
   assert.deepEqual(events, [
     { seq: 3, kind: "job", job },
     { seq: 3, kind: "job", job: { ...job, kind: "subagent", childSessionId: "child" } },
@@ -345,9 +399,7 @@ test("a lane outside the landing policy is refused as invalid input before the S
 
 test("an unknown session is a tagged 404, not an internal error", async () => {
   const { client, failures } = await fixture();
-  const error = await caught(
-    client.messages.send({ sessionId: parseSessionId("ghost"), content: "x" }),
-  );
+  const error = await caught(client.messages.send({ sessionId: sessionId("ghost"), content: "x" }));
   assert.ok(error instanceof NyteWireError);
   assert.equal(error.code, "unknown_session");
   assert.equal(error.status, 404);
@@ -478,11 +530,14 @@ test("no token is 401, a wrong token is 403, and the client surfaces both", asyn
   });
   assert.deepEqual(await errorOf(noHeader), { status: 401, code: "unauthorized" });
   assert.equal(noHeader.headers.get("www-authenticate"), "Bearer");
-  const wrong = await raw(
-    "/v1/call/sessions.list",
-    post("{}", { authorization: "Bearer nope-nope-nope-nope" }),
-  );
-  assert.deepEqual(await errorOf(wrong), { status: 403, code: "forbidden" });
+  for (const token of ["x", `${TOKEN}x`, TOKEN.replace("é", "e"), TOKEN.replace("f", "g")]) {
+    assert.deepEqual(
+      await errorOf(
+        await raw("/v1/call/sessions.list", post("{}", { authorization: `Bearer ${token}` })),
+      ),
+      { status: 403, code: "forbidden" },
+    );
+  }
   const missing = await caught(anonymous.client.sessions.list());
   assert.ok(missing instanceof NyteWireError);
   assert.equal(missing.code, "unauthorized");
@@ -517,16 +572,38 @@ test("no token is 401, a wrong token is 403, and the client surfaces both", asyn
 // Info
 // ---------------------------------------------------------------------------
 
+test("info reports current deployment capabilities without disclosing them before authentication", async () => {
+  let workspace = false;
+  const { client, raw } = await fixture({
+    server: { describe: () => ({ ...description, capabilities: { workspace } }) },
+  });
+  assert.equal((await raw("/v1/info", { headers: { authorization: "" } })).status, 401);
+  const first = (await client.info()).host;
+  assert.equal(first.kind, "described");
+  if (first.kind === "described") assert.equal(first.capabilities.workspace, false);
+  workspace = true;
+  const updated = (await client.info()).host;
+  assert.equal(updated.kind, "described");
+  if (updated.kind === "described") assert.equal(updated.capabilities.workspace, true);
+});
+
+test("info rejects unexpected host metadata instead of publishing secrets", async () => {
+  const { client, failures } = await fixture({
+    server: { describe: () => ({ ...description, token: "private-value" }) },
+  });
+  const error = await caught(client.info());
+  assert.ok(error instanceof NyteWireError);
+  assert.equal(error.code, "internal");
+  assert.equal(error.message, "Internal error");
+  assert.equal(failures.length, 1);
+});
+
 test("info answers the host version and wire version behind auth, on GET only", async () => {
   const { raw, client } = await fixture();
-  assert.deepEqual(await client.info(), { version: VERSION, wireVersion: 1 });
-  const response = await raw("/v1/info");
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    ok: true,
-    defined: true,
-    value: { version: VERSION, wireVersion: 1 },
-  });
+  const info = await client.info();
+  assert.equal(info.version, VERSION);
+  assert.equal(info.wireVersion, 1);
+  assert.equal(info.host.kind, "unspecified");
   assert.deepEqual(await errorOf(await raw("/v1/info", post("{}"))), {
     status: 405,
     code: "method_not_allowed",
@@ -586,8 +663,7 @@ test("a custom authorizer decides per request and a throwing one fails closed", 
     { kind: "deny", reason: "allow" },
   ]) {
     const malformed = await fixture({
-      // SAFETY: deliberately violate the callback contract to exercise an untyped JavaScript host.
-      server: { auth: { kind: "custom", authorize: () => decision as never } },
+      server: { auth: { kind: "custom", authorize: () => decision } },
     });
     assert.deepEqual(await errorOf(await malformed.raw("/v1/call/sessions.list", post("{}"))), {
       status: 403,
@@ -940,4 +1016,215 @@ test("a transport-level disconnect is not a normal end", async () => {
   assert.ok(error instanceof NyteTransportError);
   assert.equal(error.failure.kind, "disconnected");
   assert.deepEqual(kinds, ["synced"]);
+});
+
+for (const stop of ["close", "abort"] as const) {
+  test(`${stop} settles watch setup before a blocked SDK read resumes`, async () => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    const { raw, server } = await fixture({
+      wrap: (sdk) => ({
+        ...sdk,
+        async *watch() {
+          entered.resolve();
+          try {
+            await release.promise;
+            yield { kind: "synced", seq: 0 };
+          } finally {
+            finished.resolve();
+          }
+        },
+      }),
+    });
+    const controller = new AbortController();
+    const fetching = raw("/v1/watch?sessionId=blocked", { signal: controller.signal });
+    await entered.promise;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      release.resolve();
+    }, 1_000);
+    try {
+      if (stop === "close") server.close();
+      else controller.abort();
+      const response = await fetching;
+      assert.equal(timedOut, false, "the response must settle before the SDK read resumes");
+      assert.deepEqual(
+        await errorOf(response),
+        stop === "close" ? { status: 503, code: "closed" } : { status: 400, code: "invalid_input" },
+      );
+    } finally {
+      clearTimeout(timeout);
+      release.resolve();
+      await finished.promise;
+    }
+  });
+}
+
+test("close reaches a watching client before a blocked read and its late failure", async () => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<void>();
+  const { client, server, failures } = await fixture({
+    wrap: (sdk) => ({
+      ...sdk,
+      async *watch() {
+        try {
+          yield { kind: "synced", seq: 0 };
+          entered.resolve();
+          await release.promise;
+          throw new Error("SDK read failed after the server closed");
+        } finally {
+          finished.resolve();
+        }
+      },
+    }),
+  });
+  const iterator = client.watch({ sessionId: sessionId("blocked") })[Symbol.asyncIterator]();
+  await iterator.next();
+  const next = iterator.next();
+  await entered.promise;
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    release.resolve();
+  }, 1_000);
+  try {
+    server.close();
+    await assert.rejects(next, { name: "NyteWireError", code: "closed" });
+    assert.equal(timedOut, false, "the final frame must precede SDK completion");
+    release.resolve();
+    await finished.promise;
+    assert.deepEqual(failures, []);
+    assert.equal((await iterator.next()).done, true);
+  } finally {
+    clearTimeout(timeout);
+    release.resolve();
+    await finished.promise;
+    await iterator.return?.();
+  }
+});
+
+// Policies see parsed inputs, independently of credential authentication.
+test("a session-scoped phone can read and watch only its allowed session", async () => {
+  const allowedId = sessionId("phone-session");
+  const forbiddenId = sessionId("private-session");
+  const { nyte, client, raw } = await fixture({
+    server: {
+      permissions: {
+        calls: {
+          "sessions.snapshot": (input, request) =>
+            input.sessionId === allowedId && request.headers.has("authorization"),
+        },
+        watch: (sessionId) => sessionId === allowedId,
+      },
+    },
+  });
+  await nyte.sessions.create({ sessionId: allowedId });
+  await nyte.sessions.create({ sessionId: forbiddenId });
+  assert.equal(
+    (await client.sessions.snapshot({ sessionId: allowedId }))?.session.sessionId,
+    allowedId,
+  );
+  for (const forbiddenSessionId of [forbiddenId, sessionId("nonexistent")]) {
+    await assert.rejects(client.sessions.snapshot({ sessionId: forbiddenSessionId }), {
+      code: "forbidden",
+    });
+    assert.deepEqual(await errorOf(await raw(`/v1/watch?sessionId=${forbiddenSessionId}`)), {
+      status: 403,
+      code: "forbidden",
+    });
+  }
+  assert.ok((await take(client.watch({ sessionId: allowedId }), 1)).length > 0);
+  assert.equal((await client.info()).version, VERSION);
+
+  // Listing, creating, and sending are independent grants, not consequences of read access.
+  for (const operation of [
+    () => client.sessions.list(),
+    () => client.sessions.create(),
+    () => client.workspace.list(),
+    () => client.messages.send({ sessionId: allowedId, content: "must not be queued" }),
+  ]) {
+    await assert.rejects(operation(), { code: "forbidden" });
+  }
+  assert.deepEqual((await nyte.sessions.snapshot({ sessionId: allowedId }))?.pending, []);
+  assert.equal((await nyte.sessions.list()).items.length, 2);
+});
+
+test("permissions default to deny and run only after authentication and input validation", async () => {
+  const { raw } = await fixture({
+    server: {
+      permissions: {
+        calls: {
+          "sessions.rename": () => {
+            throw new Error("policy must not see unauthenticated or malformed input");
+          },
+        },
+      },
+    },
+  });
+  const body = JSON.stringify({ input: { sessionId: "private", name: "allowed" } });
+  assert.deepEqual(
+    await errorOf(await raw("/v1/call/sessions.rename", post(body, { authorization: "" }))),
+    { status: 401, code: "unauthorized" },
+  );
+  assert.deepEqual(await errorOf(await raw("/v1/call/sessions.rename", post("{}"))), {
+    status: 400,
+    code: "invalid_input",
+  });
+  assert.deepEqual(await errorOf(await raw("/v1/watch?sessionId=private")), {
+    status: 403,
+    code: "forbidden",
+  });
+});
+
+test("policy failures are redacted and preserve browser error visibility", async () => {
+  const failure = new Error("private device policy storage path");
+  const { raw, failures } = await fixture({
+    server: {
+      browserOrigins: ["http://app.test"],
+      permissions: {
+        calls: { "sessions.list": () => Promise.reject(failure) },
+        watch: () => Promise.reject(failure),
+      },
+    },
+  });
+  for (const [path, init] of [
+    ["/v1/call/sessions.list", post("{}", { origin: "http://app.test" })],
+    ["/v1/watch?sessionId=private", { headers: { origin: "http://app.test" } }],
+  ] satisfies [string, RequestInit][]) {
+    const response = await raw(path, init);
+    assert.equal(response.status, 500);
+    assert.equal(response.headers.get("access-control-allow-origin"), "http://app.test");
+    assert.ok(!(await response.text()).includes(failure.message));
+  }
+  assert.equal(failures.length, 2);
+  assert.ok(failures.every((item) => item.cause === failure));
+});
+
+test("close refuses calls and info, including a call awaiting permission", async () => {
+  const entered = Promise.withResolvers<void>();
+  const grant = Promise.withResolvers<boolean>();
+  const { nyte, server, client } = await fixture({
+    server: {
+      permissions: {
+        calls: {
+          "sessions.create": () => {
+            entered.resolve();
+            return grant.promise;
+          },
+        },
+      },
+    },
+  });
+  const pending = client.sessions.create();
+  await entered.promise;
+  server.close();
+  grant.resolve(true);
+  await assert.rejects(pending, { code: "closed" });
+  await assert.rejects(client.info(), { code: "closed" });
+  await assert.rejects(client.sessions.create(), { code: "closed" });
+  assert.deepEqual((await nyte.sessions.list()).items, []);
+  assert.ok(await nyte.sessions.create({ name: "host still works" }));
 });

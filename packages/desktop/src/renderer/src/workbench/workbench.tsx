@@ -6,14 +6,15 @@
  */
 import { create, props } from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/core";
+import { changesFromTurns } from "@nyte-ai/core/views";
 import { Icon, PanelToggleIcon } from "../components/icons";
 import type { IconName } from "../components/icons";
 import { focus, IconButton, ToggleIconButton } from "../components/ui";
 import { Menu, MenuItem } from "../components/menu.tsx";
-import { useHostState, useRunChanges } from "../queries.ts";
+import { useHostState, useSessionSnapshot } from "../queries.ts";
 import { layer, workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import {
@@ -69,7 +70,7 @@ const styles = create({
     minWidth: workbench.panelWidth,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderSubtle,
+    borderInlineStartColor: t.strokeTertiary,
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
   railHostCompact: { width: 44, minWidth: 44 },
@@ -325,6 +326,38 @@ function CompactWorkbenchRail({
   );
 }
 
+/**
+ * The declared line counts of one session, folded from the transcript the
+ * chat in this pane is already observing. The rail always names the active
+ * pane's session, so this shares that observation rather than opening a read
+ * of its own.
+ */
+function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const snapshot = useSessionSnapshot(sessionId);
+  const transcript = snapshot.data?.transcript;
+  const stats = useMemo(
+    () =>
+      changesFromTurns(transcript ?? []).reduce(
+        (total, file) => ({
+          added: total.added + file.added,
+          removed: total.removed + file.removed,
+        }),
+        { added: 0, removed: 0 },
+      ),
+    [transcript],
+  );
+  if (stats.added === 0 && stats.removed === 0) return null;
+  return (
+    <span
+      aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
+      {...props(styles.railStats)}
+    >
+      {stats.added > 0 && <span {...props(styles.railAdded)}>+{stats.added}</span>}
+      {stats.removed > 0 && <span {...props(styles.railRemoved)}>-{stats.removed}</span>}
+    </span>
+  );
+}
+
 function WorkbenchRail({
   viewKey,
   view,
@@ -340,11 +373,6 @@ function WorkbenchRail({
   readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
 }): ReactElement {
-  const changes = useRunChanges(sessionId, scope.kind === "project");
-  const stats = (changes.data ?? []).reduce(
-    (total, file) => ({ added: total.added + file.added, removed: total.removed + file.removed }),
-    { added: 0, removed: 0 },
-  );
   const tabs = view.openTabs.filter(
     (tab) => tab !== "terminal" && workbenchTabAvailable(scope, tab),
   );
@@ -434,15 +462,7 @@ function WorkbenchRail({
             onClick={() => workbenchController.actions.openTab(viewKey, "changes")}
           >
             <span {...props(styles.railLabel)}>Changes</span>
-            {(stats.added > 0 || stats.removed > 0) && (
-              <span
-                aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-                {...props(styles.railStats)}
-              >
-                {stats.added > 0 && <span {...props(styles.railAdded)}>+{stats.added}</span>}
-                {stats.removed > 0 && <span {...props(styles.railRemoved)}>-{stats.removed}</span>}
-              </span>
-            )}
+            {sessionId !== undefined && <RailChangeStats sessionId={sessionId} />}
           </RailRow>
         )}
         <RailRow

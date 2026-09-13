@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Nyte",
+    "slug": "nyte-ios",
+    "version": "0.1.0",
+    "icon": "../desktop/build/icon.png",
+    "orientation": "portrait",
+    "scheme": "nyte",
+    "userInterfaceStyle": "dark",
+    "platforms": ["ios"],
+    "ios": {
+      "bundleIdentifier": "dev.nyte.ios",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac.",
+        "NSCameraUsageDescription": "Take a photo to attach to a Nyte message."
+      }
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-secure-store",
+      "./plugins/with-scene-lifecycle.cjs",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos to attach to a Nyte message.",
+          "cameraPermission": "Take a photo to attach to a Nyte message.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "reactCompiler": true
+    }
+  }
+}

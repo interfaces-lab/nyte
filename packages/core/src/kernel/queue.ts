@@ -4,6 +4,7 @@
  * of them lands when is the runner's policy (see `step.ts`), not this file's.
  */
 import { validateHeadName } from "@nyte-ai/protocol";
+import { mergeQueuedLanes } from "./queue-order.ts";
 import {
   CANCELLED_PREFIX,
   cancelledRef,
@@ -19,32 +20,6 @@ import type { Objects, Session } from "./store.ts";
 import type { UserMessage } from "@nyte-ai/schema";
 
 const MAX_SUBMIT_ATTEMPTS = 1_000;
-
-/** Merge lanes chronologically without re-sorting a lane's chosen delivery order. */
-export function mergeQueuedLanes<T>(
-  items: readonly T[],
-  options: { readonly lane: (item: T) => string; readonly compare: (left: T, right: T) => number },
-): T[] {
-  // A k-way merge over lane cursors. Ties keep the earlier lane, as the lanes were first seen.
-  const lanes = [...Map.groupBy(items, options.lane).values()].map((queue) => ({
-    queue,
-    index: 0,
-  }));
-  const ordered: T[] = [];
-  for (let count = 0; count < items.length; count += 1) {
-    let best: { readonly lane: (typeof lanes)[number]; readonly item: T } | undefined;
-    for (const lane of lanes) {
-      const item = lane.queue[lane.index];
-      if (item !== undefined && (best === undefined || options.compare(item, best.item) < 0)) {
-        best = { lane, item };
-      }
-    }
-    if (best === undefined) break;
-    ordered.push(best.item);
-    best.lane.index += 1;
-  }
-  return ordered;
-}
 
 export type SubmitOutcome =
   | { readonly kind: "queued"; readonly change: Oid }
@@ -224,8 +199,10 @@ export async function submit(
       body: options.body,
       at: Date.now(),
     };
+    const keyed: Change =
+      options.key === undefined ? baseChange : { ...baseChange, key: options.key };
     const change: Change =
-      options.actor === undefined ? baseChange : { ...baseChange, author: options.actor };
+      options.actor === undefined ? keyed : { ...keyed, author: options.actor };
     const oid = onlyOid(await session.objects.put([change]));
     const updates: RefUpdate[] = [{ name: tipName, from: tip, to: oid }];
     if (receiptName !== undefined) {

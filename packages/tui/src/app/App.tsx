@@ -1,18 +1,10 @@
 /**
- * The screen: transcript above, an opaque live column below with the pending
- * gutter, the composer, its status rule, the ephemeral slot, and the hint row.
- * Everything that changes is read from the UI store and the theme store; the
- * leaf widgets that only draw are mounted where the store says they belong.
- *
- * The ephemeral slot borrows rows from the transcript's tail rather than
- * taking them: a negative bottom margin on the scroll box cancels the slot's
- * height, so the viewport keeps its size, nothing re-anchors, and the
- * composer rides up over the chat as far as the slot is tall. The same count
- * goes onto the transcript's bottom padding, so a view pinned to the bottom
- * keeps its newest rows above the cover.
+ * The screen: a transcript, a one-row latest control, and an opaque live
+ * column with the pending gutter, composer, status rule, ephemeral slot, and
+ * hints. Every region has its own rows. Opening a notice or picker shrinks the
+ * transcript viewport, whose exact text anchor keeps history in place.
  */
 import {
-  MacOSScrollAccel,
   RenderableEvents,
   type BoxRenderable,
   type CliRenderer,
@@ -23,11 +15,18 @@ import {
 import { onBlur, onFocus, render, useTerminalDimensions } from "@opentui/solid";
 import { createEffect, createMemo, createSignal, For, on, onMount } from "solid-js";
 import { createStore } from "solid-js/store";
-import { COMPOSER_PLACEHOLDER, keyStrokes, TRANSCRIPT_BOTTOM_PADDING } from "../constants.ts";
+import {
+  COMPOSER_PLACEHOLDER,
+  keycap,
+  keyStrokes,
+  TRANSCRIPT_BOTTOM_PADDING,
+} from "../constants.ts";
+import { createScrollAcceleration } from "../scrolling.ts";
 import { createChatKeymap } from "../keymap.ts";
 import { LabelSyntax } from "../label-syntax.ts";
 import type { LaneRoles } from "../lanes.ts";
 import { PendingGutter } from "../pending-gutter.ts";
+import { PendingTail } from "../pending-tail.ts";
 import type { ActiveCliTheme, CliTheme } from "../theme.ts";
 import {
   createSubtleSyntaxStyle,
@@ -111,6 +110,8 @@ function App(props: AppProps): BoxRenderable {
   const userBlockWidth = (): number => Math.max(1, renderer.width - 4);
   const dimensions = useTerminalDimensions();
   const [inputFocused, setInputFocused] = createSignal(true);
+  const [followingLatest, setFollowingLatest] = createSignal(true);
+  const [latestHovered, setLatestHovered] = createSignal(false);
   const inputWidthMethod = renderer.widthMethod;
   const pendingGutter = new PendingGutter(renderer, theme, roles, nextId);
 
@@ -123,6 +124,9 @@ function App(props: AppProps): BoxRenderable {
   let panelHost!: BoxRenderable;
   let screenHost!: BoxRenderable;
   let overlayHost!: BoxRenderable;
+  let view!: TranscriptView;
+  let acceleratedScrolling = false;
+  const newScrollAcceleration = () => createScrollAcceleration(acceleratedScrolling);
 
   const rows = createMemo(() => slotRows(ui.slot, dimensions().height));
   const noticeLines = createMemo(() =>
@@ -181,9 +185,9 @@ function App(props: AppProps): BoxRenderable {
         scrollY
         paddingLeft={1}
         paddingRight={1}
-        paddingBottom={TRANSCRIPT_BOTTOM_PADDING + rows()}
-        marginBottom={-rows()}
-        scrollAcceleration={new MacOSScrollAccel()}
+        paddingBottom={TRANSCRIPT_BOTTOM_PADDING}
+        onMouseScroll={() => view.beginManualScroll()}
+        scrollAcceleration={newScrollAcceleration()}
         verticalScrollbarOptions={{
           trackOptions: {
             backgroundColor: theme.scrollbarTrack,
@@ -191,6 +195,37 @@ function App(props: AppProps): BoxRenderable {
           },
         }}
       />
+      <box
+        id="latest"
+        width="100%"
+        height={1}
+        flexShrink={0}
+        flexDirection="row"
+        justifyContent="flex-end"
+        visible={ui.screen === undefined}
+        paddingRight={2}
+      >
+        <box
+          id="latest-control"
+          paddingLeft={1}
+          visible={!followingLatest()}
+          onMouseOver={() => setLatestHovered(true)}
+          onMouseOut={() => setLatestHovered(false)}
+          onMouseUp={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            view.returnToLatest();
+          }}
+        >
+          <text
+            id="latest-action"
+            fg={latestHovered() ? theme.accent : theme.dim}
+            selectable={false}
+          >
+            {`${keycap("chat.scroll.latest")} latest ↓`}
+          </text>
+        </box>
+      </box>
       <box
         id="live"
         width="100%"
@@ -363,11 +398,14 @@ function App(props: AppProps): BoxRenderable {
     toolOutput: new ToolOutputExpansion(),
     nextId,
     openPath,
+    onFollowModeChange: setFollowingLatest,
     children: () => [],
     userBlocks,
     userBlockWidth,
   };
-  const view = new TranscriptView(transcript);
+  // Steer messages draw at the transcript's tail, in the shape of the turns they become.
+  const pendingTail = new PendingTail(transcript, roles);
+  view = new TranscriptView(transcript, { tail: pendingTail.container });
   // Syntax styles are built from theme roles, so a retheme rebuilds them and recolors the view.
   createEffect(
     on(
@@ -376,6 +414,7 @@ function App(props: AppProps): BoxRenderable {
         transcript.syntaxStyle = createSyntaxStyle(theme);
         transcript.subtleSyntaxStyle = createSubtleSyntaxStyle(theme);
         pendingGutter.retheme();
+        pendingTail.retheme();
         view.retheme();
       },
       { defer: true },
@@ -396,10 +435,16 @@ function App(props: AppProps): BoxRenderable {
     input,
     inputWidthMethod,
     pendingGutter,
+    pendingTail,
     taskStatus,
     pluginSlot,
     previewSlot,
     focus: focusController,
+    newScrollAcceleration,
+    setScrollAcceleration: (accelerated) => {
+      acceleratedScrolling = accelerated;
+      scroll.scrollAcceleration = newScrollAcceleration();
+    },
     nextId,
     closeCompletion: () => undefined,
     dismissInfoPanel: undefined,

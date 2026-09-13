@@ -286,3 +286,12 @@ export function messageDraftText(text: string): string {
     })
     .join("");
 }
+
+/** Sidebar drafts use the first visible line, including selected skills and file labels. */
+export function draftPreviewText(text: string): string {
+  const visible = messageParts(text, { form: "draft", files: new Map(), complete: true })
+    .map((part) => (part.kind === "text" ? part.text : referenceLabel(part.reference)))
+    .join("")
+    .trim();
+  return visible.split(/\r?\n/u)[0] || "Draft";
+}

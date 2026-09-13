@@ -1,13 +1,14 @@
 import {
   bold,
   BoxRenderable,
+  CliRenderEvents,
   fg,
-  MacOSScrollAccel,
   RenderableEvents,
   ScrollBoxRenderable,
   StyledText,
   TextRenderable,
 } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import { GLYPHS, keycap } from "./constants.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
@@ -25,24 +26,26 @@ type UsagePanelState =
 /** A read-only report. The shell owns focus; the native scroll box owns scrolling and selection. */
 export class UsagePanel implements EphemeralPanel {
   readonly container: BoxRenderable;
-  // Mounted over the root after openPanel, without borrowing transcript rows.
-  readonly rows = 0;
+  private readonly renderer: CliRenderer;
+  private readonly onRows: (rows: number) => void;
   readonly hints = `${keycap("chat.interrupt")} close · ${keycap("chat.history.previous")}/${keycap("chat.history.next")} scroll · ${keycap("chat.scroll.page.up")}/${keycap("chat.scroll.page.down")} page`;
   private readonly scroll: ScrollBoxRenderable;
   private readonly text: TextRenderable;
   private readonly theme: CliTheme;
   private state: UsagePanelState = { kind: "loading" };
 
-  constructor(shell: Pick<Shell, "renderer" | "keymap" | "theme" | "nextId">, onClose: () => void) {
+  constructor(
+    shell: Pick<Shell, "renderer" | "keymap" | "theme" | "nextId" | "newScrollAcceleration">,
+    onClose: () => void,
+    onRows: (rows: number) => void,
+  ) {
+    this.renderer = shell.renderer;
+    this.onRows = onRows;
     this.theme = shell.theme;
     this.container = new BoxRenderable(shell.renderer, {
       id: shell.nextId("usage"),
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: "100%",
-      height: "100%",
-      zIndex: 1,
+      height: this.rows,
+      flexShrink: 0,
       flexDirection: "column",
       backgroundColor: shell.theme.background,
       focusable: true,
@@ -61,7 +64,7 @@ export class UsagePanel implements EphemeralPanel {
       scrollX: false,
       scrollY: true,
       stickyScroll: false,
-      scrollAcceleration: new MacOSScrollAccel(),
+      scrollAcceleration: shell.newScrollAcceleration(),
       verticalScrollbarOptions: {
         trackOptions: {
           backgroundColor: shell.theme.scrollbarTrack,
@@ -78,17 +81,10 @@ export class UsagePanel implements EphemeralPanel {
       selectionBg: shell.theme.selectionBackground,
       selectionFg: shell.theme.selectionForeground,
     });
-    const hints = new TextRenderable(shell.renderer, {
-      content: this.hints,
-      fg: shell.theme.dim,
-      flexShrink: 0,
-      wrapMode: "word",
-      selectable: false,
-    });
     this.scroll.add(this.text);
     this.container.add(title);
     this.container.add(this.scroll);
-    this.container.add(hints);
+
     const onSizeChange = this.scroll.viewport.onSizeChange;
     this.scroll.viewport.onSizeChange = () => {
       onSizeChange?.call(this.scroll.viewport);
@@ -134,13 +130,29 @@ export class UsagePanel implements EphemeralPanel {
         },
       },
     });
-    this.container.once(RenderableEvents.DESTROYED, unregister);
+    shell.renderer.on(CliRenderEvents.RESIZE, this.resize);
+    this.container.once(RenderableEvents.DESTROYED, () => {
+      unregister();
+      shell.renderer.off(CliRenderEvents.RESIZE, this.resize);
+    });
     this.paint();
   }
+
+  get rows(): number {
+    return this.state.kind === "ready"
+      ? Math.max(3, Math.min(16, Math.floor(this.renderer.height * 0.4)))
+      : 2;
+  }
+
+  private readonly resize = (): void => {
+    this.container.height = this.rows;
+    this.onRows(this.rows);
+  };
 
   update(state: UsagePanelState): void {
     if (this.container.isDestroyed) return;
     this.state = state;
+    this.resize();
     this.paint();
   }
 
@@ -159,27 +171,20 @@ export class UsagePanel implements EphemeralPanel {
 
   private paint(): void {
     if (this.container.isDestroyed) return;
-    // Keep the same text and scroll renderables when headroom arrives. Rebuilding
+    // Keep the same text and scroll renderables when local history arrives. Rebuilding
     // the content tree would reset the viewport and discard a text selection.
     // Percent widths can include the scrollbar column and clip a character at each wrap.
     this.text.width = Math.max(1, this.scroll.viewport.width);
     switch (this.state.kind) {
-      case "loading": {
-        const skeleton = GLYPHS.rule.repeat(
-          Math.max(1, Math.min(BAR_CELLS, this.scroll.viewport.width)),
-        );
-        this.text.content = new StyledText([
-          fg(this.theme.foreground)("Loading workspace usage…\n\n"),
-          fg(this.theme.muted)(`${skeleton}\n${skeleton}\n${skeleton}`),
-        ]);
+      case "loading":
+        this.text.content = new StyledText([fg(this.theme.muted)("Reading usage…")]);
         return;
-      }
       case "ready":
         this.text.content = usageText(this.state.card, this.scroll.viewport.width, this.theme);
         return;
       case "failed":
         this.text.content = new StyledText([
-          fg(this.theme.error)(`Failed to load workspace usage: ${this.state.message}`),
+          fg(this.theme.error)(`Failed to load usage: ${this.state.message}`),
         ]);
         return;
       default: {
@@ -222,6 +227,46 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
       line("");
     }
   };
+  for (const account of card.accounts) {
+    heading(`${account.provider === "anthropic" ? "Claude" : "Codex"} · account limits`);
+    switch (account.kind) {
+      case "unavailable":
+        line("Limits unavailable · requires a Nyte subscription login");
+        break;
+      case "failed":
+        line(account.message);
+        break;
+      case "ready":
+        for (const window of account.limits.windows) {
+          const label =
+            window.id === "five_hour"
+              ? "5 hours"
+              : window.id === "seven_day"
+                ? "Weekly"
+                : window.id.startsWith("seven_day_")
+                  ? `Weekly ${window.id.slice("seven_day_".length)}`
+                  : window.id;
+          const used = Math.round(window.usedPercent);
+          const reset =
+            window.resetsAt === undefined
+              ? "reset unknown"
+              : `resets ${new Date(window.resetsAt).toLocaleString(undefined, {
+                  weekday: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`;
+          line(`${label} · ${String(used)}% used · ${String(100 - used)}% left · ${reset}`);
+          bar(used / 100, used >= 95 ? theme.error : used >= 85 ? theme.warning : theme.accent);
+          line("");
+        }
+        break;
+      default: {
+        const exhaustive: never = account;
+        return exhaustive;
+      }
+    }
+    line("");
+  }
   const workspace = card.workspace;
   if (workspace.kind === "empty") {
     heading(`${workspace.title} · ${workspace.message}`);
@@ -232,51 +277,21 @@ function usageText(card: UsageCard, width: number, theme: CliTheme): StyledText 
     for (const breakdown of workspace.breakdown) line(breakdown);
     if (workspace.thisChat !== undefined) line(workspace.thisChat);
   }
-  line("");
-  heading("Claude Code · all local projects");
-  line("All-time local history · separate from this workspace");
-  const claudeCode = card.claudeCode;
-  if (claudeCode.kind === "message") {
-    line(claudeCode.message);
-  } else {
-    line(claudeCode.total);
-    rows(claudeCode.rows);
+  for (const [name, history] of [
+    ["Claude Code", card.claudeCode],
+    ["Codex", card.codex],
+  ] as const) {
     line("");
-    for (const breakdown of claudeCode.breakdown) line(breakdown);
-    for (const note of claudeCode.notes) line(note);
-  }
-  const headroom = card.headroom;
-  if (headroom.kind !== "none") {
-    line("");
-    heading("Account limits");
-  }
-  switch (headroom.kind) {
-    case "none":
-      break;
-    case "checking":
-      line(`${headroom.name} · checking…`);
-      break;
-    case "unavailable":
-      line(`${headroom.name} · not available`);
-      break;
-    case "known":
-      line(`${headroom.name} · ${headroom.meta}${headroom.stale ? " (stale)" : ""}`);
-      for (const window of headroom.windows) {
-        line(`${window.label.trim()} · ${window.remaining.trim()} remaining · ${window.reset}`);
-        bar(
-          window.share,
-          window.tone === "critical"
-            ? theme.error
-            : window.tone === "warning"
-              ? theme.warning
-              : theme.accent,
-        );
-        line("");
-      }
-      break;
-    default: {
-      const exhaustive: never = headroom;
-      return exhaustive;
+    heading(`${name} · all local projects`);
+    line("All-time local history · separate from this workspace");
+    if (history.kind === "message") {
+      line(history.message);
+    } else {
+      line(history.total);
+      rows(history.rows);
+      line("");
+      for (const breakdown of history.breakdown) line(breakdown);
+      for (const note of history.notes) line(note);
     }
   }
   return new StyledText(chunks);

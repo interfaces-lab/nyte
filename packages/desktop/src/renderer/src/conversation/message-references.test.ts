@@ -3,6 +3,7 @@ import { describe, test } from "vitest";
 import { composerMessageContent, composerPromptText } from "./composer-send.ts";
 import {
   CONVERSATION_MENTION,
+  draftPreviewText,
   fileFromUrl,
   messageDraftText,
   messageParts,
@@ -109,4 +110,15 @@ describe("message references", () => {
     ]);
     assert.equal(referenceText(skill), "[$review](/skills/review/SKILL.md)");
   });
+});
+
+test("sidebar draft previews preserve visible skills without exposing token syntax", () => {
+  assert.equal(
+    draftPreviewText("[$review](/skills/review/SKILL.md) Fix this\nMore detail"),
+    "/review Fix this",
+  );
+  assert.equal(draftPreviewText("[$review](/skills/review/SKILL.md)"), "/review");
+  assert.equal(draftPreviewText("/rev"), "/rev");
+  assert.equal(draftPreviewText("@file:///project/example.ts Fix this"), "example.ts Fix this");
+  assert.equal(draftPreviewText("  \n  "), "Draft");
 });

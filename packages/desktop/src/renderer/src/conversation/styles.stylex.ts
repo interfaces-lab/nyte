@@ -6,7 +6,7 @@
  * Based on https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/frontend/src/recovered/features/conversation/workspace/view.css
  */
 import * as stylex from "@stylexjs/stylex";
-import { conversation, diffView, layer } from "../theme/schema.stylex.ts";
+import { conversation, diffView, layer, tray } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
 const caretBlink = stylex.keyframes({
@@ -87,7 +87,7 @@ export const proseStyles = stylex.create({
     borderWidth: { default: 1, ":is(a code)": 0 },
     borderStyle: { default: "solid", ":is(a code)": "none" },
     borderColor: { default: t.strokeTertiary, ":is(a code)": "transparent" },
-    backgroundColor: { default: t.bgHover, ":is(a code)": "transparent" },
+    backgroundColor: { default: t.fillGhostHover, ":is(a code)": "transparent" },
     color: "inherit",
     fontFamily: t.fontMono,
     fontSize: t.fontSm,
@@ -119,7 +119,7 @@ export const proseStyles = stylex.create({
     paddingInlineStart: 12,
     borderInlineStartWidth: 2,
     borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.borderDefault,
+    borderInlineStartColor: t.strokePrimary,
     color: t.textSecondary,
   },
   rule: {
@@ -240,44 +240,14 @@ export const composerStyles = stylex.create({
   region: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: tray.gap,
     width: `min(${conversation.measure}, 100%)`,
     marginInline: "auto",
     paddingInline: conversation.gutter,
     paddingTop: 8,
     paddingBottom: conversation.composerInset,
   },
-  queueCard: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    paddingBlock: 4,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: t.composerRing,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.composerBg,
-  },
-  queueHeader: {
-    display: "flex",
-    alignItems: "center",
-    minHeight: 24,
-    paddingInline: 12,
-    color: t.textSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingBase,
-  },
-  queueList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    minWidth: 0,
-    maxHeight: 200,
-    paddingBlock: 2,
-    paddingInline: 4,
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-  },
+  queueList: { maxHeight: 200 },
   queueRow: {
     "--_queue-actions-opacity": {
       default: "0",
@@ -299,11 +269,11 @@ export const composerStyles = stylex.create({
     alignItems: "flex-start",
     gap: 8,
     minWidth: 0,
-    minHeight: 32,
-    paddingBlock: 2,
-    paddingInlineStart: 8,
+    minHeight: tray.rowHeight,
+    paddingBlock: 0,
+    paddingInlineStart: tray.rowInset,
     paddingInlineEnd: 4,
-    borderRadius: 4,
+    borderRadius: t.radiusBase,
     backgroundColor: {
       default: "transparent",
       ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
@@ -315,20 +285,14 @@ export const composerStyles = stylex.create({
       "[data-editing='true']": `inset 0 0 0 1px ${t.composerRingActive}`,
     },
     color: t.textSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingBase,
+    fontSize: t.fontBase,
+    lineHeight: tray.lineHeight,
     transitionProperty: "background-color",
     transitionDuration: {
       default: "100ms",
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: "ease-in-out",
-  },
-  queueIndicator: {
-    display: "inline-flex",
-    flexShrink: 0,
-    marginBlockStart: 8,
-    color: t.iconTertiary,
   },
   queueMessage: { flex: 1, minWidth: 0 },
   queuePreview: {
@@ -339,17 +303,6 @@ export const composerStyles = stylex.create({
     overflowWrap: "anywhere",
     WebkitBoxOrient: "vertical",
     WebkitLineClamp: 2,
-  },
-  queueLane: {
-    flexShrink: 0,
-    marginBlockStart: 4,
-    paddingBlock: 2,
-    paddingInline: 5,
-    borderRadius: t.radiusBase,
-    backgroundColor: t.fillSecondary,
-    color: t.textTertiary,
-    fontSize: t.fontXs,
-    lineHeight: t.leadingXs,
   },
   queueActions: {
     display: "flex",
@@ -365,17 +318,6 @@ export const composerStyles = stylex.create({
       "@media (prefers-reduced-motion: reduce)": "0s",
     },
     transitionTimingFunction: "ease-in-out",
-  },
-  queueSend: {
-    minHeight: 28,
-    paddingInline: 6,
-    borderRadius: 4,
-    backgroundColor: {
-      default: "transparent",
-      ":hover:not(:disabled)": t.fillGhostHover,
-    },
-    color: { default: t.textSecondary, ":hover:not(:disabled)": t.textPrimary },
-    whiteSpace: "nowrap",
   },
   queued: {
     display: "flex",
@@ -405,15 +347,6 @@ export const composerStyles = stylex.create({
     overflowWrap: "anywhere",
   },
   queuedError: { color: t.textDanger },
-  editingNotice: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    minHeight: 34,
-    paddingInline: 12,
-    color: t.textSecondary,
-    fontSize: t.fontSm,
-  },
   queuedAction: {
     padding: 0,
     borderStyle: "none",
@@ -444,7 +377,7 @@ export const composerStyles = stylex.create({
     borderRadius: t.radiusFull,
     backgroundColor: {
       default: t.composerBg,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillSecondaryHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
     },
     boxShadow: `0 1px 3px ${t.shadowControlColor}`,
     color: t.iconSecondary,
@@ -584,6 +517,18 @@ export const composerStyles = stylex.create({
   },
   editorHost: { position: "relative", flex: 1, minWidth: 64 },
   editorParagraph: { margin: 0 },
+  messageLink: {
+    color: "inherit",
+    textDecorationLine: { default: "none", ":hover": "underline" },
+    cursor: "pointer",
+  },
+  readOnly: {
+    outlineStyle: "none",
+    minWidth: 0,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
   editorCaret: {
     position: "absolute",
     insetBlockStart: 0,
@@ -661,18 +606,10 @@ export const composerStyles = stylex.create({
     flexShrink: 0,
     alignItems: "baseline",
     verticalAlign: "baseline",
-    maxWidth: 240,
-    paddingInline: 4,
-    // The 1px block padding is paid back by the margin, so the chip's margin
-    // box equals the line's leading and a chip never changes its line height.
-    paddingBlock: 1,
-    marginBlock: -1,
+    maxWidth: "min(240px, 100%)",
+    padding: 0,
     borderStyle: "none",
-    borderRadius: 6,
-    backgroundColor: {
-      default: t.fillSecondary,
-      "[data-openable='true']:hover": t.fillSecondaryHover,
-    },
+    backgroundColor: "transparent",
     color: t.textCyan,
     fontSize: "inherit",
     fontWeight: 400,
@@ -680,7 +617,7 @@ export const composerStyles = stylex.create({
     whiteSpace: "nowrap",
     cursor: { default: null, "[data-openable='true']": "pointer" },
     opacity: { default: null, "[data-openable='true']:active": 0.7 },
-    transitionProperty: "background-color, opacity",
+    transitionProperty: "opacity",
     transitionDuration: {
       default: t.durationFast,
       "@media (prefers-reduced-motion: reduce)": "0s",
@@ -769,7 +706,7 @@ export const composerStyles = stylex.create({
     borderRadius: t.radiusFull,
     backgroundColor: {
       default: t.fillSecondary,
-      ":hover:not(:disabled)": t.fillSecondaryHover,
+      ":hover:not(:disabled)": t.fillGhostHover,
     },
     color: t.iconSecondary,
     cursor: { default: "pointer", ":disabled": "default" },
@@ -837,6 +774,7 @@ export const composerStyles = stylex.create({
       ":hover": t.iconSecondary,
       "[aria-selected='true']": t.iconSecondary,
     },
+    position: "relative",
     display: "grid",
     gridTemplateColumns: "12px minmax(0, 1fr) auto",
     boxSizing: "border-box",
@@ -846,10 +784,7 @@ export const composerStyles = stylex.create({
     marginBlockEnd: 1,
     paddingBlock: 4,
     paddingInline: 8,
-    // Every item carries the hairline slot so group starts do not grow taller.
-    borderBlockStartWidth: 1,
-    borderBlockStartStyle: "solid",
-    borderBlockStartColor: "transparent",
+    borderStyle: "none",
     borderRadius: t.radiusBase,
     outline: "none",
     backgroundColor: {
@@ -912,11 +847,15 @@ export const composerStyles = stylex.create({
   },
   suggestionGroupStart: {
     marginBlockStart: 5,
-    // The highlight covers the hairline, so drop it while the item is active.
-    borderBlockStartColor: {
-      default: t.strokeTertiary,
-      ":hover": "transparent",
-      "[aria-selected='true']": "transparent",
+    // A section divider sits in the gap, independent of the rounded row highlight.
+    "::before": {
+      content: '""',
+      position: "absolute",
+      insetInline: 0,
+      top: -3,
+      height: 1,
+      backgroundColor: t.strokeTertiary,
+      pointerEvents: "none",
     },
   },
   suggestionEmpty: {
@@ -1067,7 +1006,7 @@ export const diffStyles = stylex.create({
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: t.strokeTertiary,
-    backgroundColor: t.bgChrome,
+    backgroundColor: t.bgBase,
     color: "inherit",
     font: "inherit",
     textAlign: "start",
@@ -1149,7 +1088,7 @@ export const diffStyles = stylex.create({
     "--diffs-bg-buffer-override": t.bgEditor,
     "--diffs-bg-context-override": t.bgEditor,
     "--diffs-bg-context-gutter-override": t.bgEditor,
-    "--diffs-bg-separator-override": t.bgFaint,
+    "--diffs-bg-separator-override": t.fillSecondary,
     "--diffs-bg-addition-override": t.diffAddedLineBg,
     "--diffs-bg-deletion-override": t.diffRemovedLineBg,
     "--diffs-bg-addition-emphasis-override": t.diffAddedTextBg,
@@ -1425,7 +1364,6 @@ export const toolGroupStyles = stylex.create({
     cursor: "pointer",
     userSelect: "none",
   },
-  failed: { color: t.textDanger },
   verb: { flexShrink: 0 },
   summary: {
     minWidth: 0,
@@ -1501,7 +1439,7 @@ export const toolGroupStyles = stylex.create({
   thinking: { minWidth: 0, opacity: 0.68 },
 });
 
-export const USER_MESSAGE_PREVIEW_HEIGHT = 240;
+export const USER_MESSAGE_PREVIEW_LINES = 3.5;
 
 export const turnStyles = stylex.create({
   turn: {
@@ -1529,7 +1467,7 @@ export const turnStyles = stylex.create({
     marginBottom: 4,
     "--_user-prompt-shadow": {
       default: "none",
-      "[data-sticky-active='true']": `0 1px 2px ${t.shadowControlColor}`,
+      "[data-sticky-active='true']": t.conversationUserShadow,
     },
   },
   userPromptShell: {
@@ -1569,7 +1507,7 @@ export const turnStyles = stylex.create({
     transitionTimingFunction: t.easeOut,
   },
   userPreview: { overflow: "hidden" },
-  userPreviewCollapsed: { maxHeight: USER_MESSAGE_PREVIEW_HEIGHT },
+  userPreviewCollapsed: { maxHeight: `calc(${t.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})` },
   userPreviewFade: {
     maskImage: "linear-gradient(to bottom, #000 calc(100% - 48px), transparent)",
   },
@@ -1593,6 +1531,7 @@ export const turnStyles = stylex.create({
     paddingBlockEnd: 8,
   },
   userPromptHit: {
+    outlineStyle: "none",
     appearance: "none",
     display: "block",
     boxSizing: "border-box",
@@ -1619,7 +1558,8 @@ export const turnStyles = stylex.create({
     },
     borderColor: {
       default: t.conversationUserRing,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.strokePrimary },
+      ":has(:focus-visible)": t.conversationUserRingActive,
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.conversationUserRingActive },
     },
     cursor: "text",
     outlineStyle: "none",
@@ -1802,19 +1742,6 @@ export const turnStyles = stylex.create({
   },
   noticeError: {
     color: t.textDanger,
-  },
-  event: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    width: "fit-content",
-    maxWidth: "100%",
-    minWidth: 0,
-    minHeight: conversation.rowMinHeight,
-    color: t.textTertiary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    userSelect: "text",
   },
   history: { display: "flex", flexDirection: "column", minWidth: 0 },
   historyToggle: {

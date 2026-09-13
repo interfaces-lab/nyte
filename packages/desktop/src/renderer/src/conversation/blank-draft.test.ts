@@ -100,6 +100,77 @@ test("deleting the open draft replaces it with an empty chat", () => {
   assert.notEqual(controller.viewState.readBlank("primary").id, draftId);
 });
 
+test("active draft removal does not depend on the sidebar content index", () => {
+  const controller = new PaneController({ storageKey: "remove-active-empty-draft" });
+  writeDraft(controller, "Submitted text");
+  const draftId = controller.viewState.readBlank("primary").id;
+  writeDraft(controller, "");
+
+  assert.deepEqual(controller.viewState.drafts(), []);
+  assert.equal(controller.viewState.removeDraft(draftId), true);
+  assert.notEqual(controller.viewState.readBlank("primary").id, draftId);
+});
+
+test("taking a draft owns the live editor document and clears the pane immediately", () => {
+  const controller = new PaneController({ storageKey: "take-live-draft" });
+  writeDraft(controller, "Stale parent text");
+  const composer = controller.viewState.readBlank("primary").composer;
+  const text = "Pasted reference\n\nFirst request";
+  const published: string[] = [];
+  const unsubscribe = controller.viewState.subscribe(() => {
+    published.push(controller.viewState.readBlank("primary").composer.draft);
+  });
+  const submitted = controller.viewState.takeBlank("primary", {
+    ...composer,
+    draft: text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+
+  assert.equal(submitted.composer.draft, text);
+  assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
+  assert.deepEqual(controller.viewState.drafts(), []);
+  assert.deepEqual(published, [""]);
+
+  controller.viewState.restoreBlank("primary", submitted);
+  assert.equal(controller.viewState.readBlank("primary").composer.draft, text);
+  unsubscribe();
+});
+
+test("restoring a failed send parks it instead of replacing a newer draft", () => {
+  const controller = new PaneController({ storageKey: "restore-sent-draft" });
+  writeDraft(controller, "First request");
+  const submitted = controller.viewState.takeBlank(
+    "primary",
+    controller.viewState.readBlank("primary").composer,
+  );
+  writeDraft(controller, "Second request");
+
+  controller.viewState.restoreBlank("primary", submitted);
+
+  assert.equal(controller.viewState.readBlank("primary").composer.draft, "Second request");
+  assert.deepEqual(
+    controller.viewState
+      .drafts()
+      .map((draft) => draft.composer.draft)
+      .sort(),
+    ["First request", "Second request"],
+  );
+});
+
+test("late removal of a parked draft preserves the pane's newer draft", () => {
+  const controller = new PaneController({ storageKey: "late-draft-removal" });
+  writeDraft(controller, "Already submitted");
+  const submittedId = controller.viewState.readBlank("primary").id;
+  controller.newChat();
+  writeDraft(controller, "New request");
+  const currentId = controller.viewState.readBlank("primary").id;
+
+  assert.equal(controller.viewState.removeDraft(submittedId), true);
+  assert.equal(controller.viewState.readBlank("primary").id, currentId);
+  assert.equal(controller.viewState.readBlank("primary").composer.draft, "New request");
+});
+
 test("workspaces and split panes keep independent drafts", () => {
   const firstWorkspace = new PaneController({ storageKey: "first" });
   const secondWorkspace = new PaneController({ storageKey: "second" });

@@ -1,5 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../../../../tsconfig.base.json",
-  "include": ["src", "scripts"]
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "plugins": [{ "name": "workflow" }]
+  },
+  "include": ["src", "scripts", "workflows", "test", "fixtures", "nitro.config.ts"]
 }

@@ -7,7 +7,7 @@ import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import type { SessionMark } from "../chrome/sidebar-view.ts";
+import type { SessionMark } from "@nyte-ai/core/client";
 import { Icon, type IconName } from "./icons";
 import { Spinner } from "./spinner.tsx";
 
@@ -86,7 +86,7 @@ const styles = stylex.create({
     color: t.textPrimary,
     backgroundColor: {
       default: t.fillSecondary,
-      ":hover:not(:disabled)": t.fillSecondaryHover,
+      ":hover:not(:disabled)": t.fillGhostHover,
     },
     opacity: { ":disabled": 0.5 },
   },
@@ -128,6 +128,7 @@ const styles = stylex.create({
   statusWaiting: { backgroundColor: t.textWarning },
   statusFailed: { backgroundColor: t.textDanger },
   statusIdle: { backgroundColor: "transparent" },
+  statusUnread: { backgroundColor: t.textAccent },
   kbd: {
     display: "inline-flex",
     alignItems: "center",
@@ -378,12 +379,22 @@ function statusMarkStyle(mark: SessionMark) {
   }
 }
 
-export function StatusDot({ mark }: { mark: SessionMark }): ReactElement {
+export function StatusDot({
+  mark,
+  unread = false,
+}: {
+  mark: SessionMark;
+  unread?: boolean;
+}): ReactElement | null {
+  if (mark === "idle" && !unread) return null;
   return (
     <span
       role="img"
-      aria-label={STATUS_MARK_LABEL[mark]}
-      {...stylex.props(styles.statusDot, statusMarkStyle(mark))}
+      aria-label={mark === "idle" ? "Completed, unread" : STATUS_MARK_LABEL[mark]}
+      {...stylex.props(
+        styles.statusDot,
+        mark === "idle" ? styles.statusUnread : statusMarkStyle(mark),
+      )}
     >
       {(mark === "working" || mark === "retry") && <Spinner />}
     </span>

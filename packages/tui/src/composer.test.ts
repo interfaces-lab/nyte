@@ -1,5 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { ComposerParts } from "./composer.ts";
+import { createClipboard } from "@opentui/core";
+import { ComposerParts, createClipboardAdapter, discoverMentionFiles } from "./composer.ts";
 import { parseComposerSubmission } from "./slash.ts";
 
 describe("shell context", () => {
@@ -36,4 +40,59 @@ test("a recalled bang-prefixed message stays chat text", async () => {
   const prepared = await parts.prepare(draft);
   expect(prepared.content).toBe("!echo chat text");
   expect(parseComposerSubmission(prepared.displayText).kind).toBe("prompt");
+});
+
+test("clipboard copy strips NUL and writes text to both host and terminal", async () => {
+  const hostWrites: string[] = [];
+  const terminalWrites: string[] = [];
+  const clipboard = createClipboardAdapter(
+    createClipboard({
+      host: {
+        maxWriteBytes: 1024,
+        async read() {
+          return { status: "empty" };
+        },
+        async writeText(text, options) {
+          expect(options?.selection).toBe("clipboard");
+          hostWrites.push(text);
+          return { status: "written" };
+        },
+        async clear() {
+          return { status: "cleared" };
+        },
+        async dispose() {},
+      },
+      terminal: {
+        remote: false,
+        writeText(text, selection) {
+          expect(selection).toBe("clipboard");
+          terminalWrites.push(text);
+          return { status: "attempted", capability: "supported" };
+        },
+        clear() {
+          return { status: "attempted", capability: "supported" };
+        },
+      },
+    }),
+  );
+  try {
+    await clipboard.write("alpha\0 beta\0\ngamma");
+    expect(hostWrites).toEqual(["alpha beta\ngamma"]);
+    expect(terminalWrites).toEqual(["alpha beta\ngamma"]);
+  } finally {
+    await clipboard.dispose();
+  }
+});
+
+test("mention discovery preserves cancellation and filesystem failures for the TUI", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nyte-tui-mentions-"));
+  try {
+    const reason = new Error("mention request replaced");
+    await expect(discoverMentionFiles(root, AbortSignal.abort(reason))).rejects.toBe(reason);
+    await expect(discoverMentionFiles(join(root, "missing"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

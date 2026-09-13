@@ -11,20 +11,14 @@ import { headRef } from "../names.ts";
 import { pending } from "../queue.ts";
 import { changesFromTurns, projectContextStatus, transcriptFromCommits } from "../views/index.ts";
 import type { Pooled, SessionPool } from "./session-pool.ts";
-import {
-  ARCHIVED_FACT,
-  PARENT_FACT,
-  headConfig,
-  parentFromFact,
-  pendingItems,
-  sessionInfo,
-} from "./snapshot.ts";
+import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
 import {
   MAIN,
   UnknownSession,
   sessionId,
   type HeadName,
   type NyteOptions,
+  type ParkedCall,
   type RunId,
   type RunInfo,
   type SessionId,
@@ -39,6 +33,35 @@ function matches(info: SessionInfo, needle: string): boolean {
     (info.name ?? "").toLowerCase().includes(needle) ||
     (info.preview ?? "").toLowerCase().includes(needle)
   );
+}
+
+function orderParkedCalls(
+  calls: readonly ParkedCall[],
+  commits: readonly { readonly commit: Commit }[],
+): ParkedCall[] {
+  const callIds: string[] = [];
+  for (let index = commits.length - 1; index >= 0; index--) {
+    const body = commits[index]?.commit.body;
+    if (
+      body?.kind !== "message" ||
+      body.message.role !== "assistant" ||
+      !Array.isArray(body.message.content)
+    ) {
+      continue;
+    }
+    for (const part of body.message.content) {
+      if (part.type === "toolCall") callIds.push(part.id);
+    }
+    if (callIds.length > 0) break;
+  }
+  const positions = new Map(callIds.map((callId, index) => [callId, index]));
+  return calls.toSorted((left, right) => {
+    const leftPosition = positions.get(left.callId);
+    const rightPosition = positions.get(right.callId);
+    if (leftPosition === undefined) return rightPosition === undefined ? 0 : 1;
+    if (rightPosition === undefined) return -1;
+    return leftPosition - rightPosition;
+  });
 }
 
 export function createReads(input: {
@@ -73,6 +96,23 @@ export function createReads(input: {
   };
 
   /** One listing row as a session row; `undefined` when a filter drops it or the session is gone. */
+  /**
+   * The session's directory row. Building it reads the whole main branch,
+   * which a directory poll would otherwise repeat for every session on every
+   * tick; the row is kept until a write moves the session's event cursor or
+   * the host's activation answer is replaced.
+   */
+  const listedInfo = async (pooled: Pooled, id: SessionId): Promise<SessionInfo> => {
+    const seq = await pooled.session.events.last();
+    const listed = pooled.listed;
+    if (listed !== undefined && listed.seq === seq && listed.activation === pooled.activationState)
+      return listed.info;
+    const facts = await pool.readFacts(pooled.session);
+    const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
+    pooled.listed = { seq, activation: pooled.activationState, info };
+    return info;
+  };
+
   const listedSession = async (
     stored: { readonly id: string; readonly createdAt: number },
     filter: {
@@ -85,9 +125,9 @@ export function createReads(input: {
     try {
       const pooled = await pool.open(id);
       pooled.createdAt ??= stored.createdAt;
-      const facts = await pool.readFacts(pooled.session);
-      if (facts.get(ARCHIVED_FACT) === true && filter.includeArchived !== true) return undefined;
-      const parent = parentFromFact(facts.get(PARENT_FACT));
+      const info = await listedInfo(pooled, id);
+      if (info.archived && filter.includeArchived !== true) return undefined;
+      const parent = info.parent;
       if (filter.parent === null && parent !== undefined) return undefined;
       if (
         filter.parent !== undefined &&
@@ -96,7 +136,6 @@ export function createReads(input: {
       ) {
         return undefined;
       }
-      const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
       if (filter.search !== undefined && !matches(info, filter.search)) return undefined;
       return info;
     } catch (error) {
@@ -132,7 +171,8 @@ export function createReads(input: {
         head === MAIN ? data.mainCommits : commits.map((item) => item.commit),
         run,
       );
-      const parked = run === undefined ? [] : await pool.parkedCalls(session, run);
+      const parked =
+        run === undefined ? [] : orderParkedCalls(await pool.parkedCalls(session, run), commits);
       const snapshot = {
         seq,
         session: sessionInfo(data),
@@ -146,6 +186,36 @@ export function createReads(input: {
       const withRun = run === undefined ? snapshot : { ...snapshot, run };
       const withCompaction = compaction === undefined ? withRun : { ...withRun, compaction };
       return parked.length === 0 ? withCompaction : { ...withCompaction, parked };
+    } catch (error) {
+      if (error instanceof UnknownSession) return undefined;
+      throw error;
+    }
+  };
+
+  /**
+   * Reuses the history read needed for session info; a side head adds its own
+   * branch. Skips transcript and parked-call projection and sends no transcript
+   * or queue, so metadata refreshes avoid that projection and transport cost.
+   */
+  const metadata = async (input: { readonly sessionId: SessionId; readonly head?: HeadName }) => {
+    pool.alive();
+    try {
+      const pooled = await pool.open(input.sessionId);
+      const { session } = pooled;
+      const head = input.head ?? MAIN;
+      const data = await pool.readSession(input.sessionId, pooled);
+      const selected = data.heads.find((item) => item.head === head);
+      const tip = selected === undefined ? await session.refs.read(headRef(head)) : selected.tip;
+      const items = head === MAIN ? undefined : await branch(session.objects, tip);
+      const commits = items === undefined ? data.mainCommits : items.map((item) => item.commit);
+      const run = selected === undefined ? await pool.currentRun(session, head) : selected.run;
+      const projected = projectContext(pooled, commits, run);
+      return {
+        session: sessionInfo(data),
+        head,
+        config: projected.config,
+        context: projected.status,
+      };
     } catch (error) {
       if (error instanceof UnknownSession) return undefined;
       throw error;
@@ -229,5 +299,5 @@ export function createReads(input: {
     return changesFromTurns(transcriptFromCommits(contiguous));
   };
 
-  return { snapshot, list, context, changes };
+  return { snapshot, metadata, list, context, changes };
 }

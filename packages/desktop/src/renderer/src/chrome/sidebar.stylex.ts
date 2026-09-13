@@ -20,6 +20,8 @@ export const sidebarStyles = stylex.create({
   content: {
     "--_sidebar-motion-duration": t.durationNormal,
     "--_sidebar-motion-easing": t.easeOutQuint,
+    // Archiving is a dismissal, not a rearrangement: one short slide, no glide.
+    "--_sidebar-archive-duration": t.durationFast,
     display: "flex",
     flexDirection: "column",
     flex: 1,
@@ -68,7 +70,8 @@ export const sidebarStyles = stylex.create({
     lineHeight: t.leadingBase,
     fontWeight: 400,
     textAlign: "left",
-    cursor: "pointer",
+    cursor: { default: "pointer", ":disabled": "default" },
+    opacity: { default: 1, ":disabled": 0.5 },
     flexShrink: 0,
     transitionProperty: "background-color",
     transitionDuration: t.durationFast,
@@ -209,10 +212,10 @@ export const sidebarStyles = stylex.create({
     paddingInline: sidebar.rowPaddingInline,
     borderRadius: t.radiusBase,
     borderStyle: "none",
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-    },
+    // The fill is a variable each row kind sets, not a conditional here:
+    // StyleX merges a property's conditions as one key, so a kind that declared
+    // its own background would silently drop this row's hover state.
+    backgroundColor: "var(--_row-fill, transparent)",
     color: t.textSecondary,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
@@ -223,7 +226,11 @@ export const sidebarStyles = stylex.create({
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,
   },
-  /** Time stays put while hover actions expand into a separate slot on its left. */
+  /**
+   * The trailing slot is reserved at its widest, hovered or not. Sizing it on
+   * `:hover` would move the row's padding-inline-end and re-run the title's
+   * ellipsis on every pointer pass; actions reveal in place instead.
+   */
   sessionRowShell: {
     "--_row-actions-opacity": {
       default: "0",
@@ -235,18 +242,10 @@ export const sidebarStyles = stylex.create({
       ":hover": "auto",
       ":focus-within": "auto",
     },
-    "--_row-actions-max-width": {
-      default: "0px",
-      ":hover": "36px",
-      ":focus-within": "36px",
-    },
     "--_row-meta-color": t.textTertiary,
-    "--_trailing-reserve": {
-      default: "0px",
-      ":hover": "40px",
-      ":focus-within": "40px",
-    },
-    "--_session-row-background": {
+    "--_trailing-gap": "4px",
+    "--_trailing-reserve": sidebar.trailingWidth,
+    "--_row-fill": {
       default: "transparent",
       ":hover": t.fillGhostHover,
       ":focus-within": t.fillGhostHover,
@@ -257,17 +256,13 @@ export const sidebarStyles = stylex.create({
     minWidth: 0,
     borderRadius: t.radiusBase,
   },
+  /** A timed row carries the relative time beside the same action slot. */
   sessionRowShellTimed: {
-    "--_trailing-reserve": {
-      default: "40px",
-      ":hover": "80px",
-      ":focus-within": "80px",
-    },
+    "--_trailing-reserve": `calc(${sidebar.trailingWidth} + var(--_trailing-gap) + ${sidebar.metaWidth})`,
   },
   sessionRow: {
     paddingInlineEnd: `calc(${sidebar.rowPaddingInline} + var(--_trailing-reserve))`,
     overflow: "hidden",
-    backgroundColor: "var(--_session-row-background)",
     touchAction: "none",
     userSelect: "none",
     WebkitUserDrag: "none",
@@ -291,7 +286,7 @@ export const sidebarStyles = stylex.create({
     borderRadius: t.radiusSm,
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: { default: t.borderWeak, ":focus-visible": t.strokeFocused },
+    borderColor: { default: t.strokeSecondary, ":focus-visible": t.strokeFocused },
     backgroundColor: t.bgElevated,
     color: t.textPrimary,
     fontSize: t.fontBase,
@@ -307,11 +302,8 @@ export const sidebarStyles = stylex.create({
     pointerEvents: "none",
   },
   rowSelected: {
-    "--_session-row-background": {
-      default: "transparent",
-      ":hover": "transparent",
-      ":focus-within": "transparent",
-    },
+    // The selection layer behind the row is the fill; hover must not add a second.
+    "--_row-fill": "transparent",
     "--_row-meta-color": t.textSecondary,
     color: t.textPrimary,
   },
@@ -377,11 +369,13 @@ export const sidebarStyles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 4,
+    gap: "var(--_trailing-gap)",
     transform: "translateY(-50%)",
     pointerEvents: "none",
   },
   rowMeta: {
+    minWidth: sidebar.metaWidth,
+    textAlign: "end",
     flexShrink: 0,
     color: "var(--_row-meta-color)",
     fontSize: t.fontXs,
@@ -389,20 +383,32 @@ export const sidebarStyles = stylex.create({
     letterSpacing: 0.07,
     fontVariantNumeric: "tabular-nums",
   },
+  /**
+   * Holds its width whether or not the actions are showing, so revealing them
+   * cannot push the time label or reflow the title.
+   */
   rowActions: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "flex-end",
     gap: 2,
-    maxWidth: "var(--_row-actions-max-width)",
-    overflow: "hidden",
+    width: sidebar.trailingWidth,
     opacity: "var(--_row-actions-opacity)",
     pointerEvents: "var(--_row-actions-pointer-events)",
     flexShrink: 0,
+    transitionProperty: "opacity",
+    transitionDuration: t.durationFast,
+    transitionTimingFunction: t.easeOut,
   },
-  /** 16px sits on the 14px caption line; 24px action slots stacked above the time. */
+  /**
+   * A 16px target on the 14px caption line. The row already paints the hover
+   * fill behind it, so the button reads its own hover through icon color only —
+   * two stacked ghost fills render as one muddy block.
+   */
   sessionAction: {
     width: 16,
     height: 16,
+    backgroundColor: "transparent",
   },
   /** Archive's box+lid is heavy below the grid; lift the glyph, not the hit target. */
   actionGlyphArchive: {
@@ -445,6 +451,10 @@ export const sidebarStyles = stylex.create({
     position: "relative",
     minWidth: 0,
   },
+  /**
+   * A folder header is a group label, not a list cell: it leaves `--_row-fill`
+   * unset, so the revealed action's own hover fill is the only background.
+   */
   workspaceRowTrigger: {
     paddingInlineEnd: `calc(${sidebar.rowPaddingInline} + ${sidebar.actionSize} + 2px)`,
   },
@@ -463,7 +473,7 @@ export const sidebarStyles = stylex.create({
     borderRadius: t.radiusBase,
     backgroundColor: {
       default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillSecondaryHover },
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
     },
     color: t.iconTertiary,
     opacity: "var(--_row-actions-opacity)",

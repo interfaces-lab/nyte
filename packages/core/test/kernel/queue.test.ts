@@ -112,6 +112,32 @@ test("a retried submission with the same key is the first one, not a second mess
   assert.equal(await session.events.last(), before);
 });
 
+test("a change carries its submission key, and a redelivered copy keeps it under a new id", async () => {
+  const session = await openSession();
+  const keyed = await submit(session, { head: "main", lane: "now", body: say("hi"), key: "k1" });
+  const bare = await submit(session, { head: "main", lane: "now", body: say("hi") });
+  const keyOf = async (change: string) =>
+    (await pending(session, "main")).find((item) => item.oid === change)?.change.key;
+  assert.equal(await keyOf(keyed.change), "k1");
+  assert.equal(await keyOf(bare.change), undefined);
+
+  const moved = await redeliver(session, { head: "main", change: keyed.change, lane: "later" });
+  assert.equal(moved.kind, "redelivered");
+  if (moved.kind !== "redelivered") return;
+  assert.notEqual(moved.change, keyed.change);
+  const items = await pending(session, "main");
+  const byLane = (lane: string) =>
+    items.filter((item) => item.lane === lane).map((item) => [item.oid, item.change.key]);
+  assert.deepEqual(byLane("later"), [[moved.change, "k1"]]);
+  assert.deepEqual(byLane("now"), [[bare.change, undefined]]);
+  assert.equal(items.length, 2);
+  // The receipt ref still answers the key with the original submission.
+  assert.deepEqual(
+    await submit(session, { head: "main", lane: "now", body: say("hi"), key: "k1" }),
+    { kind: "duplicate", change: keyed.change },
+  );
+});
+
 test("lanes are independent chains, consulted in whatever order the caller names them", async () => {
   const session = await openSession();
   const later = await submit(session, { head: "main", body: say("after"), lane: "later" });

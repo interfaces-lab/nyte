@@ -7,7 +7,14 @@ import process from "node:process";
 import { StringDecoder } from "node:string_decoder";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { calculateCost, type Models } from "@nyte-ai/ai";
+import {
+  calculateCost,
+  fetchAnthropicAccountLimits,
+  fetchOpenAICodexAccountLimits,
+  hasApi,
+  type AccountLimits,
+  type Models,
+} from "@nyte-ai/ai";
 import {
   emptyUsageSummary,
   mergeUsageSummaries,
@@ -50,7 +57,7 @@ export interface ClaudeCodeFileScan {
   readonly malformedRecords: number;
 }
 
-export type ClaudeCodeUsage =
+export type LocalHistoryUsage =
   | { readonly kind: "missing" }
   | { readonly kind: "failed"; readonly message: string }
   | {
@@ -60,6 +67,8 @@ export type ClaudeCodeUsage =
       readonly malformedRecords: number;
       readonly unreadableFiles: number;
     };
+
+export type ClaudeCodeUsage = LocalHistoryUsage;
 
 const tokens = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const envelope = Type.Object({ type: Type.String() });
@@ -319,16 +328,7 @@ export async function readClaudeCodeUsage(
  * whenever the file has any, because the legacy event is still written
  * alongside it and would double every response that has both.
  */
-export type CodexUsage =
-  | { readonly kind: "missing" }
-  | { readonly kind: "failed"; readonly message: string }
-  | {
-      readonly kind: "ready";
-      readonly summary: UsageSummary;
-      readonly unpricedRecords: number;
-      readonly malformedRecords: number;
-      readonly unreadableFiles: number;
-    };
+export type CodexUsage = LocalHistoryUsage;
 
 export interface CodexUsageOptions {
   readonly models: Pick<Models, "getModels">;
@@ -801,4 +801,87 @@ export function decodeUsageScanCaches(text: string): UsageScanCaches {
     });
   }
   return caches;
+}
+
+/** Both local tools use the same result shape and remain separate from Nyte totals. */
+export interface LocalUsage {
+  readonly claudeCode: LocalHistoryUsage;
+  readonly codex: LocalHistoryUsage;
+}
+
+/** Read recorded consumption only; a failed tool does not hide the other tool's history. */
+export async function readLocalUsage(options: {
+  readonly models: Pick<Models, "getModels">;
+  readonly signal?: AbortSignal;
+  readonly caches?: UsageScanCaches;
+}): Promise<LocalUsage> {
+  const failed = (message: string): LocalHistoryUsage => {
+    options.signal?.throwIfAborted();
+    return { kind: "failed", message };
+  };
+  const [claudeCode, codex] = await Promise.all([
+    readClaudeCodeUsage({
+      models: options.models,
+      signal: options.signal,
+      cache: options.caches?.claudeCode,
+    }).catch(() => failed("Could not read Claude Code history.")),
+    readCodexUsage({
+      models: options.models,
+      signal: options.signal,
+      cache: options.caches?.codex,
+    }).catch(() => failed("Could not read Codex history.")),
+  ]);
+  options.signal?.throwIfAborted();
+  return { claudeCode, codex };
+}
+
+/** Account windows are separate from measured tokens and estimated API cost. */
+export type AccountUsage = {
+  readonly provider: "anthropic" | "openai-codex";
+} & (
+  | { readonly kind: "ready"; readonly limits: AccountLimits }
+  | { readonly kind: "unavailable" }
+  | { readonly kind: "failed"; readonly message: string }
+);
+
+/** Read the account signed into Nyte using the existing provider authentication. */
+export async function readAccountUsage(options: {
+  readonly models: Models;
+  readonly provider: AccountUsage["provider"];
+  readonly signal: AbortSignal;
+}): Promise<AccountUsage> {
+  const { models, provider, signal } = options;
+  try {
+    const model = models
+      .getModels(provider)
+      .find((candidate) =>
+        provider === "anthropic"
+          ? hasApi(candidate, "anthropic-messages")
+          : hasApi(candidate, "openai-codex-responses"),
+      );
+    if (model === undefined) return { provider, kind: "unavailable" };
+    const auth = await models.getAuth(model, { signal });
+    const apiKey = auth?.auth.apiKey;
+    if (apiKey === undefined || (provider === "anthropic" && !apiKey.includes("sk-ant-oat"))) {
+      return { provider, kind: "unavailable" };
+    }
+    const request = { apiKey, headers: auth?.auth.headers, signal, timeoutMs: 10_000 };
+    const selected = { ...model, baseUrl: auth?.auth.baseUrl ?? model.baseUrl };
+    const limits = hasApi(selected, "anthropic-messages")
+      ? await fetchAnthropicAccountLimits(selected, request)
+      : hasApi(selected, "openai-codex-responses")
+        ? await fetchOpenAICodexAccountLimits(selected, request)
+        : undefined;
+    return limits === undefined || limits.windows.length === 0
+      ? { provider, kind: "unavailable" }
+      : { provider, kind: "ready", limits };
+  } catch {
+    if (
+      signal.aborted &&
+      !(signal.reason instanceof DOMException && signal.reason.name === "TimeoutError")
+    ) {
+      signal.throwIfAborted();
+    }
+    return { provider, kind: "failed", message: "Could not read account limits. Try again." };
+  }
 }

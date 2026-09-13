@@ -56,14 +56,10 @@ function render(jobs?: readonly JobInfo[], open?: BackgroundWorkSection) {
 }
 
 describe("composer background work", () => {
-  test("does not add a permanent control when there is no background work", () => {
+  test("adds nothing to the composer until there is background work", () => {
+    expect(render()).toBe("");
     expect(render([])).toBe("");
     expect(render([agent])).not.toContain("Tasks");
-  });
-
-  test("distinguishes loading from an empty session", () => {
-    expect(render()).toContain("Loading background work…");
-    expect(render([])).not.toContain("Loading");
   });
 
   test("uses Working while agents run and keeps recent agents accessible afterwards", () => {

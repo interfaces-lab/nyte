@@ -9,11 +9,9 @@ import {
   blameWorkspaceFile,
   createWorkspaceEditor,
   formatWorkspaceFile,
-  readWorkspaceFile,
-  saveWorkspaceFile,
-  searchWorkspaceFiles,
 } from "./workspace-files.ts";
-import { ipcDiagnostics } from "./errors.ts";
+import { ipcDiagnostics, ipcResult } from "./errors.ts";
+import { readWorkspaceFile } from "@nyte-ai/core/files";
 
 async function fixture(): Promise<{ readonly root: string; readonly file: string }> {
   const root = await mkdtemp(join(tmpdir(), "nyte-files-"));
@@ -22,156 +20,76 @@ async function fixture(): Promise<{ readonly root: string; readonly file: string
   return { root, file };
 }
 
-describe("workspace files", () => {
-  test("reads and saves one text file without overwriting a newer version", async () => {
-    const { root, file } = await fixture();
-    try {
-      const document = await readWorkspaceFile(root, file);
-      assert.equal(document.kind, "text");
-      if (document.kind !== "text") return;
-
-      const saved = await saveWorkspaceFile(root, {
-        path: file,
-        contents: "export const value = 2;\n",
-        version: document.version,
-      });
-      assert.equal(saved.kind, "saved");
-      assert.equal(await readFile(file, "utf8"), "export const value = 2;\n");
-
-      const conflict = await saveWorkspaceFile(root, {
-        path: file,
-        contents: "stale\n",
-        version: document.version,
-      });
-      assert.deepEqual(conflict, { kind: "conflict" });
-      assert.equal(await readFile(file, "utf8"), "export const value = 2;\n");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test("keeps binary files and symlinks outside the workspace out of the editor", async () => {
-    const { root } = await fixture();
-    const outside = await mkdtemp(join(tmpdir(), "nyte-files-outside-"));
-    try {
-      const binary = join(root, "image.bin");
-      await writeFile(binary, new Uint8Array([0, 255, 0]));
-      assert.deepEqual(await readWorkspaceFile(root, binary), {
-        kind: "binary",
-        path: binary,
-        size: 3,
-      });
-
-      const target = join(outside, "secret.txt");
-      const link = join(root, "outside.txt");
-      await writeFile(target, "secret\n");
-      await symlink(target, link);
-      await assert.rejects(readWorkspaceFile(root, link), /outside the open workspace/);
-    } finally {
-      await Promise.all([
-        rm(root, { recursive: true, force: true }),
-        rm(outside, { recursive: true, force: true }),
-      ]);
-    }
-  });
-});
-
 describe("workspace search", () => {
-  test("searches the workspace with gitignore, glob filters, word boundaries and draft overrides", async () => {
+  test("returns shared search results and maps core failures across IPC", async () => {
     const { root, file } = await fixture();
+    const outside = await fixture();
+    const editor = createWorkspaceEditor({
+      workspace: async () => root,
+      requireTrust: async () => undefined,
+    });
     try {
-      await mkdir(join(root, "nested"));
-      await writeFile(join(root, ".gitignore"), "ignored.txt\n");
-      await writeFile(join(root, "ignored.txt"), "value");
-      await writeFile(join(root, "nested", "other.ts"), "Value values value_ value\nVALUE\n");
-      await writeFile(join(root, "notes.txt"), "value");
-      const result = await searchWorkspaceFiles(root, {
-        requestId: "one",
-        query: "value",
-        wholeWord: true,
-        include: ["**/*.ts"],
-        drafts: [{ path: file, contents: "draft VALUE\n" }],
-      });
-      assert.equal(result.truncated, false);
-      assert.equal(result.matchCount, 4);
-      assert.deepEqual(
-        result.files.map((entry) => [entry.displayPath, entry.source]),
-        [
-          ["index.ts", "draft"],
-          ["nested/other.ts", "disk"],
-        ],
+      const result = await ipcResult(() =>
+        editor.call({
+          operation: "search",
+          input: {
+            requestId: "shared",
+            query: "value",
+            drafts: [{ path: file, contents: "😀 value" }],
+          },
+        }),
       );
-      assert.deepEqual(result.files[0]?.matches[0], {
-        line: 1,
-        column: 7,
-        length: 5,
-        snippet: "draft VALUE",
-        snippetColumn: 1,
+      assert.equal(result.ok, true);
+      assert.ok(result.value && "files" in result.value);
+      assert.equal(result.value.matchCount, 1);
+      assert.deepEqual(result.value.files[0], {
+        path: await realpath(file),
+        displayPath: "index.ts",
+        source: "draft",
+        matches: [{ line: 1, column: 4, length: 5, snippet: "😀 value", snippetColumn: 1 }],
       });
-      const sensitive = await searchWorkspaceFiles(root, {
-        requestId: "two",
-        query: "value",
-        caseSensitive: true,
-        wholeWord: true,
-        exclude: ["**/*.txt", "index.ts", ".gitignore"],
-      });
-      assert.equal(sensitive.matchCount, 1);
-      assert.equal(sensitive.files[0]?.matches[0]?.column, 21);
-      const ignored = await searchWorkspaceFiles(root, {
-        requestId: "three",
-        query: "value",
-        include: ["ignored.txt"],
-        drafts: [{ path: join(root, "ignored.txt"), contents: "value" }],
-      });
-      assert.equal(ignored.matchCount, 0);
+      const invalid = await ipcResult(() =>
+        editor.call({
+          operation: "search",
+          input: { requestId: "shared", query: "(?=value)", regex: true },
+        }),
+      );
+      assert.equal(invalid.ok, false);
+      assert.equal(invalid.error.code, "invalid_input");
+      const forbidden = await ipcResult(() =>
+        editor.call({
+          operation: "search",
+          input: {
+            requestId: "shared",
+            query: "value",
+            drafts: [{ path: outside.file, contents: "value" }],
+          },
+        }),
+      );
+      assert.equal(forbidden.ok, false);
+      assert.equal(forbidden.error.code, "forbidden");
+      const oversized = await ipcResult(() =>
+        editor.call({
+          operation: "search",
+          input: {
+            requestId: "shared",
+            query: "value",
+            drafts: Array.from({ length: 10 }, () => ({
+              path: file,
+              contents: "λ".repeat(200_000),
+            })),
+          },
+        }),
+      );
+      assert.equal(oversized.ok, false);
+      assert.equal(oversized.error.code, "payload_too_large");
       assert.equal(await readFile(file, "utf8"), "export const value = 1;\n");
     } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  test("bounds matches and snippets, skips binary and large files, and accepts safe regexes", async () => {
-    const { root, file } = await fixture();
-    try {
-      await writeFile(file, `${" ".repeat(300)}hit hit\n`);
-      await writeFile(join(root, "binary"), "hit\0");
-      await writeFile(join(root, "large"), "hit".repeat(700_000));
-      const result = await searchWorkspaceFiles(root, {
-        requestId: "one",
-        query: "h.t",
-        regex: true,
-        maxMatches: 1,
-      });
-      assert.equal(result.matchCount, 1);
-      assert.equal(result.truncated, true);
-      assert.equal(result.files[0]?.matches[0]?.column, 301);
-      assert.equal(result.files[0]?.matches[0]?.snippetColumn, 221);
-      assert.ok((result.files[0]?.matches[0]?.snippet.length ?? 0) <= 240);
-      const all = await searchWorkspaceFiles(root, {
-        requestId: "two",
-        query: "hit",
-        maxMatches: 2,
-      });
-      assert.equal(all.truncated, false);
-      assert.equal(all.matchCount, 2);
-      assert.deepEqual(all.skipped, { binary: 1, tooLarge: 1, unreadable: 0 });
-      const empty = await searchWorkspaceFiles(root, {
-        requestId: "three",
-        query: "(?=hit)",
-        regex: true,
-      });
-      assert.equal(empty.matchCount, 2);
-      await assert.rejects(
-        searchWorkspaceFiles(root, { requestId: "four", query: "[", regex: true }),
-        /Invalid search regular expression/,
-      );
-      await writeFile(file, `${"a".repeat(100_000)}!`);
-      await assert.rejects(
-        searchWorkspaceFiles(root, { requestId: "five", query: "(a+)+$", regex: true }),
-        /execution limit/,
-      );
-    } finally {
-      await rm(root, { recursive: true, force: true });
+      editor.dispose();
+      await Promise.all([
+        rm(root, { recursive: true, force: true }),
+        rm(outside.root, { recursive: true, force: true }),
+      ]);
     }
   });
 
@@ -190,10 +108,13 @@ describe("workspace search", () => {
       await editor.call({ operation: "cancelSearch", input: { requestId: "cancel" } });
       await assert.rejects(pending, /abort/i);
       await assert.rejects(
-        searchWorkspaceFiles(root, {
-          requestId: "draft",
-          query: "value",
-          drafts: [{ path: outside.file, contents: "value" }],
+        editor.call({
+          operation: "search",
+          input: {
+            requestId: "draft",
+            query: "value",
+            drafts: [{ path: outside.file, contents: "value" }],
+          },
         }),
         /outside the open workspace/,
       );
@@ -534,31 +455,4 @@ describe("workspace formatting", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
-});
-
-test("concurrent drafts sharing a version cannot both acknowledge different saved text", async () => {
-  const { root, file } = await fixture();
-  try {
-    const original = await readWorkspaceFile(root, file);
-    assert.equal(original.kind, "text");
-    if (original.kind !== "text") return;
-    const contents = ["first draft", "second draft"];
-    const outcomes = await Promise.all(
-      contents.map((text) =>
-        saveWorkspaceFile(root, {
-          path: file,
-          contents: text,
-          version: original.version,
-        }),
-      ),
-    );
-    assert.equal(outcomes.filter((outcome) => outcome.kind === "saved").length, 1);
-    assert.equal(outcomes.filter((outcome) => outcome.kind === "conflict").length, 1);
-    assert.equal(
-      await readFile(file, "utf8"),
-      contents[outcomes.findIndex((outcome) => outcome.kind === "saved")],
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });

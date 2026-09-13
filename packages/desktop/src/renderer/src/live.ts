@@ -1,140 +1,169 @@
 /**
- * The live overlay store and watch for one open session. The rules live in
- * `live-fold.ts`; this file owns transport and presentation acknowledgement
- * against the snapshot cache, including the resume path for a watch that ends.
+ * One shared `SessionObserver` per open session, counted by its consumers,
+ * and the renderer's reads of it. Core owns the fold, recovery, and cursors;
+ * this file publishes the observer's state where the interface reads it. The
+ * durable part goes into the snapshot query cache the moment it changes and
+ * the overlay is derived from the same state, so a settled part never leaves
+ * the overlay before its row is in the transcript. Events, and the rebases
+ * that stand in for the ones they replace, also invalidate what the state
+ * does not model: jobs, changed files, plugin settings, trust.
  */
-import { useEffect, useState, useSyncExternalStore } from "react";
-import type { Seq, SessionEvent, SessionId, SessionSnapshot } from "@nyte-ai/core";
-import type { LiveParts } from "@nyte-ai/core/views";
-import { foldState, IDLE, projectLive, resumeFrom } from "./live-fold.ts";
-import type { LiveSnapshot, LiveState } from "./live-fold.ts";
-import { keys, loadThread, queryClient, refreshThread } from "./queries.ts";
+import { useEffect, useSyncExternalStore } from "react";
+import type { Seq, SessionEvent, SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/core";
+import { SessionObserver } from "@nyte-ai/core/client";
+import type { SessionState, SessionUpdate } from "@nyte-ai/core/client";
+import { isTerminalPhase } from "@nyte-ai/core/views";
+import { IDLE, projectLive } from "./live-fold.ts";
+import type { LiveSnapshot } from "./live-fold.ts";
+import { cacheSessionInfo, keys, queryClient, refreshVcs, SNAPSHOT_WARM_MS } from "./queries.ts";
+import type { SessionSelection } from "./session-configuration.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
-import { nyte } from "./nyte.ts";
+import { sessionClient } from "./nyte.ts";
 
 export { livePartKey } from "./live-fold.ts";
-export type {
-  LiveDiagnostic,
-  LivePartRef,
-  LiveRunState,
-  LiveSnapshot,
-  LiveToolProgress,
-} from "./live-fold.ts";
+export type { LivePartRef, LiveRunState, LiveSnapshot, LiveToolProgress } from "./live-fold.ts";
+
+const RETRY_MS = 1_000;
+
+/** The `SessionSnapshot` the observer's state stands for; `seq` is the newest event applied. */
+function snapshotOf(state: SessionState): SessionSnapshot {
+  return {
+    session: state.info,
+    head: state.head,
+    config: state.config,
+    context: state.context,
+    seq: state.seq,
+    tip: state.transcript.tip,
+    transcript: state.transcript.items,
+    pending: state.pending,
+    ...(state.run === undefined ? {} : { run: state.run }),
+    ...(state.compaction === undefined ? {} : { compaction: state.compaction }),
+    parked: state.parked,
+  };
+}
+
+/** What a snapshot reader can see. `seq` and the overlay move with every delta and are not among it. */
+function durableChanged(previous: SessionState | undefined, next: SessionState): boolean {
+  return (
+    previous === undefined ||
+    previous.info !== next.info ||
+    previous.head !== next.head ||
+    previous.config !== next.config ||
+    previous.context !== next.context ||
+    previous.transcript !== next.transcript ||
+    previous.pending !== next.pending ||
+    previous.run !== next.run ||
+    previous.compaction !== next.compaction ||
+    previous.parked !== next.parked
+  );
+}
 
 class LiveStore {
   private snapshot: LiveSnapshot = IDLE;
-  private current: LiveState = IDLE;
+  private state: SessionState | undefined;
+  /** The state the snapshot cache holds. */
+  private published: SessionState | undefined;
   private dirty = false;
-  private retained: RetainedParts[] = [];
-  private readonly listeners = new Set<() => void>();
   private frame: number | undefined;
+  private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
 
-  // Reads remain synchronous, but normal watch bursts derive once at the frame.
+  // Reads remain synchronous, but a burst of deltas notifies once at the frame.
   getSnapshot = (): LiveSnapshot => {
     if (!this.dirty) return this.snapshot;
     this.dirty = false;
-    const parts =
-      this.retained.length === 0
-        ? this.current.parts
-        : [...this.retained.flatMap((item) => item.parts), ...this.current.parts];
-    this.snapshot = projectLive(this.snapshot, this.current, parts);
+    this.snapshot =
+      this.state === undefined
+        ? IDLE
+        : projectLive(this.snapshot, this.state.overlay, this.state.run);
     return this.snapshot;
   };
 
-  fold(event: SessionEvent, durable: SessionSnapshot | undefined): Seq | undefined {
-    const previous = this.current;
-    const result = foldState(previous, event);
-    if (event.kind === "commit" && result.snapshot.parts !== this.current.parts) {
-      const remaining = new Set(result.snapshot.parts);
-      this.retained.push({
-        seq: event.seq,
-        head: event.head,
-        commit: event.item.oid,
-        parts: this.current.parts.filter((part) => !remaining.has(part)),
-      });
+  /** The durable part reaches the cache now; the overlay wakes its readers at the next frame. */
+  update(sessionId: SessionId, state: SessionState): void {
+    const previous = this.published;
+    this.state = state;
+    this.dirty = true;
+    if (durableChanged(previous, state)) {
+      this.published = state;
+      queryClient.setQueryData(keys.snapshot(sessionId), snapshotOf(state));
+      if (previous?.info !== state.info) cacheSessionInfo(state.info);
     }
-    this.current = result.snapshot;
-    if (event.kind === "commit") this.acknowledge(durable);
-    if (this.current !== previous) this.publish();
-    return result.refreshAt;
-  }
-
-  acknowledge(durable: SessionSnapshot | undefined): void {
-    if (durable === undefined || this.retained.length === 0) return;
-    const remaining = this.retained.filter((item) => !covers(durable, item));
-    if (remaining.length === this.retained.length) return;
-    this.retained = remaining;
-    this.publish();
-  }
-
-  reset(run: SessionSnapshot["run"]): void {
-    this.retained = [];
-    this.current = resumeFrom(this.current, run);
-    this.publish();
-  }
-
-  dispose(): void {
-    if (this.frame !== undefined) window.cancelAnimationFrame(this.frame);
-    this.frame = undefined;
-    this.retained = [];
-    this.current = resumeFrom(this.current, undefined);
-    this.dirty = true;
-    this.getSnapshot();
-    for (const listener of this.listeners) listener();
-  }
-
-  private publish(): void {
-    this.dirty = true;
     this.frame ??= window.requestAnimationFrame(() => {
       this.frame = undefined;
-      this.getSnapshot();
-      for (const listener of this.listeners) listener();
+      this.notify();
     });
   }
-}
 
-interface RetainedParts {
-  readonly seq: Seq;
-  readonly head: SessionSnapshot["head"];
-  readonly commit: NonNullable<SessionSnapshot["tip"]>;
-  readonly parts: LiveParts;
-}
-
-function covers(snapshot: SessionSnapshot, retained: RetainedParts): boolean {
-  if (snapshot.head !== retained.head) return false;
-  if (snapshot.seq >= retained.seq || snapshot.tip === retained.commit) return true;
-  // The SDK reads seq first, so the transcript can be ahead of that cursor.
-  return snapshot.transcript.some((turn) =>
-    turn.kind === "turn"
-      ? turn.id === retained.commit ||
-        turn.parts.some((part) =>
-          part.kind === "tool"
-            ? part.result?.commit === retained.commit
-            : part.commit === retained.commit,
-        )
-      : turn.commit === retained.commit,
-  );
-}
-
-function fold(store: LiveStore, sessionId: SessionId, event: SessionEvent): void {
-  if (event.kind === "activation_changed") {
-    requestTrust(event.activation);
-    return;
+  /** The overlay is gone the moment the observation ends, before any reader asks. */
+  reset(): void {
+    if (this.frame !== undefined) window.cancelAnimationFrame(this.frame);
+    this.frame = undefined;
+    this.state = undefined;
+    this.published = undefined;
+    this.snapshot = IDLE;
+    this.dirty = false;
+    this.notify();
   }
-  if (event.kind === "job" || event.kind === "synced") {
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+interface SharedObserver {
+  readonly observer: SessionObserver;
+  readonly store: LiveStore;
+  consumers: number;
+  /** Readers waiting on a snapshot; a failed read answers them so a query can show it. */
+  readonly failures: Set<(error: Error) => void>;
+  /** Runs when the observation stops, for a read or acknowledgement that can no longer land. */
+  readonly closing: Set<() => void>;
+}
+
+const observers = new Map<SessionId, SharedObserver>();
+const stores = new Map<SessionId, LiveStore>();
+const selectionVersions = new Map<SessionId, number>();
+
+function storeFor(sessionId: SessionId): LiveStore {
+  const existing = stores.get(sessionId);
+  if (existing !== undefined) return existing;
+  const created = new LiveStore();
+  stores.set(sessionId, created);
+  return created;
+}
+
+/**
+ * What the state does not model, and the trust prompt an activation change
+ * needs. Without an event, for a rebase: core leaves the watch the moment the
+ * fold cannot apply an event, so that event never reaches a subscriber and
+ * everything queued behind it is dropped with the subscription. The fresh
+ * state says what the session holds now but not what changed on the way, and
+ * no later event repeats it, so a rebase answers for all of them.
+ *
+ * Every branch below answers for a rebase as well. A condition added here
+ * without its `rebase ||` silently reintroduces the loss this repairs.
+ */
+function react(sessionId: SessionId, state: SessionState, event: SessionEvent | undefined): void {
+  const rebase = event === undefined;
+  if (rebase || event.kind === "activation_changed") requestTrust(state.info.activation);
+  if (rebase || event.kind === "job" || event.kind === "synced") {
     void queryClient.invalidateQueries({ queryKey: keys.jobs(sessionId) });
   }
-  const refreshAt = store.fold(
-    event,
-    queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId)),
-  );
-  if (refreshAt !== undefined) refreshThread(sessionId, refreshAt);
+  const completedTool =
+    event?.kind === "commit" &&
+    event.item.commit.body.kind === "message" &&
+    event.item.commit.body.message.role === "toolResult";
+  const completedRun = event?.kind === "run" && isTerminalPhase(event.run.phase);
+  // A failed tool or aborted run can still have written files. Run completion
+  // also covers a tool that ended without committing a result.
+  if (rebase || completedTool || completedRun) refreshVcs();
   if (
+    rebase ||
     event.kind === "fact" ||
     event.kind === "plugins_changed" ||
     event.kind === "status_changed"
@@ -143,154 +172,243 @@ function fold(store: LiveStore, sessionId: SessionId, event: SessionEvent): void
     void queryClient.invalidateQueries({ queryKey: ["customize", sessionId], exact: true });
     void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog, exact: true });
   }
-  if (event.kind === "commit" || event.kind === "effect" || event.kind === "tool_progress") {
+  if (rebase || event.kind === "commit" || event.kind === "effect") {
     void queryClient.invalidateQueries({ queryKey: keys.children(sessionId), exact: true });
   }
 }
 
-/**
- * One live watch for one open session. The core snapshot's seq is the replay
- * cursor, so commits between the read and subscription cannot be lost. A
- * watch that ends resumes from a fresh snapshot: its cursor may be below the
- * stream floor, and a snapshot's seq is the one cursor the SDK never refuses.
- */
-export function useSessionLive(sessionId: SessionId, afterSeq: Seq | undefined): LiveSnapshot {
+function observe(sessionId: SessionId): SharedObserver {
+  const existing = observers.get(sessionId);
+  if (existing !== undefined) return existing;
   const store = storeFor(sessionId);
-  // Latch the first coherent cursor per session. Later snapshot refreshes must
-  // not restart the live stream and drop ephemeral frames, so the stream keys
-  // on this latch rather than on `afterSeq`.
-  const [cursor, setCursor] = useState<LiveCursor | undefined>(undefined);
-  const latched = cursor?.sessionId === sessionId ? cursor : undefined;
-  if (latched === undefined && afterSeq !== undefined) setCursor({ sessionId, seq: afterSeq });
-
-  useEffect(() => {
-    if (latched === undefined) return undefined;
-    return watchSessionLive(latched.sessionId, latched.seq).dispose;
-  }, [latched]);
-  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const failures = new Set<(error: Error) => void>();
+  const observer = new SessionObserver(sessionClient, {
+    sessionId,
+    retryMs: RETRY_MS,
+    selectionVersion: () => selectionVersions.get(sessionId) ?? 0,
+    onError: (error) => {
+      // A waiter removes itself when told; iterate a copy so the set can change underneath.
+      for (const fail of Array.from(failures)) fail(error);
+    },
+  });
+  // The observer publishes a snapshot for its first read, and again whenever
+  // the fold gives up or a watch dies. Its cursor says which of those owes
+  // anything: a snapshot past the newest seq this observation has seen holds
+  // events that never arrived as events, so their side effects are still due.
+  // A recovery retry re-reads the same cursor and owes nothing — reacting to
+  // it would rescan the workspace once a second for as long as a watch stays
+  // dead, and each scan cancels the last rather than finishing.
+  let reacted: Seq | undefined;
+  observer.subscribe((update) => {
+    store.update(sessionId, update.state);
+    const seen = reacted;
+    reacted = update.state.seq;
+    if (update.kind === "event") {
+      react(sessionId, update.state, update.event);
+      return;
+    }
+    if (update.kind === "snapshot" && seen !== undefined && update.state.seq > seen) {
+      react(sessionId, update.state, undefined);
+    }
+  });
+  const shared: SharedObserver = { observer, store, consumers: 0, failures, closing: new Set() };
+  observers.set(sessionId, shared);
+  // The observer reports and retries a failed read itself; rejection only means the observation stopped.
+  void observer.start().catch(() => undefined);
+  return shared;
 }
 
-/** Consumers share transport and acknowledgement; the last release stops the watch. */
-export function watchSessionLive(watchedSessionId: SessionId, seq: Seq) {
-  let shared = watches.get(watchedSessionId);
-  if (shared === undefined) {
-    shared = { watch: startSessionLive(watchedSessionId, seq), consumers: 0 };
-    watches.set(watchedSessionId, shared);
-  }
-  const owned = shared;
-  owned.consumers += 1;
+/**
+ * The state of the next update `accept` takes. A failed read or the
+ * observation closing rejects first, so a reader can show it; so does
+ * `signal`, for a query cancelled before the read lands.
+ */
+function nextUpdate(
+  shared: SharedObserver,
+  accept: (update: SessionUpdate) => boolean,
+  signal?: AbortSignal,
+): Promise<SessionState> {
+  return new Promise((resolve, reject) => {
+    const done = (): void => {
+      stop();
+      shared.failures.delete(fail);
+      shared.closing.delete(close);
+      signal?.removeEventListener("abort", abort);
+    };
+    const stop = shared.observer.subscribe((update) => {
+      if (!accept(update)) return;
+      done();
+      resolve(update.state);
+    });
+    const fail = (error: Error): void => {
+      done();
+      reject(error);
+    };
+    const close = (): void => fail(new Error("The session is no longer observed"));
+    const abort = (): void => fail(new Error("The snapshot read was cancelled"));
+    shared.failures.add(fail);
+    shared.closing.add(close);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
+/** The observer's state, or its first snapshot. */
+function ready(shared: SharedObserver, signal?: AbortSignal): Promise<SessionState> {
+  const state = shared.observer.state;
+  return state === undefined ? nextUpdate(shared, () => true, signal) : Promise.resolve(state);
+}
+
+/** One fresh read: the next full snapshot after asking for one, whichever rebase lands it. */
+function reload(shared: SharedObserver): Promise<SessionState> {
+  if (shared.observer.state === undefined) return ready(shared);
+  const landed = nextUpdate(shared, (update) => update.kind === "snapshot");
+  // A superseding rebase publishes the snapshot this waits for; only close or failure ends it.
+  void shared.observer.resync().catch(() => undefined);
+  return landed;
+}
+
+/** Consumers share one observer; the last release closes it and clears the overlay. */
+export function watchSessionLive(sessionId: SessionId) {
+  const shared = observe(sessionId);
+  shared.consumers += 1;
   let disposed = false;
   return {
-    subscribe: owned.watch.subscribe,
-    getSnapshot: owned.watch.getSnapshot,
+    subscribe: shared.store.subscribe,
+    getSnapshot: shared.store.getSnapshot,
+    ready: (signal?: AbortSignal) => ready(shared, signal),
+    reload: () => reload(shared),
     dispose: () => {
       if (disposed) return;
       disposed = true;
-      owned.consumers -= 1;
-      if (owned.consumers !== 0) return;
-      watches.delete(watchedSessionId);
-      owned.watch.dispose();
+      shared.consumers -= 1;
+      if (shared.consumers !== 0) return;
+      observers.delete(sessionId);
+      shared.observer.close();
+      for (const settle of Array.from(shared.closing)) settle();
+      shared.store.reset();
     },
   };
 }
 
-const watches = new Map<
-  SessionId,
-  {
-    watch: ReturnType<typeof startSessionLive>;
-    consumers: number;
+/** The live overlay of one open session, observed while the component is mounted. */
+export function useSessionLive(sessionId: SessionId): LiveSnapshot {
+  const store = storeFor(sessionId);
+  useEffect(() => watchSessionLive(sessionId).dispose, [sessionId]);
+  return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+/**
+ * A snapshot query reads the observer: its state when it has one, else its
+ * first read, held open only until it lands. Cancelling the query releases
+ * the hold at once, so a session being closed or deleted neither starts a
+ * late watch nor refills a cache the cancellation removed.
+ */
+export async function readSessionSnapshot(
+  sessionId: SessionId,
+  signal: AbortSignal,
+): Promise<SessionSnapshot> {
+  const lease = watchSessionLive(sessionId);
+  try {
+    return snapshotOf(await lease.ready(signal));
+  } finally {
+    lease.dispose();
   }
->();
+}
 
-function startSessionLive(watchedSessionId: SessionId, seq: Seq) {
-  const watchedStore = storeFor(watchedSessionId);
-  let stopped = false;
-  let reconnectTimer: number | undefined;
-  let disposeWatch: (() => void) | undefined;
-  let watchCursor = seq;
-  let failures = 0;
+/** Force one coherent read after a mutation that needs its result; the cache holds it when this resolves. */
+export async function loadThread(sessionId: SessionId): Promise<SessionSnapshot> {
+  const lease = watchSessionLive(sessionId);
+  try {
+    return snapshotOf(await lease.reload());
+  } finally {
+    lease.dispose();
+  }
+}
 
-  const scheduleResume = (): void => {
-    if (stopped) return;
-    disposeWatch?.();
-    disposeWatch = undefined;
-    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-    const delay = Math.min(250 * 2 ** failures, 4_000);
-    failures += 1;
-    reconnectTimer = window.setTimeout(() => void resume(), delay);
-  };
+/** A command with no event of its own may have changed files or the head: reread everything the chat shows. */
+export function refreshThread(sessionId: SessionId): void {
+  refreshVcs();
+  void loadThread(sessionId).catch(() => undefined);
+}
 
-  const resume = async (): Promise<void> => {
-    reconnectTimer = undefined;
-    if (stopped) return;
-    let snapshot: SessionSnapshot;
-    try {
-      snapshot = await loadThread(watchedSessionId);
-    } catch {
-      scheduleResume();
-      return;
-    }
-    if (stopped) return;
-    watchCursor = snapshot.seq;
-    watchedStore.reset(snapshot.run);
-    void queryClient.invalidateQueries({
-      queryKey: keys.pluginSettings(watchedSessionId),
-      exact: true,
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["customize", watchedSessionId],
-      exact: true,
-    });
-    connect();
-  };
+/**
+ * Whether a cached snapshot still shows what the directory says the session
+ * holds. The directory poll and live observations keep the session row
+ * current, so an unchanged tip with no run means the transcript on disk is the
+ * one already cached; a hover over it then costs no read at all.
+ */
+function snapshotMatchesSession(snapshot: SessionSnapshot, info: SessionInfo): boolean {
+  const head = info.heads.find((candidate) => candidate.head === snapshot.head);
+  return (
+    head !== undefined &&
+    head.run === undefined &&
+    snapshot.run === undefined &&
+    head.tip === snapshot.tip &&
+    info.lastActivityAt === snapshot.session.lastActivityAt &&
+    info.name === snapshot.session.name
+  );
+}
 
-  const connect = (): void => {
-    if (stopped) return;
-    disposeWatch = nyte.watch(
-      { sessionId: watchedSessionId, afterSeq: watchCursor },
-      (event) => {
-        if (stopped) return;
-        failures = 0;
-        watchCursor = event.seq;
-        fold(watchedStore, watchedSessionId, event);
-      },
-      scheduleResume,
-    );
-  };
-
-  const unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
-    if (event.type !== "updated" || event.action.type !== "success") return;
-    if (event.query.queryKey[0] !== "snapshot" || event.query.queryKey[1] !== watchedSessionId)
-      return;
-    watchedStore.acknowledge(
-      queryClient.getQueryData<SessionSnapshot>(keys.snapshot(watchedSessionId)),
-    );
+/**
+ * Refresh old local data on intent without making navigation wait for it:
+ * one passive read, no watch, so a hover never attaches the host to the
+ * session. An observed session's cache is already current, and so is a cached
+ * snapshot the directory row still agrees with. Resolves once the cache holds
+ * a snapshot, or when there is nothing to read.
+ */
+export function warmThread(sessionId: SessionId): Promise<void> {
+  if (observers.has(sessionId)) return Promise.resolve();
+  const cached = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId));
+  const info = queryClient.getQueryData<SessionInfo | null>(keys.session(sessionId));
+  if (cached !== undefined && info != null && snapshotMatchesSession(cached, info)) {
+    return Promise.resolve();
+  }
+  return queryClient.prefetchQuery({
+    queryKey: keys.snapshot(sessionId),
+    queryFn: async (): Promise<SessionSnapshot> => {
+      const snapshot = await sessionClient.sessions.snapshot({ sessionId });
+      // A screen that opened during the read observes the session now; its state is the newer.
+      const observed = observers.get(sessionId)?.observer.state;
+      if (observed !== undefined) return snapshotOf(observed);
+      if (snapshot === undefined) throw new Error(`Session not found: ${sessionId}`);
+      return snapshot;
+    },
+    staleTime: SNAPSHOT_WARM_MS,
   });
-  connect();
+}
+
+/**
+ * The local selection of a session's inputs. Each request and acknowledgement
+ * is a new version, so the observer applies selected inputs only from reads
+ * that answer the current choice; an acknowledgement waits for that read.
+ */
+export function sessionSelection(sessionId: SessionId): SessionSelection {
+  const bump = (): number => {
+    const version = (selectionVersions.get(sessionId) ?? 0) + 1;
+    selectionVersions.set(sessionId, version);
+    return version;
+  };
   return {
-    subscribe: watchedStore.subscribe,
-    getSnapshot: watchedStore.getSnapshot,
-    dispose: () => {
-      stopped = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      disposeWatch?.();
-      unsubscribeCache();
-      watchedStore.dispose();
+    request: () => {
+      bump();
+    },
+    acknowledge: () => {
+      const version = bump();
+      const shared = observers.get(sessionId);
+      if (shared === undefined) return Promise.resolve();
+      return new Promise((resolve) => {
+        const settle = (): void => {
+          stop();
+          shared.closing.delete(settle);
+          resolve();
+        };
+        const stop = shared.observer.subscribe((update) => {
+          if (update.selectedVersion !== undefined && update.selectedVersion >= version) settle();
+        });
+        shared.closing.add(settle);
+        shared.observer.refresh();
+      });
     },
   };
-}
-
-interface LiveCursor {
-  readonly sessionId: SessionId;
-  readonly seq: Seq;
-}
-
-const stores = new Map<SessionId, LiveStore>();
-
-function storeFor(sessionId: SessionId): LiveStore {
-  const existing = stores.get(sessionId);
-  if (existing !== undefined) return existing;
-  const created = new LiveStore();
-  stores.set(sessionId, created);
-  return created;
 }

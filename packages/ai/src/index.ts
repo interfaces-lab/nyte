@@ -39,6 +39,7 @@ export {
   type ModelsErrorCode,
 } from "./auth/resolve.ts";
 export { anthropicOAuth } from "./auth/oauth/anthropic.ts";
+export { githubCopilotOAuth, type GitHubCopilotOAuthOptions } from "./auth/oauth/github-copilot.ts";
 export { getAccountId, openaiCodexOAuth } from "./auth/oauth/openai-codex.ts";
 export { loadAnthropicOAuth, loadOpenAICodexOAuth } from "./auth/oauth/load.ts";
 export { oauthErrorHtml, oauthSuccessHtml } from "./auth/oauth/oauth-page.ts";
@@ -70,6 +71,7 @@ export * from "./utils/validation.ts";
 
 export { anthropicProvider } from "./providers/anthropic.ts";
 export { createNyteModels, defaultModelPerProvider } from "./providers/nyte-catalog.ts";
+export { githubCopilotProvider } from "./providers/github-copilot.ts";
 export {
   parseOpenCodeCatalog,
   type OpenCodeApi,

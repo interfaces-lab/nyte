@@ -11,12 +11,13 @@
  * Losing the overlay loses animation frames, never conversation.
  *
  * The fold is pure. It answers `resnapshot` when the stream can no longer be
- * applied locally: a commit whose parent is not the tip, or a head that moved
- * somewhere the commits that followed did not reach.
+ * applied locally: a commit whose parent is not the tip, a head that moved
+ * somewhere the commits that followed did not reach, or a parked call that
+ * only the snapshot can order among its siblings.
  */
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Selection } from "@nyte-ai/protocol";
-import { mergeQueuedLanes } from "../kernel/queue.ts";
+import { mergeQueuedLanes } from "../kernel/queue-order.ts";
 import type {
   ContextStatus,
   HeadName,
@@ -28,6 +29,7 @@ import type {
   SessionEvent,
   SessionId,
   SessionInfo,
+  SessionMetadata,
   SessionSnapshot,
 } from "../kernel/sdk/types.ts";
 import { EMPTY_LIVE_PARTS, foldLiveParts } from "../kernel/views/live-parts.ts";
@@ -55,7 +57,8 @@ export interface SessionState {
   readonly compaction: SessionSnapshot["compaction"];
   /** In arrival order, so a live turn draws its parts as they came. */
   readonly overlay: LiveParts;
-  readonly waiting: WaitingCall | undefined;
+  /** The parked calls of `run` as the snapshot lists them, in call order: asks and background waits alike. */
+  readonly parked: readonly ParkedCall[];
   readonly context: ContextStatus;
   /**
    * Where a `head_moved` said the head now is, while the commits that would
@@ -71,8 +74,6 @@ export type FoldOutcome =
   | { readonly kind: "resnapshot" };
 
 export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
-  // The shell answers one selection at a time; background waits do not take over the composer.
-  const parked = snapshot.parked?.findLast((call) => call.selection !== undefined);
   return {
     sessionId: snapshot.session.sessionId,
     head: snapshot.head,
@@ -84,19 +85,47 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     run: snapshot.run,
     compaction: snapshot.compaction,
     overlay: EMPTY_LIVE_PARTS,
-    waiting:
-      parked?.selection === undefined
-        ? undefined
-        : {
-            sessionId: snapshot.session.sessionId,
-            runId: parked.runId,
-            callId: parked.callId,
-            waitId: parked.waitId,
-            selection: parked.selection,
-            ...(parked.until === undefined ? {} : { until: parked.until }),
-          },
+    parked: snapshot.parked ?? [],
     context: snapshot.context,
     expectedTip: undefined,
+  };
+}
+
+/** The call a composer answers: the newest ask. Background waits never take the composer over. */
+export function waitingCall(
+  state: Pick<SessionState, "sessionId" | "parked">,
+): WaitingCall | undefined {
+  const call = state.parked.findLast((candidate) => candidate.selection !== undefined);
+  if (call?.selection === undefined) return undefined;
+  return {
+    sessionId: state.sessionId,
+    runId: call.runId,
+    callId: call.callId,
+    waitId: call.waitId,
+    selection: call.selection,
+    ...(call.until === undefined ? {} : { until: call.until }),
+  };
+}
+
+/**
+ * Lay a metadata read over a folded state. Activation is the fold's: every
+ * watch replays it, so the stream is never behind a read. Selected inputs are
+ * taken only when the read still answers the client's current selection.
+ */
+export function stateWithMetadata(
+  state: SessionState,
+  metadata: SessionMetadata,
+  selected: boolean,
+): SessionState {
+  return {
+    ...state,
+    info: {
+      ...metadata.session,
+      activation: state.info.activation,
+      config: selected ? metadata.session.config : state.info.config,
+    },
+    config: metadata.config,
+    context: metadata.context,
   };
 }
 
@@ -120,10 +149,21 @@ function upsertPending(items: readonly PendingItem[], item: PendingItem): Pendin
   });
 }
 
+function withoutPending(
+  items: readonly PendingItem[],
+  change: Oid | undefined,
+): readonly PendingItem[] {
+  if (change === undefined || !items.some((item) => item.change === change)) return items;
+  return mergeQueuedLanes(
+    items.filter((item) => item.change !== change),
+    { lane: (entry) => entry.lane, compare: comparePending },
+  );
+}
+
 /**
  * Apply one event. Events for other heads only touch what is head-neutral
- * (facts, deletion). The seq advances with every event so a follower resuming
- * after a failure starts where this fold stopped.
+ * (facts, deletion). The seq advances with every event but is never a reconnect
+ * cursor: siblings can share a seq, so recovery takes a fresh snapshot.
  */
 export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome {
   const base: SessionState = { ...state, seq: Math.max(state.seq, event.seq) };
@@ -138,11 +178,15 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       const transcript = appendTranscriptCommit(state.transcript, event.item);
       if (transcript === undefined) return { kind: "resnapshot" };
       const reached = state.expectedTip === transcript.tip;
+      // The head and the queue base move in one CAS but arrive as separate
+      // frames; the change leaves the queue with the commit that landed it, so
+      // no frame shows the message both pending and in the transcript.
       return {
         kind: "state",
         state: {
           ...base,
           transcript,
+          pending: withoutPending(state.pending, event.item.commit.change),
           overlay: foldLiveParts(state.overlay, event),
           expectedTip: reached ? undefined : state.expectedTip,
         },
@@ -161,9 +205,16 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       if (event.head !== state.head) return { kind: "state", state: base };
       const terminal = isTerminalPhase(event.run.phase);
       const overlay = foldLiveParts(state.overlay, event);
-      const waiting =
-        !terminal && state.waiting?.runId === event.run.runId ? state.waiting : undefined;
-      return { kind: "state", state: { ...base, run: event.run, overlay, waiting } };
+      const parked = terminal ? [] : state.parked.filter((call) => call.runId === event.run.runId);
+      return {
+        kind: "state",
+        state: {
+          ...base,
+          run: event.run,
+          overlay,
+          parked: parked.length === state.parked.length ? state.parked : parked,
+        },
+      };
     }
     case "compaction":
       if (event.head !== state.head) return { kind: "state", state: base };
@@ -181,58 +232,48 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       if (event.head !== state.head) return { kind: "state", state: base };
       return {
         kind: "state",
-        state: {
-          ...base,
-          pending: mergeQueuedLanes(
-            state.pending.filter((item) => item.change !== event.change),
-            { lane: (entry) => entry.lane, compare: comparePending },
-          ),
-        },
+        state: { ...base, pending: withoutPending(state.pending, event.change) },
       };
     case "queue_cancelled":
       return {
         kind: "state",
-        state: {
-          ...base,
-          pending: mergeQueuedLanes(
-            state.pending.filter((item) => item.change !== event.change),
-            { lane: (entry) => entry.lane, compare: comparePending },
-          ),
-        },
+        state: { ...base, pending: withoutPending(state.pending, event.change) },
       };
     case "effect": {
       if (state.run?.runId !== event.runId) return { kind: "state", state: base };
       switch (event.state) {
-        case "waiting":
-          if (
-            state.waiting?.runId === event.runId &&
-            state.waiting.callId === event.callId &&
-            state.waiting.waitId !== event.waitId
-          ) {
-            return { kind: "state", state: base };
-          }
-          if (event.selection === undefined) return { kind: "state", state: base };
+        case "waiting": {
+          // The snapshot orders concurrent asks and rejects a waiting event older than itself.
+          if (event.selection !== undefined) return { kind: "resnapshot" };
+          // A background wait carries its whole record, so it parks without a read.
+          const call: ParkedCall = {
+            runId: event.runId,
+            callId: event.callId,
+            waitId: event.waitId,
+            tool: event.tool,
+            args: event.args,
+            ...(event.until === undefined ? {} : { until: event.until }),
+          };
           return {
             kind: "state",
             state: {
               ...base,
-              waiting: {
-                sessionId: state.sessionId,
-                runId: event.runId,
-                callId: event.callId,
-                waitId: event.waitId,
-                selection: event.selection,
-                ...(event.until === undefined ? {} : { until: event.until }),
-              },
+              parked: [...state.parked.filter((parked) => parked.callId !== call.callId), call],
             },
           };
+        }
         case "expired":
         case "signal":
-        case "result":
-          // The snapshot retains concurrent waits that are not the displayed call.
-          if (state.waiting?.runId === event.runId && state.waiting.callId === event.callId)
-            return { kind: "resnapshot" };
-          return { kind: "state", state: base };
+        case "result": {
+          const parked = state.parked.find((call) => call.callId === event.callId);
+          if (parked === undefined) return { kind: "state", state: base };
+          // These carry no wait generation; only the snapshot tells a settled ask from a replay.
+          if (parked.selection !== undefined) return { kind: "resnapshot" };
+          return {
+            kind: "state",
+            state: { ...base, parked: state.parked.filter((call) => call !== parked) },
+          };
+        }
         case "intent":
           return { kind: "state", state: base };
         default: {
@@ -257,6 +298,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
           info: typeof event.value === "string" ? { ...state.info, name: event.value } : state.info,
         },
       };
+    case "config_queued":
     case "stack":
     case "deleted":
     case "job":

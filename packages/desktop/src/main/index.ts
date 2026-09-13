@@ -41,13 +41,19 @@ let desktopHost: DesktopHost | undefined;
 
 registerBunOAuthFlows();
 
+/**
+ * Vibrancy needs an opaque window. `transparent: true` gives the NSWindow a
+ * clear backing, the vibrancy view behind the page has nothing left to blur,
+ * and the sidebar falls back to flat colour, so it must stay unset here.
+ * Increased contrast drops the effect entirely rather than blurring a surface
+ * the user asked to be legible.
+ */
 function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> {
   const trafficLightDiameter = Number.parseFloat(process.getSystemVersion()) >= 25 ? 14 : 16;
   const trafficLightInset = Math.floor((35 - trafficLightDiameter) / 2);
   const options: Partial<Electron.BrowserWindowConstructorOptions> = {
     acceptFirstMouse: true,
     hasShadow: true,
-    transparent: true,
     titleBarOverlay: true,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: trafficLightInset + 1, y: trafficLightInset },
@@ -59,11 +65,17 @@ function macOSWindowChrome(): Partial<Electron.BrowserWindowConstructorOptions> 
   return options;
 }
 
+/**
+ * A vibrant window still takes a fill, and its alpha tints the material rather
+ * than clearing it. Light stays neutral; dark carries a quarter black so the
+ * blur reads dark instead of washing out. Without vibrancy the window needs a
+ * real colour, matching `--nyte-chrome-base`.
+ */
 function windowBackgroundColor(): string {
   if (process.platform !== "darwin" || nativeTheme.shouldUseHighContrastColors) {
-    return nativeTheme.shouldUseDarkColors ? "#111111" : "#f5f5f6";
+    return nativeTheme.shouldUseDarkColors ? "#111111" : "#f8f8f8";
   }
-  return "#00000000";
+  return nativeTheme.shouldUseDarkColors ? "#40000000" : "#00ffffff";
 }
 
 const updateTest = app.isPackaged && app.getName() === "Nyte Update Test";
@@ -95,6 +107,7 @@ const browserSurfaces = createBrowserSurfaces({
 
 const hostDependencies = {
   createModels: createNyteModels,
+  appVersion: app.getVersion(),
   // A sibling entry of this bundle; see the main build's rollup inputs.
   usageScan: new UsageScanWorker(nyteHome(), new URL("./usage-worker.js", import.meta.url)),
   storeWorker: new URL("./store-worker.js", import.meta.url),
@@ -211,6 +224,7 @@ function createWindow(): void {
   mainWindow = created;
   const closeTerminals = (): void => {
     workspaceEditor.dispose();
+    desktopHost?.cancelLogins();
     void desktopHost?.closeTerminals().catch(() => undefined);
   };
   created.webContents.on("render-process-gone", closeTerminals);
@@ -328,8 +342,12 @@ if (!hasSingleInstanceLock) {
     );
     const updateItem = menu.getMenuItemById("check-for-updates");
     if (updateItem !== null)
-      registerUpdates(updateItem, async () => {
-        await desktopHost?.close();
+      registerUpdates({
+        item: updateItem,
+        activity: () => getHost().updateActivity(),
+        beforeRelaunch: async () => {
+          await desktopHost?.close();
+        },
       });
     Menu.setApplicationMenu(menu);
   });

@@ -2,13 +2,77 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PhotonImage } from "@cf-wasm/photon/node";
 import { describe, test } from "vitest";
 import { createLocalBashOperations } from "../src/tools/bash.ts";
 import { applyEditsToNormalizedContent } from "../src/tools/edit-diff.ts";
 import { createEditTool } from "../src/tools/edit.ts";
 import { createLsTool } from "../src/tools/ls.ts";
+import { createReadTool } from "../src/tools/read.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { toolResultText } from "../src/utils/tool-result.ts";
+
+test("read preserves small images and bounds converted, oversized, and oriented images", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-read-image-"));
+  const small = new PhotonImage(new Uint8Array(4 * 8 * 4).fill(255), 8, 4);
+  const large = new PhotonImage(new Uint8Array(4 * 2400 * 1200).fill(255), 2400, 1200);
+  try {
+    const png = Buffer.from(small.get_bytes());
+    const jpeg = Buffer.from(large.get_bytes_jpeg(80));
+    // JPEG APP1 with EXIF orientation 6, a clockwise quarter-turn.
+    const exif = Buffer.from(
+      "ffe1002245786966000049492a0008000000010012010300010000000600000000000000",
+      "hex",
+    );
+    const fixtures = [
+      { name: "small", bytes: png, width: 8, height: 4 },
+      { name: "large", bytes: large.get_bytes(), width: 2000, height: 1000 },
+      {
+        name: "payload",
+        bytes: Buffer.concat([png, Buffer.alloc(4 * 1024 * 1024)]),
+        width: 8,
+        height: 4,
+      },
+      {
+        name: "oriented",
+        bytes: Buffer.concat([jpeg.subarray(0, 2), exif, jpeg.subarray(2)]),
+        width: 1000,
+        height: 2000,
+      },
+      {
+        name: "bitmap",
+        bytes: Buffer.from(
+          "424d3a0000000000000036000000280000000100000001000000010018000000000004000000000000000000000000000000000000000000ff00",
+          "hex",
+        ),
+        width: 1,
+        height: 1,
+      },
+    ];
+    const tool = createReadTool(directory);
+    for (const fixture of fixtures) {
+      await writeFile(join(directory, fixture.name), fixture.bytes);
+      const result = await tool.execute("read", { path: fixture.name });
+      const image = result.content.find((part) => part.type === "image");
+      assert.ok(image, `${fixture.name} returns an attachment`);
+      assert.equal(result.title, fixture.name);
+      assert.ok(image.data.length <= 4.5 * 1024 * 1024);
+      if (fixture.name === "small") assert.equal(image.data, png.toString("base64"));
+      if (fixture.name === "bitmap") assert.equal(image.mimeType, "image/png");
+      const decoded = PhotonImage.new_from_byteslice(Buffer.from(image.data, "base64"));
+      try {
+        assert.equal(decoded.get_width(), fixture.width, fixture.name);
+        assert.equal(decoded.get_height(), fixture.height, fixture.name);
+      } finally {
+        decoded.free();
+      }
+    }
+  } finally {
+    small.free();
+    large.free();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 describe("ls tool", () => {
   test("observes aborts while an operation is in flight", async () => {

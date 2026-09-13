@@ -88,11 +88,13 @@ export function cliInteraction(signal: AbortSignal, onInterrupt?: () => void): A
             `\n${event.instructions ?? "Open this URL to continue:"}\n\n  ${cyan(event.url, ansiEnabled(process.stderr))}\n`,
           );
           break;
-        case "device_code":
+        case "device_code": {
+          const lead = event.instructions === undefined ? "" : `${event.instructions}\n`;
           console.error(
-            `\nVisit ${event.verificationUri} and enter code: ${bold(event.userCode, ansiEnabled(process.stderr))}\n`,
+            `\n${lead}Visit ${event.verificationUri} and enter code: ${bold(event.userCode, ansiEnabled(process.stderr))}\n`,
           );
           break;
+        }
         case "info":
         case "progress":
           console.error(event.message);

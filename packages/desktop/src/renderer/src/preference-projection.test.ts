@@ -4,6 +4,7 @@ import type { DesktopCatalog } from "../../shared/ipc.ts";
 import { projectPreference } from "./preference-projection.ts";
 
 const catalog: DesktopCatalog = {
+  source: "local",
   providers: [
     { id: "provider", name: "Provider", enabled: true, connection: { kind: "oauth" }, signIn: [] },
   ],

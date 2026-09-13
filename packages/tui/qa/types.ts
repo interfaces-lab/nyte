@@ -36,6 +36,12 @@ export type Terminal = {
     deadline: number,
     input?: InputRecord,
   ): Promise<Screen>;
+  /**
+   * Calls the listener with each observed frame from now on, until the returned stop is
+   * called: a complete child update, as the emulator shows it at its next frame. Updates
+   * that complete between two emulator frames are observed as one.
+   */
+  observe(listener: (screen: Screen) => void): () => void;
   exited: Promise<number>;
   waitForExit(deadline: number): Promise<number>;
   signal(signal: "SIGINT" | "SIGTERM" | "SIGKILL"): void;

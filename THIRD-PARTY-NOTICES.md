@@ -188,6 +188,9 @@ no `NOTICE` file, so no additional attribution text is carried.
   Parallel, and Tavily adapters, its stateless MCP `tools/call` transport and
   response bounds, its result and error vocabulary, and its arrangement of one
   plugin per provider from OpenCode v2.
+- Core's ripgrep resolver and search adapter (`packages/core/src/ripgrep.ts`,
+  `packages/core/src/ripgrep/binary.ts`) and filename search
+  (`packages/core/src/file-search.ts`) adapt OpenCode v2's core implementation.
 - The TUI selection handlers, clipboard adapter, pasted-text expansion, Mermaid
   renderer integration, queued-message editing, and local plugin reloads also
   adapt merged V2 PRs #45758, #41603, #39920, #41113, #44683, #39776, and #47388.

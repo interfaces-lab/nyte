@@ -9,14 +9,13 @@
  */
 export { createNyte } from "./kernel/sdk/nyte.ts";
 export { dispatch } from "./kernel/sdk/dispatch.ts";
-export { mergeQueuedLanes } from "./kernel/queue.ts";
+export { mergeQueuedLanes } from "./kernel/queue-order.ts";
 export { acceptsSelectionReply, isTerminalPhase, isUserJob } from "@nyte-ai/protocol";
 export { bindTool } from "./tools/bind-tool.ts";
 export * from "./kernel/sdk/types.ts";
 /** Thrown by `watch` when a cursor is older than the event floor: take a snapshot and resume from its seq. */
 export { CursorExpired } from "./kernel/model.ts";
 export * from "./completion-trigger.ts";
-export * from "./mention-files.ts";
 
 /**
  * Client projections over the log. Clients may import nothing but this entry,

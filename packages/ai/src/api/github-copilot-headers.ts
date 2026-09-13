@@ -1,37 +1,36 @@
+/** Copilot wire identity from Pi 71dca871; interaction metadata follows OpenCode v2 9dd7149e. */
 import type { Message } from "../types.ts";
 
-// Copilot expects X-Initiator to indicate whether the request is user-initiated
-// or agent-initiated (e.g. follow-up after assistant/tool messages).
-export function inferCopilotInitiator(messages: Message[]): "user" | "agent" {
-  const last = messages[messages.length - 1];
-  return last && last.role !== "user" ? "agent" : "user";
-}
+export const GITHUB_COPILOT_API_VERSION = "2026-06-01";
+export const GITHUB_COPILOT_DEFAULT_ORIGIN = "https://api.individual.githubcopilot.com";
+export const GITHUB_COPILOT_HEADERS = {
+  "User-Agent": "GitHubCopilotChat/0.35.0",
+  "Editor-Version": "vscode/1.107.0",
+  "Editor-Plugin-Version": "copilot-chat/0.35.0",
+  "Copilot-Integration-Id": "vscode-chat",
+} as const;
 
-// Copilot requires Copilot-Vision-Request header when sending images
-export function hasCopilotVisionInput(messages: Message[]): boolean {
-  return messages.some((msg) => {
-    if (msg.role === "user" && Array.isArray(msg.content)) {
-      return msg.content.some((c) => c.type === "image");
-    }
-    if (msg.role === "toolResult" && Array.isArray(msg.content)) {
-      return msg.content.some((c) => c.type === "image");
-    }
-    return false;
-  });
-}
-
-export function buildCopilotDynamicHeaders(params: {
-  messages: Message[];
-  hasImages: boolean;
+export function buildCopilotDynamicHeaders(input: {
+  messages: readonly Message[];
+  sessionId?: string;
 }): Record<string, string> {
+  const last = input.messages.at(-1);
   const headers: Record<string, string> = {
-    "X-Initiator": inferCopilotInitiator(params.messages),
+    "X-GitHub-Api-Version": GITHUB_COPILOT_API_VERSION,
+    "X-Initiator": last && last.role !== "user" ? "agent" : "user",
     "Openai-Intent": "conversation-edits",
+    // The stream contract does not distinguish subagent, title, or compaction requests.
+    "X-Interaction-Type": "conversation-agent",
   };
-
-  if (params.hasImages) {
+  if (input.sessionId) headers["X-Interaction-Id"] = input.sessionId;
+  if (
+    input.messages.some(
+      (message) =>
+        (message.role === "user" || message.role === "toolResult") &&
+        Array.isArray(message.content) &&
+        message.content.some((part) => part.type === "image"),
+    )
+  )
     headers["Copilot-Vision-Request"] = "true";
-  }
-
   return headers;
 }

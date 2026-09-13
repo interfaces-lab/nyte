@@ -24,6 +24,14 @@ import type { DesktopCatalog, ProviderStatus } from "../nyte.ts";
 import { useCatalog, useSetPreference } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
+import {
+  beginLoginAttempt,
+  endLoginAttempt,
+  newLoginAttemptId,
+  setLoginAttemptCancelling,
+  useLoginAttempt,
+} from "./login-attempts.ts";
+import type { DeviceCode } from "./login-attempts.ts";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
 import { SettingsRow, SettingsSelect, SettingsSwitch } from "./settings-controls.tsx";
 
@@ -146,14 +154,104 @@ function ApiKeyForm({
   );
 }
 
+/** The site a verification link points at, for a button that says where it goes. */
+function linkHost(url: string): string | undefined {
+  return URL.canParse(url) ? new URL(url).hostname : undefined;
+}
+
+/**
+ * A device code the user carries to the provider's site. The code and the
+ * provider's instructions stay on screen until the attempt ends; the flow's
+ * messages sit under them so a poll update never hides what the user still
+ * has to type or read. The row's Cancel button is the one way out, so the
+ * panel does not repeat it.
+ */
+function DeviceCodePanel({
+  deviceCode,
+  message,
+}: {
+  deviceCode: DeviceCode;
+  message: string | undefined;
+}): ReactElement {
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const { userCode, verificationUri, expiresInSeconds, instructions } = deviceCode;
+  const host = linkHost(verificationUri);
+  const expiryMinutes =
+    expiresInSeconds === undefined ? undefined : Math.max(1, Math.round(expiresInSeconds / 60));
+  const openLabel = host === undefined ? "Open link" : `Open ${host}`;
+  return (
+    <div {...stylex.props(styles.deviceCodePanel)}>
+      <span {...stylex.props(styles.deviceCodeLead)}>
+        Enter this code at {verificationUri} to continue signing in.
+        {expiryMinutes !== undefined && ` It expires in about ${String(expiryMinutes)} min.`}
+      </span>
+      {instructions !== undefined && (
+        <span {...stylex.props(styles.deviceCodeNote)}>{instructions}</span>
+      )}
+      <div {...stylex.props(styles.deviceCodeRow)}>
+        <code aria-label="Device code" {...stylex.props(styles.deviceCode)}>
+          {userCode}
+        </code>
+        <Button
+          icon={copyStatus === "copied" ? "checkmark" : "copy"}
+          onClick={() => {
+            void navigator.clipboard.writeText(userCode).then(
+              () => setCopyStatus("copied"),
+              () => setCopyStatus("failed"),
+            );
+          }}
+        >
+          {copyStatus === "copied" ? "Copied" : "Copy code"}
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() =>
+            void nyte.host
+              .openExternal({ url: verificationUri })
+              .catch(() =>
+                toast.error(`Couldn't open ${host ?? "the link"}. Enter the code there yourself.`),
+              )
+          }
+        >
+          {openLabel}
+        </Button>
+      </div>
+      {copyStatus === "failed" && (
+        <span role="alert" {...stylex.props(styles.deviceCodeNote)}>
+          Couldn&rsquo;t copy the code. Select it and copy it yourself.
+        </span>
+      )}
+      <span role="status" aria-live="polite" {...stylex.props(styles.deviceCodeNote)}>
+        {message ?? "Nyte connects on its own once you approve."}
+      </span>
+    </div>
+  );
+}
+
 function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
   const setPreference = useSetPreference();
   const [keyFormOpen, setKeyFormOpen] = useState(false);
+  const running = useLoginAttempt(provider.id);
+  // Once the catalog reports the connection, the attempt is only winding down.
+  const attempt = provider.connection.kind === "disconnected" ? running : undefined;
   const login = useMutation({
-    mutationFn: (method: LoginMethod) => nyte.host.login({ provider: provider.id, method }),
-    onSuccess: () => {
+    mutationFn: async (method: LoginMethod) => {
+      const id = newLoginAttemptId();
+      beginLoginAttempt({ provider: provider.id, attempt: id, method: method.kind });
+      try {
+        return await nyte.host.login({ provider: provider.id, method, attempt: id });
+      } finally {
+        endLoginAttempt(provider.id, id);
+      }
+    },
+    onSuccess: (outcome) => {
+      if (outcome.kind === "cancelled") return;
       setKeyFormOpen(false);
-      toast.success(`Connected to ${provider.name}`);
+      if (outcome.catalogRefreshed) toast.success(`Connected to ${provider.name}`);
+      else
+        toast.warning(
+          `Connected to ${provider.name}, but its model list couldn't be updated. Sign out and in again to retry.`,
+        );
     },
     onError: () => toast.error(`Couldn't sign in to ${provider.name}. Try again.`),
   });
@@ -162,13 +260,27 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
     onSuccess: () => toast.success(`Signed out of ${provider.name}`),
     onError: () => toast.error(`Couldn't sign out of ${provider.name}. Try again.`),
   });
+  const cancelLogin = (): void => {
+    if (attempt === undefined) return;
+    const id = attempt.attempt;
+    setLoginAttemptCancelling(provider.id, id, true);
+    void nyte.host.cancelLogin({ attempt: id }).catch(() => {
+      // The attempt is still running; give the button back rather than a stuck state.
+      setLoginAttemptCancelling(provider.id, id, false);
+      toast.error(`Couldn't cancel the ${provider.name} sign-in. Try again.`);
+    });
+  };
   const busy = login.isPending || logout.isPending;
   const browser = provider.signIn.find((method) => method.kind === "browser");
   const apiKey = provider.signIn.find((method) => method.kind === "api_key");
   const { connection } = provider;
 
   const status =
-    login.isPending && login.variables.kind === "browser" ? (
+    attempt?.cancelling === true ? (
+      <ConnectionStatus tone="warn">Cancelling</ConnectionStatus>
+    ) : attempt?.deviceCode !== undefined ? (
+      <ConnectionStatus tone="warn">Waiting for approval</ConnectionStatus>
+    ) : attempt?.method === "browser" ? (
       <ConnectionStatus tone="warn">Waiting for the browser</ConnectionStatus>
     ) : !provider.enabled ? (
       <ConnectionStatus tone="off">Off</ConnectionStatus>
@@ -205,7 +317,11 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
       dimmed={!provider.enabled}
       status={status}
       actions={
-        connection.kind === "disconnected" ? (
+        attempt !== undefined && attempt.method === "browser" ? (
+          <Button variant="ghost" disabled={attempt.cancelling} onClick={cancelLogin}>
+            Cancel
+          </Button>
+        ) : connection.kind === "disconnected" ? (
           <>
             {browser !== undefined && (
               <Button disabled={busy} onClick={() => login.mutate({ kind: "browser" })}>
@@ -244,16 +360,23 @@ function ProviderRow({ provider }: { provider: ProviderStatus }): ReactElement {
         />
       }
       expansion={
-        keyFormOpen && apiKey !== undefined ? (
+        attempt?.deviceCode !== undefined ? (
+          <DeviceCodePanel deviceCode={attempt.deviceCode} message={attempt.message} />
+        ) : keyFormOpen && apiKey !== undefined ? (
           <ApiKeyForm
             label={apiKey.label}
             pending={login.isPending}
             onSubmit={(key) => login.mutate({ kind: "api_key", key })}
             onCancel={() => {
+              cancelLogin();
               login.reset();
               setKeyFormOpen(false);
             }}
           />
+        ) : attempt?.message !== undefined ? (
+          <span role="status" {...stylex.props(styles.deviceCodeNote)}>
+            {attempt.message}
+          </span>
         ) : undefined
       }
     />

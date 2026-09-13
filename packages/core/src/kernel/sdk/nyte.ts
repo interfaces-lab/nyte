@@ -4,6 +4,7 @@
  * relocation, and summaries, and exposes them as the `Nyte` namespaces.
  */
 import { isTerminalPhase, OPERATIONS, validateHeadName } from "@nyte-ai/protocol";
+import { getSupportedThinkingLevels } from "@nyte-ai/ai";
 import { Value } from "typebox/value";
 import { branch } from "../graph.ts";
 import { signalEffect } from "../effects.ts";
@@ -69,17 +70,19 @@ interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
 }
 
-function toModelInfo(model: {
-  readonly id: string;
-  readonly provider: string;
-  readonly name: string;
-  readonly contextWindow: number;
-}): ModelInfo {
+function toModelInfo(model: NyteOptions["model"]): ModelInfo {
   return {
     id: model.id,
     provider: model.provider,
     name: model.name,
     contextWindow: model.contextWindow,
+    cost: {
+      input: model.cost.input,
+      output: model.cost.output,
+      cacheRead: model.cost.cacheRead,
+      cacheWrite: model.cost.cacheWrite,
+    },
+    thinkingLevels: getSupportedThinkingLevels(model),
   };
 }
 
@@ -165,6 +168,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
 
   return {
     landing,
+    advance: runners.advance,
     sessions: {
       async create(input = {}) {
         pool.alive();
@@ -199,6 +203,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         }
       },
       snapshot: reads.snapshot,
+      metadata: reads.metadata,
       list: reads.list,
       async rename(input) {
         pool.alive();
@@ -393,6 +398,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         return waitForHead((await pool.open(input.sessionId)).session, {
           head: input.head ?? MAIN,
           signal: input.signal,
+          drain: landing.drain,
         });
       },
       async reply(input): Promise<ReplyOutcome> {
@@ -573,7 +579,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       models: {
         async list(): Promise<readonly ModelInfo[]> {
           pool.alive();
-          return options.models.getModels().map(toModelInfo);
+          const models = await options.models.getAvailable();
+          return models.map(toModelInfo);
         },
         async default(): Promise<ModelInfo | undefined> {
           pool.alive();

@@ -13,26 +13,35 @@ pages and `content/base-ui-reference/` are vendored from Base UI's MIT-licensed 
 pnpm --dir packages/docs dev
 ```
 
-Open http://localhost:3000. Root `pnpm dev` starts the **demo** desktop, not this site.
+Open http://localhost:3000. The desktop client uses root `pnpm dev:desktop`.
 
 ## Explore
 
-In the project, you can see:
-
-- `lib/source.ts`: Code for content source adapter, [`loader()`](https://fumadocs.dev/docs/headless/source-api) provides the interface to access your content.
-- `lib/layout.shared.tsx`: Shared options for layouts, optional but preferred to keep.
+- `src/lib/source.ts`: Content collections and source adapters.
+- `src/lib/layout.shared.tsx`: Shared layout options.
 
 | Route                     | Description                                            |
 | ------------------------- | ------------------------------------------------------ |
-| `app/(home)`              | The route group for your landing page and other pages. |
-| `app/docs`                | The documentation layout and pages.                    |
-| `app/api/search/route.ts` | The Route Handler for search.                          |
+| `src/app/(site)/(landing)` | Landing page. |
+| `src/app/(site)/docs` | Documentation layout and pages. |
+| `src/app/api/search/route.ts` | Search handler. |
 
 ### Fumadocs MDX
 
-Collections are defined with the [Macro API](https://fumadocs.dev/docs/mdx/macro) in `lib/source.ts`.
+Collections are defined with the [Macro API](https://fumadocs.dev/docs/mdx/macro) in `src/lib/source.ts`. Global MDX options live in `source.config.ts`.
 
 Read the [Introduction](https://fumadocs.dev/docs/mdx) for further details.
+
+## Verification
+
+From the repository root:
+
+```sh
+pnpm --dir packages/docs types:check
+pnpm --dir packages/docs build
+```
+
+The root `pnpm typecheck` does not run this package's `types:check` script. Read [AGENTS.md](AGENTS.md) before changing site code.
 
 ## Deploying
 

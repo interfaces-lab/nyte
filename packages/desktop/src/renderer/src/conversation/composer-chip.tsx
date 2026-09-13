@@ -45,13 +45,21 @@ export function ComposerChipView({
       // The editor moves through chips with its own selection; only read-only
       // surfaces need a tab stop.
       tabIndex={open === undefined || inEditor ? undefined : 0}
-      onClick={open}
+      onClick={
+        open === undefined
+          ? undefined
+          : (event) => {
+              event.stopPropagation();
+              open();
+            }
+      }
       onKeyDown={
         open === undefined || inEditor
           ? undefined
           : (event) => {
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
+              event.stopPropagation();
               open();
             }
       }

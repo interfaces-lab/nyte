@@ -29,20 +29,44 @@ export const WATCH_ROUTE = "/v1/watch";
 // Info
 // ---------------------------------------------------------------------------
 
+/** Deployment properties the SDK model catalog cannot infer. */
+export interface ServerDescription {
+  readonly capabilities: { readonly workspace: boolean };
+  readonly persistence: "durable" | "ephemeral" | "unknown";
+}
+
+const serverDescriptionProperties = {
+  capabilities: Type.Object({ workspace: Type.Boolean() }, { additionalProperties: false }),
+  persistence: Type.Enum(["durable", "ephemeral", "unknown"]),
+};
+export const ServerDescriptionSchema = typed<ServerDescription>()(
+  Type.Object(serverDescriptionProperties, { additionalProperties: false }),
+);
+
 /**
- * The reply on the info route, carried in the call envelope. `version` is the
- * host's own release, the product a user installed. `wireVersion` restates
- * the route prefix: a client on another wire asks under another prefix and
- * hears `not_found`, so a reply that reaches this schema with any other
- * number is malformed, not merely older.
+ * The host release and description in the info envelope. `wireVersion`
+ * restates the route prefix; another wire answers this route with `not_found`.
  */
 export interface ServerInfo {
   readonly version: string;
   readonly wireVersion: typeof WIRE_VERSION;
+  readonly host:
+    | { readonly kind: "unspecified" }
+    | ({ readonly kind: "described" } & ServerDescription);
 }
 
 export const ServerInfoSchema = typed<ServerInfo>()(
-  Type.Object({ version: Type.String(), wireVersion: Type.Literal(WIRE_VERSION) }),
+  Type.Object({
+    version: Type.String(),
+    wireVersion: Type.Literal(WIRE_VERSION),
+    host: Type.Union([
+      Type.Object({ kind: Type.Literal("unspecified") }),
+      Type.Object(
+        { kind: Type.Literal("described"), ...serverDescriptionProperties },
+        { additionalProperties: false },
+      ),
+    ]),
+  }),
 );
 
 // ---------------------------------------------------------------------------

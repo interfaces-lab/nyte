@@ -27,7 +27,7 @@ export async function run(reduced: boolean) {
     flushSync(() =>
       root.render(
         <StrictMode>
-          <span id="count" style={{ color: "var(--sand-text-success)" }}>
+          <span id="count" style={{ color: "var(--nyte-text-success)" }}>
             +{value > 0 && <AnimatedNumber key={scope} value={value} />}
           </span>
           <span id="filename">example.ts</span>
