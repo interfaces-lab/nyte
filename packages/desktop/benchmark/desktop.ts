@@ -3,8 +3,11 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import electronExecutable from "electron";
 import { resolve } from "node:path";
 import process from "node:process";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { createDesktopBenchmarkFixture } from "./fixtures.ts";
 import type { DesktopBenchmarkFixture, DesktopBenchmarkFixtureOptions } from "./fixtures.ts";
+import packageMetadata from "../package.json" with { type: "json" };
 
 const DESKTOP_ROOT = resolve(import.meta.dirname, "..");
 
@@ -46,9 +49,35 @@ export async function launchDesktop(
 
   let application: ElectronApplication | undefined;
   try {
+    // Electron resolves appData through macOS, not the fixture's HOME. Set it
+    // before the app chooses its profile and acquires its single-instance lock.
+    const appData = resolve(fixture.paths.root, "app-data");
+    await mkdir(appData);
+    await writeFile(
+      resolve(fixture.paths.root, "environment.mjs"),
+      `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\n`,
+    );
+    const entry = resolve(fixture.paths.root, "entry.mjs");
+    await writeFile(
+      entry,
+      `import "./environment.mjs";\nimport ${JSON.stringify(pathToFileURL(resolve(DESKTOP_ROOT, "out/main/index.js")).href)};\n`,
+    );
+    await writeFile(
+      resolve(fixture.paths.root, "package.json"),
+      JSON.stringify({
+        name: packageMetadata.name,
+        version: packageMetadata.version,
+        main: "entry.mjs",
+      }),
+    );
+    await symlink(
+      resolve(DESKTOP_ROOT, "resources"),
+      resolve(fixture.paths.root, "resources"),
+      "junction",
+    );
     application = await _electron.launch({
       executablePath: electronExecutable,
-      args: ["."],
+      args: [fixture.paths.root],
       cwd: DESKTOP_ROOT,
       env: environment,
       timeout: 30_000,

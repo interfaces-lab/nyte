@@ -1,7 +1,6 @@
 import {
   BoxRenderable,
   CliRenderEvents,
-  MacOSScrollAccel,
   RenderableEvents,
   ScrollBoxRenderable,
   TextRenderable,
@@ -41,7 +40,6 @@ export class DiagnosticReport implements EphemeralPanel {
       selectable: false,
     });
     const controls = new TextRenderable(shell.renderer, {
-      // Keep the body stationary when selection takes over both primary controls.
       height: 2,
       fg: shell.theme.dim,
       flexShrink: 0,
@@ -60,7 +58,7 @@ export class DiagnosticReport implements EphemeralPanel {
       scrollX: false,
       scrollY: true,
       stickyScroll: false,
-      scrollAcceleration: new MacOSScrollAccel(),
+      scrollAcceleration: shell.newScrollAcceleration(),
       verticalScrollbarOptions: {
         trackOptions: {
           backgroundColor: shell.theme.scrollbarTrack,
@@ -93,10 +91,7 @@ export class DiagnosticReport implements EphemeralPanel {
       {
         name: "report.close",
         title: "close",
-        enabled: () => !shell.renderer.hasSelection,
         run: () => {
-          // Selection can clear itself during dispatch. It must consume that key before close.
-          if (shell.renderer.hasSelection) return false;
           close();
           return true;
         },
@@ -113,7 +108,7 @@ export class DiagnosticReport implements EphemeralPanel {
       enabled: () => !this.container.isDestroyed,
       commands: actions.map((action) => ({ ...action, namespace: "report" })),
       bindings: commandBindings({
-        "report.close": `${CHAT_KEYBINDS["chat.interrupt"]},${CHAT_KEYBINDS["selection.copy"]}`,
+        "report.close": `${CHAT_KEYBINDS["chat.interrupt"]},${CHAT_KEYBINDS["chat.quit"]}`,
         "report.up": CHAT_KEYBINDS["chat.history.previous"],
         "report.down": CHAT_KEYBINDS["chat.history.next"],
         "report.page.up": CHAT_KEYBINDS["chat.scroll.page.up"],
@@ -128,15 +123,11 @@ export class DiagnosticReport implements EphemeralPanel {
     const paintControls = (): void => {
       if (this.container.isDestroyed) return;
       const entries = shell.keymap.getCommandEntries({
-        namespace: ["report", "selection"],
+        namespace: "report",
         visibility: "active",
       });
-      const primary = entries.filter(
-        ({ command }) => command.name === "report.close" || command.namespace === "selection",
-      );
-      const secondary = entries.filter(
-        ({ command }) => command.name !== "report.close" && command.namespace !== "selection",
-      );
+      const primary = entries.filter(({ command }) => command.name === "report.close");
+      const secondary = entries.filter(({ command }) => command.name !== "report.close");
       const nextControls = reportControlRows(primary, shell.renderer.width - 2);
       if (nextControls !== lastControls) controls.content = lastControls = nextControls;
       const nextNavigation = reportControlRows(secondary, shell.renderer.width - 2);
@@ -155,12 +146,10 @@ export class DiagnosticReport implements EphemeralPanel {
     };
     paintControls();
     const unsubscribe = shell.keymap.on("state", paintControls);
-    shell.renderer.on(CliRenderEvents.SELECTION, paintControls);
     shell.renderer.on(CliRenderEvents.RESIZE, paintControls);
     shell.renderer.setFrameCallback(paint);
     this.container.once(RenderableEvents.DESTROYED, () => {
       unsubscribe();
-      shell.renderer.off(CliRenderEvents.SELECTION, paintControls);
       shell.renderer.off(CliRenderEvents.RESIZE, paintControls);
       unregister();
       shell.renderer.removeFrameCallback(paint);

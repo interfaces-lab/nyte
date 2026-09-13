@@ -1,7 +1,9 @@
+import { sessionMark } from "@nyte-ai/core/client";
 /**
- * The rail: new chat, search, and customize on top, then a persistent
+ * The rail: new chat, search, customize, and cloud on top, then a persistent
  * workspace collection. Every folder expands independently over its cached
- * sessions, and the collection header owns folder opening.
+ * sessions, and the collection header owns folder opening. The Cloud folder
+ * appears once a cloud chat exists.
  * Everything you switch between lives in this one column.
  *
  * Every row shares one geometry: a leading icon slot, the label, and one
@@ -14,10 +16,13 @@
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/desktop-extensions/vertical-sidebar/view.tsx
  */
+import { draftPreviewText } from "../conversation/message-references.ts";
+import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import * as stylex from "@stylexjs/stylex";
 import { Button as BaseButton } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { Toggle } from "@nyte-ai/ui/toggle";
+import { toast } from "@nyte-ai/ui/sonner";
 import { useMatch, useRouter } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
@@ -49,17 +54,20 @@ import { macPlatform } from "../platform.ts";
 import {
   keys,
   queryClient,
-  warmThread,
   useForgetWorkspace,
   useHostState,
   useRenameSession,
   useServerState,
   useSessionActions,
   useWorkspaceSessionDirectory,
-  loadLocalResources,
   useWorkspaces,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
+import {
+  sessionHasUnreadCompletion,
+  sessionReadState,
+  useReadSessions,
+} from "../session-read-state.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useGitHubAccount } from "./github-account.ts";
 import { handleOpenOutcome } from "./open-workspace.tsx";
@@ -70,13 +78,13 @@ import {
   clearSessionFilters,
   DEFAULT_SESSION_VIEW,
   needsCompleteSessionDirectory,
-  sessionMark,
   sessionsForNavigation,
   sessionsForView,
   type SessionViewSettings,
 } from "./sidebar-view.ts";
 import { SettingsNavigation, type SettingsSection } from "./settings-navigation.tsx";
 import { shellActions, useShellState } from "./shell-state.ts";
+import { activateWorkspace } from "./use-show-session.ts";
 import {
   clientActionAriaShortcut,
   clientActionKeys,
@@ -90,6 +98,8 @@ type SessionPlace =
   | { readonly kind: "local"; readonly path: string | null }
   | { readonly kind: "cloud" };
 
+const COLLAPSED_SESSION_LIMIT = 5;
+
 const REPORT_ISSUE_URL = "https://github.com/interfaces-lab/nyte/issues/new";
 
 function draftsMatchView(view: SessionViewSettings): boolean {
@@ -101,9 +111,23 @@ function draftsMatchView(view: SessionViewSettings): boolean {
   );
 }
 
-function sidebarLayoutTransition(node: HTMLElement): Transition {
+const INSTANT: Transition = { duration: 0 };
+
+/** Repeats collapse into one settle, the way they collapse into one notification. */
+const ARCHIVE_BURST_MS = 100;
+let archiveSettle: "single" | "burst" | undefined;
+let lastArchiveAt = -ARCHIVE_BURST_MS;
+
+/** Call before the archive itself, so the render it causes settles the list to match. */
+function recordArchive(count: number): void {
+  const at = performance.now();
+  archiveSettle = count === 1 && at - lastArchiveAt > ARCHIVE_BURST_MS ? "single" : "burst";
+  lastArchiveAt = at;
+}
+
+function sidebarLayoutTransition(node: HTMLElement, durationVariable: string): Transition {
   const css = getComputedStyle(node);
-  const durationToken = css.getPropertyValue("--_sidebar-motion-duration").trim();
+  const durationToken = css.getPropertyValue(durationVariable).trim();
   const duration = Number.parseFloat(durationToken) / (durationToken.endsWith("ms") ? 1000 : 1);
   const curve = css.getPropertyValue("--_sidebar-motion-easing").trim();
   const [x1, y1, x2, y2] =
@@ -111,8 +135,7 @@ function sidebarLayoutTransition(node: HTMLElement): Transition {
       .match(/^cubic-bezier\(([^)]+)\)$/)?.[1]
       ?.split(",")
       .map(Number) ?? [];
-  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined)
-    return { duration: 0 };
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) return INSTANT;
   return { type: "tween", duration, ease: [x1, y1, x2, y2] };
 }
 
@@ -120,7 +143,7 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
   const contentRef = useRef<HTMLElement>(null);
   const layoutId = useId();
-  const [transition, setTransition] = useState<Transition>({ duration: 0 });
+  const [transitions, setTransitions] = useState({ list: INSTANT, archive: INSTANT });
 
   useLayoutEffect(() => {
     const node = contentRef.current;
@@ -128,11 +151,29 @@ function SidebarContent({ children }: { readonly children: ReactNode }): ReactEl
     // Motion's useReducedMotion snapshots the preference at mount; this must stay live.
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const update = (): void =>
-      setTransition(reducedMotion.matches ? { duration: 0 } : sidebarLayoutTransition(node));
+      setTransitions(
+        reducedMotion.matches
+          ? { list: INSTANT, archive: INSTANT }
+          : {
+              list: sidebarLayoutTransition(node, "--_sidebar-motion-duration"),
+              archive: sidebarLayoutTransition(node, "--_sidebar-archive-duration"),
+            },
+      );
     update();
     reducedMotion.addEventListener("change", update);
     return () => reducedMotion.removeEventListener("change", update);
   }, []);
+
+  // Archiving is a dismissal, not a rearrangement: one chat leaving gets a short
+  // slide, a burst of them snaps rather than reading as churn. Rows read the
+  // transition as they render, so the settle is spent by the time this commits.
+  const settle = archiveSettle;
+  useLayoutEffect(() => {
+    archiveSettle = undefined;
+  });
+
+  const transition =
+    settle === undefined ? transitions.list : settle === "single" ? transitions.archive : INSTANT;
 
   return (
     <nav
@@ -193,7 +234,9 @@ function SettingsFooterToggle({ mac }: { readonly mac: boolean }): ReactElement 
 }
 
 function sessionTitle(session: SessionInfo): string {
-  return session.name ?? session.preview ?? "New chat";
+  return (
+    session.name ?? (session.preview === undefined ? "New chat" : userDisplayText(session.preview))
+  );
 }
 
 /** One confirmation surface at a time: a chat deletion or a workspace-wide archive. */
@@ -220,6 +263,15 @@ export function Sidebar(): ReactElement {
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
   const server = useServerState();
+  const cloudDirectory = sessionDirectory.data?.find(
+    (directory) => directory.environment === "cloud",
+  );
+  const cloudFailure =
+    cloudDirectory?.availability.kind === "unavailable"
+      ? cloudDirectory.availability.message
+      : server.data?.kind === "unavailable"
+        ? server.data.problem.message
+        : undefined;
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
   const renameSession = useRenameSession();
@@ -257,8 +309,17 @@ export function Sidebar(): ReactElement {
     });
   };
   const [cloudCollapsed, setCloudCollapsed] = useState(false);
+  const cloudAvailable = server.data?.kind === "connected" && cloudFailure === undefined;
+  // The rail's Cloud action creates cloud chats; the folder only lists them,
+  // so it appears once the first chat exists or when a failure needs showing.
+  const cloudFolderVisible =
+    cloudFailure !== undefined || (cloudDirectory?.sessions.length ?? 0) > 0;
+  const [expandedSessionLists, setExpandedSessionLists] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
+  const readSessions = useReadSessions();
   const selection = activePane(layout).selection;
   const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeDraftId =
@@ -275,15 +336,23 @@ export function Sidebar(): ReactElement {
       : localSessions(sessionDirectory.data, workspacePath ?? null);
   useEffect(() => {
     if (activeSessionId === undefined || activeWorkspaceSessions === undefined) return;
-    const ordered = sessionsForView(activeWorkspaceSessions, view).flatMap(
-      (group) => group.sessions,
-    );
+    const ordered = sessionsForView(
+      activeWorkspaceSessions,
+      view,
+      "local",
+      Date.now(),
+      readSessions,
+    ).flatMap((group) => group.sessions);
     const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
     if (index === -1) return;
     for (const neighbour of [ordered[index - 1], ordered[index + 1]]) {
-      if (neighbour !== undefined) warmThread(neighbour.sessionId);
+      if (neighbour !== undefined)
+        void router.preloadRoute({
+          to: "/session/$sessionId",
+          params: { sessionId: neighbour.sessionId },
+        });
     }
-  }, [activeSessionId, activeWorkspaceSessions, view]);
+  }, [activeSessionId, activeWorkspaceSessions, readSessions, router, view]);
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
@@ -292,18 +361,6 @@ export function Sidebar(): ReactElement {
       .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((workspace) => ({ kind: "project", ...workspace }) as const),
   ];
-  const activateWorkspace = async (path: string | null): Promise<boolean> => {
-    if (path === (workspacePath ?? null)) return true;
-    if (path === null) await nyte.host.closeWorkspace();
-    else {
-      const outcome = await nyte.host.openWorkspace({ path });
-      handleOpenOutcome(outcome);
-      if (outcome.kind !== "opened") return false;
-    }
-    await loadLocalResources();
-    return true;
-  };
-
   const showSession = async (
     place: SessionPlace,
     sessionId: SessionId,
@@ -340,10 +397,15 @@ export function Sidebar(): ReactElement {
   };
 
   const newCloudChat = async (): Promise<void> => {
-    setCloudCollapsed(false);
-    const session = await nyte.host.server.createSession();
-    await queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
-    await showSession({ kind: "cloud" }, session.sessionId);
+    try {
+      setCloudCollapsed(false);
+      const session = await nyte.host.server.createSession();
+      await queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
+      await showSession({ kind: "cloud" }, session.sessionId);
+    } catch {
+      toast.error("Couldn't create a Cloud chat. Check the server connection in Settings.");
+      void queryClient.invalidateQueries({ queryKey: keys.server });
+    }
   };
 
   const sessionPanel = (place: SessionPlace): ReactElement | null => {
@@ -361,11 +423,26 @@ export function Sidebar(): ReactElement {
           ? localSessions(sessionDirectory.data, place.path)
           : cloudSessions(sessionDirectory.data);
     if (sessions === undefined && drafts.length === 0) return null;
-    const sessionGroups = sessions === undefined ? [] : sessionsForView(sessions, view, place.kind);
+    const sessionGroups =
+      sessions === undefined
+        ? []
+        : sessionsForView(sessions, view, place.kind, undefined, readSessions);
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
       drafts.length,
     );
+    const listKey = place.kind === "cloud" ? "cloud" : `local:${place.path ?? ""}`;
+    const listExpanded = expandedSessionLists.has(listKey);
+    const hasOverflow = displayedSessionCount > COLLAPSED_SESSION_LIMIT + 1;
+    const visibleLimit =
+      listExpanded || !hasOverflow ? displayedSessionCount : COLLAPSED_SESSION_LIMIT;
+    const visibleDrafts = drafts.slice(0, visibleLimit);
+    let remaining = visibleLimit - visibleDrafts.length;
+    const visibleGroups = sessionGroups.flatMap((group) => {
+      const visibleSessions = group.sessions.slice(0, remaining);
+      remaining -= visibleSessions.length;
+      return visibleSessions.length === 0 ? [] : [{ ...group, sessions: visibleSessions }];
+    });
     const previewContext: SessionPreviewContext =
       place.kind === "cloud"
         ? { kind: "cloud" }
@@ -382,12 +459,12 @@ export function Sidebar(): ReactElement {
             };
     return (
       <>
-        {drafts.length > 0 && (
+        {visibleDrafts.length > 0 && (
           <div {...stylex.props(styles.section)}>
             {view.grouping === "status" && (
               <div {...stylex.props(styles.sessionGroupLabel)}>Draft</div>
             )}
-            {drafts.map((draft) => (
+            {visibleDrafts.map((draft) => (
               <DraftRow
                 key={draft.id}
                 draft={draft}
@@ -402,6 +479,7 @@ export function Sidebar(): ReactElement {
           </div>
         )}
         {sessions !== undefined &&
+          !(place.kind === "cloud" && cloudFailure !== undefined) &&
           displayedSessionCount === 0 &&
           (completeDirectoryRequired ? (
             <>
@@ -419,7 +497,7 @@ export function Sidebar(): ReactElement {
           ) : (
             <div {...stylex.props(styles.quiet, styles.sessionQuiet)}>No sessions yet</div>
           ))}
-        {sessionGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.key} {...stylex.props(styles.section)}>
             {group.label !== undefined && (
               <div {...stylex.props(styles.sessionGroupLabel)}>{group.label}</div>
@@ -431,13 +509,25 @@ export function Sidebar(): ReactElement {
                 draggable={path === (workspacePath ?? null)}
                 previewContext={previewContext}
                 selected={session.sessionId === activeSessionId}
+                unread={sessionHasUnreadCompletion(session, readSessions)}
                 layoutEnabled={
                   sidebarVisible && settings === undefined && collectionExpanded && !collapsed
                 }
                 showUpdated={view.show.includes("updated")}
-                onOpen={() => void showSession(place, session.sessionId)}
-                onOpenBeside={() => void showSession(place, session.sessionId, true)}
-                onHover={() => warmThread(session.sessionId)}
+                onOpen={() => {
+                  sessionReadState.markRead(session);
+                  void showSession(place, session.sessionId);
+                }}
+                onOpenBeside={() => {
+                  sessionReadState.markRead(session);
+                  void showSession(place, session.sessionId, true);
+                }}
+                onHover={() =>
+                  void router.preloadRoute({
+                    to: "/session/$sessionId",
+                    params: { sessionId: session.sessionId },
+                  })
+                }
                 onRename={(name) => renameSession.mutate({ sessionId: session.sessionId, name })}
                 onDelete={() =>
                   setConfirmation({
@@ -454,6 +544,7 @@ export function Sidebar(): ReactElement {
                   });
                 }}
                 onArchive={() => {
+                  recordArchive(1);
                   sessionActions.archive([session.sessionId], !session.archived, (id) =>
                     removeSession(path, id),
                   );
@@ -462,6 +553,23 @@ export function Sidebar(): ReactElement {
             ))}
           </div>
         ))}
+        {hasOverflow && (
+          <button
+            type="button"
+            aria-expanded={listExpanded}
+            {...stylex.props(styles.showMore, focus.ringInset)}
+            onClick={() =>
+              setExpandedSessionLists((current) => {
+                const next = new Set(current);
+                if (next.has(listKey)) next.delete(listKey);
+                else next.add(listKey);
+                return next;
+              })
+            }
+          >
+            {listExpanded ? "Show less" : "Show more"}
+          </button>
+        )}
       </>
     );
   };
@@ -548,6 +656,21 @@ export function Sidebar(): ReactElement {
               </span>
               <span {...stylex.props(styles.navLabel)}>Customize</span>
             </button>
+
+            {server.data !== undefined && server.data.kind !== "none" && (
+              <button
+                type="button"
+                title={cloudAvailable ? undefined : (cloudFailure ?? "Server unavailable")}
+                {...stylex.props(styles.navRow, focus.ringInset)}
+                disabled={!cloudAvailable}
+                onClick={() => void newCloudChat()}
+              >
+                <span {...stylex.props(styles.navIcon)}>
+                  <Icon name="cloud" size={14} />
+                </span>
+                <span {...stylex.props(styles.navLabel)}>Cloud</span>
+              </button>
+            )}
           </div>
 
           <motion.div layoutScroll data-nyte-scrollport {...stylex.props(styles.scroll)}>
@@ -643,21 +766,30 @@ export function Sidebar(): ReactElement {
                         </WorkspaceRow>
                       );
                     })}
-                  {host.data !== undefined && server.data?.kind === "configured" && (
-                    <WorkspaceRow
-                      name="Cloud"
-                      path={server.data.baseUrl}
-                      available
-                      active={false}
-                      expanded={!cloudCollapsed}
-                      onExpandedChange={(next) => setCloudCollapsed(!next)}
-                      onNewChat={() => void newCloudChat()}
-                      onArchiveAll={undefined}
-                      onRemove={() => void nyte.host.server.disconnect()}
-                    >
-                      {sessionPanel({ kind: "cloud" })}
-                    </WorkspaceRow>
-                  )}
+                  {host.data !== undefined &&
+                    server.data !== undefined &&
+                    server.data.kind !== "none" &&
+                    cloudFolderVisible && (
+                      <WorkspaceRow
+                        name="Cloud"
+                        path={server.data.baseUrl}
+                        available={cloudAvailable}
+                        unavailableDetail="server unavailable; showing last loaded chats"
+                        active={false}
+                        expanded={!cloudCollapsed}
+                        onExpandedChange={(next) => setCloudCollapsed(!next)}
+                        onNewChat={cloudAvailable ? () => void newCloudChat() : undefined}
+                        onArchiveAll={undefined}
+                        onRemove={() => void nyte.host.server.disconnect()}
+                      >
+                        {cloudFailure !== undefined && (
+                          <div role="status" {...stylex.props(styles.quiet, styles.sessionQuiet)}>
+                            {cloudFailure}
+                          </div>
+                        )}
+                        {sessionPanel({ kind: "cloud" })}
+                      </WorkspaceRow>
+                    )}
                 </Collapsible.Panel>
               </Collapsible.Root>
             </section>
@@ -711,6 +843,7 @@ export function Sidebar(): ReactElement {
           }}
           onConfirm={() => {
             closeConfirmation();
+            recordArchive(confirmation.sessionIds.length);
             sessionActions.archive(confirmation.sessionIds, true, (id) =>
               removeSession(confirmation.workspacePath, id),
             );
@@ -825,6 +958,7 @@ function WorkspaceRow({
   name,
   path,
   available,
+  unavailableDetail = "folder unavailable, saved chats are still available",
   active,
   expanded,
   onExpandedChange,
@@ -836,10 +970,11 @@ function WorkspaceRow({
   readonly name: string;
   readonly path: string;
   readonly available: boolean;
+  readonly unavailableDetail?: string;
   readonly active: boolean;
   readonly expanded: boolean;
   readonly onExpandedChange: (expanded: boolean) => void;
-  readonly onNewChat: () => void;
+  readonly onNewChat: (() => void) | undefined;
   /** Absent when this workspace's chats are not loaded, so the item does not render. */
   readonly onArchiveAll: (() => void) | undefined;
   readonly onRemove: () => void;
@@ -847,7 +982,7 @@ function WorkspaceRow({
 }): ReactElement {
   const trigger = (
     <Collapsible.Trigger
-      title={available ? path : `${path} (folder unavailable, saved chats are still available)`}
+      title={available ? path : `${path} (${unavailableDetail})`}
       aria-current={active ? "location" : undefined}
       {...stylex.props(styles.row, styles.workspaceRowTrigger, focus.ringInset)}
     >
@@ -874,7 +1009,11 @@ function WorkspaceRow({
     >
       <div {...stylex.props(styles.workspaceRowShell)}>
         <ContextMenu label={`Actions for ${name}`} trigger={trigger}>
-          <ContextMenuItem icon="new-chat-folder" onSelect={onNewChat}>
+          <ContextMenuItem
+            icon="new-chat-folder"
+            disabled={onNewChat === undefined}
+            onSelect={() => onNewChat?.()}
+          >
             New chat
           </ContextMenuItem>
           {onArchiveAll !== undefined && (
@@ -896,6 +1035,7 @@ function WorkspaceRow({
           title={`New chat in ${name}`}
           {...stylex.props(styles.workspaceCreateAction, focus.ringInset)}
           onClick={onNewChat}
+          disabled={onNewChat === undefined}
         >
           <Icon name="new-chat-folder" size={13} />
         </button>
@@ -918,8 +1058,11 @@ function DraftRow({
   readonly onOpen: () => void;
   readonly onDelete: () => void;
 }): ReactElement {
-  const title =
-    draft.composer.draft.trim().split(/\r?\n/u)[0]?.replaceAll(/\s+/gu, " ").trim() ?? "Draft";
+  const [title, setTitle] = useState(() => draftPreviewText(draft.composer.draft));
+  useEffect(() => {
+    const timeout = setTimeout(() => setTitle(draftPreviewText(draft.composer.draft)), 100);
+    return () => clearTimeout(timeout);
+  }, [draft.composer.draft]);
   const row = (
     <motion.div
       layout={layoutEnabled ? "position" : false}
@@ -997,6 +1140,7 @@ interface SessionRowProps {
   draggable: boolean;
   previewContext: SessionPreviewContext;
   selected: boolean;
+  unread: boolean;
   layoutEnabled: boolean;
   showUpdated: boolean;
   onOpen: () => void;
@@ -1013,6 +1157,7 @@ function SessionRow({
   draggable,
   previewContext,
   selected,
+  unread,
   layoutEnabled,
   showUpdated,
   onOpen,
@@ -1074,7 +1219,7 @@ function SessionRow({
         {...stylex.props(styles.sessionRenameRow)}
       >
         <span {...stylex.props(styles.rowIcon)}>
-          <StatusDot mark={mark} />
+          <StatusDot mark={mark} unread={unread} />
         </span>
         <input
           aria-label={`Rename ${title}`}
@@ -1138,7 +1283,7 @@ function SessionRow({
         )}
       >
         <span {...stylex.props(styles.rowIcon)}>
-          <StatusDot mark={mark} />
+          <StatusDot mark={mark} unread={unread} />
         </span>
         <span {...stylex.props(styles.rowTitle, styles.sessionTitle)}>{title}</span>
       </BaseButton>

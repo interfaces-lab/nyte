@@ -34,7 +34,7 @@ import { isJsonObject, toJsonValue } from "../json.ts";
 import type { Blob, ModelRef, Obj, Run, RunConfig } from "../model.ts";
 import { contextMessages } from "../context.ts";
 import { contextCommits } from "../graph.ts";
-import { FACT_PREFIX, factRef, headRef } from "../names.ts";
+import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { projectEvent } from "./events.ts";
 import { providerCompactionFor, requestStream } from "./requests.ts";
@@ -98,36 +98,6 @@ async function blobValue(session: Session, oid: string, ref: string): Promise<Js
   const object = await session.objects.get(oid);
   if (!isBlob(object)) throw new Error(`Corrupt fact ref ${ref} at ${oid}`);
   return object.value;
-}
-
-function encodeFactKey(key: string): string {
-  if (key === "") return "%_";
-  return [...new TextEncoder().encode(key)]
-    .map((byte) => {
-      const character = String.fromCharCode(byte);
-      return /^[A-Za-z0-9_-]$/.test(character)
-        ? character
-        : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
-    })
-    .join("");
-}
-
-function decodeFactKey(key: string): string {
-  if (key === "%_") return "";
-  const bytes: number[] = [];
-  for (let index = 0; index < key.length; index += 1) {
-    const character = key[index];
-    if (character !== "%") {
-      if (character === undefined) throw new Error(`Malformed encoded fact key: ${key}`);
-      bytes.push(character.charCodeAt(0));
-      continue;
-    }
-    const hex = key.slice(index + 1, index + 3);
-    if (!/^[0-9A-F]{2}$/.test(hex)) throw new Error(`Malformed encoded fact key: ${key}`);
-    bytes.push(Number.parseInt(hex, 16));
-    index += 2;
-  }
-  return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
 function storedFactRef(key: string): string {

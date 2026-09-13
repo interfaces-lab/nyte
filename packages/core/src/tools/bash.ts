@@ -53,7 +53,7 @@ const bashParameters = Type.Object({
   background: Type.Optional(
     Type.Boolean({
       description:
-        "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands. The command keeps running across turns; its exit is reported in a later message. Do not use it to speed up ordinary commands.",
+        "Start the command and return a job id with its first output instead of waiting for it to exit. Use for servers, watchers, and other long-lived commands. The command keeps running across turns; its exit is reported before your next response while you are still working, or with the user's next message. Do not use it to speed up ordinary commands.",
     }),
   ),
 });

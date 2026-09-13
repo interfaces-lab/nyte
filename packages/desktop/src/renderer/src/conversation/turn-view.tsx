@@ -7,10 +7,12 @@
 import * as stylex from "@stylexjs/stylex";
 import { Button as BaseButton } from "@nyte-ai/ui";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { changesFromTurns, presentNote, turnPartId } from "@nyte-ai/core/views";
 import type { FileChange, ThinkingLevel, Turn, TurnPart, UserTurnPart } from "@nyte-ai/core";
+import type { RenderedTurn } from "./transcript-rows.ts";
+import { filesChangedLabel } from "../workbench/change-tree.ts";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Icon } from "../components/icons.tsx";
@@ -30,11 +32,10 @@ import { UserMessageText, messageImages, userMessageText } from "./message-conte
 import { messageDraftText } from "./message-references.ts";
 import { ModelPicker } from "./model-picker.tsx";
 import type { ModelPickerChange } from "./model-picker.tsx";
-import { USER_MESSAGE_PREVIEW_HEIGHT, turnStyles } from "./styles.stylex.ts";
+import { USER_MESSAGE_PREVIEW_LINES, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import {
-  configChangeText,
   displayTranscriptParts,
   isFailureNotice,
   presentTranscriptNotice,
@@ -53,7 +54,8 @@ function UserMessagePreview({ children }: { children: ReactNode }): ReactElement
     const content = contentRef.current;
     if (content === null) return undefined;
     const measure = (): void => {
-      setOverflowing(content.scrollHeight > USER_MESSAGE_PREVIEW_HEIGHT);
+      const lineHeight = Number.parseFloat(getComputedStyle(content).lineHeight);
+      setOverflowing(content.scrollHeight > lineHeight * USER_MESSAGE_PREVIEW_LINES);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -157,6 +159,26 @@ export function UserMessageView({
   branchModel?: BranchModelPicker;
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const canDismissEdit = edit !== undefined && !edit.saving && edit.attachmentReads === 0;
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!canDismissEdit || row === null) return;
+    const dismiss = (event: MouseEvent): void => {
+      if (event.defaultPrevented || event.button !== 0 || event.composedPath().includes(row))
+        return;
+      const target = event.target;
+      // Portalled menus and dialogs still belong to the active editing interaction.
+      if (
+        target instanceof Element &&
+        target.closest('[data-composer-frame], [role="menu"], [role="listbox"], [role="dialog"]')
+      )
+        return;
+      setEdit(undefined);
+    };
+    row.ownerDocument.addEventListener("click", dismiss);
+    return () => row.ownerDocument.removeEventListener("click", dismiss);
+  }, [canDismissEdit]);
   const original = userMessageText(content);
   const pluginCatalog = usePluginCatalog();
   // The edit sits in a thread, so a workspace is open behind it.
@@ -257,7 +279,7 @@ export function UserMessageView({
     );
 
   return (
-    <div data-sticky-user-message {...stylex.props(turnStyles.userRow)}>
+    <div ref={rowRef} data-sticky-user-message {...stylex.props(turnStyles.userRow)}>
       <div {...stylex.props(turnStyles.userPromptShell)}>
         {edit === undefined ? (
           <div
@@ -266,8 +288,8 @@ export function UserMessageView({
               onEdit !== undefined && turnStyles.userPromptEditable,
             )}
           >
+            <UserMessageImages content={content} />
             <UserMessagePreview>
-              <UserMessageImages content={content} />
               {onEdit === undefined ? (
                 <UserMessageText text={original} />
               ) : (
@@ -277,7 +299,7 @@ export function UserMessageView({
                   aria-label={
                     original === "" ? "Edit message" : `Edit message: ${userDisplayText(original)}`
                   }
-                  {...stylex.props(turnStyles.userPromptHit, focus.ring)}
+                  {...stylex.props(turnStyles.userPromptHit)}
                   onClick={begin}
                   onKeyDown={(event) => {
                     if (event.key !== "F2") return;
@@ -368,14 +390,6 @@ export function ReasoningBlock({
   );
 }
 
-function EventLine({ children }: { children: ReactNode }): ReactElement {
-  return (
-    <div role="status" {...stylex.props(turnStyles.event)}>
-      {children}
-    </div>
-  );
-}
-
 function HistoryDisclosure({
   label,
   children,
@@ -419,28 +433,19 @@ function Notice({ text }: { text: string }): ReactElement {
   );
 }
 
-/**
- * The frame mounts as soon as a run touches a file so the end of the run only
- * fills the body in; the reader's place under the card never shifts.
- */
+/** Review is available once the latest turn that wrote files has settled. */
 function TurnChangesCard({
   files,
-  running,
   onReview,
   onOpenFile,
 }: {
   readonly files: readonly FileChange[];
-  readonly running: boolean;
   readonly onReview: () => void;
   readonly onOpenFile: (path: string) => void;
 }): ReactElement {
-  const title = `${String(files.length)} ${files.length === 1 ? "File" : "Files"} Changed`;
+  const title = filesChangedLabel(files.length);
   return (
-    <section
-      aria-label={title}
-      aria-busy={running || undefined}
-      {...stylex.props(turnStyles.changesCard)}
-    >
+    <section aria-label={title} {...stylex.props(turnStyles.changesCard)}>
       <div {...stylex.props(turnStyles.changesHeader)}>
         <span {...stylex.props(turnStyles.changesTitle)}>{title}</span>
         <BaseButton
@@ -453,43 +458,41 @@ function TurnChangesCard({
           Review
         </BaseButton>
       </div>
-      {!running && (
-        <ul {...stylex.props(turnStyles.changesList)}>
-          {files.map((file) => (
-            <li key={file.path}>
-              <BaseButton
-                unstyled
-                type="button"
-                title={`Open ${file.path} in Changes`}
-                onClick={() => onOpenFile(file.path)}
-                {...stylex.props(turnStyles.changesFile, focus.ringInset)}
+      <ul {...stylex.props(turnStyles.changesList)}>
+        {files.map((file) => (
+          <li key={file.path}>
+            <BaseButton
+              unstyled
+              type="button"
+              title={`Open ${file.path} in Changes`}
+              onClick={() => onOpenFile(file.path)}
+              {...stylex.props(turnStyles.changesFile, focus.ringInset)}
+            >
+              <span {...stylex.props(turnStyles.changesFileIcon)}>
+                <FileTypeIcon path={file.path} />
+              </span>
+              <span {...stylex.props(turnStyles.changesPath)}>
+                {file.path.split("/").at(-1) ?? file.path}
+              </span>
+              <span
+                aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
+                {...stylex.props(turnStyles.changesStats)}
               >
-                <span {...stylex.props(turnStyles.changesFileIcon)}>
-                  <FileTypeIcon path={file.path} />
-                </span>
-                <span {...stylex.props(turnStyles.changesPath)}>
-                  {file.path.split("/").at(-1) ?? file.path}
-                </span>
-                <span
-                  aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
-                  {...stylex.props(turnStyles.changesStats)}
-                >
-                  {file.added > 0 && (
-                    <span {...stylex.props(turnStyles.changesAdded)}>
-                      +<AnimatedNumber value={file.added} />
-                    </span>
-                  )}
-                  {file.removed > 0 && (
-                    <span {...stylex.props(turnStyles.changesRemoved)}>
-                      -<AnimatedNumber value={file.removed} />
-                    </span>
-                  )}
-                </span>
-              </BaseButton>
-            </li>
-          ))}
-        </ul>
-      )}
+                {file.added > 0 && (
+                  <span {...stylex.props(turnStyles.changesAdded)}>
+                    +<AnimatedNumber value={file.added} />
+                  </span>
+                )}
+                {file.removed > 0 && (
+                  <span {...stylex.props(turnStyles.changesRemoved)}>
+                    -<AnimatedNumber value={file.removed} />
+                  </span>
+                )}
+              </span>
+            </BaseButton>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -499,6 +502,7 @@ export function TurnPartView({
   liveTools,
   cwd,
   toolCalls,
+  running,
   onEditUser,
   branchModel,
 }: {
@@ -506,6 +510,7 @@ export function TurnPartView({
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
   toolCalls: ToolCallDensity;
+  running: boolean;
   onEditUser?: (
     part: UserTurnPart,
     content: UserTurnPart["content"],
@@ -536,6 +541,7 @@ export function TurnPartView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
+          active={running}
           density={toolCalls}
         />
       );
@@ -558,7 +564,7 @@ export const TurnView = memo(function TurnView({
   onOpenChanges,
   running = false,
 }: {
-  turn: Turn;
+  turn: RenderedTurn;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   live?: LiveSnapshot;
   cwd: string | undefined;
@@ -629,6 +635,7 @@ export const TurnView = memo(function TurnView({
                 liveTools={liveTools}
                 cwd={cwd}
                 toolCalls={appearance.toolCalls}
+                running={running}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
               />
@@ -636,10 +643,9 @@ export const TurnView = memo(function TurnView({
           })}
           {turn.outcome === "aborted" && !hasFailureNote && <Notice text="Run stopped." />}
           {turn.outcome === "failed" && !hasFailureNote && <Notice text="Error: Run failed." />}
-          {changes.length > 0 && onOpenChanges !== undefined && (
+          {!running && changes.length > 0 && onOpenChanges !== undefined && (
             <TurnChangesCard
               files={changes}
-              running={running}
               onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}
               onOpenFile={(path) => onOpenChanges({ kind: "file", turnId: turn.id, path })}
             />
@@ -659,10 +665,6 @@ export const TurnView = memo(function TurnView({
           <Prose markdown={turn.body.text} />
         </HistoryDisclosure>
       );
-    case "config": {
-      const text = configChangeText(turn);
-      return text === undefined ? null : <EventLine>{text}</EventLine>;
-    }
     case "note":
       return <Notice text={presentNote(turn).text} />;
     default: {

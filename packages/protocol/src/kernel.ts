@@ -33,6 +33,11 @@ export interface Commit {
   readonly imports?: readonly Oid[];
   /** The change this commit landed, when a submission produced it. */
   readonly change?: Oid;
+  /**
+   * The submission key the landed change carried. Correlation for the client
+   * that sent it, never authorization; it stays out of the message content.
+   */
+  readonly key?: string;
   /** The run that wrote this commit, when a runner did. Provenance for per-run views. */
   readonly run?: string;
   readonly body: CommitBody;

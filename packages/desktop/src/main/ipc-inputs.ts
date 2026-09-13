@@ -5,6 +5,7 @@
  */
 import { BROWSER_ACTIONS, HOST_OPERATION_PATHS, SDK_OPERATION_PATHS } from "../shared/ipc.ts";
 import { Type } from "typebox";
+import { WorkspaceSearchSchema } from "@nyte-ai/core/files";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import { ParseError } from "typebox/value";
@@ -58,6 +59,8 @@ function compile<T extends TSchema>(schema: T) {
 
 const id = Type.String();
 const nonEmpty = Type.String({ minLength: 1 });
+/** A renderer-chosen correlation ID; bounded so it cannot carry a payload. */
+const loginAttempt = Type.String({ minLength: 1, maxLength: 64 });
 const thinkingLevel = schemas.ThinkingLevel;
 const noInput = Type.Optional(Type.Undefined());
 const model = strict({ provider: nonEmpty, id: nonEmpty });
@@ -65,25 +68,11 @@ const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
 /** A local calendar day. Anything else would fold history onto the wrong dates. */
 const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 
-const globPatterns = Type.Optional(
-  Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 20 }),
-);
 export const WORKSPACE_EDITOR_INPUT_SCHEMAS = {
   search: compile(
     strict({
       requestId: Type.String({ minLength: 1, maxLength: 128 }),
-      query: Type.String({ minLength: 1, maxLength: 1000 }),
-      caseSensitive: Type.Optional(Type.Boolean()),
-      wholeWord: Type.Optional(Type.Boolean()),
-      regex: Type.Optional(Type.Boolean()),
-      include: globPatterns,
-      exclude: globPatterns,
-      maxMatches: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
-      drafts: Type.Optional(
-        Type.Array(strict({ path: nonEmpty, contents: Type.String({ maxLength: 200_000 }) }), {
-          maxItems: 10,
-        }),
-      ),
+      ...WorkspaceSearchSchema.properties,
     }),
   ),
   cancelSearch: compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
@@ -115,6 +104,7 @@ export const CALL_INPUT_SCHEMAS = {
   "sessions.create": compile(OPERATIONS["sessions.create"].input),
   "sessions.get": compile(OPERATIONS["sessions.get"].input),
   "sessions.snapshot": compile(OPERATIONS["sessions.snapshot"].input),
+  "sessions.metadata": compile(OPERATIONS["sessions.metadata"].input),
   "sessions.list": compile(OPERATIONS["sessions.list"].input),
   "sessions.rename": compile(OPERATIONS["sessions.rename"].input),
   "sessions.setPinned": compile(OPERATIONS["sessions.setPinned"].input),
@@ -130,7 +120,6 @@ export const CALL_INPUT_SCHEMAS = {
   "jobs.cancel": compile(OPERATIONS["jobs.cancel"].input),
   "runs.abort": compile(OPERATIONS["runs.abort"].input),
   "runs.reply": compile(OPERATIONS["runs.reply"].input),
-  "runs.changes": compile(OPERATIONS["runs.changes"].input),
   "heads.move": compile(OPERATIONS["heads.move"].input),
   "workspace.list": compile(OPERATIONS["workspace.list"].input),
   "workspace.forget": compile(OPERATIONS["workspace.forget"].input),
@@ -150,12 +139,13 @@ export const CALL_INPUT_SCHEMAS = {
   "host.pickWorkspace": compile(noInput),
   "host.trustWorkspace": compile(strict({ path: Type.String() })),
   "host.closeWorkspace": compile(noInput),
-  "host.catalog": compile(noInput),
+  "host.catalog": compile(Type.Union([Type.Undefined(), strict({ sessionId })])),
   "host.usage": compile(
     // `sinceDay: null` is all time, the one window whose start the page cannot
     // name before reading.
     strict({ sinceDay: Type.Union([usageDay, Type.Null()]), untilDay: usageDay }),
   ),
+  "host.accountLimits": compile(noInput),
   "host.login": compile(
     strict({
       provider: Type.String(),
@@ -164,8 +154,10 @@ export const CALL_INPUT_SCHEMAS = {
         // A key must hold something other than whitespace.
         strict({ kind: Type.Literal("api_key"), key: Type.String({ pattern: "\\S" }) }),
       ]),
+      attempt: loginAttempt,
     }),
   ),
+  "host.cancelLogin": compile(strict({ attempt: loginAttempt })),
   "host.logout": compile(strict({ provider: Type.String() })),
   "host.setPreference": compile(
     Type.Union([
@@ -184,7 +176,10 @@ export const CALL_INPUT_SCHEMAS = {
     ]),
   ),
   "host.vcs.snapshot": compile(noInput),
-  "host.files.list": compile(noInput),
+  "host.files.list": compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
+  "host.files.cancelList": compile(
+    strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) }),
+  ),
   "host.files.read": compile(strict({ path: nonEmpty })),
   "host.files.save": compile(
     strict({
@@ -200,6 +195,9 @@ export const CALL_INPUT_SCHEMAS = {
   "host.server.connect": compile(strict({ baseUrl: nonEmpty, token: nonEmpty })),
   "host.server.disconnect": compile(noInput),
   "host.server.createSession": compile(noInput),
+  "host.mobile.state": compile(noInput),
+  "host.mobile.start": compile(noInput),
+  "host.mobile.stop": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
   "host.browser.open": compile(strict({ surface: nonEmpty, url: Type.String() })),
   "host.browser.navigate": compile(

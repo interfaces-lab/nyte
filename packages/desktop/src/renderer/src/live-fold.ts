@@ -1,12 +1,14 @@
 /**
- * The overlay fold for one open session's `watch` events, as pure functions.
+ * Renderer lookups over the observer's live overlay, as pure functions.
  *
- * Durable events refresh one kernel snapshot. Streaming text stays provisional
- * under `(runId, attempt, index)` until its assistant commit lands. Core owns
- * accumulation and settlement; this adapter owns renderer lookups and refreshes.
+ * Core folds the stream (`@nyte-ai/core/client`); this file only derives what
+ * the transcript views index by: streaming text per part, tool progress per
+ * call, arrival order, and what the run's phase means for the overlay.
+ * Identities survive a frame that changed none of them, so settled turns do
+ * not re-render per token.
  */
-import type { RunId, RunInfo, Seq, SessionEvent, ToolProgress } from "@nyte-ai/core";
-import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/core/views";
+import type { RunId, RunInfo, ToolProgress } from "@nyte-ai/core";
+import { EMPTY_LIVE_PARTS } from "@nyte-ai/core/views";
 import type { LivePart, LiveParts } from "@nyte-ai/core/views";
 
 export type LivePartRef = Omit<Exclude<LivePart, { kind: "tool" }>, "text">;
@@ -16,26 +18,17 @@ export interface LiveToolProgress {
   readonly progress: ToolProgress;
 }
 
-export interface LiveDiagnostic {
-  readonly owner: string;
-  readonly level: "info" | "warn" | "error";
-  readonly message: string;
-}
+export type LiveRunState = LiveSnapshot["runState"];
 
-export type LiveState = {
-  readonly parts: LiveParts;
-  readonly diagnostics: readonly LiveDiagnostic[];
-} & (
+type LiveRun =
   | { readonly runState: "idle" | "working"; readonly retry?: never }
   | {
       readonly runState: "retrying";
       readonly retry: { readonly at: number; readonly message: string };
-    }
-);
+    };
 
-export type LiveRunState = LiveState["runState"];
-
-export type LiveSnapshot = LiveState & {
+export type LiveSnapshot = LiveRun & {
+  readonly parts: LiveParts;
   /** Streaming text by `${runId}:${attempt}:${index}`. */
   readonly text: ReadonlyMap<string, string>;
   readonly thinking: ReadonlyMap<string, string>;
@@ -44,9 +37,6 @@ export type LiveSnapshot = LiveState & {
   readonly order: readonly LivePartRef[];
 };
 
-/** How many diagnostics the overlay keeps; older ones scroll off. */
-const DIAGNOSTIC_LIMIT = 3;
-
 export const IDLE: LiveSnapshot = {
   parts: EMPTY_LIVE_PARTS,
   runState: "idle",
@@ -54,11 +44,39 @@ export const IDLE: LiveSnapshot = {
   thinking: new Map(),
   tools: new Map(),
   order: [],
-  diagnostics: [],
 };
 
 export function livePartKey(runId: RunId, attempt: number, index: number): string {
   return `${runId}:${String(attempt)}:${String(index)}`;
+}
+
+/** Streaming or calling tools is work; a retry waits out its delay; anything else leaves the overlay idle. */
+export function liveRun(run: RunInfo | undefined): LiveRun {
+  if (run === undefined) return { runState: "idle" };
+  switch (run.phase.kind) {
+    case "respond":
+    case "tools":
+      return { runState: "working" };
+    case "retry":
+      return { runState: "retrying", retry: { at: run.phase.at, message: run.phase.error } };
+    case "waiting":
+    case "done":
+    case "aborted":
+    case "failed":
+      return { runState: "idle" };
+    default: {
+      const _exhaustive: never = run.phase;
+      return _exhaustive;
+    }
+  }
+}
+
+function sameRun(previous: LiveRun, next: LiveRun): boolean {
+  return (
+    previous.runState === next.runState &&
+    previous.retry?.at === next.retry?.at &&
+    previous.retry?.message === next.retry?.message
+  );
 }
 
 function sameTools(
@@ -92,26 +110,28 @@ function sameOrder(previous: readonly LivePartRef[], next: readonly LivePartRef[
 }
 
 /**
- * Renderer lookups derived from core's ordered stream, with no folding rules.
+ * Renderer lookups derived from core's ordered overlay, with no folding rules.
  * A text delta leaves `tools` and `order` at their previous identity: every
  * settled turn reads `tools`, and a fresh map per token would re-render them
  * all on each frame.
  */
 export function projectLive(
   previous: LiveSnapshot,
-  state: LiveState,
-  parts: LiveParts = state.parts,
+  parts: LiveParts,
+  run: RunInfo | undefined,
 ): LiveSnapshot {
-  if (state === previous && parts === previous.parts) return previous;
+  const state = liveRun(run);
   if (parts === previous.parts) {
-    return {
-      ...state,
-      parts,
-      text: previous.text,
-      thinking: previous.thinking,
-      tools: previous.tools,
-      order: previous.order,
-    };
+    return sameRun(previous, state)
+      ? previous
+      : {
+          ...state,
+          parts,
+          text: previous.text,
+          thinking: previous.thinking,
+          tools: previous.tools,
+          order: previous.order,
+        };
   }
   const text = new Map<string, string>();
   const thinking = new Map<string, string>();
@@ -130,8 +150,8 @@ export function projectLive(
     }
     const key = livePartKey(part.runId, part.attempt, part.index);
     const texts = part.kind === "text" ? text : thinking;
-    // A settled response and its successor may reuse the stream identity.
-    // Until the snapshot arrives, both generations remain visible in this slot.
+    // A settled response and its successor may reuse the stream identity
+    // while a snapshot is pending; both generations stay visible in this slot.
     if (!texts.has(key)) {
       order.push({ kind: part.kind, runId: part.runId, attempt: part.attempt, index: part.index });
     }
@@ -145,107 +165,4 @@ export function projectLive(
     tools: sameTools(previous.tools, tools) ? previous.tools : tools,
     order: sameOrder(previous.order, order) ? previous.order : order,
   };
-}
-
-function withoutRetry(snapshot: LiveState, runState: Exclude<LiveRunState, "retrying">): LiveState {
-  return {
-    parts: snapshot.parts,
-    runState,
-    diagnostics: snapshot.diagnostics,
-  };
-}
-
-function foldRun(snapshot: LiveState, run: RunInfo): LiveState {
-  switch (run.phase.kind) {
-    case "respond":
-    case "tools":
-      return withoutRetry(snapshot, "working");
-    case "retry":
-      // The attempt that failed streamed into these buffers; nothing commits it.
-      return {
-        parts: snapshot.parts,
-        diagnostics: snapshot.diagnostics,
-        runState: "retrying",
-        retry: { at: run.phase.at, message: run.phase.error },
-      };
-    case "waiting":
-      return withoutRetry(snapshot, "idle");
-    case "done":
-    case "aborted":
-    case "failed":
-      return withoutRetry(snapshot, "idle");
-    default: {
-      const _exhaustive: never = run.phase;
-      return _exhaustive;
-    }
-  }
-}
-
-interface FoldResult {
-  readonly snapshot: LiveState;
-  /** The seq the settled thread must reach after this event; absent for ephemeral events. */
-  readonly refreshAt?: Seq;
-}
-
-/** Fold one watch event into the overlay. Pure: the caller applies the result. */
-export function foldState(snapshot: LiveState, event: SessionEvent): FoldResult {
-  const parts = foldLiveParts(snapshot.parts, event);
-  const current = parts === snapshot.parts ? snapshot : { ...snapshot, parts };
-  switch (event.kind) {
-    case "activation_changed":
-    case "job":
-    case "synced":
-    case "plugins_changed":
-    case "notification":
-    case "status_changed":
-      return { snapshot };
-    case "commit":
-      return { snapshot: current, refreshAt: event.seq };
-    case "run":
-      return { snapshot: foldRun(current, event.run), refreshAt: event.seq };
-    case "head_moved":
-    case "compaction":
-    case "queued":
-    case "landed":
-    case "queue_cancelled":
-    case "stack":
-    case "fact":
-    case "deleted":
-      return { snapshot, refreshAt: event.seq };
-    case "effect":
-      // Parked controls come from the snapshot, including waits announced before
-      // the run phase changes or while another parallel tool is still running.
-      return {
-        snapshot: event.state === "waiting" ? withoutRetry(snapshot, "idle") : snapshot,
-        refreshAt: event.seq,
-      };
-    case "text_delta":
-    case "reasoning_delta":
-    case "tool_progress":
-      return { snapshot: withoutRetry(current, "working") };
-    case "diagnostic":
-      return {
-        snapshot: {
-          ...snapshot,
-          diagnostics: [
-            ...snapshot.diagnostics.slice(1 - DIAGNOSTIC_LIMIT),
-            { owner: event.owner, level: event.level, message: event.message },
-          ],
-        },
-      };
-    default: {
-      const _exhaustive: never = event;
-      return _exhaustive;
-    }
-  }
-}
-
-/**
- * The overlay after a watch resumes from a fresh snapshot: everything before
- * its seq is settled in that snapshot, so no buffer survives, and the run
- * state comes from the run the snapshot reports.
- */
-export function resumeFrom(snapshot: LiveState, run: RunInfo | undefined): LiveSnapshot {
-  const cleared = { ...IDLE, diagnostics: snapshot.diagnostics };
-  return run === undefined ? cleared : projectLive(cleared, foldRun(cleared, run));
 }

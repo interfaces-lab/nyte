@@ -1,4 +1,4 @@
-import type { Turn, TurnPart } from "@nyte-ai/core";
+import type { TurnPart } from "@nyte-ai/core";
 import { messageParts } from "./message-references.ts";
 
 export type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
@@ -199,21 +199,6 @@ export function presentTranscriptNotice(source: string): TranscriptNotice {
     tone: "danger",
     detail: raw,
   };
-}
-
-export function configChangeText(
-  turn: Extract<Turn, { readonly kind: "config" }>,
-): string | undefined {
-  const changes: string[] = [];
-  if (turn.body.model !== undefined) {
-    const { provider, id } = turn.body.model;
-    changes.push(`Model → ${provider === undefined ? id : `${provider}/${id}`}`);
-  }
-  if (turn.body.thinkingLevel !== undefined) {
-    changes.push(`Thinking → ${turn.body.thinkingLevel}`);
-  }
-  if (turn.body.agent !== undefined) changes.push(`Agent → ${turn.body.agent}`);
-  return changes.length === 0 ? undefined : changes.join(" · ");
 }
 
 export function formatRunDuration(durationMs: number): string | undefined {

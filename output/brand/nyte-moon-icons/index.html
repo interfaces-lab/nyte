@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nyte moon / App icon study</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background: #14161c;
+        color: #e6e8ee;
+        margin: 0;
+        font:
+          14px Arial,
+          sans-serif;
+      }
+      main {
+        max-width: 1300px;
+        margin: auto;
+        padding: 45px 5%;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        font: 11px monospace;
+        color: #8992a6;
+        letter-spacing: 1px;
+        border-bottom: 1px solid #303542;
+        padding-bottom: 25px;
+      }
+      h1 {
+        font-size: clamp(32px, 5vw, 58px);
+        font-weight: 400;
+        letter-spacing: -2px;
+        margin: 38px 0 17px;
+      }
+      h1 span {
+        color: #ffc96b;
+      }
+      .lead {
+        color: #98a0b2;
+        line-height: 1.7;
+        max-width: 680px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 36px;
+        margin: 38px 0;
+      }
+      .main-icon {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+        border-radius: 22.5%;
+        box-shadow: 0 12px 24px #0003;
+        display: block;
+      }
+      .label {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 25px 0 10px;
+      }
+      h2 {
+        font-weight: 400;
+        font-size: 17px;
+        margin: 0;
+      }
+      .badge {
+        font: 9px monospace;
+        color: #ffc96b;
+        letter-spacing: 0.7px;
+      }
+      .description {
+        color: #929bad;
+        font-size: 12px;
+        line-height: 1.6;
+        min-height: 40px;
+      }
+      .size-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 24px;
+        min-height: 95px;
+      }
+      figure {
+        margin: 0;
+        text-align: center;
+      }
+      figure img {
+        display: block;
+        border-radius: 22.5%;
+        margin: 0 auto 12px;
+      }
+      figcaption {
+        font: 9px monospace;
+        color: #838c9f;
+      }
+      a {
+        color: #c6cdde;
+        text-decoration: none;
+        font: 11px monospace;
+      }
+      .downloads {
+        margin-top: 15px;
+      }
+      .bottom {
+        border-top: 1px solid #303542;
+        padding-top: 30px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 45px;
+      }
+      .bottom p {
+        color: #98a0b2;
+        line-height: 1.7;
+        font-size: 12px;
+      }
+      .bottom h2 {
+        font-size: 14px;
+      }
+      .bottom a {
+        text-decoration: underline;
+      }
+      .swatches {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .swatch {
+        height: 28px;
+        width: 28px;
+        border: 1px solid #ffffff18;
+        border-radius: 50%;
+      }
+      footer {
+        margin-top: 35px;
+        color: #737d91;
+        font: 10px/1.6 monospace;
+      }
+      a:focus-visible {
+        outline: 2px solid #ffc96b;
+        outline-offset: 5px;
+      }
+      @media (max-width: 700px) {
+        .grid {
+          grid-template-columns: 1fr;
+          gap: 50px;
+        }
+        .main-icon {
+          max-width: 300px;
+          margin: auto;
+        }
+        .bottom {
+          grid-template-columns: 1fr;
+        }
+        .size-row {
+          justify-content: start;
+          gap: 35px;
+        }
+        .description {
+          min-height: 0;
+        }
+        header {
+          font-size: 9px;
+        }
+        main {
+          padding: 30px 6%;
+        }
+      }
+      .earlier {
+        border-top: 1px solid #303542;
+        margin: 30px 0;
+        padding-top: 22px;
+      }
+      .earlier summary {
+        cursor: pointer;
+        min-height: 44px;
+        color: #98a0b2;
+        font: 12px monospace;
+      }
+      .earlier summary:focus-visible {
+        outline: 2px solid #ffc96b;
+        outline-offset: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><span>NYTE / MOON ICON STUDY</span><span>macOS + iOS</span></header>
+      <a
+        href="moon-editor.html"
+        style="
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
+          margin-top: 24px;
+          padding: 0 16px;
+          background: #ffc96b;
+          color: #17140e;
+          border-radius: 5px;
+        "
+        >Open live SVG moon editor →</a
+      >
+      <h1>Light held<br /><span>in the dark.</span></h1>
+      <p class="lead">
+        Three smooth icon directions inspired by your moon: a midnight exterior, warm interior
+        light, and a sense of depth.
+      </p>
+      <div class="grid">
+        <article>
+          <img
+            class="main-icon"
+            src="nyte-smooth-aperture.svg"
+            width="1024"
+            height="1024"
+            alt="Amber aperture app icon"
+          />
+          <div class="label">
+            <h2>01 / Amber aperture</h2>
+            <span class="badge">EXPLORE FIRST</span>
+          </div>
+          <p class="description">
+            A dark shell holding an off-center amber opening. The interior suggests something
+            preserved and accessible.
+          </p>
+          <div class="size-row">
+            <figure>
+              <img
+                src="nyte-smooth-aperture.svg"
+                width="16"
+                height="16"
+                alt="Amber aperture at 16 pixels"
+              />
+              <figcaption>16px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-aperture.svg"
+                width="32"
+                height="32"
+                alt="Amber aperture at 32 pixels"
+              />
+              <figcaption>32px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-aperture.svg"
+                width="64"
+                height="64"
+                alt="Amber aperture at 64 pixels"
+              />
+              <figcaption>64px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-aperture.svg"
+                width="96"
+                height="96"
+                alt="Amber aperture at 96 pixels"
+              />
+              <figcaption>96px</figcaption>
+            </figure>
+          </div>
+          <div class="downloads">
+            <a href="nyte-smooth-aperture.svg" download>Download square SVG ↗</a>
+          </div>
+        </article>
+        <article>
+          <img
+            class="main-icon"
+            src="nyte-smooth-fold.svg"
+            width="1024"
+            height="1024"
+            alt="Folded crescent app icon"
+          />
+          <div class="label"><h2>02 / Folded crescent</h2></div>
+          <p class="description">
+            A continuous curved ribbon with a warm inner face. The crescent emerges from the fold.
+          </p>
+          <div class="size-row">
+            <figure>
+              <img
+                src="nyte-smooth-fold.svg"
+                width="16"
+                height="16"
+                alt="Folded crescent at 16 pixels"
+              />
+              <figcaption>16px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-fold.svg"
+                width="32"
+                height="32"
+                alt="Folded crescent at 32 pixels"
+              />
+              <figcaption>32px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-fold.svg"
+                width="64"
+                height="64"
+                alt="Folded crescent at 64 pixels"
+              />
+              <figcaption>64px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-fold.svg"
+                width="96"
+                height="96"
+                alt="Folded crescent at 96 pixels"
+              />
+              <figcaption>96px</figcaption>
+            </figure>
+          </div>
+          <div class="downloads">
+            <a href="nyte-smooth-fold.svg" download>Download square SVG ↗</a>
+          </div>
+        </article>
+        <article>
+          <img
+            class="main-icon"
+            src="nyte-smooth-eclipse.svg"
+            width="1024"
+            height="1024"
+            alt="Offset eclipse app icon"
+          />
+          <div class="label"><h2>03 / Offset eclipse</h2></div>
+          <p class="description">
+            Two smooth overlapping discs expose a warm edge. The simplest silhouette of the three.
+          </p>
+          <div class="size-row">
+            <figure>
+              <img
+                src="nyte-smooth-eclipse.svg"
+                width="16"
+                height="16"
+                alt="Offset eclipse at 16 pixels"
+              />
+              <figcaption>16px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-eclipse.svg"
+                width="32"
+                height="32"
+                alt="Offset eclipse at 32 pixels"
+              />
+              <figcaption>32px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-eclipse.svg"
+                width="64"
+                height="64"
+                alt="Offset eclipse at 64 pixels"
+              />
+              <figcaption>64px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="nyte-smooth-eclipse.svg"
+                width="96"
+                height="96"
+                alt="Offset eclipse at 96 pixels"
+              />
+              <figcaption>96px</figcaption>
+            </figure>
+          </div>
+          <div class="downloads">
+            <a href="nyte-smooth-eclipse.svg" download>Download square SVG ↗</a>
+          </div>
+        </article>
+      </div>
+      <details class="earlier">
+        <summary>Earlier study / ASCII and voxel treatments</summary>
+        <div class="grid">
+          <article>
+            <img
+              class="main-icon"
+              data-icon="ascii"
+              alt="01 / Literal ASCII Nyte moon icon"
+              width="1024"
+              height="1024"
+            />
+            <div class="label"><h2>01 / Literal ASCII</h2></div>
+            <p class="description">
+              Closest to the original. The character strokes get fragile when the icon shrinks.
+            </p>
+            <div class="size-row">
+              <figure>
+                <img data-icon="ascii" width="16" height="16" alt="ascii at 16 pixels" />
+                <figcaption>16px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="ascii" width="32" height="32" alt="ascii at 32 pixels" />
+                <figcaption>32px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="ascii" width="64" height="64" alt="ascii at 64 pixels" />
+                <figcaption>64px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="ascii" width="96" height="96" alt="ascii at 96 pixels" />
+                <figcaption>96px</figcaption>
+              </figure>
+            </div>
+            <div class="downloads">
+              <a data-download="ascii" download="nyte-moon-ascii.svg">Download square SVG ↗</a>
+            </div>
+          </article>
+          <article>
+            <img
+              class="main-icon"
+              data-icon="solid"
+              alt="02 / Solid voxel Nyte moon icon"
+              width="1024"
+              height="1024"
+            />
+            <div class="label">
+              <h2>02 / Solid voxel</h2>
+              <span class="badge">RECOMMENDED</span>
+            </div>
+            <p class="description">
+              Recommended app icon. The same phase and facets, with enough weight to survive at
+              small sizes.
+            </p>
+            <div class="size-row">
+              <figure>
+                <img data-icon="solid" width="16" height="16" alt="solid at 16 pixels" />
+                <figcaption>16px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="solid" width="32" height="32" alt="solid at 32 pixels" />
+                <figcaption>32px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="solid" width="64" height="64" alt="solid at 64 pixels" />
+                <figcaption>64px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="solid" width="96" height="96" alt="solid at 96 pixels" />
+                <figcaption>96px</figcaption>
+              </figure>
+            </div>
+            <div class="downloads">
+              <a data-download="solid" download="nyte-moon-solid.svg">Download square SVG ↗</a>
+            </div>
+          </article>
+          <article>
+            <img
+              class="main-icon"
+              data-icon="hybrid"
+              alt="03 / Etched ASCII Nyte moon icon"
+              width="1024"
+              height="1024"
+            />
+            <div class="label"><h2>03 / Etched ASCII</h2></div>
+            <p class="description">
+              Solid underneath, glyph texture on the amber face. A bridge between app icon and brand
+              artwork.
+            </p>
+            <div class="size-row">
+              <figure>
+                <img data-icon="hybrid" width="16" height="16" alt="hybrid at 16 pixels" />
+                <figcaption>16px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="hybrid" width="32" height="32" alt="hybrid at 32 pixels" />
+                <figcaption>32px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="hybrid" width="64" height="64" alt="hybrid at 64 pixels" />
+                <figcaption>64px</figcaption>
+              </figure>
+              <figure>
+                <img data-icon="hybrid" width="96" height="96" alt="hybrid at 96 pixels" />
+                <figcaption>96px</figcaption>
+              </figure>
+            </div>
+            <div class="downloads">
+              <a data-download="hybrid" download="nyte-moon-hybrid.svg">Download square SVG ↗</a>
+            </div>
+          </article>
+        </div>
+      </details>
+      <div class="bottom">
+        <div>
+          <h2>The idea behind the shape.</h2>
+          <p>
+            A dark form contains a warm, visible opening. Smooth curves carry the same sense of
+            hidden depth as your moon. Keep the form large and the lighting restrained.
+          </p>
+          <div class="swatches">
+            <span class="swatch" style="background: #0a0c12"></span
+            ><span class="swatch" style="background: #293855"></span
+            ><span class="swatch" style="background: #ffc96b"></span
+            ><span class="swatch" style="background: #fff3dc"></span>
+          </div>
+        </div>
+        <div>
+          <h2>Build for the system mask.</h2>
+          <p>
+            The downloads are full square artwork. Rounded corners here are a visual preview. For
+            Icon Composer, keep the midnight background and moon foreground as separate layers, then
+            check dark, clear, and tinted appearances in the tool.
+          </p>
+          <a href="https://developer.apple.com/design/human-interface-guidelines/app-icons"
+            >Apple app icon guidance ↗</a
+          >
+        </div>
+      </div>
+      <footer>
+        Concept preview, not a validated Icon Composer asset. Original design preserved in
+        ../nyte-moon/.
+      </footer>
+    </main>
+    <script src="geometry.js"></script>
+    <script src="render.js"></script>
+  </body>
+</html>

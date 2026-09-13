@@ -27,15 +27,19 @@ import { isSettingsSection } from "./chrome/settings-navigation.tsx";
 import { shellActions, useShellState } from "./chrome/shell-state.ts";
 import { SidebarPane } from "./chrome/sidebar-pane.tsx";
 import { Sidebar } from "./chrome/sidebar.tsx";
+import { Button } from "./components/ui.tsx";
 import { Titlebar } from "./chrome/titlebar.tsx";
 import { PaneControllerProvider, usePaneActions, useCanSplitPane } from "./layout/pane-context.tsx";
 import { SessionDndProvider } from "./layout/session-dnd.tsx";
-import { keys, queryClient, useHostState, warmThread } from "./queries.ts";
+import { warmThread } from "./live.ts";
+import { keys, queryClient, useHostState } from "./queries.ts";
+import { readRouteSession } from "./route-session.ts";
 import type { SessionPage } from "./session-directory.ts";
 import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { t } from "./theme/vars.stylex.ts";
 import { sessionId } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/core";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { activateOutbox } from "./use-outbox.ts";
@@ -65,6 +69,20 @@ const styles = stylex.create({
     minHeight: 0,
     backgroundColor: t.bgBase,
     overflow: "hidden",
+  },
+  loadError: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+    gap: 12,
+    color: t.textPrimary,
+  },
+  loadErrorText: {
+    margin: 0,
+    color: t.textSecondary,
+    fontSize: t.fontBase,
   },
 });
 
@@ -185,7 +203,7 @@ function StageContent({
   shellStage,
 }: {
   readonly shellStage: ReturnType<typeof useShellState>["stage"];
-}): ReactElement {
+}): ReactElement | null {
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
   if (settings !== undefined) return <Matches />;
   if (shellStage.kind === "workspace") return <Matches />;
@@ -229,6 +247,16 @@ export const indexRoute = createRoute({
   },
 });
 
+function ThreadRouteError(): ReactElement {
+  const threadRouter = useRouter();
+  return (
+    <div role="alert" {...stylex.props(styles.loadError)}>
+      <p {...stylex.props(styles.loadErrorText)}>Couldn&rsquo;t open this chat.</p>
+      <Button onClick={() => void threadRouter.invalidate()}>Try again</Button>
+    </div>
+  );
+}
+
 export const threadRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/session/$sessionId",
@@ -237,14 +265,20 @@ export const threadRoute = createRoute({
     stringify: ({ sessionId }) => ({ sessionId }),
   },
   beforeLoad: async ({ params }) => {
-    const session = await nyte.sessions.get({ sessionId: params.sessionId });
-    queryClient.setQueryData(keys.session(params.sessionId), session ?? null);
-    if (session === undefined) throw redirect({ to: indexRoute.to, replace: true });
+    const session = await readRouteSession({
+      client: queryClient,
+      sessionId: params.sessionId,
+      read: () => nyte.sessions.get({ sessionId: params.sessionId }),
+    });
+    if (session === null) throw redirect({ to: indexRoute.to, replace: true });
   },
+  errorComponent: ThreadRouteError,
   // Route intent and navigation both warm the coherent snapshot. The loader
   // deliberately returns now: local data may finish later and never gates the
-  // pending route commit.
-  loader: ({ params }) => warmThread(params.sessionId),
+  // pending route commit. Startup alone waits for the warm, behind its shell.
+  loader: ({ params }) => {
+    void warmThread(params.sessionId);
+  },
 });
 
 export const settingsRoute = createRoute({
@@ -281,6 +315,14 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   defaultStructuralSharing: true,
 });
+
+/** The chat the current location shows, if it is one. */
+export function currentRouteSession(): SessionId | undefined {
+  for (const match of router.state.matches) {
+    if (match.routeId === threadRoute.id) return match.params.sessionId;
+  }
+  return undefined;
+}
 
 declare module "@tanstack/react-router" {
   interface Register {

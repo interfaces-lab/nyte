@@ -1,4 +1,5 @@
 /** What the `workspace` and `provider` namespaces answer with. */
+import type { Api, Model, ModelCostRates, ModelThinkingLevel } from "@nyte-ai/schema";
 
 /** One known workspace. `name` is derived presentation, never stored. */
 export interface WorkspaceInfo {
@@ -23,9 +24,8 @@ export interface VcsDiff {
   readonly patch: string;
 }
 
-export interface ModelInfo {
-  readonly id: string;
-  readonly provider: string;
-  readonly name: string;
-  readonly contextWindow?: number;
-}
+/** Public picker data, shared by local SDK and remote clients. */
+export type ModelInfo = Readonly<Pick<Model<Api>, "id" | "provider" | "name" | "contextWindow">> & {
+  readonly cost: Readonly<ModelCostRates>;
+  readonly thinkingLevels: readonly ModelThinkingLevel[];
+};

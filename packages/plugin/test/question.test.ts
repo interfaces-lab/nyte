@@ -153,6 +153,17 @@ test("structured replies reject unknown ids, duplicates, and single-choice combi
 
 /** What an untyped JS plugin might park with. Each must fail the call, never the store. */
 const MALFORMED: Record<string, () => unknown> = {
+  "blank title": () => ({ title: "  ", choices: [{ id: "a", label: "A" }] }),
+  "blank label": () => ({ title: "x", choices: [{ id: "a", label: "\t" }] }),
+  "blank description": () => ({
+    title: "x",
+    choices: [{ id: "a", label: "A", description: "\n" }],
+  }),
+  "blank own-answer prompt": () => ({
+    title: "x",
+    choices: [{ id: "a", label: "A" }],
+    other: " ",
+  }),
   "empty choices": () => JSON.parse('{"title":"x","choices":[]}'),
   "duplicate ids": () => ({
     title: "x",

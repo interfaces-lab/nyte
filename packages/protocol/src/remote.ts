@@ -17,6 +17,7 @@ export interface RemoteSessions {
   readonly create: OperationFn<"sessions.create">;
   readonly get: OperationFn<"sessions.get">;
   readonly snapshot: OperationFn<"sessions.snapshot">;
+  readonly metadata: OperationFn<"sessions.metadata">;
   readonly list: OperationFn<"sessions.list">;
   readonly rename: OperationFn<"sessions.rename">;
   readonly setPinned: OperationFn<"sessions.setPinned">;
@@ -59,6 +60,7 @@ export interface RemoteWorkspace {
 
 export interface RemoteProvider {
   readonly models: {
+    readonly list: OperationFn<"provider.models.list">;
     readonly default: OperationFn<"provider.models.default">;
   };
 }

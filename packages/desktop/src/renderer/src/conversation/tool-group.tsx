@@ -42,11 +42,13 @@ function WorkEntryView({
   entry,
   liveTools,
   cwd,
+  active,
   density,
 }: {
   entry: WorkEntry;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
+  active: boolean;
   density: ToolCallDensity;
 }): ReactElement {
   if (entry.kind === "live-thinking") {
@@ -78,6 +80,7 @@ function WorkEntryView({
           part={part}
           progress={liveTools.get(part.callId)?.progress}
           cwd={cwd}
+          active={active}
           density={density}
         />
       );
@@ -112,7 +115,7 @@ export function WorkGroupView({
   // The timer marks the frame it saw; any newer live frame makes that mark stale.
   const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
   const stale = live !== undefined && staleFrame === live;
-  const { active, failed, summary } = projectWork({
+  const { active, summary } = projectWork({
     parts,
     liveTools,
     cwd,
@@ -258,9 +261,7 @@ export function WorkGroupView({
       aria-busy={active || undefined}
       {...stylex.props(toolGroupStyles.root)}
     >
-      <Collapsible.Trigger
-        {...stylex.props(toolGroupStyles.toggle, focus.ring, failed && toolGroupStyles.failed)}
-      >
+      <Collapsible.Trigger {...stylex.props(toolGroupStyles.toggle, focus.ring)}>
         {summaryLine}
         <span
           {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
@@ -288,7 +289,13 @@ export function WorkGroupView({
             viewportRef={viewportRef}
             preview={preview}
             renderEntry={(entry) => (
-              <WorkEntryView entry={entry} liveTools={liveTools} cwd={cwd} density={density} />
+              <WorkEntryView
+                entry={entry}
+                liveTools={liveTools}
+                cwd={cwd}
+                active={active}
+                density={density}
+              />
             )}
           />
         </div>

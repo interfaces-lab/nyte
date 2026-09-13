@@ -84,9 +84,11 @@ Menu label="Model" (controlled open, popupStyle=palette)
 
 ## Subagent models
 
-Subagent models are selected per `task` call, not in this picker. The parent receives the available
-models across authenticated providers and chooses an exact `provider/model`. Users can request a
-specific model in their prompt. There is no shared default or automatic substitution.
+Subagent models are selected per `task` call, not in this picker. An omitted selection defaults to
+`openai-codex/gpt-5.6-sol` with `high` thinking. The parent receives the available models across
+authenticated providers and can pass another exact `provider/model` or thinking level when the
+user requests one. There is no global subagent setting or automatic substitution. If the explicit
+choice or default is unavailable, the task fails before child creation.
 
 ## Keyboard
 

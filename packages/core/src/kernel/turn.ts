@@ -800,9 +800,17 @@ function parkedSelection(tool: string, selection: unknown): Selection | undefine
     throw malformed(cause instanceof Error ? cause.message : String(cause));
   }
   if (!Value.Check(schemas.Selection, json)) throw malformed("does not match the schema");
+  if (json.title.trim() === "") throw malformed("the title is blank");
+  if (json.other !== undefined && json.other.trim() === "") {
+    throw malformed("the own-answer prompt is blank");
+  }
   const ids = new Set<string>();
   for (const choice of json.choices) {
     if (choice.id === "") throw malformed("a choice has an empty id");
+    if (choice.label.trim() === "") throw malformed(`choice "${choice.id}" has a blank label`);
+    if (choice.description !== undefined && choice.description.trim() === "") {
+      throw malformed(`choice "${choice.id}" has a blank description`);
+    }
     if (ids.has(choice.id)) throw malformed(`choice id "${choice.id}" appears twice`);
     ids.add(choice.id);
   }

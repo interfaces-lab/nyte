@@ -4,6 +4,11 @@
  * These are constants because the reference itself never changes; the CSS
  * custom property behind it does. Using `defineVars` here would emit a second,
  * hashed variable for every semantic token without adding another theme.
+ *
+ * Three fills cover every interactive surface, and nothing else may name one:
+ * `fillGhostHover` for hover, `fillGhostSelected` for the current item, and
+ * `fillSecondary` for a resting tint. A fourth name is how a hovered row ends
+ * up lighter than a selected one.
  */
 import * as stylex from "@stylexjs/stylex";
 
@@ -13,17 +18,18 @@ export const t = stylex.defineConsts({
   textSecondary: "var(--nyte-text-secondary)",
   textTertiary: "var(--nyte-text-tertiary)",
   textQuaternary: "var(--nyte-text-quaternary)",
-  textInvert: "var(--nyte-text-invert)",
-  textAccent: "var(--sand-text-accent)",
+  textAccent: "var(--nyte-text-accent)",
   textCyan: "var(--nyte-text-cyan-primary)",
-  textSuccess: "var(--sand-text-success)",
-  textWarning: "var(--sand-text-warning)",
-  textDanger: "var(--sand-text-danger)",
-  textOnPrimary: "var(--sand-text-on-primary)",
-  textOnColor: "var(--sand-text-on-color)",
-  textDisabled: "var(--sand-text-disabled)",
-  shimmerBase: "var(--sand-text-shimmer-base)",
-  shimmerHighlight: "var(--sand-text-shimmer-highlight)",
+  textSuccess: "var(--nyte-text-success)",
+  textWarning: "var(--nyte-text-warning)",
+  textDanger: "var(--nyte-text-danger)",
+  /** Laid over `fillPrimary`, which inverts against the page. */
+  textOnPrimary: "var(--nyte-text-invert)",
+  /** Laid over a saturated fill, where the surface ramp does not apply. */
+  textOnColor: "var(--nyte-action-label)",
+  textDisabled: "var(--nyte-text-quaternary)",
+  shimmerBase: "var(--nyte-text-shimmer)",
+  shimmerHighlight: "var(--nyte-text-primary)",
 
   // icons
   iconPrimary: "var(--nyte-icon-primary)",
@@ -31,53 +37,36 @@ export const t = stylex.defineConsts({
   iconTertiary: "var(--nyte-icon-tertiary)",
 
   // surfaces
-  bgBase: "var(--sand-bg-base)",
-  bgSubtle: "var(--sand-bg-subtle)",
-  bgElevated: "var(--sand-bg-elevated)",
-  bgScrim: "var(--sand-bg-scrim)",
-  bgChrome: "var(--nyte-bg-chrome)",
+  bgBase: "var(--nyte-bg-chrome)",
+  bgSubtle: "var(--nyte-bg-subtle)",
+  /** A card, dialog, or toast sitting above the page, not the editor tone. */
+  bgElevated: "var(--nyte-bg-raised)",
+  bgScrim: "var(--nyte-bg-scrim)",
   bgEditor: "var(--nyte-bg-editor)",
   // Image transparency must not pick up the workspace tint.
   imageBg: "var(--nyte-editor-base)",
   bgCard: "var(--nyte-bg-card)",
-  bgHover: "var(--nyte-bg-tertiary)",
-  bgActive: "var(--nyte-bg-secondary)",
-  bgFaint: "var(--nyte-bg-quinary)",
   bgSelection: "color-mix(in srgb, var(--nyte-bg-secondary) 40%, transparent)",
   bgSidebar: "var(--nyte-sidebar-background)",
 
   // fills
-  fillPrimary: "var(--sand-fill-primary)",
-  fillPrimaryHover: "var(--sand-fill-primary-hover)",
-  fillPrimaryDisabled: "var(--sand-fill-primary-disabled)",
-  fillSecondary: "var(--sand-fill-secondary)",
-  fillSecondaryHover: "var(--sand-fill-secondary-hover)",
-  fillGhostHover: "var(--sand-fill-ghost-hover)",
-  fillGhostSelected: "var(--sand-fill-ghost-selected)",
-  fillElevated: "var(--sand-fill-elevated)",
-  fillBubbleAgent: "var(--sand-fill-bubble-agent)",
-  fillBubbleUser: "var(--sand-fill-bubble-user)",
-  fillAccent: "var(--sand-fill-accent)",
-  fillAccentHover: "var(--sand-fill-accent-hover)",
-  fillAccentSubtle: "var(--sand-fill-accent-subtle)",
-  fillSuccess: "var(--sand-fill-success)",
-  fillSuccessSubtle: "var(--sand-fill-success-subtle)",
-  fillWarning: "var(--sand-fill-warning)",
-  fillWarningSubtle: "var(--sand-fill-warning-subtle)",
-  fillDanger: "var(--sand-fill-danger)",
-  fillDangerHover: "var(--sand-fill-danger-hover)",
-  fillDangerSubtle: "var(--sand-fill-danger-subtle)",
+  fillPrimary: "var(--nyte-fill-primary)",
+  fillPrimaryHover: "var(--nyte-fill-primary-hover)",
+  fillPrimaryDisabled: "var(--nyte-bg-secondary)",
+  fillSecondary: "var(--nyte-bg-quinary)",
+  fillGhostHover: "var(--nyte-bg-tertiary)",
+  fillGhostSelected: "var(--nyte-bg-quaternary)",
+  fillAccent: "var(--nyte-bg-accent)",
+  fillAccentSubtle: "var(--nyte-bg-accent-subtle)",
+  fillWarningSubtle: "var(--nyte-bg-warning-subtle)",
+  fillDanger: "var(--nyte-red)",
+  fillDangerHover: "var(--nyte-danger)",
+  fillDangerSubtle: "var(--nyte-bg-danger-subtle)",
   switchActive: "var(--nyte-switch-active-background)",
   switchThumb: "var(--nyte-switch-thumb-background)",
 
-  // borders
-  borderSubtle: "var(--sand-border-subtle)",
+  // strokes
   imageOutline: "var(--nyte-image-outline)",
-  borderWeak: "var(--sand-border-weak)",
-  borderDefault: "var(--sand-border-default)",
-  borderStrong: "var(--sand-border-strong)",
-  borderFocus: "var(--sand-border-focus)",
-  borderAccent: "var(--sand-border-accent)",
   strokePrimary: "var(--nyte-stroke-primary)",
   strokeSecondary: "var(--nyte-stroke-secondary)",
   strokeTertiary: "var(--nyte-stroke-tertiary)",
@@ -89,8 +78,6 @@ export const t = stylex.defineConsts({
   // status colors
   accent: "var(--nyte-accent)",
   success: "var(--nyte-success)",
-  warn: "var(--nyte-warn)",
-  danger: "var(--nyte-danger)",
   added: "var(--nyte-added)",
   removed: "var(--nyte-removed)",
   red: "var(--nyte-red)",
@@ -110,18 +97,22 @@ export const t = stylex.defineConsts({
   conversationUserBg: "var(--nyte-conversation-user-background)",
   conversationUserBgHover: "var(--nyte-conversation-user-background-hover)",
   conversationUserRing: "var(--nyte-conversation-user-ring)",
+  conversationUserRingActive: "var(--nyte-conversation-user-ring-active)",
+  conversationUserShadow: "var(--nyte-conversation-user-shadow)",
   conversationTechnicalBg: "var(--nyte-conversation-technical-background)",
   conversationTechnicalRing: "var(--nyte-conversation-technical-ring)",
   conversationGuide: "var(--nyte-conversation-guide)",
+  trayBg: "var(--nyte-tray-background)",
+  trayShadow: "var(--nyte-tray-shadow)",
   composerBg: "var(--nyte-composer-background)",
   composerRing: "var(--nyte-composer-ring)",
   composerRingActive: "var(--nyte-composer-ring-active)",
 
   // shadows
-  shadowControlColor: "var(--sand-shadow-control)",
-  shadowPopover: "var(--sand-shadow-popover)",
-  shadowModal: "var(--sand-shadow-modal)",
-  shadowWorkbench: "var(--sand-shadow-workbench)",
+  shadowControlColor: "var(--nyte-shadow-control)",
+  shadowPopover: "var(--nyte-shadow-popover)",
+  shadowModal: "var(--nyte-shadow-modal)",
+  shadowWorkbench: "var(--nyte-shadow-workbench)",
 
   // type
   fontSans: "var(--nyte-font-family-sans)",
@@ -130,7 +121,6 @@ export const t = stylex.defineConsts({
   fontSm: "var(--nyte-font-size-sm)",
   fontBase: "var(--nyte-font-size-base)",
   fontLg: "var(--nyte-font-size-lg)",
-  fontXl: "var(--nyte-font-size-xl)",
   font2xl: "var(--nyte-font-size-2xl)",
   fontCode: "var(--nyte-font-size-code)",
   leadingXs: "var(--nyte-line-height-xs)",
@@ -147,8 +137,6 @@ export const t = stylex.defineConsts({
   radiusLg: "var(--nyte-radius-lg)",
   radiusXl: "var(--nyte-radius-xl)",
   radius2xl: "var(--nyte-radius-2xl)",
-  radius3xl: "var(--nyte-radius-3xl)",
-  radius4xl: "var(--nyte-radius-4xl)",
   radiusFull: "var(--nyte-radius-full)",
 
   // motion
@@ -162,5 +150,4 @@ export const t = stylex.defineConsts({
 
   // scrollbar
   scrollbarThumb: "var(--nyte-scrollbar-thumb)",
-  scrollbarThumbHover: "var(--nyte-scrollbar-thumb-hover)",
 });

@@ -1,6 +1,6 @@
 /** Shared task tool. The SDK owns child sessions and job lifecycle. */
 import { MODEL_THINKING_LEVELS, type Api, type Model } from "@nyte-ai/schema";
-import type { JobActionOutcome } from "@nyte-ai/protocol";
+import type { JobActionOutcome, JobInfo } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { AgentTool } from "../../types.ts";
@@ -10,6 +10,10 @@ import { definePlugin } from "../types.ts";
 export const SUBAGENTS_PLUGIN_ID = "subagents";
 export const TASK_TOOL = "task";
 export const STOP_TASK_TOOL = "stop_task";
+export const WAIT_TASK_TOOL = "wait_task";
+
+const DEFAULT_TASK_MODEL = "openai-codex/gpt-5.6-sol";
+const DEFAULT_TASK_THINKING_LEVEL = "high";
 
 export interface TaskDetails {
   readonly model: string;
@@ -22,10 +26,25 @@ export type SubagentResult =
   | { readonly kind: "failed"; readonly error: string }
   | { readonly kind: "aborted" };
 
+export type WaitTaskOutcome =
+  | { readonly kind: "not_found" }
+  | {
+      readonly kind: "finished";
+      readonly state: Exclude<JobInfo["state"], "running">;
+      readonly report: string;
+    };
+
 export interface SubagentHost {
   stop(jobId: string): Promise<JobActionOutcome>;
+  /** Observe an owned task job until it ends. Aborting the wait leaves the task running. */
+  waitFor(input: {
+    readonly jobId: string;
+    readonly signal?: AbortSignal;
+  }): Promise<WaitTaskOutcome>;
   spawn(
-    input: TaskInput & {
+    input: Omit<TaskInput, "model" | "thinkingLevel"> & {
+      readonly model: string;
+      readonly thinkingLevel: NonNullable<TaskInput["thinkingLevel"]>;
       readonly callId: string;
       readonly runId: string;
       readonly head: string;
@@ -38,18 +57,19 @@ export interface SubagentHost {
   }): Promise<SubagentResult>;
 }
 
-const modelDescription =
-  "Exact provider/model. Use the user's requested model, or choose one suited to the task. Unavailable models fail without substitution.";
+const modelDescription = `Exact provider/model. Omit to use ${DEFAULT_TASK_MODEL}. Use an explicit value when the user requests another model. Unavailable models fail without substitution.`;
 
 const taskParameters = Type.Object(
   {
-    model: Type.String({
-      pattern: "^[^/]+/.+$",
-      description: modelDescription,
-    }),
+    model: Type.Optional(
+      Type.String({
+        pattern: "^[^/]+/.+$",
+        description: modelDescription,
+      }),
+    ),
     thinkingLevel: Type.Optional(
       Type.Enum(MODEL_THINKING_LEVELS, {
-        description: "Thinking level for this task. Omit to inherit the parent's level.",
+        description: `Thinking level for this task. Omit to use ${DEFAULT_TASK_THINKING_LEVEL}.`,
       }),
     ),
     title: Type.Optional(
@@ -61,12 +81,12 @@ const taskParameters = Type.Object(
     prompt: Type.String({
       minLength: 1,
       description:
-        "Task instructions, including the subagent's role, context, constraints, and expected report.",
+        "Task instructions and expected result. Point to relevant source files and include only context the child needs.",
     }),
     background: Type.Optional(
       Type.Boolean({
         description:
-          "Return a job id immediately instead of waiting. The report arrives later as a new message.",
+          "Return a job id immediately instead of waiting. The report is delivered before your next response while you are still working, or with the user's next message once you have finished. Call wait_task with the job id when you need the report sooner.",
       }),
     ),
   },
@@ -75,7 +95,8 @@ const taskParameters = Type.Object(
 
 export type TaskInput = Static<typeof taskParameters>;
 
-const stopTaskParameters = Type.Object(
+/** `stop_task` and `wait_task` both address an owned job by its id. */
+const taskJobParameters = Type.Object(
   {
     jobId: Type.String({
       minLength: 1,
@@ -90,9 +111,11 @@ export function taskModelParameters(models: readonly Pick<Model<Api>, "provider"
   return Type.Object(
     {
       ...taskParameters.properties,
-      model: Type.Enum([...new Set(models.map((model) => `${model.provider}/${model.id}`))], {
-        description: modelDescription,
-      }),
+      model: Type.Optional(
+        Type.Enum([...new Set(models.map((model) => `${model.provider}/${model.id}`))], {
+          description: modelDescription,
+        }),
+      ),
     },
     { additionalProperties: false },
   );
@@ -102,8 +125,8 @@ export function taskModelParameters(models: readonly Pick<Model<Api>, "provider"
 export function subagentsPlugin(host: SubagentHost) {
   const tool: AgentTool<typeof taskParameters, TaskDetails> = {
     name: TASK_TOOL,
-    description: `Runs a task on the selected model in a separate session with no prior conversation.
-Waits for the final report by default. Use background=true to keep working, then finish your turn to receive the report.
+    description: `Runs a task in a separate session with no prior conversation. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking unless the user requests another model or thinking level.
+Waits for the final report by default. Use background=true only when you can continue without the result; when you later need it, call wait_task with the returned job id. A finished background report joins your active run or waits for the user's next message; it never starts a new turn on its own.
 Never poll, sleep, or relaunch a task to check progress. Use stop_task with the returned job id to cancel it.`,
     parameters: taskParameters,
     promptSnippet: "Run a task in a separate agent session",
@@ -111,22 +134,26 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
     prepareArguments(value) {
       if (!Value.Check(taskParameters, value)) {
         throw new Error(
-          "Task arguments are invalid. Provide an exact provider/model and a nonempty prompt. Only thinkingLevel, title, and background are optional.",
+          "Task arguments are invalid. Provide a nonempty prompt. If set, model must be an exact provider/model; only model, thinkingLevel, title, and background are optional.",
         );
       }
       return value;
     },
     async execute(toolCallId, input, signal, onUpdate, context) {
       if (context === undefined) throw new Error("Task execution requires a run context");
-      const title = input.title ?? input.model;
+      const model = input.model ?? DEFAULT_TASK_MODEL;
+      const thinkingLevel = input.thinkingLevel ?? DEFAULT_TASK_THINKING_LEVEL;
+      const title = input.title ?? model;
       const childSessionId = await host.spawn({
         ...input,
+        model,
+        thinkingLevel,
         callId: toolCallId,
         runId: context.runId,
         head: context.head,
         signal,
       });
-      const details = { model: input.model, childSessionId };
+      const details = { model, childSessionId };
       onUpdate?.({
         content: toolResultContent(input.prompt),
         details: { ...details, state: "running" },
@@ -148,15 +175,15 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
       return result;
     },
   };
-  const stopTool: AgentTool<typeof stopTaskParameters> = {
+  const stopTool: AgentTool<typeof taskJobParameters> = {
     name: STOP_TASK_TOOL,
     description:
       "Stop a task started by this session using its job id. Cancels the child agent and its running work. Already finished tasks are unchanged.",
-    parameters: stopTaskParameters,
+    parameters: taskJobParameters,
     promptSnippet: "Stop a running task by job id",
     replay: "never",
     prepareArguments(value) {
-      if (!Value.Check(stopTaskParameters, value)) {
+      if (!Value.Check(taskJobParameters, value)) {
         throw new Error("Stop task arguments are invalid. Provide a nonempty jobId.");
       }
       return value;
@@ -178,12 +205,45 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
       return result;
     },
   };
+  const waitTool: AgentTool<typeof taskJobParameters> = {
+    name: WAIT_TASK_TOOL,
+    description:
+      "Wait for a task this session already started and return its report, by job id. The wait is durable and never re-runs the task. Cancelling only this wait leaves the task running; stop_task cancels the task itself. Aborting a run still cancels that run's own tasks.",
+    parameters: taskJobParameters,
+    promptSnippet: "Wait for a started task and return its report",
+    replay: "never",
+    prepareArguments(value) {
+      if (!Value.Check(taskJobParameters, value)) {
+        throw new Error("Wait task arguments are invalid. Provide a nonempty jobId.");
+      }
+      return value;
+    },
+    async execute(_toolCallId, input, signal) {
+      const outcome = await host.waitFor({ jobId: input.jobId, signal });
+      if (outcome.kind === "not_found") {
+        throw new ToolError({
+          content: toolResultContent(`Task job not found in this session: ${input.jobId}`),
+          details: { jobId: input.jobId, state: "not_found" },
+        });
+      }
+      const result = {
+        content: toolResultContent(
+          outcome.report ||
+            (outcome.state === "completed" ? "(no result)" : `Task ${outcome.state}.`),
+        ),
+        details: { jobId: input.jobId, state: outcome.state },
+      };
+      if (outcome.state !== "completed") throw new ToolError(result);
+      return result;
+    },
+  };
   return definePlugin({
     id: SUBAGENTS_PLUGIN_ID,
     session(api) {
       api.tools.add((draft) => {
         draft.set(TASK_TOOL, tool);
         draft.set(STOP_TASK_TOOL, stopTool);
+        draft.set(WAIT_TASK_TOOL, waitTool);
       });
     },
   });

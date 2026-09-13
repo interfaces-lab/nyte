@@ -15,7 +15,7 @@ content security policy that forbids `eval`.
 
 ```text
 GET {base}/v1/info
-  reply: {"ok": true, "defined": true, "value": {"version": "<host release>", "wireVersion": 1}}
+  reply: {"ok": true, "defined": true, "value": {"version": "<host release>", "wireVersion": 1, "host": {"kind": "unspecified"}}}
          the prefix is the wire version; another wire answers this route not_found
 
 POST {base}/v1/call/{operation}
@@ -34,6 +34,18 @@ GET {base}/v1/watch?sessionId=<id>[&after=<seq>|&live=1]
 
 The session id is a query parameter because ids are any non-empty string,
 and `.` or `..` in a path segment would be normalized away.
+
+Authenticated info reads also describe the host when its embedding supplies
+metadata. `host.kind: "described"` carries `capabilities.workspace` and
+`persistence` (`durable`, `ephemeral`, or `unknown`).
+An embedding without this information reports `host.kind: "unspecified"`.
+
+Models use the existing SDK operations: `provider.models.list()`
+returns currently available choices, and `provider.models.default()` returns the
+default. Both use `ModelInfo`, with public identity, context limit, base cost
+rates, and supported thinking levels. Credentials, provider URLs, and provider
+headers stay on the host. Availability reflects server configuration and
+credentials; it does not prove that a live upstream request will succeed.
 
 `defined` is explicit because JSON has no `undefined` and `null` is a real
 value elsewhere (a head with no tip is `"tip": null`). A `fact` event whose
@@ -74,13 +86,13 @@ The set the desktop already carries over Electron IPC, plus `landing`:
 
 ```text
 landing
-sessions.create  sessions.get  sessions.snapshot  sessions.list  sessions.rename
-sessions.setPinned  sessions.setArchived  sessions.delete  sessions.configure
+sessions.create  sessions.get  sessions.snapshot  sessions.metadata  sessions.list
+sessions.rename  sessions.setPinned  sessions.setArchived  sessions.delete  sessions.configure
 messages.send  messages.cancel  messages.redeliver
 runs.current  runs.abort  runs.reply  runs.changes
 heads.move
 workspace.list  workspace.forget  workspace.vcs.diff
-provider.models.default
+provider.models.list  provider.models.default
 plugins.catalog  plugins.list  plugins.commands.list  plugins.commands.run
 plugins.settings.list  plugins.settings.apply  plugins.resources.list  plugins.status.list
 ```
@@ -92,6 +104,13 @@ dispatch can carry the request's signal. `attach`, `setPlugins`, and
 `close` are host lifecycle; step execution is never remote in this revision.
 The read operations the desktop does not use (`messages.list`, `heads.list`, and
 so on) wait for a later revision. `OPERATIONS` is the authoritative list.
+
+`provider.models.list()` returns only choices permitted by the host's current
+credentials and provider restrictions. Hosts may further limit the list to
+enabled, visible models. Raw registry access stays internal to the host through
+`models.getModels()`; clients receive the public `ModelInfo` described above.
+`sessions.configure` queues a model choice for subsequent work and leaves a
+running request on its current configuration.
 
 ## Using it
 
@@ -132,5 +151,6 @@ directions (readonly aside). A schema that drifts from its type fails
   snapshot's `seq`". `after=<last seq seen>` is not a lossless resume across
   an arbitrary disconnect, because several events can share a seq.
 - No tenancy: an operation names a session id and nothing scopes which ids a
-  credential may name. That is the server's authorizer's job, and this
-  revision's authorizer is all-or-nothing.
+  credential may name. The server can apply host permission policies to
+  validated calls and watches, but the protocol does not filter result pages
+  or supply device identities.

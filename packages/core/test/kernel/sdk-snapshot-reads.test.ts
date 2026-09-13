@@ -173,6 +173,18 @@ for (const checkpoints of [0, 2]) {
             f.reads.length <= branches,
             `${f.reads.length} SQLite commit queries exceed ${branches} branch reads`,
           );
+          // The narrow read agrees with the snapshot and costs no more branch queries.
+          f.reads.length = 0;
+          assert.deepEqual(await f.nyte.sessions.metadata(input), {
+            session: expected.session,
+            head,
+            config: expected.config,
+            context: expected.context,
+          });
+          assert.ok(
+            f.reads.length <= branches,
+            `${f.reads.length} SQLite commit queries exceed ${branches} metadata reads`,
+          );
           if (request === 0) {
             for (const oid of await seedHead(f.session, head, [message(user("new commit"))])) {
               reachable.add(oid);
@@ -194,8 +206,10 @@ test("empty and missing snapshots preserve observer defaults and entry errors", 
     assert.deepEqual(snapshot?.transcript, []);
     assert.equal(snapshot?.context.contextWindow, 0);
     assert.equal(await f.nyte.sessions.snapshot({ sessionId: sessionId("missing") }), undefined);
+    assert.equal(await f.nyte.sessions.metadata({ sessionId: sessionId("missing") }), undefined);
     await f.nyte.close();
     await assert.rejects(f.nyte.sessions.snapshot({ sessionId: f.id }), NyteClosed);
+    await assert.rejects(f.nyte.sessions.metadata({ sessionId: f.id }), NyteClosed);
   } finally {
     await f.nyte.close();
   }

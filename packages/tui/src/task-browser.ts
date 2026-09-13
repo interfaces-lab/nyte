@@ -4,6 +4,7 @@ import { GLYPHS, keycap } from "./constants.ts";
 import { formatDuration } from "./format.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { InlineMenu, MenuScreen } from "./picker.ts";
+import { waitingCall } from "@nyte-ai/core/client";
 import type { SessionState } from "@nyte-ai/core/client";
 import { closePanel, notice, openInlineMenu, setHints } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
@@ -69,6 +70,7 @@ class TaskInspector {
       scrollY: true,
       stickyScroll: true,
       stickyStart: "bottom",
+      scrollAcceleration: shell.newScrollAcceleration(),
       paddingLeft: 1,
       paddingRight: 1,
     });
@@ -177,7 +179,7 @@ export class TaskBrowser {
 
   update(state: SessionState, event?: SessionEvent): void {
     const changedSession = this.state?.sessionId !== state.sessionId;
-    const previousWaiting = this.state?.waiting;
+    const previousWaiting = this.state === undefined ? undefined : waitingCall(this.state);
     if (changedSession) {
       this.close();
       this.generation += 1;
@@ -198,7 +200,7 @@ export class TaskBrowser {
     }
     if (changedSession || event?.kind === "job") this.updateTasks();
     // Parent questions must still notify the host without repainting unchanged tasks.
-    else if (previousWaiting !== state.waiting) this.options.onChange?.();
+    else if (previousWaiting?.waitId !== waitingCall(state)?.waitId) this.options.onChange?.();
     if (changedSession || event === undefined || event.kind === "synced") {
       void this.refresh().catch(this.options.onError);
     }
@@ -267,7 +269,8 @@ export class TaskBrowser {
 
   get waiting() {
     for (const state of this.index?.states ?? []) {
-      if (state.waiting !== undefined) return state.waiting;
+      const waiting = waitingCall(state);
+      if (waiting !== undefined) return waiting;
     }
     return undefined;
   }

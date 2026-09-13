@@ -1,0 +1,8 @@
+(pass) steer messages at the transcript's tail > a long Markdown message keeps every row through admission in a narrow terminal [89.68ms]
+(pass) steer messages at the transcript's tail > a pending message the run has not admitted draws no outcome of its own [53.91ms]
+(pass) follow-ups in the compact gutter > queued rows stay compact, capped to the terminal's share, and count the hidden rest [54.60ms]
+
+ 20 pass
+ 0 fail
+ 103 expect() calls
+Ran 20 tests across 2 files. [898.00ms]

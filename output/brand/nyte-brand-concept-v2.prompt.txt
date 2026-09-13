@@ -1,0 +1,9 @@
+Use case: logo-brand
+Asset type: final flat identity concept board
+Input images: Image 1 is the edit target
+Primary request: change only the color rendering and background treatment. Preserve the hero checkpoint-seam symbol geometry, wordmark geometry, exact layout, diagonal cut, red bridge, yellow cursor, and small app-tile placement from Image 1.
+Scene/backdrop: replace the entire black background with one perfectly solid warm bone field #F3EEE5
+Color treatment: render every dark part of the hero mark and wordmark as one perfectly solid near-black oxblood #160D0D with no internal shading. Keep the seam flat ember red #E33B36 and the cursor flat sulfur yellow #DCE63B. Make the small app tile near-black with the mark in warm bone plus the red and yellow details.
+Text (verbatim): "nyte"
+Constraints: change only background and flat color rendering; preserve all shapes, proportions, cropping, spacing, and text; "nyte" exactly once; sharp clean vector-style edges; fully opaque solid fills
+Avoid: black canvas, gradients, glow, bevel, reflections, shadows, texture, grain, transparency, blur, highlights, color noise, extra text, added elements, geometry changes

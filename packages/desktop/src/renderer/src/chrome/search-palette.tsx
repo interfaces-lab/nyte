@@ -1,3 +1,4 @@
+import { sessionMark } from "@nyte-ai/core/client";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useId, useRef, useState } from "react";
@@ -7,9 +8,14 @@ import { CommandMenu, MenuItem } from "../components/menu.tsx";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { focus, formatTimeAgo, Kbd, srOnly, StatusDot } from "../components/ui.tsx";
 import { macPlatform } from "../platform.ts";
-import { isOption, sessionMark, sessionsForNavigation } from "./sidebar-view.ts";
+import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionPreview, useSessionSearch } from "../queries.ts";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
+import {
+  sessionHasUnreadCompletion,
+  sessionReadState,
+  useReadSessions,
+} from "../session-read-state.ts";
 import type { SettingsSection } from "./settings-navigation.tsx";
 import {
   clientActionKeys,
@@ -92,6 +98,7 @@ export function SearchPalette({
   const popupRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsID = useId();
+  const readSessions = useReadSessions();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const includesAgents = tab === "all" || tab === "agents";
@@ -222,10 +229,20 @@ export function SearchPalette({
           <MenuItem
             key={session.sessionId}
             itemStyle={styles.result}
-            leading={<StatusDot mark={sessionMark(session)} />}
+            leading={
+              <StatusDot
+                mark={sessionMark(session)}
+                unread={sessionHasUnreadCompletion(session, readSessions)}
+              />
+            }
             meta={formatTimeAgo(session.lastActivityAt)}
             textValue={sessionTitle(session)}
-            onSelect={() => run(() => onOpenSession(session.sessionId))}
+            onSelect={() =>
+              run(() => {
+                sessionReadState.markRead(session);
+                onOpenSession(session.sessionId);
+              })
+            }
           >
             {sessionTitle(session)}
           </MenuItem>

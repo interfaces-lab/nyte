@@ -1,0 +1,20 @@
+(pass) sent messages > a receipt ahead of the watch keeps one row, under one key, until the fold shows it [2.53ms]
+(pass) sent messages > the queued frame ahead of the receipt draws once; the late receipt adds nothing [1.22ms]
+(pass) sent messages > the commit frame ahead of its landed frame moves the message to the record without a pending twin [1.44ms]
+(pass) sent messages > a receipt after the change landed draws nothing [1.21ms]
+(pass) sent messages > a receipt after the change was cancelled draws nothing, and the next send starts clean [2.38ms]
+(pass) sent messages > a duplicate receipt for a retry draws the message the first attempt made durable [2.41ms]
+(pass) sent messages > a duplicate receipt for a change that landed during the retries draws nothing [2.49ms]
+(pass) sent messages > identical prompts stay apart by change and key, never by content [1.36ms]
+(pass) sent messages > a snapshot taken before the submit applied keeps the message until the queued frame follows [2.54ms]
+(pass) sent messages > a snapshot taken after the message landed shows the record alone, before and after the receipt [2.44ms]
+(pass) sent messages > a snapshot that holds the message as pending adopts the arriving row [1.18ms]
+(pass) sent messages > a message cancelled before the snapshot leaves once the store confirms it is gone [4.67ms]
+(pass) sent messages > a stale answer never removes a message the watch has since placed [2.44ms]
+(pass) sent messages > a failed read keeps the row; the next snapshot asks again [3.59ms]
+(pass) sent messages > a redelivered message keeps its key: the copy's queued frame answers the original's receipt [1.26ms]
+
+ 15 pass
+ 0 fail
+ 50 expect() calls
+Ran 15 tests across 1 file. [446.00ms]

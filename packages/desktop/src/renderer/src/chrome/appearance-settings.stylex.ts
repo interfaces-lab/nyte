@@ -41,8 +41,8 @@ export const appearanceSettingsStyles = stylex.create({
     borderStyle: "none",
     backgroundColor: t.fillSecondary,
     boxShadow: {
-      default: `inset 0 0 0 1px ${t.borderWeak}`,
-      ":focus-within": `inset 0 0 0 1px ${t.borderDefault}`,
+      default: `inset 0 0 0 1px ${t.strokeSecondary}`,
+      ":focus-within": `inset 0 0 0 1px ${t.strokePrimary}`,
     },
     color: t.iconTertiary,
   },
@@ -66,6 +66,7 @@ export const appearanceSettingsStyles = stylex.create({
   },
   navList: { display: "flex", flexDirection: "column", gap: 1 },
   navItem: {
+    "--_nav-fill": { default: "transparent", ":hover": t.fillGhostHover },
     display: "flex",
     alignItems: "center",
     gap: 7,
@@ -74,7 +75,7 @@ export const appearanceSettingsStyles = stylex.create({
     paddingInline: 7,
     borderRadius: t.radiusBase,
     borderStyle: "none",
-    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
+    backgroundColor: "var(--_nav-fill)",
     color: t.textSecondary,
     fontSize: t.fontBase,
     fontWeight: 400,
@@ -83,7 +84,7 @@ export const appearanceSettingsStyles = stylex.create({
     cursor: "pointer",
     textDecoration: "none",
   },
-  navItemActive: { backgroundColor: t.fillGhostSelected, color: t.textPrimary },
+  navItemActive: { "--_nav-fill": t.fillGhostSelected, color: t.textPrimary },
   emptyNavigation: {
     padding: "6px 8px",
     color: t.textTertiary,

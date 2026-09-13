@@ -151,6 +151,8 @@ export type AuthEvent =
       verificationUri: string;
       intervalSeconds?: number;
       expiresInSeconds?: number;
+      /** Shown with the code for as long as the code is; a later event never replaces it. */
+      instructions?: string;
     }
   | { type: "progress"; message: string };
 

@@ -313,6 +313,14 @@ export async function settleEffect(
     : { kind: outcome.reason };
 }
 
+/** Whether a waiting run has durable work to publish instead of remaining parked. */
+export function waitingBatchReady(views: readonly EffectView[]): boolean {
+  return (
+    views.some((view) => view.effect.state === "signal" || view.effect.state === "expired") ||
+    (views.length > 0 && views.every((view) => view.effect.state === "result"))
+  );
+}
+
 export async function clearEffects(
   session: Session,
   options: { readonly lease: Lease; readonly runId: string; readonly views: readonly EffectView[] },

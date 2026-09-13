@@ -25,6 +25,16 @@ export const conversation = stylex.defineConsts({
   composerExpandedRadius: "var(--nyte-composer-expanded-radius)",
 });
 
+export const tray = stylex.defineConsts({
+  radius: "var(--nyte-tray-radius)",
+  gap: "var(--nyte-tray-gap)",
+  paddingInline: "var(--nyte-tray-padding-inline)",
+  headerHeight: "var(--nyte-tray-header-height)",
+  rowHeight: "var(--nyte-tray-row-height)",
+  rowInset: "var(--nyte-tray-row-inset)",
+  lineHeight: "var(--nyte-tray-line-height)",
+});
+
 export const sidebar = stylex.defineConsts({
   width: "var(--nyte-sidebar-width)",
   handleWidth: "var(--nyte-sidebar-handle-width)",
@@ -37,6 +47,7 @@ export const sidebar = stylex.defineConsts({
   iconSlot: "var(--nyte-sidebar-icon-slot)",
   actionSize: "var(--nyte-sidebar-action-size)",
   trailingWidth: "var(--nyte-sidebar-trailing-width)",
+  metaWidth: "var(--nyte-sidebar-meta-width)",
 });
 
 export const settings = stylex.defineConsts({

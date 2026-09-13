@@ -106,6 +106,12 @@ async function authenticate(command: "login" | "logout", args: readonly string[]
   const provider = await loginProvider({ models, interaction, ...options });
   console.log(`${statusGlyph("ok", ansiEnabled())} Logged in to ${provider.name}.`);
   try {
+    // Refresh dynamic catalogs after saving auth. Copilot resolves its account
+    // model IDs during login and uses generated definitions without this step.
+    const refreshed = await models.refresh({ providers: [provider.id], force: true, signal });
+    for (const error of refreshed.errors.values()) {
+      console.error(`Login is saved, but model discovery failed: ${error.message}`);
+    }
     await loadAuthenticatedModels(models, { force: true, allowNetwork: false, signal });
   } catch {
     signal.throwIfAborted();

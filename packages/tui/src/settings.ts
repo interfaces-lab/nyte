@@ -46,6 +46,8 @@ interface SettingsFile {
   /** A pinned mode, or `auto` to follow the terminal. */
   readonly theme?: ThemeChoice;
   readonly copyOnSelect?: boolean;
+  /** Use timing-sensitive wheel acceleration instead of the fixed three-row step. */
+  readonly scrollAcceleration?: boolean;
   readonly followUp?: "steer" | "queue";
 }
 
@@ -59,6 +61,7 @@ export interface ResolvedSettings {
   readonly autoUpdate: boolean;
   readonly theme: ThemeChoice;
   readonly copyOnSelect: boolean;
+  readonly scrollAcceleration: boolean;
   readonly followUp: "steer" | "queue";
 }
 
@@ -74,6 +77,7 @@ const SETTINGS_KEYS = new Set([
   "autoUpdate",
   "theme",
   "copyOnSelect",
+  "scrollAcceleration",
   "followUp",
 ]);
 const COMPACTION_KEYS = new Set(["enabled", "reserveTokens", "keepRecentTokens"]);
@@ -182,6 +186,8 @@ export function parseSettingsFile(value: JsonValue, path = "settings"): Settings
   if (autoUpdate !== undefined) settings = { ...settings, autoUpdate };
   const copyOnSelect = optionalBoolean(value, "copyOnSelect", path);
   if (copyOnSelect !== undefined) settings = { ...settings, copyOnSelect };
+  const scrollAcceleration = optionalBoolean(value, "scrollAcceleration", path);
+  if (scrollAcceleration !== undefined) settings = { ...settings, scrollAcceleration };
   const followUp = value.followUp;
   if (followUp !== undefined) {
     if (followUp !== "steer" && followUp !== "queue")
@@ -230,7 +236,8 @@ function mergeSettings(global: SettingsFile, project: SettingsFile): ResolvedSet
     },
     autoUpdate: project.autoUpdate ?? global.autoUpdate ?? false,
     theme: project.theme ?? global.theme ?? "auto",
-    copyOnSelect: project.copyOnSelect ?? global.copyOnSelect ?? false,
+    copyOnSelect: project.copyOnSelect ?? global.copyOnSelect ?? process.platform !== "win32",
+    scrollAcceleration: project.scrollAcceleration ?? global.scrollAcceleration ?? false,
     followUp: project.followUp ?? global.followUp ?? "steer",
   };
   if (model.provider !== undefined) resolved = { ...resolved, defaultProvider: model.provider };

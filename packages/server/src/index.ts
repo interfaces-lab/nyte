@@ -10,8 +10,9 @@
  * has its own edge.
  *
  * The handler owns nothing of the SDK's lifecycle. It does not attach a
- * runner, and `close()` stops only the watch streams it opened.
+ * runner. `close()` refuses new work and ends its watches, leaving the SDK alone.
  */
+import { createHash, timingSafeEqual } from "node:crypto";
 import {
   dispatch,
   CursorExpired,
@@ -39,14 +40,14 @@ import {
   statusFor,
   validationIssues,
   type CallReply,
-  type CallRequest,
   type Issue,
-  type Seq,
   type SessionId,
   type Operation,
   type OperationInput,
-  type OperationOutput,
   type ServerInfo,
+  type ServerDescription,
+  ServerDescriptionSchema,
+  type WatchInput,
   type WatchFrame,
   type WireError,
 } from "@nyte-ai/protocol";
@@ -71,23 +72,39 @@ export type AuthDecision = Readonly<Static<typeof AuthDecisionSchema>>;
 export type ServerAuth =
   /** `Authorization: Bearer <token>`, compared in constant time. At least 16 characters. */
   | { readonly kind: "token"; readonly token: string }
-  /** The host decides per request. It sees the raw request; nothing is read before it answers. */
+  /** The host decides per request; its sync or async result is parsed as AuthDecision. */
   | {
       readonly kind: "custom";
-      readonly authorize: (request: Request) => AuthDecision | Promise<AuthDecision>;
+      readonly authorize: (request: Request) => unknown;
     };
 
-export interface ServerFailure {
-  readonly route: "call" | "watch" | "request";
-  readonly operation?: Operation;
-  readonly cause: unknown;
+/** Parsed operation inputs reach policy before any SDK operation runs. Only true grants access. */
+export interface ServerPermissions {
+  readonly calls: {
+    readonly [O in Operation]?: (
+      input: OperationInput<O>,
+      request: Request,
+    ) => boolean | Promise<boolean>;
+  };
+  readonly watch?: (sessionId: SessionId, request: Request) => boolean | Promise<boolean>;
 }
+
+export type ServerFailure = {
+  readonly cause: unknown;
+} & (
+  | { readonly route: "call"; readonly operation: Operation }
+  | { readonly route: "watch" | "request"; readonly operation?: never }
+);
 
 export interface NyteServerOptions {
   readonly sdk: Nyte;
   /** The host's release, answered on the info route so a client can say what it is attached to. */
   readonly version: string;
+  /** Public host metadata, refreshed for authenticated info reads. Omit when the embedding cannot describe it. */
+  readonly describe?: () => ServerDescription | Promise<ServerDescription>;
   readonly auth: ServerAuth;
+  /** Omit for full access. When supplied, unlisted calls and watches are forbidden. Info stays authenticated. */
+  readonly permissions?: ServerPermissions;
   /**
    * Origins a browser page may call from, exactly as the `Origin` header
    * spells them. A request whose `Origin` equals the request URL's own origin
@@ -109,7 +126,7 @@ export interface NyteServerOptions {
 
 export interface NyteServer {
   fetch(request: Request): Promise<Response>;
-  /** End every open watch stream with a `closed` error frame. Leaves the SDK untouched. */
+  /** Refuse new work and end open watches with a `closed` error. Leaves accepted SDK work untouched. */
   close(): void;
 }
 
@@ -118,10 +135,6 @@ const DEFAULT_MAX_BODY_BYTES = 1_048_576;
 const DEFAULT_HEARTBEAT_MS = 15_000;
 const WATCH_QUERY_KEYS: readonly string[] = Object.values(WATCH_QUERY);
 const encoder = new TextEncoder();
-
-type OperationResult =
-  | { readonly kind: "value"; readonly value: OperationOutput<Operation> }
-  | { readonly kind: "error"; readonly error: WireError; readonly cause?: unknown };
 
 function invalid(message: string, issues: readonly Issue[] = []): WireError {
   return { code: "invalid_input", message, issues };
@@ -141,32 +154,6 @@ function laneIssue(sdk: Nyte, input: OperationInput<Operation>): WireError | und
   return invalid("Lane is not in the landing policy", [
     { path: "/lane", message: "must be one of the host's lanes" },
   ]);
-}
-
-/** Keep the parsed input tied to the selected operation through dispatch. */
-async function runOperation<V extends Operation>(
-  sdk: Nyte,
-  operation: V,
-  request: CallRequest,
-): Promise<OperationResult> {
-  const schema: (typeof OPERATIONS)[V]["input"] = OPERATIONS[operation].input;
-  const input = Object.hasOwn(request, "input") ? request.input : undefined;
-  if (!Value.Check(schema, input)) {
-    return {
-      kind: "error",
-      error: invalid(
-        "Input did not match the operation",
-        validationIssues(Value.Errors(schema, input)),
-      ),
-    };
-  }
-  const issue = laneIssue(sdk, input);
-  if (issue !== undefined) return { kind: "error", error: issue };
-  try {
-    return { kind: "value", value: await dispatch(sdk, operation, input) };
-  } catch (cause) {
-    return { kind: "error", error: wireErrorFor(cause), cause };
-  }
 }
 
 /**
@@ -212,15 +199,6 @@ function corsHeaders(origin: OriginDecision): Headers {
     headers.set("vary", "origin");
   }
   return headers;
-}
-
-function timingSafeEqual(left: string, right: string): boolean {
-  const a = encoder.encode(left);
-  const b = encoder.encode(right);
-  let diff = a.length ^ b.length;
-  const length = Math.max(a.length, b.length);
-  for (let index = 0; index < length; index += 1) diff |= (a[index] ?? 0) ^ (b[index] ?? 0);
-  return diff === 0;
 }
 
 function bearerToken(request: Request): string | undefined {
@@ -271,12 +249,8 @@ async function readBody(request: Request, maxBytes: number): Promise<BodyRead> {
   }
 }
 
-type WatchTarget =
-  | { readonly kind: "replay"; readonly afterSeq: Seq | undefined }
-  | { readonly kind: "live" };
-
 type WatchQueryParse =
-  | { readonly kind: "ok"; readonly sessionId: SessionId; readonly target: WatchTarget }
+  | { readonly kind: "ok"; readonly input: WatchInput }
   | { readonly kind: "invalid"; readonly message: string };
 
 function parseWatchQuery(params: URLSearchParams): WatchQueryParse {
@@ -297,16 +271,16 @@ function parseWatchQuery(params: URLSearchParams): WatchQueryParse {
   }
   if (live !== null) {
     if (live !== "1" && live !== "true") return { kind: "invalid", message: "live must be 1" };
-    return { kind: "ok", sessionId: id, target: { kind: "live" } };
+    return { kind: "ok", input: { sessionId: id, live: true } };
   }
   if (after === null) {
-    return { kind: "ok", sessionId: id, target: { kind: "replay", afterSeq: undefined } };
+    return { kind: "ok", input: { sessionId: id } };
   }
   const afterSeq = /^[0-9]{1,16}$/.test(after) ? Number(after) : Number.NaN;
   if (!Number.isSafeInteger(afterSeq)) {
     return { kind: "invalid", message: "after must be a non-negative safe integer" };
   }
-  return { kind: "ok", sessionId: id, target: { kind: "replay", afterSeq } };
+  return { kind: "ok", input: { sessionId: id, afterSeq } };
 }
 
 function frameBytes(frame: WatchFrame): Uint8Array {
@@ -345,14 +319,22 @@ class PendingNext {
   constructor(promise: Promise<IteratorResult<SessionEvent>>) {
     promise.then(
       (result) => {
+        if (this.outcome !== undefined) return;
         this.outcome = { kind: "value", result };
         this.wake?.();
       },
       (cause: unknown) => {
+        if (this.outcome !== undefined) return;
         this.outcome = { kind: "error", cause };
         this.wake?.();
       },
     );
+  }
+
+  /** Release a pending pull even when the SDK is awaiting work that ignores its signal. */
+  stop(): void {
+    this.outcome = { kind: "value", result: { done: true, value: undefined } };
+    this.wake?.();
   }
 
   /** The result once it exists, else undefined after `waitMs` (forever when 0). Throws what `next()` threw. */
@@ -371,13 +353,6 @@ class PendingNext {
     if (this.outcome?.kind === "error") throw this.outcome.cause;
     return this.outcome?.result;
   }
-}
-
-interface OpenWatch {
-  readonly controller: AbortController;
-  closing: boolean;
-  /** Abort the SDK watch and release its iterator; set once the watch is registered. */
-  release: () => void;
 }
 
 function validateOptions(options: NyteServerOptions) {
@@ -400,12 +375,19 @@ function validateOptions(options: NyteServerOptions) {
 // ---------------------------------------------------------------------------
 
 export function createNyteServer(options: NyteServerOptions): NyteServer {
-  const { sdk, auth } = options;
+  const { sdk } = options;
+  // Equal-length digests let the native comparison handle tokens of any byte length.
+  const auth =
+    options.auth.kind === "token"
+      ? ({
+          kind: "token",
+          digest: createHash("sha256").update(options.auth.token).digest(),
+        } as const)
+      : options.auth;
   const { maxBodyBytes, heartbeatMs } = validateOptions(options);
   const browserOrigins = options.browserOrigins ?? [];
-  const watches = new Set<OpenWatch>();
+  const watches = new Set<() => void>();
   let closed = false;
-  const info: ServerInfo = { version: options.version, wireVersion: WIRE_VERSION };
 
   /** A diagnostic hook that throws must not turn a redacted reply into no reply. */
   const report = (failure: ServerFailure): void => {
@@ -432,7 +414,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       case "token": {
         const presented = bearerToken(request);
         if (presented === undefined) return { kind: "deny", reason: "unauthorized" };
-        return timingSafeEqual(presented, auth.token)
+        return timingSafeEqual(createHash("sha256").update(presented).digest(), auth.digest)
           ? { kind: "allow" }
           : { kind: "deny", reason: "forbidden" };
       }
@@ -460,7 +442,11 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
     return new Response(null, { status: 204, headers });
   };
 
-  const call = async (request: Request, operation: Operation, cors: Headers): Promise<Response> => {
+  const call = async <O extends Operation>(
+    request: Request,
+    operation: O,
+    cors: Headers,
+  ): Promise<Response> => {
     if (mediaType(request.headers.get("content-type")) !== JSON_MEDIA_TYPE) {
       return refuse({ code: "unsupported_media_type", message: `Send ${JSON_MEDIA_TYPE}` }, cors);
     }
@@ -493,72 +479,80 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         cors,
       );
     }
-    const result = await runOperation(sdk, operation, parsed);
-    switch (result.kind) {
-      case "value": {
-        const reply: CallReply =
-          result.value === undefined
-            ? { ok: true, defined: false }
-            : { ok: true, defined: true, value: result.value };
-        try {
-          return jsonResponse(200, reply, cors);
-        } catch (cause) {
-          // A value JSON cannot carry (a bigint, a cycle) is a host bug, not the caller's.
-          report({ route: "call", operation, cause });
-          return refuse({ code: "internal", message: "Internal error" }, cors);
-        }
+    const schema: (typeof OPERATIONS)[O]["input"] = OPERATIONS[operation].input;
+    const input = Object.hasOwn(parsed, "input") ? parsed.input : undefined;
+    if (!Value.Check(schema, input)) {
+      return refuse(
+        invalid("Input did not match the operation", validationIssues(Value.Errors(schema, input))),
+        cors,
+      );
+    }
+    try {
+      if (
+        options.permissions !== undefined &&
+        (await options.permissions.calls[operation]?.(input, request)) !== true
+      ) {
+        return refuse({ code: "forbidden", message: "Operation is not allowed" }, cors);
       }
-      case "error":
-        if (result.error.code === "internal")
-          report({ route: "call", operation, cause: result.cause });
-        return refuse(result.error, cors);
-      default: {
-        const _exhaustive: never = result;
-        return _exhaustive;
-      }
+      if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+      const issue = laneIssue(sdk, input);
+      if (issue !== undefined) return refuse(issue, cors);
+      const value = await dispatch(sdk, operation, input);
+      return jsonResponse(
+        200,
+        value === undefined ? { ok: true, defined: false } : { ok: true, defined: true, value },
+        cors,
+      );
+    } catch (cause) {
+      const error = wireErrorFor(cause);
+      if (error.code === "internal") report({ route: "call", operation, cause });
+      return refuse(error, cors);
     }
   };
 
   const watch = async (request: Request, url: URL, cors: Headers): Promise<Response> => {
     const query = parseWatchQuery(url.searchParams);
     if (query.kind === "invalid") return refuse(invalid(query.message), cors);
+    if (
+      options.permissions !== undefined &&
+      (await options.permissions.watch?.(query.input.sessionId, request)) !== true
+    ) {
+      return refuse({ code: "forbidden", message: "Watch is not allowed" }, cors);
+    }
     if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
     if (request.signal.aborted) return refuse(invalid("The request was already aborted"), cors);
 
-    const open: OpenWatch = {
-      controller: new AbortController(),
-      closing: false,
-      release: () => undefined,
-    };
-    const { signal } = open.controller;
-    const base = { sessionId: query.sessionId, signal };
-    const source =
-      query.target.kind === "live"
-        ? sdk.watch({ ...base, live: true })
-        : query.target.afterSeq === undefined
-          ? sdk.watch(base)
-          : sdk.watch({ ...base, afterSeq: query.target.afterSeq });
+    const watchController = new AbortController();
+    const { signal } = watchController;
+    const source = sdk.watch({ ...query.input, signal });
     const iterator = source[Symbol.asyncIterator]();
-    watches.add(open);
+    const firstRead = Promise.withResolvers<IteratorResult<SessionEvent>>();
+    let pending: PendingNext | undefined;
+    let endResponse: (() => void) | undefined;
 
     // Abort the SDK watch first, then let the generator unwind on its own.
     // Awaiting `return()` while a `next()` is pending would wait for the
     // event that never comes.
     const finish = (): void => {
       request.signal.removeEventListener("abort", finish);
-      if (!watches.delete(open)) return;
-      open.controller.abort();
+      if (!watches.delete(finish)) return;
+      watchController.abort();
+      firstRead.resolve({ done: true, value: undefined });
+      pending?.stop();
+      endResponse?.();
       void iterator.return?.().catch(() => undefined);
     };
-    open.release = finish;
+    watches.add(finish);
     request.signal.addEventListener("abort", finish, { once: true });
+    if (request.signal.aborted) finish();
 
     // The first pull happens before any header is written: a cursor below
     // the floor or an unknown session is a JSON error with a status, not a
     // stream that fails on its first frame.
     let first: IteratorResult<SessionEvent>;
     try {
-      first = await iterator.next();
+      if (!signal.aborted) void iterator.next().then(firstRead.resolve, firstRead.reject);
+      first = await firstRead.promise;
     } catch (cause) {
       finish();
       const error = wireErrorFor(cause);
@@ -569,8 +563,10 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       finish();
       return refuse(invalid("The request was aborted"), cors);
     }
+    if (closed) {
+      return refuse({ code: "closed", message: "The server is closed" }, cors);
+    }
 
-    let pending: PendingNext | undefined;
     let ended = false;
     const end = (
       controller: ReadableStreamDefaultController<Uint8Array>,
@@ -604,17 +600,18 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        endResponse = () => end(controller, closed ? closedFrame : { kind: "ended" });
         if (first.done) {
-          end(controller, open.closing ? closedFrame : { kind: "ended" });
+          end(controller, closed ? closedFrame : { kind: "ended" });
           return;
         }
         emit(controller, first.value);
       },
       async pull(controller) {
         if (ended) return;
-        pending ??= new PendingNext(iterator.next());
         let result: IteratorResult<SessionEvent> | undefined;
         try {
+          pending ??= new PendingNext(iterator.next());
           result = await pending.wait(heartbeatMs);
         } catch (cause) {
           pending = undefined;
@@ -630,7 +627,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         }
         pending = undefined;
         if (result.done) {
-          end(controller, open.closing ? closedFrame : { kind: "ended" });
+          end(controller, closed ? closedFrame : { kind: "ended" });
           return;
         }
         emit(controller, result.value);
@@ -669,10 +666,25 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       );
     }
 
+    if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+
     if (url.pathname === INFO_ROUTE) {
       if (request.method !== "GET") {
         return refuse({ code: "method_not_allowed", message: "Info is GET" }, cors);
       }
+      const description = await options.describe?.();
+      if (description !== undefined && !Value.Check(ServerDescriptionSchema, description)) {
+        throw new TypeError("Invalid server description");
+      }
+      if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
+      const info: ServerInfo = {
+        version: options.version,
+        wireVersion: WIRE_VERSION,
+        host:
+          description === undefined
+            ? { kind: "unspecified" }
+            : { kind: "described", ...description },
+      };
       return jsonResponse(200, { ok: true, defined: true, value: info }, cors);
     }
     if (url.pathname === WATCH_ROUTE) {
@@ -716,10 +728,7 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
       closed = true;
       // Release each watch outright. A generator parked at `yield` behind an
       // unread response never sees an abort signal; only `return()` unwinds it.
-      for (const open of watches) {
-        open.closing = true;
-        open.release();
-      }
+      for (const finish of watches) finish();
     },
   };
 }

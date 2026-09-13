@@ -373,15 +373,15 @@ returns.
 The step reads the head, run, and deletion refs. A session being deleted makes every step `idle`.
 Otherwise the step follows this table:
 
-| Run phase        | Pending change        | Step does                                                                            | Publish CAS                                    |
-| ---------------- | --------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| none or terminal | none                  | return `idle`                                                                        | none                                           |
-| none or terminal | some                  | land from the first policy lane; start in `respond` with a message, otherwise `done` | head, queue base, run                          |
-| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                    | head, lane base                                |
-| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                    | assistant commit at head, next run phase       |
-| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                   | result commits, effect cleanup, next run phase |
-| `waiting`        | any                   | wake on a signal, deadline, or abort; otherwise return `waiting { until? }`          | the same publish as `tools` when it wakes      |
-| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                             | none until responding                          |
+| Run phase        | Pending change        | Step does                                                                                                   | Publish CAS                                    |
+| ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| none or terminal | none                  | return `idle`                                                                                               | none                                           |
+| none or terminal | some                  | land from the first policy lane; start in `respond` with a message, otherwise `done`                        | head, queue base, run                          |
+| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                                           | head, lane base                                |
+| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                                           | assistant commit at head, next run phase       |
+| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                                          | result commits, effect cleanup, next run phase |
+| `waiting`        | any                   | wake on a signal, expiry, completed result batch, deadline, or abort; otherwise return `waiting { until? }` | the same publish as `tools` when it wakes      |
+| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                                                    | none until responding                          |
 
 Two small rules sit inside the `respond` row. First, an abort request already on the run stores
 `aborted` without calling the model. Second, if the projected context ends in something other than
@@ -445,7 +445,7 @@ a run id, and uses the effect signal CAS. Its outcomes are `signalled`, `not_wai
 `not_found`.
 
 On the next acquired step, a `waiting` run calls tools again if any effect has a signal or expiry,
-its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
+all effects already hold results, its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
 `waiting` with that nearest deadline so a hot host can schedule another step. Ordinary submitted messages
 stay in their lane while the run waits. A tool reply is a signal, not a conversation message, and
 the two never get confused for each other.
@@ -457,8 +457,9 @@ answers with a `SelectionReply` that keeps picked ids and own text in separate f
 looks like an id therefore stays text. A selection is data, not a call into a client. It lives on
 the ref, rides the `effect` event, and appears on the snapshot's `parked` list with a `waitId`
 that identifies that exact waiting effect, so the phone in scene 3 renders it an hour later
-without the tool's schema or the plugin that parked it. Re-parking the same call produces a new
-`waitId`; clients use it to discard local picks and reopen the new wait. A client renders a
+without the tool's schema or the plugin that parked it. The snapshot projects concurrent waits in
+the assistant message's tool-call order; there is no second stored order. Re-parking the same call
+produces a new `waitId`; clients use it to discard local picks and reopen the new wait. A client renders a
 selection generically. A wait without one is background work, such as a delegated child, and a
 client **must not** present it as a request for input. Core and clients decide this by the
 selection's presence, never by the tool's name. What a plugin parks with is checked against the
@@ -574,9 +575,16 @@ The only ways a pending change stops being visible are landing and an explicit c
 tombstone. A failed, aborted, or superseded run leaves pending changes in their chains. A
 reconnecting client asks the store for pending and sees the same set as every other client.
 
-An abort interrupts a step, not the run: the runner cancels the call in flight, keeps whatever
-it produced, and at the next response boundary lands a message waiting in a boundary lane into
-the same run, clearing the flag. Only an empty boundary queue ends the run as `aborted`.
+Cancellation is one-way for a run. The runner cancels the call in flight, preserves its output,
+settles admitted tool work, and ends the run as `aborted`. A queued user message starts a new run
+in the same conversation; it never clears the stopped run's flag.
+
+Only explicit user input starts model work. Background completions can join an active run at
+its next response boundary, but cannot start a run when the head is idle, completed, failed, or
+stopped. They remain queued across reopen and join the next user input's context before its
+answer. Configuration and notes can still land without starting model work.
+A head with no active run and only deferred completions is `idle` to `runs.wait`.
+Compaction can continue an already-authorized run, but cannot revive a cancelled one.
 
 Each store transaction is atomic. If submit throws because the disk is full or the connection is
 lost, it may have written an unreachable loose object, but it has not half-applied a ref update.
@@ -588,10 +596,14 @@ client closes it with an outbox:
 1. Mint a key on Enter, keep the message locally as `sending`, and render it immediately.
 2. Submit with that key. On a network failure, keep the row and retry with backoff using the same
    key until it succeeds or the user cancels the local send.
-3. Treat `queued` and `duplicate` as durable. Replace the local row with the returned change oid.
+3. Treat `queued` and `duplicate` as durable. Match the local row to the store's message by
+   identity, never by content: the receipt names the change, and the key rides on the change,
+   on its pending item, and on the commit that lands it. The receipt and the watch arrive in
+   either order; a message the watch already shows draws nothing from its late receipt.
 
 The idempotency ref and queue tip move in one CAS. A retry after a lost response returns the first
-change and never enqueues the message twice.
+change and never enqueues the message twice. The key is correlation for the sender, not
+authorization, and stays outside the message the model reads.
 
 ### Who runs?
 
@@ -652,20 +664,43 @@ Three placements use the same store and step contract:
 - **Serverless.** A request or alarm opens a session, calls `step`, and exits. A remote backend
   supplies the same four authorities.
 
-Only the embedded placement ships today. The request protocol below is the shape a server would
-take, following the SDK rather than inventing a second runtime:
+Only the embedded placement ships as a client today. `@nyte-ai/server` supplies a tested
+request handler, not a listener or a hosted service. A host-owned service lives with the host,
+so an MCP stdio server is a child process of whichever process runs the plugin. It exists on
+the embedded and server placements and remains an open question on stateless ones.
+
+The implemented wire follows the SDK's operation table in `@nyte-ai/protocol`:
 
 ```text
-POST /sessions/{id}/messages          submit: queued | duplicate
-GET  /sessions/{id}/snapshot          complete read model at seq
-GET  /sessions/{id}/events?after=seq  retained events, then live events
-POST /sessions/{id}/steps             idle | busy | waiting | retry | finished | fenced
+GET  /v1/info                         host release and wire version
+POST /v1/call/{operation}             validated SDK input and discriminated reply
+GET  /v1/watch?sessionId=id&after=seq  projected session events over SSE
 ```
 
-Reconnect uses the last sequence. If the cursor is below the floor, the client takes a new
-snapshot and watches from the snapshot sequence. A protocol **must** keep the SDK's plain objects
-and discriminated outcomes, so another language can implement it without TypeScript object
-handles.
+The server **must not** attach a runner or execute a step on behalf of a connection. Host
+composition opens the store, supplies trusted plugins and models, and chooses when runners
+attach. Disconnecting a client or closing the server **must not** cancel accepted submissions
+or stop host runners. Server close rejects new work and terminates its streams, while SDK
+operations already dispatched may finish.
+
+Authentication runs before body parsing. Optional server permissions decide each operation
+from its validated input and each watch from its validated session id, before touching the SDK.
+When a permission policy is supplied, unlisted operations and watches **must** be denied.
+Authenticated version discovery remains available. The server does not filter result pages;
+a host **must not** grant directory operations such as `sessions.list` to a session-scoped
+caller unless that caller may see every item they can return. Device pairing, credential
+storage and revocation, encrypted connections, and relays remain host responsibilities.
+Request permissions do not revoke streams already admitted; immediate revocation also requires
+terminating the affected connections.
+
+A raw store sequence and an SDK event cursor are not interchangeable checkpoints. Several
+projected SDK events may share one durable sequence, and host activation notices are not ordered
+by it. After an arbitrary wire disconnect, the client **must** take a fresh snapshot and watch
+from its `seq`, folding replayed objects by identity. Resuming from the last individual SSE
+`id` can skip the remaining projections of that sequence, even above the retention floor.
+A protocol **must** keep the SDK's plain objects and discriminated outcomes, so another language
+can implement it without TypeScript object handles. Client outboxes retain the same submission
+key until the server returns a durable receipt.
 
 ## Events and views
 
@@ -745,20 +780,35 @@ failure **must not** weaken a policy decision into permission.
 
 Facts use `refs/facts/<key>` pointing to blobs. The SDK keeps a session's `name` and `parent`
 there, and plugin storage lives under a per-plugin prefix. Ref updates make their changes visible
-in the same event stream as every other domain ref.
+in the same event stream as every other domain ref, so a plugin learns of its own setting changes
+the way a client does: a `fact` event carrying the key it wrote and the new value.
+
+MCP is the worked example of every rule above. The process owns the connections and a session
+owns the choice of which to use: a pool holds one connection per server config for every session,
+and the plugin turns a session's on/off settings into acquire and release on that pool, offering
+whatever is connected as tools. The pool is the host-owned service, kept across a plugin reload
+that leaves its config alone. The settings are per-plugin facts whose default is the manifest's
+`disabled`, and the plugin reacts to its own `fact` events. Its tools are `never` replay, because
+a remote call is not known to be idempotent. A server's tool table is discovered at runtime, so
+the pool notifies on every status change and the plugin rebuilds its registries. The config is
+project manifest read after trust, which matters here more than for most plugins, since a stdio
+server is a command the host spawns.
 
 ## Agents
 
 An agent is a host-resolved session preset, not a second runner type. A run using a preset stores
-its name in `config`. Delegation does not require a preset: the parent supplies a prompt and an
-exact `provider/model` through `task`. Its tool schema lists available models across authenticated
-providers, refreshed for each request. The parent honors the user's requested model or chooses one
-suited to the task. There is no global model override or automatic model substitution.
+its name in `config`. Delegation does not require a preset: the parent supplies a prompt through
+`task` and may supply an exact `provider/model`. The tool schema lists available explicit choices
+across authenticated providers, refreshed for each request. If the call omits a model, it resolves
+to `openai-codex/gpt-5.6-sol`; if it omits `task.thinkingLevel`, it resolves to `high`. The parent
+passes another model or thinking level when the user requests one. There is no global subagent
+setting or automatic model substitution.
 
-The child receives the shared session tools except `task` and `stop_task`, with its role and constraints
-supplied in the prompt. Its config records the exact model and the optional `task.thinkingLevel`
-override, or inherits the parent's thinking level when omitted. Availability is checked before child creation. A model lost from the catalog before execution fails the child
-rather than replacing the selected model with the host default.
+The child receives the shared session tools except `task`, `stop_task`, and `wait_task`, with its role and constraints
+supplied in the prompt. Its config records the resolved model and thinking level. Availability is
+checked before child creation. An unavailable explicit choice or default fails without creating a
+child. A model lost from the catalog before execution fails the child rather than replacing the
+selected model with the host default.
 
 Child work is a child session with durable parent coordinates stored as a `parent` fact: parent
 session, run, call, and depth. `sessions.create({ parent })` writes them, `sessions.list({
@@ -777,6 +827,14 @@ The parent can call `stop_task({ jobId })` with the ID returned by a background 
 that child and its running work through the same durable cancellation used by clients. Only subagent
 jobs owned by the calling session can be stopped. Finished jobs stay unchanged; unknown job IDs
 return a tool error. Stopping a task does not abort the parent run.
+
+When the parent needs a background task's report before finishing its turn, it calls
+`wait_task({ jobId })`. The wait parks through the same jobs machinery as `task` itself, so the
+parent holds no lease while it waits and the report is the job's stored result, not a re-run. It
+observes without owning: stopping the parent run cancels the wait but leaves a task an earlier run
+started untouched, while `stop_task` on the observed task settles the wait with the cancelled
+state. A finished task answers immediately from its durable record. This replaces polling or
+relaunching a task to get a result the agent already paid for.
 
 ## The SDK
 
@@ -853,6 +911,7 @@ run              { head, run }
 queued           { head, item }
 landed           { head, change }
 queue_cancelled  { change }
+config_queued    { head, change }
 effect           { runId, callId, state: intent | expired | signal | result, tool, args }
 effect           { runId, callId, state: waiting, waitId, tool, args, selection?, until? }
 stack            { head, parent, base }
@@ -940,8 +999,9 @@ Plugins:
 
 24. Nothing reaches the model except through host composition and plugin contribution. Built-ins
     are replaceable plugin contributions.
-25. Contribution tables are a function of the activation list. Replaying the same list over a
-    fresh draft yields the same tables.
+25. Contribution tables are a function of the activation list and the host-owned services its
+    plugins read. Replaying the same list over a fresh draft with the same service state yields
+    the same tables, and a service that changes **must** notify so the registry rebuilds.
 26. Plugin session storage uses fact refs under the plugin's prefix. A plugin **must not** read or
     write another plugin's keys.
 
@@ -1021,7 +1081,9 @@ Kernel CAS, queues, retention, and streaming:
 3. **Identity and authorization.** `Actor` is durable attribution. ACL-scoped callers are host and
    protocol territory.
 4. **Host-scoped plugin storage.** Fact refs belong to one session. Preferences shared across
-   sessions need a host-owned store when a concrete plugin needs one.
+   sessions need a host-owned store when a concrete plugin needs one. The MCP server toggle is
+   the first candidate: a user turning a server off most likely means for this machine, and today
+   the per-session fact with the manifest's `disabled` as its default stands in.
 5. **Retention defaults.** The kernel exposes trim, floor, grace, mark, and sweep without choosing
    a window or schedule. Each host needs a policy before users can rely on a specific undo horizon.
 

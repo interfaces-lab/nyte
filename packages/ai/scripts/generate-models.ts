@@ -12,6 +12,7 @@ import {
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { GITHUB_COPILOT_HEADERS } from "../src/api/github-copilot-headers.ts";
 import {
   getEffortThinkingLevelMap,
   type ModelsDevReasoningOption,
@@ -146,13 +147,6 @@ interface AiGatewayModel {
     input_cache_write?: string | number;
   };
 }
-
-const COPILOT_STATIC_HEADERS = {
-  "User-Agent": "GitHubCopilotChat/0.35.0",
-  "Editor-Version": "vscode/1.107.0",
-  "Editor-Plugin-Version": "copilot-chat/0.35.0",
-  "Copilot-Integration-Id": "vscode-chat",
-} as const;
 
 const TOGETHER_BASE_URL = "https://api.together.ai/v1";
 const TOGETHER_BASE_COMPAT: OpenAICompletionsCompat = {
@@ -2179,7 +2173,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
           cost: getModelsDevCost(m.cost),
           contextWindow: m.limit?.context || 128000,
           maxTokens: m.limit?.output || 8192,
-          headers: { ...COPILOT_STATIC_HEADERS },
+          headers: { ...GITHUB_COPILOT_HEADERS },
           ...(anthropicCompat ? { compat: anthropicCompat } : {}),
           // compat only applies to openai-completions
           ...(api === "openai-completions"

@@ -27,6 +27,7 @@ export {
   type ToolWakeOutcome,
 } from "../types.ts";
 export { acceptsSelectionReply } from "@nyte-ai/protocol";
+export { pluginFactKey } from "./storage.ts";
 export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
 export { ToolError, toolResultContent } from "../utils/tool-result.ts";
 export { bindTool } from "../tools/bind-tool.ts";

@@ -9,10 +9,12 @@ import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/typ
 import {
   SUBAGENTS_PLUGIN_ID,
   TASK_TOOL,
+  WAIT_TASK_TOOL,
   subagentsPlugin,
   type SubagentHost,
   type SubagentResult,
 } from "../../plugins/builtin/subagents.ts";
+import { toolResultText } from "../../utils/tool-result.ts";
 import { contextMessages } from "../context.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { contextCommits } from "../graph.ts";
@@ -74,7 +76,7 @@ export function createSubagents(input: {
           id: "jobs",
           session(api) {
             api.tools.add((draft) => {
-              for (const name of ["bash", TASK_TOOL]) {
+              for (const name of ["bash", TASK_TOOL, WAIT_TASK_TOOL]) {
                 const tool = draft.get(name);
                 if (tool !== undefined) draft.set(name, jobsFor(id, pooled).wrap(tool));
               }
@@ -227,12 +229,26 @@ export function createSubagents(input: {
       if (job?.kind !== "subagent") return { kind: "not_found" };
       return jobs.cancel(jobId);
     },
+    async waitFor(input) {
+      const jobs = jobsFor(id, pooled);
+      const known = (await jobs.list()).find((candidate) => candidate.id === input.jobId);
+      if (known?.kind !== "subagent") return { kind: "not_found" };
+      const record = await jobs.waitFor(input.jobId, input.signal);
+      if (record === undefined) return { kind: "not_found" };
+      const { state } = record.info;
+      if (state === "running") throw new Error("Task wait ended before the job finished");
+      return {
+        kind: "finished",
+        state,
+        report:
+          record.result === undefined ? record.info.output : toolResultText(record.result.content),
+      };
+    },
     async spawn(input) {
       if (pooled.parent !== undefined)
         throw new Error("Delegation depth is 1: a subagent cannot delegate further.");
       const stored = await pool.readRun(pooled.session, input.head);
       if (stored?.run.id !== input.runId) throw new Error("The parent run is no longer current");
-      const parentRun = stored.run;
       const runId = input.runId;
       const existing = await openChild(id, runId, input.callId);
       if (existing !== undefined) return existing.id;
@@ -285,8 +301,7 @@ export function createSubagents(input: {
               body: {
                 kind: "config",
                 model: { provider: model.provider, id: model.id },
-                thinkingLevel:
-                  input.thinkingLevel ?? parentRun.config.thinkingLevel ?? options.thinkingLevel,
+                thinkingLevel: input.thinkingLevel,
               } satisfies CommitBody,
             },
             options.actor,

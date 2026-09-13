@@ -4,13 +4,31 @@ import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
 import { keys, loadLocalResources, queryClient } from "./queries.ts";
-import { router, Shell } from "./router";
+import { currentRouteSession, router, Shell } from "./router";
 import { nyte } from "./nyte.ts";
+import type { HostState } from "./nyte.ts";
+import { paneControllerForWorkspace } from "./layout/pane-context.tsx";
+import { BLANK_SELECTION } from "./layout/pane-layout.ts";
 import { applyBrowserEvent } from "./workbench/browser-surfaces.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { handleOpenOutcome } from "./chrome/open-workspace.tsx";
+import { applyLoginEvent } from "./chrome/login-attempts.ts";
 
 import { Toaster } from "./components/toaster.tsx";
+
+/**
+ * The route owns what the stage shows. A folder the host opened on its own
+ * (Open folder…, a trust grant) binds a controller nobody selected into; the
+ * current route is applied to it, as a sidebar click applies its selection
+ * before it navigates.
+ */
+function bindRouteToOpenFolder(): void {
+  const workspacePath = queryClient.getQueryData<HostState>(keys.host)?.workspace?.path;
+  const sessionId = currentRouteSession();
+  paneControllerForWorkspace(workspacePath).syncSelection(
+    sessionId === undefined ? BLANK_SELECTION : { kind: "session", sessionId },
+  );
+}
 
 /** Host events reshape the world; queries re-read it. */
 function useHostEvents(): void {
@@ -26,7 +44,10 @@ function useHostEvents(): void {
           // event only refreshes caches, then asks the active route to decide
           // again against the newest host state.
           void loadLocalResources()
-            .then(() => router.invalidate())
+            .then(() => {
+              bindRouteToOpenFolder();
+              return router.invalidate();
+            })
             .catch(() => undefined);
           return;
         case "catalog_changed":
@@ -36,9 +57,16 @@ function useHostEvents(): void {
         case "github_changed":
           void queryClient.invalidateQueries({ queryKey: keys.github });
           return;
+        case "login_progress":
+          applyLoginEvent(event);
+          return;
         case "server_changed":
           void queryClient.invalidateQueries({ queryKey: keys.server });
+          void queryClient.invalidateQueries({ queryKey: keys.catalog });
           void queryClient.invalidateQueries({ queryKey: keys.sessionDirectory });
+          return;
+        case "mobile_share_changed":
+          void queryClient.invalidateQueries({ queryKey: keys.mobileShare });
           return;
         case "status":
           toast(event.message);

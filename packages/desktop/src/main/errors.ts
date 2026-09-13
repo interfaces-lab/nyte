@@ -1,3 +1,5 @@
+import { WorkspaceFileError } from "@nyte-ai/core/files";
+import { InvalidRipgrepPattern } from "@nyte-ai/core/ripgrep";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { randomUUID } from "node:crypto";
@@ -43,6 +45,23 @@ export class ExpectedHostError extends Error {
 
 export function ipcFailure(cause: unknown): IpcFailure {
   if (cause instanceof ExpectedHostError) return cause.error;
+  if (cause instanceof InvalidRipgrepPattern)
+    return { code: "invalid_input", message: cause.message, issues: [] };
+  if (cause instanceof WorkspaceFileError) {
+    switch (cause.reason) {
+      case "outside_workspace":
+        return { code: "forbidden", message: cause.message };
+      case "not_file":
+        return { code: "invalid_input", message: cause.message, issues: [] };
+      case "too_large":
+      case "drafts_too_large":
+        return { code: "payload_too_large", message: cause.message };
+      default: {
+        const exhaustive: never = cause.reason;
+        return exhaustive;
+      }
+    }
+  }
   if (cause instanceof CursorExpired)
     return {
       code: "cursor_expired",

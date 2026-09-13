@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Nyte / Black and yellow</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 4%;
+        background: #18191c;
+        color: #eff0f3;
+        font:
+          14px Arial,
+          sans-serif;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #36373a;
+        padding-bottom: 25px;
+      }
+      header span {
+        font: 10px monospace;
+        color: #a4a5aa;
+      }
+      h1 {
+        font-size: 46px;
+        font-weight: 400;
+        letter-spacing: -1.5px;
+        margin: 35px 0 15px;
+      }
+      p {
+        color: #a8a9af;
+        line-height: 1.6;
+      }
+      main {
+        max-width: 1600px;
+        margin: auto;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 20px;
+        margin-top: 35px;
+      }
+      .hero {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #232428;
+        border-radius: 10px;
+      }
+      h2 {
+        font-size: 15px;
+        font-weight: 500;
+        margin: 18px 0 10px;
+      }
+      .sizes {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        margin-top: 22px;
+      }
+      .sizes img {
+        display: block;
+      }
+      a {
+        color: #ffe072;
+        text-decoration: none;
+      }
+      a:focus-visible {
+        outline: 2px solid #ffe072;
+        outline-offset: 5px;
+      }
+      .download {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        font: 11px monospace;
+      }
+      footer {
+        border-top: 1px solid #36373a;
+        margin-top: 45px;
+        padding-top: 22px;
+        font: 11px/1.7 monospace;
+        color: #96979d;
+      }
+      @media (max-width: 1000px) {
+        .grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 600px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 25px 14px;
+        }
+        h1 {
+          font-size: 32px;
+        }
+        header span {
+          font-size: 9px;
+        }
+        .sizes {
+          gap: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><strong>nyte</strong><span>ICON EXPLORATIONS / 01–05</span></header>
+      <h1>Black glass. Yellow light.</h1>
+      <p>Two block forms and three glass treatments. Open any image for the full-size concept.</p>
+      <div class="grid">
+        <article>
+          <a href="01-block-phase.png" aria-label="Open Block phase"
+            ><img class="hero" src="01-block-phase.png" alt="Block phase Nyte icon concept"
+          /></a>
+          <h2>01 / Block phase</h2>
+          <div class="sizes">
+            <img src="01-block-phase.png" width="32" height="32" alt="32 pixel preview" /><img
+              src="01-block-phase.png"
+              width="64"
+              height="64"
+              alt="64 pixel preview"
+            />
+          </div>
+          <a class="download" href="01-block-phase.png" download>Download PNG ↓</a>
+        </article>
+        <article>
+          <a href="02-cut-arc.png" aria-label="Open Cut arc"
+            ><img class="hero" src="02-cut-arc.png" alt="Cut arc Nyte icon concept"
+          /></a>
+          <h2>02 / Cut arc</h2>
+          <div class="sizes">
+            <img src="02-cut-arc.png" width="32" height="32" alt="32 pixel preview" /><img
+              src="02-cut-arc.png"
+              width="64"
+              height="64"
+              alt="64 pixel preview"
+            />
+          </div>
+          <a class="download" href="02-cut-arc.png" download>Download PNG ↓</a>
+        </article>
+        <article>
+          <a href="03-smoked-crescent.png" aria-label="Open Smoked crescent"
+            ><img class="hero" src="03-smoked-crescent.png" alt="Smoked crescent Nyte icon concept"
+          /></a>
+          <h2>03 / Smoked crescent</h2>
+          <div class="sizes">
+            <img src="03-smoked-crescent.png" width="32" height="32" alt="32 pixel preview" /><img
+              src="03-smoked-crescent.png"
+              width="64"
+              height="64"
+              alt="64 pixel preview"
+            />
+          </div>
+          <a class="download" href="03-smoked-crescent.png" download>Download PNG ↓</a>
+        </article>
+        <article>
+          <a href="04-yellow-inlay.png" aria-label="Open Yellow inlay"
+            ><img class="hero" src="04-yellow-inlay.png" alt="Yellow inlay Nyte icon concept"
+          /></a>
+          <h2>04 / Yellow inlay</h2>
+          <div class="sizes">
+            <img src="04-yellow-inlay.png" width="32" height="32" alt="32 pixel preview" /><img
+              src="04-yellow-inlay.png"
+              width="64"
+              height="64"
+              alt="64 pixel preview"
+            />
+          </div>
+          <a class="download" href="04-yellow-inlay.png" download>Download PNG ↓</a>
+        </article>
+        <article>
+          <a href="05-prism-moon.png" aria-label="Open Prism moon"
+            ><img class="hero" src="05-prism-moon.png" alt="Prism moon Nyte icon concept"
+          /></a>
+          <h2>05 / Prism moon</h2>
+          <div class="sizes">
+            <img src="05-prism-moon.png" width="32" height="32" alt="32 pixel preview" /><img
+              src="05-prism-moon.png"
+              width="64"
+              height="64"
+              alt="64 pixel preview"
+            />
+          </div>
+          <a class="download" href="05-prism-moon.png" download>Download PNG ↓</a>
+        </article>
+      </div>
+      <footer>
+        Generated with image_gen. These are raster concept studies for a later SVG rebuild.<br /><a
+          href="prompts.json"
+          >All five prompts</a
+        >
+        · <a href="https://linear.app/brand">Linear reference</a>
+      </footer>
+    </main>
+  </body>
+</html>

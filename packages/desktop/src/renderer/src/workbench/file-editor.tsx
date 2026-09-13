@@ -90,7 +90,7 @@ const styles = create({
     paddingInline: 10,
     borderTopWidth: 1,
     borderTopStyle: "solid",
-    borderTopColor: t.borderSubtle,
+    borderTopColor: t.strokeTertiary,
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingSm,

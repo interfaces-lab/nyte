@@ -142,7 +142,7 @@ const styles = create({
     height: 18,
     paddingInline: 4,
     borderRadius: t.radiusFull,
-    backgroundColor: t.bgFaint,
+    backgroundColor: t.fillSecondary,
     fontSize: t.fontXs,
     fontVariantNumeric: "tabular-nums",
     color: t.textTertiary,

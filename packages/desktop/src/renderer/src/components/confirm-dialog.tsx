@@ -27,7 +27,7 @@ const styles = stylex.create({
     overflowY: "auto",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: t.borderWeak,
+    borderColor: t.strokeSecondary,
     borderRadius: t.radiusLg,
     outline: "none",
     backgroundColor: t.bgElevated,

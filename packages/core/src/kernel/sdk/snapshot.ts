@@ -93,9 +93,11 @@ export function pendingItem(item: PendingChange): PendingItem | undefined {
             at: item.change.at,
             content: body.message.content,
           };
+          const keyed =
+            item.change.key === undefined ? pending : { ...pending, key: item.change.key };
           return item.change.author === undefined
-            ? pending
-            : { ...pending, author: item.change.author };
+            ? keyed
+            : { ...keyed, author: item.change.author };
         case "assistant":
         case "toolResult":
           return undefined;

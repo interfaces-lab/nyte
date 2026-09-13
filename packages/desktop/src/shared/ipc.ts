@@ -1,3 +1,8 @@
+import type {
+  MentionFile,
+  WorkspaceFileDocument,
+  WorkspaceFileSaveOutcome,
+} from "@nyte-ai/core/files";
 /**
  * The wire between the Electron main host and the renderer client.
  *
@@ -9,7 +14,6 @@
  */
 import type {
   Disposer,
-  MentionFile,
   Nyte,
   Seq,
   SessionEvent,
@@ -20,9 +24,8 @@ import type {
   WorkspaceInfo,
   VcsStatus,
 } from "@nyte-ai/core";
-import type { ClaudeCodeUsage, CodexUsage } from "@nyte-ai/host/usage";
-import type { Operation } from "@nyte-ai/protocol";
-import type { ModelCostRates } from "@nyte-ai/schema";
+import type { AccountUsage, ClaudeCodeUsage, CodexUsage } from "@nyte-ai/host/usage";
+import type { ModelInfo, Operation, ServerInfo } from "@nyte-ai/protocol";
 import type { AppMenuCommand } from "./app-menu.ts";
 import type { WorkspaceEditorBridge } from "./workspace-editor.ts";
 import type { IpcFailure, IpcResult } from "./errors.ts";
@@ -61,6 +64,7 @@ export const SDK_OPERATION_PATHS = [
   "sessions.create",
   "sessions.get",
   "sessions.snapshot",
+  "sessions.metadata",
   "sessions.list",
   "sessions.rename",
   "sessions.setPinned",
@@ -76,7 +80,6 @@ export const SDK_OPERATION_PATHS = [
   "jobs.cancel",
   "runs.abort",
   "runs.reply",
-  "runs.changes",
   "heads.move",
   "workspace.list",
   "workspace.forget",
@@ -104,11 +107,14 @@ export const HOST_OPERATION_PATHS = [
   "host.closeWorkspace",
   "host.catalog",
   "host.usage",
+  "host.accountLimits",
   "host.login",
+  "host.cancelLogin",
   "host.logout",
   "host.setPreference",
   "host.vcs.snapshot",
   "host.files.list",
+  "host.files.cancelList",
   "host.files.read",
   "host.files.save",
   "host.github.state",
@@ -118,6 +124,9 @@ export const HOST_OPERATION_PATHS = [
   "host.server.connect",
   "host.server.disconnect",
   "host.server.createSession",
+  "host.mobile.state",
+  "host.mobile.start",
+  "host.mobile.stop",
   "host.openExternal",
   "host.browser.open",
   "host.browser.navigate",
@@ -160,7 +169,13 @@ export type WorkspaceSessionDirectory =
       readonly workspacePath: string | null;
       readonly sessions: readonly SessionInfo[];
     }
-  | { readonly environment: "cloud"; readonly sessions: readonly SessionInfo[] };
+  | {
+      readonly environment: "cloud";
+      readonly sessions: readonly SessionInfo[];
+      readonly availability:
+        | { readonly kind: "ready" }
+        | { readonly kind: "unavailable"; readonly message: string };
+    };
 
 /** The sessions of one local store: `null` is Home. */
 export function localSessions(
@@ -182,11 +197,38 @@ export function cloudSessions(
 /** The server the desktop reaches, without its token; the renderer never reads that back. */
 export type ServerState =
   | { readonly kind: "none" }
-  | { readonly kind: "configured"; readonly baseUrl: string };
+  | { readonly kind: "connected"; readonly baseUrl: string; readonly info: ServerInfo }
+  | {
+      readonly kind: "unavailable";
+      readonly baseUrl: string;
+      readonly problem: ServerConnectionProblem;
+    };
+
+export interface ServerConnectionProblem {
+  readonly kind: "authentication" | "network" | "incompatible" | "server";
+  readonly message: string;
+}
 
 export type ServerConnectOutcome =
   | { readonly kind: "connected"; readonly baseUrl: string; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
+
+/**
+ * The local store this desktop is serving to the iOS app, frozen at the target
+ * selected when sharing started. The listener binds 127.0.0.1 only, so the
+ * address reaches a simulator on this Mac and nothing else. The token lives
+ * for this share alone; stopping discards it.
+ */
+export type MobileShareState =
+  | { readonly kind: "off" }
+  | {
+      readonly kind: "sharing";
+      readonly address: string;
+      readonly token: string;
+      readonly target:
+        | { readonly kind: "home" }
+        | { readonly kind: "project"; readonly workspace: WorkspaceInfo };
+    };
 
 export interface HostState {
   /** Absent selects the id-only Home target, not the operating-system home folder. */
@@ -194,20 +236,7 @@ export interface HostState {
   readonly platform: NodeJS.Platform;
 }
 
-export type WorkspaceFileDocument =
-  | {
-      readonly kind: "text";
-      readonly path: string;
-      readonly contents: string;
-      /** Hash of the bytes read; save refuses to replace a different version. */
-      readonly version: string;
-    }
-  | { readonly kind: "binary"; readonly path: string; readonly size: number }
-  | { readonly kind: "too_large"; readonly path: string; readonly size: number };
-
-export type WorkspaceFileSaveOutcome =
-  | { readonly kind: "saved"; readonly version: string }
-  | { readonly kind: "conflict" };
+export type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "@nyte-ai/core/files";
 
 /** CSS family names discovered by the native host; font-file paths never cross IPC. */
 export interface LocalFontCatalog {
@@ -226,6 +255,32 @@ export type SignInMethod =
   | { readonly kind: "browser"; readonly label: string; readonly subscription: string }
   | { readonly kind: "api_key"; readonly label: string };
 
+/**
+ * What a running sign-in shows while the provider's flow waits on the user.
+ * Device codes and their instructions stay until the attempt ends; messages
+ * are the latest word from the flow and never replace a code. The device
+ * secret never leaves main.
+ */
+export type LoginProgress =
+  | {
+      readonly kind: "device_code";
+      readonly userCode: string;
+      readonly verificationUri: string;
+      readonly expiresInSeconds: number | undefined;
+      readonly instructions: string | undefined;
+    }
+  | { readonly kind: "message"; readonly message: string };
+
+/**
+ * How a sign-in ended without failing. A saved credential is a connection even
+ * when the provider's model list could not be fetched afterwards; what the
+ * picker then shows for the provider is up to the provider's catalog, which
+ * may be empty for an account-specific list until a later refresh succeeds.
+ */
+export type LoginOutcome =
+  | { readonly kind: "connected"; readonly catalogRefreshed: boolean }
+  | { readonly kind: "cancelled" };
+
 export interface ProviderStatus {
   readonly id: string;
   readonly name: string;
@@ -234,6 +289,7 @@ export interface ProviderStatus {
   /** `env` names the variable when the key came from the environment rather than the store. */
   readonly connection:
     | { readonly kind: "disconnected" }
+    | { readonly kind: "server" }
     | { readonly kind: "oauth" }
     | { readonly kind: "api_key"; readonly env: string | undefined };
   readonly signIn: readonly SignInMethod[];
@@ -299,18 +355,11 @@ export type GitHubProviderState =
       readonly message: string;
     };
 
-export interface DesktopModelOption {
+export interface DesktopModelOption extends ModelInfo {
   readonly key: string;
-  readonly provider: string;
-  readonly id: string;
-  readonly name: string;
-  readonly contextWindow: number;
-  /** Base rates in dollars per million tokens; the picker compares models by them. */
-  readonly cost: ModelCostRates;
   readonly fastMode:
     | { readonly kind: "unavailable" }
     | { readonly kind: "available"; readonly settingId: string };
-  readonly thinkingLevels: readonly ThinkingLevel[];
   /** Switched off in Settings › Models. */
   readonly hidden: boolean;
   /** In the picker: the provider is on and connected, and the model is not hidden. */
@@ -319,6 +368,7 @@ export interface DesktopModelOption {
 
 /** Everything the picker and Settings › Models draw from, read in one call. */
 export interface DesktopCatalog {
+  readonly source: "local" | "server";
   readonly providers: readonly ProviderStatus[];
   readonly models: readonly DesktopModelOption[];
   /** What a new chat starts with. */
@@ -365,6 +415,7 @@ export interface UsageTotals {
 }
 
 export type { UsageSubject } from "@nyte-ai/core";
+export type { AccountUsage } from "@nyte-ai/host/usage";
 
 /**
  * The window a report covers, in the host's own local days. `sinceDay` is
@@ -510,8 +561,12 @@ export type HostEvent =
   /** A sign-in, sign-out, or preference change; re-read the catalog. */
   | { kind: "catalog_changed" }
   | { kind: "github_changed" }
+  /** A running sign-in has something to show. `attempt` is the ID the renderer chose for it. */
+  | { kind: "login_progress"; attempt: string; provider: string; progress: LoginProgress }
   /** The server was connected or disconnected; re-read its state and the directory. */
   | { kind: "server_changed" }
+  /** Sharing with the iOS app started or stopped; re-read its state. */
+  | { kind: "mobile_share_changed" }
   | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
   | { kind: "browser_download_refused"; surface: string; url: string };
@@ -525,6 +580,7 @@ export type SessionsBridge = Pick<
   | "create"
   | "get"
   | "snapshot"
+  | "metadata"
   | "list"
   | "rename"
   | "setPinned"
@@ -535,7 +591,7 @@ export type SessionsBridge = Pick<
 
 export type MessagesBridge = Pick<Nyte["messages"], "send" | "cancel" | "redeliver">;
 
-export type RunsBridge = Pick<Nyte["runs"], "abort" | "reply" | "changes">;
+export type RunsBridge = Pick<Nyte["runs"], "abort" | "reply">;
 
 export type HeadsBridge = Pick<Nyte["heads"], "move">;
 
@@ -574,7 +630,8 @@ export interface HostBridge {
   /** Grant trust and open in one step; the renderer's trust dialog confirms first. */
   trustWorkspace(input: { path: string }): Promise<OpenWorkspaceOutcome>;
   closeWorkspace(): Promise<void>;
-  catalog(): Promise<DesktopCatalog>;
+  /** A session reads its owning host's catalog. Omit the input for local provider settings. */
+  catalog(input?: { readonly sessionId: SessionId }): Promise<DesktopCatalog>;
   /**
    * Fold retained history from Home and registered desktop workspace stores
    * for one window. The window is the request, not a client-side slice, so
@@ -583,13 +640,26 @@ export interface HostBridge {
    */
   usage(input: UsageWindow): Promise<UsageSnapshot>;
   /**
+   * The subscription windows the signed-in Anthropic and OpenAI accounts
+   * report. This is the only usage read that leaves the machine, so the page
+   * asks for it once per visit and never on a timer.
+   */
+  accountLimits(): Promise<readonly AccountUsage[]>;
+  /**
    * Browser sign-in needs a user gesture. An API key crosses IPC once and is
-   * never read back; the provider's own login flow stores it.
+   * never read back; the provider's own login flow stores it. `attempt` is a
+   * renderer-chosen ID that correlates progress events and a later cancel with
+   * this call; a new attempt for the same provider cancels the previous one
+   * and starts once that one has settled. An ID stays taken until its attempt
+   * has settled, so reusing one that was just cancelled is refused.
    */
   login(input: {
     provider: string;
     method: { kind: "browser" } | { kind: "api_key"; key: string };
-  }): Promise<void>;
+    attempt: string;
+  }): Promise<LoginOutcome>;
+  /** Stop a running sign-in. An attempt that already ended is a no-op. */
+  cancelLogin(input: { attempt: string }): Promise<void>;
   logout(input: { provider: string }): Promise<void>;
   /** Apply one preference change and answer with the catalog as it now stands. */
   setPreference(change: PreferenceChange): Promise<DesktopCatalog>;
@@ -598,8 +668,9 @@ export interface HostBridge {
     snapshot(): Promise<DesktopVcsSnapshot>;
   };
   files: WorkspaceEditorBridge & {
-    /** The open workspace's files and folders for `@` mentions; generated trees are skipped. */
-    list(): Promise<readonly MentionFile[]>;
+    /** Files and their parent folders offered for `@` mentions. */
+    list(input: { requestId: string }): Promise<readonly MentionFile[]>;
+    cancelList(input: { requestId: string }): Promise<void>;
     read(input: { path: string }): Promise<WorkspaceFileDocument>;
     save(input: {
       path: string;
@@ -620,6 +691,13 @@ export interface HostBridge {
     disconnect(): Promise<void>;
     /** A new chat on the server; the desktop's selected folder does not change. */
     createSession(): Promise<SessionInfo>;
+  };
+  mobile: {
+    state(): Promise<MobileShareState>;
+    /** Serve the selected local target on loopback; a later folder change does not move the share. */
+    start(): Promise<MobileShareState>;
+    /** Close the listener and its streams. Work a session already accepted continues. */
+    stop(): Promise<void>;
   };
   openExternal(input: { url: string }): Promise<void>;
   terminal: {
@@ -676,6 +754,7 @@ export interface CallMethodByPath {
   readonly "sessions.create": NyteBridge["sessions"]["create"];
   readonly "sessions.get": NyteBridge["sessions"]["get"];
   readonly "sessions.snapshot": NyteBridge["sessions"]["snapshot"];
+  readonly "sessions.metadata": NyteBridge["sessions"]["metadata"];
   readonly "sessions.list": NyteBridge["sessions"]["list"];
   readonly "sessions.rename": NyteBridge["sessions"]["rename"];
   readonly "sessions.setPinned": NyteBridge["sessions"]["setPinned"];
@@ -691,7 +770,6 @@ export interface CallMethodByPath {
   readonly "jobs.cancel": NyteBridge["jobs"]["cancel"];
   readonly "runs.abort": NyteBridge["runs"]["abort"];
   readonly "runs.reply": NyteBridge["runs"]["reply"];
-  readonly "runs.changes": NyteBridge["runs"]["changes"];
   readonly "heads.move": NyteBridge["heads"]["move"];
   readonly "workspace.list": NyteBridge["workspace"]["list"];
   readonly "workspace.forget": NyteBridge["workspace"]["forget"];
@@ -713,11 +791,14 @@ export interface CallMethodByPath {
   readonly "host.closeWorkspace": NyteBridge["host"]["closeWorkspace"];
   readonly "host.catalog": NyteBridge["host"]["catalog"];
   readonly "host.usage": NyteBridge["host"]["usage"];
+  readonly "host.accountLimits": NyteBridge["host"]["accountLimits"];
   readonly "host.login": NyteBridge["host"]["login"];
+  readonly "host.cancelLogin": NyteBridge["host"]["cancelLogin"];
   readonly "host.logout": NyteBridge["host"]["logout"];
   readonly "host.setPreference": NyteBridge["host"]["setPreference"];
   readonly "host.vcs.snapshot": NyteBridge["host"]["vcs"]["snapshot"];
   readonly "host.files.list": NyteBridge["host"]["files"]["list"];
+  readonly "host.files.cancelList": NyteBridge["host"]["files"]["cancelList"];
   readonly "host.files.read": NyteBridge["host"]["files"]["read"];
   readonly "host.files.save": NyteBridge["host"]["files"]["save"];
   readonly "host.github.state": NyteBridge["host"]["github"]["state"];
@@ -727,6 +808,9 @@ export interface CallMethodByPath {
   readonly "host.server.connect": NyteBridge["host"]["server"]["connect"];
   readonly "host.server.disconnect": NyteBridge["host"]["server"]["disconnect"];
   readonly "host.server.createSession": NyteBridge["host"]["server"]["createSession"];
+  readonly "host.mobile.state": NyteBridge["host"]["mobile"]["state"];
+  readonly "host.mobile.start": NyteBridge["host"]["mobile"]["start"];
+  readonly "host.mobile.stop": NyteBridge["host"]["mobile"]["stop"];
   readonly "host.openExternal": NyteBridge["host"]["openExternal"];
   readonly "host.browser.open": NyteBridge["host"]["browser"]["open"];
   readonly "host.browser.navigate": NyteBridge["host"]["browser"]["navigate"];

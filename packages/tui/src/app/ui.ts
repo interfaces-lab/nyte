@@ -11,6 +11,7 @@ import type {
   CliRenderer,
   KeyEvent,
   ScrollBoxRenderable,
+  ScrollAcceleration,
   TextareaRenderable,
   TextRenderable,
 } from "@opentui/core";
@@ -20,6 +21,7 @@ import { fitPowerlineSegments, hintGroups, powerlineSegments } from "../format.t
 import type { PowerlineSegment, PowerlineState } from "../format.ts";
 import type { createChatKeymap } from "../keymap.ts";
 import type { PendingGutter } from "../pending-gutter.ts";
+import type { PendingTail } from "../pending-tail.ts";
 import { InlineMenu, PickerCancelled } from "../picker.ts";
 import type { Choice, ChoiceAction, MenuScreen } from "../picker.ts";
 import type { ActiveCliTheme, CliTheme } from "../theme.ts";
@@ -135,7 +137,10 @@ export interface Shell {
   readonly input: TextareaRenderable;
   /** Edit buffers keep the width rules from construction, even after capability replies. */
   readonly inputWidthMethod: CliRenderer["widthMethod"];
+  /** Follow-ups queued with ctrl+enter, as compact rows in the live column. */
   readonly pendingGutter: PendingGutter;
+  /** Steer messages, as turn-shaped blocks at the transcript's tail. */
+  readonly pendingTail: PendingTail;
   /** The task browser draws its background count here and takes its clicks. */
   readonly taskStatus: TextRenderable;
   /** Plugin slots render above the pending gutter. */
@@ -143,6 +148,10 @@ export interface Shell {
   /** The attachment preview sits between the composer and the ephemeral rows. */
   readonly previewSlot: BoxRenderable;
   readonly focus: FocusController;
+  /** New viewports receive an independent wheel policy with the current setting. */
+  readonly newScrollAcceleration: () => ScrollAcceleration;
+  /** Applies the persisted wheel policy to this shell and future viewports. */
+  readonly setScrollAcceleration: (accelerated: boolean) => void;
   readonly nextId: (prefix?: string) => string;
   /** Set by the shell wiring so a panel can dismiss the completion dropdown. */
   closeCompletion: () => void;
@@ -488,7 +497,8 @@ export function selectSelection(
                 command: "chat.queue.submit",
                 label: "answer",
                 keepOpen: true,
-                run: () => submit(),
+                run: () =>
+                  submit(selection.other === undefined ? undefined : menu?.queryInput.value),
               },
             ]
           : undefined,

@@ -61,7 +61,20 @@ const SECTION_ALIASES: Readonly<Record<SettingsSection, readonly string[]>> = {
   ],
   usage: ["usage", "tokens", "cost", "spend", "billing", "cache", "activity", "charts", "history"],
   accounts: ["accounts", "github"],
-  server: ["server", "cloud", "remote", "deploy", "token", "vercel", "cloudflare"],
+  server: [
+    "server",
+    "cloud",
+    "remote",
+    "deploy",
+    "token",
+    "vercel",
+    "cloudflare",
+    "ios",
+    "iphone",
+    "simulator",
+    "share",
+    "mobile",
+  ],
 };
 
 function sectionMatches(section: SettingsSection, query: string): boolean {

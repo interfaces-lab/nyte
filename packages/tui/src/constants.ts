@@ -31,6 +31,7 @@ export const CHAT_KEYBINDS = {
   "chat.job.background": "ctrl+z",
   "chat.scroll.page.up": "pageup",
   "chat.scroll.page.down": "pagedown",
+  "chat.scroll.latest": "ctrl+end",
   "chat.message.previous": "ctrl+up",
   "chat.message.next": "ctrl+down",
   "chat.thinking.cycle": "shift+tab",
@@ -46,8 +47,6 @@ export const CHAT_KEYBINDS = {
   "chat.queue.up": "ctrl+up",
   "chat.queue.down": "ctrl+down",
   "chat.task.stop": "ctrl+x",
-  "selection.copy": "ctrl+c,super+c,meta+c",
-  "selection.clear": "escape",
   "chat.tools.toggle": "ctrl+o",
   "chat.skills.open": "ctrl+s",
   // Every shortcut here takes a modifier, because a bare printable key is a
@@ -81,6 +80,8 @@ export const CHAT_KEYBINDS = {
   "tree.copy": "ctrl+x",
   "auth.cancel": "escape,ctrl+c",
   "auth.submit": "return",
+  "auth.open": "return,o",
+  "auth.copy": "c",
   "workspace.trust": "a",
   "workspace.decline": "q,escape",
   "workspace.accept": "return",
@@ -218,7 +219,7 @@ export const SPACING = {
   insetRight: 1,
 } as const;
 
-/** Rows the transcript keeps clear under its last line; the ephemeral slot adds to it. */
+/** Rows the transcript keeps clear under its last line. */
 export const TRANSCRIPT_BOTTOM_PADDING = 1;
 
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"] as const;

@@ -13,6 +13,8 @@ export interface UserTurnPart {
   commit: Oid;
   parent: Oid | null;
   content: UserMessage["content"];
+  /** The submission key the landed change carried, when the sender gave one. */
+  key?: string;
 }
 
 export type ToolTurnPart = {

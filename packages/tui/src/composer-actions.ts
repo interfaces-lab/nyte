@@ -228,7 +228,7 @@ export class ComposerActions {
 export function actionEntries(shell: Shell) {
   const entries = shell.keymap.getCommandEntries({
     visibility: "active",
-    namespace: ["composer", "completion", "chat", "selection"],
+    namespace: ["composer", "completion", "chat"],
   });
   const bindings = shell.keymap.getCommandBindings({
     visibility: "active",

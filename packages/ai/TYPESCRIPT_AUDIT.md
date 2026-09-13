@@ -76,17 +76,20 @@ Next: distinguish unvalidated tool arguments from the selected tool's schema-der
 
 Next: define provider-specific decoded catalog/error shapes at ingress, preserving partial catalog recovery and useful error text. Keep model-name predicates, numeric checks, and data fields such as `isError`; an `is*` spelling alone is not a type defect.
 
-### 6. Test and script checking is incomplete
+### 6. Test checking is fixed; script checking remains incomplete
 
-[`tsconfig.json`](tsconfig.json) includes direct `test/*.ts` files, but not `test/upstream/**/*.ts` or scripts. A green package typecheck does not cover them. The changed upstream terminal-event test was checked with a temporary expanded config as well.
+The later test cleanup moved the surviving Pi-derived tests into `test/`, removed duplicate OAuth
+suites and stale exclusions, and ported the catalog type checks to Nyte's providers.
+[`tsconfig.json`](tsconfig.json) now includes `test/**/*.ts`, covering all tests and fixtures.
+Anthropic and Responses tests use injected HTTP fixtures rather than SDK mocks. Removing the
+second Anthropic OAuth suite also removed the fixed callback-port collision in parallel runs.
 
-[`vitest.config.ts`](vitest.config.ts) excludes upstream tests that still depend on Pi's removed registry. Port relevant cases to explicit Nyte models rather than restoring the registry or replacing whole SDK modules. The new Chat tests cover reasoning replay and grouped tool-result images through HTTP.
+Scripts are still not directly included in the package typecheck. The audit found 68 lint
+diagnostics in [`generate-models.ts`](scripts/generate-models.ts), including casts of fetched catalog
+data. Validate each upstream catalog before generating typed model constants. Do not edit generated
+files to hide generator defects.
 
-Two enabled Anthropic OAuth test files exercise the same fixed callback port. A parallel run failed with `EADDRINUSE`; serial execution passed all files. Consolidate the duplicate cases or isolate their execution without changing the provider's redirect URI.
-
-[`generate-models.ts`](scripts/generate-models.ts) accounts for 68 lint diagnostics and casts fetched catalog data. Validate each upstream catalog before generating typed model constants. Do not edit generated files to hide generator defects.
-
-## Validation and remaining lint
+## Validation and remaining lint at the time of this audit
 
 | Location | Before | After |
 | --- | ---: | ---: |

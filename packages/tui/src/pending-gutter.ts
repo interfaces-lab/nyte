@@ -1,7 +1,8 @@
 /**
- * Messages core is still holding, drawn between the transcript and the
- * composer: the store's pending changes, and the outbox's rows that are
- * still on their way to the store.
+ * Follow-ups core is still holding, drawn between the transcript and the
+ * composer: the store's pending changes in the queue lane, and the outbox's
+ * rows on their way to it. Steer messages take the other shape, in
+ * `pending-tail.ts`.
  *
  * These messages have not been answered, so they do not belong in the record.
  * One row per item: the glyph and one word say when it goes, and the row
@@ -24,7 +25,11 @@ import type { OutboxEntry } from "./outbox.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
-/** One row: a durable pending change, or a message the outbox is still sending. */
+/**
+ * One row: a durable pending change, or a message the outbox is still sending.
+ * A pending item carries the submission key that named it while sending, so
+ * what draws it can keep the same block across the receipt.
+ */
 export type GutterRow =
   | { readonly kind: "pending"; readonly item: PendingItem }
   | { readonly kind: "sending"; readonly entry: OutboxEntry };
@@ -38,6 +43,14 @@ export function gutterRows(
     ...pending.map((item): GutterRow => ({ kind: "pending", item })),
     ...sending.map((entry): GutterRow => ({ kind: "sending", entry })),
   ];
+}
+
+export function rowLane(row: GutterRow): Lane {
+  return row.kind === "pending" ? row.item.lane : row.entry.lane;
+}
+
+export function rowContent(row: GutterRow): UserMessage["content"] {
+  return row.kind === "pending" ? row.item.content : row.entry.content;
 }
 
 /** The gutter never takes more than this share of the terminal. */
@@ -67,7 +80,7 @@ export function queuedPromptText(content: UserMessage["content"]): string {
   return `${compact.replaceAll(/\s+/gu, " ").trim()}${images === 0 ? "" : ` · ${images} ${images === 1 ? "image" : "images"}`}`;
 }
 
-interface RowMark {
+export interface RowMark {
   readonly glyph: string;
   readonly label: string;
   readonly tone: string;
@@ -79,7 +92,7 @@ export function laneMark(lane: Lane, roles: LaneRoles, theme: CliTheme): RowMark
   return { glyph: GLYPHS.queue, label: lane, tone: theme.warning };
 }
 
-function rowMark(row: GutterRow, roles: LaneRoles, theme: CliTheme): RowMark {
+export function rowMark(row: GutterRow, roles: LaneRoles, theme: CliTheme): RowMark {
   switch (row.kind) {
     case "pending":
       return laneMark(row.item.lane, roles, theme);
@@ -267,9 +280,7 @@ export class PendingGutter {
       const item = this.items[index];
       if (item === undefined) continue;
       const last = index === shown - 1;
-      const text = queuedPromptText(
-        item.kind === "pending" ? item.item.content : item.entry.content,
-      );
+      const text = queuedPromptText(rowContent(item));
       row.content = pendingRow(
         text,
         rowMark(item, this.roles, this.theme),

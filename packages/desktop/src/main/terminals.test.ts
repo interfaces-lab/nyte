@@ -72,10 +72,13 @@ test("idle is true at the prompt and false while a foreground job runs", async (
   terminals.write({ id: "busy", data: "stty -echo; printf 'PROMPT_OK\\n'\r" });
   await vi.waitFor(() => assert.match(text("busy"), /PROMPT_OK/));
   assert.equal(terminals.idle({ id: "busy" }), true);
+  assert.equal(terminals.busyCount(), 0);
   terminals.write({ id: "busy", data: "sleep 30\r" });
   await vi.waitFor(() => assert.equal(terminals.idle({ id: "busy" }), false));
+  assert.equal(terminals.busyCount(), 1);
   terminals.write({ id: "busy", data: "\u0003" });
   await vi.waitFor(() => assert.equal(terminals.idle({ id: "busy" }), true));
+  assert.equal(terminals.busyCount(), 0);
   assert.equal(terminals.idle({ id: "missing" }), true);
 });
 

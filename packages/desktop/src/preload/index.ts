@@ -73,6 +73,7 @@ const bridge = {
     create: (input) => call("sessions.create", input),
     get: operation("sessions.get"),
     snapshot: operation("sessions.snapshot"),
+    metadata: operation("sessions.metadata"),
     list: (input) => call("sessions.list", input),
     rename: operation("sessions.rename"),
     setPinned: operation("sessions.setPinned"),
@@ -94,7 +95,6 @@ const bridge = {
   runs: {
     abort: operation("runs.abort"),
     reply: operation("runs.reply"),
-    changes: operation("runs.changes"),
   },
   heads: {
     move: operation("heads.move"),
@@ -134,6 +134,8 @@ const bridge = {
     const fail = (error: Error): void => {
       if (ended) return;
       ended = true;
+      // An ended watch receives nothing more; only the host-side stop still owes a call.
+      ipcRenderer.removeListener(WATCH_EVENT_CHANNEL, listener);
       onError?.(error);
     };
     // WATCH_EVENT_CHANNEL is private to Nyte main and emits only WatchEnvelope.
@@ -188,14 +190,17 @@ const bridge = {
     pickWorkspace: () => call("host.pickWorkspace", undefined),
     trustWorkspace: operation("host.trustWorkspace"),
     closeWorkspace: () => call("host.closeWorkspace", undefined),
-    catalog: () => call("host.catalog", undefined),
+    catalog: (input) => call("host.catalog", input),
     usage: operation("host.usage"),
+    accountLimits: () => call("host.accountLimits", undefined),
     login: operation("host.login"),
+    cancelLogin: operation("host.cancelLogin"),
     logout: operation("host.logout"),
     setPreference: operation("host.setPreference"),
     vcs: { snapshot: () => call("host.vcs.snapshot", undefined) },
     files: {
-      list: () => call("host.files.list", undefined),
+      list: (input) => call("host.files.list", input),
+      cancelList: (input) => call("host.files.cancelList", input),
       read: operation("host.files.read"),
       save: operation("host.files.save"),
       search: editorOperation("search"),
@@ -213,6 +218,11 @@ const bridge = {
       connect: (input) => call("host.server.connect", input),
       disconnect: () => call("host.server.disconnect", undefined),
       createSession: () => call("host.server.createSession", undefined),
+    },
+    mobile: {
+      state: () => call("host.mobile.state", undefined),
+      start: () => call("host.mobile.start", undefined),
+      stop: () => call("host.mobile.stop", undefined),
     },
     openExternal: operation("host.openExternal"),
     terminal: {

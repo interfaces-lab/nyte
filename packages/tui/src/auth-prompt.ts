@@ -146,8 +146,6 @@ export function readAuthPrompt(
     const onSubmit = (): void =>
       finish(input instanceof SecretInput ? input.readSecret() : input.value);
     const unregister = shell.keymap.registerLayer({
-      // Cancellation wins over the selection layer's copy and clear commands.
-      priority: 20,
       commands: [{ name: "auth.cancel", run: onAbort }],
       bindings: commandBindings({ "auth.cancel": CHAT_KEYBINDS["auth.cancel"] }),
     });

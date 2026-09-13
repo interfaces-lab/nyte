@@ -4,15 +4,14 @@
  * decorator hosts and the caret it draws over the native one.
  *
  * The editor is uncontrolled. Its parent hands it a document and receives one
- * back after every edit; a document that matches the last report is the
- * parent echoing what it was told and changes nothing here. A different
- * document (a restored draft, another pane's draft, a clear) replaces the
- * content and the caret and starts history afresh. Lexical keeps its range
- * selection while the editor is blurred, so focusing later returns the caret
- * to where the draft left it.
+ * back after every edit; a document that matches the editor's last observed
+ * state is the parent echoing what it was told and changes nothing here. A
+ * different document (a restored draft, another pane's draft, a clear)
+ * replaces the content and the caret and starts history afresh. Lexical keeps
+ * its range selection while the editor is blurred, so focusing later returns
+ * the caret to where the draft left it.
  */
 import { props } from "@stylexjs/stylex";
-import { createPortal } from "react-dom";
 import {
   useCallback,
   useImperativeHandle,
@@ -23,7 +22,6 @@ import {
 } from "react";
 import type { ReactElement, Ref } from "react";
 import { createEmptyHistoryState, registerHistory } from "@lexical/history";
-import { registerPlainText } from "@lexical/plain-text";
 import {
   $addUpdateTag,
   $getNodeByKey,
@@ -32,7 +30,6 @@ import {
   $setSelection,
   CLEAR_HISTORY_COMMAND,
   COMMAND_PRIORITY_HIGH,
-  createEditor,
   HISTORY_MERGE_TAG,
   HISTORY_PUSH_TAG,
   KEY_DOWN_COMMAND,
@@ -50,7 +47,6 @@ import {
   $replaceComposerText,
   $restoreComposerDocument,
   COMPOSER_EXTERNAL_TAG,
-  ComposerReferenceNode,
   registerComposerReferences,
   sameComposerDocument,
 } from "./composer-document.ts";
@@ -59,7 +55,7 @@ import type {
   ComposerDocumentState,
   ComposerSubmission,
 } from "./composer-document.ts";
-import { ComposerChipView } from "./composer-chip.tsx";
+import { ComposerDecorators, useComposerSurface } from "./composer-surface.tsx";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
@@ -177,22 +173,13 @@ export function ComposerEditor({
   onFocusChange,
   onFilesSelected,
 }: ComposerEditorProps): ReactElement {
-  const rootRef = useRef<HTMLDivElement>(null);
+  const { editor, rootRef, decorators } = useComposerSurface(!disabled);
   const caretRef = useRef<HTMLSpanElement>(null);
-  const [editor] = useState(() =>
-    createEditor({
-      namespace: "nyte-composer",
-      nodes: [ComposerReferenceNode],
-      theme: { paragraph: props(composerStyles.editorParagraph).className },
-      onError: (error) => {
-        throw error;
-      },
-    }),
-  );
-  const [decorators, setDecorators] = useState<Readonly<Record<string, MessageReference>>>({});
   const [empty, setEmpty] = useState(externalDocument.text === "");
   /** The last document this editor reported; the parent's copy of it is an echo, not an instruction. */
   const reported = useRef<ComposerDocumentState | undefined>(undefined);
+  /** Includes composition updates whose parent report is deliberately deferred. */
+  const observed = useRef<ComposerDocumentState | undefined>(undefined);
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const referencesDirty = useRef(true);
 
@@ -213,7 +200,7 @@ export function ComposerEditor({
       // Lexical focuses the root while it commits a selection; a selection that already matched the DOM commits nothing.
       if (root.ownerDocument.activeElement !== root) root.focus(options);
     },
-    [editor],
+    [editor, rootRef],
   );
 
   const handle = useMemo<ComposerEditorHandle>(
@@ -223,7 +210,12 @@ export function ComposerEditor({
       },
       focus: focusEditor,
       read: () => editor.read($composerSubmission),
-      readDocument: () => editor.read($readComposerDocument),
+      readDocument: () =>
+        editor.read(() => {
+          const document = $readComposerDocument();
+          observed.current = document;
+          return document;
+        }),
       replaceText(start, end, text) {
         focusEditor();
         editor.update(() => $replaceComposerText(start, end, text), {
@@ -239,23 +231,12 @@ export function ComposerEditor({
         });
       },
     }),
-    [editor, focusEditor],
+    [editor, focusEditor, rootRef],
   );
   useImperativeHandle(ref, () => handle, [handle]);
   useImperativeHandle(inputRef, () => handle, [handle]);
 
-  useLayoutEffect(() => {
-    editor.setRootElement(rootRef.current);
-    const plainText = registerPlainText(editor);
-    const history = registerHistory(editor, createEmptyHistoryState(), 300);
-    const decorations = editor.registerDecoratorListener<MessageReference>(setDecorators);
-    return () => {
-      decorations();
-      history();
-      plainText();
-      editor.setRootElement(null);
-    };
-  }, [editor]);
+  useLayoutEffect(() => registerHistory(editor, createEmptyHistoryState(), 300), [editor]);
 
   useLayoutEffect(() => editor.setEditable(!disabled), [disabled, editor]);
 
@@ -264,8 +245,10 @@ export function ComposerEditor({
       editor.registerUpdateListener(({ editorState, tags, dirtyElements, dirtyLeaves }) => {
         // Composition can mutate nodes before its final selection-only update.
         referencesDirty.current ||= dirtyElements.size > 0 || dirtyLeaves.size > 0;
-        if (editor.isComposing()) return;
         editorState.read(() => {
+          const next = $readComposerDocument();
+          observed.current = next;
+          if (editor.isComposing()) return;
           if (referencesDirty.current) {
             referencesDirty.current = false;
             const references = $composerReferences();
@@ -274,7 +257,6 @@ export function ComposerEditor({
               onReferencesChange?.(references);
             }
           }
-          const next = $readComposerDocument();
           const previous = reported.current;
           if (previous !== undefined && sameComposerDocument(previous, next)) return;
           reported.current = next;
@@ -292,8 +274,8 @@ export function ComposerEditor({
   useLayoutEffect(() => registerComposerReferences(editor, { files }), [editor, files]);
 
   useLayoutEffect(() => {
-    const previous = reported.current;
-    if (previous !== undefined && sameComposerDocument(previous, externalDocument)) return;
+    const current = observed.current;
+    if (current !== undefined && sameComposerDocument(current, externalDocument)) return;
     const root = rootRef.current;
     const focused = root !== null && root.ownerDocument.activeElement === root;
     editor.update(() => $restoreComposerDocument(externalDocument), {
@@ -301,7 +283,7 @@ export function ComposerEditor({
       tag: focused ? HISTORY_MERGE_TAG : [HISTORY_MERGE_TAG, SKIP_DOM_SELECTION_TAG],
     });
     editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
-  }, [editor, externalDocument]);
+  }, [editor, externalDocument, rootRef]);
 
   useLayoutEffect(() => {
     if (autoFocus && !disabled) focusEditor();
@@ -420,7 +402,7 @@ export function ComposerEditor({
       root.removeEventListener("compositionstart", draw);
       root.removeEventListener("compositionend", draw);
     };
-  }, [editor]);
+  }, [editor, rootRef]);
 
   return (
     <div {...props(composerStyles.editorHost)}>
@@ -451,27 +433,17 @@ export function ComposerEditor({
       >
         {String.fromCodePoint(0x200b)}
       </span>
-      {Object.entries(decorators).map(([key, reference]) => {
-        const element = editor.getElementByKey(key);
-        return element === null
-          ? null
-          : createPortal(
-              <ComposerChipView
-                reference={reference}
-                onRemove={() => {
-                  editor.update(
-                    () => {
-                      $getNodeByKey(key)?.remove();
-                    },
-                    { discrete: true, tag: HISTORY_PUSH_TAG },
-                  );
-                  focusEditor();
-                }}
-              />,
-              element,
-              key,
-            );
-      })}
+      <ComposerDecorators
+        editor={editor}
+        decorators={decorators}
+        onRemove={(key) => {
+          editor.update(() => $getNodeByKey(key)?.remove(), {
+            discrete: true,
+            tag: HISTORY_PUSH_TAG,
+          });
+          focusEditor();
+        }}
+      />
     </div>
   );
 }

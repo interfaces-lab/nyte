@@ -23,7 +23,7 @@ import { headersToRecord } from "../utils/headers.ts";
 import { getNyteUserAgent } from "../utils/nyte-user-agent.ts";
 import { retryProviderRequest } from "../utils/provider-retry.ts";
 import { createGrammarToolInputProperties } from "./constrained-sampling.ts";
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
+import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import { clampOpenAIPromptCacheKey } from "./openai-prompt-cache.ts";
 import {
   convertResponsesMessages,
@@ -108,9 +108,24 @@ export async function compactOpenAIResponsesContext(
   options?: OpenAIResponsesOptions,
 ): Promise<OpenAICompactResult> {
   const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
-  const client = createClient(model, context, apiKey, options?.headers, options?.fetch);
+  const compat = getCompat(model);
+  const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
+  const client = createClient({
+    model,
+    context,
+    apiKey,
+    options: { headers: options?.headers, fetch: options?.fetch },
+    compat,
+    cacheRetention,
+  });
   // Instructions travel separately so the request does not duplicate the system message.
-  const input = buildParams(model, { ...context, systemPrompt: undefined }, options).input;
+  const input = buildParams(
+    model,
+    { ...context, systemPrompt: undefined },
+    options,
+    compat,
+    cacheRetention,
+  ).input;
   const requestOptions: NonNullable<Parameters<typeof client.responses.compact>[1]> = {
     maxRetries: 0,
   };
@@ -168,21 +183,20 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
       // Create OpenAI client
       const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
-      const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
       const compat = getCompat(model);
       const grammarToolInputProperties = createGrammarToolInputProperties(
         context.tools,
         compat.supportsOpenAIGrammarTools,
       );
-      const client = createClient(
+      const client = createClient({ model, context, apiKey, options, cacheRetention, compat });
+      let params = buildParams(
         model,
         context,
-        apiKey,
-        options?.headers,
-        options?.fetch,
-        cacheSessionId,
+        options,
+        compat,
+        cacheRetention,
+        grammarToolInputProperties,
       );
-      let params = buildParams(model, context, options, compat, grammarToolInputProperties);
       const nextParams = await options?.onPayload?.(params, model);
       if (nextParams !== undefined) {
         params = nextParams as ResponseCreateParamsStreaming;
@@ -192,7 +206,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
         maxRetries: 0,
       };
-      const { data: openaiStream, response } = await retryProviderRequest(
+      const result = await retryProviderRequest(
         () => client.responses.create(params, requestOptions).withResponse(),
         {
           maxRetries: options?.maxRetries,
@@ -201,12 +215,12 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
         },
       );
       await options?.onResponse?.(
-        { status: response.status, headers: headersToRecord(response.headers) },
+        { status: result.response.status, headers: headersToRecord(result.response.headers) },
         model,
       );
       stream.push({ type: "start", partial: output });
 
-      await processResponsesStream(openaiStream, output, stream, model, {
+      await processResponsesStream(result.data, output, stream, model, {
         serviceTier: options?.serviceTier,
         grammarToolInputProperties,
         applyServiceTierPricing: (usage, serviceTier) =>
@@ -266,46 +280,45 @@ export const streamSimple: StreamFunction<"openai-responses", SimpleStreamOption
   } satisfies OpenAIResponsesOptions);
 };
 
-function createClient(
-  model: Model<"openai-responses">,
-  context: Context,
-  apiKey: string,
-  optionsHeaders?: ProviderHeaders,
-  fetch?: typeof globalThis.fetch,
-  sessionId?: string,
-) {
-  const compat = getCompat(model);
-  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...model.headers };
-  if (model.provider === "github-copilot") {
-    const hasImages = hasCopilotVisionInput(context.messages);
+function createClient(input: {
+  model: Model<"openai-responses">;
+  context: Context;
+  apiKey: string;
+  options: Pick<OpenAIResponsesOptions, "fetch" | "headers" | "sessionId"> | undefined;
+  cacheRetention: CacheRetention;
+  compat: Required<OpenAIResponsesCompat>;
+}) {
+  const headers: ProviderHeaders = { "User-Agent": getNyteUserAgent(), ...input.model.headers };
+  if (input.model.provider === "github-copilot") {
     const copilotHeaders = buildCopilotDynamicHeaders({
-      messages: context.messages,
-      hasImages,
+      messages: input.context.messages,
+      sessionId: input.options?.sessionId,
     });
     Object.assign(headers, copilotHeaders);
   }
 
-  if (sessionId) {
-    if (compat.sessionAffinityFormat === "openrouter") {
-      headers["x-session-id"] = sessionId;
+  const cacheSessionId = input.cacheRetention === "none" ? undefined : input.options?.sessionId;
+  if (cacheSessionId) {
+    if (input.compat.sessionAffinityFormat === "openrouter") {
+      headers["x-session-id"] = cacheSessionId;
     } else {
-      if (compat.sessionAffinityFormat === "openai") {
-        headers.session_id = sessionId;
+      if (input.compat.sessionAffinityFormat === "openai") {
+        headers.session_id = cacheSessionId;
       }
-      headers["x-client-request-id"] = sessionId;
+      headers["x-client-request-id"] = cacheSessionId;
     }
   }
 
   // Merge options headers last so they can override defaults
-  if (optionsHeaders) {
-    Object.assign(headers, optionsHeaders);
+  if (input.options?.headers) {
+    Object.assign(headers, input.options.headers);
   }
 
   return new OpenAI({
-    apiKey,
-    baseURL: model.baseUrl,
+    apiKey: input.apiKey,
+    baseURL: input.model.baseUrl,
     dangerouslyAllowBrowser: true,
-    fetch,
+    fetch: input.options?.fetch,
     defaultHeaders: headers,
   });
 }
@@ -315,6 +328,7 @@ function buildParams(
   context: Context,
   options: OpenAIResponsesOptions | undefined,
   compat: Required<OpenAIResponsesCompat> = getCompat(model),
+  cacheRetention: CacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env),
   grammarToolInputProperties: ReadonlyMap<string, string> = createGrammarToolInputProperties(
     context.tools,
     compat.supportsOpenAIGrammarTools,
@@ -336,7 +350,6 @@ function buildParams(
     },
   });
 
-  const cacheRetention = resolveCacheRetention(options?.cacheRetention, options?.env);
   const disableImplicitPromptCache =
     cacheRetention === "none" && compat.supportsExplicitPromptCacheMode;
   const params: ResponseCreateParamsStreaming & { prompt_cache_options?: { mode: "explicit" } } = {
@@ -390,7 +403,11 @@ function buildParams(
         >["effort"],
       };
     }
-    if (model.provider === "xai") params.include = ["reasoning.encrypted_content"];
+    // Stateless (store: false) providers can only continue reasoning across
+    // turns when every response carries its encrypted reasoning back.
+    if (model.provider === "xai" || model.provider === "github-copilot") {
+      params.include = ["reasoning.encrypted_content"];
+    }
   }
 
   // Last so custom keys override the named request fields.

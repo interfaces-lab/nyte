@@ -1,746 +1,548 @@
 /**
- * Settings › Usage: one total across every tool on this machine, then recorded
- * API cost estimates and tokens from Nyte's own history for one window at a
- * time, then each external tool's local history by model.
+ * Settings › Usage, in the order the questions get asked: what Nyte cost and
+ * which models spent it, how much of each subscription is left, where inside
+ * Nyte the spend went, and what every tool has recorded all time.
  *
- * The host answers per window, so every card here sums the same cells along a
- * different axis and any two cards reconcile. That is what lets the page state
- * its terms once instead of footnoting each card with what its numbers do not
- * mean.
- *
- * The page is arrangeable because no two readers watch the same number. Cards
- * are sorted with dnd-kit and the order is the reader's, kept across restarts.
- * Dragging moves the card's own node rather than a copy in an overlay, so a
- * chart is never mounted twice and never re-animates mid-drag.
+ * The page reads local history once per visit and the providers' limit windows
+ * once per visit. A range press is arithmetic over the report already in hand.
+ * Every list is the same two parts, a stacked bar and the rows that name its
+ * segments, so nothing here is legible only under the pointer and a long name
+ * wraps instead of being cut off.
  */
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import type { DragEndEvent } from "@dnd-kit/core";
-import {
-  arrayMove,
-  rectSortingStrategy,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import * as stylex from "@stylexjs/stylex";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { UsageSnapshot } from "../../../shared/ipc.ts";
 import { Icon } from "../components/icons.tsx";
-import { Button, focus, formatTimeAgo, srOnly } from "../components/ui.tsx";
-import { useUsageReport } from "../queries.ts";
+import { Button, focus, srOnly } from "../components/ui.tsx";
+import { useAccountLimits, useUsageReport } from "../queries.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
+import { skeletonStyles as bone, usageStyles as styles } from "./usage-settings.stylex.ts";
 import {
-  ActivityChart,
-  ChartEmpty,
-  MODEL_BAR_LIMIT,
-  ModelsChart,
-  SpendChart,
-  TokensChart,
-  useChartPalette,
-  type ChartPalette,
-} from "./usage-charts.tsx";
-import {
-  CARD_TITLES,
-  getUsageOrder,
-  isDefaultUsageOrder,
-  LIST_CARDS,
-  setUsageOrder,
-  TILE_LABELS,
-  USAGE_CARDS,
-  useUsageOrder,
-  type UsageCard,
-} from "./usage-layout.ts";
-import { usageStyles as styles } from "./usage-settings.stylex.ts";
-import { Bone, UsageGridSkeleton, UsageTilesSkeleton } from "./usage-skeleton.tsx";
-import { LocalHistorySection } from "./local-history-usage.tsx";
-import { UsageToolsSection } from "./usage-tools.tsx";
-import {
-  cacheHitRate,
-  dayLabel,
-  deriveUsage,
   costChange,
-  formatCount,
+  dayLabel,
+  deriveAccount,
+  deriveLocalHistory,
+  deriveTools,
+  deriveUsage,
+  describeEmptyRange,
+  describeTotals,
   formatPercent,
-  formatTokens,
   formatUsd,
+  timeLabel,
   usageWindow,
-  USAGE_STALE_AFTER_MS,
-  TOKEN_KINDS,
-  TOKEN_KIND_LABELS,
+  LOCAL_TOOLS,
   USAGE_RANGE_LABELS,
   USAGE_RANGES,
+  USAGE_TOOL_LABELS,
   type UsageDerived,
   type UsageRange,
+  type UsageRow,
 } from "./usage-view.ts";
 
-/** Longer than the pointer's own slop, so a click on the grip is never a drag. */
-const DRAG_DISTANCE = 4;
+/** Rows past this are counted in one line: a ranked list is read from the top. */
+const MAX_ROWS = 5;
 
-/**
- * A minute clock, shared by every reader.
- *
- * "Read 4m ago" is only honest if it counts, and reading the wall clock during
- * render would be neither stable across renders nor self-updating. An external
- * store is both.
- */
-interface Clock {
-  now: number;
-  readonly listeners: Set<() => void>;
-  timer: ReturnType<typeof setInterval> | undefined;
+/** A window this full is worth a second look, so it drops the calm colour. */
+const LIMIT_HIGH_PERCENT = 85;
+
+/** One colour per rank, shared by a bar segment and the row that names it. */
+const RANK_COLOURS = [
+  styles.series0,
+  styles.series1,
+  styles.series2,
+  styles.series3,
+  styles.series4,
+] as const;
+
+function rankColour(rank: number): stylex.StyleXStyles {
+  return RANK_COLOURS[rank % RANK_COLOURS.length] ?? styles.series0;
 }
 
-const clock: Clock = { now: Date.now(), listeners: new Set(), timer: undefined };
-
-function subscribeClock(listener: () => void): () => void {
-  // The panel can be closed for an hour; the first reader back resets the tick.
-  clock.now = Date.now();
-  clock.listeners.add(listener);
-  clock.timer ??= setInterval(() => {
-    clock.now = Date.now();
-    for (const notify of clock.listeners) notify();
-  }, USAGE_STALE_AFTER_MS);
-  return () => {
-    clock.listeners.delete(listener);
-    if (clock.listeners.size === 0 && clock.timer !== undefined) {
-      clearInterval(clock.timer);
-      clock.timer = undefined;
-    }
-  };
+function percentOf(share: number): string {
+  return `${String(Math.min(Math.max(share, 0), 1) * 100)}%`;
 }
 
-function readClock(): number {
-  return clock.now;
-}
-
-function useClock(): number {
-  return useSyncExternalStore(subscribeClock, readClock, readClock);
-}
-
-function RangeControl({
-  range,
-  onRangeChange,
+function Bone({
+  width,
+  height,
 }: {
-  readonly range: UsageRange;
-  readonly onRangeChange: (range: UsageRange) => void;
+  readonly width: number | string;
+  readonly height: number;
+}): ReactElement {
+  return <span aria-hidden="true" {...stylex.props(bone.bone)} style={{ width, height }} />;
+}
+
+function UsageSection({
+  title,
+  hint,
+  actions,
+  children,
+}: {
+  readonly title: string;
+  readonly hint?: ReactNode;
+  readonly actions?: ReactNode;
+  readonly children: ReactNode;
 }): ReactElement {
   return (
-    <ToggleGroup
-      value={[range]}
-      aria-label="Usage range"
-      {...stylex.props(styles.segments)}
-      onValueChange={(next) => {
-        // An empty group means the reader pressed the range already showing.
-        const chosen = next.at(-1);
-        if (chosen !== undefined) onRangeChange(chosen);
-      }}
-    >
-      {USAGE_RANGES.map((option) => (
-        <Toggle key={option} value={option} {...stylex.props(styles.segment, focus.ring)}>
-          {USAGE_RANGE_LABELS[option]}
-        </Toggle>
-      ))}
-    </ToggleGroup>
-  );
-}
-
-function Tile({
-  label,
-  value,
-  detail,
-  detailTitle,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly detail: ReactNode;
-  /** The full text when the detail is a name the tile has to truncate. */
-  readonly detailTitle?: string;
-}): ReactElement {
-  return (
-    <div {...stylex.props(styles.tile)}>
-      <span {...stylex.props(styles.tileLabel)}>{label}</span>
-      <span {...stylex.props(styles.tileValue)}>{value}</span>
-      <span title={detailTitle} {...stylex.props(styles.tileDetail)}>
-        {detail}
-      </span>
-    </div>
-  );
-}
-
-function SummaryTiles({ usage }: { readonly usage: UsageDerived }): ReactElement {
-  const change = costChange(usage.totals.cost, usage.previousCost);
-  const topChat = usage.chats[0];
-
-  return (
-    <div {...stylex.props(styles.tiles)}>
-      <Tile
-        label={TILE_LABELS.spend}
-        value={formatUsd(usage.totals.cost)}
-        detail={
-          change === undefined ? (
-            "This window"
-          ) : (
-            <>
-              <span
-                {...stylex.props(
-                  change.direction === "up" && styles.changeUp,
-                  change.direction === "down" && styles.changeDown,
-                )}
-              >
-                {change.label}
-              </span>
-              {" vs. previous"}
-            </>
-          )
-        }
-      />
-      <Tile
-        label={TILE_LABELS.tokens}
-        value={formatTokens(usage.totals.tokens)}
-        detail={`${formatPercent(cacheHitRate(usage.totals))} from cache`}
-      />
-      <Tile
-        label={TILE_LABELS.requests}
-        value={formatCount(usage.totals.turns)}
-        detail={`${formatCount(usage.chats.length)} ${usage.chats.length === 1 ? "chat" : "chats"} · ${formatCount(usage.folders.length)} ${usage.folders.length === 1 ? "folder" : "folders"}`}
-      />
-      <Tile
-        label={TILE_LABELS.busiest}
-        value={topChat === undefined ? "—" : formatUsd(topChat.cost)}
-        detail={topChat?.label ?? "No chats"}
-        detailTitle={topChat?.label}
-      />
-    </div>
-  );
-}
-
-/**
- * A ranked row. Every list on this page shares one denominator — the window's
- * total — so a bar means the same thing in the folders card as in the chats
- * card, and a row can be compared across cards without doing arithmetic.
- */
-function ShareRow({
-  label,
-  qualifier,
-  meta,
-  value,
-  share,
-}: {
-  readonly label: string;
-  readonly qualifier?: string;
-  readonly meta?: string;
-  readonly value: string;
-  readonly share: number;
-}): ReactElement {
-  return (
-    <div {...stylex.props(styles.row)}>
-      <span
-        {...stylex.props(styles.rowTrack)}
-        style={{ width: `${String(Math.max(share, 0) * 100)}%` }}
-        aria-hidden="true"
-      />
-      <span {...stylex.props(styles.rowLabel)}>
-        {label}
-        {qualifier !== undefined && <span {...stylex.props(styles.rowMeta)}> in {qualifier}</span>}
-      </span>
-      {meta !== undefined && <span {...stylex.props(styles.rowMeta)}>{meta}</span>}
-      <span {...stylex.props(styles.rowValue)}>{value}</span>
-    </div>
-  );
-}
-
-interface CardFace {
-  readonly value: string;
-  readonly detail: ReactNode;
-  readonly body: ReactNode;
-}
-
-function TokenLegend({ palette }: { readonly palette: ChartPalette }): ReactElement {
-  return (
-    <span {...stylex.props(styles.legend)}>
-      {TOKEN_KINDS.map((kind) => (
-        <span key={kind} {...stylex.props(styles.legendItem)}>
-          <span
-            {...stylex.props(styles.legendDot)}
-            style={{ backgroundColor: palette.tokens[kind] }}
-            aria-hidden="true"
-          />
-          {TOKEN_KIND_LABELS[kind]}
+    <section aria-label={title} {...stylex.props(styles.section)}>
+      <div {...stylex.props(styles.heading)}>
+        <span {...stylex.props(styles.headingCopy)}>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>{title}</h2>
+          {hint !== undefined && <span {...stylex.props(styles.hint)}>{hint}</span>}
         </span>
-      ))}
-    </span>
-  );
-}
-
-/** What each card puts in its header and its body, from the one shared window. */
-function cardFace(card: UsageCard, usage: UsageDerived, palette: ChartPalette): CardFace {
-  const denominator = usage.totals.cost > 0 ? "API estimate" : "tokens";
-
-  switch (card) {
-    case "spend": {
-      const change = costChange(usage.totals.cost, usage.previousCost);
-      return {
-        value: formatUsd(usage.totals.cost),
-        detail:
-          usage.overheadCost > 0
-            ? `${change?.label ?? "This window"} · ${formatUsd(usage.overheadCost)} compaction and tools`
-            : (change?.label ?? "This window"),
-        body:
-          usage.totals.cost === 0 ? (
-            <ChartEmpty message="No priced spend" />
-          ) : (
-            <SpendChart points={usage.points} palette={palette} />
-          ),
-      };
-    }
-    case "tokens":
-      return {
-        value: formatTokens(usage.totals.tokens),
-        detail: <TokenLegend palette={palette} />,
-        body:
-          usage.totals.tokens === 0 ? (
-            <ChartEmpty message="No tokens recorded" />
-          ) : (
-            <TokensChart points={usage.points} palette={palette} />
-          ),
-      };
-    case "models": {
-      const leader = usage.models[0];
-      const hidden = Math.max(0, usage.models.length - MODEL_BAR_LIMIT);
-      return {
-        value: leader?.model ?? "—",
-        // The card is the empty state when there is nothing; the detail stays out of it.
-        detail:
-          leader === undefined
-            ? ""
-            : `${leader.provider} · ${formatPercent(leader.share)} of ${denominator} · ${formatCount(leader.turns)} requests${hidden > 0 ? ` · ${String(hidden)} more` : ""}`,
-        body:
-          usage.models.length === 0 ? (
-            <ChartEmpty message="No models used" />
-          ) : (
-            <ModelsChart models={usage.models} palette={palette} />
-          ),
-      };
-    }
-    case "activity": {
-      const busiest = usage.calendar.data.reduce<{ day: string; value: number } | undefined>(
-        (found, day) => (found === undefined || day.value > found.value ? day : found),
-        undefined,
-      );
-      return {
-        value: `${formatCount(usage.calendar.data.length)} active days`,
-        detail:
-          busiest === undefined
-            ? ""
-            : `Busiest ${dayLabel(busiest.day)} · ${formatTokens(busiest.value)} tokens`,
-        body:
-          usage.calendar.data.length === 0 ? (
-            <ChartEmpty message="No activity" />
-          ) : (
-            <ActivityChart calendar={usage.calendar} palette={palette} />
-          ),
-      };
-    }
-    case "folders": {
-      const leader = usage.folders[0];
-      return {
-        value: leader?.label ?? "—",
-        detail: leader === undefined ? "" : `${formatPercent(leader.share)} of ${denominator}`,
-        body:
-          usage.folders.length === 0 ? (
-            <ChartEmpty message="No folder usage" />
-          ) : (
-            usage.folders.map((folder) => (
-              <ShareRow
-                key={folder.key}
-                label={folder.label}
-                qualifier={folder.qualifier}
-                meta={formatTokens(folder.tokens)}
-                value={formatUsd(folder.cost)}
-                share={folder.share}
-              />
-            ))
-          ),
-      };
-    }
-    case "chats": {
-      const leader = usage.chats[0];
-      return {
-        value: formatCount(usage.chats.length),
-        detail:
-          leader === undefined
-            ? ""
-            : `${leader.label} · ${formatPercent(leader.share)} of ${denominator}`,
-        body:
-          usage.chats.length === 0 ? (
-            <ChartEmpty message="No chats" />
-          ) : (
-            usage.chats.map((chat) => (
-              <ShareRow
-                key={chat.sessionId}
-                label={chat.label}
-                meta={formatTokens(chat.tokens)}
-                value={formatUsd(chat.cost)}
-                share={chat.share}
-              />
-            ))
-          ),
-      };
-    }
-    default: {
-      const _exhaustive: never = card;
-      return _exhaustive;
-    }
-  }
-}
-
-function UsageCardView({
-  card,
-  usage,
-  palette,
-}: {
-  readonly card: UsageCard;
-  readonly usage: UsageDerived;
-  readonly palette: ChartPalette;
-}): ReactElement {
-  const sortable = useSortable({ id: card });
-  const face = cardFace(card, usage, palette);
-  const translate = CSS.Translate.toString(sortable.transform);
-  const title = CARD_TITLES[card];
-
-  return (
-    <section
-      ref={sortable.setNodeRef}
-      aria-label={title}
-      style={{
-        // A lift, not a resize: the chart inside keeps its measured geometry.
-        transform: sortable.isDragging ? `${translate ?? ""} scale(1.012)`.trim() : translate,
-        transition: sortable.transition,
-      }}
-      {...stylex.props(
-        styles.card,
-        sortable.isDragging && styles.cardLifted,
-        sortable.isSorting && !sortable.isDragging && styles.cardSorting,
-      )}
-    >
-      <header {...stylex.props(styles.cardHeader)}>
-        <span {...stylex.props(styles.cardCopy)}>
-          <span {...stylex.props(styles.cardTitle)}>{title}</span>
-          <span {...stylex.props(styles.cardValue)}>{face.value}</span>
-        </span>
-        <button
-          type="button"
-          ref={sortable.setActivatorNodeRef}
-          title="Drag to arrange"
-          aria-label={`Reorder ${title}`}
-          {...sortable.attributes}
-          {...(sortable.listeners ?? {})}
-          {...stylex.props(styles.handle, sortable.isDragging && styles.handleDragging, focus.ring)}
-        >
-          <Icon name="drag-handle" size={13} />
-        </button>
-      </header>
-      <span {...stylex.props(styles.cardDetail)}>{face.detail}</span>
-      {LIST_CARDS.includes(card) ? (
-        <div {...stylex.props(styles.cardBodyList)} data-nyte-scrollport="balanced">
-          {face.body}
-        </div>
-      ) : (
-        <div {...stylex.props(styles.cardBody)}>{face.body}</div>
-      )}
+        {actions !== undefined && <span {...stylex.props(styles.headingActions)}>{actions}</span>}
+      </div>
+      {children}
     </section>
   );
 }
 
-function UsageGrid({
-  usage,
-  palette,
+/**
+ * A whole split into its parts: one stacked bar, then the rows that name its
+ * segments. The rows carry the numbers, so the bar needs no readout.
+ */
+function Breakdown({
+  label,
+  rows,
+  empty,
 }: {
-  readonly usage: UsageDerived;
-  readonly palette: ChartPalette;
+  readonly label: string;
+  readonly rows: readonly UsageRow[];
+  readonly empty: string;
 }): ReactElement {
-  const order = useUsageOrder();
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: DRAG_DISTANCE } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const shown = rows.slice(0, MAX_ROWS);
+  const hidden = rows.length - shown.length;
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={(event: DragEndEvent) => {
-        const over = event.over;
-        if (over === null || over.id === event.active.id) return;
-        const current = getUsageOrder();
-        const from = current.findIndex((card) => card === event.active.id);
-        const to = current.findIndex((card) => card === over.id);
-        if (from === -1 || to === -1) return;
-        setUsageOrder(arrayMove([...current], from, to));
-      }}
-    >
-      <SortableContext items={[...order]} strategy={rectSortingStrategy}>
-        <div {...stylex.props(styles.grid)}>
-          {order.map((card) => (
-            <UsageCardView key={card} card={card} usage={usage} palette={palette} />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
+    <div {...stylex.props(styles.group)}>
+      {shown.length === 0 ? (
+        <p {...stylex.props(styles.row, styles.meta)}>{empty}</p>
+      ) : (
+        <>
+          <span aria-hidden="true" {...stylex.props(styles.bar)}>
+            {shown.map((row, rank) =>
+              row.share <= 0 ? null : (
+                <span
+                  key={row.key}
+                  {...stylex.props(styles.barSegment, rankColour(rank))}
+                  style={{ flexBasis: percentOf(row.share) }}
+                />
+              ),
+            )}
+          </span>
+          <div role="list" aria-label={label}>
+            {shown.map((row, rank) => (
+              <div role="listitem" key={row.key} {...stylex.props(styles.row)}>
+                <span {...stylex.props(styles.rowCopy)}>
+                  <span {...stylex.props(styles.rowName)}>
+                    <span aria-hidden="true" {...stylex.props(styles.dot, rankColour(rank))} />
+                    {row.label}
+                  </span>
+                  <span {...stylex.props(styles.rowMeta)}>{row.meta}</span>
+                </span>
+                <span
+                  {...stylex.props(styles.rowValue, row.value.kind === "absent" && styles.absent)}
+                >
+                  {row.value.text}
+                </span>
+                <span {...stylex.props(styles.rowShare)}>{formatPercent(row.share)}</span>
+              </div>
+            ))}
+            {hidden > 0 && <p {...stylex.props(styles.row, styles.meta)}>+{String(hidden)} more</p>}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
-function UsageState({
+function BreakdownSkeleton({
+  rows,
+  bar = true,
+}: {
+  readonly rows: number;
+  /** A list with no whole to split, such as the limit windows, waits without one. */
+  readonly bar?: boolean;
+}): ReactElement {
+  return (
+    <div aria-busy="true" {...stylex.props(styles.group)}>
+      {bar && <span {...stylex.props(styles.bar)} />}
+      {Array.from({ length: rows }, (_slot, index) => (
+        <span key={index} {...stylex.props(styles.row, bone.row)}>
+          <Bone width={index === 0 ? 168 : 124} height={10} />
+          <Bone width={index === 0 ? "58%" : "34%"} height={8} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Spend per bucket across the window. The bars carry the shape and the caption
+ * carries the numbers, so nothing has to be hovered to be read.
+ */
+function SpendTrend({ usage }: { readonly usage: UsageDerived }): ReactElement | null {
+  const peak = usage.points.reduce((found, point) => (point.cost > found.cost ? point : found), {
+    label: "",
+    cost: 0,
+  });
+  if (usage.points.length < 2 || peak.cost <= 0) return null;
+
+  return (
+    <div {...stylex.props(styles.trend)}>
+      <span aria-hidden="true" {...stylex.props(styles.trendBars)}>
+        {usage.points.map((point) => (
+          <span
+            key={point.label}
+            {...stylex.props(styles.trendBar, point.cost === peak.cost && styles.trendPeak)}
+            style={{ height: percentOf(point.cost / peak.cost) }}
+          />
+        ))}
+      </span>
+      <span {...stylex.props(styles.trendCaption)}>
+        <span>{usage.grain === "week" ? "Per week" : "Per day"}</span>
+        <span>
+          Peak {formatUsd(peak.cost)} · {peak.label}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function LimitMeter({
+  label,
+  used,
+  reset,
+}: {
+  readonly label: string;
+  readonly used: number;
+  readonly reset: string;
+}): ReactElement {
+  const high = used >= LIMIT_HIGH_PERCENT;
+
+  return (
+    <div {...stylex.props(styles.row)}>
+      <span {...stylex.props(styles.meter, styles.rowCopy)}>
+        <span {...stylex.props(styles.meterHead)}>
+          <span {...stylex.props(styles.rowName)}>{label}</span>
+          <span {...stylex.props(styles.rowValue, high && styles.meterHigh)}>
+            {String(used)}% used
+          </span>
+        </span>
+        <span
+          role="progressbar"
+          aria-label={`${label} limit`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={used}
+          aria-valuetext={`${String(used)}% used`}
+          {...stylex.props(styles.meterTrack)}
+        >
+          <span
+            {...stylex.props(styles.meterFill, high && styles.meterFillHigh)}
+            style={{ width: percentOf(used / 100) }}
+          />
+        </span>
+        <span {...stylex.props(styles.rowMeta)}>{reset}</span>
+      </span>
+    </div>
+  );
+}
+
+function Notice({
+  children,
+  alert,
+  action,
+}: {
+  readonly children: ReactNode;
+  readonly alert?: boolean;
+  readonly action?: ReactNode;
+}): ReactElement {
+  return (
+    <p role={alert === true ? "alert" : "status"} {...stylex.props(styles.notice)}>
+      <Icon name="warning" size={13} {...stylex.props(styles.noticeIcon)} />
+      <span {...stylex.props(styles.noticeCopy)}>{children}</span>
+      {action}
+    </p>
+  );
+}
+
+function EmptyPanel({
   title,
   body,
   action,
 }: {
   readonly title: string;
   readonly body: string;
-  readonly action?: ReactNode;
+  readonly action: ReactNode;
 }): ReactElement {
   return (
-    <div {...stylex.props(styles.state)}>
-      <span {...stylex.props(styles.stateTitle)}>{title}</span>
-      <p {...stylex.props(styles.stateBody)}>{body}</p>
-      {action !== undefined && <span {...stylex.props(styles.stateActions)}>{action}</span>}
+    <div {...stylex.props(styles.panel)}>
+      <span {...stylex.props(styles.panelTitle)}>{title}</span>
+      <p {...stylex.props(styles.panelBody)}>{body}</p>
+      <span {...stylex.props(styles.panelActions)}>{action}</span>
     </div>
-  );
-}
-
-/**
- * One line above the numbers when they are not simply current: a read that
- * failed, a folder that could not be opened, or a window that has moved on
- * since the report was folded. Never a replacement for the numbers.
- */
-function Notice({
-  icon,
-  children,
-  action,
-}: {
-  readonly icon: "warning" | "clock";
-  readonly children: ReactNode;
-  readonly action?: ReactNode;
-}): ReactElement {
-  return (
-    <div {...stylex.props(styles.notice)} role="status">
-      <Icon name={icon} size={13} {...stylex.props(styles.noticeIcon)} />
-      <span {...stylex.props(styles.noticeCopy)}>{children}</span>
-      {action}
-    </div>
-  );
-}
-
-function NoticeRefresh({ onRefresh }: { readonly onRefresh: () => void }): ReactElement {
-  return (
-    <button type="button" onClick={onRefresh} {...stylex.props(styles.noticeAction, focus.ring)}>
-      Refresh
-    </button>
-  );
-}
-
-function windowLabel(usage: UsageDerived): string {
-  return usage.from === usage.to
-    ? dayLabel(usage.to)
-    : `${dayLabel(usage.from)} – ${dayLabel(usage.to)}`;
-}
-
-/** Nothing to break down: the read failed, the history is empty, or the window is. */
-function EmptyUsage({
-  report,
-  unreadFolders,
-  range,
-  onShowAll,
-  refresh,
-}: {
-  readonly report: UsageSnapshot;
-  readonly unreadFolders: readonly string[];
-  readonly range: UsageRange;
-  readonly onShowAll: () => void;
-  readonly refresh: ReactNode;
-}): ReactElement {
-  const earliest = report.earliestDay;
-  if (report.nyteError !== null || unreadFolders.length > 0) {
-    return (
-      <UsageState
-        title="Couldn't read all Nyte usage"
-        body={report.nyteError ?? "Some folder history could not be read."}
-        action={refresh}
-      />
-    );
-  }
-  if (earliest === undefined) {
-    return (
-      <UsageState
-        title="No recorded Nyte usage"
-        body="Chats you run here will show up."
-        action={refresh}
-      />
-    );
-  }
-  return (
-    <UsageState
-      title={
-        range === "all"
-          ? "Nothing in this window"
-          : `Nothing in the last ${USAGE_RANGE_LABELS[range].toLocaleLowerCase()}`
-      }
-      body={`Earliest recorded usage: ${dayLabel(earliest)}.`}
-      action={
-        range === "all" ? (
-          refresh
-        ) : (
-          <Button variant="primary" onClick={onShowAll}>
-            Show all time
-          </Button>
-        )
-      }
-    />
   );
 }
 
 export function UsageSettings(): ReactElement {
-  // Today is pinned at open, so a report and the heading describing it name the
-  // same days for as long as the panel is up, even across midnight.
+  // Keep the heading and the query on the same day if the panel stays open past midnight.
   const [openedAt] = useState(() => Date.now());
   const [range, setRange] = useState<UsageRange>("30d");
-  // The window is a view of the report, not a query for one. Every range shares
-  // the same read, so pressing between them is arithmetic and never a load.
   const view = useMemo(() => usageWindow(range, openedAt), [range, openedAt]);
 
-  const palette = useChartPalette();
-  const order = useUsageOrder();
-  const now = useClock();
-
   const { report, error, isFetching, refresh } = useUsageReport(view.untilDay);
-  // One place to ask whether the page has numbers. Everything downstream either
-  // reads them or draws the skeleton of the card that will hold them.
-  const read = useMemo(
-    () => (report === undefined ? undefined : { report, usage: deriveUsage(report, view) }),
+  const limits = useAccountLimits();
+  const usage = useMemo(
+    () => (report === undefined ? undefined : deriveUsage(report, view)),
     [report, view],
   );
+  const tools = useMemo(() => (report === undefined ? undefined : deriveTools(report)), [report]);
+  const histories = useMemo(
+    () =>
+      report === undefined
+        ? undefined
+        : LOCAL_TOOLS.map((tool) => ({ tool, history: deriveLocalHistory(tool, report[tool]) })),
+    [report],
+  );
 
-  // The first read is not a re-read, and saying so is the page's only progress.
-  const reading = read === undefined ? "Reading…" : "Refreshing…";
   const refreshButton = (
     <Button variant="secondary" disabled={isFetching} onClick={refresh}>
-      {isFetching ? reading : "Refresh"}
+      {isFetching ? "Reading…" : "Refresh"}
     </Button>
   );
 
-  if (read === undefined && error !== null) {
+  if (report === undefined && error !== null) {
     return (
       <div role="alert">
-        <UsageState title="Couldn't read usage" body={error.message} action={refreshButton} />
+        <EmptyPanel title="Couldn't read usage" body={error.message} action={refreshButton} />
       </div>
     );
   }
 
-  // A window with nothing in it still gets a breakdown section while it loads:
-  // the cards are what the reader is waiting for.
-  const hasBreakdown = read === undefined || read.report.entries.length > 0;
+  const empty =
+    report === undefined || usage === undefined || report.entries.length > 0
+      ? undefined
+      : describeEmptyRange(report, usage.unreadFolders, range);
+  const change =
+    usage === undefined ? undefined : costChange(usage.totals.cost, usage.previousCost);
 
   return (
-    <div {...stylex.props(styles.panel)}>
-      {read === undefined && (
+    <div {...stylex.props(styles.page)}>
+      {report === undefined && (
         <span role="status" {...stylex.props(srOnly)}>
           Reading local history…
         </span>
       )}
-      <UsageToolsSection report={read?.report} palette={palette} />
-      <section {...stylex.props(settingsPatterns.section)}>
-        <div {...stylex.props(styles.toolbar)}>
-          <span {...stylex.props(styles.toolbarCopy)}>
-            <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Nyte</h2>
-            <span {...stylex.props(styles.toolbarHint)}>
-              {read === undefined ? <Bone width={104} height={9} /> : windowLabel(read.usage)}
-            </span>
-          </span>
-          <span {...stylex.props(styles.toolbarActions)}>
-            {refreshButton}
-            <RangeControl range={range} onRangeChange={setRange} />
-          </span>
-        </div>
-        <p {...stylex.props(settingsPatterns.sectionDescription, styles.sectionCopy)}>
-          Nyte&apos;s own chats, in the window above · API estimates, not charges
-        </p>
 
-        {read !== undefined && (
+      <UsageSection
+        title="Nyte"
+        hint={
+          report === undefined || usage === undefined ? (
+            <Bone width={168} height={9} />
+          ) : (
+            `${usage.from === usage.to ? dayLabel(usage.to) : `${dayLabel(usage.from)} – ${dayLabel(usage.to)}`} · read at ${timeLabel(report.readAt)}`
+          )
+        }
+        actions={
           <>
-            {error !== null && (
-              <div role="alert">
-                <Notice icon="warning" action={<NoticeRefresh onRefresh={refresh} />}>
-                  Last good read {formatTimeAgo(read.report.readAt, now)} ago. {error.message}
-                </Notice>
-              </div>
-            )}
-            {error === null && read.usage.unreadFolders.length > 0 && (
-              <Notice icon="warning">
-                Couldn&apos;t read {read.usage.unreadFolders.join(", ")}.{" "}
-                {read.usage.unreadFolders.length === 1 ? "Its" : "Their"} spend is missing here.
-              </Notice>
-            )}
-            {error === null && !isFetching && now - read.report.readAt > USAGE_STALE_AFTER_MS && (
-              <Notice icon="clock" action={<NoticeRefresh onRefresh={refresh} />}>
-                Read {formatTimeAgo(read.report.readAt, now)} ago.
-              </Notice>
-            )}
+            {refreshButton}
+            <ToggleGroup
+              value={[range]}
+              aria-label="Usage range"
+              {...stylex.props(styles.segments)}
+              onValueChange={(next) => {
+                // Keep the current range when its toggle is pressed again.
+                const chosen = next.at(-1);
+                if (chosen !== undefined) setRange(chosen);
+              }}
+            >
+              {USAGE_RANGES.map((option) => (
+                <Toggle key={option} value={option} {...stylex.props(styles.segment, focus.ring)}>
+                  {USAGE_RANGE_LABELS[option]}
+                </Toggle>
+              ))}
+            </ToggleGroup>
+          </>
+        }
+      >
+        {report !== undefined && error !== null && (
+          <Notice
+            alert
+            action={
+              <button
+                type="button"
+                onClick={refresh}
+                {...stylex.props(styles.noticeAction, focus.ring)}
+              >
+                Refresh
+              </button>
+            }
+          >
+            Showing the last good read, from {timeLabel(report.readAt)}. {error.message}
+          </Notice>
+        )}
+        {error === null && usage !== undefined && usage.unreadFolders.length > 0 && (
+          <Notice>
+            Couldn&apos;t read {usage.unreadFolders.join(", ")}.{" "}
+            {usage.unreadFolders.length === 1 ? "Its" : "Their"} usage is missing from these totals.
+          </Notice>
+        )}
+
+        {usage === undefined ? (
+          <>
+            <span {...stylex.props(styles.headline)}>
+              <Bone width={148} height={28} />
+              <Bone width={264} height={10} />
+            </span>
+            <BreakdownSkeleton rows={4} />
+          </>
+        ) : empty !== undefined ? (
+          <EmptyPanel
+            title={empty.title}
+            body={empty.body}
+            action={
+              empty.offerAllTime ? (
+                <Button variant="primary" onClick={() => setRange("all")}>
+                  Show all time
+                </Button>
+              ) : (
+                refreshButton
+              )
+            }
+          />
+        ) : (
+          <>
+            <span {...stylex.props(styles.headline)}>
+              <span {...stylex.props(styles.amount)}>{formatUsd(usage.totals.cost)}</span>
+              <span {...stylex.props(styles.meta)}>
+                {describeTotals(usage.totals)}
+                {change !== undefined && (
+                  <>
+                    {" · "}
+                    <span
+                      {...stylex.props(
+                        change.direction === "up" && styles.changeUp,
+                        change.direction === "down" && styles.changeDown,
+                      )}
+                    >
+                      {change.label}
+                    </span>
+                    {" on the period before"}
+                  </>
+                )}
+              </span>
+            </span>
+            <SpendTrend usage={usage} />
+            <Breakdown
+              label="Nyte spend by model"
+              rows={usage.models}
+              empty="No model recorded spend in this range."
+            />
           </>
         )}
+      </UsageSection>
 
-        {read === undefined ? (
-          <UsageTilesSkeleton />
-        ) : read.report.entries.length > 0 ? (
-          <SummaryTiles usage={read.usage} />
+      <UsageSection title="Plan limits">
+        {limits.error !== null ? (
+          <Notice alert>Couldn&apos;t read plan limits. {limits.error.message}</Notice>
+        ) : limits.data === undefined ? (
+          <BreakdownSkeleton rows={2} bar={false} />
         ) : (
-          <EmptyUsage
-            report={read.report}
-            unreadFolders={read.usage.unreadFolders}
-            range={range}
-            onShowAll={() => setRange("all")}
-            refresh={refreshButton}
-          />
+          limits.data.map((account) => {
+            const plan = deriveAccount(account);
+            return (
+              <div key={account.provider} {...stylex.props(styles.stack)}>
+                <h3 {...stylex.props(styles.label)}>{plan.title}</h3>
+                <div {...stylex.props(styles.group)}>
+                  {plan.message === undefined ? (
+                    plan.meters.map((meter) => (
+                      <LimitMeter
+                        key={meter.key}
+                        label={meter.label}
+                        used={meter.used}
+                        reset={meter.reset}
+                      />
+                    ))
+                  ) : (
+                    <p
+                      role={plan.failed ? "alert" : undefined}
+                      {...stylex.props(styles.row, styles.meta)}
+                    >
+                      {plan.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })
         )}
-      </section>
+      </UsageSection>
 
-      {hasBreakdown && (
-        <section {...stylex.props(settingsPatterns.section)}>
-          <div {...stylex.props(styles.toolbar)}>
-            <span {...stylex.props(styles.toolbarCopy)}>
-              <h2 {...stylex.props(settingsPatterns.sectionTitle)}>Breakdown</h2>
-            </span>
-            <span {...stylex.props(styles.toolbarActions)}>
-              {read !== undefined && !isDefaultUsageOrder(order) && (
-                <button
-                  type="button"
-                  {...stylex.props(styles.reset, focus.ring)}
-                  onClick={() => setUsageOrder(USAGE_CARDS)}
-                >
-                  <Icon name="refresh" size={12} />
-                  Reset layout
-                </button>
-              )}
-            </span>
-          </div>
-          {read === undefined ? (
-            <UsageGridSkeleton order={order} days={view} />
-          ) : (
-            <UsageGrid usage={read.usage} palette={palette} />
-          )}
-        </section>
+      {usage !== undefined && empty === undefined && (
+        <UsageSection title="Where it went">
+          <h3 {...stylex.props(styles.label)}>By folder</h3>
+          <Breakdown
+            label="Nyte spend by folder"
+            rows={usage.folders}
+            empty="No folder recorded spend in this range."
+          />
+          <h3 {...stylex.props(styles.label)}>By chat</h3>
+          <Breakdown
+            label="Nyte spend by chat"
+            rows={usage.chats}
+            empty="No chat recorded spend in this range."
+          />
+        </UsageSection>
       )}
-      <LocalHistorySection tool="claudeCode" usage={read?.report.claudeCode} />
-      <LocalHistorySection tool="codex" usage={read?.report.codex} />
+
+      <UsageSection title="All tools" hint="All time">
+        <span {...stylex.props(styles.headline)}>
+          <span {...stylex.props(styles.amount)}>
+            {tools === undefined ? <Bone width={120} height={28} /> : tools.amount}
+          </span>
+          <span {...stylex.props(styles.meta)}>
+            {tools === undefined ? <Bone width={248} height={10} /> : tools.meta}
+          </span>
+        </span>
+        {tools === undefined ? (
+          <BreakdownSkeleton rows={3} />
+        ) : (
+          <Breakdown label="Spend by tool" rows={tools.rows} empty="No tool history read." />
+        )}
+        {(histories ?? LOCAL_TOOLS.map((tool) => ({ tool, history: undefined }))).map(
+          ({ tool, history }) => (
+            <div key={tool} {...stylex.props(styles.stack)}>
+              <h3 {...stylex.props(styles.label)}>{USAGE_TOOL_LABELS[tool]} by model</h3>
+              {history === undefined ? (
+                <BreakdownSkeleton rows={2} />
+              ) : history.kind === "message" ? (
+                <div {...stylex.props(styles.group)}>
+                  <p
+                    role={history.failed ? "alert" : undefined}
+                    {...stylex.props(styles.row, styles.meta)}
+                  >
+                    {history.message}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Breakdown
+                    label={`${USAGE_TOOL_LABELS[tool]} spend by model`}
+                    rows={history.rows}
+                    empty="No usage records in the readable history."
+                  />
+                  {history.note !== undefined && (
+                    <p {...stylex.props(styles.note)}>{history.note}</p>
+                  )}
+                </>
+              )}
+            </div>
+          ),
+        )}
+      </UsageSection>
     </div>
   );
 }

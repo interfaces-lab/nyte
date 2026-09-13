@@ -108,14 +108,22 @@ test("an operation without input sends an empty envelope, not an input key", asy
 
 test("info is one GET with the bearer token, and any wire version but this one is malformed", async () => {
   const { seen, fetchFn } = scripted(() =>
-    json(200, { ok: true, defined: true, value: { version: "1.2.3", wireVersion: 1 } }),
+    json(200, {
+      ok: true,
+      defined: true,
+      value: { version: "1.2.3", wireVersion: 1, host: { kind: "unspecified" } },
+    }),
   );
   const client = createNyteClient({
     baseUrl: "http://h.test",
     token: "t".repeat(16),
     fetch: fetchFn,
   });
-  assert.deepEqual(await client.info(), { version: "1.2.3", wireVersion: 1 });
+  assert.deepEqual(await client.info(), {
+    version: "1.2.3",
+    wireVersion: 1,
+    host: { kind: "unspecified" },
+  });
   assert.equal(seen[0]?.url, "http://h.test/v1/info");
   assert.equal(seen[0]?.method, "GET");
   assert.equal(seen[0]?.headers.get("authorization"), `Bearer ${"t".repeat(16)}`);

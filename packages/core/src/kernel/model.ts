@@ -58,6 +58,12 @@ export interface Change {
   readonly body: CommitBody;
   readonly at: number;
   readonly author?: Actor;
+  /**
+   * The idempotency key the submission carried. `refs/keys/<key>` answers a
+   * retry; this copy follows the change into its commit so the sender can
+   * recognize its own message by identity after the fact. Correlation only.
+   */
+  readonly key?: string;
 }
 
 export interface RunConfig {

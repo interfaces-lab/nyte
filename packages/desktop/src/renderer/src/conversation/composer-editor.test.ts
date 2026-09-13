@@ -5,8 +5,11 @@ test(
   "composer reports references and preserves native selection without measuring inactive editors",
   { timeout: 60_000 },
   async () => {
-    expect(await testRenderer(new URL("./composer-editor.browser-test.tsx", import.meta.url))).toBe(
-      "passed",
-    );
+    expect(
+      await testRenderer(
+        new URL("./composer-editor.browser-test.tsx", import.meta.url),
+        "window.nyte = { sessions: {} };",
+      ),
+    ).toBe("passed");
   },
 );

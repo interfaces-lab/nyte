@@ -45,7 +45,7 @@ const styles = stylex.create({
   path: {
     padding: "6px 10px",
     borderRadius: t.radiusBase,
-    backgroundColor: t.bgFaint,
+    backgroundColor: t.fillSecondary,
     color: t.textSecondary,
     fontFamily: t.fontMono,
     fontSize: t.fontCode,

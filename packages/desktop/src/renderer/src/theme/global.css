@@ -62,7 +62,7 @@
   }
 
   dialog::backdrop {
-    background: var(--sand-bg-scrim);
+    background: var(--nyte-bg-scrim);
   }
 
   ::selection {

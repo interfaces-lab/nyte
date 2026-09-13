@@ -20,10 +20,8 @@ import {
   createUsageScanCaches,
   decodeUsageScanCaches,
   encodeUsageScanCaches,
-  readClaudeCodeUsage,
-  readCodexUsage,
-  type ClaudeCodeUsage,
-  type CodexUsage,
+  readLocalUsage,
+  type LocalUsage,
   type UsageScanCaches,
 } from "@nyte-ai/host/usage";
 import type { Api, Model } from "@nyte-ai/schema";
@@ -57,10 +55,8 @@ export interface UsageScanRequest {
   readonly catalog: CatalogModels;
 }
 
-export interface UsageScan {
+export interface UsageScan extends LocalUsage {
   readonly stores: readonly StoreScan[];
-  readonly claudeCode: ClaudeCodeUsage;
-  readonly codex: CodexUsage;
 }
 
 export interface UsageScanReader {
@@ -137,7 +133,7 @@ export class UsageScanner implements UsageScanReader {
   async scan(request: UsageScanRequest): Promise<UsageScan> {
     const caches = await this.load();
     const models: Pick<Models, "getModels"> = { getModels: () => request.catalog };
-    const [stores, claudeCode, codex] = await Promise.all([
+    const [stores, local] = await Promise.all([
       Promise.all(
         request.stores.map((location) => {
           const cache = this.sessions.get(location.path) ?? new Map();
@@ -145,17 +141,10 @@ export class UsageScanner implements UsageScanReader {
           return scanStore(location, cache);
         }),
       ),
-      readClaudeCodeUsage({ models, cache: caches.claudeCode }).catch((): ClaudeCodeUsage => ({
-        kind: "failed",
-        message: "Could not read Claude Code history.",
-      })),
-      readCodexUsage({ models, cache: caches.codex }).catch((): CodexUsage => ({
-        kind: "failed",
-        message: "Could not read Codex history.",
-      })),
+      readLocalUsage({ models, caches }),
     ]);
     await this.save(caches);
-    return { stores, claudeCode, codex };
+    return { stores, ...local };
   }
 
   close(): Promise<void> {

@@ -112,6 +112,40 @@ export function factRef(key: string): RefName {
   return FACTS + key;
 }
 
+/**
+ * Plugin storage keys hold any text, so they are escaped into the ref name
+ * byte by byte; a session fact is written raw and never contains "%".
+ */
+export function encodeFactKey(key: string): string {
+  if (key === "") return "%_";
+  return [...new TextEncoder().encode(key)]
+    .map((byte) => {
+      const character = String.fromCharCode(byte);
+      return /^[A-Za-z0-9_-]$/.test(character)
+        ? character
+        : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+    })
+    .join("");
+}
+
+export function decodeFactKey(key: string): string {
+  if (key === "%_") return "";
+  const bytes: number[] = [];
+  for (let index = 0; index < key.length; index += 1) {
+    const character = key[index];
+    if (character !== "%") {
+      if (character === undefined) throw new Error(`Malformed encoded fact key: ${key}`);
+      bytes.push(character.charCodeAt(0));
+      continue;
+    }
+    const hex = key.slice(index + 1, index + 3);
+    if (!/^[0-9A-F]{2}$/.test(hex)) throw new Error(`Malformed encoded fact key: ${key}`);
+    bytes.push(Number.parseInt(hex, 16));
+    index += 2;
+  }
+  return new TextDecoder().decode(Uint8Array.from(bytes));
+}
+
 /** Tombstone for a submitted change: pending walks skip it, landing advances past it. */
 export function cancelledRef(change: Oid): RefName {
   return CANCELLED + change;

@@ -117,12 +117,13 @@ test("queue refs become pending items, landings, and cancellations", async () =>
       item: { change: firstOid, lane: "queue", at: 5, content: "hi" },
     },
   ]);
+  // A queued choice is no pending item, but it moved the selected inputs.
   assert.deepEqual(
     await projectEvent(
       ref(queueTipRef("main", "steer"), firstOid, secondOid, "submit"),
       objects.read,
     ),
-    [],
+    [{ seq: 7, kind: "config_queued", head: "main", change: secondOid }],
   );
 
   const landed = await projectEvent(
@@ -204,7 +205,10 @@ test("run, effect, stack, fact, and deletion refs project their objects", async 
 
   const expiredOid = objects.put({ kind: "effect", state: "expired", intent: intentOid, at: 3 });
   assert.deepEqual(
-    await projectEvent(ref(effectRef("run_1", "c1"), waitingOid, expiredOid, "expired"), objects.read),
+    await projectEvent(
+      ref(effectRef("run_1", "c1"), waitingOid, expiredOid, "expired"),
+      objects.read,
+    ),
     [
       {
         seq: 7,

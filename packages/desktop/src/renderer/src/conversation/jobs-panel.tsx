@@ -8,7 +8,8 @@ import { keys } from "../queries.ts";
 import { Icon } from "../components/icons.tsx";
 import { Spinner } from "../components/spinner.tsx";
 import { focus } from "../components/ui.tsx";
-import { layer } from "../theme/schema.stylex.ts";
+import { trayStyles } from "../theme/tray.stylex.ts";
+import { layer, tray } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { isJobTerminal, useTerminals } from "../workbench/terminal-store.ts";
 import { jobActionMessage, jobControls, jobStateLabel, taskSections } from "./jobs-view.ts";
@@ -34,7 +35,7 @@ const styles = create({
       ":focus-visible": t.strokeSecondary,
     },
     borderRadius: t.radiusFull,
-    backgroundColor: { default: t.bgElevated, ":hover": t.bgHover },
+    backgroundColor: { default: t.bgElevated, ":hover": t.fillGhostHover },
     color: { default: t.textSecondary, ":hover": t.textPrimary },
     fontSize: t.fontBase,
     fontWeight: 400,
@@ -52,20 +53,6 @@ const styles = create({
     marginInlineEnd: 4,
     lineHeight: 0,
   },
-  // The compact composer replaces its pills with a full-width tray.
-  tray: {
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    overflow: "hidden",
-    borderRadius: 12,
-    backgroundColor: t.bgElevated,
-    boxShadow: `0 0 8px 2px ${t.shadowControlColor}`,
-    color: t.textPrimary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingSm,
-  },
   trayHeight: (height: number) => ({ maxHeight: Math.min(260, height) }),
   previewTray: {
     position: "absolute",
@@ -77,37 +64,6 @@ const styles = create({
     // A short split pane must still leave its header reachable.
     height: `min(70dvh, ${String(Math.min(Math.max(220, height), height + 36))}px)`,
   }),
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    paddingTop: 8,
-    paddingBottom: 0,
-    paddingInlineStart: 12,
-    paddingInlineEnd: 8,
-    flexShrink: 0,
-  },
-  headerTitle: {
-    flex: 1,
-    minWidth: 0,
-    lineHeight: "20px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    fontWeight: 400,
-    color: t.textSecondary,
-  },
-  list: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-    paddingInline: 12,
-    paddingTop: 6,
-    paddingBottom: 6,
-  },
   row: {
     "--work-actions-opacity": {
       default: "0",
@@ -118,15 +74,14 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     minWidth: 0,
-    minHeight: 28,
-    width: "calc(100% + 12px)",
-    marginInline: -6,
+    minHeight: tray.rowHeight,
+    width: "100%",
     paddingInlineEnd: 4,
     borderRadius: 6,
     backgroundColor: {
       default: "transparent",
-      ":hover": `color-mix(in srgb, ${t.bgHover} 50%, transparent)`,
-      ":focus-within": `color-mix(in srgb, ${t.bgHover} 50%, transparent)`,
+      ":hover": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
+      ":focus-within": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
     },
   },
   rowButton: {
@@ -135,14 +90,15 @@ const styles = create({
     gap: 6,
     flex: 1,
     minWidth: 0,
-    minHeight: 28,
+    minHeight: tray.rowHeight,
     paddingBlock: 4,
-    paddingInline: 6,
+    paddingInline: tray.rowInset,
     borderStyle: "none",
     borderRadius: 6,
-    lineHeight: "18px",
+    lineHeight: tray.lineHeight,
     backgroundColor: "transparent",
     textAlign: "start",
+    color: t.textPrimary,
     cursor: "pointer",
   },
   rowLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -187,16 +143,16 @@ const styles = create({
     justifyContent: "center",
     gap: 4,
     flexShrink: 0,
-    minHeight: 28,
+    minHeight: tray.rowHeight,
     paddingBlock: 0,
     paddingInline: 8,
     borderStyle: "none",
     borderRadius: t.radiusSm,
     backgroundColor: {
       default: "transparent",
-      ":hover:not(:disabled)": t.bgHover,
-      ":focus-visible": t.bgHover,
-      ":active:not(:disabled)": t.bgActive,
+      ":hover:not(:disabled)": t.fillGhostHover,
+      ":focus-visible": t.fillGhostHover,
+      ":active:not(:disabled)": t.fillGhostSelected,
     },
     color: {
       default: t.textSecondary,
@@ -358,15 +314,12 @@ export function BackgroundWork({
         ? "Working"
         : "Agents";
 
-  if (!jobs.isPending && !jobs.isError && !hasAgents && !hasTerminals) return null;
+  // Until the list lands there is nothing to say: most chats have no jobs, and
+  // a placeholder here would sit under a transcript that already painted.
+  if (!jobs.isError && !hasAgents && !hasTerminals) return null;
 
   return (
     <div ref={rootRef} {...props(styles.root, preview !== undefined && styles.previewRoot)}>
-      {jobs.isPending && (
-        <div role="status" {...props(styles.notice)}>
-          Loading background work…
-        </div>
-      )}
       {jobs.isError && (
         <div role="alert" {...props(styles.notice, styles.error)}>
           Couldn’t load background work.
@@ -429,7 +382,7 @@ export function BackgroundWork({
           id={trayId}
           aria-label={open === "agents" ? "Agents" : "Terminals"}
           {...props(
-            styles.tray,
+            trayStyles.surface,
             preview !== undefined && styles.previewTray,
             preview !== undefined && styles.previewHeight(availableHeight),
           )}
@@ -444,7 +397,7 @@ export function BackgroundWork({
             close();
           }}
         >
-          <div {...props(styles.header)}>
+          <div {...props(trayStyles.header)}>
             {preview !== undefined && (
               <button
                 type="button"
@@ -456,7 +409,7 @@ export function BackgroundWork({
                 <Icon name="arrow-left" size={16} />
               </button>
             )}
-            <span title={preview?.title} {...props(styles.headerTitle)}>
+            <span title={preview?.title} {...props(trayStyles.title)}>
               {preview?.title ?? title}
             </span>
             {preview?.kind === "subagent" && (
@@ -506,7 +459,10 @@ export function BackgroundWork({
             </button>
           </div>
           {preview === undefined ? (
-            <div data-nyte-scrollport {...props(styles.list, styles.trayHeight(availableHeight))}>
+            <div
+              data-nyte-scrollport
+              {...props(trayStyles.list, styles.trayHeight(availableHeight))}
+            >
               {sections.active.length === 0 && sections.finished.length === 0 && (
                 <div {...props(styles.notice)}>No background work.</div>
               )}

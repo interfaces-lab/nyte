@@ -29,8 +29,9 @@ import type {
   WidthMethod,
 } from "@opentui/core";
 import type { CliTheme } from "./theme.ts";
-import { completionTrigger, discoverMentionFiles } from "@nyte-ai/core";
-import type { MentionFile } from "@nyte-ai/core";
+import { completionTrigger } from "@nyte-ai/core";
+import { discoverMentionFiles } from "@nyte-ai/core/files";
+import type { MentionFile } from "@nyte-ai/core/files";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import fuzzysort from "fuzzysort";
 import { cellOffset } from "./width.ts";
@@ -68,7 +69,7 @@ export type ComposerPaste =
 
 type ClipboardContent = { readonly mime: "image/png" | "text/plain"; readonly data: string };
 
-/** Based on https://github.com/anomalyco/opencode/blob/283258e95b0a534edac3efeb9762e65134b4634c/packages/tui/src/clipboard.ts */
+/** Based on https://github.com/anomalyco/opencode/blob/0643a5638e0cd02234e73f176771527d7600faf7/packages/tui/src/clipboard.ts */
 export function createTuiClipboard(renderer: RendererClipboardBoundary) {
   return createClipboardAdapter(
     createClipboard({
@@ -108,7 +109,8 @@ export function createClipboardAdapter(clipboard: ClipboardService) {
       throw new Error(`Unexpected clipboard MIME type: ${result.representation.mimeType}`);
     },
     async write(text: string): Promise<void> {
-      const result = await clipboard.writeText(text, {
+      // OpenTUI rejects NUL before any destination; host clipboard text cannot contain it.
+      const result = await clipboard.writeText(text.replaceAll("\0", ""), {
         destination: "all-available",
         selection: "clipboard",
       });

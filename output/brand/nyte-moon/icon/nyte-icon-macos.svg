@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <path id="tile" d="M924 512 L923 667 L921 717 L918 752 L914 780 L908 804 L901 824 L892 842 L882 857 L871 871 L857 882 L842 892 L824 901 L804 908 L780 914 L752 918 L717 921 L667 923 L512 924 L357 923 L307 921 L272 918 L244 914 L220 908 L200 901 L182 892 L167 882 L153 871 L142 857 L132 842 L123 824 L116 804 L110 780 L106 752 L103 717 L101 667 L100 512 L101 357 L103 307 L106 272 L110 244 L116 220 L123 200 L132 182 L142 167 L153 153 L167 142 L182 132 L200 123 L220 116 L244 110 L272 106 L307 103 L357 101 L512 100 L667 101 L717 103 L752 106 L780 110 L804 116 L824 123 L842 132 L857 142 L871 153 L882 167 L892 182 L901 200 L908 220 L914 244 L918 272 L921 307 L923 357Z"/>
+    <path id="moon" d="M528.9 214.6 A304 304 0 1 0 812.3 668.2 A268 268 0 0 1 528.9 214.6Z"/>
+    <clipPath id="tileClip"><use href="#tile"/></clipPath>
+    <clipPath id="moonClip"><use href="#moon"/></clipPath>
+    <linearGradient id="tileFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2446"/><stop offset="1" stop-color="#090c1b"/></linearGradient>
+    <radialGradient id="tileLight" cx="0.25" cy="0.08" r="0.95"><stop offset="0" stop-color="#ffffff" stop-opacity="0.13"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.30"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#000000" stop-opacity="0.4"/></linearGradient>
+    <linearGradient id="amber" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#ffefc2"/><stop offset="0.4" stop-color="#ffcb58"/><stop offset="1" stop-color="#ec8f26"/></linearGradient>
+    <linearGradient id="bevelLight" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/><stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="bevelDark" x1="0" y1="0" x2="1" y2="1"><stop offset="0.45" stop-color="#7a3d05" stop-opacity="0"/><stop offset="1" stop-color="#7a3d05" stop-opacity="0.7"/></linearGradient>
+    <filter id="bloom" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="22"/></filter>
+    <filter id="edgeSoft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2"/></filter>
+    <filter id="spec" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0"/></filter>
+  </defs>
+  <g clip-path="url(#tileClip)">
+    <use href="#tile" fill="url(#tileFill)"/>
+    <use href="#tile" fill="url(#tileLight)"/>
+    <rect x="100" y="100" width="824" height="824" filter="url(#grain)" opacity="0.07"/>
+
+    <use href="#moon" fill="#ffb648" opacity="0.55" filter="url(#bloom)"/>
+    <use href="#moon" fill="#03061a" opacity="0.8" transform="translate(12 26)" filter="url(#shadow)"/>
+
+    <use href="#moon" fill="url(#amber)"/>
+    <g clip-path="url(#moonClip)">
+      <use href="#moon" fill="none" stroke="url(#bevelLight)" stroke-width="14" filter="url(#edgeSoft)"/>
+      <use href="#moon" fill="none" stroke="url(#bevelDark)" stroke-width="16" filter="url(#edgeSoft)"/>
+      <ellipse cx="378" cy="344" rx="112" ry="46" transform="rotate(-50 378 344)" fill="#ffffff" opacity="0.38" filter="url(#spec)"/>
+    </g>
+
+    <use href="#tile" fill="none" stroke="url(#rim)" stroke-width="5"/>
+  </g>
+</svg>

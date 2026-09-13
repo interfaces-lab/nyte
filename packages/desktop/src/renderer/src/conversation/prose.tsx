@@ -1,15 +1,17 @@
 /**
- * Streaming Markdown is parsed and hardened by Streamdown. Nyte supplies the
+ * LobeHub Streamdown renders Markdown with raw HTML disabled. Nyte supplies the
  * semantic components so links still cross the desktop host boundary and
  * fenced code paints immediately and highlights in a worker.
  */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import * as stylex from "@stylexjs/stylex";
-import { Children, isValidElement, memo } from "react";
+import { props } from "@stylexjs/stylex";
+import { Children, isValidElement, memo, useSyncExternalStore } from "react";
 import type { ComponentProps, ReactElement, ReactNode } from "react";
-import { Streamdown } from "streamdown";
-import type { Components, ExtraProps } from "streamdown";
+import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
+import type { Components, ExtraProps } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remend from "remend";
 import { nyte } from "../nyte.ts";
 import { CodeBlock } from "./code-block.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
@@ -38,21 +40,18 @@ function MarkdownPre({
   children,
   className: _className,
   node: _node,
-  ...props
+  ...elementProps
 }: MarkdownPreProps): ReactElement {
   const child = Children.toArray(children)[0];
   if (Children.count(children) === 1 && isValidElement<ComponentProps<"code">>(child)) {
     const raw = nodeText(child.props.children);
     const code = raw.endsWith("\n") ? raw.slice(0, -1) : raw;
-    const language =
-      "language" in child.props && typeof child.props.language === "string"
-        ? child.props.language
-        : codeLanguage(child.props.className);
+    const language = codeLanguage(child.props.className);
     if (language.toLocaleLowerCase() === "mermaid") return <MermaidDiagram source={code} />;
     return <CodeBlock code={code} lang={language} />;
   }
   return (
-    <pre {...props} data-nyte-scrollport {...stylex.props(proseStyles.fallbackPre)}>
+    <pre {...elementProps} data-nyte-scrollport {...props(proseStyles.fallbackPre)}>
       {children}
     </pre>
   );
@@ -62,11 +61,11 @@ function MarkdownTable({
   children,
   className: _className,
   node: _node,
-  ...props
+  ...elementProps
 }: MarkdownTableProps): ReactElement {
   return (
-    <div data-nyte-scrollport data-prose-table {...stylex.props(proseStyles.tableWrap)}>
-      <table {...props} {...stylex.props(proseStyles.table)}>
+    <div data-nyte-scrollport data-prose-table {...props(proseStyles.tableWrap)}>
+      <table {...elementProps} {...props(proseStyles.table)}>
         {children}
       </table>
     </div>
@@ -74,39 +73,39 @@ function MarkdownTable({
 }
 
 const markdownComponents = {
-  p: ({ node: _node, className: _className, ...props }) => (
-    <p {...props} {...stylex.props(proseStyles.measure, proseStyles.paragraph)} />
+  p: ({ node: _node, className: _className, ...elementProps }) => (
+    <p {...elementProps} {...props(proseStyles.measure, proseStyles.paragraph)} />
   ),
-  h1: ({ node: _node, className: _className, ...props }) => (
-    <h1 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h1)} />
+  h1: ({ node: _node, className: _className, ...elementProps }) => (
+    <h1 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h1)} />
   ),
-  h2: ({ node: _node, className: _className, ...props }) => (
-    <h2 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h2)} />
+  h2: ({ node: _node, className: _className, ...elementProps }) => (
+    <h2 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h2)} />
   ),
-  h3: ({ node: _node, className: _className, ...props }) => (
-    <h3 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h3)} />
+  h3: ({ node: _node, className: _className, ...elementProps }) => (
+    <h3 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h3)} />
   ),
-  h4: ({ node: _node, className: _className, ...props }) => (
-    <h4 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
+  h4: ({ node: _node, className: _className, ...elementProps }) => (
+    <h4 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h4)} />
   ),
-  h5: ({ node: _node, className: _className, ...props }) => (
-    <h5 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h5)} />
+  h5: ({ node: _node, className: _className, ...elementProps }) => (
+    <h5 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h5)} />
   ),
-  h6: ({ node: _node, className: _className, ...props }) => (
-    <h6 {...props} {...stylex.props(proseStyles.measure, proseStyles.heading, proseStyles.h6)} />
+  h6: ({ node: _node, className: _className, ...elementProps }) => (
+    <h6 {...elementProps} {...props(proseStyles.measure, proseStyles.heading, proseStyles.h6)} />
   ),
-  strong: ({ node: _node, className: _className, ...props }) => (
-    <strong {...props} {...stylex.props(proseStyles.strong)} />
+  strong: ({ node: _node, className: _className, ...elementProps }) => (
+    <strong {...elementProps} {...props(proseStyles.strong)} />
   ),
-  inlineCode: ({ node: _node, className: _className, ...props }) => (
-    <code {...props} {...stylex.props(proseStyles.inlineCode)} />
+  code: ({ node: _node, className: _className, ...elementProps }) => (
+    <code {...elementProps} {...props(proseStyles.inlineCode)} />
   ),
-  a: ({ node: _node, className: _className, onClick: _onClick, href, ...props }) => (
+  a: ({ node: _node, className: _className, onClick: _onClick, href, ...elementProps }) => (
     <a
-      {...props}
+      {...elementProps}
       href={href}
       title={href}
-      {...stylex.props(proseStyles.link)}
+      {...props(proseStyles.link)}
       onClick={(event) => {
         if (href === undefined) return;
         event.preventDefault();
@@ -114,35 +113,45 @@ const markdownComponents = {
       }}
     />
   ),
-  ul: ({ node: _node, className: _className, ...props }) => (
-    <ul {...props} {...stylex.props(proseStyles.measure, proseStyles.list)} />
+  ul: ({ node: _node, className: _className, ...elementProps }) => (
+    <ul {...elementProps} {...props(proseStyles.measure, proseStyles.list)} />
   ),
-  ol: ({ node: _node, className: _className, ...props }) => (
-    <ol {...props} {...stylex.props(proseStyles.measure, proseStyles.list)} />
+  ol: ({ node: _node, className: _className, ...elementProps }) => (
+    <ol {...elementProps} {...props(proseStyles.measure, proseStyles.list)} />
   ),
-  li: ({ node: _node, className: _className, ...props }) => (
-    <li {...props} {...stylex.props(proseStyles.listItem)} />
+  li: ({ node: _node, className: _className, ...elementProps }) => (
+    <li {...elementProps} {...props(proseStyles.listItem)} />
   ),
-  blockquote: ({ node: _node, className: _className, ...props }) => (
-    <blockquote {...props} {...stylex.props(proseStyles.measure, proseStyles.blockquote)} />
+  blockquote: ({ node: _node, className: _className, ...elementProps }) => (
+    <blockquote {...elementProps} {...props(proseStyles.measure, proseStyles.blockquote)} />
   ),
-  hr: ({ node: _node, className: _className, ...props }) => (
-    <hr {...props} {...stylex.props(proseStyles.rule)} />
+  hr: ({ node: _node, className: _className, ...elementProps }) => (
+    <hr {...elementProps} {...props(proseStyles.rule)} />
   ),
   pre: MarkdownPre,
   table: MarkdownTable,
-  th: ({ node: _node, className: _className, ...props }) => (
-    <th {...props} {...stylex.props(proseStyles.cell, proseStyles.headerCell)} />
+  th: ({ node: _node, className: _className, ...elementProps }) => (
+    <th {...elementProps} {...props(proseStyles.cell, proseStyles.headerCell)} />
   ),
-  td: ({ node: _node, className: _className, ...props }) => (
-    <td {...props} {...stylex.props(proseStyles.cell)} />
+  td: ({ node: _node, className: _className, ...elementProps }) => (
+    <td {...elementProps} {...props(proseStyles.cell)} />
   ),
   img: ({ node: _node, className: _className, alt, title: _title, ..._props }) => (
-    <span {...stylex.props(proseStyles.imageLabel)}>{alt ?? "image"}</span>
+    <span {...props(proseStyles.imageLabel)}>{alt ?? "image"}</span>
   ),
 } satisfies Components;
 
-const proseClassName = stylex.props(proseStyles.root).className;
+const remarkPlugins = [remarkGfm];
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 export const Prose = memo(function Prose({
   markdown,
@@ -151,20 +160,27 @@ export const Prose = memo(function Prose({
   markdown: string;
   streaming?: boolean;
 }): ReactElement {
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    prefersReducedMotion,
+    () => true,
+  );
   return (
-    <Streamdown
-      mode={streaming ? "streaming" : "static"}
-      parseIncompleteMarkdown={streaming}
-      isAnimating={streaming}
-      animated={false}
-      components={markdownComponents}
-      controls={false}
-      linkSafety={{ enabled: false }}
-      lineNumbers={false}
-      skipHtml
-      className={proseClassName}
-    >
-      {markdown}
-    </Streamdown>
+    <div {...props(proseStyles.root)}>
+      {streaming && !reducedMotion ? (
+        <Streamdown
+          content={markdown}
+          smoothing="realtime"
+          components={markdownComponents}
+          remarkPlugins={remarkPlugins}
+          skipHtml
+        />
+      ) : (
+        // Whole-document parsing preserves reference links and footnotes in saved turns.
+        <CachedMarkdown components={markdownComponents} remarkPlugins={remarkPlugins} skipHtml>
+          {streaming ? remend(markdown) : markdown}
+        </CachedMarkdown>
+      )}
+    </div>
   );
 });

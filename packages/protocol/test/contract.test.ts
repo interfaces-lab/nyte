@@ -151,6 +151,27 @@ test("a commit event carries the whole message, and a mangled one is refused wit
   assert.ok(issues.some((issue) => issue.path.startsWith("/item/commit/body")));
 });
 
+test("a submission key rides on the pending item, the commit, and the user part, and stays optional", () => {
+  const pending = { change: "abc", lane: "steer", at: 1, content: "hi" };
+  assert.ok(Value.Check(schemas.PendingItem, pending));
+  assert.ok(Value.Check(schemas.PendingItem, { ...pending, key: "outbox-1" }));
+  assert.ok(!Value.Check(schemas.PendingItem, { ...pending, key: 7 }));
+  const commit = {
+    kind: "commit",
+    parent: null,
+    change: "abc",
+    key: "outbox-1",
+    body: { kind: "message", message: { role: "user", content: "hi", timestamp: 1 } },
+    at: 1,
+  };
+  assert.ok(Value.Check(schemas.Commit, commit));
+  assert.ok(!Value.Check(schemas.Commit, { ...commit, key: null }));
+  const part = { kind: "user", commit: "abc", parent: null, content: "hi" };
+  assert.ok(Value.Check(schemas.UserTurnPart, part));
+  assert.ok(Value.Check(schemas.UserTurnPart, { ...part, key: "outbox-1" }));
+  assert.ok(!Value.Check(schemas.UserTurnPart, { ...part, key: 7 }));
+});
+
 test("strict inputs refuse unknown keys, including an own __proto__ key parsed from JSON", () => {
   const input = OPERATIONS["sessions.get"].input;
   assert.ok(Value.Check(input, { sessionId: "s" }));

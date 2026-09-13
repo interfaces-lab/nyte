@@ -113,19 +113,27 @@ export function requireProvider(models: Models, providerId: string): Provider {
   return provider;
 }
 
-/** Default choice is client policy; model capabilities still come from @nyte-ai/ai. */
-export function defaultModel(models: Models, providerId: string): Model<Api> {
-  const providerModels = models.getModels(providerId);
+/** Choose the provider's preferred model from the exact catalog the caller permits. */
+export function defaultModel(
+  modelCandidates: readonly Model<Api>[],
+  providerId: string,
+): Model<Api> {
+  const providerModels = modelCandidates.filter((model) => model.provider === providerId);
   const preferredId = defaultModelPerProvider[providerId];
   const model =
     providerModels.find((candidate) => candidate.id === preferredId) ?? providerModels.at(0);
-  if (model === undefined) throw new Error(`${providerId} does not expose any models`);
+  if (model === undefined) throw new Error(`${providerId} does not expose any available models`);
   return model;
 }
 
-export function requireModel(models: Models, providerId: string, modelId?: string): Model<Api> {
-  if (modelId === undefined) return defaultModel(models, providerId);
-  const model = models.getModel(providerId, modelId);
-  if (model === undefined) throw new Error(`Unknown ${providerId} model: ${modelId}`);
+export function requireModel(
+  modelCandidates: readonly Model<Api>[],
+  providerId: string,
+  modelId: string,
+): Model<Api> {
+  const model = modelCandidates.find(
+    (candidate) => candidate.provider === providerId && candidate.id === modelId,
+  );
+  if (model === undefined) throw new Error(`Unavailable ${providerId} model: ${modelId}`);
   return model;
 }

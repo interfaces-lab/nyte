@@ -19,6 +19,7 @@ import { jobStateLabel } from "../conversation/jobs-view.ts";
 import { modelDisplayName } from "../conversation/model-picker-state.ts";
 import { TurnView } from "../conversation/turn-view.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
+import { rendersInTranscript } from "../conversation/transcript-rows.ts";
 import { useSessionLive } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import { nyte } from "../nyte.ts";
@@ -45,7 +46,7 @@ const styles = stylex.create({
     paddingInline: 8,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: t.borderSubtle,
+    borderBottomColor: t.strokeTertiary,
   },
   picker: {
     appearance: "none",
@@ -210,17 +211,13 @@ function AgentTranscript({
   readonly position: AgentScrollPosition;
   readonly onPositionChange: (position: AgentScrollPosition) => void;
 }): ReactElement {
-  const catalog = useCatalog();
+  const catalog = useCatalog(job.childSessionId);
   const snapshot = useSessionSnapshot(job.childSessionId);
-  const { refetch } = snapshot;
-  // A retained cache can predate a hidden interval. Reconnect only after a
-  // fresh coherent read; failed reads retain the existing retry affordance.
-  useEffect(() => {
-    void refetch({ cancelRefetch: false });
-  }, [refetch]);
-  const cursor = snapshot.isSuccess && snapshot.isFetchedAfterMount ? snapshot.data.seq : undefined;
-  const live = useSessionLive(job.childSessionId, cursor);
-  const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
+  // A retained cache can predate a hidden interval. The observer opens on a
+  // fresh coherent read and watches from it; a failed read keeps the retry
+  // affordance, and closing the panel closes the observation.
+  const live = useSessionLive(job.childSessionId);
+  const turns = (snapshot.data?.transcript ?? EMPTY_TURNS).filter(rendersInTranscript);
   const working = job.state === "running";
   const now = useNow(working);
   const lastTurn = turns.at(-1);

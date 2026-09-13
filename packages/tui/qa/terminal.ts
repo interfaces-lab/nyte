@@ -15,6 +15,10 @@ import { createTestRenderer } from "@opentui/core/testing";
 import { keyStrokes } from "../src/constants.ts";
 import type { InputRecord, Terminal, TerminalOptions } from "./types.ts";
 
+/** Frames arrive as DEC 2026 synchronized updates; a chunk without one is a complete update too. */
+// eslint-disable-next-line no-control-regex
+const SYNCHRONIZED_UPDATE = /\x1b\[\?2026([hl])/gu;
+
 function dimensions(width: number, height: number) {
   if (![width, height].every((value) => Number.isInteger(value) && value > 0 && value <= 65535)) {
     throw new Error("Terminal dimensions must be integers from 1 to 65535.");
@@ -51,6 +55,10 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   const inputs: InputRecord[] = [];
   const chunks: Terminal["chunks"] = [];
   const pending: Uint8Array[] = [];
+  const updateAtInput = new WeakMap<InputRecord, number>();
+  let controlTail = "";
+  let synchronizedUpdateOpen = false;
+  let completedUpdates = 0;
   let pty: Bun.Terminal | undefined;
   let connected = false;
   let closed = false;
@@ -86,19 +94,6 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
   void exited.catch(() => {});
   let closing: Promise<void> | undefined;
   try {
-    pty = new Bun.Terminal({
-      cols: options.width,
-      rows: options.height,
-      data(transport, data) {
-        // The callback can run before spawn returns. Query replies must use this
-        // ready PTY, rather than an optional child reference that drops them.
-        pty = transport;
-        connected = true;
-        for (const bytes of pending.splice(0)) transport.write(bytes);
-        chunks.push({ at: performance.now(), base64: Buffer.from(data).toString("base64") });
-        terminal.write(data);
-      },
-    });
     child = Bun.spawn(
       [
         process.execPath,
@@ -111,7 +106,29 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
       {
         cwd: options.cwd,
         env: { ...options.env, TERM: "xterm-256color", COLORTERM: "truecolor" },
-        terminal: pty,
+        // Bun 1.4.2 does not assign a controlling terminal when given an existing
+        // Bun.Terminal. Inline creation gives the group SIGWINCH on PTY resize.
+        terminal: {
+          cols: options.width,
+          rows: options.height,
+          data(transport, data) {
+            // Query replies can arrive before spawn returns.
+            pty = transport;
+            connected = true;
+            for (const bytes of pending.splice(0)) transport.write(bytes);
+            chunks.push({ at: performance.now(), base64: Buffer.from(data).toString("base64") });
+            const controls = `${controlTail}${Buffer.from(data).toString("latin1")}`;
+            const modes = [...controls.matchAll(SYNCHRONIZED_UPDATE)].map((match) => match[1]);
+            if (modes.length === 0 && !synchronizedUpdateOpen) completedUpdates += 1;
+            for (const mode of modes) {
+              synchronizedUpdateOpen = mode === "h";
+              if (mode === "l") completedUpdates += 1;
+            }
+            // Up to seven bytes of "\x1b[?2026" may still await their final h or l.
+            controlTail = controls.slice(-7);
+            terminal.write(data);
+          },
+        },
         detached: true,
         ipc(message: unknown, supervisor) {
           if (typeof message === "object" && message !== null && "kind" in message) {
@@ -154,8 +171,11 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
         },
       },
     );
-    connected = true;
-    for (const bytes of pending.splice(0)) pty.write(bytes);
+    pty ??= child.terminal;
+    if (pty !== undefined) {
+      connected = true;
+      for (const bytes of pending.splice(0)) pty.write(bytes);
+    }
   } catch (error) {
     try {
       pty?.close();
@@ -194,6 +214,7 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
     const before = terminal.screen();
     const input: InputRecord = { action, before, at: performance.now() };
     inputs.push(input);
+    updateAtInput.set(input, completedUpdates);
     send();
     return input;
   }
@@ -285,6 +306,8 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
         };
         const check = () => {
           try {
+            const requiredUpdate = input === undefined ? 0 : (updateAtInput.get(input) ?? 0);
+            if (synchronizedUpdateOpen || completedUpdates <= requiredUpdate) return;
             const screen = finalScreen ?? terminal.screen();
             if (!predicate(screen)) return;
             if (input && input.matchedAt === undefined) {
@@ -312,6 +335,19 @@ export async function open(options: TerminalOptions): Promise<Terminal> {
         renderer.on(CliRenderEvents.FRAME, check);
         check();
       });
+    },
+    observe(listener) {
+      // Checked once per emulator frame: complete updates that finished between two
+      // frames are seen as the later one, so the listener sees observed frames, not
+      // every complete update the child painted.
+      let seen = completedUpdates;
+      const check = () => {
+        if (synchronizedUpdateOpen || completedUpdates <= seen) return;
+        seen = completedUpdates;
+        listener(finalScreen ?? terminal.screen());
+      };
+      renderer.on(CliRenderEvents.FRAME, check);
+      return () => renderer.off(CliRenderEvents.FRAME, check);
     },
     close() {
       closing ??= (async () => {

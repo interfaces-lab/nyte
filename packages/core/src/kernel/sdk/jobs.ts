@@ -288,9 +288,9 @@ export function createJobs(input: {
   const receipt = (job: JobInfo): AgentToolResult<unknown> => ({
     content: toolResultContent(
       job.kind === "subagent"
-        ? `Started background subagent ${job.title} as ${job.id}. Finish your turn; its report arrives as a new message when it ends.`
+        ? `Started background subagent ${job.title} as ${job.id}. Its report arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished. When you need the report before continuing, call wait_task with this job id instead of finishing your turn.`
         : [
-            `Started background command ${job.id}. It keeps running after this turn; its exit is reported in a later message.`,
+            `Started background command ${job.id}. It keeps running after this turn. Its exit arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished.`,
             job.output === "" ? "No output yet." : `Output so far:\n${job.output}`,
           ].join("\n"),
     ),
@@ -720,6 +720,34 @@ export function createJobs(input: {
     /** The job a tool call owns, by the same derivation that named it. */
     async find(runId: string, callId: string): Promise<JobInfo | undefined> {
       return (await read(jobId(runId, callId)))?.record.info;
+    },
+    /**
+     * The job's terminal record, watched without owning the job. Aborting the
+     * signal ends only this observation; the job and its work are untouched.
+     */
+    waitFor(id: string, signal?: AbortSignal): Promise<JobRecord | undefined> {
+      return track(
+        (async () => {
+          const watching = AbortSignal.any(
+            signal === undefined ? [shutdown.signal] : [shutdown.signal, signal],
+          );
+          watching.throwIfAborted();
+          const afterSeq = await input.session.events.last();
+          const current = await read(id);
+          if (current === undefined || current.record.info.state !== "running") {
+            return current?.record;
+          }
+          for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
+            if (event.kind !== "ref" || event.name !== JOB_PREFIX + id) continue;
+            const stored = await read(id);
+            if (stored === undefined || stored.record.info.state !== "running") {
+              return stored?.record;
+            }
+          }
+          watching.throwIfAborted();
+          throw new Error("Job event stream ended before the job finished");
+        })(),
+      );
     },
     background(id: string): Promise<JobActionOutcome> {
       return track(

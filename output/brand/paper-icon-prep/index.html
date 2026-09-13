@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Nyte / Paper preparation</title>
+    <style>
+      body {
+        margin: 0;
+        background: #17191f;
+        color: #e9ecf2;
+        font: 14px Arial;
+        padding: 40px;
+      }
+      main {
+        max-width: 1000px;
+        margin: auto;
+      }
+      h1 {
+        font-weight: 400;
+        font-size: 32px;
+      }
+      p {
+        color: #98a4b9;
+        line-height: 1.6;
+      }
+      .row {
+        display: flex;
+        gap: 60px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .hero {
+        width: min(430px, 80vw);
+        border-radius: 22.5%;
+      }
+      .sizes {
+        display: flex;
+        gap: 26px;
+        align-items: center;
+      }
+      .sizes img {
+        border-radius: 22.5%;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        font: 11px monospace;
+        color: #8893a6;
+        margin-top: 15px;
+      }
+      a {
+        color: #ffc96b;
+      }
+      footer {
+        margin-top: 35px;
+        font: 11px monospace;
+        color: #8b95a9;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Nyte / Banded moon</h1>
+      <p>
+        Local construction draft for a single Paper insertion. Four painted shapes, with shared
+        geometry for the reflection.
+      </p>
+      <div class="row">
+        <img class="hero" src="nyte-banded-moon.svg" alt="Amber banded moon on midnight" />
+        <div class="sizes">
+          <figure>
+            <img width="16" height="16" src="nyte-banded-moon.svg" alt="Icon at 16 pixels" />
+            <figcaption>16px</figcaption>
+          </figure>
+          <figure>
+            <img width="32" height="32" src="nyte-banded-moon.svg" alt="Icon at 32 pixels" />
+            <figcaption>32px</figcaption>
+          </figure>
+          <figure>
+            <img width="64" height="64" src="nyte-banded-moon.svg" alt="Icon at 64 pixels" />
+            <figcaption>64px</figcaption>
+          </figure>
+          <figure>
+            <img width="128" height="128" src="nyte-banded-moon.svg" alt="Icon at 128 pixels" />
+            <figcaption>128px</figcaption>
+          </figure>
+        </div>
+      </div>
+      <p>
+        <a href="nyte-banded-moon.svg" download>SVG source</a> ·
+        <a href="brief.md">Construction and Paper call plan</a>
+      </p>
+      <footer>
+        Square artwork; rounded corners shown only for preview. No Paper MCP calls made.
+      </footer>
+    </main>
+  </body>
+</html>

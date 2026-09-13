@@ -13,7 +13,12 @@ export interface LandingMessage {
 export type TranscriptRow =
   | { readonly kind: "skeleton"; readonly key: "skeleton" }
   | { readonly kind: "error"; readonly key: "error" }
-  | { readonly kind: "turn"; readonly key: string; readonly turn: Turn; readonly trailing: boolean }
+  | {
+      readonly kind: "turn";
+      readonly key: string;
+      readonly turn: RenderedTurn;
+      readonly trailing: boolean;
+    }
   | { readonly kind: "landing"; readonly key: string; readonly content: UserTurnPart["content"] }
   | { readonly kind: "retry"; readonly key: "retry"; readonly message: string }
   | { readonly kind: "live"; readonly key: "live"; readonly working: boolean }
@@ -22,6 +27,19 @@ export type TranscriptRow =
 
 export function turnRowKey(turn: Turn): string {
   return turn.kind === "turn" ? turn.id : `${turn.kind}:${turn.commit}`;
+}
+
+/** A turn the transcript draws. A config turn can never reach a row. */
+export type RenderedTurn = Exclude<Turn, { readonly kind: "config" }>;
+
+/**
+ * Config turns draw nothing: every turn already shows the model it ran with,
+ * so a row for one reserved its estimated height and painted an empty band.
+ * This is the transcript's single answer to which turns it renders; the thread
+ * screen reads it too, so the run indicator agrees with the last drawn turn.
+ */
+export function rendersInTranscript(turn: Turn): turn is RenderedTurn {
+  return turn.kind !== "config";
 }
 
 export function transcriptRows({
@@ -43,12 +61,18 @@ export function transcriptRows({
   readonly selections: number;
 }): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
-  if (loading && turns.length === 0 && landing.length === 0) {
+  const rendered = turns.filter(rendersInTranscript);
+  if (loading && rendered.length === 0 && landing.length === 0) {
     rows.push({ kind: "skeleton", key: "skeleton" });
   }
   if (failed) rows.push({ kind: "error", key: "error" });
-  for (const [index, turn] of turns.entries()) {
-    rows.push({ kind: "turn", key: turnRowKey(turn), turn, trailing: index === turns.length - 1 });
+  for (const [index, turn] of rendered.entries()) {
+    rows.push({
+      kind: "turn",
+      key: turnRowKey(turn),
+      turn,
+      trailing: index === rendered.length - 1,
+    });
   }
   for (const message of landing) {
     rows.push({ kind: "landing", key: message.key, content: message.content });

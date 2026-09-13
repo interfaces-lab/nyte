@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { foldEvent, stateFromSnapshot } from "../src/client/session-state.ts";
+import { foldEvent, stateFromSnapshot, waitingCall } from "../src/client/session-state.ts";
 import { MAIN, sessionId, type Selection, type SessionSnapshot } from "../src/kernel/sdk/types.ts";
 
 const SESSION = sessionId("waiting-test");
@@ -43,28 +43,29 @@ function snapshot(parked: SessionSnapshot["parked"]): SessionSnapshot {
   };
 }
 
-test("a restored snapshot asks about the parked call that carries a selection", () => {
-  const state = stateFromSnapshot(
-    snapshot([
-      {
-        runId: "run",
-        callId: "task",
-        waitId: "wait-task",
-        tool: "task",
-        args: { model: "fixture/script", prompt: "Investigate" },
-      },
-      {
-        runId: "run",
-        callId: "q",
-        waitId: "wait-q",
-        tool: "anything",
-        args: {},
-        selection,
-        until: 50,
-      },
-    ]),
-  );
-  assert.deepEqual(state.waiting, {
+test("a restored snapshot keeps every parked call; the composer answers the newest ask", () => {
+  const parked: SessionSnapshot["parked"] = [
+    {
+      runId: "run",
+      callId: "task",
+      waitId: "wait-task",
+      tool: "task",
+      args: { model: "fixture/script", prompt: "Investigate" },
+    },
+    { runId: "run", callId: "p", waitId: "wait-p", tool: "anything", args: {}, selection },
+    {
+      runId: "run",
+      callId: "q",
+      waitId: "wait-q",
+      tool: "anything",
+      args: {},
+      selection,
+      until: 50,
+    },
+  ];
+  const state = stateFromSnapshot(snapshot(parked));
+  assert.equal(state.parked, parked);
+  assert.deepEqual(waitingCall(state), {
     sessionId: SESSION,
     runId: "run",
     callId: "q",
@@ -72,16 +73,39 @@ test("a restored snapshot asks about the parked call that carries a selection", 
     selection,
     until: 50,
   });
-  assert.equal(stateFromSnapshot(snapshot(undefined)).waiting, undefined);
+  assert.deepEqual(stateFromSnapshot(snapshot(undefined)).parked, []);
   assert.equal(
-    stateFromSnapshot(
-      snapshot([{ runId: "run", callId: "task", waitId: "wait-task", tool: "task", args: {} }]),
-    ).waiting,
+    waitingCall(
+      stateFromSnapshot(
+        snapshot([{ runId: "run", callId: "task", waitId: "wait-task", tool: "task", args: {} }]),
+      ),
+    ),
     undefined,
   );
+
+  // A run's terminal phase settles every ask; another run's phase does not touch them.
+  const other = foldEvent(state, {
+    seq: 2,
+    kind: "run",
+    head: MAIN,
+    run: { ...activeRun, runId: "other" },
+  });
+  assert.ok(other.kind === "state");
+  assert.deepEqual(other.state.parked, []);
+  const done = foldEvent(state, {
+    seq: 2,
+    kind: "run",
+    head: MAIN,
+    run: { ...activeRun, phase: { kind: "done" } },
+  });
+  assert.ok(done.kind === "state");
+  assert.deepEqual(done.state.parked, []);
+  const still = foldEvent(state, { seq: 2, kind: "run", head: MAIN, run: activeRun });
+  assert.ok(still.kind === "state");
+  assert.equal(still.state.parked, state.parked);
 });
 
-test("a waiting effect takes over the composer only when it asks something", () => {
+test("a waiting effect requests a snapshot only when it asks something", () => {
   const idle = stateFromSnapshot(snapshot(undefined));
   const started = foldEvent(idle, { seq: 2, kind: "run", head: MAIN, run: activeRun });
   assert.ok(started.kind === "state");
@@ -93,10 +117,33 @@ test("a waiting effect takes over the composer only when it asks something", () 
     callId: "task",
     waitId: "wait-task",
     tool: "task",
-    args: {},
+    args: { prompt: "Investigate" },
+    until: 90,
   });
   assert.ok(background.kind === "state");
-  assert.equal(background.state.waiting, undefined);
+  // A background wait parks from its own event, complete, and settles the same way.
+  assert.deepEqual(background.state.parked, [
+    {
+      runId: "run",
+      callId: "task",
+      waitId: "wait-task",
+      tool: "task",
+      args: { prompt: "Investigate" },
+      until: 90,
+    },
+  ]);
+  assert.equal(waitingCall(background.state), undefined);
+  const settled = foldEvent(background.state, {
+    seq: 4,
+    kind: "effect",
+    state: "result",
+    runId: "run",
+    callId: "task",
+    tool: "task",
+    args: {},
+  });
+  assert.ok(settled.kind === "state");
+  assert.deepEqual(settled.state.parked, []);
 
   const asked = foldEvent(background.state, {
     seq: 4,
@@ -109,30 +156,10 @@ test("a waiting effect takes over the composer only when it asks something", () 
     args: {},
     selection,
   });
-  assert.ok(asked.kind === "state");
-  assert.deepEqual(asked.state.waiting, {
-    sessionId: SESSION,
-    runId: "run",
-    callId: "q",
-    waitId: "wait-q",
-    selection,
-  });
-
-  // A call cannot move waiting-to-waiting. A real re-park is preceded by a signal or expiry,
-  // which asks this fold for a fresh snapshot.
-  const settled = foldEvent(asked.state, {
-    seq: 5,
-    kind: "effect",
-    state: "signal",
-    runId: "run",
-    callId: "q",
-    tool: "anything",
-    args: {},
-  });
-  assert.equal(settled.kind, "resnapshot");
+  assert.equal(asked.kind, "resnapshot");
 });
 
-test("effect events from another head's run cannot replace or settle this head's call", () => {
+test("a replayed selection requests a snapshot and another run cannot replace this call", () => {
   const current = stateFromSnapshot(
     snapshot([
       {
@@ -156,10 +183,9 @@ test("effect events from another head's run cannot replace or settle this head's
     args: {},
     selection: { title: "Old question", choices: [{ id: "old", label: "Old" }] },
   });
-  assert.ok(stale.kind === "state");
-  assert.deepEqual(stale.state.waiting, current.waiting);
+  assert.equal(stale.kind, "resnapshot");
 
-  const foreignWait = foldEvent(stale.state, {
+  const foreignWait = foldEvent(current, {
     seq: 3,
     kind: "effect",
     state: "waiting",
@@ -171,7 +197,7 @@ test("effect events from another head's run cannot replace or settle this head's
     selection: { title: "Wrong head", choices: [{ id: "x", label: "Wrong" }] },
   });
   assert.ok(foreignWait.kind === "state");
-  assert.deepEqual(foreignWait.state.waiting, current.waiting);
+  assert.equal(foreignWait.state.parked, current.parked);
 
   const foreignSignal = foldEvent(foreignWait.state, {
     seq: 4,
@@ -183,5 +209,28 @@ test("effect events from another head's run cannot replace or settle this head's
     args: {},
   });
   assert.ok(foreignSignal.kind === "state");
-  assert.deepEqual(foreignSignal.state.waiting, current.waiting);
+  assert.equal(foreignSignal.state.parked, current.parked);
+
+  // A settled ask of this run has no wait generation on the wire; the snapshot decides.
+  const settled = foldEvent(current, {
+    seq: 5,
+    kind: "effect",
+    state: "result",
+    runId: "run",
+    callId: "q",
+    tool: "anything",
+    args: {},
+  });
+  assert.equal(settled.kind, "resnapshot");
+  const unlisted = foldEvent(current, {
+    seq: 5,
+    kind: "effect",
+    state: "result",
+    runId: "run",
+    callId: "task",
+    tool: "task",
+    args: {},
+  });
+  assert.ok(unlisted.kind === "state");
+  assert.equal(unlisted.state.parked, current.parked);
 });

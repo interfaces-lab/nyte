@@ -1,10 +1,6 @@
-import { createHash } from "node:crypto";
-import { lstat, open, readFile, realpath, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, matchesGlob, relative, resolve, sep } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { execFile } from "node:child_process";
-import { Script } from "node:vm";
-import { setTimeout } from "node:timers/promises";
-import { discoverMentionFiles } from "@nyte-ai/core";
 import { Compile } from "typebox/compile";
 import { Type } from "typebox";
 import type {
@@ -13,265 +9,18 @@ import type {
   WorkspaceEditorBridge,
   WorkspaceFormatInput,
   WorkspaceFormatResult,
-  WorkspaceSearchInput,
-  WorkspaceSearchResult,
 } from "../shared/workspace-editor.ts";
 import type { WorkspaceEditorRequest } from "../shared/ipc.ts";
 import { WORKSPACE_EDITOR_INPUT_SCHEMAS } from "./ipc-inputs.ts";
-import { TextDecoder } from "node:util";
-import type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "../shared/ipc.ts";
 import { ExpectedHostError, ipcFailure } from "./errors.ts";
+import {
+  MAX_WORKSPACE_FILE_BYTES,
+  readWorkspaceFile,
+  resolveWorkspaceFile,
+  searchWorkspaceFiles,
+} from "@nyte-ai/core/files";
 
-const MAX_WORKSPACE_FILE_BYTES = 2_000_000;
-const pendingFileWrites = new Map<string, Promise<WorkspaceFileSaveOutcome>>();
-
-function fileVersion(contents: Uint8Array): string {
-  return createHash("sha256").update(contents).digest("hex");
-}
-
-async function workspaceFilePath(workspacePath: string, path: string): Promise<string> {
-  const [workspace, file] = await Promise.all([
-    realpath(workspacePath),
-    realpath(resolve(workspacePath, path)),
-  ]);
-  const inside = relative(workspace, file);
-  if (inside === "" || isAbsolute(inside) || inside === ".." || inside.startsWith(`..${sep}`)) {
-    throw new ExpectedHostError({
-      code: "forbidden",
-      message: "File is outside the open workspace",
-    });
-  }
-  if (!(await lstat(file)).isFile())
-    throw new ExpectedHostError({
-      code: "invalid_input",
-      message: "Path is not a file",
-      issues: [],
-    });
-  return file;
-}
-
-export async function readWorkspaceFile(
-  workspacePath: string,
-  path: string,
-): Promise<WorkspaceFileDocument> {
-  const file = await workspaceFilePath(workspacePath, path);
-  // Read through a bounded handle so a growing file cannot allocate unbounded memory.
-  const handle = await open(file, "r");
-  try {
-    const size = (await handle.stat()).size;
-    if (size > MAX_WORKSPACE_FILE_BYTES) return { kind: "too_large", path, size };
-    const buffer = Buffer.alloc(MAX_WORKSPACE_FILE_BYTES + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      const result = await handle.read(buffer, length, buffer.length - length, null);
-      if (result.bytesRead === 0) break;
-      length += result.bytesRead;
-    }
-    if (length > MAX_WORKSPACE_FILE_BYTES) return { kind: "too_large", path, size: length };
-    const contents = buffer.subarray(0, length);
-    if (contents.includes(0)) return { kind: "binary", path, size: length };
-    let text: string;
-    try {
-      text = new TextDecoder("utf-8", { fatal: true }).decode(contents);
-    } catch {
-      return { kind: "binary", path, size: length };
-    }
-    return { kind: "text", path, contents: text, version: fileVersion(contents) };
-  } finally {
-    await handle.close();
-  }
-}
-
-export async function saveWorkspaceFile(
-  workspacePath: string,
-  input: { readonly path: string; readonly contents: string; readonly version: string },
-): Promise<WorkspaceFileSaveOutcome> {
-  const file = await workspaceFilePath(workspacePath, input.path);
-  // Tabs in different views may share a disk version. Serialize the check and write,
-  // not just the write, so only one of those drafts can acknowledge a successful save.
-  const pending = pendingFileWrites.get(file);
-  const write = (async (): Promise<WorkspaceFileSaveOutcome> => {
-    await pending?.catch(() => undefined);
-    const current = await readFile(file);
-    if (fileVersion(current) !== input.version) return { kind: "conflict" };
-    const contents = Buffer.from(input.contents, "utf8");
-    if (contents.byteLength > MAX_WORKSPACE_FILE_BYTES) {
-      throw new ExpectedHostError({
-        code: "payload_too_large",
-        message: "File is too large to save in the workbench",
-      });
-    }
-    await writeFile(file, contents);
-    return { kind: "saved", version: fileVersion(contents) };
-  })();
-  pendingFileWrites.set(file, write);
-  try {
-    return await write;
-  } finally {
-    if (pendingFileWrites.get(file) === write) pendingFileWrites.delete(file);
-  }
-}
-
-const searchMatches = Compile(
-  Type.Array(
-    Type.Object({
-      line: Type.Integer(),
-      column: Type.Integer(),
-      length: Type.Integer(),
-      snippet: Type.String(),
-      snippetColumn: Type.Integer(),
-    }),
-  ),
-);
-
-// Construct and run regexes inside the timed VM, not on Electron's unbounded main stack.
-// No workspace code or interpolated source enters this script.
-const searchScript = new Script(`
-  const expression = new RegExp(pattern, flags);
-  const wordBefore = /[\\p{L}\\p{N}_]$/u;
-  const wordAfter = /^[\\p{L}\\p{N}_]/u;
-  const matches = [];
-  const lines = text.split(/\\r?\\n/);
-  outer: for (let index = 0; index < lines.length; index++) {
-    const line = lines[index];
-    expression.lastIndex = 0;
-    let match;
-    while ((match = expression.exec(line)) !== null) {
-      const start = match.index;
-      const end = start + match[0].length;
-      if (!wholeWord || (!wordBefore.test(line.slice(0, start)) && !wordAfter.test(line.slice(end)))) {
-        const snippetStart = Math.max(0, start - 80);
-        matches.push({ line: index + 1, column: start + 1, length: match[0].length,
-          snippet: line.slice(snippetStart, snippetStart + 240), snippetColumn: snippetStart + 1 });
-        if (matches.length >= limit) break outer;
-      }
-      if (match[0].length === 0) {
-        const point = line.codePointAt(expression.lastIndex);
-        expression.lastIndex += point !== undefined && point > 0xffff ? 2 : 1;
-      }
-    }
-  }
-  matches;
-`);
-
-export async function searchWorkspaceFiles(
-  workspacePath: string,
-  input: WorkspaceSearchInput,
-  signal: AbortSignal = new AbortController().signal,
-): Promise<WorkspaceSearchResult> {
-  const pattern =
-    input.regex === true ? input.query : input.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const flags = input.caseSensitive === true ? "gu" : "giu";
-  try {
-    new RegExp(pattern, flags);
-  } catch {
-    throw new ExpectedHostError({
-      code: "invalid_input",
-      message: "Invalid search regular expression",
-      issues: [],
-    });
-  }
-  const started = performance.now();
-  const drafts = new Map<string, string>();
-  let draftBytes = 0;
-  for (const draft of input.drafts ?? []) {
-    draftBytes += Buffer.byteLength(draft.contents);
-    if (draftBytes > MAX_WORKSPACE_FILE_BYTES)
-      throw new ExpectedHostError({
-        code: "payload_too_large",
-        message: "Search drafts exceed 2 MB",
-      });
-    drafts.set(await workspaceFilePath(workspacePath, draft.path), draft.contents);
-  }
-  signal.throwIfAborted();
-  const candidates = await discoverMentionFiles(workspacePath);
-  const files: WorkspaceSearchResult["files"][number][] = [];
-  const skipped = { binary: 0, tooLarge: 0, unreadable: 0 };
-  const maxMatches = input.maxMatches ?? 500;
-  let matchCount = 0;
-  let bytes = 0;
-  // The mention API currently caps at 5,000 entries without carrying completion metadata.
-  let truncated = candidates.length >= 5_000;
-  for (const candidate of candidates) {
-    await setTimeout(0, undefined, { signal });
-    if (performance.now() - started > 5_000 || bytes >= 50_000_000) {
-      truncated = true;
-      break;
-    }
-    if (candidate.displayPath.endsWith("/")) continue;
-    if (
-      input.include !== undefined &&
-      input.include.length > 0 &&
-      !input.include.some((glob) => matchesGlob(candidate.displayPath, glob))
-    )
-      continue;
-    if (input.exclude?.some((glob) => matchesGlob(candidate.displayPath, glob)) === true) continue;
-    let document: WorkspaceFileDocument;
-    let draft: string | undefined;
-    try {
-      const file = await workspaceFilePath(workspacePath, candidate.path);
-      draft = drafts.get(file);
-      document =
-        draft === undefined
-          ? await readWorkspaceFile(workspacePath, file)
-          : { kind: "text", path: file, contents: draft, version: "" };
-    } catch {
-      skipped.unreadable += 1;
-      continue;
-    }
-    if (document.kind === "binary") {
-      skipped.binary += 1;
-      continue;
-    }
-    if (document.kind === "too_large") {
-      skipped.tooLarge += 1;
-      continue;
-    }
-    if (document.contents.includes("\0")) {
-      skipped.binary += 1;
-      continue;
-    }
-    bytes += Buffer.byteLength(document.contents);
-    let matches: ReturnType<typeof searchMatches.Parse>;
-    try {
-      matches = searchMatches.Parse(
-        searchScript.runInNewContext(
-          {
-            pattern,
-            flags,
-            wholeWord: input.wholeWord === true,
-            text: document.contents,
-            limit: maxMatches - matchCount + 1,
-          },
-          { timeout: 100, contextCodeGeneration: { strings: false, wasm: false } },
-        ),
-      );
-    } catch {
-      throw new ExpectedHostError({
-        code: "invalid_input",
-        message: "Search pattern exceeded its execution limit; simplify the expression",
-        issues: [],
-      });
-    }
-    signal.throwIfAborted();
-    if (matches.length === 0) continue;
-    const remaining = maxMatches - matchCount;
-    if (matches.length > remaining) truncated = true;
-    const kept = Array.from(matches.slice(0, remaining), (match) => ({ ...match }));
-    if (kept.length > 0)
-      files.push({
-        path: candidate.path,
-        displayPath: candidate.displayPath,
-        source: draft === undefined ? "disk" : "draft",
-        matches: kept,
-      });
-    matchCount += kept.length;
-    if (matches.length > remaining) break;
-  }
-  return { files, matchCount, truncated, skipped };
-}
-
-/** Fixed executable and argument arrays only. stdin formatting cannot replace the disk file. */
+/** Run Git and formatter CLIs without a shell. */
 function runFileCommand(input: {
   readonly executable: string;
   readonly args: readonly string[];
@@ -327,7 +76,7 @@ export async function blameWorkspaceFile(
   path: string,
 ): Promise<WorkspaceBlameResult> {
   const workspace = await realpath(workspacePath);
-  const file = await workspaceFilePath(workspace, path);
+  const file = await resolveWorkspaceFile(workspace, path);
   const document = await readWorkspaceFile(workspace, file);
   if (document.kind !== "text")
     return { kind: "unsupported", message: "Blame requires a text file under 2 MB" };
@@ -458,7 +207,7 @@ export async function formatWorkspaceFile(
   workspacePath: string,
   input: WorkspaceFormatInput,
 ): Promise<WorkspaceFormatResult> {
-  const file = await workspaceFilePath(workspacePath, input.path);
+  const file = await resolveWorkspaceFile(workspacePath, input.path);
   if (Buffer.byteLength(input.contents) > MAX_WORKSPACE_FILE_BYTES)
     return { kind: "error", message: "Contents exceed 2 MB" };
   const document = await readWorkspaceFile(workspacePath, file);

@@ -1,6 +1,6 @@
-import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Model } from "@nyte-ai/schema";
 
@@ -86,16 +86,17 @@ export async function createWorkspace(options: {
     }
     if (options.question === true) {
       const plugins = join(cwd, ".nyte", "plugins");
-      const modules = join(cwd, "node_modules", "@nyte-ai");
-      await mkdir(plugins, { recursive: true });
-      await mkdir(modules, { recursive: true });
-      // Resolve only the public package location. The compiled binary loads the plugin.
-      const pluginPackage = dirname(dirname(fileURLToPath(import.meta.resolve("@nyte-ai/plugin"))));
-      await symlink(pluginPackage, join(modules, "plugin"), "dir");
-      await copyFile(
-        new URL("./fixtures/question.ts", import.meta.url),
-        join(plugins, "question.ts"),
-      );
+      // Bundle the public example's dependencies, but use the binary's plugin API.
+      const built = await Bun.build({
+        entrypoints: [fileURLToPath(import.meta.resolve("@nyte-ai/plugin/examples/question"))],
+        outdir: plugins,
+        naming: "question.js",
+        target: "bun",
+        format: "esm",
+        external: ["@nyte-ai/plugin"],
+      });
+      if (!built.success)
+        throw new AggregateError(built.logs, "Could not build QA question plugin");
     }
     await copyFile(new URL("./fixtures/heartbeat.sh", import.meta.url), join(cwd, "heartbeat.sh"));
     const image = join(cwd, "pixel.png");

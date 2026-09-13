@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
+import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, test, vi } from "vitest";
@@ -169,6 +170,27 @@ async function fixture() {
   };
   return { root, events, watchEvents, createHost };
 }
+
+test("update activity follows running local tasks", async () => {
+  const { createHost } = await fixture();
+  const host = createHost();
+  const session = await host.call("sessions.create", { name: "Update activity" });
+  const job = await host.call("jobs.start", {
+    sessionId: session.sessionId,
+    command: "printf ready; sleep 30",
+  });
+  assert.equal(job.state, "running");
+  assert.deepEqual(await host.updateActivity(), {
+    kind: "busy",
+    taskCount: 1,
+    terminalCommandCount: 0,
+  });
+
+  await host.call("jobs.cancel", { sessionId: session.sessionId, jobId: job.id });
+  await vi.waitFor(async () => {
+    assert.deepEqual(await host.updateActivity(), { kind: "idle" });
+  });
+});
 
 test("untrusted send queues once, reports the requirement, and runs after trust", async () => {
   const { root, events, createHost } = await fixture();
@@ -913,3 +935,58 @@ test("plugin load status retains the available failure record only in main", asy
   assert.equal(status[0]?.message, `The host operation failed. Diagnostic ID: ${diagnostic[0]}`);
   assert.doesNotMatch(JSON.stringify(status), /synthetic-secret-plugin-body|broken.mjs/);
 });
+
+test.skipIf(process.platform === "win32")(
+  "mention IPC propagates process failure and cancels running discovery",
+  async () => {
+    const { root, createHost } = await fixture();
+    const host = createHost();
+    const workspace = join(root, "project");
+    await mkdir(workspace);
+    await host.call("host.openWorkspace", { path: workspace });
+    const executable = join(root, "rg");
+    const header = `#!${process.execPath}\nif (process.argv.includes("--version")) { console.log("ripgrep 15.1.0"); process.exit(0); }\n`;
+    await writeFile(
+      executable,
+      header + 'process.stderr.write("mention process failed"); process.exitCode = 42;',
+    );
+    await chmod(executable, 0o755);
+    vi.stubEnv("PATH", root);
+    await assert.rejects(
+      host.call("host.files.list", { requestId: "failure" }),
+      /42.*mention process failed/su,
+    );
+
+    const server = createServer();
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address !== null && typeof address !== "string");
+    await writeFile(
+      executable,
+      header +
+        `const socket = require("node:net").connect(${address.port}, "127.0.0.1", () => socket.write(String(process.pid))); setInterval(() => {}, 1000);`,
+    );
+    try {
+      for (const stop of ["cancel", "close"] as const) {
+        const started = new Promise<number>((resolve) =>
+          server.once("connection", (socket) => {
+            socket.once("data", (data) => {
+              resolve(Number(data.toString()));
+              socket.destroy();
+            });
+          }),
+        );
+        const pending = host.call("host.files.list", { requestId: stop });
+        const rejected = assert.rejects(pending, /abort/iu);
+        const pid = await started;
+        if (stop === "cancel") await host.call("host.files.cancelList", { requestId: stop });
+        else await host.close();
+        await rejected;
+        assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+      }
+    } finally {
+      await host.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);

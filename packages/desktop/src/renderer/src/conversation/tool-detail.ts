@@ -20,18 +20,18 @@ export interface ToolPresentation {
   readonly verb: string;
   readonly detail: string | undefined;
   readonly detailTitle: string | undefined;
-  readonly state: "running" | "done" | "failed";
+  readonly state: "running" | "done" | "failed" | "stopped";
   readonly added: number | undefined;
   readonly removed: number | undefined;
   readonly body: ToolBody;
 }
 
 const VERBS = {
-  read: { running: "Reading", done: "Read", failed: "Read failed" },
-  bash: { running: "Running", done: "Ran", failed: "Command failed" },
-  edit: { running: "Editing", done: "Edited", failed: "Edit failed" },
-  write: { running: "Writing", done: "Wrote", failed: "Write failed" },
-  ls: { running: "Listing", done: "Listed", failed: "List failed" },
+  read: { running: "Reading", done: "Read", failed: "Read failed", stopped: "Read stopped" },
+  bash: { running: "Running", done: "Ran", failed: "Command failed", stopped: "Command stopped" },
+  edit: { running: "Editing", done: "Edited", failed: "Edit failed", stopped: "Edit stopped" },
+  write: { running: "Writing", done: "Wrote", failed: "Write failed", stopped: "Write stopped" },
+  ls: { running: "Listing", done: "Listed", failed: "List failed", stopped: "List stopped" },
 } satisfies Record<string, Record<ToolPresentation["state"], string>>;
 
 /** The status verb for the tools currently running, newest last. */
@@ -150,16 +150,18 @@ export function presentTool(
   part: ToolTurnPart,
   progress: ToolProgress | undefined,
   cwd: string | undefined,
+  active = true,
 ): ToolPresentation {
   const presented = presenter.tool(projectToolView(part, progress));
+  const state = presented.status === "running" && !active ? "stopped" : presented.status;
   const verbs = isKnownToolName(presented.name) ? VERBS[presented.name] : undefined;
   const humanName = humanizeToolName(presented.name);
   const verb =
     verbs === undefined
-      ? presented.status === "failed"
-        ? `${humanName} failed`
+      ? state === "failed" || state === "stopped"
+        ? `${humanName} ${state}`
         : humanName
-      : verbs[presented.status];
+      : verbs[state];
   const fullDetail =
     presented.name === "websearch" && presented.title !== undefined
       ? presented.title
@@ -176,7 +178,7 @@ export function presentTool(
       verb,
       detail,
       detailTitle,
-      state: presented.status,
+      state,
       added: diff.added === 0 ? undefined : diff.added,
       removed: diff.removed === 0 ? undefined : diff.removed,
       body: {
@@ -192,7 +194,7 @@ export function presentTool(
     verb,
     detail,
     detailTitle,
-    state: presented.status,
+    state,
     added: undefined,
     removed: undefined,
     body: text.trim() === "" ? { kind: "none" } : { kind: "output", text },

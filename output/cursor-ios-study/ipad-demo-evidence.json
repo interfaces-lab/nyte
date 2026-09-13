@@ -1,0 +1,74 @@
+[
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=0&width=1600",
+    "path": "evidence/ipad-demo-01-00s.jpg",
+    "time": 0
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=4&width=1600",
+    "path": "evidence/ipad-demo-01-04s.jpg",
+    "time": 4
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=8&width=1600",
+    "path": "evidence/ipad-demo-01-08s.jpg",
+    "time": 8
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=12&width=1600",
+    "path": "evidence/ipad-demo-01-12s.jpg",
+    "time": 12
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=16&width=1600",
+    "path": "evidence/ipad-demo-01-16s.jpg",
+    "time": 16
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/EWno4va5z7TyVPPA5ApJ01QSyr6PeiFSqkbyZavOxN600/thumbnail.jpg?time=20&width=1600",
+    "path": "evidence/ipad-demo-01-20s.jpg",
+    "time": 20
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=0&width=1600",
+    "path": "evidence/ipad-demo-02-00s.jpg",
+    "time": 0
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=4&width=1600",
+    "path": "evidence/ipad-demo-02-04s.jpg",
+    "time": 4
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=8&width=1600",
+    "path": "evidence/ipad-demo-02-08s.jpg",
+    "time": 8
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=12&width=1600",
+    "path": "evidence/ipad-demo-02-12s.jpg",
+    "time": 12
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=16&width=1600",
+    "path": "evidence/ipad-demo-02-16s.jpg",
+    "time": 16
+  },
+  {
+    "source": "https://cursor.com/changelog/ipad",
+    "url": "https://image.mux.com/hBsywc3W502eCHkwFuWDUFmE6pQzelcgIYam4k02hQx1Y/thumbnail.jpg?time=20&width=1600",
+    "path": "evidence/ipad-demo-02-20s.jpg",
+    "time": 20
+  }
+]

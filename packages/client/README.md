@@ -3,7 +3,13 @@
 The Nyte SDK namespaces over `fetch`, typed against `@nyte-ai/protocol`.
 Every operation is one `POST /v1/call/{operation}`; `watch` reads `GET /v1/watch` as
 server-sent events and yields an `AsyncIterable<SessionEvent>`; `info()` reads
-`GET /v1/info` for the host's release. The wire version is the route prefix, so a
+`GET /v1/info` for the host's release and optional capability and storage
+description. An embedding that cannot describe itself returns `host.kind: "unspecified"`.
+Available model choices use `provider.models.list()`, and
+`provider.models.default()` reads the host default. Both return the SDK's
+`ModelInfo`, including pricing and thinking levels. Availability is configuration
+metadata, not a live provider test.
+The wire version is the route prefix, so a
 server on another wire answers `info()` with a `not_found` wire error.
 
 Dependencies: `@nyte-ai/protocol` and `typebox`. No core, no Node. It runs wherever

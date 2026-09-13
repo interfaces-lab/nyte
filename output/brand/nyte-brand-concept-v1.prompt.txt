@@ -1,0 +1,10 @@
+Use case: logo-brand
+Asset type: refined flat brand identity board
+Input images: Image 1 is the concept to refine
+Primary request: preserve the exact five-segment asymmetric continuity symbol from Image 1 as the core idea, but redraw the entire presentation as strict, clean, flat vector-style graphic design. Correct the wordmark so it reads exactly "nyte" in plain lowercase Latin letters, with no accent, dot, apostrophe, extra mark, or added character.
+Scene/backdrop: solid warm bone #F3EEE5 across the entire canvas
+Composition/framing: square brand board with generous margins. Large symbol and exact wordmark "nyte" as the hero lockup. Below, show one small single-color symbol and two simple rounded-square app tile studies. Finish with one narrow flat four-color strip. Keep the layout spare and orderly.
+Style/medium: flat vector identity presentation, razor-clean edges, matte solid fills, no effects
+Color palette: #160D0D, #E33B36, #DCE63B, #F3EEE5 only
+Constraints: exactly five rounded segments in every symbol; wordmark exactly once; no other text; retain asymmetric open-loop geometry and subtle 5-degree tension; solid fills only; strong small-size silhouette; no current Nyte icon references
+Avoid: all gradients, glow, smoke, blur, grain, texture, shadows, reflections, lighting effects, transparency artifacts, black background, diacritics, accents, punctuation, slogans, annotations, mockup photography, 3D

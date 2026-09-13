@@ -49,9 +49,10 @@ and reusable control defaults.
 
 ## Subagent models
 
-The parent chooses an exact available `provider/model` for each delegated task. Tell it which
-model to use, or let it choose. There is no General/Explore task type or global subagent model
-setting. Unavailable models fail without substitution.
+Delegated tasks default to `openai-codex/gpt-5.6-sol` with `high` thinking. Tell the parent to
+use another model or thinking level when needed; it passes that exact choice for the task call.
+There is no General/Explore task type or global subagent setting. An unavailable explicit choice
+or default fails before child creation, and Nyte does not substitute another model or provider.
 
 Child sessions stay out of the sidebar and chat search. Inspect their progress and results from
 the parent task or jobs panel.
@@ -87,8 +88,9 @@ job event  -> refresh jobs list
 
 The panel refreshes on job events and polls every two seconds while mounted. Closing it or switching
 chats does not cancel work. Closing the owning host interrupts live jobs; recovery retains their
-records without rerunning them. Terminal background results arrive as user messages when the parent
-head is idle. Background agents inherit workspace trust and are not offered tools marked
+records without rerunning them. Finished background results stay available in Jobs. They can join
+an active run, but never start another run on their own. When the parent is idle, they wait for
+explicit user input. Background agents inherit workspace trust and are not offered tools marked
 `availability: "foreground"`, regardless of tool name or whether a particular wait carries a
 selection.
 

@@ -7,7 +7,7 @@ import type {
   MessageCreateParamsStreaming,
   MessageParam,
 } from "@anthropic-ai/sdk/resources/messages.js";
-import { calculateCost } from "../models.ts";
+import { calculateCost, clampThinkingLevel } from "../models.ts";
 import { ANTHROPIC_FAST_MODE_COST_MULTIPLIER } from "../model-pricing.ts";
 import { resolveCacheRetention } from "../prompt-cache.ts";
 import type {
@@ -51,7 +51,7 @@ import {
   getJsonSchemaToolParameters,
   resolveJsonSchemaStrictSampling,
 } from "./constrained-sampling.ts";
-import { buildCopilotDynamicHeaders, hasCopilotVisionInput } from "./github-copilot-headers.ts";
+import { buildCopilotDynamicHeaders } from "./github-copilot-headers.ts";
 import {
   adjustMaxTokensForThinking,
   buildBaseOptions,
@@ -564,6 +564,32 @@ function decodeClaudeUsageWindow(
   };
 }
 
+/** Newer Claude responses place model-specific weekly limits in a scoped array. */
+function decodeClaudeScopedUsageWindow(
+  value: unknown,
+): AccountLimits["windows"][number] | undefined {
+  if (!isUnknownRecord(value) || value.kind !== "weekly_scoped") return undefined;
+  const scope = value.scope;
+  if (!isUnknownRecord(scope) || !isUnknownRecord(scope.model)) return undefined;
+  const name = scope.model.display_name;
+  const percent = value.percent;
+  if (
+    typeof name !== "string" ||
+    name.trim() === "" ||
+    typeof percent !== "number" ||
+    !Number.isFinite(percent)
+  ) {
+    return undefined;
+  }
+  const resetsAt = normalizeAccountReset(value.resets_at);
+  return {
+    id: `seven_day_${name}`,
+    usedPercent: Math.max(0, Math.min(100, percent)),
+    windowMinutes: 7 * 24 * 60,
+    ...(resetsAt === undefined ? {} : { resetsAt }),
+  };
+}
+
 /** Fetch Claude Code subscription windows from Anthropic's OAuth usage endpoint. */
 export async function fetchAnthropicAccountLimits(
   model: Model<"anthropic-messages">,
@@ -595,36 +621,36 @@ export async function fetchAnthropicAccountLimits(
   const baseUrl = (model.baseUrl?.trim() || "https://api.anthropic.com")
     .replace(/\/+$/, "")
     .replace(/\/v1$/, "");
-  let response: Response;
   try {
-    response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/api/oauth/usage`, {
+    const response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/api/oauth/usage`, {
       method: "GET",
       headers,
       signal: combinedSignal.signal,
     });
+    await options?.onResponse?.(
+      { status: response.status, headers: headersToRecord(response.headers) },
+      model,
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Claude usage request failed (${String(response.status)}): ${text || response.statusText}`,
+      );
+    }
+
+    const decoded: unknown = await response.json();
+    if (!isUnknownRecord(decoded)) throw new Error("Claude usage response was not an object");
+    return {
+      providerId: model.provider,
+      windows: [
+        ...CLAUDE_USAGE_WINDOWS.map((definition) => decodeClaudeUsageWindow(decoded, definition)),
+        ...(Array.isArray(decoded.limits) ? decoded.limits.map(decodeClaudeScopedUsageWindow) : []),
+      ].filter((window) => window !== undefined),
+      observedAt: Date.now(),
+    };
   } finally {
     combinedSignal.cleanup();
   }
-  await options?.onResponse?.(
-    { status: response.status, headers: headersToRecord(response.headers) },
-    model,
-  );
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Claude usage request failed (${String(response.status)}): ${text || response.statusText}`,
-    );
-  }
-
-  const decoded: unknown = await response.json();
-  if (!isUnknownRecord(decoded)) throw new Error("Claude usage response was not an object");
-  return {
-    providerId: model.provider,
-    windows: CLAUDE_USAGE_WINDOWS.map((definition) =>
-      decodeClaudeUsageWindow(decoded, definition),
-    ).filter((window) => window !== undefined),
-    observedAt: Date.now(),
-  };
 }
 
 async function* iterateAnthropicEvents(
@@ -736,10 +762,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 
         let copilotDynamicHeaders: Record<string, string> | undefined;
         if (model.provider === "github-copilot") {
-          const hasImages = hasCopilotVisionInput(context.messages);
           copilotDynamicHeaders = buildCopilotDynamicHeaders({
             messages: context.messages,
-            hasImages,
+            sessionId: options?.sessionId,
           });
         }
 
@@ -1047,12 +1072,21 @@ export const streamSimple: StreamFunction<"anthropic-messages", SimpleStreamOpti
     } satisfies AnthropicOptions);
   }
 
+  // Honor unsupported effort levels before choosing a thinking-token budget.
+  const reasoning = clampThinkingLevel(model, options.reasoning);
+  if (reasoning === "off") {
+    return stream(model, context, {
+      ...base,
+      thinkingEnabled: false,
+    } satisfies AnthropicOptions);
+  }
+
   // Undefined means the caller did not request an output cap; let the helper use the model cap.
   // Do not coerce to 0 here, or the thinking budget would become the entire max_tokens value.
   const adjusted = adjustMaxTokensForThinking(
     base.maxTokens,
     model.maxTokens,
-    options.reasoning,
+    reasoning,
     options.thinkingBudgets,
   );
 

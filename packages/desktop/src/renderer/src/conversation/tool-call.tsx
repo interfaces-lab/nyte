@@ -63,14 +63,16 @@ export const ToolCallView = memo(function ToolCallView({
   part,
   progress,
   cwd,
+  active = false,
   density = "compact",
 }: {
   part: ToolTurnPart;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
+  active?: boolean;
   density?: ToolCallDensity;
 }): ReactElement {
-  const presentation = presentTool(part, progress, cwd);
+  const presentation = presentTool(part, progress, cwd, active);
   const subagent = subagentCall(part, progress);
   if (subagent !== undefined) {
     return <SubagentCallView call={subagent} presentation={presentation} density={density} />;
@@ -85,7 +87,11 @@ export const ToolCallView = memo(function ToolCallView({
       </span>
       {presentation.state !== "done" && (
         <span {...stylex.props(srOnly)}>
-          {presentation.state === "failed" ? "Failed" : "Running"}
+          {presentation.state === "failed"
+            ? "Failed"
+            : presentation.state === "stopped"
+              ? "Stopped"
+              : "Running"}
         </span>
       )}
       {presentation.detail !== undefined && (

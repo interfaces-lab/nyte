@@ -2,23 +2,39 @@
   "name": "@nyte-ai/demo-server-vercel",
   "version": "0.0.0",
   "private": true,
-  "description": "A Nyte host as one Vercel Function: sessions in the instance's SQLite, runs driven in place, the wire served by @nyte-ai/server.",
+  "description": "A Nyte chat host with PostgreSQL history and durable Vercel Workflow execution.",
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.ts",
-    "clean": "rm -rf node_modules .turbo dist",
-    "deploy": "pnpm build && vercel deploy --cwd dist --prod",
-    "dev": "pnpm build && vercel dev --cwd dist --listen 127.0.0.1:3000",
+    "build": "nitro build --preset vercel",
+    "clean": "rm -rf node_modules .turbo dist .nitro .output .workflow-data .vercel/output",
+    "deploy": "pnpm build && vercel deploy --prebuilt --prod",
+    "dev": "nitro dev --host 127.0.0.1 --port 3000",
+    "test": "vitest --run",
+    "test:build": "node scripts/test-build.ts",
+    "check": "node scripts/test-provider.ts --check-only --require-durable",
+    "test:provider": "node scripts/test-provider.ts --require-durable",
+    "build:fixture": "node scripts/build-fixture.ts",
+    "test:deployment": "node fixtures/check.ts",
+    "sync:codex": "node scripts/sync-codex.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nyte-ai/ai": "workspace:*",
     "@nyte-ai/core": "workspace:*",
-    "@nyte-ai/demo-server-host": "workspace:*"
+    "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/server": "workspace:*",
+    "@vercel/functions": "3.9.7",
+    "pg": "8.23.0",
+    "workflow": "4.8.8"
   },
   "devDependencies": {
-    "@types/node": "^26.5.0",
-    "esbuild": "^0.25.0",
+    "@electric-sql/pglite": "0.5.8",
+    "@nyte-ai/client": "workspace:*",
+    "@types/node": "^26.5.1",
+    "@types/pg": "8.23.1",
+    "nitro": "3.0.260903-beta",
     "typescript": "^7.0.2",
-    "vercel": "^56.5.0"
+    "vercel": "^59.16.0",
+    "vitest": "^5.0.0"
   }
 }

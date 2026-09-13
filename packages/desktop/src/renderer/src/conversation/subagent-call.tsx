@@ -23,6 +23,7 @@ const TOOL_STATE_LABEL = {
   running: "Working",
   done: "Completed",
   failed: "Failed",
+  stopped: "Stopped",
 } satisfies Readonly<Record<ToolPresentation["state"], string>>;
 
 /** The model a subagent runs on, in muted text; nothing until the child session answers. */
@@ -36,7 +37,7 @@ export function SubagentModel({
   /** Text after the name, so a caller can join it to what follows. */
   separator?: string;
 }): ReactElement | null {
-  const catalog = useCatalog();
+  const catalog = useCatalog(childSessionId);
   const child = useSession(childSessionId);
   const model = modelDisplayName(catalog.data, child.data?.config.model);
   if (model === undefined) return null;

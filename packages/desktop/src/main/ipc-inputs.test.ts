@@ -54,7 +54,7 @@ describe("plugin command IPC inputs", () => {
     } satisfies CallRequest;
     const key = {
       path: "host.login",
-      input: { provider: "openai", method: { kind: "api_key", key: "sk-test" } },
+      input: { provider: "openai", method: { kind: "api_key", key: "sk-test" }, attempt: "a1" },
     } satisfies CallRequest;
     assert.deepEqual(decodeCallRequest(hide), hide);
     assert.deepEqual(decodeCallRequest(key), key);
@@ -69,8 +69,22 @@ describe("plugin command IPC inputs", () => {
       CALL_INPUT_SCHEMAS["host.login"].Parse({
         provider: "openai",
         method: { kind: "api_key", key: "" },
+        attempt: "a1",
       }),
     );
+    // An attempt ID correlates cancel with a running sign-in; it cannot be empty or unbounded.
+    for (const attempt of [undefined, "", "x".repeat(65)])
+      assert.throws(() =>
+        CALL_INPUT_SCHEMAS["host.login"].Parse({
+          provider: "openai",
+          method: { kind: "browser" },
+          attempt,
+        }),
+      );
+    assert.deepEqual(CALL_INPUT_SCHEMAS["host.cancelLogin"].Parse({ attempt: "a1" }), {
+      attempt: "a1",
+    });
+    assert.throws(() => CALL_INPUT_SCHEMAS["host.cancelLogin"].Parse({ attempt: "" }));
     assert.throws(() =>
       CALL_INPUT_SCHEMAS["host.setPreference"].Parse({ kind: "provider", provider: "x" }),
     );
@@ -254,4 +268,19 @@ describe("workspace editor IPC inputs", () => {
       WORKSPACE_EDITOR_INPUT_SCHEMAS.format.Parse({ ...format, version: "stale" }),
     );
   });
+});
+
+test("mention discovery and cancellation require bounded request IDs", () => {
+  for (const path of ["host.files.list", "host.files.cancelList"] as const) {
+    const request = { path, input: { requestId: "mentions-1" } };
+    assert.deepEqual(decodeCallRequest(request), request);
+    for (const input of [
+      undefined,
+      {},
+      { requestId: "" },
+      { requestId: "x".repeat(129) },
+      { requestId: "a", extra: true },
+    ])
+      assert.throws(() => CALL_INPUT_SCHEMAS[path].Parse(input));
+  }
 });

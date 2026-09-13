@@ -55,6 +55,7 @@ const hidden = option({
   listed: false,
 });
 const catalog: DesktopCatalog = {
+  source: "local",
   providers: [
     provider({ id: "openai", name: "OpenAI", connection: { kind: "api_key", env: undefined } }),
     provider(),

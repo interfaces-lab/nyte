@@ -1136,40 +1136,39 @@ export async function fetchOpenAICodexAccountLimits(
       ? AbortSignal.timeout(normalizeTimeoutMs(options.timeoutMs) ?? 0)
       : undefined;
   const combinedSignal = combineAbortSignals([options?.signal, timeoutSignal]);
-  let response: Response;
   try {
-    response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/wham/usage`, {
+    const response = await (options?.fetch ?? globalThis.fetch)(`${baseUrl}/wham/usage`, {
       method: "GET",
       headers,
       signal: combinedSignal.signal,
     });
+    await options?.onResponse?.(
+      { status: response.status, headers: headersToRecord(response.headers) },
+      model,
+    );
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `Codex usage request failed (${String(response.status)}): ${text || response.statusText}`,
+      );
+    }
+    const decoded: unknown = await response.json();
+    const root = recordOf(decoded);
+    if (root === undefined) throw new Error("Codex usage response was not an object");
+    const limits = recordOf(root.rate_limit);
+    const windows = [
+      accountWindow("primary", limits?.primary_window),
+      accountWindow("secondary", limits?.secondary_window),
+    ].filter((window) => window !== undefined);
+    return {
+      providerId: model.provider,
+      ...(typeof root.plan_type === "string" ? { plan: root.plan_type } : {}),
+      windows,
+      observedAt: Date.now(),
+    };
   } finally {
     combinedSignal.cleanup();
   }
-  await options?.onResponse?.(
-    { status: response.status, headers: headersToRecord(response.headers) },
-    model,
-  );
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Codex usage request failed (${String(response.status)}): ${text || response.statusText}`,
-    );
-  }
-  const decoded: unknown = await response.json();
-  const root = recordOf(decoded);
-  if (root === undefined) throw new Error("Codex usage response was not an object");
-  const limits = recordOf(root.rate_limit);
-  const windows = [
-    accountWindow("primary", limits?.primary_window),
-    accountWindow("secondary", limits?.secondary_window),
-  ].filter((window) => window !== undefined);
-  return {
-    providerId: model.provider,
-    ...(typeof root.plan_type === "string" ? { plan: root.plan_type } : {}),
-    windows,
-    observedAt: Date.now(),
-  };
 }
 
 function applyServiceTierPricing(

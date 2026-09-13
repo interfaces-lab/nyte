@@ -1,4 +1,7 @@
+import { sessionMark } from "@nyte-ai/core/client";
 import type { SessionInfo } from "@nyte-ai/core";
+import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read-state.ts";
+import type { ReadSessions } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -74,40 +77,22 @@ export const DEFAULT_SESSION_VIEW: SessionViewSettings = Object.freeze({
   archived: false,
 });
 
-export type SessionMark = "waiting" | "retry" | "working" | "failed" | "idle";
-
-/**
- * The sidebar mark summarizes busy, retry, permission, and idle states. One
- * glyph carries that whole set; the filter labels stay coarser.
- */
 /** Untitled chats with no preview are drafts; a name or preview is a finished row. */
 export function sessionIsDraft(session: SessionInfo): boolean {
   return session.name === undefined && session.preview === undefined;
 }
 
-export function sessionMark(session: SessionInfo): SessionMark {
-  let failed = false;
-  for (const head of session.heads) {
-    const kind = head.run?.phase.kind;
-    if (kind === undefined) continue;
-    if (kind === "waiting") return "waiting";
-    if (kind === "retry") return "retry";
-    if (kind === "respond" || kind === "tools") return "working";
-    if (kind === "failed") failed = true;
-  }
-  return failed ? "failed" : "idle";
-}
-
-function statusOf(session: SessionInfo): SessionStatus {
+function statusOf(session: SessionInfo, read: ReadSessions): SessionStatus {
   const mark = sessionMark(session);
   switch (mark) {
     case "waiting":
+    case "failed":
       return "needs-attention";
     case "retry":
     case "working":
       return "working";
-    case "failed":
     case "idle":
+      if (sessionHasUnreadCompletion(session, read)) return "unread";
       if (sessionIsDraft(session)) return "draft";
       return "done";
     default: {
@@ -133,10 +118,10 @@ const STATUS_ORDER: Readonly<Record<SessionStatus, number>> = {
   done: 4,
 };
 
-function compareStatus(left: SessionInfo, right: SessionInfo): number {
+function compareStatus(left: SessionInfo, right: SessionInfo, read: ReadSessions): number {
   return (
     Number(right.pinned) - Number(left.pinned) ||
-    STATUS_ORDER[statusOf(left)] - STATUS_ORDER[statusOf(right)] ||
+    STATUS_ORDER[statusOf(left, read)] - STATUS_ORDER[statusOf(right, read)] ||
     compareUpdated(left, right)
   );
 }
@@ -146,6 +131,7 @@ function groupSessions(
   grouping: SessionGrouping,
   environment: SessionEnvironment,
   now: number,
+  read: ReadSessions,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
     case "repository":
@@ -164,7 +150,7 @@ function groupSessions(
         done: "Done",
       };
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session) === status);
+        const members = sessions.filter((session) => statusOf(session, read) === status);
         return members.length === 0
           ? []
           : [{ key: status, label: labels[status], sessions: members }];
@@ -209,18 +195,21 @@ export function sessionsForView(
   settings: SessionViewSettings,
   environment: SessionEnvironment = "local",
   now = Date.now(),
+  read: ReadSessions = EMPTY_READ_SESSIONS,
 ): readonly SessionViewGroup[] {
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.includes(statusOf(session)) &&
+      settings.statuses.includes(statusOf(session, read)) &&
       settings.pullRequests.includes("none") &&
       settings.environments.includes(environment) &&
       settings.sources.includes("desktop"),
   );
   const ordered = filtered.toSorted(
-    settings.ordering === "updated" ? compareUpdated : compareStatus,
+    settings.ordering === "updated"
+      ? compareUpdated
+      : (left, right) => compareStatus(left, right, read),
   );
-  return groupSessions(ordered, settings.grouping, environment, now);
+  return groupSessions(ordered, settings.grouping, environment, now, read);
 }
 
 function sameSelection<T extends string>(selected: readonly T[], all: readonly T[]): boolean {

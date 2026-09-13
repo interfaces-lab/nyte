@@ -84,7 +84,7 @@ const styles = create({
     padding: "8px 16px",
     borderStyle: "none",
     borderRadius: 10,
-    backgroundColor: { default: t.fillSecondary, ":hover": t.fillSecondaryHover },
+    backgroundColor: { default: t.fillSecondary, ":hover": t.fillGhostHover },
     boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}`,
     color: t.textPrimary,
     fontSize: 14,

@@ -40,7 +40,7 @@ export class ActionToasts {
   }
 
   undo(id: ReturnType<typeof toast.success>): void {
-    const batch = [...this.#batches.values()].find((entry) => entry.id === id);
+    const batch = this.#batches.values().find((entry) => entry.id === id);
     if (batch !== undefined) this.#finish(batch, true);
   }
 

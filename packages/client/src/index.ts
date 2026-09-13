@@ -125,7 +125,7 @@ export interface NyteClientOptions {
   /** Extra headers on every request. `content-type`, `accept`, and `authorization` are set by the client. */
   readonly headers?: ConstructorParameters<typeof Headers>[0];
   /** Defaults to the global `fetch`. A test can pass a server handler here. */
-  readonly fetch?: typeof fetch;
+  readonly fetch?: (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
   /**
    * Maximum decoded UTF-16 code units per watch frame, including field names,
    * comments and line endings. A larger frame ends the watch with `bad_body`.
@@ -274,6 +274,7 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       create: operation("sessions.create"),
       get: operation("sessions.get"),
       snapshot: operation("sessions.snapshot"),
+      metadata: operation("sessions.metadata"),
       list: operation("sessions.list"),
       rename: operation("sessions.rename"),
       setPinned: operation("sessions.setPinned"),
@@ -307,7 +308,10 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       vcs: { diff: operation("workspace.vcs.diff") },
     },
     provider: {
-      models: { default: operation("provider.models.default") },
+      models: {
+        list: operation("provider.models.list"),
+        default: operation("provider.models.default"),
+      },
     },
     plugins: {
       catalog: operation("plugins.catalog"),

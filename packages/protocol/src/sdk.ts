@@ -158,13 +158,22 @@ export interface CompactionInfo {
   readonly startedAt: number;
 }
 
-export interface SessionSnapshot {
-  readonly seq: Seq;
+/**
+ * What a snapshot carries besides the transcript and queue: the session row,
+ * the head's inputs, and its context status. A client that folds events keeps
+ * its transcript current on its own and re-reads only this after them.
+ */
+export interface SessionMetadata {
   readonly session: SessionInfo;
   readonly head: HeadName;
-  readonly tip: Oid | null;
   /** Active run inputs, or the head's declared/last observed inputs when idle. Never reader defaults. */
   readonly config: RunConfig;
+  readonly context: ContextStatus;
+}
+
+export interface SessionSnapshot extends SessionMetadata {
+  readonly seq: Seq;
+  readonly tip: Oid | null;
   readonly transcript: readonly Turn[];
   readonly pending: readonly PendingItem[];
   readonly run?: RunInfo;
@@ -175,7 +184,6 @@ export interface SessionSnapshot {
    * announced them went by before its watch began.
    */
   readonly parked?: readonly ParkedCall[];
-  readonly context: ContextStatus;
 }
 
 export type ConfigureOutcome =
@@ -219,6 +227,8 @@ export interface PendingItem {
   readonly at: number;
   readonly content: UserMessage["content"];
   readonly author?: Actor;
+  /** The submission key `send` carried, so the sender can match the item to its own outbox by identity. */
+  readonly key?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +353,8 @@ export type SessionEvent = { readonly seq: Seq } & (
   | { readonly kind: "queued"; readonly head: HeadName; readonly item: PendingItem }
   | { readonly kind: "landed"; readonly head: HeadName; readonly change: Oid }
   | { readonly kind: "queue_cancelled"; readonly change: Oid }
+  /** A configuration choice joined the queue: the session's selected inputs moved before anything landed. */
+  | { readonly kind: "config_queued"; readonly head: HeadName; readonly change: Oid }
   | {
       readonly kind: "effect";
       readonly runId: RunId;

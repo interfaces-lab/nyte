@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, test } from "vitest";
+import { afterEach, describe, test, vi } from "vitest";
 import { discoverMentionFiles } from "../src/mention-files.ts";
 
 const roots: string[] = [];
@@ -24,6 +25,7 @@ function fixture(files: Record<string, string>): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -49,7 +51,21 @@ describe("discoverMentionFiles", () => {
     assert.equal(folder?.url, pathToFileURL(join(root, "src")).href);
     const index = files.find((file) => file.label === "index.ts");
     assert.equal(index?.url, pathToFileURL(join(root, "src", "index.ts")).href);
-    assert.deepEqual(await discoverMentionFiles(join(root, "missing")), []);
+    await assert.rejects(discoverMentionFiles(join(root, "missing")), { code: "ENOENT" });
+  });
+
+  test("never offers the workspace root of a Git repository as a mention", async () => {
+    const root = fixture({ "README.md": "", "src/index.ts": "" });
+    execFileSync("git", ["init", "--quiet", root]);
+
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => [file.displayPath, file.label]),
+      [
+        ["README.md", "README.md"],
+        ["src/", "src/"],
+        ["src/index.ts", "index.ts"],
+      ],
+    );
   });
 
   test("applies Git patterns and directory-only rules case-sensitively, keeping nonignored hidden entries", async () => {
@@ -169,7 +185,7 @@ describe("discoverMentionFiles", () => {
     );
   });
 
-  test("does not follow file, directory, dangling, or .gitignore symlinks", async () => {
+  test("does not offer file, directory, dangling, or .gitignore symlinks", async () => {
     const outside = fixture({ "secret.txt": "", "ignore-rules": "*.ts\n" });
     const root = fixture({ "app.ts": "", "src/index.ts": "" });
     symlinkSync(outside, join(root, "outside"), "dir");
@@ -178,11 +194,42 @@ describe("discoverMentionFiles", () => {
     symlinkSync(join(outside, "secret.txt"), join(root, "linked-secret"), "file");
     symlinkSync(join(root, "app.ts"), join(root, "linked-app"), "file");
     symlinkSync(join(root, "missing"), join(root, "dangling"), "file");
-    symlinkSync(join(outside, "ignore-rules"), join(root, ".gitignore"), "file");
-
     assert.deepEqual(
       (await discoverMentionFiles(root)).map((file) => file.displayPath),
       ["app.ts", "src/", "src/index.ts"],
+    );
+    // rg reads linked ignore files, but does not offer the links as mention candidates.
+    symlinkSync(join(outside, "ignore-rules"), join(root, ".gitignore"), "file");
+    assert.deepEqual(await discoverMentionFiles(root), []);
+  });
+});
+
+describe("home mentions", () => {
+  test.skipIf(process.platform !== "darwin" && process.platform !== "win32")(
+    "excludes protected home folders and dotfiles before filename matching",
+    async () => {
+      const root = fixture({
+        ".config/secret.ts": "",
+        "Documents/private.ts": "",
+        "src/public.ts": "",
+      });
+      vi.stubEnv(process.platform === "win32" ? "USERPROFILE" : "HOME", root);
+      assert.deepEqual(
+        (await discoverMentionFiles(root)).map((file) => file.displayPath),
+        ["src/", "src/public.ts"],
+      );
+    },
+  );
+
+  test("protects a home directory reached through a symlink", async () => {
+    const root = fixture({ ".config/secret.ts": "", "src/public.ts": "" });
+    const links = fixture({});
+    const home = join(links, "home");
+    symlinkSync(root, home, process.platform === "win32" ? "junction" : "dir");
+    vi.stubEnv(process.platform === "win32" ? "USERPROFILE" : "HOME", home);
+    assert.deepEqual(
+      (await discoverMentionFiles(root)).map((file) => file.displayPath),
+      ["src/", "src/public.ts"],
     );
   });
 });

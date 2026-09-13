@@ -25,6 +25,8 @@ import { FIXTURE_CHILD_MODEL, FIXTURE_MODEL, FIXTURE_PROVIDER } from "./workspac
 import type { Scenario, Screen, Terminal } from "./types.ts";
 
 const idle = (screen: Screen) => screen.text.includes("enter send");
+/** The provider answers title requests outside the script; they are not user-started runs. */
+const TITLE_SCRIPT = "automatic conversation title";
 const emptyComposer = (screen: Screen) => composer(screen, "Plan, search, build anything");
 const earlierLines = /… \d+ earlier lines · ctrl\+o expand/u;
 const heartbeatRows = (screen: Screen) =>
@@ -63,17 +65,14 @@ async function scrollUntil(
   visible: readonly string[],
   hidden: string,
 ): Promise<void> {
-  const shows = (text: string) => visible.every((expected) => text.includes(expected));
+  const shows = (text: string) =>
+    visible.every((expected) => text.includes(expected)) && !text.includes(hidden);
   for (let presses = 0; !shows(terminal.screen().text); presses++) {
     assert.ok(presses < 40, `${visible.join(", ")} appear within 40 ${action} presses`);
     const before = terminal.screen().text;
     await press(terminal, action, (screen) => screen.text !== before);
   }
-  // A press is observed at its first changed row; the rest of the frame follows.
-  await terminal.waitForScreen(
-    (screen) => shows(screen.text) && !screen.text.includes(hidden),
-    deadline(),
-  );
+  await terminal.waitForScreen((screen) => shows(screen.text), deadline());
 }
 
 const short: Scenario = {
@@ -330,11 +329,6 @@ const long: Scenario = {
             prompt: "run the heartbeat",
             action: { kind: "hold", text: "Parent continues after backgrounding" },
           },
-          {
-            name: "bash cancellation notification",
-            prompt: "Background command",
-            action: { kind: "reply", text: "Independent bash cancellation received" },
-          },
           { ...bashRequest(owned.command), prompt: "run the heartbeat again" },
           {
             name: "after backgrounding again",
@@ -455,12 +449,6 @@ const long: Scenario = {
             action: { kind: "reply", text: "Sibling completed naturally" },
           },
           {
-            name: "sibling notification",
-            model: FIXTURE_CHILD_MODEL,
-            prompt: "Background subagent",
-            action: { kind: "reply", text: "Parent received sibling completion" },
-          },
-          {
             name: "restart probe",
             model: FIXTURE_CHILD_MODEL,
             prompt: "restart probe",
@@ -534,6 +522,16 @@ const long: Scenario = {
         };
         const count = (name: string) =>
           provider.requests.filter((item) => item.script === name).length;
+        const chatRequests = () => provider.requests.filter((item) => item.script !== TITLE_SCRIPT);
+        /** A finished background job waits for the next message; it never starts a run of its own. */
+        const assertNoRunAfter = (request: number) =>
+          assert.deepEqual(
+            chatRequests()
+              .filter((item) => item.id > request)
+              .map((item) => item.script),
+            [],
+            "A background completion started a run",
+          );
 
         await beat("trusted launch lands on an idle composer with thinking off", async () => {
           await terminal.waitForScreen(
@@ -599,20 +597,33 @@ const long: Scenario = {
               "Cancelling one job did not abort the parent",
             );
             provider.release(parent.id, " Parent survived the cancellation");
+            await provider.waitForStage(parent.id, "completed");
             await terminal.waitForScreen(
-              (screen) =>
-                screen.text.includes("Parent survived the cancellation") &&
-                screen.text.includes("Independent bash cancellation received"),
+              (screen) => screen.text.includes("Parent survived the cancellation") && idle(screen),
               deadline(),
             );
+            assertNoRunAfter(parent.id);
           },
         );
         await beat("stopping the parent kills the tool it backgrounded", async () => {
+          const answered = provider.requests.length;
           await type(terminal, "run the heartbeat again");
           await press(
             terminal,
             "chat.submit",
             (screen) => !composer(screen, "run the heartbeat again"),
+          );
+          // The cancelled job's notice is a user message of its own, so it travels with the typed
+          // message that carries it to the model instead of asking for an answer by itself.
+          const next = await provider.waitForRequest(
+            (item) => item.id > answered && item.script !== TITLE_SCRIPT,
+          );
+          assert.equal(next.script, "foreground bash", "The typed message starts the next run");
+          const users = next.payload.messages.filter((message) => message.role === "user");
+          assert.match(JSON.stringify(users.at(-2)?.content), /run the heartbeat again/u);
+          assert.match(
+            JSON.stringify(users.at(-1)?.content),
+            /Background command job_\S+ was cancelled/u,
           );
           await owned.alive();
           // The first backgrounding may still be on screen; only a new line proves this one.
@@ -1067,12 +1078,13 @@ const long: Scenario = {
               "Sibling tool result reaches its provider continuation",
             );
             provider.release(parent.id, " Parent survived selected cancellation");
+            await provider.waitForStage(parent.id, "completed");
             await terminal.waitForScreen(
               (screen) =>
-                screen.text.includes("Parent survived selected cancellation") &&
-                screen.text.includes("Parent received sibling completion"),
+                screen.text.includes("Parent survived selected cancellation") && idle(screen),
               deadline(),
             );
+            assertNoRunAfter(completed.id);
           },
         );
         let sessionId = "";
@@ -1085,7 +1097,7 @@ const long: Scenario = {
             await terminal.waitForScreen(
               (screen) =>
                 ready(screen) &&
-                screen.text.includes("Parent received sibling completion") &&
+                screen.text.includes("Parent survived selected cancellation") &&
                 footer(screen, FIXTURE_CHILD_MODEL, "low"),
               deadline(),
             );
@@ -1098,6 +1110,15 @@ const long: Scenario = {
             const probe = await provider.waitForRequest((item) => item.script === "restart probe");
             assert.equal(probe.model, FIXTURE_CHILD_MODEL);
             assert.equal(probe.payload.reasoning_effort, "low");
+            // The sibling finished while the chat was busy, so its notice waited through the quit.
+            assert.ok(
+              probe.payload.messages.some(
+                (message) =>
+                  message.role === "user" &&
+                  JSON.stringify(message.content).includes("Background subagent"),
+              ),
+              "The waiting completion reaches the model with the first message after the restart",
+            );
             assert.equal(provider.requests.length, before + 1, "Resume replays nothing");
           },
         );
@@ -1155,7 +1176,9 @@ const long: Scenario = {
             "chat.submit",
             (screen) => screen.text.includes("Counted to ten") && idle(screen),
           );
-          const rows = terminal.screen().lines.map((line) => line.trim());
+          const shown = terminal.screen();
+          // The rightmost terminal column belongs to the transcript scrollbar, not bash output.
+          const rows = shown.lines.map((line) => line.slice(0, shown.columns - 1).trim());
           assert.ok(rows.some((row) => row.includes("… 4 earlier lines · ctrl+o expand")));
           for (const kept of ["5", "6", "7", "8", "9", "10"]) assert.ok(rows.includes(kept));
           assert.ok(!rows.includes("1"), "The head is cut");
