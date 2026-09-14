@@ -1,66 +1,184 @@
 import { css } from "react-strict-dom";
+import { StyleSheet, useColorScheme } from "react-native";
 import type { MarkdownStyle } from "react-native-enriched-markdown";
 import { platformColors } from "@nyte-ai/ui/platform-colors";
 
-// The app is dark-only. Raw colors also serve native controls outside RSD.
-export const nativeTheme = {
-  background: platformColors.dark.sidebar,
-  surface: platformColors.dark.background,
-  raised: platformColors.dark.fieldBackground,
-  foreground: platformColors.dark.foreground,
-  muted: platformColors.dark.mutedForeground,
-  border: platformColors.dark.borderWeak,
-  accent: platformColors.dark.accent,
-  success: platformColors.dark.success,
-  danger: platformColors.dark.destructive,
-  warning: platformColors.dark.warning,
+// Raw colors serve native controls outside RSD; RSD gets the same values
+// through prefers-color-scheme conditionals on the tokens below.
+const schemes = {
+  light: {
+    background: platformColors.light.sidebar,
+    canvas: "#ffffff",
+    surface: platformColors.light.background,
+    raised: platformColors.light.bubbleAgent,
+    fill: platformColors.light.muted,
+    foreground: platformColors.light.foreground,
+    muted: platformColors.light.mutedForeground,
+    tertiary: platformColors.light.tertiaryForeground,
+    border: platformColors.light.borderSubtle,
+    separator: platformColors.light.borderWeak,
+    accent: platformColors.light.accent,
+    primary: platformColors.light.primary,
+    onPrimary: platformColors.light.primaryForeground,
+    // The platform light success fails contrast as small text; deepen it.
+    success: "#007a45",
+    danger: platformColors.light.destructive,
+    warning: platformColors.light.warning,
+    successFill: platformColors.light.avatarGreenBackground,
+    dangerFill: platformColors.light.destructiveMuted,
+    warningFill: platformColors.light.avatarOrangeBackground,
+    scrim: "rgba(0,0,0,0.3)",
+    shadow: "0 2px 12px rgba(0,0,0,0.08)",
+  },
+  dark: {
+    background: platformColors.dark.sidebar,
+    canvas: platformColors.dark.sidebar,
+    surface: platformColors.dark.bubbleAgent,
+    raised: platformColors.dark.fieldBackground,
+    fill: platformColors.dark.muted,
+    foreground: platformColors.dark.foreground,
+    muted: platformColors.dark.mutedForeground,
+    tertiary: platformColors.dark.tertiaryForeground,
+    border: platformColors.dark.borderWeak,
+    separator: platformColors.dark.borderWeak,
+    accent: platformColors.dark.accent,
+    primary: platformColors.dark.primary,
+    onPrimary: platformColors.dark.primaryForeground,
+    success: platformColors.dark.success,
+    danger: platformColors.dark.destructive,
+    warning: platformColors.dark.warning,
+    successFill: platformColors.dark.avatarGreenBackground,
+    dangerFill: platformColors.dark.destructiveMuted,
+    warningFill: platformColors.dark.avatarOrangeBackground,
+    scrim: "rgba(0,0,0,0.5)",
+    shadow: "none",
+  },
+} as const;
+
+export type Theme = Record<keyof (typeof schemes)["light"], string>;
+export const themes = schemes;
+
+/** Raw colors for the active appearance — re-renders when the scheme flips. */
+export function useTheme(): Theme {
+  return useColorScheme() === "dark" ? schemes.dark : schemes.light;
+}
+
+function conditional(key: keyof Theme) {
+  return {
+    default: schemes.light[key],
+    "@media (prefers-color-scheme: dark)": schemes.dark[key],
+  };
+}
+
+export const tokens = css.defineVars({
+  background: conditional("background"),
+  canvas: conditional("canvas"),
+  surface: conditional("surface"),
+  raised: conditional("raised"),
+  fill: conditional("fill"),
+  foreground: conditional("foreground"),
+  muted: conditional("muted"),
+  tertiary: conditional("tertiary"),
+  border: conditional("border"),
+  separator: conditional("separator"),
+  accent: conditional("accent"),
+  primary: conditional("primary"),
+  onPrimary: conditional("onPrimary"),
+  success: conditional("success"),
+  danger: conditional("danger"),
+  warning: conditional("warning"),
+  successFill: conditional("successFill"),
+  dangerFill: conditional("dangerFill"),
+  warningFill: conditional("warningFill"),
+  scrim: conditional("scrim"),
+  shadow: conditional("shadow"),
+});
+
+export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32, gutter: 20 };
+export const radii = {
+  sm: 8,
+  tile: 8,
+  control: 12,
+  card: 16,
+  bubble: 20,
+  composer: 26,
+  sheet: 28,
+  pill: 999,
 };
 
-export const tokens = css.defineVars(nativeTheme);
+// The measured iphone-01 list rhythm: 20pt gutter, hairlines inset to the text.
+export const list = {
+  gutter: 20,
+  leading: 14,
+  leadingGap: 12,
+  rowPaddingBlock: 12,
+  titleMetaGap: 2,
+  sectionGap: 28,
+  headerGap: 6,
+  tile: 28,
+};
 
-export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
-export const radii = { sm: 8, control: 14, card: 16, bubble: 20, pill: 999 };
 export const controls = {
+  hairline: StyleSheet.hairlineWidth,
   borderWidth: 1,
-  statusDot: 6,
+  statusDot: 8,
   touchTarget: 44,
   metaTarget: 28,
-  primaryHeight: 52,
-  iconXs: 13,
-  iconSm: 16,
-  icon: 20,
-  iconWeight: "semibold",
-  composerMaxHeight: 140,
-  disabledOpacity: 0.56,
+  primaryHeight: 44,
+  chipHeight: 36,
+  composerHeight: 52,
+  composerButton: 32,
+  fieldMinHeight: 66,
+  iconXs: 12,
+  iconSm: 15,
+  icon: 17,
+  iconNav: 20,
+  iconWeight: "regular",
+  iconWeightStrong: "semibold",
+  composerMaxHeight: 176,
+  badge: 20,
+  diffGutter: 40,
+  disabledOpacity: 0.4,
 } as const;
 
 export const conversation = {
   contentMaxWidth: 768,
   gutter: spacing.md,
-  textInset: spacing.lg,
+  textInset: spacing.sm,
 };
 
 export const media = {
-  attachmentSize: 88,
+  attachmentSize: 56,
   thumbnailWidth: 180,
   thumbnailHeight: 140,
-  bubbleMaxWidthRatio: 0.85,
-  deviceTileSize: 88,
-  deviceTileRadius: 24,
+  bubbleMaxWidthRatio: 0.8,
+  deviceTileSize: 72,
+  deviceTileRadius: 20,
   macSymbol: 40,
   phoneSymbol: 34,
 } as const;
 
+export const annotate = {
+  marker: 32,
+  markerRing: 1.5,
+  stroke: 4,
+  mark: "#FF3B30",
+  canvas: "#000",
+} as const;
+
 export const typography = {
-  body: { fontSize: 16, lineHeight: 24, fontWeight: 400 },
+  body: { fontSize: 16, lineHeight: 22, fontWeight: 400 },
   secondary: { fontSize: 15, lineHeight: 20, fontWeight: 400 },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: 400 },
   label: { fontSize: 13, lineHeight: 18, fontWeight: 500 },
+  headline: { fontSize: 16, lineHeight: 22, fontWeight: 600 },
   title: { fontSize: 17, lineHeight: 22, fontWeight: 600 },
-  heading: { fontSize: 28, lineHeight: 34, fontWeight: 600 },
-  error: { fontSize: 14, lineHeight: 20, fontWeight: 400 },
-  code: { fontSize: 14, lineHeight: 20, fontWeight: 400, fontFamily: "Menlo" },
-  section: { fontSize: 20, lineHeight: 26, fontWeight: 600 },
+  heading: { fontSize: 22, lineHeight: 28, fontWeight: 600 },
+  button: { fontSize: 16, lineHeight: 22, fontWeight: 500 },
+  error: { fontSize: 15, lineHeight: 20, fontWeight: 400 },
+  code: { fontSize: 13, lineHeight: 18, fontWeight: 400, fontFamily: "Menlo" },
+  diff: { fontSize: 12, lineHeight: 18, fontWeight: 400, fontFamily: "Menlo" },
+  section: { fontSize: 18, lineHeight: 24, fontWeight: 600 },
 } as const;
 
 // RSD interprets numeric line heights as ratios; native props require pixels.
@@ -85,6 +203,11 @@ export const textStyles = css.create({
     lineHeight: `${typography.label.lineHeight}px`,
     color: tokens.foreground,
   },
+  headline: {
+    ...typography.headline,
+    lineHeight: `${typography.headline.lineHeight}px`,
+    color: tokens.foreground,
+  },
   title: {
     ...typography.title,
     lineHeight: `${typography.title.lineHeight}px`,
@@ -94,6 +217,11 @@ export const textStyles = css.create({
     ...typography.heading,
     lineHeight: `${typography.heading.lineHeight}px`,
     color: tokens.foreground,
+  },
+  button: {
+    ...typography.button,
+    lineHeight: `${typography.button.lineHeight}px`,
+    color: tokens.onPrimary,
   },
   error: {
     ...typography.error,
@@ -105,84 +233,91 @@ export const textStyles = css.create({
     lineHeight: `${typography.code.lineHeight}px`,
     color: tokens.foreground,
   },
+  diff: {
+    ...typography.diff,
+    lineHeight: `${typography.diff.lineHeight}px`,
+    color: tokens.foreground,
+  },
 });
 
-export const markdownStyle = {
-  paragraph: {
-    ...typography.body,
-    fontWeight: String(typography.body.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h1: {
-    ...typography.heading,
-    fontWeight: String(typography.heading.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h2: {
-    ...typography.section,
-    fontWeight: String(typography.section.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h3: {
-    ...typography.title,
-    fontWeight: String(typography.title.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h4: {
-    ...typography.title,
-    fontWeight: String(typography.title.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h5: {
-    ...typography.body,
-    fontWeight: String(typography.title.fontWeight),
-    color: nativeTheme.foreground,
-  },
-  h6: {
-    ...typography.body,
-    fontWeight: String(typography.title.fontWeight),
-    color: nativeTheme.muted,
-  },
-  strong: { color: nativeTheme.foreground },
-  em: { color: nativeTheme.foreground },
-  link: { color: nativeTheme.accent, underline: true },
-  list: {
-    ...typography.body,
-    fontWeight: String(typography.body.fontWeight),
-    color: nativeTheme.foreground,
-    bulletColor: nativeTheme.muted,
-    markerColor: nativeTheme.muted,
-  },
-  blockquote: {
-    ...typography.body,
-    fontWeight: String(typography.body.fontWeight),
-    color: nativeTheme.muted,
-    borderColor: nativeTheme.border,
-  },
-  code: {
-    fontSize: typography.code.fontSize,
-    fontFamily: typography.code.fontFamily,
-    color: nativeTheme.foreground,
-    backgroundColor: nativeTheme.raised,
-  },
-  codeBlock: {
-    ...typography.code,
-    fontWeight: String(typography.code.fontWeight),
-    color: nativeTheme.foreground,
-    backgroundColor: nativeTheme.surface,
-    borderColor: nativeTheme.border,
-    borderRadius: radii.sm,
-    padding: spacing.md,
-  },
-  thematicBreak: { color: nativeTheme.border },
-  table: {
-    ...typography.body,
-    fontWeight: String(typography.body.fontWeight),
-    color: nativeTheme.foreground,
-    borderColor: nativeTheme.border,
-    headerBackgroundColor: nativeTheme.raised,
-    headerTextColor: nativeTheme.foreground,
-    rowEvenBackgroundColor: nativeTheme.surface,
-    rowOddBackgroundColor: nativeTheme.background,
-  },
-} satisfies MarkdownStyle;
+export function markdownStyle(theme: Theme): MarkdownStyle {
+  return {
+    paragraph: {
+      ...typography.body,
+      fontWeight: String(typography.body.fontWeight),
+      color: theme.foreground,
+    },
+    h1: {
+      ...typography.section,
+      fontWeight: String(typography.section.fontWeight),
+      color: theme.foreground,
+    },
+    h2: {
+      ...typography.title,
+      fontWeight: String(typography.title.fontWeight),
+      color: theme.foreground,
+    },
+    h3: {
+      ...typography.headline,
+      fontWeight: String(typography.headline.fontWeight),
+      color: theme.foreground,
+    },
+    h4: {
+      ...typography.headline,
+      fontWeight: String(typography.headline.fontWeight),
+      color: theme.foreground,
+    },
+    h5: {
+      ...typography.headline,
+      fontWeight: String(typography.headline.fontWeight),
+      color: theme.foreground,
+    },
+    h6: {
+      ...typography.headline,
+      fontWeight: String(typography.headline.fontWeight),
+      color: theme.muted,
+    },
+    strong: { color: theme.foreground },
+    em: { color: theme.foreground },
+    link: { color: theme.accent, underline: false },
+    list: {
+      ...typography.body,
+      fontWeight: String(typography.body.fontWeight),
+      color: theme.foreground,
+      bulletColor: theme.muted,
+      markerColor: theme.muted,
+    },
+    blockquote: {
+      ...typography.body,
+      fontWeight: String(typography.body.fontWeight),
+      color: theme.muted,
+      borderColor: theme.separator,
+    },
+    code: {
+      fontSize: typography.code.fontSize,
+      fontFamily: typography.code.fontFamily,
+      color: theme.foreground,
+      backgroundColor: theme.fill,
+    },
+    codeBlock: {
+      ...typography.code,
+      fontWeight: String(typography.code.fontWeight),
+      color: theme.foreground,
+      backgroundColor: theme.raised,
+      borderColor: "transparent",
+      borderRadius: radii.sm,
+      padding: spacing.md,
+    },
+    thematicBreak: { color: theme.separator },
+    table: {
+      ...typography.body,
+      fontWeight: String(typography.body.fontWeight),
+      color: theme.foreground,
+      borderColor: theme.separator,
+      headerBackgroundColor: theme.raised,
+      headerTextColor: theme.foreground,
+      rowEvenBackgroundColor: theme.surface,
+      rowOddBackgroundColor: theme.canvas,
+    },
+  };
+}

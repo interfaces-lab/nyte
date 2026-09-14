@@ -1,195 +1,345 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList } from "react-native";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
+import type { RefreshControlProps } from "react-native";
+import { ActivityIndicator, RefreshControl, SectionList } from "react-native";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Host, Picker, Text } from "@expo/ui/swift-ui";
+import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
-import type { FileChange, RunId, SessionId, VcsDiff } from "@nyte-ai/protocol";
+import type { SessionId, VcsDiff } from "@nyte-ai/protocol";
+import { parsePatchFacts, type PatchFile } from "@nyte-ai/core/views";
 import { EmptyState } from "../ui/empty-state.tsx";
-import { GlassButton } from "../ui/glass-button.tsx";
+import { PrimaryButton } from "../ui/primary-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
-import { controls, nativeTheme, spacing, textStyles, tokens } from "../theme.ts";
+import { useRemoteChat } from "./remote-chat.ts";
+import { fileStatus, recordedEdits, type RecordedEdit } from "./turn-changes.ts";
+import {
+  controls,
+  useTheme,
+  spacing,
+  textStyles,
+  tokens,
+} from "../theme.ts";
 
-type ChangesScreenProps = {
-  client: NyteClient;
-  sessionId: SessionId;
-  runId: RunId | undefined;
-  onBack: () => void;
+type Source = "agent" | "mac";
+
+type Line =
+  | { kind: "hunk"; text: string }
+  | { kind: "context" | "added" | "removed"; gutter: number | undefined; text: string };
+
+type FileSection = {
+  key: string;
+  path: string;
+  status: "A" | "M" | "D" | "R";
+  added: number;
+  removed: number;
+  subtitle: string | undefined;
+  lines: Line[];
+  truncated: boolean;
 };
 
-type ReviewState =
-  | { kind: "loading" }
-  | { kind: "failed"; message: string }
-  | { kind: "files"; files: readonly FileChange[] }
-  | { kind: "diff"; diffs: readonly VcsDiff[] };
+const EXPANDED_LINE_LIMIT = 400;
 
-export function ChangesScreen(props: ChangesScreenProps) {
-  return <ChangesReview key={JSON.stringify([props.sessionId, props.runId])} {...props} />;
+/** Parsed patch → display lines with new-side (or old-side) line numbers. */
+function linesOf(file: PatchFile): Line[] {
+  const out: Line[] = [];
+  for (const hunk of file.hunks) {
+    out.push({
+      kind: "hunk",
+      text: `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`,
+    });
+    let oldLine = hunk.oldStart;
+    let newLine = hunk.newStart;
+    for (const raw of hunk.lines) {
+      const marker = raw[0];
+      const text = raw.slice(1);
+      if (marker === "+") {
+        out.push({ kind: "added", gutter: newLine, text });
+        newLine += 1;
+      } else if (marker === "-") {
+        out.push({ kind: "removed", gutter: oldLine, text });
+        oldLine += 1;
+      } else if (marker === "\\") {
+        continue;
+      } else {
+        out.push({ kind: "context", gutter: newLine, text });
+        oldLine += 1;
+        newLine += 1;
+      }
+    }
+  }
+  return out;
 }
 
-function ChangesReview({ client, sessionId, runId, onBack }: ChangesScreenProps) {
+function fileSection(
+  file: PatchFile,
+  path: string,
+  subtitle: string | undefined,
+  expanded: boolean,
+): FileSection {
+  const lines = linesOf(file);
+  return {
+    key: path + (subtitle ?? ""),
+    path,
+    status: fileStatus(file),
+    added: file.added,
+    removed: file.removed,
+    subtitle,
+    lines,
+    truncated: !expanded && lines.length > EXPANDED_LINE_LIMIT,
+  };
+}
+
+export function ChangesScreen({
+  client,
+  sessionId,
+  initialPath,
+  initialSource,
+}: {
+  client: NyteClient;
+  sessionId: SessionId;
+  initialPath: string | undefined;
+  initialSource: Source | undefined;
+}) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const [path, setPath] = useState<string>();
-  const [revision, setRevision] = useState(0);
+  const [source, setSource] = useState<Source>(initialSource ?? "agent");
+  // Sections past three start collapsed; user taps flip the default per file.
+  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  const [pulling, setPulling] = useState(false);
+  const [macRevision, setMacRevision] = useState(0);
+  const [macDiffs, setMacDiffs] = useState<
+    | { kind: "loading" }
+    | { kind: "failed"; message: string }
+    | { kind: "ready"; diffs: readonly VcsDiff[] }
+  >({ kind: "loading" });
+  const chat = useRemoteChat(client, sessionId);
+  const edits = useMemo(() => recordedEdits(chat.state?.transcript.items ?? []), [chat.state]);
+  const conversationPaths = useMemo(() => [...edits.keys()], [edits]);
+
+  useEffect(() => {
+    if (source !== "mac") return;
+    let active = true;
+    void client.workspace.vcs
+      .diff({ paths: conversationPaths.length === 0 ? undefined : conversationPaths })
+      .then((diffs) => {
+        if (active) {
+          setMacDiffs({ kind: "ready", diffs });
+          setPulling(false);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setMacDiffs({ kind: "failed", message: describeHostError(cause) });
+          setPulling(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, source, macRevision, conversationPaths]);
+
+  const sections = useMemo<FileSection[]>(() => {
+    if (source === "agent") {
+      const out: FileSection[] = [];
+      for (const [path, group] of edits) {
+        group.forEach((edit: RecordedEdit, index: number) => {
+          out.push(
+            fileSection(
+              edit.file,
+              path,
+              group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
+              true,
+            ),
+          );
+        });
+      }
+      return out;
+    }
+    if (macDiffs.kind !== "ready") return [];
+    const out: FileSection[] = [];
+    for (const diff of macDiffs.diffs) {
+      const facts = parsePatchFacts(diff.patch);
+      if (facts === undefined) continue;
+      for (const file of facts.files) {
+        const path = file.path ?? diff.path;
+        out.push(fileSection(file, path, undefined, conversationPaths.length <= 3));
+      }
+    }
+    return out;
+  }, [source, edits, macDiffs, conversationPaths]);
+
+  const isCollapsed = (section: FileSection) =>
+    (sections.length > 3 && section.path !== initialPath) !== toggled.has(section.key);
+  const toggle = (key: string) =>
+    setToggled((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const agentEmpty = chat.state !== undefined && edits.size === 0;
+
   return (
     <html.div data-layoutconformance="strict" style={styles.screen}>
-      <html.div style={[styles.header, styles.topInset(insets.top)]}>
-        <GlassButton
-          label={path === undefined ? "Back to conversation" : "Back to changed files"}
-          onPress={path === undefined ? onBack : () => setPath(undefined)}
-          systemImage="chevron.left"
-          iconOnly
-        />
-        <html.h1 style={[textStyles.title, styles.heading]}>
-          {path === undefined ? "Changed files" : "Workspace diff"}
-        </html.h1>
-        <GlassButton
-          label={path === undefined ? "Refresh changed files" : "Refresh current workspace diff"}
-          onPress={() => setRevision((value) => value + 1)}
-          systemImage="arrow.clockwise"
-          iconOnly
-        />
-      </html.div>
-      <html.div style={[styles.content, styles.bottomInset(insets.bottom)]}>
-        {path === undefined ? (
-          <html.p style={[textStyles.caption, styles.description]}>
-            {runId === undefined
-              ? "Files changed in this conversation"
-              : "Files changed during this run"}
-          </html.p>
-        ) : (
-          <html.div style={styles.description}>
-            <html.p style={textStyles.code}>{path}</html.p>
-            <html.p style={textStyles.caption}>
-              Shows this file's current changes on your Mac, not a saved record from this chat. It
-              can include later or unrelated edits.
-            </html.p>
+      <Host style={{ marginHorizontal: spacing.gutter, marginTop: spacing.sm }}>
+        <Picker
+          selection={source === "agent" ? 0 : 1}
+          onSelectionChange={(selection) => setSource(selection === 1 ? "mac" : "agent")}
+          modifiers={[pickerStyle("segmented")]}
+        >
+          <Text modifiers={[tag(0)]}>Agent edits</Text>
+          <Text modifiers={[tag(1)]}>On Mac</Text>
+        </Picker>
+      </Host>
+      <html.p style={[textStyles.caption, styles.caption]}>
+        {source === "agent"
+          ? "Edits the agent reported. Commands that changed files outside edit tools aren't included."
+          : "Current uncommitted changes on your Mac for these files. Can include edits made outside this conversation."}
+      </html.p>
+      {source === "agent" ? (
+        chat.state === undefined ? (
+          <html.div style={styles.state}>
+            <ActivityIndicator color={theme.muted} />
           </html.div>
-        )}
-        <ReviewContent
-          key={JSON.stringify([path, revision])}
-          client={client}
-          sessionId={sessionId}
-          runId={runId}
-          path={path}
-          onSelect={setPath}
-          onRetry={() => setRevision((value) => value + 1)}
+        ) : agentEmpty ? (
+          <EmptyState
+            title="No recorded edits"
+            description="The agent didn't report file edits in this conversation. Try On Mac to see what's changed there."
+          />
+        ) : (
+          <DiffSections sections={sections} isCollapsed={isCollapsed} onToggle={toggle} />
+        )
+      ) : macDiffs.kind === "loading" ? (
+        <html.div style={styles.state}>
+          <ActivityIndicator color={theme.muted} />
+        </html.div>
+      ) : macDiffs.kind === "failed" ? (
+        <html.div style={styles.state}>
+          <html.p role="alert" style={textStyles.error}>
+            {macDiffs.message}
+          </html.p>
+          <PrimaryButton
+            label="Try again"
+            tone="secondary"
+            onClick={() => setMacRevision((v) => v + 1)}
+          />
+        </html.div>
+      ) : sections.length === 0 ? (
+        <EmptyState
+          title="Nothing changed on your Mac"
+          description="Not changed on your Mac now. It may have been committed or undone."
         />
-      </html.div>
+      ) : (
+        <DiffSections
+          sections={sections}
+          isCollapsed={isCollapsed}
+          onToggle={toggle}
+          refreshControl={
+            <RefreshControl
+              tintColor={theme.muted}
+              refreshing={pulling}
+              onRefresh={() => {
+                setPulling(true);
+                setMacDiffs({ kind: "loading" });
+                setMacRevision((v) => v + 1);
+              }}
+            />
+          }
+        />
+      )}
+      <html.div style={styles.bottom(insets.bottom)} />
     </html.div>
   );
 }
 
-function ReviewContent({
-  client,
-  sessionId,
-  runId,
-  path,
-  onSelect,
-  onRetry,
-}: Omit<ChangesScreenProps, "onBack"> & {
-  path: string | undefined;
-  onSelect: (path: string) => void;
-  onRetry: () => void;
+function DiffSections({
+  sections,
+  isCollapsed,
+  onToggle,
+  refreshControl,
+}: {
+  sections: FileSection[];
+  isCollapsed: (section: FileSection) => boolean;
+  onToggle: (key: string) => void;
+  refreshControl?: ReactElement<RefreshControlProps>;
 }) {
-  const [state, setState] = useState<ReviewState>({ kind: "loading" });
-  useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        const result =
-          path === undefined
-            ? { kind: "files" as const, files: await client.runs.changes({ sessionId, runId }) }
-            : { kind: "diff" as const, diffs: await client.workspace.vcs.diff({ paths: [path] }) };
-        if (active) setState(result);
-      } catch (cause) {
-        if (active) setState({ kind: "failed", message: describeHostError(cause) });
-      }
-    }
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [client, sessionId, runId, path]);
-
-  if (state.kind === "loading")
-    return (
-      <html.div style={styles.notice}>
-        <ActivityIndicator color={nativeTheme.muted} />
-        <html.p style={textStyles.secondary} aria-live="polite">
-          Loading {path === undefined ? "changed files" : "workspace diff"}…
-        </html.p>
-      </html.div>
-    );
-  if (state.kind === "failed")
-    return (
-      <html.div style={styles.notice}>
-        <html.p role="alert" style={textStyles.error}>
-          {state.message}
-        </html.p>
-        <GlassButton label="Try again" onPress={onRetry} />
-      </html.div>
-    );
-  if (state.kind === "files")
-    return (
-      <FlatList
-        data={state.files}
-        keyExtractor={(file) => file.path}
-        renderItem={({ item }) => (
-          <html.button
-            aria-label={`${item.path}, ${item.added} added, ${item.removed} removed. View current workspace diff`}
-            onClick={() => onSelect(item.path)}
-            style={styles.file}
-          >
-            <SymbolView name="doc.text" size={controls.icon} tintColor={nativeTheme.muted} />
-            <html.p style={[textStyles.code, styles.heading]}>{item.path}</html.p>
-            <html.span style={[textStyles.caption, styles.added]}>+{item.added}</html.span>
-            <html.span style={[textStyles.caption, styles.removed]}>−{item.removed}</html.span>
-            <SymbolView name="chevron.right" size={controls.iconSm} tintColor={nativeTheme.muted} />
-          </html.button>
-        )}
-        ListEmptyComponent={
-          <html.div style={styles.empty}>
-            <EmptyState
-              title="No changes yet"
-              description={
-                runId === undefined
-                  ? "No files have changed in this chat."
-                  : "No files changed during this run."
-              }
-            />
-          </html.div>
-        }
-      />
-    );
-  const patch = state.diffs.find((diff) => diff.path === path)?.patch;
-  if (!patch)
-    return (
-      <html.div style={styles.empty}>
-        <EmptyState
-          title="No diff to show"
-          description="Your Mac has no readable changes for this file now. They may have been committed or undone."
-        />
-      </html.div>
-    );
+  const theme = useTheme();
   return (
-    <FlatList
-      data={patch.split("\n")}
-      keyExtractor={(_, index) => String(index)}
-      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}
-      renderItem={({ item }) => (
-        <html.p
-          style={[
-            textStyles.code,
-            styles.diffLine,
-            item.startsWith("+") && !item.startsWith("+++") ? styles.added : null,
-            item.startsWith("-") && !item.startsWith("---") ? styles.removed : null,
-            item.startsWith("@@") ? styles.hunk : null,
-          ]}
-        >
-          {item || " "}
-        </html.p>
-      )}
+    <SectionList
+      sections={sections.map((section) => ({
+        ...section,
+        data: isCollapsed(section) ? [] : section.lines,
+      }))}
+      keyExtractor={(item: Line, index: number) =>
+        item.kind === "hunk"
+          ? `hunk-${String(index)}-${item.text}`
+          : `${String(index)}-${item.kind}`
+      }
+      stickySectionHeadersEnabled
+      refreshControl={refreshControl}
+      contentContainerStyle={{ paddingBottom: spacing.xl }}
+      renderSectionHeader={({ section }) => {
+        const file = section as FileSection;
+        const collapsedNow = isCollapsed(file);
+        return (
+          <html.button
+            aria-expanded={!collapsedNow}
+            onClick={() => onToggle(file.key)}
+            style={styles.fileHeader}
+          >
+            <html.div style={styles.badge}>
+              <html.span style={styles.badgeText}>{file.status}</html.span>
+            </html.div>
+            <html.div style={styles.fileHeaderText}>
+              <html.span style={[textStyles.secondary, styles.fileName]}>
+                {file.path.split("/").pop()}
+              </html.span>
+              <html.span style={textStyles.caption}>
+                {file.subtitle ?? file.path.split("/").slice(0, -1).join("/")}
+              </html.span>
+            </html.div>
+            <html.span style={[textStyles.caption, styles.totals]}>
+              {`+${String(file.added)} \u2212${String(file.removed)}`}
+            </html.span>
+            <SymbolView
+              name={collapsedNow ? "chevron.down" : "chevron.up"}
+              size={13}
+              weight="semibold"
+              tintColor={theme.tertiary}
+            />
+          </html.button>
+        );
+      }}
+      renderItem={({ item }) => {
+        if (item.kind === "hunk")
+          return <html.p style={[textStyles.caption, styles.hunk]}>{item.text}</html.p>;
+        return (
+          <html.div
+            style={[
+              styles.line,
+              item.kind === "added" && styles.lineAdded,
+              item.kind === "removed" && styles.lineRemoved,
+            ]}
+          >
+            <html.span style={[textStyles.diff, styles.gutter]}>
+              {item.gutter === undefined ? "" : String(item.gutter)}
+            </html.span>
+            <html.span
+              style={[
+                textStyles.diff,
+                item.kind === "added" && styles.markAdded,
+                item.kind === "removed" && styles.markRemoved,
+              ]}
+            >
+              {item.kind === "added" ? "+" : item.kind === "removed" ? "\u2212" : " "}
+            </html.span>
+            <html.span style={[textStyles.diff, styles.lineText]}>{item.text}</html.span>
+          </html.div>
+        );
+      }}
     />
   );
 }
@@ -201,36 +351,56 @@ const styles = css.create({
     flexGrow: 1,
     backgroundColor: tokens.background,
   },
-  header: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingInline: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: spacing.sm,
-  },
-  topInset: (top: number) => ({ paddingTop: top + spacing.xs }),
-  bottomInset: (bottom: number) => ({ paddingBottom: bottom }),
-  heading: { flexGrow: 1, flexShrink: 1 },
-  content: { flexGrow: 1, flexBasis: 0, minHeight: 0 },
-  description: { padding: spacing.lg, gap: spacing.sm },
-  empty: { paddingInline: spacing.lg },
-  notice: { padding: spacing.xl, gap: spacing.md, alignItems: "center" },
-  file: {
+  caption: { paddingInline: spacing.gutter, paddingBlock: spacing.sm },
+  state: { paddingBlock: spacing.xxl, alignItems: "center", gap: spacing.md },
+  bottom: (inset: number) => ({ paddingBottom: inset }),
+  fileHeader: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    minHeight: controls.touchTarget,
-    padding: spacing.lg,
+    minHeight: controls.composerHeight,
+    paddingInline: spacing.gutter,
     borderWidth: 0,
-    borderBottomWidth: controls.borderWidth,
+    borderBottomWidth: controls.hairline,
     borderBottomStyle: "solid",
-    borderBottomColor: tokens.border,
-    backgroundColor: { default: tokens.background, ":active": tokens.surface },
+    borderBottomColor: tokens.separator,
+    backgroundColor: { default: tokens.background, ":active": tokens.fill },
   },
-  diffLine: { whiteSpace: "pre-wrap" },
-  added: { color: tokens.success },
-  removed: { color: tokens.danger },
-  hunk: { color: tokens.accent },
+  fileHeaderText: { flexGrow: 1, flexShrink: 1, minWidth: 0, alignItems: "flex-start", gap: 1 },
+  fileName: { color: tokens.foreground, fontWeight: 600, lineClamp: 1 },
+  totals: { fontVariant: "tabular-nums", flexShrink: 0 },
+  badge: {
+    width: controls.badge,
+    height: controls.badge,
+    borderRadius: 6,
+    backgroundColor: tokens.fill,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  badgeText: { color: tokens.muted, fontSize: 11, lineHeight: "14px", fontWeight: 600 },
+  hunk: {
+    paddingInline: spacing.md,
+    paddingBlock: spacing.xs,
+    marginTop: spacing.sm,
+    backgroundColor: tokens.fill,
+  },
+  line: {
+    display: "flex",
+    flexDirection: "row",
+    paddingInline: spacing.md,
+    gap: spacing.md,
+  },
+  lineAdded: { backgroundColor: tokens.successFill },
+  lineRemoved: { backgroundColor: tokens.dangerFill },
+  gutter: {
+    width: controls.diffGutter,
+    textAlign: "right",
+    color: tokens.muted,
+    fontVariant: "tabular-nums",
+  },
+  markAdded: { color: tokens.success },
+  markRemoved: { color: tokens.danger },
+  lineText: { flexGrow: 1, flexShrink: 1, whiteSpace: "pre-wrap" },
 });

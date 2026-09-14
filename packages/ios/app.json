@@ -6,15 +6,17 @@
     "icon": "../desktop/build/icon.png",
     "orientation": "portrait",
     "scheme": "nyte",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "platforms": ["ios"],
     "ios": {
       "bundleIdentifier": "dev.nyte.ios",
       "supportsTablet": false,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac.",
-        "NSCameraUsageDescription": "Take a photo to attach to a Nyte message."
-      }
+        "NSCameraUsageDescription": "Take a photo to attach to a Nyte message.",
+        "NSMicrophoneUsageDescription": "Use the microphone to dictate a Nyte task."
+      },
+      "userInterfaceStyle": "automatic"
     },
     "plugins": [
       "expo-dev-client",
@@ -25,7 +27,23 @@
         {
           "photosPermission": "Choose photos to attach to a Nyte message.",
           "cameraPermission": "Take a photo to attach to a Nyte message.",
-          "microphonePermission": false
+          "microphonePermission": "Use the microphone to dictate a Nyte task."
+        }
+      ],
+      "expo-router",
+      "expo-status-bar",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Use the microphone to dictate a Nyte task.",
+          "speechRecognitionPermission": "Use speech recognition to transcribe a Nyte task."
+        }
+      ],
+      [
+        "@use-voltra/ios-client",
+        {
+          "groupIdentifier": "group.dev.nyte.ios",
+          "enablePushNotifications": false
         }
       ]
     ],
