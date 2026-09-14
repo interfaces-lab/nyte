@@ -4,6 +4,17 @@ Nyte's native iOS companion. The Mac host owns conversations, model credentials,
 and tool execution. This package uses `@nyte-ai/client` for HTTP/SSE and the
 Node-free `@nyte-ai/core/client` `SessionObserver` for transcript state and recovery.
 
+The app is organized as a single stack behind a saved host connection: a
+root Agents list with sections for needs-input, working, pinned, and earlier
+sessions plus a persistent capsule composer, a pushed Settings page, a
+conversation with streamed replies and follow-ups, a review page, a
+changed-files page with agent-edit and on-Mac diff views, an expanded compose
+sheet with real on-device dictation, and a markup editor that bakes numbered
+comments and drawn marks into attached photos. Working sessions mirror to a
+lock-screen Live Activity automatically. Expo Router provides stack
+navigation, header search and menus, and sheets; the connect flow gates all of
+them.
+
 The app supports a saved host connection, chat status, streamed replies,
 follow-up messages while a run works, a separate Stop action, answers to waiting
 selections, and host-backed model selection. Changed-file review shows run
@@ -13,7 +24,10 @@ Failed sends retain the draft and retry key while that conversation remains open
 Each completed message and expanded disclosure has a copy button that
 copies its Markdown source. Photo library selection and
 VisionCamera capture stage up to three JPEGs locally; only Send transmits them.
-A durable offline outbox, QR pairing, and relay discovery are not implemented.
+The review page's merge action sends a merge instruction to the host agent —
+there is no dedicated merge, pull-request, or deployment API — so its result
+arrives in the transcript like any other run. A durable offline outbox, QR
+pairing, and relay discovery are not implemented.
 
 ## Connecting
 
@@ -60,7 +74,12 @@ pnpm --dir packages/ios ios
 The local scene lifecycle config plugin supplies the single-window scene delegate required by the iOS 27 SDK. Expo 57 still generates the older app lifecycle, as tracked in [Expo issue 46664](https://github.com/expo/expo/issues/46664). Remove the plugin and its Swift adapter once a stable Expo prebuild template includes `ExpoAppSceneDelegate`. The adapter keeps window creation in the scene and forwards lifecycle and link events through Expo.
 
 Native Markdown and SF Symbols require a development build; Expo Go cannot
-load them. The native Xcode project is generated from `app.json` and ignored by
+load them. Voltra's `NyteLiveActivity` extension and on-device speech
+recognition also require the development build — Live Activities are not
+available in Expo Go. The Voltra plugin generates the extension target, its
+`group.dev.nyte.ios` app group, and `NSSupportsLiveActivities` at prebuild
+time; the speech plugin supplies the microphone and speech-recognition usage
+descriptions. The native Xcode project is generated from `app.json` and ignored by
 Git. Change app config rather than editing generated native files. Real-device
 signing requires your own Apple team.
 
@@ -79,15 +98,24 @@ SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 
 ## Source layout
 
-Start in `src/app.tsx` for startup, providers, and connection restoration. Follow
-`chat/chats-screen.tsx` into the conversation list and navigation, then
-`chat/chat-screen.tsx` for transcript layout and keyboard following.
+Start in `src/app/_layout.tsx` for startup, providers, the connection gate,
+and the root stack. The route tree is flat: `index` is the Agents list,
+`settings`, `chat/[id]`, `changes/[id]`, and `review/[id]` are pushed screens,
+and `compose`/`annotate` are native sheets. There is no tab bar; the composer
+capsule sits above the root list's safe area. Route files only parse params
+and render the owning feature's screen body.
 
 | Location | Owns |
 | --- | --- |
-| `src/connection/` | Connection form, address validation, Keychain, and host client creation |
-| `src/chat/` | Conversation screens, composer, message rendering, selections, models, and remote session state |
-| `src/media/` | Photo picking, local image preparation, and camera capture |
+| `src/app/` | Expo Router route tree: root layout and thin route files |
+| `src/connection/` | Connection form, address validation, Keychain, host client creation, and the host context behind the gate |
+| `src/chat/` | Conversation screens, list rows and grouping, composer, compose sheet, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
+| `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
+| `src/activity/` | The Voltra Live Activity, synchronized from working sessions |
+| `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
+| `src/settings/` | Settings page: host row, workspaces, connection status, and disconnect |
+| `src/annotate/` | Photo markup editor: numbered points, drawn marks, and comments |
+| `src/media/` | Photo picking, local image preparation, camera capture, annotation notes, and the shared attachment thumbnail |
 | `src/ui/` | Shared native glass buttons and empty states |
 | `src/theme.ts` | Shared colors, typography, spacing, and control dimensions |
 | `plugins/` | Source-controlled Expo native configuration |
@@ -125,24 +153,35 @@ The interface follows the chat and keyboard behavior demonstrated by
 `6280b1f0f6d53d557b160481185e7bdfa7385cb6`. That repository has no license file;
 this app independently implements its patterns using published libraries.
 
-The Chats list uses one text rail and a fixed footer above the safe area.
-Refresh stays outside the scroller; Disconnect is an explicit destructive action beside the
-host details, with a confirmation before removing the saved token. Empty screens share one title/body scale and short, specific copy.
+The Agents list is one sectioned session list under a large-title header with
+an integrated search field and a filter menu; a new conversation starts from
+the capsule composer pinned above the safe area. Review and changed-files
+screens derive edit evidence from the transcript rather than a second host
+read. Disconnect lives in Settings as a grouped destructive row with a
+confirmation before removing the saved token. Version sits in a centered
+footer, not a settings row. Empty screens share one title/body scale and
+short, specific copy.
 
 Expo UI's SwiftUI `Button` supplies native `glass` and `glassProminent` controls
 on supported iOS versions, including iOS 27. `GlassButton` is the single native
 control boundary: its `Host` handles SwiftUI sizing, while React Native owns the
 safe area and keyboard insets. SwiftUI owns the glass material and accessibility
-behavior. Nyte's accent token colors primary actions; neutral controls use the
-foreground token. Message content stays on solid surfaces.
+behavior. In-content primary actions (Connect, Ask to merge) use prominent
+glass. Settings actions stay grouped list rows. The home and chat capsule is a
+`glassEffect` behind the React Native field; plus and mic are glass circle
+controls. Send and stop stay solid primary discs so the send spinner can sit
+on an opaque fill. Nyte's accent token colors primary actions; neutral controls
+use the foreground token. Message content stays on solid surfaces.
 
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,
 with no WebView bridge. All screens consume colors, typography, spacing, radii,
 and control metrics from `src/theme.ts`. Colors are generated from the canonical
 `packages/ui/src/platform-tokens.stylex.ts` through `@nyte-ai/ui/platform-colors`;
 `pnpm --dir packages/ui check:tokens` rejects stale CSS or native color output.
-Native type sizes and touch targets stay in the iOS theme rather than inheriting
-desktop density.
+The app follows the system appearance: `userInterfaceStyle` is `automatic`, RSD
+`css` tokens resolve light and dark values through `prefers-color-scheme`, and
+native controls read the active palette through `useTheme()`. Native type sizes
+and touch targets stay in the iOS theme rather than inheriting desktop density.
 
 Legend List owns message virtualization and sent-message anchoring. Keyboard
 Controller coordinates the composer and list insets. Enriched Markdown renders
@@ -154,6 +193,11 @@ streaming fetch, and Keychain integration.
 | Package | Responsibility |
 | --- | --- |
 | `expo` 57, React 19.2, React Native 0.86 | Native build and app runtime |
+| `expo-router` | File routes, native tabs and stacks, sheets, header search, deep links |
+| `react-native-screens` | Native stack and tab presentation for the router |
+| `@use-voltra/ios`, `@use-voltra/ios-client` | Lock-screen Live Activity and Dynamic Island content |
+| `expo-speech-recognition` | On-device dictation and mic level for the compose sheet |
+| `react-native-svg`, `react-native-view-shot` | Markup strokes and baking annotated photos |
 | `@expo/ui` 57 / `swift-ui` | Native glass controls and menus |
 | `react-strict-dom` | StyleX-compatible native content layout |
 | `@nyte-ai/ui/platform-colors` | Generated shared Nyte colors |
@@ -167,6 +211,7 @@ streaming fetch, and Keychain integration.
 | `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
 | `expo-image-picker`, `expo-image-manipulator` | System photo selection and local JPEG resizing |
 | `expo-secure-store`, `expo-crypto` | Saved host token and message retry IDs |
+| `expo-constants`, `expo-linking`, `expo-status-bar` | Router runtime peers, deep links, and status bar |
 | `react-native-safe-area-context` | Device and modal insets |
 | `react-native-reanimated`, `react-native-worklets` | Required native keyboard/list peers |
 | `typebox` | Parse the saved connection at its boundary |
@@ -234,7 +279,24 @@ use its photo library to test attachment staging and sending.
 `runs.changes` returns file summaries. `workspace.vcs.diff` returns the current
 working-tree diff and is labeled that way, since it can contain other edits.
 Missing diffs are shown explicitly; this is not run-isolated patch storage.
+The review page composes those same real reads; because the protocol exposes
+no pull-request, deployment, or merge operation, its merge button posts a
+merge instruction as a follow-up message and the host agent performs it with
+its own tools.
+
+Photo markup taps place numbered points with comments and drags draw strokes;
+saving captures the image plus marks into a fresh staged JPEG and the comments
+travel as text beside it. Dictation uses `expo-speech-recognition` with live
+volume events for the waveform; transcripts land in the same draft and nothing
+records without the permission prompt.
+
+The Agents list mirrors the host's working sessions into a Voltra Live
+Activity — lock-screen card plus Dynamic Island variants — that starts when
+work appears, updates while the session set changes, and ends when nothing is
+working; the system Settings toggle is the off switch. Live Activities render
+Voltra JSX, not React Native views.
 
 The [Cursor iOS study](../../output/cursor-ios-study/cursor-ios-study.html) informs
-the interaction order and visual hierarchy. Durable drafts across navigation to
+the interaction order and visual hierarchy; its iPad layouts were adapted to
+iPhone rather than copied. Durable drafts across navigation to
 the conversation list, offline history, and real-phone pairing remain future work.

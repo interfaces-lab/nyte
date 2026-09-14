@@ -4,17 +4,17 @@ import { ActivityIndicator, TextInput } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
-import { GlassButton } from "../ui/glass-button.tsx";
+import { PrimaryButton } from "../ui/primary-button.tsx";
 import { displayAddress, parseConnection, type Connection } from "./connection.ts";
 import {
   controls,
-  media,
-  nativeTheme,
+  useTheme,
   radii,
   spacing,
   textStyles,
   tokens,
   typography,
+  type Theme,
 } from "../theme.ts";
 
 /** A wrong address on the local network can hang for minutes; the form gives up first. */
@@ -27,6 +27,7 @@ export function ConnectScreen({
   onConnect: (connection: Connection, signal: AbortSignal) => Promise<void>;
   notice: string | undefined;
 }) {
+  const theme = useTheme();
   const [name, setName] = useState("My Mac");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
@@ -93,24 +94,6 @@ export function ConnectScreen({
       keyboardDismissMode="interactive"
     >
       <html.div style={styles.page}>
-        <html.span style={[textStyles.secondary, styles.wordmark]}>nyte</html.span>
-        <html.div style={styles.devices} aria-hidden>
-          <html.div style={styles.deviceTile}>
-            <SymbolView
-              name="laptopcomputer"
-              size={media.macSymbol}
-              tintColor={nativeTheme.foreground}
-            />
-          </html.div>
-          <html.div style={styles.linkDots}>
-            <html.div style={styles.dot} />
-            <html.div style={styles.dot} />
-            <html.div style={styles.dot} />
-          </html.div>
-          <html.div style={styles.deviceTile}>
-            <SymbolView name="iphone" size={media.phoneSymbol} tintColor={nativeTheme.foreground} />
-          </html.div>
-        </html.div>
         <html.div style={styles.intro}>
           <html.h1 style={[textStyles.heading, styles.text]}>Connect your Mac</html.h1>
           <html.p style={[textStyles.body, styles.lead]}>
@@ -126,9 +109,9 @@ export function ConnectScreen({
               value={name}
               onChangeText={setName}
               editable={!busy}
-              style={inputStyle}
+              style={inputStyle(theme)}
               placeholder="My Mac"
-              placeholderTextColor={nativeTheme.muted}
+              placeholderTextColor={theme.muted}
               autoComplete="off"
               textContentType="none"
               onSubmitEditing={() => addressInput.current?.focus()}
@@ -144,9 +127,9 @@ export function ConnectScreen({
               value={url}
               onChangeText={setUrl}
               editable={!busy}
-              style={inputStyle}
+              style={inputStyle(theme)}
               placeholder="http://127.0.0.1:port"
-              placeholderTextColor={nativeTheme.muted}
+              placeholderTextColor={theme.muted}
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
@@ -169,7 +152,7 @@ export function ConnectScreen({
                 <SymbolView
                   name={revealToken ? "eye.slash" : "eye"}
                   size={controls.icon}
-                  tintColor={nativeTheme.muted}
+                  tintColor={theme.muted}
                 />
               </html.button>
             }
@@ -180,9 +163,9 @@ export function ConnectScreen({
               value={token}
               onChangeText={setToken}
               editable={!busy}
-              style={inputStyle}
+              style={inputStyle(theme)}
               placeholder="Paste from your Mac"
-              placeholderTextColor={nativeTheme.muted}
+              placeholderTextColor={theme.muted}
               secureTextEntry={!revealToken}
               keyboardType="ascii-capable"
               autoCapitalize="none"
@@ -210,7 +193,7 @@ export function ConnectScreen({
             <SymbolView
               name="exclamationmark.circle.fill"
               size={controls.icon}
-              tintColor={nativeTheme.danger}
+              tintColor={theme.danger}
             />
             <html.p style={[textStyles.error, styles.alertText]}>{message}</html.p>
           </html.div>
@@ -218,23 +201,20 @@ export function ConnectScreen({
         {busy ? (
           <html.div style={styles.actions}>
             <html.div style={styles.progress} aria-live="polite">
-              <ActivityIndicator color={nativeTheme.foreground} />
+              <ActivityIndicator color={theme.foreground} />
               <html.span style={textStyles.title}>Connecting…</html.span>
             </html.div>
-            <GlassButton label="Cancel" onPress={() => attempt.current?.abort()} fullWidth />
+            <PrimaryButton
+              label="Cancel"
+              tone="secondary"
+              onClick={() => attempt.current?.abort()}
+            />
           </html.div>
         ) : (
-          <GlassButton
-            label="Connect"
-            disabled={!complete}
-            onPress={() => void connect()}
-            prominent
-            fullWidth
-          />
+          <PrimaryButton label="Connect" disabled={!complete} onClick={() => void connect()} />
         )}
         <html.p style={[textStyles.caption, styles.text]}>
-          Only the iOS Simulator on the same Mac can connect. A physical iPhone isn't supported yet.
-          The token is saved in this device's Keychain.
+          Only the iOS Simulator on this Mac can connect. The token stays in Keychain.
         </html.p>
       </html.div>
     </KeyboardAwareScrollView>
@@ -261,14 +241,16 @@ function Field({
   );
 }
 
-const inputStyle = {
-  ...typography.title,
-  flex: 1,
-  color: nativeTheme.foreground,
-  fontWeight: typography.body.fontWeight,
-  paddingVertical: 0,
-  minHeight: controls.touchTarget,
-};
+function inputStyle(theme: Theme) {
+  return {
+    ...typography.title,
+    flex: 1,
+    color: theme.foreground,
+    fontWeight: typography.body.fontWeight,
+    paddingVertical: 0,
+    minHeight: controls.touchTarget,
+  };
+}
 
 const styles = css.create({
   page: {
@@ -278,42 +260,15 @@ const styles = css.create({
     gap: spacing.xl,
   },
   text: { margin: 0 },
-  wordmark: { fontWeight: typography.title.fontWeight },
-  devices: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.lg,
-    paddingBlock: spacing.sm,
-  },
-  deviceTile: {
-    width: media.deviceTileSize,
-    height: media.deviceTileSize,
-    borderRadius: media.deviceTileRadius,
-    backgroundColor: tokens.surface,
-    borderWidth: controls.borderWidth,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  linkDots: { display: "flex", flexDirection: "row", gap: spacing.xs },
-  dot: {
-    width: controls.statusDot,
-    height: controls.statusDot,
-    borderRadius: radii.pill,
-    backgroundColor: tokens.accent,
-  },
   intro: { gap: spacing.sm },
   lead: { color: tokens.muted, margin: 0 },
   form: {
     backgroundColor: tokens.surface,
     borderRadius: radii.card,
-    borderWidth: controls.borderWidth,
+    borderWidth: controls.hairline,
     borderStyle: "solid",
     borderColor: tokens.border,
+    boxShadow: tokens.shadow,
     paddingInline: spacing.lg,
   },
   field: { paddingBlock: spacing.xs },

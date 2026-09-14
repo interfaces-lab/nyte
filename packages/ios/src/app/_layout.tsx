@@ -1,0 +1,114 @@
+import { ActivityIndicator, StatusBar, useColorScheme } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
+import { Stack } from "expo-router/stack";
+import { css, html } from "react-strict-dom";
+import { ConnectScreen } from "../connection/connect-screen.tsx";
+import { HostProvider, useHostConnection } from "../connection/host-context.tsx";
+import { useTheme, spacing, tokens, typography } from "../theme.ts";
+
+export const unstable_settings = { anchor: "index" };
+
+export default function RootLayout() {
+  const theme = useTheme();
+  const dark = useColorScheme() === "dark";
+  const { host, connect, disconnect } = useHostConnection();
+  const base = dark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...base,
+    colors: {
+      ...base.colors,
+      background: theme.background,
+      card: theme.background,
+      text: theme.foreground,
+      primary: theme.foreground,
+      border: theme.border,
+    },
+  };
+  return (
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <ThemeProvider value={navigationTheme}>
+          <StatusBar barStyle={dark ? "light-content" : "dark-content"} />
+          {host.kind === "loading" ? (
+            <html.div data-layoutconformance="strict" style={[styles.root, styles.centered]}>
+              <ActivityIndicator color={theme.muted} />
+            </html.div>
+          ) : host.kind === "setup" ? (
+            <html.div data-layoutconformance="strict" style={styles.root}>
+              <ConnectScreen onConnect={connect} notice={host.notice} />
+            </html.div>
+          ) : (
+            <HostProvider
+              session={{ client: host.client, connection: host.connection, disconnect }}
+            >
+              <Stack
+                screenOptions={{
+                  headerTransparent: false,
+                  headerShadowVisible: false,
+                  headerLargeTitleShadowVisible: false,
+                  headerBackButtonDisplayMode: "minimal",
+                  headerTintColor: theme.foreground,
+                  headerTitleStyle: {
+                    color: theme.foreground,
+                    fontSize: typography.title.fontSize,
+                    fontWeight: "600",
+                  },
+                  headerLargeTitleStyle: {
+                    color: theme.foreground,
+                    fontSize: typography.heading.fontSize,
+                    fontWeight: "600",
+                  },
+                  headerStyle: { backgroundColor: theme.background },
+                  headerLargeStyle: { backgroundColor: theme.background },
+                  contentStyle: { backgroundColor: theme.background },
+                }}
+              >
+                <Stack.Screen
+                  name="index"
+                  options={{ title: "Agents", headerLargeTitleEnabled: true }}
+                />
+                <Stack.Screen name="settings" options={{ title: "Settings" }} />
+                <Stack.Screen name="chat/[id]" options={{ title: "", headerTransparent: true }} />
+                <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />
+                <Stack.Screen name="review/[id]" options={{ title: "" }} />
+                <Stack.Screen
+                  name="compose"
+                  options={{
+                    presentation: "formSheet",
+                    headerShown: false,
+                    sheetGrabberVisible: true,
+                    sheetAllowedDetents: "fitToContents",
+                    sheetCornerRadius: 28,
+                    contentStyle: { backgroundColor: "transparent" },
+                  }}
+                />
+                <Stack.Screen
+                  name="annotate"
+                  options={{ presentation: "fullScreenModal", headerShown: false }}
+                />
+              </Stack>
+            </HostProvider>
+          )}
+        </ThemeProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
+  );
+}
+
+const styles = css.create({
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    backgroundColor: tokens.background,
+  },
+  centered: {
+    justifyContent: "center",
+    alignItems: "center",
+    gap: spacing.lg,
+    padding: spacing.xl,
+  },
+});
