@@ -5,6 +5,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { VirtualItem } from "@tanstack/react-virtual";
 import { toolGroupStyles, WORK_PREVIEW_HEIGHT } from "./styles.stylex.ts";
 import type { WorkGroupEntries } from "./work-group-entries.ts";
+import type { ToolCallDensity } from "../theme/boot.ts";
 
 const ROW_ESTIMATE = 24;
 const measurements = new Map<string, VirtualItem[]>();
@@ -31,20 +32,24 @@ export function opensWorkGroup(target: EventTarget | null, selection: string): b
  */
 export function WorkGroupWindow<Entry extends { readonly key: string }>({
   groupKey,
+  density,
   entries,
   viewportRef,
   preview,
   renderEntry,
 }: {
   groupKey: string | undefined;
+  density: ToolCallDensity;
   entries: WorkGroupEntries<Entry>;
   viewportRef: RefObject<HTMLDivElement | null>;
   preview: boolean;
   renderEntry: (entry: Entry) => ReactNode;
 }) {
   const planeRef = useRef<HTMLDivElement>(null);
+  // Heights measured under another density describe different rows.
+  const cacheKey = groupKey === undefined ? undefined : `${density}:${groupKey}`;
   const [restore] = useState(() => {
-    const cached = groupKey === undefined ? [] : (measurements.get(groupKey) ?? []);
+    const cached = cacheKey === undefined ? [] : (measurements.get(cacheKey) ?? []);
     const sizes = new Map(cached.map((item) => [item.key, item.size]));
     let total = 0;
     for (let index = 0; index < entries.count; index += 1) {
@@ -183,9 +188,9 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
   });
   useLayoutEffect(
     () => () => {
-      if (groupKey !== undefined) measurements.set(groupKey, virtualizer.takeSnapshot());
+      if (cacheKey !== undefined) measurements.set(cacheKey, virtualizer.takeSnapshot());
     },
-    [groupKey, virtualizer],
+    [cacheKey, virtualizer],
   );
   return (
     <div

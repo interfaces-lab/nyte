@@ -5,7 +5,7 @@
  * idle head is what the modifier sends (it queues a follow-up). Shift+Enter is
  * a newline, and a composition's Enter belongs to the IME.
  */
-import type { Landing, Lane } from "@nyte-ai/core";
+import type { Landing, Lane, PendingItem } from "@nyte-ai/core";
 
 export interface LaneRoles {
   /** Lands before the next response: what Enter sends. */
@@ -54,4 +54,16 @@ export function submissionLane(action: SubmitAction, roles: LaneRoles, current?:
 
 export function modifierKeyLabel(mac: boolean): string {
   return mac ? "⌘" : "Ctrl+";
+}
+
+/**
+ * The message Enter on an empty composer sends now: the first pending item
+ * that is not already in the boundary lane, since one there is going out at
+ * the next step anyway.
+ */
+export function nextToSteer(
+  items: readonly PendingItem[],
+  roles: LaneRoles,
+): PendingItem | undefined {
+  return items.find((item) => item.lane !== roles.steer);
 }

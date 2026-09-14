@@ -10,7 +10,8 @@
  * steers), Cmd/Ctrl+Enter to the lane that waits for an idle head (it queues a
  * follow-up), both read from the landing policy. The toolbar card shows
  * still-pending queue items with edit, cancel, and "send now"
- * (`redeliver`), and Esc requests a durable abort.
+ * (`redeliver`), Enter on an empty composer sends the first of them now, and
+ * Esc requests a durable abort.
  */
 import { trayStyles } from "../theme/tray.stylex.ts";
 import * as stylex from "@stylexjs/stylex";
@@ -54,6 +55,7 @@ import {
   composerEnterAction,
   laneRoles,
   modifierKeyLabel,
+  nextToSteer,
   submissionLane,
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
@@ -272,6 +274,8 @@ export interface ComposerFrameProps {
   onAbort?: () => void;
   /** An open composer tray handles Escape before the empty-input abort shortcut. */
   onDismissTray?: () => boolean;
+  /** Enter on a truly empty composer; return true when it was handled. */
+  onEmptySubmit?: () => boolean;
   /** The model chip slot, left side of the controls row. */
   model?: ReactNode;
   inputRef?: (element: ComposerEditorHandle | null) => void;
@@ -300,6 +304,7 @@ export function ComposerFrame({
   busy = false,
   onAbort,
   onDismissTray,
+  onEmptySubmit,
   model,
   inputRef,
   onFocusChange,
@@ -580,6 +585,19 @@ export function ComposerFrame({
                 const enter = composerEnterAction(event);
                 if (enter === "submit" || enter === "submit-alternate") {
                   event.preventDefault();
+                  // Enter on an empty composer sends the first queued
+                  // follow-up now; anything still composing sends as usual.
+                  if (
+                    enter === "submit" &&
+                    !disabled &&
+                    !submitting &&
+                    editing === undefined &&
+                    document.text.trim() === "" &&
+                    attachments.length === 0 &&
+                    references.length === 0 &&
+                    onEmptySubmit?.() === true
+                  )
+                    return;
                   void submit(enter);
                   return;
                 }
@@ -784,7 +802,7 @@ export function Composer({
 }: {
   sessionId: SessionId;
   working: boolean;
-  /** Durable queue items waiting behind a live run. */
+  /** Durable queue items waiting behind a live run, in the lanes the tray shows. */
   pending: readonly PendingItem[];
   /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
   unsent: readonly OutboxRow[];
@@ -1067,6 +1085,19 @@ export function Composer({
     }
   };
 
+  /** Enter on an empty composer sends the first queued follow-up now. */
+  const sendNextQueued = (): boolean => {
+    const next = nextToSteer(pending, roles);
+    if (next === undefined) return false;
+    void sendPendingNow(next);
+    return true;
+  };
+  const emptyEnterSteers =
+    !disabled &&
+    currentViewState.draft === "" &&
+    attachments.length === 0 &&
+    nextToSteer(pending, roles) !== undefined;
+
   const canBeginEdit = currentViewState.draft === "" && attachments.length === 0 && !disabled;
   const beginEdit = (item: PendingItem): void => {
     if (!canBeginEdit) return;
@@ -1088,6 +1119,9 @@ export function Composer({
         <div {...stylex.props(trayStyles.header)}>
           <span {...stylex.props(trayStyles.title)}>
             {String(queuedMessageCount)} Queued {queuedMessageCount === 1 ? "Message" : "Messages"}
+            {emptyEnterSteers && (
+              <span {...stylex.props(composerStyles.queueHint)}> · Enter to send</span>
+            )}
           </span>
         </div>
         <div {...stylex.props(trayStyles.list, composerStyles.queueList)}>
@@ -1245,6 +1279,7 @@ export function Composer({
           busy={working}
           onAbort={abort}
           onDismissTray={backgroundWork?.onEscape}
+          onEmptySubmit={sendNextQueued}
           suggestionCatalog={suggestionCatalog}
           mentionFiles={mentionFiles}
           hasConversationContext
