@@ -285,6 +285,7 @@ export function WorkGroupView({
         <div {...stylex.props(toolGroupStyles.calls)}>
           <WorkGroupWindow
             groupKey={groupKey}
+            density={density}
             entries={entries}
             viewportRef={viewportRef}
             preview={preview}

@@ -8,9 +8,18 @@ import type { ReactElement } from "react";
 import { livePartKey } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import { conversation } from "../theme/schema.stylex.ts";
+import { t } from "../theme/vars.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { Prose } from "./prose.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
+
+/** Dimmed while core still holds the message behind a live run; full weight once it lands. */
+const PENDING_OPACITY = 0.6;
+
+const pendingIn = stylex.keyframes({
+  from: { opacity: 0, transform: "translateY(4px)" },
+  to: { opacity: PENDING_OPACITY, transform: "translateY(0)" },
+});
 
 export const liveTurnStyles = stylex.create({
   root: {
@@ -19,6 +28,19 @@ export const liveTurnStyles = stylex.create({
     gap: conversation.rowGap,
     width: "100%",
     minWidth: 0,
+  },
+  /**
+   * A message waiting on a live run, drawn where its turn will be: muted so
+   * it reads as sent without pretending the run already answered it.
+   */
+  pending: {
+    opacity: PENDING_OPACITY,
+    animationName: {
+      default: pendingIn,
+      "@media (prefers-reduced-motion: reduce)": "none",
+    },
+    animationDuration: "180ms",
+    animationTimingFunction: t.easeOut,
   },
 });
 

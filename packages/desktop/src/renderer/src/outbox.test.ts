@@ -159,7 +159,14 @@ describe("outbox", () => {
     const submitted = outbox.submit({ sessionId: SESSION, content: "hello" });
     await tick();
     assert.deepEqual(outbox.rows(), [
-      { key: "key-1", sessionId: SESSION, content: "hello", at: 1_000, state: { kind: "saving" } },
+      {
+        key: "key-1",
+        sessionId: SESSION,
+        content: "hello",
+        lane: undefined,
+        at: 1_000,
+        state: { kind: "saving" },
+      },
     ]);
     assert.equal(stored.has("key-1"), false);
     assert.equal(sends.length, 0);

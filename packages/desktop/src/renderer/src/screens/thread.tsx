@@ -35,6 +35,7 @@ import type {
 } from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { composerSendInput, composerSendPlan } from "../conversation/composer-send.ts";
+import { laneRoles } from "../conversation/composer-keys.ts";
 import type {
   BranchModelChoice,
   BranchModelPicker,
@@ -86,6 +87,7 @@ import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
 import { outbox, useOutboxRows } from "../use-outbox.ts";
 import { conversation, layer } from "../theme/schema.stylex.ts";
+import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
@@ -431,26 +433,31 @@ function TranscriptPlane({
   renderRow: (row: TranscriptRow) => ReactNode;
 }): ReactElement {
   const viewStore = usePaneViewStateStore();
+  const density = useAppearanceSettings().toolCalls;
   const dockHeight = useRef(0);
   const promptTrack = useRef<{ sessionId: SessionId | undefined; count: number }>({
     sessionId: undefined,
     count: 0,
   });
-  const pendingPin = useRef<number | undefined>(undefined);
+  /** A prompt scroll target waiting for the bottom reserve to make it reachable. */
+  const pendingPin = useRef<{ key: string; offset: number } | undefined>(undefined);
   const [overscroll, setOverscroll] = useState<OverscrollReservation>();
   const reserve = overscroll?.sessionId === sessionId ? overscroll.reserve : 0;
   // What the last visit measured, read once: the virtualizer consults its
   // initial options only until the scrollport reports, and the plane is
   // keyed by session so each visit gets a fresh instance. Rows already
-  // measured take their real height; the rest keep their estimate.
+  // measured take their real height; the rest keep their estimate. Heights
+  // remembered under another density describe different rows, so a density
+  // switch starts from estimates again.
   const [restore] = useState(() => {
     const { transcript, scroll } = viewStore.readSession(sessionId, paneId);
-    const measured = new Map(transcript.measurements.map((item) => [item.key, item.size]));
+    const measurements = transcript.density === density ? transcript.measurements : [];
+    const measured = new Map(measurements.map((item) => [item.key, item.size]));
     return {
-      measurements: [...transcript.measurements],
+      measurements: [...measurements],
       rect: transcript.viewport ?? { width: 0, height: 0 },
       offset: initialTranscriptOffset({
-        sizes: rows.map((row) => measured.get(row.key) ?? estimateRowSize(row)),
+        sizes: rows.map((row) => measured.get(row.key) ?? estimateRowSize(row, density)),
         paddingStart: TRANSCRIPT_PADDING_START,
         paddingEnd: TRANSCRIPT_PADDING_END,
         viewportHeight: transcript.viewport?.height ?? 0,
@@ -465,7 +472,7 @@ function TranscriptPlane({
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (index) => estimateRowSize(rows[index]),
+    estimateSize: (index) => estimateRowSize(rows[index], density),
     getItemKey,
     // The virtualizer owns the plane height and row tops, so a scroll tick
     // rerenders only when the visible range changes. `position` keeps `top`
@@ -514,10 +521,11 @@ function TranscriptPlane({
         transcript: {
           measurements: virtualizer.takeSnapshot(),
           viewport: virtualizer.scrollRect ?? undefined,
+          density,
         },
       }));
     },
-    [paneId, sessionId, viewStore, virtualizer],
+    [density, paneId, sessionId, viewStore, virtualizer],
   );
 
   useLayoutEffect(() => {
@@ -548,7 +556,9 @@ function TranscriptPlane({
         dockHeight.current = dock.offsetHeight;
         if (!pinned) virtualizer.scrollToOffset(scroll.scrollTop + delta);
       }
-      if (pinned) virtualizer.scrollToEnd();
+      // A pending prompt pin owns the scroll target; following the bottom
+      // here would scroll past it and the pin would yank the view back up.
+      if (pinned && pendingPin.current === undefined) virtualizer.scrollToEnd();
       sync();
     });
     observer.observe(scroll);
@@ -568,12 +578,17 @@ function TranscriptPlane({
     if (scroll === null) return;
     syncStickyUserMessage(scroll, virtualizer);
 
-    // The reserve from the previous commit is in the DOM now; the prompt can
-    // reach the top edge.
+    // The pin lands as soon as the reserve makes it reachable — usually the
+    // very next commit once `paddingEnd` is in the DOM — and is dropped if
+    // its row leaves (a landing prompt that already committed as a turn).
     const pin = pendingPin.current;
-    if (pin !== undefined && overscroll?.sessionId === sessionId) {
-      pendingPin.current = undefined;
-      virtualizer.scrollToOffset(pin);
+    if (pin !== undefined) {
+      if (rows.every((row) => row.key !== pin.key)) {
+        pendingPin.current = undefined;
+      } else if (scroll.scrollHeight - scroll.clientHeight >= pin.offset) {
+        pendingPin.current = undefined;
+        virtualizer.scrollToOffset(pin.offset);
+      }
     }
 
     const count = promptRowCount(rows);
@@ -583,9 +598,15 @@ function TranscriptPlane({
     const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
     const index = rows.findLastIndex(rowHasPrompt);
     const row = rows[index];
-    if (!sent || !pinned || row === undefined) return;
+    // Only a prompt that just landed reserves: a turn appearing with its
+    // prompt already committed is the same message promoted, and a muted
+    // landing row is queued behind a live run, not a fresh send to pin.
+    if (!sent || !pinned || row === undefined || row.kind !== "landing" || row.pending) return;
     // Reserve bottom overscroll so the new prompt can scroll to the top edge
-    // before its reply exists; the reserve then gives way to the reply.
+    // before its reply exists; the reserve then gives way to the reply. The
+    // dock height is read fresh — the send may have just shrunk the composer
+    // (cleared draft, dropped attachments) and the observer reports late.
+    const dock = scroll.lastElementChild;
     const content = virtualizer.getTotalSize() - virtualizer.options.paddingEnd;
     const item = virtualizer.measurementsCache[index];
     const wrapper = virtualizer.elementsCache.get(row.key);
@@ -594,12 +615,15 @@ function TranscriptPlane({
     const initial = overscrollReserve({
       viewportHeight: scroll.clientHeight,
       rowHeight: turn.offsetHeight,
-      dockHeight: dockHeight.current,
+      dockHeight: dock instanceof HTMLElement ? dock.offsetHeight : 0,
     });
     // A row mounted mid-scroll is still an estimate in the totals; the
     // baseline uses its real height so the reply's growth alone shrinks the reserve.
     const baseline = content - item.size + wrapper.offsetHeight;
-    pendingPin.current = item.start + turn.offsetTop - PROMPT_TOP_INSET;
+    pendingPin.current = {
+      key: row.key,
+      offset: item.start + turn.offsetTop - PROMPT_TOP_INSET,
+    };
     setOverscroll({ sessionId, initial, baseline, reserve: initial });
   }, [overscroll, paneId, rows, scrollRef, sessionId, viewStore, virtualizer]);
 
@@ -653,12 +677,16 @@ function useBlankViewBinding(
   useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [, redraw] = useReducer((value: number) => value + 1, 0);
   const state = store.readBlank(paneId);
+  const draftId = state.id;
   const update = useCallback(
     (change: BlankViewUpdate): void => {
-      store.writeBlank(paneId, change(store.readBlank(paneId)));
+      const current = store.readBlank(paneId);
+      // A detached composer can still commit; its writes belong to the draft it showed.
+      if (current.id !== draftId) return;
+      store.writeBlank(paneId, change(current));
       redraw();
     },
-    [paneId, store],
+    [draftId, paneId, store],
   );
   return [state, update];
 }
@@ -759,17 +787,30 @@ function SessionConversation({
   // Whether a submitted message steers a live run or opens the next turn is
   // read from the snapshot alone, so one coherent read moves each message from
   // the outbox to `pending` to the transcript without a detour through the
-  // composer strip.
+  // composer strip. While a run is live only the boundary lane draws here —
+  // muted until it lands; the lanes that wait for an idle head keep the tray.
   const unsent = useOutboxRows(sessionId);
   const pending = snapshot.data?.pending ?? [];
-  const landing = settledRun
-    ? []
-    : [
-        ...pending.map((item) => ({ key: item.change, content: item.content })),
-        ...unsent
-          .filter((row) => row.state.kind !== "failed")
-          .map((row) => ({ key: row.key, content: row.content })),
-      ];
+  const roles = useMemo(() => laneRoles(nyte.landing), []);
+  const landing = [
+    ...pending
+      .filter((item) => !settledRun || item.lane === roles.steer)
+      .map((item) => ({
+        // The receipt names the change; the key it carried keeps the same row.
+        key: item.key ?? item.change,
+        content: item.content,
+        pending: settledRun,
+      })),
+    ...unsent
+      .filter(
+        (row) =>
+          row.state.kind !== "failed" &&
+          (!settledRun || row.lane === roles.steer) &&
+          // The durable item arrives before its outbox row leaves; one key, one row.
+          pending.every((item) => item.key !== row.key),
+      )
+      .map((row) => ({ key: row.key, content: row.content, pending: settledRun })),
+  ];
   const working = navigating || live.runState !== "idle" || settledRun || landing.length > 0;
   const cwd = host.data?.workspace?.path;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -978,7 +1019,11 @@ function SessionConversation({
         );
       case "landing":
         return (
-          <div data-sticky-turn {...stylex.props(liveTurnStyles.root)}>
+          <div
+            data-sticky-turn
+            title={row.pending ? "Lands at the next response" : undefined}
+            {...stylex.props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
+          >
             <UserMessageView content={row.content} />
           </div>
         );
@@ -1109,8 +1154,11 @@ function SessionConversation({
                   },
                 }}
                 working={working}
-                pending={settledRun ? pending : []}
-                unsent={settledRun ? unsent : unsent.filter((row) => row.state.kind === "failed")}
+                // The boundary lane draws in the transcript; the tray keeps the rest.
+                pending={settledRun ? pending.filter((item) => item.lane !== roles.steer) : []}
+                unsent={unsent.filter(
+                  (row) => row.state.kind === "failed" || (settledRun && row.lane !== roles.steer),
+                )}
                 disabled={snapshot.data === undefined || snapshot.isError}
                 fileDropRoot={scrollRef}
                 initialViewState={viewStore.readSession(sessionId, paneId).composer}
@@ -1503,7 +1551,13 @@ function PaneHost({
   const actions = usePaneActions();
   const { focusRequest } = usePaneControllerSnapshot();
   const viewStore = usePaneViewStateStore();
-  useSyncExternalStore(viewStore.subscribe, viewStore.getSnapshot, viewStore.getSnapshot);
+  // The composer key must follow the active draft id through a subscription:
+  // a plain readBlank() call in JSX can be frozen by memoization.
+  const blankDraftId = useSyncExternalStore(
+    viewStore.subscribe,
+    () => viewStore.readBlank(pane.id).id,
+    () => viewStore.readBlank(pane.id).id,
+  );
   const inputRef = useRef<ComposerEditorHandle | null>(null);
   const attachDropTarget = useSessionPaneDropTarget(pane.id);
   const attachInput = useCallback((element: ComposerEditorHandle | null) => {
@@ -1555,11 +1609,7 @@ function PaneHost({
             inputRef={attachInput}
           />
         ) : (
-          <BlankConversation
-            key={viewStore.readBlank(pane.id).id}
-            paneId={pane.id}
-            inputRef={attachInput}
-          />
+          <BlankConversation key={blankDraftId} paneId={pane.id} inputRef={attachInput} />
         )}
       </ReferenceOpenerProvider>
     </section>

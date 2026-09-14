@@ -1,5 +1,6 @@
 import type { SessionId } from "@nyte-ai/core";
 import type { Rect, VirtualItem } from "@tanstack/react-virtual";
+import type { ToolCallDensity } from "../theme/boot.ts";
 import type { DesktopCatalog } from "../../../shared/ipc.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
@@ -31,6 +32,8 @@ export interface SplitViewState {
 export interface TranscriptViewState {
   readonly measurements: readonly VirtualItem[];
   readonly viewport: Rect | undefined;
+  /** The density these heights were measured under; a switch discards them. */
+  readonly density: ToolCallDensity | undefined;
 }
 
 export interface SessionViewState {
@@ -65,7 +68,7 @@ function defaultSessionViewState(paneId: PaneId): SessionViewState {
   return {
     composer: DEFAULT_COMPOSER_VIEW_STATE,
     scroll: { top: 0, bottomPinned: true },
-    transcript: { measurements: [], viewport: undefined },
+    transcript: { measurements: [], viewport: undefined, density: undefined },
     focusedPaneId: paneId,
     split: undefined,
   };

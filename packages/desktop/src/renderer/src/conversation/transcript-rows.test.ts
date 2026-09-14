@@ -26,7 +26,7 @@ describe("transcriptRows", () => {
         turn("t1", [user]),
         { kind: "summary", commit: "c9", at: 0, body: { kind: "summary", text: "left" } },
       ],
-      landing: [{ key: "outbox:1", content: "next" }],
+      landing: [{ key: "outbox:1", content: "next", pending: false }],
       retrying: "network",
       working: true,
       selections: 0,
@@ -128,7 +128,7 @@ describe("promptRowCount", () => {
         turn("t2", [prose("continuation")]),
         { kind: "summary", commit: "s1", at: 0, body: { kind: "summary", text: "..." } },
       ],
-      landing: [{ key: "p1", content: "again" }],
+      landing: [{ key: "p1", content: "again", pending: false }],
       retrying: undefined,
       working: true,
       selections: 0,
@@ -140,28 +140,50 @@ describe("promptRowCount", () => {
 describe("estimateRowSize", () => {
   test("sizes a turn by its parts", () => {
     const only = (parts: TurnPart[]): number =>
-      estimateRowSize({ kind: "turn", key: "t", turn: turn("t", parts), trailing: false });
+      estimateRowSize(
+        { kind: "turn", key: "t", turn: turn("t", parts), trailing: false },
+        "balanced",
+      );
     assert.equal(only([user]), 76);
     assert.equal(only([user, tool]), 76 + 140);
     assert.equal(only([prose("x".repeat(200))]), 40 + 22 * 3);
     assert.equal(only([user, prose("x".repeat(90))]), 76 + 40 + 22);
   });
 
+  test("a work group's guess follows the density", () => {
+    const row = { kind: "turn", key: "t", turn: turn("t", [user, tool]), trailing: false } as const;
+    assert.equal(estimateRowSize(row, "compact"), 76 + 64);
+    assert.equal(estimateRowSize(row, "balanced"), 76 + 140);
+    assert.equal(estimateRowSize(row, "detailed"), 76 + 240);
+  });
+
   test("sizes records, banners, and trailing rows", () => {
     assert.equal(
-      estimateRowSize({
-        kind: "turn",
-        key: "summary:c",
-        turn: { kind: "summary", commit: "c", at: 0, body: { kind: "summary", text: "left" } },
-        trailing: true,
-      }),
+      estimateRowSize(
+        {
+          kind: "turn",
+          key: "summary:c",
+          turn: { kind: "summary", commit: "c", at: 0, body: { kind: "summary", text: "left" } },
+          trailing: true,
+        },
+        "balanced",
+      ),
       40,
     );
-    assert.equal(estimateRowSize({ kind: "landing", key: "l", content: "hi" }), 76);
-    assert.equal(estimateRowSize({ kind: "live", key: "live", working: true }), 60);
-    assert.equal(estimateRowSize({ kind: "live", key: "live", working: false }), 0);
-    assert.equal(estimateRowSize({ kind: "selections", key: "selections", selections: 0 }), 0);
-    assert.equal(estimateRowSize({ kind: "selections", key: "selections", selections: 2 }), 240);
-    assert.equal(estimateRowSize(undefined), 0);
+    assert.equal(
+      estimateRowSize({ kind: "landing", key: "l", content: "hi", pending: false }, "balanced"),
+      76,
+    );
+    assert.equal(estimateRowSize({ kind: "live", key: "live", working: true }, "balanced"), 60);
+    assert.equal(estimateRowSize({ kind: "live", key: "live", working: false }, "balanced"), 0);
+    assert.equal(
+      estimateRowSize({ kind: "selections", key: "selections", selections: 0 }, "balanced"),
+      0,
+    );
+    assert.equal(
+      estimateRowSize({ kind: "selections", key: "selections", selections: 2 }, "balanced"),
+      240,
+    );
+    assert.equal(estimateRowSize(undefined, "balanced"), 0);
   });
 });

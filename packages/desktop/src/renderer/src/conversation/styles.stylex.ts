@@ -347,6 +347,10 @@ export const composerStyles = stylex.create({
     overflowWrap: "anywhere",
   },
   queuedError: { color: t.textDanger },
+  queueHint: {
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+  },
   queuedAction: {
     padding: 0,
     borderStyle: "none",
