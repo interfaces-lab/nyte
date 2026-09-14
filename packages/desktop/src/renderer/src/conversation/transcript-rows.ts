@@ -4,10 +4,13 @@
  * those elements carried so React state (edits, folds) survives the move.
  */
 import type { Turn, UserTurnPart } from "@nyte-ai/core";
+import type { ToolCallDensity } from "../theme/boot.ts";
 
 export interface LandingMessage {
   readonly key: string;
   readonly content: UserTurnPart["content"];
+  /** Held behind a live run: drawn muted until the message lands. */
+  readonly pending: boolean;
 }
 
 export type TranscriptRow =
@@ -19,7 +22,12 @@ export type TranscriptRow =
       readonly turn: RenderedTurn;
       readonly trailing: boolean;
     }
-  | { readonly kind: "landing"; readonly key: string; readonly content: UserTurnPart["content"] }
+  | {
+      readonly kind: "landing";
+      readonly key: string;
+      readonly content: UserTurnPart["content"];
+      readonly pending: boolean;
+    }
   | { readonly kind: "retry"; readonly key: "retry"; readonly message: string }
   | { readonly kind: "live"; readonly key: "live"; readonly working: boolean }
   /** Selections parked on this session; delegated sessions' are discovered by the row itself. */
@@ -75,7 +83,12 @@ export function transcriptRows({
     });
   }
   for (const message of landing) {
-    rows.push({ kind: "landing", key: message.key, content: message.content });
+    rows.push({
+      kind: "landing",
+      key: message.key,
+      content: message.content,
+      pending: message.pending,
+    });
   }
   if (retrying !== undefined) rows.push({ kind: "retry", key: "retry", message: retrying });
   rows.push({ kind: "live", key: "live", working });
@@ -100,7 +113,17 @@ export function rowHasPrompt(row: TranscriptRow): boolean {
 }
 
 const USER_ROW_ESTIMATE = 76;
-const WORK_GROUP_ESTIMATE = 140;
+/**
+ * A work group's height depends on the density posture: compact settles to
+ * the summary line and clips live work to a preview, detailed leaves the
+ * whole list open. A turn's live state is unknown before it measures, so
+ * the estimate splits those postures rather than guessing one number.
+ */
+const WORK_GROUP_ESTIMATE = {
+  compact: 64,
+  balanced: 140,
+  detailed: 240,
+} as const satisfies Record<ToolCallDensity, number>;
 const PROSE_BASE_ESTIMATE = 40;
 const PROSE_LINE_HEIGHT = 22;
 const PROSE_CHARS_PER_LINE = 90;
@@ -115,7 +138,7 @@ const SKELETON_ESTIMATE = 240;
  * neighbours roughly right. The parts of a turn add up: a prompt, one work
  * group, and prose sized by its text.
  */
-export function estimateRowSize(row: TranscriptRow | undefined): number {
+export function estimateRowSize(row: TranscriptRow | undefined, density: ToolCallDensity): number {
   if (row === undefined) return 0;
   switch (row.kind) {
     case "skeleton":
@@ -130,7 +153,7 @@ export function estimateRowSize(row: TranscriptRow | undefined): number {
     case "selections":
       return row.selections * SELECTION_CARD_ESTIMATE;
     case "turn":
-      return estimateTurnSize(row.turn);
+      return estimateTurnSize(row.turn, density);
     default: {
       const _exhaustive: never = row;
       return _exhaustive;
@@ -138,7 +161,7 @@ export function estimateRowSize(row: TranscriptRow | undefined): number {
   }
 }
 
-function estimateTurnSize(turn: Turn): number {
+function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
   if (turn.kind !== "turn") return RECORD_ROW_ESTIMATE;
   let size = 0;
   let prose = 0;
@@ -164,7 +187,7 @@ function estimateTurnSize(turn: Turn): number {
       }
     }
   }
-  if (work) size += WORK_GROUP_ESTIMATE;
+  if (work) size += WORK_GROUP_ESTIMATE[density];
   if (prose > 0) {
     size += PROSE_BASE_ESTIMATE + PROSE_LINE_HEIGHT * Math.ceil(prose / PROSE_CHARS_PER_LINE);
   }

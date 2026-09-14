@@ -149,7 +149,7 @@ itself, so a signed-out or slow provider leaves the other's windows on the page.
 
 ## Queued messages
 
-The queue tray previews pending messages above the composer. Hover or focus a row to edit it, send it now with the up arrow when available, or remove it with the trash button. Sending and error states remain visible in the row.
+A message sent with Enter while a run is live steers it: the message draws at the transcript's tail, muted until it lands at the next response boundary. Cmd/Ctrl+Enter queues a follow-up for an idle head, and the queue tray previews those pending messages above the composer. Hover or focus a row to edit it, send it now with the up arrow, or remove it with the trash button. Enter on an empty composer sends the first queued message now. Sending and error states remain visible in the row.
 
 Queue, agent, and terminal trays share their surface, header, and list styles in `src/renderer/src/theme/tray.stylex.ts`. Their geometry and appearance come from the `--nyte-tray-*` tokens in `tokens.css`, including the same 12px radius and soft shadow in both themes. A tray takes the composer's fill and a hairline edge, so the stack above the composer reads as one surface and a hovered row is a lift inside it rather than a bar on the page. `src/renderer/src/theme/tray-surface.test.ts` checks that in a real renderer. Row height grows with message or status content.
 

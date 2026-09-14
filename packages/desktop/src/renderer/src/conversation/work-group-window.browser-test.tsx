@@ -40,6 +40,7 @@ function Group({ preview }: { preview: boolean }) {
     >
       <WorkGroupWindow
         groupKey="window-test"
+        density="compact"
         entries={entries}
         viewportRef={viewportRef}
         preview={preview}

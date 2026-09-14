@@ -11,7 +11,7 @@
  * Every row is a persisted record. The rows on screen are the records of the
  * active workspace partition, oldest first, plus a transient state per key.
  */
-import type { Oid, SendInput, SendReceipt, SessionId } from "@nyte-ai/core";
+import type { Lane, Oid, SendInput, SendReceipt, SessionId } from "@nyte-ai/core";
 import type { UserMessage } from "@nyte-ai/schema";
 import type { OutboxStorage, PersistedOutboxRecordV1 } from "./outbox-storage.ts";
 import { errorMessage } from "../../shared/errors.ts";
@@ -47,6 +47,8 @@ export interface OutboxRow {
   readonly key: string;
   readonly sessionId: SessionId;
   readonly content: UserMessage["content"];
+  /** The lane the submission named; absent means the landing policy's first lane. */
+  readonly lane: Lane | undefined;
   readonly at: number;
   readonly state: OutboxRowState;
 }
@@ -118,6 +120,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
         key: record.key,
         sessionId: record.input.sessionId,
         content: record.input.content,
+        lane: record.input.lane,
         at: record.createdAt,
         state: states.get(record.key) ?? SENDING,
       }));
