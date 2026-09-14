@@ -11,7 +11,7 @@ import { css, html } from "react-strict-dom";
 import { prepareImage, type StagedImage } from "./attachments.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
-import { nativeTheme, spacing, textStyles, tokens } from "../theme.ts";
+import { useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
 type CameraSheetProps = {
   visible: boolean;
@@ -33,6 +33,7 @@ export function CameraSheet({ visible, onClose, onCapture }: CameraSheetProps) {
 }
 
 function CameraSession({ onClose, onCapture }: Omit<CameraSheetProps, "visible">) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [position, setPosition] = useState<"back" | "front">("back");
   const device = useCameraDevice(position);
@@ -85,7 +86,7 @@ function CameraSession({ onClose, onCapture }: Omit<CameraSheetProps, "visible">
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: nativeTheme.background }}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       {hasPermission && device !== undefined ? (
         <Camera
           style={StyleSheet.absoluteFill}
@@ -123,7 +124,13 @@ function CameraSession({ onClose, onCapture }: Omit<CameraSheetProps, "visible">
         </html.div>
       )}
       <html.div style={[styles.actions, styles.inset(insets.top)]}>
-        <GlassButton label="Close camera" systemImage="xmark" iconOnly onPress={onClose} />
+        <GlassButton
+          label="Close camera"
+          systemImage="xmark"
+          iconOnly
+          scheme="dark"
+          onPress={onClose}
+        />
       </html.div>
       <html.div style={[styles.bottom, styles.bottomInset(insets.bottom)]}>
         {error === undefined ? null : (
@@ -131,26 +138,30 @@ function CameraSession({ onClose, onCapture }: Omit<CameraSheetProps, "visible">
             {error}
           </html.p>
         )}
-        {busy ? <ActivityIndicator color={nativeTheme.foreground} /> : null}
         <html.div style={styles.buttons}>
-          <GlassButton
-            label="Take photo"
-            systemImage="camera.fill"
-            prominent
+          <html.button
+            aria-label="Take photo"
             disabled={!ready || !active || !hasPermission || device === undefined || busy}
-            onPress={() => {
+            onClick={() => {
               void capture();
             }}
-          />
-          <GlassButton
-            label="Switch camera"
-            systemImage="arrow.triangle.2.circlepath.camera"
-            disabled={busy || alternateDevice === undefined}
-            onPress={() => {
-              setReady(false);
-              setPosition((current) => (current === "back" ? "front" : "back"));
-            }}
-          />
+            style={styles.shutter}
+          >
+            {busy ? <ActivityIndicator color="#1c1c1e" /> : <html.div style={styles.shutterFill} />}
+          </html.button>
+          <html.div style={styles.flip}>
+            <GlassButton
+              label="Switch camera"
+              systemImage="arrow.triangle.2.circlepath.camera"
+              iconOnly
+              scheme="dark"
+              disabled={busy || alternateDevice === undefined}
+              onPress={() => {
+                setReady(false);
+                setPosition((current) => (current === "back" ? "front" : "back"));
+              }}
+            />
+          </html.div>
         </html.div>
       </html.div>
     </View>
@@ -167,6 +178,24 @@ const styles = css.create({
   inset: (top: number) => ({ top: top + spacing.md }),
   bottom: { position: "absolute", insetInline: spacing.lg, gap: spacing.md, alignItems: "center" },
   bottomInset: (bottom: number) => ({ bottom: bottom + spacing.lg }),
-  buttons: { display: "flex", flexDirection: "row", gap: spacing.md },
+  buttons: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shutter: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 4,
+    borderColor: "#fff",
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: { default: 1, ":active": 0.7, ":disabled": 0.4 },
+  },
+  shutterFill: { width: 52, height: 52, borderRadius: 26, backgroundColor: "#C4C4C4" },
+  flip: { position: "absolute", insetInlineEnd: 0 },
   error: { padding: spacing.md, backgroundColor: tokens.background },
 });

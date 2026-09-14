@@ -1,5 +1,6 @@
 .expo/
-ios/
-android/
+/ios/
+/android/
+.voltra/
 build/
 dist/
