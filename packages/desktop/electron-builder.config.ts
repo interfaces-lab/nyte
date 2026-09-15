@@ -26,7 +26,16 @@ export default {
   artifactName: "Nyte-${version}-${os}-${arch}.${ext}",
   publish: { provider: "github", owner: "interfaces-lab", repo: "nyte", releaseType: "release" },
   directories: { output: "dist", buildResources: "build" },
-  files: ["out/**/*", "package.json"],
+  files: [
+    "out/**/*",
+    "package.json",
+    // The afterPack hook reads this archive from node_modules and copies the extracted
+    // framework into Contents/Frameworks, where electron-builder signs it. The `.node`
+    // addons beside it make electron-builder unpack the whole module out of the asar, so
+    // the archive ships too, and notarization rejects the ad-hoc-signed binaries Apple
+    // finds when it recurses into it.
+    "!node_modules/electron-sparkle/dist/Sparkle-*.zip",
+  ],
   asarUnpack: ["node_modules/@lydell/**/*"],
   extraResources: [{ from: "resources/adblock.bin", to: "adblock.bin" }],
   mac: {
