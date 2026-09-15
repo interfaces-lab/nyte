@@ -39,7 +39,7 @@ export interface Completions {
   readonly commands: readonly CommandInfo[];
 }
 
-/** Rows one request asks for: a menu this long already needs scrolling. */
+/** Commands and skills come whole, so the phone caps what it lists from them. */
 const MAX_SUGGESTIONS = 30;
 /** Each keystroke inside an `@` token would otherwise be one host request. */
 const FILE_DEBOUNCE_MS = 180;
@@ -170,7 +170,7 @@ export function useCompletions(
     let live = true;
     const timer = setTimeout(() => {
       void client.workspace
-        .files({ ...(sessionId === undefined ? {} : { sessionId }), query, limit: MAX_SUGGESTIONS })
+        .files({ ...(sessionId === undefined ? {} : { sessionId }), query })
         .then((found) => {
           if (!live) return;
           setFileRead({

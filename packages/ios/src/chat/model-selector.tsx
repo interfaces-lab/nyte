@@ -9,7 +9,7 @@ import { css, html } from "react-strict-dom";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { useModelCatalog } from "./remote-models.ts";
-import { controls, useTheme, spacing, textStyles, tokens, typography } from "../theme.ts";
+import { controls, radii, spacing, textStyles, tokens, typography, useTheme } from "../theme.ts";
 
 /** The model picker sheet, opened from the chat's overflow menu. */
 export function ModelPickerSheet({
@@ -200,10 +200,10 @@ const styles = css.create({
     alignItems: "center",
     gap: spacing.sm,
     height: controls.chipHeight,
-    borderRadius: 10,
+    borderRadius: radii.control,
     backgroundColor: tokens.fill,
     paddingInline: spacing.sm,
-    marginHorizontal: spacing.gutter,
+    marginInline: spacing.gutter,
   },
   empty: { paddingInline: spacing.gutter },
   notice: { padding: spacing.gutter, margin: 0 },
