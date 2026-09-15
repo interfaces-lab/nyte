@@ -305,6 +305,8 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
     },
     emitWatchEvent: () => {},
     openExternal: () => {},
+    revealPath: () => undefined,
+    showContextMenu: () => Promise.resolve(undefined),
     listFonts: async () => ({ sans: [], monospace: [] }),
     pickFolder: async () => undefined,
     browser: {

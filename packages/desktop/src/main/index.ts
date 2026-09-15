@@ -20,6 +20,7 @@ import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-
 import { applicationMenuTemplate, createMenuCommandDelivery } from "./app-menu.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import { createBrowserSurfaces } from "./browser.ts";
+import { showContextMenu } from "./context-menu.ts";
 import { ExpectedHostError, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 import { localFonts } from "./fonts.ts";
@@ -122,6 +123,8 @@ const hostDependencies = {
   emitHostEvent: (event) => send(HOST_EVENT_CHANNEL, event),
   emitWatchEvent: (envelope) => send(WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
+  revealPath: (path) => shell.showItemInFolder(path),
+  showContextMenu: (input) => showContextMenu({ window: mainWindow, input }),
   browser: browserSurfaces,
   listFonts: localFonts,
   pickFolder: async () => {
