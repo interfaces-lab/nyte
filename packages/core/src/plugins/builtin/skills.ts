@@ -1,44 +1,27 @@
-/** Discover skills once per plugin activation and expose their catalog to the host. */
-import type { Skill } from "@nyte-ai/schema";
-import { formatSkillsForPrompt, loadSkills } from "../../skills.ts";
+/**
+ * Offer a discovered skill catalog to the model: the listing in the prompt, the
+ * bodies on demand. Discovery belongs to whoever composes the plugin, so an
+ * unchanged catalog keeps the same plugin version and never reactivates.
+ */
+import { formatSkillsForPrompt } from "../../skills.ts";
+import type { LoadedSkills } from "../../skills.ts";
 import { definePlugin } from "../types.ts";
 
 export const SKILLS_PLUGIN_ID = "skills";
 
-export interface SkillsOptions {
-  readonly directories: readonly string[];
-}
-
-export function skillsPlugin(options: SkillsOptions) {
+export function skillsPlugin(loaded: LoadedSkills) {
   return definePlugin({
     id: SKILLS_PLUGIN_ID,
-    async session(api) {
-      const loaded = await loadSkills(options.directories);
+    session(api) {
       for (const diagnostic of loaded.diagnostics) {
         api.diagnostics.warn(`${diagnostic.path}: ${diagnostic.message}`);
       }
-
-      const skills: Skill[] = [];
-      const pathsByName = new Map<string, string>();
-      for (const skill of loaded.skills) {
-        const previousPath = pathsByName.get(skill.name);
-        if (previousPath !== undefined) {
-          api.diagnostics.warn(
-            `skill "${skill.name}" from ${skill.filePath} was ignored; first loaded from ${previousPath}`,
-          );
-          continue;
-        }
-        pathsByName.set(skill.name, skill.filePath);
-        skills.push(skill);
-      }
-
       api.resources.add((draft) => {
-        for (const skill of skills) {
+        for (const skill of loaded.skills) {
           if (!draft.has(skill.name)) draft.set(skill.name, skill);
         }
       });
-
-      const catalog = formatSkillsForPrompt(skills);
+      const catalog = formatSkillsForPrompt(loaded.skills);
       if (catalog !== "") {
         api.prompt.add((draft) => draft.set("available-skills", { text: catalog, order: 90 }));
       }
