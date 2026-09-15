@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, test, vi } from "vitest";
-import { discoverMentionFiles } from "../src/mention-files.ts";
+import { discoverMentionFiles, rankMentionFiles } from "../src/mention-files.ts";
 
 const roots: string[] = [];
 
@@ -231,5 +231,48 @@ describe("home mentions", () => {
       (await discoverMentionFiles(root)).map((file) => file.displayPath),
       ["src/", "src/public.ts"],
     );
+  });
+});
+
+describe("rankMentionFiles", () => {
+  const files = [
+    {
+      path: "/w/src/composer-chip.tsx",
+      url: "file:///w/src/composer-chip.tsx",
+      displayPath: "src/composer-chip.tsx",
+      label: "composer-chip.tsx",
+    },
+    {
+      path: "/w/src/chat/composer.tsx",
+      url: "file:///w/src/chat/composer.tsx",
+      displayPath: "src/chat/composer.tsx",
+      label: "composer.tsx",
+    },
+    {
+      path: "/w/docs/writing-a-composer.md",
+      url: "file:///w/docs/writing-a-composer.md",
+      displayPath: "docs/writing-a-composer.md",
+      label: "writing-a-composer.md",
+    },
+    { path: "/w/src/chat/", url: "file:///w/src/chat", displayPath: "src/chat/", label: "chat/" },
+  ];
+
+  test("puts names that start with the query before names that merely contain it", () => {
+    assert.deepEqual(
+      rankMentionFiles(files, "composer", 10).map((file) => file.label),
+      ["composer-chip.tsx", "composer.tsx", "writing-a-composer.md"],
+    );
+  });
+
+  test("matches a path segment the name does not carry", () => {
+    assert.deepEqual(
+      rankMentionFiles(files, "docs/", 10).map((file) => file.label),
+      ["writing-a-composer.md"],
+    );
+  });
+
+  test("an empty query is the head of the list, and the limit is the reply's size", () => {
+    assert.deepEqual(rankMentionFiles(files, "  ", 2), files.slice(0, 2));
+    assert.equal(rankMentionFiles(files, "composer", 1).length, 1);
   });
 });

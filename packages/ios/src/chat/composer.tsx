@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { router } from "expo-router";
 import { randomUUID } from "expo-crypto";
 import { ActivityIndicator, Keyboard, ScrollView, TextInput, View } from "react-native";
-import type { LayoutChangeEvent } from "react-native";
+import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
 import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
 import {
   buttonBorderShape,
@@ -43,6 +44,9 @@ import { clearAnnotation, resolveAttachment } from "../media/annotations.ts";
 import { AttachmentThumb } from "../media/attachment-thumb.tsx";
 import { CameraSheet } from "../media/camera-sheet.tsx";
 import { AttachPanel } from "./attach-panel.tsx";
+import { SuggestionMenu } from "./suggestion-menu.tsx";
+import { acceptSuggestion, parseCommandLine, useCompletions } from "./completions.ts";
+import type { CommandLine, Suggestion } from "./completions.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { ContextRow } from "./context-row.tsx";
 import type { UserContent } from "./remote-chat.ts";
@@ -77,20 +81,25 @@ export const Composer = memo(function Composer({
   target,
   placeholder,
   prefill,
-  composerRef,
-  inputRef,
-  onLayout,
+  backdrop,
+  gutters,
 }: {
   target: NewTarget | SessionTarget;
   placeholder: string;
   prefill?: { text: string; nonce: number };
-  composerRef?: RefObject<View | null>;
-  inputRef?: RefObject<TextInput | null>;
-  onLayout?: (event: LayoutChangeEvent) => void;
+  /** What the screen behind the bar paints, so the opaque bar matches it. */
+  backdrop: "background" | "canvas";
+  /**
+   * The screen's content column, safe area included. The capsule lines up with
+   * the rows above it rather than keeping a gutter of its own.
+   */
+  gutters: { left: number; right: number };
 }) {
   const theme = useTheme();
   const { client } = useHost();
   const [draft, setDraft] = useState("");
+  const [caret, setCaret] = useState(0);
+  const [focused, setFocused] = useState(false);
   const [images, setImages] = useState<StagedImage[]>([]);
   const [camera, setCamera] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -98,9 +107,14 @@ export const Composer = memo(function Composer({
   const [staging, setStaging] = useState(false);
   const [starting, setStarting] = useState(false);
   const [localError, setLocalError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
   const [model, setModel] = useState<ModelInfo>();
   const { catalog } = useModelCatalog(client, true);
   const insets = useSafeAreaInsets();
+  const fieldRef = useRef<TextInput>(null);
+  const keyboard = useReanimatedKeyboardAnimation();
+  const sessionId = target.kind === "session" ? target.sessionId : undefined;
+  const { completion, commands } = useCompletions(client, sessionId, draft, caret, focused);
   const dictationBase = useRef("");
   const dictation = useDictation((transcript) => {
     const base = dictationBase.current;
@@ -142,30 +156,77 @@ export const Composer = memo(function Composer({
     for (const image of submittedImages) clearAnnotation(image.id);
   };
 
+  /**
+   * One send, whichever target it lands on. A draft that is only a command line
+   * runs the command the way the desktop composer does; anything else is a
+   * message. The host says what a command did: output to show, a prompt to send
+   * as the user, or a name it does not know, which travels as the text it reads as.
+   */
+  const deliver = async (input: {
+    sessionId: SessionId;
+    content: UserContent;
+    line: CommandLine | undefined;
+    send: (content: UserContent) => Promise<boolean>;
+  }): Promise<boolean> => {
+    if (input.line === undefined) return input.send(input.content);
+    const outcome = await client.plugins.commands.run({
+      sessionId: input.sessionId,
+      ...input.line,
+    });
+    switch (outcome.kind) {
+      case "ran":
+        setNotice(outcome.output);
+        return true;
+      case "prompt":
+        return input.send([{ type: "text", text: outcome.prompt }]);
+      case "not_found":
+        return input.send(input.content);
+      case "failed":
+        setLocalError(outcome.message);
+        return false;
+      default: {
+        const exhaustive: never = outcome;
+        return exhaustive;
+      }
+    }
+  };
+
   const submit = async () => {
     if (busy || !hasContent || dictation.recording) return;
     const submitted = draft;
     const submittedImages = images;
     const content = buildContent();
+    // Photos make the draft a message even when its text names a command.
+    const line = images.length === 0 ? parseCommandLine(draft, commands) : undefined;
+    setNotice(undefined);
     if (target.kind === "new") {
       setStarting(true);
       setLocalError(undefined);
       try {
-        const name = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
-        const session = await client.sessions.create({
-          name: name === "" ? "New conversation" : name,
-        });
+        // A command line is not a title; the command names the conversation it starts.
+        const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
+        const name = line?.name ?? (typed === "" ? "New conversation" : typed);
+        const session = await client.sessions.create({ name });
         if (model !== undefined) {
           await client.sessions.configure({
             sessionId: session.sessionId,
             model: { provider: model.provider, id: model.id },
           });
         }
-        await client.messages.send({
+        const accepted = await deliver({
           sessionId: session.sessionId,
           content,
-          key: randomUUID(),
+          line,
+          send: async (message) => {
+            await client.messages.send({
+              sessionId: session.sessionId,
+              content: message,
+              key: randomUUID(),
+            });
+            return true;
+          },
         });
+        if (!accepted) return;
         clearSubmitted(submitted, submittedImages);
         Keyboard.dismiss();
         router.push(`/chat/${session.sessionId}`);
@@ -176,7 +237,21 @@ export const Composer = memo(function Composer({
       }
       return;
     }
-    if (await target.onSend(content)) clearSubmitted(submitted, submittedImages);
+    try {
+      if (await deliver({ sessionId: target.sessionId, content, line, send: target.onSend }))
+        clearSubmitted(submitted, submittedImages);
+    } catch (cause) {
+      setLocalError(describeHostError(cause));
+    }
+  };
+
+  /** Accepting a choice rewrites the token and leaves the caret after it. */
+  const accept = (suggestion: Suggestion) => {
+    if (completion === undefined) return;
+    const next = acceptSuggestion(draft, completion.trigger, suggestion);
+    setDraft(next.draft);
+    setCaret(next.caret);
+    fieldRef.current?.setSelection(next.caret, next.caret);
   };
 
   const loadPhotos = () => {
@@ -235,14 +310,21 @@ export const Composer = memo(function Composer({
     await dictation.start();
   };
 
+  // The sticky view lands the composer on the keyboard's top edge; this keeps a
+  // resting gap above the home indicator without leaving one over the keyboard.
+  const keyboardInset = useAnimatedStyle(() => ({
+    paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.value,
+  }));
+
   return (
-    <View ref={composerRef} onLayout={onLayout}>
-      <html.div
-        style={[
-          styles.composer,
-          styles.insets(insets.left + spacing.md, insets.right + spacing.md, insets.bottom / 2),
-        ]}
-      >
+    <Animated.View
+      // A native view, so the bar's fill is a raw color rather than an RSD rule.
+      style={[
+        { backgroundColor: backdrop === "canvas" ? theme.canvas : theme.background },
+        keyboardInset,
+      ]}
+    >
+      <html.div style={[styles.composer, styles.insets(gutters.left, gutters.right)]}>
         {images.length > 0 ? (
           <ScrollView
             horizontal
@@ -300,9 +382,15 @@ export const Composer = memo(function Composer({
           <html.p role="alert" style={textStyles.error}>
             {error}
           </html.p>
-        ) : null}
+        ) : notice === undefined ? null : (
+          <html.p role="status" style={textStyles.caption}>
+            {notice}
+          </html.p>
+        )}
         <AttachPanel
-          open={attaching}
+          // The token under the caret takes the space over the capsule, so the
+          // choices fold away rather than stacking a second panel on top.
+          open={attaching && completion === undefined}
           disabled={busy || images.length >= MAX_ATTACHMENTS}
           access={access}
           onPick={(photo) => void attachPhoto(photo)}
@@ -316,6 +404,10 @@ export const Composer = memo(function Composer({
             setCamera(true);
           }}
         />
+        {/* Closest to the capsule, because the menu belongs to the token under the caret. */}
+        {completion === undefined ? null : (
+          <SuggestionMenu completion={completion} onAccept={accept} />
+        )}
         <html.div style={styles.card}>
           <ContextRow
             head={target.kind === "session" ? target.head : undefined}
@@ -323,10 +415,23 @@ export const Composer = memo(function Composer({
             onChooseHead={chooseHead}
           />
           <TextInput
-            ref={inputRef}
+            ref={fieldRef}
             accessibilityLabel={placeholder}
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={(text) => {
+              // The selection event arrives after this one; keeping the caret at
+              // the end while typing there means `@` opens its menu on the same
+              // keystroke rather than the next.
+              setCaret((current) =>
+                current >= draft.length ? text.length : Math.min(current, text.length),
+              );
+              setDraft(text);
+            }}
+            onSelectionChange={(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+              setCaret(event.nativeEvent.selection.end);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             placeholder={placeholder}
             placeholderTextColor={theme.muted}
             selectionColor={theme.accent}
@@ -492,7 +597,7 @@ export const Composer = memo(function Composer({
         onClose={() => setCamera(false)}
         onCapture={(image) => setImages((current) => [...current, image].slice(0, MAX_ATTACHMENTS))}
       />
-    </View>
+    </Animated.View>
   );
 });
 
@@ -503,7 +608,9 @@ const styles = css.create({
     gap: spacing.xs,
     padding: CAPSULE_PAD,
     borderRadius: radii.bubble,
-    borderWidth: controls.borderWidth,
+    // The same hairline the panels above it draw, so the capsule and its menus
+    // read as one object rather than two weights of edge.
+    borderWidth: controls.hairline,
     borderStyle: "solid",
     borderColor: tokens.border,
     backgroundColor: tokens.surface,
@@ -525,8 +632,8 @@ const styles = css.create({
   removePhoto: {
     opacity: { default: 1, ":active": controls.disabledOpacity },
     position: "absolute",
-    top: -8,
-    right: -8,
+    top: -spacing.sm,
+    right: -spacing.sm,
     width: controls.photoRemoveTarget,
     height: controls.photoRemoveTarget,
     borderWidth: 0,
@@ -565,14 +672,6 @@ const styles = css.create({
     borderRadius: radii.pill,
     borderWidth: 0,
   },
-  modelRow: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    // Optically flush with the capsule's contents, not its border.
-    paddingInlineStart: CAPSULE_PAD,
-    paddingBottom: spacing.xs,
-  },
   recorderTime: { color: tokens.foreground, fontVariant: "tabular-nums" },
   waveform: {
     display: "flex",
@@ -585,9 +684,8 @@ const styles = css.create({
   },
   waveBar: { width: 3, borderRadius: radii.pill, backgroundColor: tokens.muted },
   waveBarHeight: (level: number) => ({ height: waveHeight(level) }),
-  insets: (left: number, right: number, bottom: number) => ({
+  insets: (left: number, right: number) => ({
     paddingLeft: left,
     paddingRight: right,
-    paddingBottom: bottom,
   }),
 });

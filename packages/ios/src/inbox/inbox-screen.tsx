@@ -184,7 +184,13 @@ export function InboxScreen() {
         {list.kind === "ready" && search === "" ? (
           <FilterGrid
             cards={[
-              { id: "all", label: filterLabels.all, icon: "square.stack", tint: theme.muted },
+              {
+                id: "all",
+                label: filterLabels.all,
+                icon: "square.stack",
+                tint: theme.muted,
+                count: sessions.length,
+              },
               {
                 id: "attention",
                 label: filterLabels.attention,
@@ -279,11 +285,13 @@ export function InboxScreen() {
           </html.p>
         )}
       </ScrollView>
-      <KeyboardStickyView
-        offset={{ opened: insets.bottom + spacing.xs }}
-        style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
-      >
-        <Composer target={{ kind: "new" }} placeholder="Ask anything" />
+      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
+        <Composer
+          target={{ kind: "new" }}
+          placeholder="Ask anything"
+          backdrop="background"
+          gutters={{ left: insets.left + spacing.gutter, right: insets.right + spacing.gutter }}
+        />
       </KeyboardStickyView>
     </View>
   );

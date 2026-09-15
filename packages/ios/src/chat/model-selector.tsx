@@ -8,7 +8,6 @@ import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-cont
 import { css, html } from "react-strict-dom";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
-import { PrimaryButton } from "../ui/primary-button.tsx";
 import { useModelCatalog } from "./remote-models.ts";
 import { controls, useTheme, spacing, textStyles, tokens, typography } from "../theme.ts";
 
@@ -122,7 +121,7 @@ export function ModelPickerSheet({
                 <html.p role="alert" style={textStyles.error}>
                   {catalog.message}
                 </html.p>
-                <PrimaryButton label="Try again" onClick={refresh} tone="secondary" />
+                <GlassButton label="Try again" onPress={refresh} fill />
               </html.div>
             ) : (
               <LegendList

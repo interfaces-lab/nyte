@@ -10,7 +10,7 @@ import { isTerminalPhase } from "@nyte-ai/protocol";
 import { sessionMark, waitingCall } from "@nyte-ai/core/client";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
-import { PrimaryButton } from "../ui/primary-button.tsx";
+import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
@@ -197,13 +197,15 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
             </html.p>
           )}
           {waiting !== undefined ? (
-            <PrimaryButton label="Answer in chat" onClick={() => router.back()} />
+            <GlassButton label="Answer in chat" prominent fill onPress={() => router.back()} />
           ) : changes.length > 0 ? (
             <>
-              <PrimaryButton
+              <GlassButton
                 label={merging ? "Asking Nyte to merge…" : "Ask to merge"}
                 disabled={running || merging}
-                onClick={() => confirmMergeRequest({ onSend: () => void merge() })}
+                prominent
+                fill
+                onPress={() => confirmMergeRequest({ onSend: () => void merge() })}
               />
               <html.p style={textStyles.caption}>
                 Sends a follow-up to the agent on your Mac. It runs git there and replies in the

@@ -83,78 +83,81 @@ export function SettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ flexGrow: 1 }}
+      // The page's box is the scroll view's own content: an inner styled box
+      // would be a flex child of a native parent, which cannot grow it.
+      contentContainerStyle={{
+        flexGrow: 1,
+        gap: spacing.md,
+        paddingTop: spacing.md,
+        paddingBottom: insets.bottom + spacing.lg,
+      }}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <html.div style={[styles.page, styles.bottomInset(insets.bottom)]}>
+      <Group>
+        <GroupRow>
+          <IconTile name="laptopcomputer" color={theme.foreground} />
+          <html.div style={styles.rowText}>
+            <html.span style={textStyles.body}>{connection.name}</html.span>
+            <html.span style={textStyles.caption}>{displayAddress(connection)}</html.span>
+          </html.div>
+          <html.div style={styles.status} aria-live="polite">
+            <html.div style={styles.statusDot(statusColor)} />
+            <html.span style={textStyles.caption}>{statusLabel}</html.span>
+          </html.div>
+        </GroupRow>
+        <GroupRow
+          disabled={status === "checking"}
+          onClick={() => setRevision((value) => value + 1)}
+        >
+          <IconTile name="arrow.clockwise" />
+          <html.span style={textStyles.body}>
+            {status === "unreachable" ? "Try again" : "Check connection"}
+          </html.span>
+        </GroupRow>
+        <GroupRow onClick={edit} pushes>
+          <IconTile name="pencil" />
+          <html.div style={styles.rowText}>
+            <html.span style={textStyles.body}>Edit address and token</html.span>
+            <html.span style={textStyles.caption}>
+              Your Mac issues a new pair each time sharing starts.
+            </html.span>
+          </html.div>
+        </GroupRow>
+      </Group>
+      {error !== undefined && (
+        <html.p role="alert" style={textStyles.error}>
+          {error}
+        </html.p>
+      )}
+      {workspaceList !== undefined && workspaceList.length > 0 ? (
+        <>
+          <SectionHeader label="Workspaces" />
+          <Group>
+            {workspaceList.map((workspace) => (
+              <GroupRow key={workspace.path}>
+                <IconTile name="folder" />
+                <html.div style={styles.rowText}>
+                  <html.span style={textStyles.body}>{workspace.name}</html.span>
+                  <html.span style={[textStyles.caption, styles.path]}>{workspace.path}</html.span>
+                </html.div>
+              </GroupRow>
+            ))}
+          </Group>
+        </>
+      ) : null}
+      <html.div style={styles.signOut}>
         <Group>
-          <GroupRow>
-            <IconTile name="laptopcomputer" color={theme.foreground} />
-            <html.div style={styles.rowText}>
-              <html.span style={textStyles.body}>{connection.name}</html.span>
-              <html.span style={textStyles.caption}>{displayAddress(connection)}</html.span>
-            </html.div>
-            <html.div style={styles.status} aria-live="polite">
-              <html.div style={styles.statusDot(statusColor)} />
-              <html.span style={textStyles.caption}>{statusLabel}</html.span>
-            </html.div>
-          </GroupRow>
-          <GroupRow
-            disabled={status === "checking"}
-            onClick={() => setRevision((value) => value + 1)}
-          >
-            <IconTile name="arrow.clockwise" />
-            <html.span style={textStyles.body}>
-              {status === "unreachable" ? "Try again" : "Check connection"}
+          <GroupRow align="center" disabled={busy} onClick={confirmDisconnect}>
+            <html.span style={[textStyles.body, styles.danger]}>
+              {busy ? "Disconnecting…" : "Disconnect"}
             </html.span>
           </GroupRow>
-          <GroupRow onClick={edit}>
-            <IconTile name="pencil" />
-            <html.div style={styles.rowText}>
-              <html.span style={textStyles.body}>Edit address and token</html.span>
-              <html.span style={textStyles.caption}>
-                Your Mac issues a new pair each time sharing starts.
-              </html.span>
-            </html.div>
-          </GroupRow>
         </Group>
-        {error !== undefined && (
-          <html.p role="alert" style={textStyles.error}>
-            {error}
-          </html.p>
-        )}
-        {workspaceList !== undefined && workspaceList.length > 0 ? (
-          <>
-            <SectionHeader label="Workspaces" />
-            <Group>
-              {workspaceList.map((workspace) => (
-                <GroupRow key={workspace.path}>
-                  <IconTile name="folder" />
-                  <html.div style={styles.rowText}>
-                    <html.span style={textStyles.body}>{workspace.name}</html.span>
-                    <html.span style={[textStyles.caption, styles.path]}>
-                      {workspace.path}
-                    </html.span>
-                  </html.div>
-                </GroupRow>
-              ))}
-            </Group>
-          </>
-        ) : null}
-        <html.div style={styles.signOut}>
-          <Group>
-            <GroupRow align="center" disabled={busy} onClick={confirmDisconnect}>
-              <html.span style={[textStyles.body, styles.danger]}>
-                {busy ? "Disconnecting…" : "Disconnect"}
-              </html.span>
-            </GroupRow>
-          </Group>
-        </html.div>
-        <html.div style={styles.colophon}>
-          <html.span style={styles.mark}>Nyte</html.span>
-          <html.div style={styles.versionPill}>
-            <html.span style={styles.version}>{version}</html.span>
-          </html.div>
+      </html.div>
+      <html.div style={styles.colophon}>
+        <html.span style={styles.mark}>Nyte</html.span>
+        <html.div style={styles.versionPill}>
+          <html.span style={styles.version}>{version}</html.span>
         </html.div>
       </html.div>
     </ScrollView>
@@ -162,14 +165,6 @@ export function SettingsScreen() {
 }
 
 const styles = css.create({
-  page: {
-    display: "flex",
-    flexDirection: "column",
-    flexGrow: 1,
-    paddingTop: spacing.md,
-    gap: spacing.md,
-  },
-  bottomInset: (bottom: number) => ({ paddingBottom: bottom + spacing.lg }),
   rowText: {
     display: "flex",
     flexDirection: "column",
@@ -198,7 +193,9 @@ const styles = css.create({
   colophon: {
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1,
+    // The scroll view's content is the flex parent here, so the footer is
+    // pushed down by its own margin rather than by growing inside it.
+    marginBlockStart: "auto",
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.sm,

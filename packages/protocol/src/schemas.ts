@@ -91,6 +91,7 @@ import type {
   UserTurnPart as UserTurnPartType,
 } from "./views.ts";
 import type {
+  MentionFile as MentionFileType,
   ModelInfo as ModelInfoType,
   VcsDiff as VcsDiffType,
   VcsStatus as VcsStatusType,
@@ -884,6 +885,15 @@ export const VcsStatus = typed<VcsStatusType>()(
 );
 
 export const VcsDiff = typed<VcsDiffType>()(open({ path: Type.String(), patch: Type.String() }));
+
+export const MentionFile = typed<MentionFileType>()(
+  open({
+    path: Type.String(),
+    url: Type.String(),
+    displayPath: Type.String(),
+    label: Type.String(),
+  }),
+);
 
 export const ModelInfo = typed<ModelInfoType>()(
   open({

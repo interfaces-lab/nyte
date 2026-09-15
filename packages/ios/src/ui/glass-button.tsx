@@ -11,29 +11,72 @@ import {
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { controls, themes, useTheme, typography } from "../theme.ts";
+import { SymbolView } from "expo-symbols";
+import { css, html } from "react-strict-dom";
+import { controls, radii, spacing, themes, tokens, typography, useTheme } from "../theme.ts";
 
-type GlassButtonProps = Required<Pick<ComponentProps<typeof Button>, "label" | "onPress">> &
+/** Label, action, and icon keep the names and types the native control uses. */
+type Common = Required<Pick<ComponentProps<typeof Button>, "label" | "onPress">> &
   Pick<ComponentProps<typeof Button>, "systemImage"> & {
     disabled?: boolean;
-    iconOnly?: boolean;
-    size?: "regular" | "compact";
+    /** The action the screen is for: tinted with the accent rather than neutral. */
     prominent?: boolean;
-    // Forced dark only for chrome drawn over dark content (annotate, camera).
-    scheme?: "dark";
   };
 
-export function GlassButton({
-  label,
-  onPress,
-  systemImage,
-  disabled: isDisabled = false,
-  iconOnly = false,
-  size = "regular",
-  prominent = false,
-  scheme,
-}: GlassButtonProps) {
+/**
+ * A filling button spans its row, so the options that only make sense for a
+ * self-sizing control — icon-only, compact, forced dark — are not offered with
+ * it rather than being accepted and ignored.
+ */
+type GlassButtonProps =
+  | (Common & { fill: true })
+  | (Common & {
+      fill?: false;
+      iconOnly?: boolean;
+      size?: "regular" | "compact";
+      // Forced dark only for chrome drawn over dark content (annotate, camera).
+      scheme?: "dark";
+    });
+
+/**
+ * Every button that is not a list row.
+ *
+ * Toolbar and inline actions are the native glass control, which SwiftUI sizes
+ * to its own label. A screen's full-width action cannot be: SwiftUI has no
+ * `.infinity` across the bridge and a measured width arrives a frame late, so
+ * `fill` draws the capsule from the shared tokens and lets the row own the width.
+ */
+export function GlassButton(props: GlassButtonProps) {
   const theme = useTheme();
+  const { label, onPress, systemImage, disabled: isDisabled = false, prominent = false } = props;
+
+  if (props.fill === true) {
+    return (
+      <html.button
+        onClick={onPress}
+        disabled={isDisabled}
+        aria-disabled={isDisabled}
+        style={[
+          styles.fill,
+          prominent ? styles.prominent : styles.neutral,
+          isDisabled && styles.disabled,
+        ]}
+      >
+        {systemImage === undefined ? null : (
+          <SymbolView
+            name={systemImage}
+            size={controls.icon}
+            tintColor={prominent ? theme.onAccent : theme.foreground}
+          />
+        )}
+        <html.span style={[styles.label, prominent ? styles.onAccent : styles.onNeutral]}>
+          {label}
+        </html.span>
+      </html.button>
+    );
+  }
+
+  const { iconOnly = false, size = "regular", scheme } = props;
   // Chrome forced to dark sits on a camera preview or a photo, so its tint comes
   // from the dark palette instead of the app's current appearance.
   const palette = scheme === "dark" ? themes.dark : theme;
@@ -58,7 +101,7 @@ export function GlassButton({
           buttonStyle(prominent ? "glassProminent" : "glass"),
           controlSize("regular"),
           buttonBorderShape(iconOnly ? "circle" : "capsule"),
-          tint(prominent ? palette.primary : palette.foreground),
+          tint(prominent ? palette.accent : palette.foreground),
           font(
             iconOnly
               ? { size: typography.title.fontSize, weight: "regular" }
@@ -71,3 +114,30 @@ export function GlassButton({
     </Host>
   );
 }
+
+const styles = css.create({
+  fill: {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "stretch",
+    gap: spacing.sm,
+    minHeight: controls.fillHeight,
+    paddingInline: spacing.lg,
+    borderRadius: radii.pill,
+    borderWidth: 0,
+  },
+  prominent: {
+    backgroundColor: tokens.accent,
+    opacity: { default: 1, ":active": controls.pressedOpacity },
+  },
+  neutral: { backgroundColor: { default: tokens.fill, ":active": tokens.separator } },
+  disabled: { opacity: controls.disabledOpacity },
+  label: {
+    ...typography.button,
+    lineHeight: `${typography.button.lineHeight}px`,
+  },
+  onAccent: { color: tokens.onAccent },
+  onNeutral: { color: tokens.foreground },
+});

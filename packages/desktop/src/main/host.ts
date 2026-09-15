@@ -12,8 +12,20 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import { dispatch, isTerminalPhase, WorkspaceTrustRequired } from "@nyte-ai/core";
-import type { Disposer, SessionId, SessionInfo, Nyte, WorkspaceInfo } from "@nyte-ai/core";
+import {
+  dispatch,
+  isTerminalPhase,
+  watchPluginDirectories,
+  WorkspaceTrustRequired,
+} from "@nyte-ai/core";
+import type {
+  Disposer,
+  ResolvedPlugins,
+  SessionId,
+  SessionInfo,
+  Nyte,
+  WorkspaceInfo,
+} from "@nyte-ai/core";
 import { discoverMentionFiles, readWorkspaceFile, saveWorkspaceFile } from "@nyte-ai/core/files";
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
@@ -26,8 +38,11 @@ import {
   createTrustStore,
   createWorkspaceRegistry,
   nyteHome,
+  pluginWatchTargets,
+  resolveHostPlugins,
   workspaceStorePath,
 } from "@nyte-ai/host";
+import type { DeferredPluginTarget, PluginTarget } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { SDK_OPERATION_PATHS } from "../shared/ipc.ts";
 import type {
@@ -134,6 +149,8 @@ interface OpenTargetBase {
   readonly sdk: Nyte;
   readonly store: Store;
   readonly sessionAttachments: Map<SessionId, Disposer>;
+  /** Stops watching the plugin sources this target resolves from. */
+  readonly stopPluginWatch: Disposer;
 }
 
 interface OpenHomeTarget extends OpenTargetBase {
@@ -762,6 +779,26 @@ export class DesktopHost {
     return { kind: "opened", workspace: open.workspace };
   }
 
+  /** Where this target's plugins load from, or why they cannot load yet. */
+  private async pluginTarget(target: WorkspaceTarget): Promise<DeferredPluginTarget> {
+    if (target.kind === "home") return { kind: "home" };
+    const current = (await this.registry.list()).find(
+      (workspace) => workspace.path === target.workspace.path,
+    );
+    if (current?.available !== true) return { kind: "inactive" };
+    const resolution = await this.trustStore.resolve(target.workspace.path);
+    switch (resolution.kind) {
+      case "trusted":
+        return { kind: "project", workspace: resolution.workspace };
+      case "unknown":
+        return { kind: "requires", requirement: { kind: "workspace_trust", cwd: resolution.cwd } };
+      default: {
+        const _exhaustive: never = resolution;
+        return _exhaustive;
+      }
+    }
+  }
+
   /** Compose storage now; resolve directories and plugins only when a session activates. */
   private compose(target: { readonly kind: "home" }): Promise<OpenHomeTarget>;
   private compose(target: {
@@ -783,7 +820,42 @@ export class DesktopHost {
     await store.ready();
     const vcs = projectCwd === undefined ? undefined : createGitVcs(projectCwd);
     let sdk: Nyte | undefined;
+    let stopPluginWatch: Disposer | undefined;
     try {
+      const extraPlugins = [
+        browserToolsPlugin({
+          agent: this.dependencies.browser.agent,
+          access: this.browserAccess,
+        }),
+      ];
+      const reportPluginFailure = (failure: ResolvedPlugins["failures"][number]): void =>
+        this.dependencies.emitHostEvent({
+          kind: "status",
+          // The producer retained only this failure record, not its original Error.
+          message: ipcFailure(failure).message,
+        });
+      // Plugin sources are only read once the workspace is trusted, so the watch starts with the
+      // first resolution that reads them and re-resolves on every later change to the same sources.
+      const watchPluginSources = (resolved: PluginTarget): void => {
+        const host = sdk;
+        if (host === undefined || stopPluginWatch !== undefined) return;
+        stopPluginWatch = watchPluginDirectories({
+          directories: pluginWatchTargets(resolved),
+          // Runners wait on the hold, so a plugin the model just wrote is in its next request.
+          hold: () => host.holdPlugins(),
+          onChange: async () => {
+            const reloaded = await resolveHostPlugins(resolved, {
+              models,
+              model: fallback,
+              extra: extraPlugins,
+            });
+            for (const failure of reloaded.failures) reportPluginFailure(failure);
+            await host.setPlugins(reloaded.plugins);
+          },
+          onError: (error) =>
+            this.dependencies.emitHostEvent({ kind: "status", message: error.message }),
+        });
+      };
       sdk = await (this.dependencies.createHost ?? createHost)({
         store,
         models,
@@ -799,42 +871,23 @@ export class DesktopHost {
           target: {
             kind: "deferred",
             resolve: async () => {
-              if (target.kind === "home") return { kind: "home" };
-              const current = (await this.registry.list()).find(
-                (workspace) => workspace.path === target.workspace.path,
-              );
-              if (current?.available !== true) return { kind: "inactive" };
-              const resolution = await this.trustStore.resolve(target.workspace.path);
-              switch (resolution.kind) {
-                case "trusted":
-                  return { kind: "project", workspace: resolution.workspace };
-                case "unknown":
-                  return {
-                    kind: "requires",
-                    requirement: { kind: "workspace_trust", cwd: resolution.cwd },
-                  };
-                default: {
-                  const _exhaustive: never = resolution;
-                  return _exhaustive;
-                }
+              const resolved = await this.pluginTarget(target);
+              if (resolved.kind === "home" || resolved.kind === "project") {
+                watchPluginSources(resolved);
               }
+              return resolved;
             },
           },
-          onFailure: (failure) =>
-            this.dependencies.emitHostEvent({
-              kind: "status",
-              // The producer retained only this failure record, not its original Error.
-              message: ipcFailure(failure).message,
-            }),
-          extra: [
-            browserToolsPlugin({
-              agent: this.dependencies.browser.agent,
-              access: this.browserAccess,
-            }),
-          ],
+          onFailure: reportPluginFailure,
+          extra: extraPlugins,
         },
       });
-      const base = { sdk, store, sessionAttachments: new Map<SessionId, Disposer>() };
+      const base = {
+        sdk,
+        store,
+        sessionAttachments: new Map<SessionId, Disposer>(),
+        stopPluginWatch: () => stopPluginWatch?.(),
+      };
       if (target.kind === "home") {
         const open = { ...base, kind: "home" } satisfies OpenHomeTarget;
         this.openTargets.set(null, open);
@@ -850,6 +903,7 @@ export class DesktopHost {
       this.openTargets.set(target.workspace.path, open);
       return open;
     } catch (error) {
+      stopPluginWatch?.();
       await sdk?.close().catch(() => undefined);
       await store.close().catch(() => undefined);
       throw error;
@@ -1228,6 +1282,7 @@ export class DesktopHost {
     this.watches.clear();
     this.sessionOwners.clear();
     for (const open of this.openTargets.values()) {
+      open.stopPluginWatch();
       for (const detach of open.sessionAttachments.values()) detach();
       open.sessionAttachments.clear();
       await open.sdk.close().catch(() => undefined);

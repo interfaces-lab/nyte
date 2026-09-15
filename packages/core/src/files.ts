@@ -1,5 +1,5 @@
 /** Node/Bun workspace file operations for hosts. */
-export { discoverMentionFiles } from "./mention-files.ts";
+export { discoverMentionFiles, rankMentionFiles } from "./mention-files.ts";
 export type { MentionFile } from "./mention-files.ts";
 export {
   MAX_WORKSPACE_FILE_BYTES,

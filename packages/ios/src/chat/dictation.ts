@@ -1,7 +1,43 @@
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
+import type { ExpoSpeechRecognitionErrorCode } from "expo-speech-recognition";
 import { useEffect, useRef, useState } from "react";
 
 const WAVEFORM_LEVELS = 8;
+
+/**
+ * What a recognizer failure reads as. The platform's own message names its
+ * internals ("Failed to initialize recognizer"), so the code chooses the
+ * sentence and the message stays out of the composer.
+ */
+function dictationFailure(code: ExpoSpeechRecognitionErrorCode): string | undefined {
+  switch (code) {
+    case "aborted":
+      return undefined;
+    case "not-allowed":
+    case "service-not-allowed":
+      return "Microphone or speech recognition permission is off. Enable it in Settings.";
+    case "no-speech":
+    case "speech-timeout":
+      return "Didn't catch that. Try again.";
+    case "network":
+      return "Dictation needs a connection right now.";
+    case "audio-capture":
+    case "interrupted":
+      return "The microphone wasn't available. Try again.";
+    case "busy":
+      return "Dictation is already running.";
+    case "language-not-supported":
+      return "Dictation doesn't support this language.";
+    case "bad-grammar":
+    case "client":
+    case "unknown":
+      return "Dictation isn't available here.";
+    default: {
+      const exhaustive: never = code;
+      return exhaustive;
+    }
+  }
+}
 
 /** Speech recognition state shared by the composer and the compose sheet. */
 export function useDictation(onTranscript: (transcript: string) => void) {
@@ -28,7 +64,7 @@ export function useDictation(onTranscript: (transcript: string) => void) {
   useSpeechRecognitionEvent("error", (event) => {
     recordingRef.current = false;
     setRecording(false);
-    setError(event.message);
+    setError(dictationFailure(event.error));
   });
   useEffect(
     () => () => {

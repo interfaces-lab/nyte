@@ -1,6 +1,10 @@
 import { Children, Fragment, type ReactNode } from "react";
 import { css, html } from "react-strict-dom";
-import { controls, list, radii, spacing, tokens } from "../theme.ts";
+import { SymbolView } from "expo-symbols";
+import { controls, list, radii, spacing, tokens, useTheme } from "../theme.ts";
+
+// The chevron is chrome rather than content, so it takes the tertiary grey of
+// whichever appearance is active.
 
 /**
  * A rounded surface card holding rows. The card draws the hairlines between its
@@ -24,21 +28,40 @@ export function GroupRow({
   onClick,
   disabled = false,
   align = "start",
+  pushes = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   align?: "start" | "center";
+  /** Opens another screen, so the row carries the disclosure chevron. */
+  pushes?: boolean;
 }) {
+  const theme = useTheme();
   const style = [styles.row, align === "center" && styles.centered, disabled && styles.disabled];
+  const content = (
+    <>
+      {children}
+      {pushes ? (
+        <html.div style={styles.chevron}>
+          <SymbolView
+            name="chevron.right"
+            size={controls.iconXs}
+            weight="semibold"
+            tintColor={theme.tertiary}
+          />
+        </html.div>
+      ) : null}
+    </>
+  );
   if (onClick !== undefined) {
     return (
       <html.button onClick={onClick} disabled={disabled} aria-disabled={disabled} style={style}>
-        {children}
+        {content}
       </html.button>
     );
   }
-  return <html.div style={style}>{children}</html.div>;
+  return <html.div style={style}>{content}</html.div>;
 }
 
 const styles = css.create({
@@ -68,11 +91,12 @@ const styles = css.create({
     fontSize: "inherit",
   },
   centered: { justifyContent: "center" },
+  chevron: { display: "flex", alignItems: "center", flexShrink: 0, marginInlineStart: "auto" },
   disabled: { opacity: controls.disabledOpacity },
   // Inset to the content column, so the hairline starts under the text.
   separator: {
     height: controls.hairline,
     backgroundColor: tokens.separator,
-    marginInlineStart: list.tile + spacing.md,
+    marginInlineStart: spacing.md + list.tile + spacing.md,
   },
 });

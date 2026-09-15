@@ -15,6 +15,16 @@ waiting sessions mirror to a lock-screen Live Activity automatically. Expo
 Router provides stack navigation, header search and menus, and sheets; the
 connect flow gates all of them.
 
+Typing `@` offers the shared workspace's files and `/` offers the session's
+commands and skills, both read from the host: `workspace.files` narrows the tree
+on the Mac, and `plugins.commands.list`/`plugins.resources.list` — or
+`plugins.catalog` before a conversation exists — supply the rest. Accepting one
+writes the same text the desktop composer writes, so a message sent from a phone
+reads back there as the same chip: `@file:///…` for a file, `/name ` for a
+command, and the skill's instruction sentence at the head of the draft. A draft
+that is only a command line runs the command through `plugins.commands.run`
+instead of being sent as text.
+
 The app supports a saved host connection, chat status, streamed replies,
 follow-up messages while a run works, a separate Stop action, answers to waiting
 selections, and host-backed model selection. Stop keeps its own control beside
@@ -215,7 +225,12 @@ and render the owning feature's screen body.
 | `plugins/` | Source-controlled Expo native configuration |
 | `test/` | Behavior checks without native modules |
 
-`chat/composer.tsx` owns drafts, attachment staging, and Send/Stop controls.
+`chat/composer.tsx` owns drafts, attachment staging, Send/Stop controls, and the
+one opaque bar the transcript scrolls under. It also owns the bottom inset: the
+composer sits on the keyboard's top edge while it is open and clears the home
+indicator while it is closed, so the screens around it pass no keyboard offsets
+of their own. `chat/completions.ts` and `chat/suggestion-menu.tsx` own the `@`
+and `/` menus.
 `chat/messages.tsx` owns message and Markdown rendering. Keep a feature's state
 and components together; add a shared UI component only when several features
 use it. Protocol types and execution rules stay in their existing workspace
@@ -261,12 +276,16 @@ title/body scale and short, specific copy, and name the filter or search that
 hid the rest.
 
 Expo UI's SwiftUI `Button` supplies native `glass` and `glassProminent` controls
-on supported iOS versions, including iOS 27. `GlassButton` is the native control
-boundary for icon and toolbar actions: its `Host` handles SwiftUI sizing, while
+on supported iOS versions, including iOS 27. `GlassButton` is the one button
+component that is not a list row: its `Host` handles SwiftUI sizing, while
 React Native owns the safe area and keyboard insets. SwiftUI sizes a
-string-label button to its text, so full-width in-content actions (Connect, Ask
-to merge) are `PrimaryButton`, a solid capsule drawn with the shared tokens.
-Settings actions stay grouped list rows. The home and chat capsule is a
+string-label button to its own text and has no `.infinity` across the bridge, so
+`fill` — the single action a screen asks for, such as Connect or Ask to merge —
+draws an accent capsule from the shared tokens and lets the row own the width.
+`prominent` means the accent tint rather than the desktop's near-black primary,
+because a black capsule is not what iOS calls a prominent action.
+Settings actions stay grouped list rows, and a row that opens a screen carries
+the disclosure chevron. The home and chat capsule is a
 `glassEffect` behind the React Native field; the effect paints an empty
 container, since a filled SwiftUI shape would draw over it. Plus and mic are
 glass circle controls. Send and stop stay solid discs so the send spinner can
@@ -345,7 +364,10 @@ inform native text rendering and keyboard coordination. The camera follows
 [Margelo's current skills](https://github.com/margelo/react-native-skills/tree/main/skills)
 and VisionCamera v5 API; it does not use deprecated v4 camera methods.
 The [morphing menu reference](https://github.com/rit3zh/expo-morphing-menu)
-informs menu expectations; system SwiftUI menus provide those actions here.
+informs the composer's own menus: the attachment choices and the `@`/`/` list
+grow out of the capsule on one spring, on the capsule's surface, inside the
+composer's opaque bar, rather than arriving as a sheet or floating over the
+transcript. System SwiftUI menus still provide the model and head choices.
 
 ## Runtime ownership and remaining work
 

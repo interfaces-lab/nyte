@@ -5,7 +5,6 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useCameraDevice, useCameraPermission } from "react-native-vision-camera";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
-import { PrimaryButton } from "../ui/primary-button.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { ScanSheet } from "./scan-sheet.tsx";
 import { displayAddress, parseConnection, type Connection } from "./connection.ts";
@@ -164,7 +163,12 @@ export function ConnectScreen({
           </html.div>
           {canScan && !busy ? (
             <html.div style={styles.actions}>
-              <PrimaryButton label="Scan QR code" onClick={() => void openScanner()} />
+              <GlassButton
+                label="Scan QR code"
+                systemImage="qrcode.viewfinder"
+                fill
+                onPress={() => void openScanner()}
+              />
               <html.p style={[textStyles.caption, styles.footnote]}>
                 The code is in Nyte › {SHARE_LOCATION} on your Mac.
               </html.p>
@@ -233,7 +237,6 @@ export function ConnectScreen({
                 onChangeText={setToken}
                 editable={!busy}
                 style={inputStyle(theme)}
-                numberOfLines={1}
                 placeholder="Paste from your Mac"
                 placeholderTextColor={theme.muted}
                 secureTextEntry={!revealToken}
@@ -285,20 +288,17 @@ export function ConnectScreen({
                 <ActivityIndicator color={theme.foreground} />
                 <html.span style={textStyles.title}>{connectCopy(stage).title}</html.span>
               </html.div>
-              <PrimaryButton
-                label="Cancel"
-                tone="secondary"
-                onClick={() => attempt.current?.abort()}
-              />
+              <GlassButton label="Cancel" fill onPress={() => attempt.current?.abort()} />
             </html.div>
           ) : (
             <html.div style={styles.actions}>
               {/* Always actionable: an empty field is explained by the alert above,
                 not by a dead grey button. */}
-              <PrimaryButton
+              <GlassButton
                 label={alert?.retry ?? (edit === undefined ? "Connect" : "Save connection")}
-                tone={canScan ? "secondary" : "primary"}
-                onClick={() => void connect()}
+                prominent
+                fill
+                onPress={() => void connect()}
               />
             </html.div>
           )}
@@ -333,13 +333,15 @@ function Field({
 
 function inputStyle(theme: Theme) {
   return {
-    ...typography.title,
+    // No line height: an iOS single-line field lays its own text out, and a
+    // fixed one wraps a long token instead of scrolling it.
+    fontSize: typography.title.fontSize,
+    fontWeight: typography.body.fontWeight,
     flex: 1,
     minWidth: 0,
     color: theme.foreground,
-    fontWeight: typography.body.fontWeight,
     paddingVertical: 0,
-    minHeight: controls.touchTarget,
+    height: controls.touchTarget,
   };
 }
 
@@ -360,22 +362,28 @@ const styles = css.create({
   intro: { display: "flex", flexDirection: "column", gap: spacing.sm, paddingTop: spacing.sm },
   lead: { color: tokens.muted, margin: 0 },
   form: {
+    // The same card the grouped rows elsewhere draw: one surface, no border or
+    // shadow stating the same edge again.
     backgroundColor: tokens.surface,
     borderRadius: radii.card,
-    borderWidth: controls.hairline,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    boxShadow: tokens.shadow,
+    overflow: "hidden",
     paddingInline: spacing.lg,
   },
   field: { paddingBlock: spacing.xs },
-  separator: { height: controls.borderWidth, backgroundColor: tokens.border },
+  // Inset to the labels, the way a grouped list draws its hairlines.
+  separator: {
+    height: controls.hairline,
+    backgroundColor: tokens.separator,
+  },
   label: { color: tokens.muted, paddingTop: spacing.xs },
   control: {
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
+    // A token is one long word: the row keeps its height and the field scrolls,
+    // rather than wrapping a second line out through the card's bottom edge.
+    height: controls.touchTarget,
     overflow: "hidden",
   },
   revealButton: {
