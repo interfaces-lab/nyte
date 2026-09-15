@@ -3,6 +3,10 @@ import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
+import { createModels, InMemoryCredentialStore, InMemoryModelsStore } from "@nyte-ai/ai";
+import type { MutableModels } from "@nyte-ai/ai";
+import type { Api, Model } from "@nyte-ai/schema";
+import { SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
 import {
   createTrustStore,
   createWorkspaceRegistry,
@@ -10,6 +14,7 @@ import {
   pluginDirectories,
   pluginWatchTargets,
   readManifest,
+  resolveHostPlugins,
   skillDirectories,
 } from "../src/index.ts";
 
@@ -128,4 +133,64 @@ test("plugin resolution watches its sources whole and the home directory by mani
     { path: join(homedir(), ".agents", "skills"), recursive: true },
     { path: join(homedir(), ".claude", "skills"), recursive: true },
   ]);
+});
+
+const model: Model<Api> = {
+  id: "echo",
+  name: "Echo",
+  api: "openai-responses",
+  provider: "echo",
+  baseUrl: "https://example.invalid",
+  reasoning: false,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 100_000,
+  maxTokens: 1_000,
+};
+
+/** A catalog with one model. Resolution never streams, so the provider refuses to. */
+function offlineModels(): MutableModels {
+  const models = createModels({
+    credentials: new InMemoryCredentialStore(),
+    modelsStore: new InMemoryModelsStore(),
+  });
+  const refuse = () => {
+    throw new Error("Plugin resolution must not stream");
+  };
+  models.setProvider({
+    id: model.provider,
+    name: model.name,
+    auth: { apiKey: { name: "Fixture", resolve: async () => ({ auth: { apiKey: "fixture" } }) } },
+    getModels: () => [model],
+    stream: refuse,
+    streamSimple: refuse,
+  });
+  return models;
+}
+
+function skillsVersion(resolved: Awaited<ReturnType<typeof resolveHostPlugins>>): string {
+  const plugin = resolved.plugins.find((entry) => entry.id === SKILLS_PLUGIN_ID);
+  assert.ok(plugin, "the skills builtin is always resolved");
+  return plugin.version;
+}
+
+test("the skills plugin is versioned by what a scan finds, not by how often it runs", async () => {
+  const f = await fixture();
+  const skill = join(f.cwd, ".nyte", "skills", "brew-tea");
+  await mkdir(skill, { recursive: true });
+  const write = (body: string) =>
+    writeFile(
+      join(skill, "SKILL.md"),
+      `---\nname: brew-tea\ndescription: Make a pot of tea\n---\n${body}\n`,
+    );
+  await write("Boil the water first.");
+  const target = { kind: "project", workspace: f.workspace } as const;
+  const context = { models: offlineModels(), model };
+
+  const first = await resolveHostPlugins(target, context);
+  // An unchanged scan must keep the version, or every resolution reactivates the plugin.
+  assert.equal(skillsVersion(await resolveHostPlugins(target, context)), skillsVersion(first));
+
+  await write("Warm the pot first.");
+  assert.notEqual(skillsVersion(await resolveHostPlugins(target, context)), skillsVersion(first));
 });

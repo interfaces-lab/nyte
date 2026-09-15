@@ -49,7 +49,8 @@ export type SkillDiagnosticCode =
   | "list_failed"
   | "read_failed"
   | "parse_failed"
-  | "invalid_metadata";
+  | "invalid_metadata"
+  | "duplicate_name";
 
 export interface SkillDiagnostic {
   readonly type: "warning";
@@ -83,18 +84,41 @@ function isString(value: unknown): value is string {
   return typeof value === "string";
 }
 
-/** Discover standard skill folders recursively. A folder containing `SKILL.md` is a leaf. */
-export async function loadSkills(
-  directories: string | readonly string[],
-): Promise<{ skills: Skill[]; diagnostics: SkillDiagnostic[] }> {
+/** The skills a set of directories offers, and what was wrong with the ones it skipped. */
+export interface LoadedSkills {
+  readonly skills: readonly Skill[];
+  readonly diagnostics: readonly SkillDiagnostic[];
+}
+
+/**
+ * Discover standard skill folders recursively. A folder containing `SKILL.md` is a leaf.
+ * Names are unique in the result: the first directory to claim one keeps it, so a project
+ * skill shadows the user's skill of the same name.
+ */
+export async function loadSkills(directories: string | readonly string[]): Promise<LoadedSkills> {
   const skills: Skill[] = [];
   const diagnostics: SkillDiagnostic[] = [];
+  const claimedBy = new Map<string, string>();
   const roots = isDirectoryList(directories) ? directories : [directories];
   for (const directory of roots) {
     const kind = await pathKind(directory, diagnostics);
     if (kind !== "directory") continue;
     const loaded = await loadSkillsFromDirectory(directory, directory, createIgnore());
-    skills.push(...loaded.skills);
+    for (const skill of loaded.skills) {
+      const claimed = claimedBy.get(skill.name);
+      if (claimed !== undefined) {
+        diagnostics.push(
+          diagnostic(
+            "duplicate_name",
+            `name "${skill.name}" is already loaded from ${claimed}`,
+            skill.filePath,
+          ),
+        );
+        continue;
+      }
+      claimedBy.set(skill.name, skill.filePath);
+      skills.push(skill);
+    }
     diagnostics.push(...loaded.diagnostics);
   }
   return { skills, diagnostics };

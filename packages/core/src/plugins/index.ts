@@ -12,6 +12,9 @@ export * from "./types.ts";
 export { systemPromptPlugin } from "./builtin/system-prompt.ts";
 export { contextFilesPlugin } from "./builtin/context-files.ts";
 export { SKILLS_PLUGIN_ID, skillsPlugin } from "./builtin/skills.ts";
+/** Skill discovery: what a host scans to compose `skillsPlugin`. */
+export { loadSkills } from "../skills.ts";
+export type { LoadedSkills, SkillDiagnostic, SkillDiagnosticCode } from "../skills.ts";
 export { toolsFsPlugin } from "./builtin/tools-fs.ts";
 /**
  * Durable suspension, the mechanism behind asks and subagent waits: a tool
