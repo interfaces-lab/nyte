@@ -588,6 +588,7 @@ test("builtin factories execute approved arguments after durable intent and jobs
   const jobs = createJobs({
     session: b.session,
     childId: () => sessionId("unused-child"),
+    boundaryLanes: ["steer"],
     backgroundChild: async () => {},
     interruptChild: async () => {},
     notify: async () => {},

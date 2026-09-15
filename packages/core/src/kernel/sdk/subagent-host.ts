@@ -14,7 +14,6 @@ import {
   type SubagentHost,
   type SubagentResult,
 } from "../../plugins/builtin/subagents.ts";
-import { toolResultText } from "../../utils/tool-result.ts";
 import { contextMessages } from "../context.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { contextCommits } from "../graph.ts";
@@ -53,8 +52,10 @@ export function createSubagents(input: {
   readonly runners: Runners;
   /** Where a child's config and first message go: the first lane the runner serves. */
   readonly defaultLane: () => string;
+  /** Lanes a live run lands at its response boundaries; jobs yield to input waiting there. */
+  readonly boundaryLanes: readonly string[];
 }) {
-  const { options, pool, runners, defaultLane } = input;
+  const { options, pool, runners, defaultLane, boundaryLanes } = input;
 
   const pluginsFor = (target: {
     readonly id: SessionId;
@@ -205,6 +206,7 @@ export function createSubagents(input: {
   const jobsFor = (id: SessionId, pooled: Pooled) => {
     pooled.jobs ??= createJobs({
       session: pooled.session,
+      boundaryLanes,
       childId: (runId, callId) => childSessionId(id, runId, callId),
       interruptChild,
       backgroundChild,
@@ -232,17 +234,9 @@ export function createSubagents(input: {
     async waitFor(input) {
       const jobs = jobsFor(id, pooled);
       const known = (await jobs.list()).find((candidate) => candidate.id === input.jobId);
+      // A command, or another session's job, is not a task this agent may await.
       if (known?.kind !== "subagent") return { kind: "not_found" };
-      const record = await jobs.waitFor(input.jobId, input.signal);
-      if (record === undefined) return { kind: "not_found" };
-      const { state } = record.info;
-      if (state === "running") throw new Error("Task wait ended before the job finished");
-      return {
-        kind: "finished",
-        state,
-        report:
-          record.result === undefined ? record.info.output : toolResultText(record.result.content),
-      };
+      return jobs.waitFor(input.jobId, input.signal);
     },
     async spawn(input) {
       if (pooled.parent !== undefined)

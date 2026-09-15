@@ -166,6 +166,9 @@ subagent stay inside that subagent's transcript, not in the parent Tasks list.
 The agent's `task` tool waits by default. If it starts independent work in the background,
 `wait_task` can later join that same task by job ID and continue the parent conversation.
 The agent should join reports it needs before finishing, rather than poll or start another task.
+Sending a message while the agent waits on a task ends that wait, and moves a foreground
+subagent to the background. The task keeps running either way. A message you queue instead
+of sending waits for the agent to finish, and leaves the wait alone.
 A result arriving after the parent has finished remains queued for your next message.
 
 The composer shows `2 running in background · ↓ view` for unfinished background work only.

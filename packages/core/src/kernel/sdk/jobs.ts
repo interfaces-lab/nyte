@@ -20,7 +20,9 @@ import { ToolWait } from "../../types.ts";
 import { toolResultMessage } from "../../agent-loop.ts";
 import { toolErrorResult, toolResultContent, toolResultText } from "../../utils/tool-result.ts";
 import { isJsonObject, toJsonValue } from "../json.ts";
-import { factRef, runRef } from "../names.ts";
+import { factRef, parseQueueRef, runRef } from "../names.ts";
+import { isUserInput } from "../admission.ts";
+import { pending } from "../queue.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { toolProgress } from "../turn.ts";
 import { withLeaseRenewal } from "../lease.ts";
@@ -56,6 +58,34 @@ function jobId(runId: string, callId: string): string {
 }
 
 /**
+ * User input waiting in a lane that lands at the next response boundary: the
+ * input a parked call is holding up, and the reason it hands the turn back.
+ * Input in an idle-landing lane waits for the run to end whatever the call does.
+ */
+export async function pendingUserInput(
+  session: Session,
+  head: string,
+  lanes: readonly string[],
+): Promise<boolean> {
+  const queued = await pending(session, head);
+  return queued.some((item) => lanes.includes(item.lane) && isUserInput(item));
+}
+
+/**
+ * What waiting for a job's report ends with. `still_running` means the wait gave
+ * the turn back to queued user input; the job is untouched and its report is
+ * still delivered. Assignable to the subagent plugin's `WaitTaskOutcome`.
+ */
+export type JobWait =
+  | { readonly kind: "not_found" }
+  | { readonly kind: "still_running" }
+  | {
+      readonly kind: "finished";
+      readonly state: Exclude<JobInfo["state"], "running">;
+      readonly report: string;
+    };
+
+/**
  * Who a job answers to. A run's job parks the tool call that started it and
  * wakes it; a user's job (`jobs.start`) has no call to wake, is never a
  * completion, and is not swept when a run is aborted.
@@ -89,12 +119,16 @@ interface Admitted {
 export function createJobs(input: {
   readonly session: Session;
   readonly childId: (runId: string, callId: string) => SessionId;
+  /** Lanes a live run lands at its response boundaries; see `pendingUserInput`. */
+  readonly boundaryLanes: readonly string[];
   readonly backgroundChild: (id: SessionId) => Promise<void>;
   readonly interruptChild: (id: SessionId) => Promise<void>;
   readonly notify: (job: JobInfo) => Promise<void>;
   readonly diagnostic: (cause: unknown) => Promise<void>;
 }) {
   const live = new Map<string, LiveJob>();
+  /** Jobs a caller is carrying the report of, by how many holds each has. */
+  const awaited = new Map<string, number>();
   let closing = false;
   const shutdown = new AbortController();
   const operations = new Set<Promise<unknown>>();
@@ -150,6 +184,45 @@ export function createJobs(input: {
     }
   };
 
+  /** The job's record once it is no longer running, without owning the job. */
+  const observe = async (id: string, watching: AbortSignal): Promise<JobRecord | undefined> => {
+    const afterSeq = await input.session.events.last();
+    const current = await read(id);
+    if (current === undefined || current.record.info.state !== "running") return current?.record;
+    for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
+      if (event.kind !== "ref" || event.name !== JOB_PREFIX + id) continue;
+      const stored = await read(id);
+      if (stored === undefined || stored.record.info.state !== "running") return stored?.record;
+    }
+    watching.throwIfAborted();
+    throw new Error("Job event stream ended before the job finished");
+  };
+
+  /** The terminal record as a report. The one place a running job is refused. */
+  const finished = (record: JobRecord): JobWait => {
+    const { state } = record.info;
+    if (state === "running") throw new Error("A job wait ended before the job finished");
+    return {
+      kind: "finished",
+      state,
+      report:
+        record.result === undefined ? record.info.output : toolResultText(record.result.content),
+    };
+  };
+
+  /** Resolves once input the parked call is holding up is waiting on `head`. */
+  const inputArrives = async (head: string, watching: AbortSignal): Promise<void> => {
+    const afterSeq = await input.session.events.last();
+    if (await pendingUserInput(input.session, head, input.boundaryLanes)) return;
+    for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
+      if (event.kind !== "ref" || parseQueueRef(event.name)?.head !== head) continue;
+      if (await pendingUserInput(input.session, head, input.boundaryLanes)) return;
+    }
+    // The wait ended first. Never resolve for a reason that did not happen.
+    watching.throwIfAborted();
+    throw new Error("Session event stream ended while watching for queued input");
+  };
+
   const signal = async (job: JobInfo) => {
     if (isUserJob(job)) return;
     const oid = await input.session.refs.read(runRef(job.head));
@@ -168,7 +241,8 @@ export function createJobs(input: {
       closing ||
       record.info.mode !== "background" ||
       record.info.state === "running" ||
-      record.delivered
+      record.delivered ||
+      awaited.has(record.info.id)
     )
       return Promise.resolve();
     const id = record.info.id;
@@ -177,9 +251,18 @@ export function createJobs(input: {
     const task = (async () => {
       const current = await read(id);
       if (current === undefined || current.record.delivered || closing) return;
-      // notify uses the job id as an admission key across hosts and crash recovery.
-      await input.notify(current.record.info);
-      await update(id, (current) => ({ ...current, delivered: true }));
+      // Claim before notifying, so a wait that takes the report over from here
+      // finds the claim and stays silent. A failed notify releases the claim;
+      // the submission key makes the retry one message, not two.
+      const claimed = await update(id, (current) => ({ ...current, delivered: true }));
+      if (claimed === undefined) return;
+      try {
+        // notify uses the job id as an admission key across hosts and crash recovery.
+        await input.notify(claimed.info);
+      } catch (cause) {
+        await update(id, (current) => ({ ...current, delivered: false }));
+        throw cause;
+      }
     })().finally(() => deliveries.delete(id));
     deliveries.set(id, task);
     return task;
@@ -198,6 +281,40 @@ export function createJobs(input: {
     }
     if (job.mode === "background" || job.state !== "running") await signal(job);
     await deliver(stored.record);
+  };
+
+  const promote = async (id: string): Promise<JobActionOutcome> => {
+    if (closing) throw new Error("Host is closing");
+    const stored = await read(id);
+    if (stored === undefined) return { kind: "not_found" };
+    if (stored.record.info.state !== "running") return { kind: "finished" };
+    const next = await update(id, (current) =>
+      current.info.state !== "running"
+        ? current
+        : { ...current, info: { ...current.info, mode: "background", updatedAt: Date.now() } },
+    );
+    await sync(id);
+    return {
+      kind:
+        next?.info.mode === "background" && next.info.state === "running" ? "applied" : "finished",
+    };
+  };
+
+  /**
+   * A foreground subagent holds the parent turn until its report arrives. Input
+   * the user queues meanwhile asks for that turn back, so the job moves to
+   * background: the child keeps working and its report is delivered later.
+   * Only the watch of a run-owned subagent job calls this.
+   */
+  const yieldToInput = async (id: string, head: string): Promise<void> => {
+    const stored = await read(id);
+    if (stored === undefined) return;
+    const job = stored.record.info;
+    if (job.mode !== "foreground" || job.state !== "running") return;
+    if (!(await pendingUserInput(input.session, head, input.boundaryLanes))) return;
+    // A host that started closing between the checks and here has nothing to yield to.
+    if (closing) return;
+    await promote(id);
   };
 
   const interrupt = async (
@@ -288,7 +405,7 @@ export function createJobs(input: {
   const receipt = (job: JobInfo): AgentToolResult<unknown> => ({
     content: toolResultContent(
       job.kind === "subagent"
-        ? `Started background subagent ${job.title} as ${job.id}. Its report arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished. When you need the report before continuing, call wait_task with this job id instead of finishing your turn.`
+        ? `Subagent ${job.title} runs in the background as ${job.id}. Its report arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished. Call wait_task with this job id only when you need the report before you reply.`
         : [
             `Started background command ${job.id}. It keeps running after this turn. Its exit arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished.`,
             job.output === "" ? "No output yet." : `Output so far:\n${job.output}`,
@@ -442,16 +559,24 @@ export function createJobs(input: {
     const started = Promise.withResolvers<void>();
     const produced = Promise.withResolvers<void>();
     const watching = new AbortController();
+    // Only a run-owned subagent parks a turn long enough for queued input to matter.
+    const yields = info.kind === "subagent" && owner.kind === "run";
     // Job ownership outlives a head runner or attachment. Remote control must still
     // reach the executing tool when the SDK is not watching that head.
     const watch = (async () => {
       const afterSeq = await input.session.events.last();
       await sync(id);
+      if (yields) await yieldToInput(id, owner.head).catch(diagnostic);
       for await (const event of input.session.events.watch({
         afterSeq,
         signal: watching.signal,
       })) {
-        if (event.kind === "ref" && event.name === JOB_PREFIX + id) await sync(id);
+        if (event.kind !== "ref") continue;
+        if (event.name === JOB_PREFIX + id) await sync(id);
+        else if (yields && parseQueueRef(event.name)?.head === owner.head) {
+          // Advisory: a failure to yield must not take the job down with it.
+          await yieldToInput(id, owner.head).catch(diagnostic);
+        }
       }
     })().catch(async (cause: unknown) => {
       controller.abort(cause);
@@ -722,57 +847,59 @@ export function createJobs(input: {
       return (await read(jobId(runId, callId)))?.record.info;
     },
     /**
-     * The job's terminal record, watched without owning the job. Aborting the
-     * signal ends only this observation; the job and its work are untouched.
+     * The job's report, observed without owning the job. A parked wait gives its
+     * head no response boundary, so the wait ends `still_running` when input it
+     * is holding up is queued; the job and its work are untouched either way.
+     * Aborting the signal ends only the observation.
+     *
+     * The completion message is held back while this runs and claimed when the
+     * report is returned, so an awaited report is heard once and one this gives
+     * up on is delivered. A crash before the caller's own result is durable
+     * leaves the report in the job record, where another wait reads it.
      */
-    waitFor(id: string, signal?: AbortSignal): Promise<JobRecord | undefined> {
+    waitFor(id: string, signal?: AbortSignal): Promise<JobWait> {
       return track(
-        (async () => {
+        (async (): Promise<JobWait> => {
+          const ending = new AbortController();
           const watching = AbortSignal.any(
-            signal === undefined ? [shutdown.signal] : [shutdown.signal, signal],
+            signal === undefined
+              ? [shutdown.signal, ending.signal]
+              : [shutdown.signal, ending.signal, signal],
           );
           watching.throwIfAborted();
-          const afterSeq = await input.session.events.last();
           const current = await read(id);
-          if (current === undefined || current.record.info.state !== "running") {
-            return current?.record;
+          if (current === undefined) return { kind: "not_found" };
+          awaited.set(id, (awaited.get(id) ?? 0) + 1);
+          const observing = observe(id, watching);
+          const yielding = inputArrives(current.record.info.head, watching);
+          try {
+            // A record and a yield are different answers; `undefined` is neither.
+            const settled = await Promise.race([
+              observing.then((record) => ({ kind: "observed" as const, record })),
+              yielding.then(() => ({ kind: "yielded" as const })),
+            ]);
+            if (settled.kind === "yielded") return { kind: "still_running" };
+            if (settled.record === undefined) return { kind: "not_found" };
+            // Claimed on the way out of the branch that returns the report, so a
+            // claim never outlives a report the caller did not receive.
+            await update(id, (stored) =>
+              stored.delivered ? stored : { ...stored, delivered: true },
+            );
+            return finished(settled.record);
+          } finally {
+            ending.abort();
+            for (const abandoned of [observing, yielding]) void abandoned.catch(() => undefined);
+            const held = (awaited.get(id) ?? 0) - 1;
+            if (held > 0) awaited.set(id, held);
+            else awaited.delete(id);
+            const stored = await read(id).catch(() => undefined);
+            if (stored !== undefined) await deliver(stored.record).catch(diagnostic);
           }
-          for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
-            if (event.kind !== "ref" || event.name !== JOB_PREFIX + id) continue;
-            const stored = await read(id);
-            if (stored === undefined || stored.record.info.state !== "running") {
-              return stored?.record;
-            }
-          }
-          watching.throwIfAborted();
-          throw new Error("Job event stream ended before the job finished");
         })(),
       );
     },
     background(id: string): Promise<JobActionOutcome> {
-      return track(
-        (async (): Promise<JobActionOutcome> => {
-          if (closing) throw new Error("Host is closing");
-          const stored = await read(id);
-          if (stored === undefined) return { kind: "not_found" };
-          if (stored.record.info.state !== "running") return { kind: "finished" };
-          const next = await update(id, (current) =>
-            current.info.state !== "running"
-              ? current
-              : {
-                  ...current,
-                  info: { ...current.info, mode: "background", updatedAt: Date.now() },
-                },
-          );
-          await sync(id);
-          return {
-            kind:
-              next?.info.mode === "background" && next.info.state === "running"
-                ? "applied"
-                : "finished",
-          };
-        })(),
-      );
+      return track(promote(id));
     },
     cancel(id: string): Promise<JobActionOutcome> {
       return track(

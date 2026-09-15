@@ -28,6 +28,8 @@ export type SubagentResult =
 
 export type WaitTaskOutcome =
   | { readonly kind: "not_found" }
+  /** The wait gave the turn back to queued user input. The task keeps running. */
+  | { readonly kind: "still_running" }
   | {
       readonly kind: "finished";
       readonly state: Exclude<JobInfo["state"], "running">;
@@ -36,7 +38,10 @@ export type WaitTaskOutcome =
 
 export interface SubagentHost {
   stop(jobId: string): Promise<JobActionOutcome>;
-  /** Observe an owned task job until it ends. Aborting the wait leaves the task running. */
+  /**
+   * Observe an owned task job until it ends or the user queues input the wait is
+   * holding up. Aborting the wait leaves the task running.
+   */
   waitFor(input: {
     readonly jobId: string;
     readonly signal?: AbortSignal;
@@ -126,7 +131,7 @@ export function subagentsPlugin(host: SubagentHost) {
   const tool: AgentTool<typeof taskParameters, TaskDetails> = {
     name: TASK_TOOL,
     description: `Runs a task in a separate session with no prior conversation. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking unless the user requests another model or thinking level.
-Waits for the final report by default. Use background=true only when you can continue without the result; when you later need it, call wait_task with the returned job id. A finished background report joins your active run or waits for the user's next message; it never starts a new turn on its own.
+Waits for the final report by default. If the user sends something while you wait, the task moves to the background and this call returns its job id instead of the report; answer the user and let the report reach you. Use background=true when you can continue without the result; when you later need it, call wait_task with the returned job id. A finished background report joins your active run or waits for the user's next message; it never starts a new turn on its own.
 Never poll, sleep, or relaunch a task to check progress. Use stop_task with the returned job id to cancel it.`,
     parameters: taskParameters,
     replay: "never",
@@ -206,7 +211,7 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
   const waitTool: AgentTool<typeof taskJobParameters> = {
     name: WAIT_TASK_TOOL,
     description:
-      "Wait for a task this session already started and return its report, by job id. The wait is durable and never re-runs the task. Cancelling only this wait leaves the task running; stop_task cancels the task itself. Aborting a run still cancels that run's own tasks.",
+      'Wait for a task this session already started and return its report, by job id. The wait is durable and never re-runs the task. It returns with the task still running if the user sends something meanwhile; the report still reaches you as a "Background" message, so answer the user rather than waiting again. Cancelling only this wait leaves the task running; stop_task cancels the task itself. Aborting a run still cancels that run\'s own tasks.',
     parameters: taskJobParameters,
     replay: "never",
     prepareArguments(value) {
@@ -222,6 +227,14 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
           content: toolResultContent(`Task job not found in this session: ${input.jobId}`),
           details: { jobId: input.jobId, state: "not_found" },
         });
+      }
+      if (outcome.kind === "still_running") {
+        return {
+          content: toolResultContent(
+            `Task ${input.jobId} is still running. This wait ended so the user's message can land: read it and answer it. The report reaches you as a "Background" message; wait again only if you need it before you reply.`,
+          ),
+          details: { jobId: input.jobId, state: "running" },
+        };
       }
       const result = {
         content: toolResultContent(
