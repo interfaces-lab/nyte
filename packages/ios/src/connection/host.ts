@@ -1,4 +1,9 @@
-import { createNyteClient, NyteTransportError, NyteWireError, type NyteClient } from "@nyte-ai/client";
+import {
+  createNyteClient,
+  NyteTransportError,
+  NyteWireError,
+  type NyteClient,
+} from "@nyte-ai/client";
 import { fetch } from "expo/fetch";
 import { deleteItemAsync, getItemAsync, setItemAsync } from "expo-secure-store";
 import { displayAddress, parseConnection, type Connection } from "./connection.ts";

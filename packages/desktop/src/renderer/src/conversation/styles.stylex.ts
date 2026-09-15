@@ -230,9 +230,7 @@ export const codeBlockStyles = stylex.create({
 
 export const composerStyles = stylex.create({
   // The dock is an opaque base layer. Transcript content never shows through
-  // the composer or its queue controls. Above it a short fade carries the
-  // transcript under the dock instead of cutting it at a hard line, as
-  // Cursor's composer does with its own `to top` strip.
+  // the composer or its queue controls.
   dock: {
     position: "sticky",
     bottom: 0,
@@ -241,15 +239,6 @@ export const composerStyles = stylex.create({
     width: "100%",
     paddingTop: 12,
     backgroundColor: t.bgBase,
-    "::before": {
-      content: "''",
-      position: "absolute",
-      insetInline: 0,
-      bottom: "100%",
-      height: 32,
-      backgroundImage: `linear-gradient(to top, ${t.bgBase}, transparent)`,
-      pointerEvents: "none",
-    },
   },
   region: {
     display: "flex",
