@@ -1,148 +1,117 @@
 import * as stylex from "@stylexjs/stylex";
 
-// Raw appearance pairs. `defineConsts` inlines these at compile time, so a
-// StyleX build reads them as literals and a React Strict DOM build gets the same
-// literals for React Native props that cannot take a CSS variable.
-export const lightPalette = stylex.defineConsts({
-  background: "#fcfcfc",
-  foreground: "#141414",
-  popover: "#fcfcfc",
-  popoverForeground: "#141414",
-  primary: "#070707",
-  primaryHover: "#2f2f2f",
-  primaryForeground: "#fcfcfc",
-  muted: "#77777717",
-  mutedHover: "#7777772b",
-  mutedForeground: "#14141499",
-  tertiaryForeground: "#14141466",
-  accent: "#0c64c1",
-  success: "#009957",
-  destructive: "#c21d2e",
-  destructiveMuted: "#ff263c17",
-  destructiveHover: "#ff263c2b",
-  warning: "#c27400",
-  borderSubtle: "#1414140d",
-  borderWeak: "#1414141a",
-  border: "#14141426",
-  borderStrong: "#1414144d",
-  fieldBackground: "#fcfcfc",
-  ring: "#14141466",
-  scrim: "#14141480",
-  sidebar: "#f7f7f7",
-  bubbleAgent: "#eeeeee",
-  bubbleUser: "#070707",
-  bubbleUserForeground: "#fcfcfc",
-  avatarBackground: "#77777717",
-  avatarForeground: "#3d3d3d",
-  avatarNeutralSolid: "#777777",
-  avatarOrangeBackground: "#ff670017",
-  avatarOrangeForeground: "#c24e00",
-  avatarOrangeSolid: "#ff6700",
-  avatarBlueBackground: "#1084fe17",
-  avatarBlueForeground: "#0c64c1",
-  avatarBlueSolid: "#1084fe",
-  avatarVioletBackground: "#9159fe17",
-  avatarVioletForeground: "#6e44c1",
-  avatarVioletSolid: "#9159fe",
-  avatarGreenBackground: "#00c97217",
-  avatarGreenForeground: "#009957",
-  avatarGreenSolid: "#00c972",
-});
-
-export const darkPalette = stylex.defineConsts({
-  background: "#181818",
-  foreground: "#fcfcfc",
-  popover: "#181818",
-  popoverForeground: "#fcfcfc",
-  primary: "#fafafa",
-  primaryHover: "#d5d5d5",
-  primaryForeground: "#141414",
-  muted: "#7777772c",
-  mutedHover: "#77777752",
-  mutedForeground: "#fcfcfc99",
-  tertiaryForeground: "#fcfcfc66",
-  accent: "#459ffe",
-  success: "#38d591",
-  destructive: "#ff5667",
-  destructiveMuted: "#ff263c2c",
-  destructiveHover: "#ff263c52",
-  warning: "#ffaf38",
-  borderSubtle: "#fcfcfc0d",
-  borderWeak: "#fcfcfc1a",
-  border: "#fcfcfc26",
-  borderStrong: "#fcfcfc4d",
-  fieldBackground: "#2f2f2f",
-  ring: "#fcfcfc66",
-  scrim: "#141414b2",
-  sidebar: "#141414",
-  bubbleAgent: "#262626",
-  bubbleUser: "#5a5a5a",
-  bubbleUserForeground: "#fcfcfc",
-  avatarBackground: "#7777772c",
-  avatarForeground: "#b7b7b7",
-  avatarNeutralSolid: "#777777",
-  avatarOrangeBackground: "#ff67002c",
-  avatarOrangeForeground: "#ff8838",
-  avatarOrangeSolid: "#ff6700",
-  avatarBlueBackground: "#1084fe2c",
-  avatarBlueForeground: "#459ffe",
-  avatarBlueSolid: "#1084fe",
-  avatarVioletBackground: "#9159fe2c",
-  avatarVioletForeground: "#a97efe",
-  avatarVioletSolid: "#9159fe",
-  avatarGreenBackground: "#00c9722c",
-  avatarGreenForeground: "#38d591",
-  avatarGreenSolid: "#00c972",
-});
-
+/*
+ * The kit palette, in two layers, matching the desktop renderer's model:
+ *
+ * - Anchors, declared per appearance with `light-dark()`: base, editor, chrome,
+ *   sidebar, raised, the primary fill, and the named hues.
+ * - Everything a component names, mixed from those anchors, so overriding one
+ *   anchor moves every step that hangs off it instead of leaving the two
+ *   appearances to drift apart.
+ *
+ * Steps carry the desktop ratios, so a step reads the same against every
+ * surface: text 60/36 of the base, strokes 30/12/8/4, and a hue wash at 9% in
+ * light and 17% in dark, 17/32 on hover. The kit names no icon or background
+ * step; those tiers gain ratios here when a component needs one.
+ *
+ * The kit holds its own anchor values rather than importing the desktop ones:
+ * the docs site and the demos load this file alone.
+ *
+ * A literal belongs in an anchor. Anything else derives, which is what keeps a
+ * native build honest — the generator resolves these expressions to concrete
+ * colors, because React Native cannot evaluate `color-mix`.
+ */
 const colorDefaults = {
-  "--nyte-color-background": `light-dark(${lightPalette.background}, ${darkPalette.background})`,
-  "--nyte-color-foreground": `light-dark(${lightPalette.foreground}, ${darkPalette.foreground})`,
-  "--nyte-color-popover": `light-dark(${lightPalette.popover}, ${darkPalette.popover})`,
-  "--nyte-color-popover-foreground": `light-dark(${lightPalette.popoverForeground}, ${darkPalette.popoverForeground})`,
-  "--nyte-color-primary": `light-dark(${lightPalette.primary}, ${darkPalette.primary})`,
-  "--nyte-color-primary-hover": `light-dark(${lightPalette.primaryHover}, ${darkPalette.primaryHover})`,
-  "--nyte-color-primary-foreground": `light-dark(${lightPalette.primaryForeground}, ${darkPalette.primaryForeground})`,
-  "--nyte-color-muted": `light-dark(${lightPalette.muted}, ${darkPalette.muted})`,
-  "--nyte-color-muted-hover": `light-dark(${lightPalette.mutedHover}, ${darkPalette.mutedHover})`,
-  "--nyte-color-muted-foreground": `light-dark(${lightPalette.mutedForeground}, ${darkPalette.mutedForeground})`,
-  "--nyte-color-tertiary-foreground": `light-dark(${lightPalette.tertiaryForeground}, ${darkPalette.tertiaryForeground})`,
-  "--nyte-color-accent": `light-dark(${lightPalette.accent}, ${darkPalette.accent})`,
-  "--nyte-color-success": `light-dark(${lightPalette.success}, ${darkPalette.success})`,
-  "--nyte-color-destructive": `light-dark(${lightPalette.destructive}, ${darkPalette.destructive})`,
-  "--nyte-color-destructive-muted": `light-dark(${lightPalette.destructiveMuted}, ${darkPalette.destructiveMuted})`,
-  "--nyte-color-destructive-hover": `light-dark(${lightPalette.destructiveHover}, ${darkPalette.destructiveHover})`,
-  "--nyte-color-warning": `light-dark(${lightPalette.warning}, ${darkPalette.warning})`,
-  "--nyte-color-border-subtle": `light-dark(${lightPalette.borderSubtle}, ${darkPalette.borderSubtle})`,
-  "--nyte-color-border-weak": `light-dark(${lightPalette.borderWeak}, ${darkPalette.borderWeak})`,
-  "--nyte-color-border": `light-dark(${lightPalette.border}, ${darkPalette.border})`,
-  "--nyte-color-border-strong": `light-dark(${lightPalette.borderStrong}, ${darkPalette.borderStrong})`,
-  "--nyte-color-field-background": `light-dark(${lightPalette.fieldBackground}, ${darkPalette.fieldBackground})`,
-  "--nyte-color-ring": `light-dark(${lightPalette.ring}, ${darkPalette.ring})`,
+  // ── anchors ──
+  "--nyte-color-base": "light-dark(#141414, #fcfcfc)",
+  "--nyte-color-editor": "light-dark(#fcfcfc, #181818)",
+  "--nyte-color-chrome": "light-dark(#eeeeee, #262626)",
+  "--nyte-color-sidebar": "light-dark(#f7f7f7, #141414)",
+  // A field sits above the page rather than on it, so dark mode lifts it; the
+  // ramp mixes one base against one page and cannot hold that on both sides.
+  "--nyte-color-raised": "light-dark(#fcfcfc, #2f2f2f)",
+  "--nyte-color-fill": "light-dark(#070707, #fafafa)",
+  "--nyte-color-fill-label": "light-dark(#fcfcfc, #141414)",
+  // A label over a saturated or always-dark fill, where the surface ramp does
+  // not apply, so it does not follow the appearance.
+  "--nyte-color-action-label": "#fcfcfc",
+  // A scrim darkens whatever it covers in both appearances.
+  "--nyte-color-scrim-base": "#141414",
+  "--nyte-color-accent-base": "#1084fe",
+  "--nyte-color-hue-neutral": "#777777",
+  "--nyte-color-hue-red": "#ff263c",
+  "--nyte-color-hue-orange": "#ff6700",
+  "--nyte-color-hue-violet": "#9159fe",
+  "--nyte-color-hue-green": "#00c972",
+  // Colored text carries a per-appearance anchor: a raw hue that passes on a
+  // dark page fails on a light one, so no single mix serves both.
+  "--nyte-color-accent": "light-dark(#0c64c1, #459ffe)",
+  "--nyte-color-success": "light-dark(#009957, #38d591)",
+  "--nyte-color-warning": "light-dark(#c27400, #ffaf38)",
+  "--nyte-color-destructive": "light-dark(#c21d2e, #ff5667)",
+  "--nyte-color-avatar-foreground": "light-dark(#3d3d3d, #b7b7b7)",
+  "--nyte-color-avatar-orange-foreground": "light-dark(#c24e00, #ff8838)",
+  "--nyte-color-avatar-violet-foreground": "light-dark(#6e44c1, #a97efe)",
+  "--nyte-color-bubble-user": "light-dark(#070707, #5a5a5a)",
+
+  // ── derived: surfaces ──
+  "--nyte-color-background": "var(--nyte-color-editor)",
+  "--nyte-color-popover": "var(--nyte-color-editor)",
+  "--nyte-color-field-background": "var(--nyte-color-raised)",
+  "--nyte-color-bubble-agent": "var(--nyte-color-chrome)",
+
+  // ── derived: text and icons ──
+  "--nyte-color-foreground": "var(--nyte-color-base)",
+  "--nyte-color-popover-foreground": "var(--nyte-color-base)",
+  "--nyte-color-muted-foreground": "color-mix(in srgb, var(--nyte-color-base) 60%, transparent)",
+  "--nyte-color-tertiary-foreground": "color-mix(in srgb, var(--nyte-color-base) 36%, transparent)",
+
+  // ── derived: fills ──
+  "--nyte-color-primary": "var(--nyte-color-fill)",
+  // Hover lets the page through the fill rather than naming a second literal.
+  "--nyte-color-primary-hover":
+    "color-mix(in srgb, var(--nyte-color-editor) 16%, var(--nyte-color-fill))",
+  "--nyte-color-primary-foreground": "var(--nyte-color-fill-label)",
+  "--nyte-color-bubble-user-foreground": "var(--nyte-color-action-label)",
+  "--nyte-color-muted":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-neutral) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-neutral) 17%, transparent))",
+  "--nyte-color-muted-hover":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-neutral) 17%, transparent), color-mix(in srgb, var(--nyte-color-hue-neutral) 32%, transparent))",
+  "--nyte-color-destructive-muted":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-red) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-red) 17%, transparent))",
+  "--nyte-color-destructive-hover":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-red) 17%, transparent), color-mix(in srgb, var(--nyte-color-hue-red) 32%, transparent))",
+  "--nyte-color-scrim":
+    "light-dark(color-mix(in srgb, var(--nyte-color-scrim-base) 50%, transparent), color-mix(in srgb, var(--nyte-color-scrim-base) 70%, transparent))",
+
+  // ── derived: strokes ──
+  "--nyte-color-border-subtle": "color-mix(in srgb, var(--nyte-color-base) 4%, transparent)",
+  "--nyte-color-border-weak": "color-mix(in srgb, var(--nyte-color-base) 8%, transparent)",
+  "--nyte-color-border": "color-mix(in srgb, var(--nyte-color-base) 12%, transparent)",
+  "--nyte-color-border-strong": "color-mix(in srgb, var(--nyte-color-base) 30%, transparent)",
+  "--nyte-color-ring": "color-mix(in srgb, var(--nyte-color-base) 40%, transparent)",
   // Chromium matches `:focus-visible` on every text field focus, pointer included,
   // so the color gates the ring where the selector cannot. index.css drops this to
   // transparent while the host marks the document `data-nyte-focus-modality="pointer"`.
   "--nyte-color-focus-ring": "var(--nyte-color-ring)",
-  "--nyte-color-scrim": `light-dark(${lightPalette.scrim}, ${darkPalette.scrim})`,
-  "--nyte-color-sidebar": `light-dark(${lightPalette.sidebar}, ${darkPalette.sidebar})`,
-  "--nyte-color-bubble-agent": `light-dark(${lightPalette.bubbleAgent}, ${darkPalette.bubbleAgent})`,
-  "--nyte-color-bubble-user": `light-dark(${lightPalette.bubbleUser}, ${darkPalette.bubbleUser})`,
-  "--nyte-color-bubble-user-foreground": `light-dark(${lightPalette.bubbleUserForeground}, ${darkPalette.bubbleUserForeground})`,
-  "--nyte-color-avatar-background": `light-dark(${lightPalette.avatarBackground}, ${darkPalette.avatarBackground})`,
-  "--nyte-color-avatar-foreground": `light-dark(${lightPalette.avatarForeground}, ${darkPalette.avatarForeground})`,
-  "--nyte-color-avatar-neutral-solid": `light-dark(${lightPalette.avatarNeutralSolid}, ${darkPalette.avatarNeutralSolid})`,
-  "--nyte-color-avatar-orange-background": `light-dark(${lightPalette.avatarOrangeBackground}, ${darkPalette.avatarOrangeBackground})`,
-  "--nyte-color-avatar-orange-foreground": `light-dark(${lightPalette.avatarOrangeForeground}, ${darkPalette.avatarOrangeForeground})`,
-  "--nyte-color-avatar-orange-solid": `light-dark(${lightPalette.avatarOrangeSolid}, ${darkPalette.avatarOrangeSolid})`,
-  "--nyte-color-avatar-blue-background": `light-dark(${lightPalette.avatarBlueBackground}, ${darkPalette.avatarBlueBackground})`,
-  "--nyte-color-avatar-blue-foreground": `light-dark(${lightPalette.avatarBlueForeground}, ${darkPalette.avatarBlueForeground})`,
-  "--nyte-color-avatar-blue-solid": `light-dark(${lightPalette.avatarBlueSolid}, ${darkPalette.avatarBlueSolid})`,
-  "--nyte-color-avatar-violet-background": `light-dark(${lightPalette.avatarVioletBackground}, ${darkPalette.avatarVioletBackground})`,
-  "--nyte-color-avatar-violet-foreground": `light-dark(${lightPalette.avatarVioletForeground}, ${darkPalette.avatarVioletForeground})`,
-  "--nyte-color-avatar-violet-solid": `light-dark(${lightPalette.avatarVioletSolid}, ${darkPalette.avatarVioletSolid})`,
-  "--nyte-color-avatar-green-background": `light-dark(${lightPalette.avatarGreenBackground}, ${darkPalette.avatarGreenBackground})`,
-  "--nyte-color-avatar-green-foreground": `light-dark(${lightPalette.avatarGreenForeground}, ${darkPalette.avatarGreenForeground})`,
-  "--nyte-color-avatar-green-solid": `light-dark(${lightPalette.avatarGreenSolid}, ${darkPalette.avatarGreenSolid})`,
+
+  // ── derived: avatars ──
+  "--nyte-color-avatar-background": "var(--nyte-color-muted)",
+  "--nyte-color-avatar-neutral-solid": "var(--nyte-color-hue-neutral)",
+  "--nyte-color-avatar-orange-background":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-orange) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-orange) 17%, transparent))",
+  "--nyte-color-avatar-orange-solid": "var(--nyte-color-hue-orange)",
+  "--nyte-color-avatar-blue-background":
+    "light-dark(color-mix(in srgb, var(--nyte-color-accent-base) 9%, transparent), color-mix(in srgb, var(--nyte-color-accent-base) 17%, transparent))",
+  "--nyte-color-avatar-blue-foreground": "var(--nyte-color-accent)",
+  "--nyte-color-avatar-blue-solid": "var(--nyte-color-accent-base)",
+  "--nyte-color-avatar-violet-background":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-violet) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-violet) 17%, transparent))",
+  "--nyte-color-avatar-violet-solid": "var(--nyte-color-hue-violet)",
+  "--nyte-color-avatar-green-background":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-green) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-green) 17%, transparent))",
+  "--nyte-color-avatar-green-foreground": "var(--nyte-color-success)",
+  "--nyte-color-avatar-green-solid": "var(--nyte-color-hue-green)",
 } as const;
 
 const fontDefaults = {
