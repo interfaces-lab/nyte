@@ -113,6 +113,7 @@ test("closing the pool before a server starts never spawns it", async () => {
   await handle.ready();
   // The fixture records its pid at startup, so the file appearing means a server was left running.
   await assert.rejects(readFile(pidFile, "utf8"), /ENOENT/);
+  assert.equal(handle.status().kind, "connecting");
 });
 
 test("a server that never answers does not hold up the session", async () => {
