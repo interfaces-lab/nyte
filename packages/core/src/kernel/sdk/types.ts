@@ -34,6 +34,7 @@ import type {
   RemoteJobs,
   Lane,
   Landing,
+  MentionFile,
   MergeOutcome,
   ModelInfo,
   MoveOutcome,
@@ -102,6 +103,7 @@ export {
   type Lane,
   type Landing,
   type LanePolicy,
+  type MentionFile,
   type MergeOutcome,
   type ModelInfo,
   type MoveOutcome,
@@ -284,6 +286,15 @@ export interface VcsBackend {
 export interface Workspace {
   list(): Promise<readonly WorkspaceInfo[]>;
   forget(input: { readonly path: string }): Promise<void>;
+  /**
+   * Files and folders `@` can name, narrowed on the host. `sessionId` picks the
+   * session's directory; without one the SDK's own working directory answers.
+   */
+  files(input?: {
+    readonly sessionId?: SessionId;
+    readonly query?: string;
+    readonly limit?: number;
+  }): Promise<readonly MentionFile[]>;
   vcs: {
     status(): Promise<VcsStatus | undefined>;
     diff(input?: { readonly paths?: readonly string[] }): Promise<readonly VcsDiff[]>;

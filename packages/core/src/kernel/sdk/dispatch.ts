@@ -45,6 +45,7 @@ const DISPATCH: Dispatch = {
   "heads.move": (sdk, input) => sdk.heads.move(input),
   "workspace.list": (sdk) => sdk.workspace.list(),
   "workspace.forget": (sdk, input) => sdk.workspace.forget(input),
+  "workspace.files": (sdk, input) => sdk.workspace.files(input),
   "workspace.vcs.diff": (sdk, input) => sdk.workspace.vcs.diff(input),
   "provider.models.list": (sdk) => sdk.provider.models.list(),
   "provider.models.default": (sdk) => sdk.provider.models.default(),

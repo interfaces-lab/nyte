@@ -146,4 +146,10 @@ describe("describeHostError", () => {
       /not as a Nyte server/,
     );
   });
+
+  it("names the version difference when the Mac does not serve an operation", () => {
+    expect(
+      describeHostError(new NyteWireError({ code: "unknown_operation", message: "no" }, 404)),
+    ).toMatch(/older Nyte/);
+  });
 });

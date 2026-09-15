@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { TextInput } from "react-native";
 import { css, html } from "react-strict-dom";
-import { PrimaryButton } from "../ui/primary-button.tsx";
+import { GlassButton } from "../ui/glass-button.tsx";
 import { controls, useTheme, radii, spacing, textStyles, tokens, typography } from "../theme.ts";
 
 type WaitingSelectionProps = {
@@ -158,10 +158,12 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
             }}
           />
         )}
-        <PrimaryButton
+        <GlassButton
           label={answerState.kind === "sending" ? "Sending answer…" : "Send answer"}
           disabled={blocked || !canSubmit}
-          onClick={() => {
+          prominent
+          fill
+          onPress={() => {
             void submit();
           }}
         />

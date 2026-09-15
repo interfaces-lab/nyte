@@ -181,7 +181,8 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
 
 const styles = css.create({
   centered: {
-    flexGrow: 1,
+    width: "100%",
+    height: "100%",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",

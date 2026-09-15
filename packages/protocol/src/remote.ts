@@ -53,6 +53,7 @@ export interface RemoteHeads {
 export interface RemoteWorkspace {
   readonly list: OperationFn<"workspace.list">;
   readonly forget: OperationFn<"workspace.forget">;
+  readonly files: OperationFn<"workspace.files">;
   readonly vcs: {
     readonly diff: OperationFn<"workspace.vcs.diff">;
   };

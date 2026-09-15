@@ -89,6 +89,10 @@ export function describeHostError(cause: unknown): string {
       return "Your Mac refused the token. Copy it again from Settings › Server.";
     if (cause.code === "unknown_session") return "This conversation is no longer available.";
     if (cause.code === "closed") return "Nyte is closed on your Mac.";
+    // The one error a version difference produces: the app asked for something
+    // this Mac's Nyte does not serve yet.
+    if (cause.code === "unknown_operation")
+      return "Your Mac is running an older Nyte than this app. Update it there.";
     return "Your Mac couldn't complete the request.";
   }
   if (cause instanceof NyteTransportError) {

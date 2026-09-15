@@ -24,6 +24,21 @@ export interface VcsDiff {
   readonly patch: string;
 }
 
+/**
+ * One file or folder `@` can name. The host discovers these in the workspace it
+ * serves; a remote client never walks a filesystem it cannot see.
+ */
+export interface MentionFile {
+  /** Absolute path. Directories carry a trailing separator. */
+  readonly path: string;
+  /** The `file:` URL a message spells the mention as (`@file:///…`). */
+  readonly url: string;
+  /** Path relative to the workspace root, forward slashes, `/` suffix for directories. */
+  readonly displayPath: string;
+  /** Basename, `/` suffix for directories. */
+  readonly label: string;
+}
+
 /** Public picker data, shared by local SDK and remote clients. */
 export type ModelInfo = Readonly<Pick<Model<Api>, "id" | "provider" | "name" | "contextWindow">> & {
   readonly cost: Readonly<ModelCostRates>;
