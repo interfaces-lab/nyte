@@ -12,6 +12,7 @@ import type { Api, JsonValue, Model } from "@nyte-ai/schema";
 import {
   SKILLS_PLUGIN_ID,
   contextFilesPlugin,
+  loadSkills,
   skillsPlugin,
   systemPromptPlugin,
   toolsFsPlugin,
@@ -27,8 +28,6 @@ import type { WebSearchCredentials } from "@nyte-ai/plugin/examples/web-search";
 import { manifestPaths, nyteHome, pluginDirectories, skillDirectories } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 
-// A new generation makes re-resolution rescan skills even when plugin code is unchanged.
-let skillsGeneration = 0;
 // MCP connections belong to the process: every session shares them, and a
 // session reload that leaves a server's config alone keeps its connection.
 const mcpServers = new McpServers();
@@ -41,7 +40,10 @@ export async function resolveHostPlugins(
     readonly extra?: readonly Plugin[];
   },
 ): Promise<ResolvedPlugins> {
-  const manifest = await readManifest(target);
+  const [manifest, skills] = await Promise.all([
+    readManifest(target),
+    loadSkills(skillDirectories(target)),
+  ]);
   const mcp = manifest.mcp ?? {};
   return resolvePlugins({
     builtins: [
@@ -55,12 +57,13 @@ export async function resolveHostPlugins(
       ...webSearchPlugins({ credentials: webSearchCredentials() }),
       mcpPlugin({ servers: mcpServers, config: mcp }),
       ...(context.extra ?? []),
-      skillsPlugin({ directories: skillDirectories(target) }),
+      skillsPlugin(skills),
     ],
     directories: pluginDirectories(target),
     manifest,
     builtinVersions: {
-      [SKILLS_PLUGIN_ID]: `builtin:${String(++skillsGeneration)}`,
+      // Identity, not a counter: a rescan that finds the same skills leaves the plugin alone.
+      [SKILLS_PLUGIN_ID]: `builtin:${digest(skills)}`,
       [MCP_PLUGIN_ID]: `builtin:${digest(mcp)}`,
     },
   });
