@@ -272,6 +272,8 @@ async function desktop(createModels: () => MutableModels) {
     emitHostEvent: (event) => events.push(event),
     emitWatchEvent: () => undefined,
     openExternal: (url) => opened.push(url),
+    revealPath: () => undefined,
+    showContextMenu: () => Promise.resolve(undefined),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {

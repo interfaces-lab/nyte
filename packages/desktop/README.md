@@ -179,6 +179,21 @@ Reference modules are `ComposerLexicalRenderer.js`, `ComposerRichTextInline.js`,
 
 Settings switches use Cursor's flat regular geometry: a 30×18px track and a 14px thumb. Menu switches share the flat finish. Keyboard focus retains its visible outline.
 
+## Context menus
+
+Right-click menus are native. `host.contextMenu` takes a small template from the
+renderer and pops an Electron menu; each entry carries the work it performs, so
+`renderer/src/components/context-menu.ts` runs the chosen one and no call site
+matches choices back up. Native menus float above the `WebContentsView`s that
+browser panels composite over the renderer, so they need no overlay-occlusion
+registration, and clipboard items use Electron roles so a paste keeps formats a
+renderer-side clipboard read cannot reach.
+
+The file editor menu carries cut, copy, paste, and select all, then Format
+Document and Save, then the path actions. The explorer serves the same menu from
+a row's right-click and its menu button: Open, reveal in the system file
+manager, Search Files, the path actions, and Refresh Explorer.
+
 ## Workspace search
 
 The workbench calls `searchWorkspaceFiles` from `@nyte-ai/core/files`. Desktop does not resolve or install its own search binary. The first search downloads ripgrep if neither the system nor Nyte's cache has a compatible executable.
