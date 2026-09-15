@@ -19,7 +19,7 @@ import type {
 } from "./pane-layout.ts";
 import { SessionViewStateStore } from "./session-view-state.ts";
 
-export interface LayoutStorage {
+interface LayoutStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }

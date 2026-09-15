@@ -200,6 +200,7 @@ test("a task call names its subagent and links to the child session once reporte
     args: { model: "anthropic/claude-opus-5", prompt: "Map the workbench" },
   };
   assert.deepEqual(subagentCall(task, undefined), {
+    kind: "spawn",
     title: "anthropic/claude-opus-5",
     childSessionId: undefined,
   });
@@ -215,17 +216,23 @@ test("a task call names its subagent and links to the child session once reporte
       },
       { text: "", details: { childSessionId: "child-1" } },
     ),
-    { title: "Workbench map", childSessionId: "child-1" },
+    { kind: "spawn", title: "Workbench map", childSessionId: "child-1" },
   );
-  assert.equal(
-    subagentCall(
-      {
-        ...task,
-        result: { commit: "r", output: "", isError: false, details: { childSessionId: "child-2" } },
-      },
-      undefined,
-    )?.childSessionId,
-    "child-2",
+  const resolved = subagentCall(
+    {
+      ...task,
+      result: { commit: "r", output: "", isError: false, details: { childSessionId: "child-2" } },
+    },
+    undefined,
   );
+  assert.equal(resolved?.kind === "spawn" ? resolved.childSessionId : undefined, "child-2");
+  assert.deepEqual(
+    subagentCall({ ...task, toolName: "wait_task", args: { jobId: "job-7" } }, undefined),
+    {
+      kind: "await",
+      jobId: "job-7",
+    },
+  );
+  assert.equal(subagentCall({ ...task, toolName: "wait_task", args: {} }, undefined), undefined);
   assert.equal(subagentCall({ ...task, toolName: "bash" }, undefined), undefined);
 });

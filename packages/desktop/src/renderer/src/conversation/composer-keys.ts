@@ -7,7 +7,7 @@
  */
 import type { Landing, Lane, PendingItem } from "@nyte-ai/core";
 
-export interface LaneRoles {
+interface LaneRoles {
   /** Lands before the next response: what Enter sends. */
   readonly steer: Lane;
   /** Lands once the head is idle: what Cmd/Ctrl+Enter sends. */
@@ -23,7 +23,7 @@ export function laneRoles(landing: Landing): LaneRoles {
   return { steer: boundary.lane, queue: idle.lane };
 }
 
-export interface EnterKeyState {
+interface EnterKeyState {
   readonly key: string;
   readonly shiftKey: boolean;
   readonly metaKey: boolean;
@@ -32,7 +32,7 @@ export interface EnterKeyState {
 }
 
 export type SubmitAction = "submit" | "submit-alternate";
-export type ComposerEnterAction = SubmitAction | "newline" | "none";
+type ComposerEnterAction = SubmitAction | "newline" | "none";
 
 export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {
   if (event.key !== "Enter" || event.isComposing) return "none";

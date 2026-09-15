@@ -19,9 +19,10 @@ import {
   resolveWorkspaceFile,
   searchWorkspaceFiles,
 } from "@nyte-ai/core/files";
+import { ensureShellEnvironment } from "./shell-environment.ts";
 
 /** Run Git and formatter CLIs without a shell. */
-function runFileCommand(input: {
+async function runFileCommand(input: {
   readonly executable: string;
   readonly args: readonly string[];
   readonly cwd: string;
@@ -29,6 +30,7 @@ function runFileCommand(input: {
   readonly signal?: AbortSignal;
   readonly env?: NodeJS.ProcessEnv;
 }): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> {
+  await ensureShellEnvironment();
   return new Promise((resolve, reject) => {
     const environment = Object.fromEntries(
       Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),

@@ -1,5 +1,8 @@
 import type { JobActionOutcome, JobInfo } from "@nyte-ai/core";
 
+/** A job that owns a child session, as the transcript and the Agents panel both read it. */
+export type SubagentJob = Extract<JobInfo, { readonly kind: "subagent" }>;
+
 const STATE_LABEL = {
   running: "Working",
   completed: "Completed",

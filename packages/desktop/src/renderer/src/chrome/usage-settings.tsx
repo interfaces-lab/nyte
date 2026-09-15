@@ -89,7 +89,7 @@ function UsageSection({
     <section aria-label={title} {...stylex.props(styles.section)}>
       <div {...stylex.props(styles.heading)}>
         <span {...stylex.props(styles.headingCopy)}>
-          <h2 {...stylex.props(settingsPatterns.sectionTitle)}>{title}</h2>
+          <h2 {...stylex.props(settingsPatterns.sectionTitle, styles.headingTitle)}>{title}</h2>
           {hint !== undefined && <span {...stylex.props(styles.hint)}>{hint}</span>}
         </span>
         {actions !== undefined && <span {...stylex.props(styles.headingActions)}>{actions}</span>}
@@ -121,16 +121,18 @@ function Breakdown({
         <p {...stylex.props(styles.row, styles.meta)}>{empty}</p>
       ) : (
         <>
-          <span aria-hidden="true" {...stylex.props(styles.bar)}>
-            {shown.map((row, rank) =>
-              row.share <= 0 ? null : (
-                <span
-                  key={row.key}
-                  {...stylex.props(styles.barSegment, rankColour(rank))}
-                  style={{ flexBasis: percentOf(row.share) }}
-                />
-              ),
-            )}
+          <span aria-hidden="true" {...stylex.props(styles.barSlot)}>
+            <span {...stylex.props(styles.bar)}>
+              {shown.map((row, rank) =>
+                row.share <= 0 ? null : (
+                  <span
+                    key={row.key}
+                    {...stylex.props(styles.barSegment, rankColour(rank))}
+                    style={{ flexBasis: percentOf(row.share) }}
+                  />
+                ),
+              )}
+            </span>
           </span>
           <div role="list" aria-label={label}>
             {shown.map((row, rank) => (
@@ -140,7 +142,7 @@ function Breakdown({
                     <span aria-hidden="true" {...stylex.props(styles.dot, rankColour(rank))} />
                     {row.label}
                   </span>
-                  <span {...stylex.props(styles.rowMeta)}>{row.meta}</span>
+                  <span {...stylex.props(styles.rowMeta, styles.rowMetaInset)}>{row.meta}</span>
                 </span>
                 <span
                   {...stylex.props(styles.rowValue, row.value.kind === "absent" && styles.absent)}
@@ -150,7 +152,7 @@ function Breakdown({
                 <span {...stylex.props(styles.rowShare)}>{formatPercent(row.share)}</span>
               </div>
             ))}
-            {hidden > 0 && <p {...stylex.props(styles.row, styles.meta)}>+{String(hidden)} more</p>}
+            {hidden > 0 && <p {...stylex.props(styles.more)}>+{String(hidden)} more</p>}
           </div>
         </>
       )}
@@ -168,7 +170,11 @@ function BreakdownSkeleton({
 }): ReactElement {
   return (
     <div aria-busy="true" {...stylex.props(styles.group)}>
-      {bar && <span {...stylex.props(styles.bar)} />}
+      {bar && (
+        <span {...stylex.props(styles.barSlot)}>
+          <span {...stylex.props(styles.bar)} />
+        </span>
+      )}
       {Array.from({ length: rows }, (_slot, index) => (
         <span key={index} {...stylex.props(styles.row, bone.row)}>
           <Bone width={index === 0 ? 168 : 124} height={10} />
@@ -193,10 +199,16 @@ function SpendTrend({ usage }: { readonly usage: UsageDerived }): ReactElement |
   return (
     <div {...stylex.props(styles.trend)}>
       <span aria-hidden="true" {...stylex.props(styles.trendBars)}>
-        {usage.points.map((point) => (
+        {usage.points.map((point, bucket) => (
+          // Bucket labels carry no year, so a long range repeats them; a bucket's
+          // place in the series is what tells it from the others.
           <span
-            key={point.label}
-            {...stylex.props(styles.trendBar, point.cost === peak.cost && styles.trendPeak)}
+            key={bucket}
+            {...stylex.props(
+              styles.trendBar,
+              point.cost > 0 && styles.trendSpent,
+              point.cost === peak.cost && styles.trendPeak,
+            )}
             style={{ height: percentOf(point.cost / peak.cost) }}
           />
         ))}
@@ -262,7 +274,11 @@ function Notice({
 }): ReactElement {
   return (
     <p role={alert === true ? "alert" : "status"} {...stylex.props(styles.notice)}>
-      <Icon name="warning" size={13} {...stylex.props(styles.noticeIcon)} />
+      <Icon
+        name="warning"
+        size={14}
+        {...stylex.props(styles.noticeIcon, alert === true && styles.noticeIconAlert)}
+      />
       <span {...stylex.props(styles.noticeCopy)}>{children}</span>
       {action}
     </p>

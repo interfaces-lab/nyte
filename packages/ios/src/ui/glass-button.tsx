@@ -4,7 +4,6 @@ import { Button, Host } from "@expo/ui/swift-ui";
 import {
   buttonBorderShape,
   buttonStyle,
-  containerRelativeFrame,
   controlSize,
   disabled,
   font,
@@ -12,13 +11,12 @@ import {
   labelStyle,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import { controls, useTheme, typography } from "../theme.ts";
+import { controls, themes, useTheme, typography } from "../theme.ts";
 
 type GlassButtonProps = Required<Pick<ComponentProps<typeof Button>, "label" | "onPress">> &
   Pick<ComponentProps<typeof Button>, "systemImage"> & {
     disabled?: boolean;
     iconOnly?: boolean;
-    fill?: boolean;
     size?: "regular" | "compact";
     prominent?: boolean;
     // Forced dark only for chrome drawn over dark content (annotate, camera).
@@ -31,26 +29,23 @@ export function GlassButton({
   systemImage,
   disabled: isDisabled = false,
   iconOnly = false,
-  fill = false,
   size = "regular",
   prominent = false,
   scheme,
 }: GlassButtonProps) {
   const theme = useTheme();
+  // Chrome forced to dark sits on a camera preview or a photo, so its tint comes
+  // from the dark palette instead of the app's current appearance.
+  const palette = scheme === "dark" ? themes.dark : theme;
   const height = size === "compact" ? controls.touchTarget : controls.primaryHeight;
   const hostStyle: ViewStyle = iconOnly
     ? { width: controls.touchTarget, height: controls.touchTarget }
-    : fill
-      ? { width: "100%", height }
-      : { height };
-  const sizing = fill
-    ? [containerRelativeFrame({ axes: "horizontal" }), frame({ minHeight: height })]
-    : [frame({ minWidth: controls.touchTarget, minHeight: height })];
+    : { height };
 
   return (
     <Host
       style={hostStyle}
-      matchContents={!iconOnly && !fill ? { horizontal: true } : false}
+      matchContents={!iconOnly ? { horizontal: true } : false}
       colorScheme={scheme}
       ignoreSafeArea="all"
     >
@@ -59,10 +54,11 @@ export function GlassButton({
         systemImage={systemImage}
         onPress={onPress}
         modifiers={[
+          frame({ minWidth: controls.touchTarget, minHeight: height }),
           buttonStyle(prominent ? "glassProminent" : "glass"),
           controlSize("regular"),
           buttonBorderShape(iconOnly ? "circle" : "capsule"),
-          tint(prominent ? theme.primary : theme.foreground),
+          tint(prominent ? palette.primary : palette.foreground),
           font(
             iconOnly
               ? { size: typography.title.fontSize, weight: "regular" }
@@ -70,7 +66,6 @@ export function GlassButton({
           ),
           labelStyle(iconOnly ? "iconOnly" : systemImage ? "titleAndIcon" : "titleOnly"),
           disabled(isDisabled),
-          ...sizing,
         ]}
       />
     </Host>

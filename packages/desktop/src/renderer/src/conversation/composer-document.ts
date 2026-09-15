@@ -108,12 +108,6 @@ export interface ComposerDocumentState {
   readonly selectionEnd: number;
 }
 
-export const EMPTY_COMPOSER_DOCUMENT: ComposerDocumentState = {
-  text: "",
-  selectionStart: 0,
-  selectionEnd: 0,
-};
-
 export function sameComposerDocument(
   left: ComposerDocumentState,
   right: ComposerDocumentState,
@@ -299,7 +293,7 @@ export function $insertComposerReference(
   ]);
 }
 
-export interface ComposerReferenceCatalog {
+interface ComposerReferenceCatalog {
   /** Workspace entries; a known file keeps its workspace label and relative path. */
   readonly files: readonly MentionFile[];
 }

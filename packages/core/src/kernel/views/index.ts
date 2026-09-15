@@ -23,6 +23,7 @@ export {
   presentTool,
   projectToolView,
   runActivityLabel,
+  subagentToolKind,
   type NotePresentation,
   type NoteRefiner,
   type NoteView,
@@ -35,6 +36,7 @@ export {
   type ToolResultView,
   type ToolStatus,
   type ToolView,
+  type SubagentToolKind,
 } from "./presentation.ts";
 export {
   appendTranscriptCommit,

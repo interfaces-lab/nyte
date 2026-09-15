@@ -1,12 +1,20 @@
-const ACCEPTED_IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+// BMP is accepted because the agent converts it to PNG before it reaches a
+// provider; Chromium renders it in the attachment preview meanwhile.
+const ACCEPTED_IMAGE_TYPES = new Set([
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
-export interface ComposerFileDropTransfer {
+interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;
   readonly files: FileList | readonly File[];
   dropEffect: string;
 }
 
-export interface ComposerFileDropEvent {
+interface ComposerFileDropEvent {
   readonly dataTransfer: ComposerFileDropTransfer | null;
   preventDefault(): void;
   stopPropagation(): void;
@@ -21,7 +29,7 @@ export function acceptedImageFiles(args: { readonly files: FileList | readonly F
   return Array.from(args.files).filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type));
 }
 
-export interface ComposerFileDropHandlers {
+interface ComposerFileDropHandlers {
   readonly onDragEnter: (event: ComposerFileDropEvent) => void;
   readonly onDragOver: (event: ComposerFileDropEvent) => void;
   readonly onDrop: (event: ComposerFileDropEvent) => void;

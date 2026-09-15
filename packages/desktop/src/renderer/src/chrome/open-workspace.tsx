@@ -9,6 +9,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionActivationState } from "@nyte-ai/core";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { Button } from "../components/ui";
 import { keys, queryClient } from "../queries.ts";
 import { layer } from "../theme/schema.stylex.ts";
@@ -140,7 +141,7 @@ function Modal({
   return (
     <Dialog.Root defaultOpen onOpenChange={(open) => !open && onDismiss()}>
       <Dialog.Portal>
-        <Dialog.Backdrop {...stylex.props(styles.backdrop)} />
+        <Dialog.Backdrop ref={overlayRef} {...stylex.props(styles.backdrop)} />
         <Dialog.Popup aria-label={label} {...stylex.props(styles.popup)}>
           <div {...stylex.props(styles.inner)}>{children}</div>
         </Dialog.Popup>

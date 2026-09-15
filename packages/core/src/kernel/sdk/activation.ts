@@ -288,7 +288,8 @@ export async function activate(input: {
       info: async () => {
         const name = await facts.getFact(NAME_FACT);
         const child = (await facts.getFact(PARENT_FACT)) !== undefined;
-        return isStringFact(name) ? { name, child } : { child };
+        const base = isStringFact(name) ? { name, child } : { child };
+        return session === undefined ? base : { id: session.id, ...base };
       },
       rename: (name) => facts.setFact(NAME_FACT, name),
       context: async () => {

@@ -8,6 +8,7 @@ import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
 import { waitingCall } from "@nyte-ai/core/client";
 import { useHost } from "../connection/host-context.tsx";
+import { describeHostError } from "../connection/connection.ts";
 import { useTheme, spacing, textStyles, tokens } from "../theme.ts";
 import { useRemoteChat } from "./remote-chat.ts";
 import { conversationChanges } from "./turn-changes.ts";
@@ -35,6 +36,12 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const sendMerge = () => {
     void chat.send(MERGE_PROMPT);
   };
+
+  const report = (title: string) => (cause: unknown) => {
+    Alert.alert(title, describeHostError(cause));
+  };
+
+  const name = info?.name?.trim() ?? "";
 
   const overflow = (
     <Stack.Toolbar placement="right">
@@ -69,11 +76,19 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
         <Stack.Toolbar.MenuAction
           icon="pencil"
           onPress={() => {
-            Alert.prompt("Rename conversation", undefined, (name) => {
-              const trimmed = name?.trim();
-              if (trimmed === undefined || trimmed === "") return;
-              void client.sessions.rename({ sessionId, name: trimmed }).catch(() => undefined);
-            });
+            Alert.prompt(
+              "Rename conversation",
+              undefined,
+              (entered) => {
+                const trimmed = entered?.trim();
+                if (trimmed === undefined || trimmed === "") return;
+                void client.sessions
+                  .rename({ sessionId, name: trimmed })
+                  .catch(report("Couldn't rename"));
+              },
+              "plain-text",
+              name,
+            );
           }}
         >
           Rename…
@@ -83,7 +98,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           onPress={() => {
             void client.sessions
               .setPinned({ sessionId, pinned: info?.pinned !== true })
-              .catch(() => undefined);
+              .catch(report(info?.pinned === true ? "Couldn't unpin" : "Couldn't pin"));
           }}
         >
           {info?.pinned === true ? "Unpin" : "Pin"}
@@ -101,7 +116,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
                   void client.sessions
                     .delete({ sessionId })
                     .then(() => router.back())
-                    .catch(() => undefined);
+                    .catch(report("Couldn't delete"));
                 },
               },
             ]);
@@ -116,6 +131,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   if (chat.state !== undefined) {
     return (
       <>
+        <Stack.Title>{name === "" ? "Conversation" : name}</Stack.Title>
         {overflow}
         <ModelPickerSheet
           client={client}
@@ -151,10 +167,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   }
 
   return (
-    <html.div
-      data-layoutconformance="strict"
-      style={[styles.centered, styles.topInset(insets.top)]}
-    >
+    <html.div style={[styles.centered, styles.topInset(insets.top)]}>
       {chat.error !== undefined ? (
         <html.p role="alert" style={[textStyles.error, styles.centeredText]}>
           {chat.error}

@@ -14,6 +14,7 @@ import { focus } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useCatalog, useJobs, useSession } from "../queries.ts";
 import { jobStateLabel } from "./jobs-view.ts";
+import type { SubagentJob } from "./jobs-view.ts";
 import { modelDisplayName } from "./model-picker-state.ts";
 import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
 import { useSubagentInspector } from "./subagent-inspector.ts";
@@ -60,19 +61,24 @@ export function SubagentCallView({
 }): ReactElement {
   const inspector = useSubagentInspector();
   const jobs = useJobs(inspector?.sessionId);
-  const job = jobs.data?.find(
-    (candidate) =>
-      candidate.kind === "subagent" && candidate.childSessionId === call.childSessionId,
-  );
+  // A spawn knows its child and the job catches up; an await knows only the
+  // job, which is where its title and child come from.
+  const job = jobs.data?.find((candidate): candidate is SubagentJob => {
+    if (candidate.kind !== "subagent") return false;
+    return call.kind === "spawn"
+      ? candidate.childSessionId === call.childSessionId
+      : candidate.id === call.jobId;
+  });
+  const title = call.kind === "spawn" ? call.title : (job?.title ?? "Subagent");
   const running = job === undefined ? presentation.state === "running" : job.state === "running";
   const failed = job === undefined ? presentation.state === "failed" : job.state === "failed";
   const status = job === undefined ? TOOL_STATE_LABEL[presentation.state] : jobStateLabel(job);
   const expandable = presentation.body.kind === "output";
-  const { childSessionId } = call;
+  const childSessionId = call.kind === "spawn" ? call.childSessionId : job?.childSessionId;
   const content = (open: boolean): ReactElement => (
     <>
       <span {...stylex.props(subagentCallStyles.head)}>
-        <span {...stylex.props(toolCallStyles.verb)}>{call.title}</span>
+        <span {...stylex.props(toolCallStyles.verb)}>{title}</span>
         {childSessionId !== undefined && (
           <SubagentModel childSessionId={childSessionId} style={toolCallStyles.detail} />
         )}
@@ -110,7 +116,7 @@ export function SubagentCallView({
         {inspector !== undefined && childSessionId !== undefined && (
           <button
             type="button"
-            aria-label={`Open ${call.title} in the Agents panel`}
+            aria-label={`Open ${title} in the Agents panel`}
             title="Open in Agents panel"
             {...stylex.props(toolCallStyles.openAgent, focus.ring)}
             onClick={() => inspector.inspect(childSessionId)}
@@ -122,7 +128,7 @@ export function SubagentCallView({
       {presentation.body.kind === "output" && (
         <Collapsible.Panel
           role="region"
-          aria-label={`${call.title} report`}
+          aria-label={`${title} report`}
           data-nyte-scrollport
           {...stylex.props(toolCallStyles.output)}
         >

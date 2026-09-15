@@ -1,7 +1,9 @@
 /**
- * The persistent desktop stage. Pane hosts are keyed only by PaneId; selecting
- * another session changes a host's data binding without replacing its DOM or
- * its view-state owner.
+ * The persistent desktop stage. Pane hosts are keyed only by PaneId, so a
+ * pane's chrome, size and view-state owner survive a selection change. The
+ * conversation inside is keyed by SessionId instead: the transcript plane and
+ * the composer share one scrollport, and a chat's absolutely positioned rows
+ * only leave that scrollport when the surface holding them is replaced.
  */
 import * as stylex from "@stylexjs/stylex";
 import {
@@ -16,7 +18,7 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { changesFromTurns, isTerminalPhase } from "@nyte-ai/core/views";
+import { changesFromTurns } from "@nyte-ai/core/views";
 import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/core";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
@@ -42,7 +44,7 @@ import type {
   TurnChangesTarget,
 } from "../conversation/turn-view.tsx";
 import { ModelPicker } from "../conversation/model-picker.tsx";
-import { updateDraftModel } from "../conversation/blank-draft.ts";
+import { draftConfiguration, updateDraftModel } from "../conversation/blank-draft.ts";
 import { Icon } from "../components/icons.tsx";
 import { FileTypeIconSprite } from "../components/file-type-icon.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
@@ -102,10 +104,9 @@ import { Selections } from "../conversation/selection.tsx";
 import { parkedSelections } from "../conversation/selection.ts";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
 import {
+  conversationMessages,
   estimateRowSize,
-  promptRowCount,
   rendersInTranscript,
-  rowHasPrompt,
   transcriptRows,
 } from "../conversation/transcript-rows.ts";
 import type { TranscriptRow } from "../conversation/transcript-rows.ts";
@@ -113,12 +114,8 @@ import {
   activeStickyCandidate,
   initialTranscriptOffset,
   isBottomPinned,
-  overscrollReserve,
-  PROMPT_TOP_INSET,
-  remainingOverscroll,
-  shouldAdjustScrollForResize,
-  TRANSCRIPT_PADDING_END,
   TRANSCRIPT_PADDING_START,
+  transcriptPaddingEnd,
 } from "../conversation/transcript-scroll.ts";
 import type { StickyCandidate } from "../conversation/transcript-scroll.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
@@ -398,57 +395,45 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
   for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
 }
 
-interface OverscrollReservation {
-  readonly sessionId: SessionId;
-  readonly initial: number;
-  /** Content height (padding excluded) when the reserve was taken. */
-  readonly baseline: number;
-  readonly reserve: number;
-}
-
 /**
  * The virtualized transcript. It owns the scroll behaviours that need the
- * virtualizer (sticky prompts, the send-time overscroll reserve, composer
- * height compensation, restore) and leaves the scrollport, the composer,
- * and the persisted scroll state to the conversation around it. It is its
- * own component because the virtualizer instance mutates in place and the
- * compiler bails out of memoizing whatever calls it. It is keyed by session
- * so each visit gets a fresh virtualizer seeded from the last visit's
- * measurements and offset, rather than one first render at the previous
- * session's scroll position.
+ * virtualizer (sticky prompts, composer height compensation, restore) and
+ * leaves the scrollport, the composer, and the persisted scroll state to the
+ * conversation around it. It is its own component because the virtualizer
+ * instance mutates in place and the compiler bails out of memoizing whatever
+ * calls it. A session change replaces the conversation around it, so each
+ * visit builds a virtualizer seeded from that session's last measurements
+ * and offset rather than from whatever the previous chat left on screen.
  */
 function TranscriptPlane({
   paneId,
   sessionId,
   ready,
-  scrollRef,
+  scroll,
   rows,
   renderRow,
 }: {
   paneId: PaneId;
   sessionId: SessionId;
+  /** Whether the snapshot has landed. The persisted offset can only be
+   * restored once the rows it was measured against exist, so the restore
+   * effect below runs again when a cold open finishes loading. */
   ready: boolean;
-  scrollRef: RefObject<HTMLDivElement | null>;
+  /** The scrollport node itself: a ref box would still read null on the mount
+   * that creates it, because React attaches a host ref after its descendants'
+   * layout effects. */
+  scroll: HTMLDivElement | null;
   rows: readonly TranscriptRow[];
   renderRow: (row: TranscriptRow) => ReactNode;
 }): ReactElement {
   const viewStore = usePaneViewStateStore();
   const density = useAppearanceSettings().toolCalls;
   const dockHeight = useRef(0);
-  const promptTrack = useRef<{ sessionId: SessionId | undefined; count: number }>({
-    sessionId: undefined,
-    count: 0,
-  });
-  /** A prompt scroll target waiting for the bottom reserve to make it reachable. */
-  const pendingPin = useRef<{ key: string; offset: number } | undefined>(undefined);
-  const [overscroll, setOverscroll] = useState<OverscrollReservation>();
-  const reserve = overscroll?.sessionId === sessionId ? overscroll.reserve : 0;
   // What the last visit measured, read once: the virtualizer consults its
-  // initial options only until the scrollport reports, and the plane is
-  // keyed by session so each visit gets a fresh instance. Rows already
-  // measured take their real height; the rest keep their estimate. Heights
-  // remembered under another density describe different rows, so a density
-  // switch starts from estimates again.
+  // initial options only until the scrollport reports. Rows already measured
+  // take their real height; the rest keep their estimate. Heights remembered
+  // under another density describe different rows, so a density switch starts
+  // from estimates again.
   const [restore] = useState(() => {
     const { transcript, scroll } = viewStore.readSession(sessionId, paneId);
     const measurements = transcript.density === density ? transcript.measurements : [];
@@ -458,20 +443,22 @@ function TranscriptPlane({
       rect: transcript.viewport ?? { width: 0, height: 0 },
       offset: initialTranscriptOffset({
         sizes: rows.map((row) => measured.get(row.key) ?? estimateRowSize(row, density)),
-        paddingStart: TRANSCRIPT_PADDING_START,
-        paddingEnd: TRANSCRIPT_PADDING_END,
         viewportHeight: transcript.viewport?.height ?? 0,
         scroll,
       }),
     };
   });
+  // The slack under the last row scales with the scrollport, so the plane
+  // follows it. What the last visit measured carries the first paint until
+  // the observer below reports this one.
+  const [viewportHeight, setViewportHeight] = useState(restore.rect.height);
   // The key extractor is a dependency of the virtualizer's measurement memo;
   // a fresh closure per render would rebuild every item's layout.
   const getItemKey = useCallback((index: number) => rows[index]?.key ?? index, [rows]);
   // oxlint-disable-next-line react/incompatible-library -- the bailout is the intended behaviour
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: rows.length,
-    getScrollElement: () => scrollRef.current,
+    getScrollElement: () => scroll,
     estimateSize: (index) => estimateRowSize(rows[index], density),
     getItemKey,
     // The virtualizer owns the plane height and row tops, so a scroll tick
@@ -484,52 +471,37 @@ function TranscriptPlane({
     initialOffset: restore.offset,
     overscan: TRANSCRIPT_OVERSCAN,
     paddingStart: TRANSCRIPT_PADDING_START,
-    paddingEnd: TRANSCRIPT_PADDING_END + reserve,
+    paddingEnd: transcriptPaddingEnd(viewportHeight),
     // Fires after every measurement and scroll: item starts may have moved
-    // under the stuck prompt, and a growing reply eats into the reserve.
+    // under the stuck prompt.
     onChange: (instance) => {
-      const scroll = scrollRef.current;
       if (scroll !== null) syncStickyUserMessage(scroll, instance);
-      if (overscroll === undefined || overscroll.sessionId !== sessionId) return;
-      const next = remainingOverscroll({
-        initial: overscroll.initial,
-        baseline: overscroll.baseline,
-        content: instance.getTotalSize() - instance.options.paddingEnd,
-      });
-      if (next !== overscroll.reserve) setOverscroll({ ...overscroll, reserve: next });
     },
   });
-
-  useLayoutEffect(() => {
-    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) =>
-      shouldAdjustScrollForResize({
-        start: item.start,
-        end: item.end,
-        // The size cache is written after this decision, so a missing entry
-        // means this is the row's first real measurement.
-        firstMeasure: !instance.itemSizeCache.has(item.key),
-        scrollTop: (instance.scrollOffset ?? 0) + instance.scrollAdjustments,
-        scrollingBackward: instance.scrollDirection === "backward",
-      });
-  }, [virtualizer]);
 
   // Leaving the session keeps what this visit measured for the next one.
   useLayoutEffect(
     () => () => {
-      viewStore.updateSession(sessionId, paneId, (current) => ({
-        ...current,
-        transcript: {
-          measurements: virtualizer.takeSnapshot(),
-          viewport: virtualizer.scrollRect ?? undefined,
-          density,
-        },
-      }));
+      const measurements = virtualizer.takeSnapshot();
+      viewStore.updateSession(sessionId, paneId, (current) =>
+        // Leaving before a single row measured would replace the last visit's
+        // heights with nothing, and the next visit would open on estimates.
+        measurements.length === 0
+          ? current
+          : {
+              ...current,
+              transcript: {
+                measurements,
+                viewport: virtualizer.scrollRect ?? undefined,
+                density,
+              },
+            },
+      );
     },
     [density, paneId, sessionId, viewStore, virtualizer],
   );
 
   useLayoutEffect(() => {
-    const scroll = scrollRef.current;
     // The plane is the scrollport's first child; the composer dock is its last.
     const plane = scroll?.firstElementChild;
     if (scroll === null || !(plane instanceof HTMLElement)) return undefined;
@@ -551,14 +523,13 @@ function TranscriptPlane({
     // the content, so the content moves up by as much.
     const observer = new ResizeObserver((entries) => {
       const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
+      setViewportHeight(scroll.clientHeight);
       if (dock !== undefined && entries.some((entry) => entry.target === dock)) {
         const delta = dock.offsetHeight - dockHeight.current;
         dockHeight.current = dock.offsetHeight;
         if (!pinned) virtualizer.scrollToOffset(scroll.scrollTop + delta);
       }
-      // A pending prompt pin owns the scroll target; following the bottom
-      // here would scroll past it and the pin would yank the view back up.
-      if (pinned && pendingPin.current === undefined) virtualizer.scrollToEnd();
+      if (pinned) virtualizer.scrollToEnd();
       sync();
     });
     observer.observe(scroll);
@@ -569,63 +540,13 @@ function TranscriptPlane({
       observer.disconnect();
       scroll.removeEventListener("scroll", sync);
     };
-  }, [paneId, ready, scrollRef, sessionId, viewStore, virtualizer]);
+  }, [paneId, ready, scroll, sessionId, viewStore, virtualizer]);
 
   // Rows have been measured by their refs by the time this runs, so the
-  // virtualizer's totals are current for the reserve arithmetic below.
+  // prompt that should be stuck is decided against heights the reader sees.
   useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    if (scroll === null) return;
-    syncStickyUserMessage(scroll, virtualizer);
-
-    // The pin lands as soon as the reserve makes it reachable — usually the
-    // very next commit once `paddingEnd` is in the DOM — and is dropped if
-    // its row leaves (a landing prompt that already committed as a turn).
-    const pin = pendingPin.current;
-    if (pin !== undefined) {
-      if (rows.every((row) => row.key !== pin.key)) {
-        pendingPin.current = undefined;
-      } else if (scroll.scrollHeight - scroll.clientHeight >= pin.offset) {
-        pendingPin.current = undefined;
-        virtualizer.scrollToOffset(pin.offset);
-      }
-    }
-
-    const count = promptRowCount(rows);
-    const track = promptTrack.current;
-    const sent = track.sessionId === sessionId && count > track.count;
-    promptTrack.current = { sessionId, count };
-    const pinned = viewStore.readSession(sessionId, paneId).scroll.bottomPinned;
-    const index = rows.findLastIndex(rowHasPrompt);
-    const row = rows[index];
-    // Only a prompt that just landed reserves: a turn appearing with its
-    // prompt already committed is the same message promoted, and a muted
-    // landing row is queued behind a live run, not a fresh send to pin.
-    if (!sent || !pinned || row === undefined || row.kind !== "landing" || row.pending) return;
-    // Reserve bottom overscroll so the new prompt can scroll to the top edge
-    // before its reply exists; the reserve then gives way to the reply. The
-    // dock height is read fresh — the send may have just shrunk the composer
-    // (cleared draft, dropped attachments) and the observer reports late.
-    const dock = scroll.lastElementChild;
-    const content = virtualizer.getTotalSize() - virtualizer.options.paddingEnd;
-    const item = virtualizer.measurementsCache[index];
-    const wrapper = virtualizer.elementsCache.get(row.key);
-    const turn = wrapper?.firstElementChild;
-    if (item === undefined || wrapper === undefined || !(turn instanceof HTMLElement)) return;
-    const initial = overscrollReserve({
-      viewportHeight: scroll.clientHeight,
-      rowHeight: turn.offsetHeight,
-      dockHeight: dock instanceof HTMLElement ? dock.offsetHeight : 0,
-    });
-    // A row mounted mid-scroll is still an estimate in the totals; the
-    // baseline uses its real height so the reply's growth alone shrinks the reserve.
-    const baseline = content - item.size + wrapper.offsetHeight;
-    pendingPin.current = {
-      key: row.key,
-      offset: item.start + turn.offsetTop - PROMPT_TOP_INSET,
-    };
-    setOverscroll({ sessionId, initial, baseline, reserve: initial });
-  }, [overscroll, paneId, rows, scrollRef, sessionId, viewStore, virtualizer]);
+    if (scroll !== null) syncStickyUserMessage(scroll, virtualizer);
+  }, [rows, scroll, virtualizer]);
 
   return (
     <div ref={virtualizer.containerRef} {...stylex.props(styles.transcript)}>
@@ -743,6 +664,79 @@ function PaneHeader({
   );
 }
 
+/**
+ * Rewinds the head to a user message and resubmits it with the chosen model.
+ * It lives outside the component because the React Compiler cannot lower
+ * `try`/`finally`, and one bailout costs the whole component its memoization.
+ */
+async function applyMessageEdit({
+  sessionId,
+  part,
+  content,
+  choice,
+  fastEnabled,
+}: {
+  readonly sessionId: SessionId;
+  readonly part: UserTurnPart;
+  readonly content: UserTurnPart["content"];
+  readonly choice: BranchModelChoice;
+  readonly fastEnabled: ReadonlySet<string>;
+}): Promise<void> {
+  const outcome = await nyte.heads.move({ sessionId, to: part.commit });
+  switch (outcome.kind) {
+    case "moved":
+      if (outcome.restored?.commit !== part.commit) {
+        throw new Error("The selected message is no longer editable.");
+      }
+      if (choice.model !== undefined) {
+        const configuration = {
+          sessionId,
+          model: { provider: choice.model.provider, id: choice.model.id },
+        };
+        const configured = await nyte.sessions.configure(
+          choice.thinkingLevel === undefined
+            ? configuration
+            : { ...configuration, thinkingLevel: choice.thinkingLevel },
+        );
+        if (configured.kind === "unknown_model") {
+          throw new Error("That model is no longer available.");
+        }
+        if (configured.kind === "unknown_agent") {
+          throw new Error("The selected mode is no longer available.");
+        }
+      }
+      for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
+        const before = fastEnabled.has(settingId);
+        const after = choice.fastEnabled.has(settingId);
+        if (before === after) continue;
+        const applied = await nyte.plugins.settings.apply({
+          sessionId,
+          id: settingId,
+          choiceId: after ? "on" : "off",
+        });
+        if (applied.kind !== "applied") {
+          throw new Error("That model setting is no longer available.");
+        }
+      }
+      await outbox.submit({ sessionId, content });
+      await loadThread(sessionId);
+      void queryClient.invalidateQueries({ queryKey: keys.sessions });
+      void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
+      return;
+    case "busy":
+      throw new Error("Wait for the current response before editing this message.");
+    case "moved_since":
+    case "not_found":
+      throw new Error("The selected message is no longer in this branch.");
+    case "failed":
+      throw new Error(outcome.message);
+    default: {
+      const _exhaustive: never = outcome;
+      return _exhaustive;
+    }
+  }
+}
+
 function SessionConversation({
   paneId,
   sessionId,
@@ -762,12 +756,7 @@ function SessionConversation({
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
-  const [backgroundWork, setBackgroundWork] = useState<{
-    sessionId: SessionId;
-    section: BackgroundWorkSection;
-  }>();
-  const openBackgroundWork =
-    backgroundWork?.sessionId === sessionId ? backgroundWork.section : undefined;
+  const [backgroundWork, setBackgroundWork] = useState<BackgroundWorkSection>();
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
   const snapshotSession = snapshot.data?.session;
@@ -779,49 +768,25 @@ function SessionConversation({
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
   const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
-  const settledRun =
-    snapshot.data !== undefined &&
-    snapshot.data.session.heads.some(
-      (head) => head.run !== undefined && !isTerminalPhase(head.run.phase),
-    );
-  // Whether a submitted message steers a live run or opens the next turn is
-  // read from the snapshot alone, so one coherent read moves each message from
-  // the outbox to `pending` to the transcript without a detour through the
-  // composer strip. While a run is live only the boundary lane draws here —
-  // muted until it lands; the lanes that wait for an idle head keep the tray.
   const unsent = useOutboxRows(sessionId);
-  const pending = snapshot.data?.pending ?? [];
-  const roles = useMemo(() => laneRoles(nyte.landing), []);
-  const landing = [
-    ...pending
-      .filter((item) => !settledRun || item.lane === roles.steer)
-      .map((item) => ({
-        // The receipt names the change; the key it carried keeps the same row.
-        key: item.key ?? item.change,
-        content: item.content,
-        pending: settledRun,
-      })),
-    ...unsent
-      .filter(
-        (row) =>
-          row.state.kind !== "failed" &&
-          (!settledRun || row.lane === roles.steer) &&
-          // The durable item arrives before its outbox row leaves; one key, one row.
-          pending.every((item) => item.key !== row.key),
-      )
-      .map((row) => ({ key: row.key, content: row.content, pending: settledRun })),
-  ];
-  const working = navigating || live.runState !== "idle" || settledRun || landing.length > 0;
+  const messages = conversationMessages({
+    snapshot: snapshot.data,
+    unsent,
+    steerLane: laneRoles(nyte.landing).steer,
+  });
+  const working =
+    navigating || live.runState !== "idle" || messages.running || messages.landing.length > 0;
   const cwd = host.data?.workspace?.path;
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The scrollport arrives as state so everything below it re-runs on the
+  // commit that creates the node, not one commit late.
+  const [scroll, setScroll] = useState<HTMLDivElement | null>(null);
+  // The store holds where this chat was left, and the restore puts the
+  // scrollport back at that offset, so the two agree until the reader moves
+  // and the scroll handler takes over.
   const [bottomPinned, setBottomPinned] = useState(
     () => viewStore.readSession(sessionId, paneId).scroll.bottomPinned,
   );
   const ready = snapshot.data !== undefined;
-  useLayoutEffect(() => {
-    const scroll = scrollRef.current;
-    if (scroll !== null) setBottomPinned(isBottomPinned(scroll));
-  }, [ready, sessionId]);
   const modelOptions = catalog.data?.models ?? [];
   const pluginSettings = usePluginSettings(
     sessionId,
@@ -865,7 +830,7 @@ function SessionConversation({
     loading: snapshot.isLoading,
     failed: snapshot.isError,
     turns,
-    landing,
+    landing: messages.landing,
     retrying: live.runState === "retrying" ? live.retry.message : undefined,
     working,
     selections: parkedSelections(snapshot.data?.parked).length,
@@ -895,63 +860,9 @@ function SessionConversation({
       choice: BranchModelChoice,
     ): Promise<void> => {
       setNavigating(true);
-      try {
-        const outcome = await nyte.heads.move({ sessionId, to: part.commit });
-        switch (outcome.kind) {
-          case "moved":
-            if (outcome.restored?.commit !== part.commit) {
-              throw new Error("The selected message is no longer editable.");
-            }
-            if (choice.model !== undefined) {
-              const configuration = {
-                sessionId,
-                model: { provider: choice.model.provider, id: choice.model.id },
-              };
-              const configured = await nyte.sessions.configure(
-                choice.thinkingLevel === undefined
-                  ? configuration
-                  : { ...configuration, thinkingLevel: choice.thinkingLevel },
-              );
-              if (configured.kind === "unknown_model") {
-                throw new Error("That model is no longer available.");
-              }
-              if (configured.kind === "unknown_agent") {
-                throw new Error("The selected mode is no longer available.");
-              }
-            }
-            for (const settingId of new Set([...fastEnabled, ...choice.fastEnabled])) {
-              const before = fastEnabled.has(settingId);
-              const after = choice.fastEnabled.has(settingId);
-              if (before === after) continue;
-              const applied = await nyte.plugins.settings.apply({
-                sessionId,
-                id: settingId,
-                choiceId: after ? "on" : "off",
-              });
-              if (applied.kind !== "applied") {
-                throw new Error("That model setting is no longer available.");
-              }
-            }
-            await outbox.submit({ sessionId, content });
-            await loadThread(sessionId);
-            void queryClient.invalidateQueries({ queryKey: keys.sessions });
-            void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
-            return;
-          case "busy":
-            throw new Error("Wait for the current response before editing this message.");
-          case "moved_since":
-          case "not_found":
-            throw new Error("The selected message is no longer in this branch.");
-          case "failed":
-            throw new Error(outcome.message);
-          default: {
-            const _exhaustive: never = outcome;
-            return _exhaustive;
-          }
-        }
-      } finally {
-        setNavigating(false);
-      }
+      return applyMessageEdit({ sessionId, part, content, choice, fastEnabled }).finally(() =>
+        setNavigating(false),
+      );
     },
     [fastEnabled, sessionId],
   );
@@ -1093,7 +1004,7 @@ function SessionConversation({
         <div {...stylex.props(styles.body)}>
           <div {...stylex.props(styles.conversation)}>
             <div
-              ref={scrollRef}
+              ref={setScroll}
               data-nyte-scrollport="balanced"
               {...stylex.props(styles.scroll)}
               onScroll={(event) => {
@@ -1107,33 +1018,26 @@ function SessionConversation({
               }}
             >
               <TranscriptPlane
-                key={sessionId}
                 paneId={paneId}
                 sessionId={sessionId}
                 ready={ready}
-                scrollRef={scrollRef}
+                scroll={scroll}
                 rows={rows}
                 renderRow={renderRow}
               />
 
               <Composer
-                key={sessionId}
                 sessionId={sessionId}
                 backgroundWork={{
                   content: (
                     <BackgroundWork
-                      key={sessionId}
                       sessionId={sessionId}
                       terminalOwner={workbenchViewKey({
                         paneKey: WORKBENCH_STAGE_PANE_KEY,
                         target: { kind: "session", sessionId },
                       })}
-                      open={openBackgroundWork}
-                      onOpenChange={(section) =>
-                        setBackgroundWork(
-                          section === undefined ? undefined : { sessionId, section },
-                        )
-                      }
+                      open={backgroundWork}
+                      onOpenChange={setBackgroundWork}
                       onInspect={subagentInspector.inspect}
                       onOpenTerminal={(job) => {
                         const viewKey = workbenchViewKey({
@@ -1144,23 +1048,21 @@ function SessionConversation({
                         workbenchController.actions.openTab(viewKey, "terminal");
                         focusTerminal(terminalId);
                       }}
-                      viewportRef={scrollRef}
+                      viewport={scroll}
                     />
                   ),
                   onEscape: () => {
-                    if (openBackgroundWork === undefined) return false;
+                    if (backgroundWork === undefined) return false;
                     setBackgroundWork(undefined);
                     return true;
                   },
                 }}
                 working={working}
                 // The boundary lane draws in the transcript; the tray keeps the rest.
-                pending={settledRun ? pending.filter((item) => item.lane !== roles.steer) : []}
-                unsent={unsent.filter(
-                  (row) => row.state.kind === "failed" || (settledRun && row.lane !== roles.steer),
-                )}
+                pending={messages.queued}
+                unsent={messages.unsent}
                 disabled={snapshot.data === undefined || snapshot.isError}
-                fileDropRoot={scrollRef}
+                fileDropRoot={scroll}
                 initialViewState={viewStore.readSession(sessionId, paneId).composer}
                 onViewStateChange={(composer) =>
                   viewStore.updateSession(sessionId, paneId, (current) => ({
@@ -1173,9 +1075,8 @@ function SessionConversation({
                 onScrollToBottom={
                   !bottomPinned
                     ? () => {
-                        const scroll = scrollRef.current;
                         if (scroll === null) return;
-                        scroll.scrollTop = scroll.scrollHeight;
+                        scroll.scrollTo({ top: scroll.scrollHeight });
                         setBottomPinned(true);
                       }
                     : undefined
@@ -1207,6 +1108,16 @@ function SessionConversation({
   );
 }
 
+/**
+ * Turns fast mode on for a new chat. The throw lives here because the React
+ * Compiler cannot lower a `throw` inside `try`/`catch`, and the bailout would
+ * cost the blank composer its memoization.
+ */
+async function enableFastMode(sessionId: SessionId, settingId: string): Promise<void> {
+  const outcome = await nyte.plugins.settings.apply({ sessionId, id: settingId, choiceId: "on" });
+  if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
+}
+
 function BlankConversation({
   paneId,
   inputRef,
@@ -1235,7 +1146,7 @@ function BlankConversation({
   const recentWorkspaces = (workspaces.data ?? []).filter(
     (candidate) => candidate.path !== workspace?.path,
   );
-  const configuration = viewState.configuration ?? catalog.data?.defaults;
+  const configuration = draftConfiguration(catalog.data, viewState.configuration);
   const current = catalog.data?.models.find(
     (option) =>
       option.provider === configuration?.model.provider && option.id === configuration.model.id,
@@ -1258,7 +1169,7 @@ function BlankConversation({
       selectionStart: document.selectionStart,
       selectionEnd: document.selectionEnd,
     });
-    const submittedConfiguration = submitted.configuration ?? catalog.data?.defaults;
+    const submittedConfiguration = draftConfiguration(catalog.data, submitted.configuration);
     const submittedModel = catalog.data?.models.find(
       (option) =>
         option.provider === submittedConfiguration?.model.provider &&
@@ -1281,12 +1192,7 @@ function BlankConversation({
         submittedModel?.fastMode.kind === "available" &&
         submitted.fastSettings.has(submittedModel.fastMode.settingId)
       ) {
-        const outcome = await nyte.plugins.settings.apply({
-          sessionId: session.sessionId,
-          id: submittedModel.fastMode.settingId,
-          choiceId: "on",
-        });
-        if (outcome.kind !== "applied") throw new Error("Fast mode is no longer available");
+        await enableFastMode(session.sessionId, submittedModel.fastMode.settingId);
       }
       await outbox.submit(composerSendInput(session.sessionId, plan));
       setAttachments([]);
@@ -1308,15 +1214,14 @@ function BlankConversation({
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
-    try {
-      const result = await readComposerImageAttachments(files);
-      if (result.attachments.length > 0) {
-        setAttachments((current) => [...current, ...result.attachments]);
-      }
-      setAttachmentError(result.error);
-    } finally {
-      setAttachmentReads((count) => count - 1);
-    }
+    return readComposerImageAttachments(files)
+      .then((result) => {
+        if (result.attachments.length > 0) {
+          setAttachments((current) => [...current, ...result.attachments]);
+        }
+        setAttachmentError(result.error);
+      })
+      .finally(() => setAttachmentReads((count) => count - 1));
   };
 
   return (
@@ -1539,17 +1444,9 @@ type PanePosition =
   | { readonly kind: "leading"; readonly ratio: number }
   | { readonly kind: "trailing" };
 
-function PaneHost({
-  pane,
-  active,
-  position,
-}: {
-  pane: PaneState;
-  active: boolean;
-  position: PanePosition;
-}): ReactElement {
+function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition }): ReactElement {
   const actions = usePaneActions();
-  const { focusRequest } = usePaneControllerSnapshot();
+  const { focusRequest, layout } = usePaneControllerSnapshot();
   const viewStore = usePaneViewStateStore();
   // The composer key must follow the active draft id through a subscription:
   // a plain readBlank() call in JSX can be frozen by memoization.
@@ -1590,7 +1487,7 @@ function PaneHost({
   return (
     <section
       ref={attachDropTarget}
-      aria-label={`${active ? "Active " : ""}chat pane`}
+      aria-label={`${activePane(layout).id === pane.id ? "Active " : ""}chat pane`}
       data-nyte-pane-id={pane.id}
       {...stylex.props(
         styles.pane,
@@ -1604,6 +1501,7 @@ function PaneHost({
       <ReferenceOpenerProvider value={referenceOpener}>
         {pane.selection.kind === "session" ? (
           <SessionConversation
+            key={pane.selection.sessionId}
             paneId={pane.id}
             sessionId={pane.selection.sessionId}
             inputRef={attachInput}
@@ -1756,7 +1654,6 @@ export function ThreadScreen({
         <PaneHost
           key={leading.id}
           pane={leading}
-          active={activePane(layout).id === leading.id}
           position={
             layout.kind === "single"
               ? { kind: "single" }
@@ -1774,12 +1671,7 @@ export function ThreadScreen({
           />
         )}
         {layout.kind === "split" && trailing !== undefined && (
-          <PaneHost
-            key={trailing.id}
-            pane={trailing}
-            active={activePane(layout).id === trailing.id}
-            position={{ kind: "trailing" }}
-          />
+          <PaneHost key={trailing.id} pane={trailing} position={{ kind: "trailing" }} />
         )}
         {dropTarget !== undefined && <DropPreview layout={layout} target={dropTarget} />}
       </div>

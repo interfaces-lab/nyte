@@ -5,7 +5,7 @@ const STARTUP_DESTINATION_KEY = "nyte:startup-destination:v1";
 
 export type StartupDestination = "new-chat" | "last-session";
 
-export const DEFAULT_STARTUP_DESTINATION: StartupDestination = "new-chat";
+const DEFAULT_STARTUP_DESTINATION: StartupDestination = "new-chat";
 
 interface PreferenceStorage {
   getItem(key: string): string | null;
@@ -22,11 +22,11 @@ function localPreferenceStorage(): PreferenceStorage | undefined {
   }
 }
 
-export function parseStartupDestination(value: string | null): StartupDestination {
+function parseStartupDestination(value: string | null): StartupDestination {
   return value === "last-session" ? "last-session" : DEFAULT_STARTUP_DESTINATION;
 }
 
-export function readStartupDestination(storage?: PreferenceStorage): StartupDestination {
+function readStartupDestination(storage?: PreferenceStorage): StartupDestination {
   try {
     return parseStartupDestination(storage?.getItem(STARTUP_DESTINATION_KEY) ?? null);
   } catch {
@@ -34,7 +34,7 @@ export function readStartupDestination(storage?: PreferenceStorage): StartupDest
   }
 }
 
-export function persistStartupDestination(
+function persistStartupDestination(
   storage: PreferenceStorage,
   destination: StartupDestination,
 ): void {
@@ -60,7 +60,7 @@ export function setStartupDestination(destination: StartupDestination): void {
   for (const listener of listeners) listener();
 }
 
-export function subscribeStartupDestination(listener: () => void): () => void {
+function subscribeStartupDestination(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

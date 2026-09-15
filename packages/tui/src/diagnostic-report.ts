@@ -12,7 +12,7 @@ import type { EphemeralPanel, Shell } from "./app/ui.ts";
 import { displayWidth } from "./width.ts";
 
 /** Explicit diagnostics keep their own viewport and never edit the composer. */
-export class DiagnosticReport implements EphemeralPanel {
+class DiagnosticReport implements EphemeralPanel {
   readonly container: BoxRenderable;
   readonly rows = 0;
   readonly hints = "";

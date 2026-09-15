@@ -1,6 +1,8 @@
 import { defineConfig } from "oxlint";
 
 export default defineConfig({
+  // Generated brand assets and audit evidence, not source.
+  ignorePatterns: ["output/**"],
   plugins: ["react", "eslint", "typescript", "unicorn", "import"],
   categories: {
     correctness: "error",

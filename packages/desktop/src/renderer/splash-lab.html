@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Splash lab — ASCII moon</title>
+    <style>
+      html {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #111;
+        color: #fcfcfc;
+        font:
+          13px/1.5 system-ui,
+          sans-serif;
+        display: grid;
+        grid-template-columns: 1fr 300px;
+      }
+      main {
+        display: grid;
+        place-items: center;
+      }
+      aside {
+        padding: 20px;
+        border-left: 1px solid #262626;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        color: #a1a1a1;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      textarea {
+        width: 100%;
+        height: 220px;
+        background: #0b0b0b;
+        color: #d4d4d4;
+        border: 1px solid #262626;
+        border-radius: 6px;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+      }
+      .moon {
+        display: grid;
+        color: #ffc663;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+        line-height: 1.15;
+        width: 23ch;
+        text-shadow: 0 0 12px rgb(255 198 99 / 25%);
+      }
+      .moon pre {
+        grid-area: 1 / 1;
+        margin: 0;
+        font: inherit;
+        opacity: 0;
+      }
+      .moon pre.on {
+        opacity: 1;
+      }
+      .caption {
+        margin-top: 20px;
+        text-align: center;
+        font-weight: 500;
+        letter-spacing: -0.2px;
+        color: #a1a1a1;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div>
+        <div class="moon" id="moon" aria-hidden="true"></div>
+        <p class="caption">Starting Nyte…</p>
+      </div>
+    </main>
+    <aside>
+      <label>
+        Frames <output id="framesOut"></output>
+        <input id="frames" type="range" min="6" max="32" step="1" value="14" />
+      </label>
+      <label>
+        Frame duration (ms) <output id="speedOut"></output>
+        <input id="speed" type="range" min="40" max="300" step="10" value="120" />
+      </label>
+      <label>
+        Ambient <output id="ambOut"></output>
+        <input id="amb" type="range" min="0" max="0.4" step="0.01" value="0.08" />
+      </label>
+      <label>
+        Gamma <output id="gamOut"></output>
+        <input id="gam" type="range" min="0.3" max="1.2" step="0.05" value="0.6" />
+      </label>
+      <label>
+        Crater contrast <output id="cratOut"></output>
+        <input id="crat" type="range" min="0" max="1.5" step="0.05" value="1.3" />
+      </label>
+      <label>
+        Ramp
+        <input id="ramp" type="text" value="@%#*+=:." />
+      </label>
+      <label>
+        CSS for src/renderer/index.html
+        <textarea id="dump" readonly></textarea>
+      </label>
+    </aside>
+    <script type="module">
+      const COLS = 23;
+      const ROWS = 12;
+      const craters = [
+        [0.4, 0.5, 0.9, 0.45],
+        [2.0, -0.3, 0.7, 0.4],
+        [3.4, 0.2, 0.8, 0.35],
+        [4.8, 0.6, 0.5, 0.3],
+        [5.6, -0.6, 0.6, 0.3],
+        [1.2, -0.8, 0.45, 0.25],
+      ];
+
+      const readInputs = () => ({
+        frames: Number(document.getElementById("frames").value),
+        speed: Number(document.getElementById("speed").value),
+        ambient: Number(document.getElementById("amb").value),
+        gamma: Number(document.getElementById("gam").value),
+        crater: Number(document.getElementById("crat").value),
+        ramp: document.getElementById("ramp").value.split(""),
+      });
+
+      const albedo = (lon, lat, contrast) => {
+        let value = 1;
+        for (const [craterLon, craterLat, radius, depth] of craters) {
+          let delta = Math.abs(lon - craterLon) % (Math.PI * 2);
+          if (delta > Math.PI) delta = Math.PI * 2 - delta;
+          const distance = Math.hypot(delta * Math.cos(lat), lat - craterLat);
+          if (distance < radius) value -= depth * contrast * (1 - distance / radius) ** 0.8;
+        }
+        return Math.max(0.2, value);
+      };
+
+      const renderFrame = (spin, options) => {
+        const light = [-0.55, 0.35, 0.76];
+        const rows = [];
+        for (let row = 0; row < ROWS; row++) {
+          let line = "";
+          for (let col = 0; col < COLS; col++) {
+            const y = ((row + 0.5) / ROWS) * 2 - 1;
+            const x = ((col + 0.5) / COLS) * 2 - 1;
+            const radius = x * x + y * y;
+            if (radius > 1) {
+              line += " ";
+              continue;
+            }
+            const z = Math.sqrt(1 - radius);
+            const lat = Math.asin(-y);
+            const lon = Math.atan2(x, z) + spin;
+            const lambert = Math.max(0, x * light[0] + -y * light[1] + z * light[2]);
+            const lit =
+              (options.ambient + (1 - options.ambient) * lambert) *
+              albedo(lon, lat, options.crater);
+            const level = Math.floor(
+              (1 - Math.min(0.999, lit ** options.gamma)) * options.ramp.length,
+            );
+            line += options.ramp[Math.min(options.ramp.length - 1, Math.max(0, level))];
+          }
+          rows.push(line.replace(/\s+$/, ""));
+        }
+        return rows.join("\n");
+      };
+
+      const moon = document.getElementById("moon");
+      let timer = 0;
+
+      const rebuild = () => {
+        const options = readInputs();
+        document.getElementById("framesOut").textContent = options.frames;
+        document.getElementById("speedOut").textContent = `${options.speed}ms`;
+        document.getElementById("ambOut").textContent = options.ambient.toFixed(2);
+        document.getElementById("gamOut").textContent = options.gamma.toFixed(2);
+        document.getElementById("cratOut").textContent = options.crater.toFixed(2);
+
+        const frames = Array.from({ length: options.frames }, (_, index) =>
+          renderFrame((index / options.frames) * Math.PI * 2, options),
+        );
+        moon.replaceChildren(
+          ...frames.map((frame, index) => {
+            const node = document.createElement("pre");
+            node.textContent = frame;
+            if (index === 0) node.classList.add("on");
+            return node;
+          }),
+        );
+        // Matches the frozen rules in index.html: escaped newlines survive HTML reflow.
+        document.getElementById("dump").value = frames
+          .map(
+            (frame, index) =>
+              `.startup-moon span:nth-child(${index + 1})::before {\n  content: "${frame
+                .replaceAll("\\", "\\\\")
+                .replaceAll('"', '\\"')
+                .replaceAll("\n", "\\00000a")}";\n}`,
+          )
+          .join("\n");
+
+        clearInterval(timer);
+        let current = 0;
+        timer = setInterval(() => {
+          moon.children[current].classList.remove("on");
+          current = (current + 1) % frames.length;
+          moon.children[current].classList.add("on");
+        }, options.speed);
+      };
+
+      for (const input of document.querySelectorAll("input")) {
+        input.addEventListener("input", rebuild);
+      }
+      rebuild();
+    </script>
+  </body>
+</html>

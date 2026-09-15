@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
+import { sessionSurfaceId } from "../../../main/browser-agent.ts";
 import type { WorkbenchPersistence } from "./controller.ts";
 import {
   clampWorkbenchWidthToBounds,
   createWorkbenchController,
   decodePersistedWorkbenchSnapshot,
   workbenchTabAvailable,
+  WORKBENCH_STAGE_PANE_KEY,
   WORKBENCH_WIDTH_DEFAULT,
   workbenchTabs,
   workbenchScopeForTarget,
@@ -37,6 +40,15 @@ describe("workbench capabilities", () => {
 
     assert.equal(first, second);
     assert.equal(first, "stage:home");
+  });
+
+  test("an agent-opened page lands on the same view key the Browser tab uses", () => {
+    const sid = sessionId("ses_abc-123");
+    const viewKey = workbenchViewKey({
+      paneKey: WORKBENCH_STAGE_PANE_KEY,
+      target: { kind: "session", sessionId: sid },
+    });
+    assert.equal(viewKey, sessionSurfaceId(sid));
   });
 
   test("rejects obsolete launcher state", () => {

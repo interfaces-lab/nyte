@@ -2,7 +2,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobInfo, SessionId } from "@nyte-ai/core";
 import { useId, useLayoutEffect, useRef, useState } from "react";
-import type { RefObject } from "react";
 import { nyte } from "../nyte.ts";
 import { keys } from "../queries.ts";
 import { Icon } from "../components/icons.tsx";
@@ -218,7 +217,7 @@ export function BackgroundWork({
   onOpenChange,
   onInspect,
   onOpenTerminal,
-  viewportRef,
+  viewport,
 }: {
   sessionId: SessionId;
   terminalOwner: string;
@@ -226,7 +225,7 @@ export function BackgroundWork({
   onOpenChange: (section: BackgroundWorkSection | undefined) => void;
   onInspect: (id: SessionId) => void;
   onOpenTerminal: (job: Extract<JobInfo, { kind: "command" }>) => void;
-  viewportRef: RefObject<HTMLElement | null>;
+  viewport: HTMLElement | null;
 }) {
   const client = useQueryClient();
   const hasTerminalObserver = useTerminals(terminalOwner).tabs.some(isJobTerminal);
@@ -270,7 +269,6 @@ export function BackgroundWork({
 
   useLayoutEffect(() => {
     const root = rootRef.current;
-    const viewport = viewportRef.current;
     if (root === null || viewport === null) return undefined;
     const measure = () =>
       setAvailableHeight(
@@ -284,7 +282,7 @@ export function BackgroundWork({
     observer.observe(root);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [hasAgents, hasTerminals, viewportRef]);
+  }, [hasAgents, hasTerminals, viewport]);
 
   const close = () => {
     onOpenChange(undefined);

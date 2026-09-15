@@ -13,7 +13,7 @@ export const unstable_settings = { anchor: "index" };
 export default function RootLayout() {
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
-  const { host, connect, disconnect } = useHostConnection();
+  const { host, connect, edit, cancelEdit, disconnect } = useHostConnection();
   const base = dark ? DarkTheme : DefaultTheme;
   const navigationTheme = {
     ...base,
@@ -32,16 +32,24 @@ export default function RootLayout() {
         <ThemeProvider value={navigationTheme}>
           <StatusBar barStyle={dark ? "light-content" : "dark-content"} />
           {host.kind === "loading" ? (
-            <html.div data-layoutconformance="strict" style={[styles.root, styles.centered]}>
+            <html.div style={[styles.root, styles.centered]}>
               <ActivityIndicator color={theme.muted} />
             </html.div>
           ) : host.kind === "setup" ? (
-            <html.div data-layoutconformance="strict" style={styles.root}>
-              <ConnectScreen onConnect={connect} notice={host.notice} />
+            <html.div style={styles.root}>
+              <ConnectScreen
+                onConnect={connect}
+                edit={
+                  host.editing === undefined
+                    ? undefined
+                    : { connection: host.editing.connection, onCancel: cancelEdit }
+                }
+                notice={host.notice}
+              />
             </html.div>
           ) : (
             <HostProvider
-              session={{ client: host.client, connection: host.connection, disconnect }}
+              session={{ client: host.client, connection: host.connection, edit, disconnect }}
             >
               <Stack
                 screenOptions={{
@@ -70,20 +78,18 @@ export default function RootLayout() {
                   options={{ title: "Agents", headerLargeTitleEnabled: true }}
                 />
                 <Stack.Screen name="settings" options={{ title: "Settings" }} />
-                <Stack.Screen name="chat/[id]" options={{ title: "", headerTransparent: true }} />
-                <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />
-                <Stack.Screen name="review/[id]" options={{ title: "" }} />
                 <Stack.Screen
-                  name="compose"
+                  name="chat/[id]"
                   options={{
-                    presentation: "formSheet",
-                    headerShown: false,
-                    sheetGrabberVisible: true,
-                    sheetAllowedDetents: "fitToContents",
-                    sheetCornerRadius: 28,
-                    contentStyle: { backgroundColor: "transparent" },
+                    title: "",
+                    // The transcript scrolls under a glass bar; the title rides on it.
+                    headerTransparent: true,
+                    headerBlurEffect: "systemChromeMaterial",
+                    headerStyle: { backgroundColor: "transparent" },
                   }}
                 />
+                <Stack.Screen name="changes/[id]" options={{ title: "Changed Files" }} />
+                <Stack.Screen name="review/[id]" options={{ title: "" }} />
                 <Stack.Screen
                   name="annotate"
                   options={{ presentation: "fullScreenModal", headerShown: false }}
@@ -106,6 +112,8 @@ const styles = css.create({
     backgroundColor: tokens.background,
   },
   centered: {
+    display: "flex",
+    flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
     gap: spacing.lg,

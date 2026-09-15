@@ -1,6 +1,6 @@
 import type { DesktopUpdateActivity } from "./host.ts";
 
-export const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
+const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
 
 type BusyUpdateActivity = Extract<DesktopUpdateActivity, { readonly kind: "busy" }>;
 

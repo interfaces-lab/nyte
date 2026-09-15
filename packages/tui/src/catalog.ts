@@ -15,7 +15,6 @@ import type {
 } from "@nyte-ai/ai";
 import type { ThinkingLevel } from "@nyte-ai/core";
 
-export const DEFAULT_PROVIDER_ID = "openai-codex";
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
 /**
@@ -26,7 +25,7 @@ export async function loadProviderCatalog(models: Models, providerId: string): P
   await models.refresh({ providers: [providerId], allowNetwork: false });
 }
 
-export type ProviderAuthStatus =
+type ProviderAuthStatus =
   | { readonly kind: "authenticated"; readonly provider: Provider; readonly auth: AuthCheck }
   | { readonly kind: "unauthenticated"; readonly provider: Provider };
 

@@ -16,6 +16,7 @@ import { Spinner } from "../components/spinner.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
 import { LiveTurn } from "../conversation/live-turn.tsx";
 import { jobStateLabel } from "../conversation/jobs-view.ts";
+import type { SubagentJob } from "../conversation/jobs-view.ts";
 import { modelDisplayName } from "../conversation/model-picker-state.ts";
 import { TurnView } from "../conversation/turn-view.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
@@ -132,8 +133,6 @@ const styles = stylex.create({
     textAlign: "center",
   },
 });
-
-type SubagentJob = Extract<JobInfo, { readonly kind: "subagent" }>;
 
 const EMPTY_TURNS: readonly Turn[] = [];
 const EMPTY_LIVE_TOOLS: LiveSnapshot["tools"] = new Map();

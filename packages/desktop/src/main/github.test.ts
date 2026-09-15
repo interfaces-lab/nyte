@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { createOtelExport } from "@nyte-ai/host/otel";
 import { DesktopHost } from "./host.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
 import {
   createGitHubProvider,
   decodeGitHubAccountOutput,
@@ -312,11 +313,15 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
       },
       navigate: () => {},
       close: () => {},
+      captureFrame: () => Promise.resolve(undefined),
       setBounds: () => {},
+      retain: () => {},
+      release: () => {},
       warm: async () => {},
       dispose: () => {},
       menu: async () => undefined,
       perform: async () => {},
+      agent: unusedBrowserAgent(),
     },
     runGitHubCommand: async (request) => {
       expect(request.cwd).toBe(homedir());

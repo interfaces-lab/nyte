@@ -14,7 +14,7 @@ export interface DeviceCode {
   readonly instructions: string | undefined;
 }
 
-export interface LoginAttemptView {
+interface LoginAttemptView {
   readonly attempt: string;
   readonly method: "browser" | "api_key";
   /** Stays for the attempt's whole life; a later message never replaces it. */

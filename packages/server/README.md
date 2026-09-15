@@ -77,7 +77,7 @@ checks availability. Neither proves that a live upstream request succeeds.
 
 - Every request: browser origin, then credential, then route and method.
 - Every call: `content-type: application/json`, body size (`maxBodyBytes`,
-  default 1 MiB, enforced while reading), valid UTF-8 and JSON, the
+  default 8 MiB, enforced while reading), valid UTF-8 and JSON, the
   `{"input": ...}` envelope with no other key, and the operation's input schema
   with `additionalProperties: false`. An own `__proto__` key parsed from JSON
   is an extra key and is refused. Operation names are matched with `Object.hasOwn`.

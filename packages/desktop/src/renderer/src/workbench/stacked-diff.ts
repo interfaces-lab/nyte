@@ -9,13 +9,13 @@ export const STACKED_HEADER_HEIGHT = 37;
 export const STACKED_LIST_PADDING_END = 52;
 export const STACKED_DIFF_LINE_HEIGHT = 20;
 export const STACKED_NOTICE_PADDING = 20;
-export const STACKED_GUTTER_PAD = 8;
-export const STACKED_INDICATOR = 12;
-export const STACKED_OVERSCAN = 800;
+const STACKED_GUTTER_PAD = 8;
+const STACKED_INDICATOR = 12;
+const STACKED_OVERSCAN = 800;
 
 export const MISSING_WORKING_TREE =
   "This file changed during the conversation but is no longer different in the working tree.";
-export const FAILED_PATCH = "The patch could not be read.";
+const FAILED_PATCH = "The patch could not be read.";
 export const EMPTY_PATCH = "No text diff is available for this file.";
 
 export type ChangeStackSection =
@@ -197,12 +197,12 @@ export function uncommittedStackSection({
   }
 }
 
-export const RAIL_ROW_PAD = 6;
-export const RAIL_FILES_PAD = 5;
-export const RAIL_ICON = 16;
-export const RAIL_GAP = 5;
-export const RAIL_PIP = 6;
-export const RAIL_INDENT = 10;
+const RAIL_ROW_PAD = 6;
+const RAIL_FILES_PAD = 5;
+const RAIL_ICON = 16;
+const RAIL_GAP = 5;
+const RAIL_PIP = 6;
+const RAIL_INDENT = 10;
 
 export function railRowWidth(filesWidth: number): number {
   return Math.max(0, filesWidth - RAIL_FILES_PAD * 2);

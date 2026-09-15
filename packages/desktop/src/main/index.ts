@@ -26,7 +26,7 @@ import { localFonts } from "./fonts.ts";
 import { UsageScanWorker } from "./usage-scan.ts";
 import { DesktopHost, type DesktopHostDependencies } from "./host.ts";
 import { registerUpdates } from "./updates.ts";
-import { createShellEnvironmentRepair } from "./shell-environment.ts";
+import { ensureShellEnvironment } from "./shell-environment.ts";
 
 import {
   decodeBrowserBounds,
@@ -97,12 +97,20 @@ function send(channel: string, payload: HostEvent | WatchEnvelope): void {
   }
 }
 
+/**
+ * Whether the window has been shown at least once. Synthesized mouse input
+ * is silently dropped until the first show, so the explicit signal avoids
+ * a race the fallback (window.isVisible) cannot catch.
+ */
+let windowHasBeenShown = false;
+
 const browserSurfaces = createBrowserSurfaces({
   window: () => mainWindow,
   emit: (event) => send(HOST_EVENT_CHANNEL, event),
   filterListPath: app.isPackaged
     ? join(process.resourcesPath, "adblock.bin")
     : join(app.getAppPath(), "resources", "adblock.bin"),
+  windowShown: () => windowHasBeenShown,
 });
 
 const hostDependencies = {
@@ -222,15 +230,16 @@ function createWindow(): void {
   if (process.platform === "darwin") Object.assign(options, macOSWindowChrome());
   const created = new BrowserWindow(options);
   mainWindow = created;
-  const closeTerminals = (): void => {
+  const releaseRendererWork = (): void => {
     workspaceEditor.dispose();
     desktopHost?.cancelLogins();
+    desktopHost?.stopWatches();
     void desktopHost?.closeTerminals().catch(() => undefined);
   };
-  created.webContents.on("render-process-gone", closeTerminals);
+  created.webContents.on("render-process-gone", releaseRendererWork);
   created.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
     if (isMainFrame && !inPlace) {
-      closeTerminals();
+      releaseRendererWork();
       menuCommands.reset();
     }
   });
@@ -244,7 +253,7 @@ function createWindow(): void {
   nativeTheme.on("updated", updateWindowBackground);
   created.once("ready-to-show", () => {
     created.show();
-    setTimeout(() => void browserSurfaces.warm(), 1_500);
+    windowHasBeenShown = true;
   });
 
   created.webContents.setWindowOpenHandler(({ url }) => {
@@ -280,7 +289,7 @@ function createWindow(): void {
 
   created.on("closed", () => {
     menuCommands.reset();
-    closeTerminals();
+    releaseRendererWork();
     nativeTheme.off("updated", updateWindowBackground);
     browserSurfaces.dispose();
     if (mainWindow === created) mainWindow = undefined;
@@ -301,8 +310,8 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  const repairShellEnvironment = createShellEnvironmentRepair();
-  const environmentReady = repairShellEnvironment();
+  // The login shell can take seconds; the window never waits on it.
+  void ensureShellEnvironment();
 
   app.on("second-instance", () => {
     if (mainWindow?.isMinimized() === true) mainWindow.restore();
@@ -311,7 +320,6 @@ if (!hasSingleInstanceLock) {
   });
 
   void app.whenReady().then(async () => {
-    await environmentReady;
     registerIpc();
     // Packaged apps use the bundle ICNS. The dev PNG shares its macOS inset.
     if (!app.isPackaged && process.platform === "darwin") {
@@ -361,8 +369,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on("activate", () => {
-    void app.whenReady().then(async () => {
-      await environmentReady;
+    void app.whenReady().then(() => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });

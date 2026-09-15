@@ -4,6 +4,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { focus } from "../components/ui.tsx";
 import { settingsPatterns as styles } from "../theme/settings-patterns.stylex.ts";
 import { selectedFontOption, type FontSelectGroup } from "./font-select-groups.ts";
@@ -71,7 +72,10 @@ export function FontFamilySelect<T extends string>({
           collisionAvoidance={FONT_SELECT_COLLISION}
           {...stylex.props(styles.selectPositioner)}
         >
-          <Autocomplete.Popup {...stylex.props(styles.selectPopup, styles.fontSelectPopup)}>
+          <Autocomplete.Popup
+            ref={overlayRef}
+            {...stylex.props(styles.selectPopup, styles.fontSelectPopup)}
+          >
             <label {...stylex.props(styles.fontSelectSearch)}>
               <Autocomplete.Input
                 aria-label="Search fonts"

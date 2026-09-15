@@ -1,10 +1,12 @@
-import { Toaster as Sonner } from "@nyte-ai/ui/sonner";
+import { Toaster as Sonner, useSonner } from "@nyte-ai/ui/sonner";
 import * as stylex from "@stylexjs/stylex";
+import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
 import { layer } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon } from "./icons.tsx";
+import { registerOverlay } from "./overlay-occlusion.ts";
 import { focus } from "./ui.tsx";
 
 // Hairline lives in the shadow stack. Sonner already uses ::after for the
@@ -155,42 +157,54 @@ const toastStyle = {
 
 export function Toaster(): ReactElement {
   const { theme } = useAppearanceSettings();
+  const { toasts } = useSonner();
+  const host = useRef<HTMLDivElement>(null);
+  // Toasts sit on the bottom-right of the stage, where a browser page is.
+  // Register the list only while it holds something, or an empty list would keep
+  // every page hidden for good.
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const list = host.current?.querySelector("ol");
+    return list === null || list === undefined ? undefined : registerOverlay(list);
+  }, [toasts.length]);
   return (
-    <Sonner
-      theme={theme}
-      position="bottom-right"
-      offset={16}
-      mobileOffset={16}
-      gap={8}
-      expand
-      closeButton
-      containerAriaLabel="Notifications"
-      style={positionerStyle}
-      {...stylex.props(styles.root)}
-      icons={{
-        success: <Icon name="checkmark" size={16} />,
-        error: <Icon name="warning" size={16} />,
-        warning: <Icon name="warning" size={16} />,
-        close: <Icon name="x" size={12} />,
-      }}
-      toastOptions={{
-        unstyled: true,
-        closeButtonAriaLabel: "Dismiss notification",
-        style: toastStyle,
-        classNames: {
-          toast: stylex.props(styles.toast).className,
-          content: stylex.props(styles.content).className,
-          title: stylex.props(styles.title).className,
-          description: stylex.props(styles.description).className,
-          icon: stylex.props(styles.icon).className,
-          success: stylex.props(styles.success).className,
-          error: stylex.props(styles.error).className,
-          warning: stylex.props(styles.warning).className,
-          actionButton: stylex.props(styles.action, focus.ring).className,
-          cancelButton: stylex.props(styles.action, focus.ring).className,
-          closeButton: stylex.props(styles.close, focus.ring).className,
-        },
-      }}
-    />
+    <div ref={host}>
+      <Sonner
+        theme={theme}
+        position="bottom-right"
+        offset={16}
+        mobileOffset={16}
+        gap={8}
+        expand
+        closeButton
+        containerAriaLabel="Notifications"
+        style={positionerStyle}
+        {...stylex.props(styles.root)}
+        icons={{
+          success: <Icon name="checkmark" size={16} />,
+          error: <Icon name="warning" size={16} />,
+          warning: <Icon name="warning" size={16} />,
+          close: <Icon name="x" size={12} />,
+        }}
+        toastOptions={{
+          unstyled: true,
+          closeButtonAriaLabel: "Dismiss notification",
+          style: toastStyle,
+          classNames: {
+            toast: stylex.props(styles.toast).className,
+            content: stylex.props(styles.content).className,
+            title: stylex.props(styles.title).className,
+            description: stylex.props(styles.description).className,
+            icon: stylex.props(styles.icon).className,
+            success: stylex.props(styles.success).className,
+            error: stylex.props(styles.error).className,
+            warning: stylex.props(styles.warning).className,
+            actionButton: stylex.props(styles.action, focus.ring).className,
+            cancelButton: stylex.props(styles.action, focus.ring).className,
+            closeButton: stylex.props(styles.close, focus.ring).className,
+          },
+        }}
+      />
+    </div>
   );
 }

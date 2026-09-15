@@ -18,6 +18,7 @@ import { floatingSurfaceStyles } from "../theme/floating-surface.stylex.ts";
 import { control, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { overlayRef } from "./overlay-occlusion.ts";
 
 const MENU_COLLISION: NonNullable<Base.Positioner.Props["collisionAvoidance"]> = {
   side: "flip",
@@ -248,11 +249,11 @@ const commandAnchor = {
   },
 };
 
-export type MenuSide = Base.Positioner.Props["side"];
-export type MenuAlign = Base.Positioner.Props["align"];
-export type MenuAnchor = Base.Positioner.Props["anchor"];
+type MenuSide = Base.Positioner.Props["side"];
+type MenuAlign = Base.Positioner.Props["align"];
+type MenuAnchor = Base.Positioner.Props["anchor"];
 
-export interface MenuProps {
+interface MenuProps {
   readonly label: string;
   /** DOM id for the popup, so a combobox can point `aria-controls` at it. */
   readonly id?: string;
@@ -317,6 +318,7 @@ export function Menu({
           {...stylex.props(styles.positioner)}
         >
           <Base.Popup
+            ref={overlayRef}
             id={id}
             aria-label={label}
             {...stylex.props(
@@ -334,7 +336,7 @@ export function Menu({
   );
 }
 
-export type MenuSize = "medium" | "small" | "compact";
+type MenuSize = "medium" | "small" | "compact";
 
 interface ItemBodyProps {
   readonly icon?: IconName;
@@ -385,7 +387,7 @@ function ItemBody({
   );
 }
 
-export interface MenuItemProps extends ItemBodyProps {
+interface MenuItemProps extends ItemBodyProps {
   readonly id?: string;
   readonly disabled?: boolean;
   readonly danger?: boolean;
@@ -441,7 +443,7 @@ export function MenuItem({
 
 export const MenuRadioGroup = Base.RadioGroup;
 
-export interface MenuRadioItemProps extends ItemBodyProps {
+interface MenuRadioItemProps extends ItemBodyProps {
   readonly id?: string;
   readonly value: string;
   readonly disabled?: boolean;
@@ -499,7 +501,7 @@ export function MenuRadioItem({
   );
 }
 
-export interface MenuCheckboxItemProps extends ItemBodyProps {
+interface MenuCheckboxItemProps extends ItemBodyProps {
   readonly checked: boolean;
   readonly disabled?: boolean;
   readonly closeOnClick?: boolean;
@@ -548,7 +550,7 @@ export function MenuCheckboxItem({
   );
 }
 
-export interface MenuSwitchItemProps extends Omit<ItemBodyProps, "meta"> {
+interface MenuSwitchItemProps extends Omit<ItemBodyProps, "meta"> {
   readonly tone?: "accent" | "green";
   readonly checked: boolean;
   readonly disabled?: boolean;
@@ -610,7 +612,7 @@ export function MenuSwitchItem({
   );
 }
 
-export interface MenuSubmenuProps extends Omit<ItemBodyProps, "meta"> {
+interface MenuSubmenuProps extends Omit<ItemBodyProps, "meta"> {
   readonly label: string;
   readonly value?: ReactNode;
   readonly disabled?: boolean;
@@ -673,6 +675,7 @@ export function MenuSubmenu({
           {...stylex.props(styles.submenuPositioner)}
         >
           <Base.Popup
+            ref={overlayRef}
             aria-label={label}
             {...stylex.props(
               floatingSurfaceStyles.popup,
@@ -712,6 +715,7 @@ export function ContextMenu({
           {...stylex.props(styles.positioner)}
         >
           <ContextBase.Popup
+            ref={overlayRef}
             aria-label={label}
             {...stylex.props(floatingSurfaceStyles.popup, styles.popup, styles.rootPopupMotion)}
           >
@@ -787,7 +791,7 @@ export function MenuGroup({
   );
 }
 
-export interface CommandMenuProps {
+interface CommandMenuProps {
   readonly label: string;
   readonly trigger: ReactElement;
   readonly open: boolean;
@@ -815,7 +819,7 @@ export function CommandMenu({
     >
       <Base.Trigger id={triggerID} render={trigger} />
       <Base.Portal>
-        <Base.Backdrop {...stylex.props(styles.commandBackdrop)} />
+        <Base.Backdrop ref={overlayRef} {...stylex.props(styles.commandBackdrop)} />
         <Base.Positioner
           anchor={commandAnchor}
           positionMethod="fixed"

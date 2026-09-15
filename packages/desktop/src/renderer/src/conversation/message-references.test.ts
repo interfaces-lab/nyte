@@ -5,6 +5,7 @@ import {
   CONVERSATION_MENTION,
   draftPreviewText,
   fileFromUrl,
+  inlineCodeReference,
   messageDraftText,
   messageParts,
   referenceText,
@@ -121,4 +122,54 @@ test("sidebar draft previews preserve visible skills without exposing token synt
   assert.equal(draftPreviewText("/rev"), "/rev");
   assert.equal(draftPreviewText("@file:///project/example.ts Fix this"), "example.ts Fix this");
   assert.equal(draftPreviewText("  \n  "), "Draft");
+});
+
+describe("inlineCodeReference", () => {
+  const file = (displayPath: string) => ({
+    path: `/project/${displayPath}`,
+    url: `file:///project/${displayPath}`,
+    displayPath,
+    label: displayPath.split("/").at(-1) ?? displayPath,
+  });
+  const mockups = file("packages/ui/src/mockups.tsx");
+  const readme = file("README.md");
+  const files = [
+    mockups,
+    readme,
+    file("packages/ui/src/index.ts"),
+    file("packages/core/src/index.ts"),
+  ];
+
+  test("links a workspace path, a root file, and a unique basename", () => {
+    assert.deepEqual(inlineCodeReference("packages/ui/src/mockups.tsx", files), {
+      kind: "file",
+      file: mockups,
+    });
+    assert.deepEqual(inlineCodeReference("./packages/ui/src/mockups.tsx", files), {
+      kind: "file",
+      file: mockups,
+    });
+    assert.deepEqual(inlineCodeReference("mockups.tsx", files), { kind: "file", file: mockups });
+    assert.deepEqual(inlineCodeReference("README.md", files), { kind: "file", file: readme });
+  });
+
+  test("leaves anything that is not one real file literal", () => {
+    // Two files answer to this basename, so a link would pick the wrong one.
+    assert.equal(inlineCodeReference("index.ts", files), undefined);
+    assert.equal(inlineCodeReference("packages/ui/src/**", files), undefined);
+    assert.equal(inlineCodeReference("text-ui-*", files), undefined);
+    assert.equal(inlineCodeReference("pnpm fmt:classes", files), undefined);
+    assert.equal(inlineCodeReference("packages/ui/src/missing.ts", files), undefined);
+    assert.equal(inlineCodeReference("Title$", files), undefined);
+    assert.equal(inlineCodeReference("   ", files), undefined);
+  });
+
+  test("re-indexes when the file list changes", () => {
+    assert.equal(inlineCodeReference("added.ts", files), undefined);
+    const added = file("packages/ui/src/added.ts");
+    assert.deepEqual(inlineCodeReference("added.ts", [...files, added]), {
+      kind: "file",
+      file: added,
+    });
+  });
 });

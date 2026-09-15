@@ -1,36 +1,59 @@
 import type { TurnPart } from "@nyte-ai/core";
+import { subagentToolKind } from "@nyte-ai/core/views";
 import { messageParts } from "./message-references.ts";
 
-export type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
+type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
 export type WorkTurnPart = Extract<TurnPart, { readonly kind: "assistant" | "thinking" | "tool" }>;
 
-export type TranscriptDisplayPart =
+type TranscriptDisplayPart =
   | { readonly kind: "part"; readonly part: TurnPart }
   | { readonly kind: "work"; readonly parts: readonly WorkTurnPart[] }
   | { readonly kind: "response"; readonly parts: readonly AssistantTurnPart[] };
 
 function isWorkPart(part: TurnPart): part is WorkTurnPart {
-  return part.kind === "assistant" || part.kind === "thinking" || part.kind === "tool";
+  // A delegation owns a child session and outlives the call, so it is not a
+  // step inside someone else's episode.
+  if (part.kind === "tool") return subagentToolKind(part.toolName) === undefined;
+  return part.kind === "assistant" || part.kind === "thinking";
 }
 
-function isActivityPart(part: TurnPart): boolean {
-  return part.kind === "thinking" || part.kind === "tool";
+/** Longest label that still reads as a step rather than an answer. */
+const STATUS_LINE_MAX_LENGTH = 100;
+const STATUS_LINE_MAX_LINES = 2;
+/** Fences, headings, bullets, and tables make text an answer, whatever its length. */
+const MARKDOWN_BLOCK = /```|^#{1,6}\s|^\s*[-*]\s|\|.*\|/m;
+
+/**
+ * Whether assistant text narrates a step instead of answering. Cursor draws the
+ * same line in `lTl` before letting any text join a work episode.
+ */
+function isStatusLine(text: string): boolean {
+  return (
+    text.length <= STATUS_LINE_MAX_LENGTH &&
+    text.split("\n").length <= STATUS_LINE_MAX_LINES &&
+    !MARKDOWN_BLOCK.test(text)
+  );
 }
 
 /**
- * Intermediate narration, reasoning, and tool calls form one work episode.
- * Only the assistant text after the final activity part
- * remains in the transcript as the response.
+ * Reasoning, tool calls, and the short lines that narrate them form one work
+ * episode. A subagent call stands on its own row instead, splitting the episode
+ * around it: it is a delegation with its own session and status, not a step
+ * inside someone else's work.
+ *
+ * Assistant text is placed by what it says, not by where it falls. Answers stay
+ * in the transcript; only a status line joins the episode, and only once an
+ * activity part arrives to make it a step. Position cannot decide this: a
+ * trailing tool call would otherwise reach back and pull an answer the reader
+ * is already reading into a clipped window.
  */
 export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDisplayPart[] {
-  let lastActivity = -1;
-  for (const [index, part] of parts.entries()) {
-    if (isActivityPart(part)) lastActivity = index;
-  }
-
   const display: TranscriptDisplayPart[] = [];
   let work: WorkTurnPart[] = [];
   let response: AssistantTurnPart[] = [];
+  // Status lines belong to the episode their activity opens. Until one does,
+  // they are the whole turn's text and stay in the transcript.
+  let pending: AssistantTurnPart[] = [];
 
   const flushWork = (): void => {
     if (work.length > 0) display.push({ kind: "work", parts: work });
@@ -42,26 +65,36 @@ export function displayTranscriptParts(parts: readonly TurnPart[]): TranscriptDi
   };
 
   for (const [index, part] of parts.entries()) {
-    if (part.kind === "assistant" && index > lastActivity) {
+    if (part.kind === "assistant") {
+      // The turn's last word is its answer even when it is brief.
+      if (isStatusLine(part.text) && index < parts.length - 1) {
+        pending.push(part);
+        continue;
+      }
       flushWork();
-      response.push(part);
+      response.push(...pending, part);
+      pending = [];
       continue;
     }
     if (isWorkPart(part)) {
       flushResponse();
-      work.push(part);
+      work.push(...pending, part);
+      pending = [];
       continue;
     }
     flushWork();
+    response.push(...pending);
+    pending = [];
     flushResponse();
     display.push({ kind: "part", part });
   }
   flushWork();
+  response.push(...pending);
   flushResponse();
   return display;
 }
 
-export type UserTextSegment =
+type UserTextSegment =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reference"; readonly label: string; readonly target: string };
 
@@ -108,9 +141,9 @@ export function userDisplayText(source: string): string {
     .join("");
 }
 
-export type TranscriptNoticeTone = "neutral" | "danger";
+type TranscriptNoticeTone = "neutral" | "danger";
 
-export interface TranscriptNotice {
+interface TranscriptNotice {
   readonly text: string;
   readonly tone: TranscriptNoticeTone;
   /** Original provider output for a tooltip or diagnostic surface. */

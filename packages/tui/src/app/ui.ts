@@ -72,7 +72,7 @@ export interface EphemeralPanel {
   destroy(): void;
 }
 
-export interface Notice {
+interface Notice {
   readonly lines: readonly string[];
   readonly color: string | undefined;
 }
@@ -84,7 +84,7 @@ export type Slot =
   | { readonly kind: "panel"; readonly container: BoxRenderable; readonly rows: number };
 
 /** Mutable only through `setUi`; Solid tracks the fields readers touch. */
-export interface UiState {
+interface UiState {
   /** The line above the transcript while something loads; hidden when undefined. */
   loading: string | undefined;
   status: Partial<PowerlineState>;
@@ -370,13 +370,6 @@ export function openInlineMenu(
   );
 }
 
-/** Swaps the screen an open menu shows and keeps the hint row in step. */
-export function showMenuScreen(shell: Shell, menu: InlineMenu, screen: MenuScreen): void {
-  if (menu.container.isDestroyed) return;
-  menu.show(screen);
-  setHints(shell, menu.hints);
-}
-
 export interface SelectChoiceOptions {
   readonly selectedId?: string;
   readonly maxVisible?: number;
@@ -435,7 +428,7 @@ export function selectChoice(
   });
 }
 
-export interface SelectSelectionOptions {
+interface SelectSelectionOptions {
   readonly signal?: AbortSignal;
   readonly cancelLabel?: string;
 }

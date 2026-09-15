@@ -13,12 +13,15 @@ import type { MentionFile } from "@nyte-ai/core/views";
 import type { CommandInfo, PluginCatalog } from "@nyte-ai/core";
 import type { Skill } from "@nyte-ai/schema";
 import { Icon } from "../components/icons.tsx";
+import { FileTypeIcon } from "../components/file-type-icon.tsx";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { floatingSurfaceStyles } from "../theme/floating-surface.stylex.ts";
 import type { ComposerCompletion } from "./composer-document.ts";
 import type { ComposerComboboxState, ComposerEditorHandle } from "./composer-editor.tsx";
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
 import type { FileSuggestion, MentionSuggestion } from "./composer-suggestion-ranking.ts";
 import { composerEnterAction } from "./composer-keys.ts";
+import { mentionPreviewRows } from "./mention-preview.ts";
 import { CONVERSATION_MENTION, isFolder, sameReference } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
@@ -67,7 +70,7 @@ type SuggestionMenuState =
     };
 
 /** A fetched input the popup renders truthfully: loading and failure are states, not empty lists. */
-export type ComposerSource<T> =
+type ComposerSource<T> =
   | { readonly status: "loading" }
   | { readonly status: "error" }
   | { readonly status: "ready"; readonly data: T };
@@ -255,6 +258,38 @@ function HighlightedSuggestionText({
   );
 }
 
+/**
+ * A mentioned path reads as the walk down to it: one row per folder, the file
+ * or folder itself last. The path line it replaces said the same thing in one
+ * ellipsised string.
+ */
+function MentionPathPreview({ file }: { readonly file: MentionFile }): ReactElement {
+  const rows = mentionPreviewRows(file.displayPath);
+  return (
+    <div {...stylex.props(composerStyles.suggestionPreviewPath)}>
+      {rows.map((row, depth) => (
+        <div
+          key={`${String(depth)}:${row.label}`}
+          {...stylex.props(
+            composerStyles.suggestionPreviewPathRow,
+            composerStyles.suggestionPreviewPathIndent(depth),
+            depth === rows.length - 1 && composerStyles.suggestionPreviewPathLeaf,
+          )}
+        >
+          {row.kind === "file" ? (
+            <FileTypeIcon path={row.label} />
+          ) : (
+            <span aria-hidden="true" {...stylex.props(composerStyles.suggestionPreviewPathIcon)}>
+              <Icon name="folder" size={12} />
+            </span>
+          )}
+          <span {...stylex.props(composerStyles.suggestionPreviewPathLabel)}>{row.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SuggestionPreview({
   suggestion,
 }: {
@@ -271,9 +306,13 @@ function SuggestionPreview({
         </span>
         {suggestionAttribution(suggestion)}
       </div>
-      <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
-        {suggestion.description}
-      </div>
+      {suggestion.kind === "file" ? (
+        <MentionPathPreview file={suggestion.file} />
+      ) : (
+        <div {...stylex.props(composerStyles.suggestionPreviewDescription)}>
+          {suggestion.description}
+        </div>
+      )}
     </>
   );
 }
@@ -293,7 +332,7 @@ function suggestionReference(suggestion: ChipSuggestion): MessageReference {
   }
 }
 
-export interface ComposerSuggestionsOptions {
+interface ComposerSuggestionsOptions {
   readonly editorRef: RefObject<ComposerEditorHandle | null>;
   /** The popup anchors here; presses and focus moves inside it are editing, not dismissal. */
   readonly anchorRef: RefObject<HTMLElement | null>;
@@ -305,7 +344,7 @@ export interface ComposerSuggestionsOptions {
   readonly references: readonly MessageReference[];
 }
 
-export interface ComposerSuggestions {
+interface ComposerSuggestions {
   readonly open: boolean;
   readonly combobox: ComposerComboboxState;
   /** Workspace entries the editor resolves typed paths against. */
@@ -494,6 +533,7 @@ export function useComposerSuggestions({
             {...stylex.props(composerStyles.suggestionPositioner)}
           >
             <Popover.Popup
+              ref={overlayRef}
               id={popupId}
               role="listbox"
               initialFocus={false}
@@ -598,6 +638,7 @@ export function useComposerSuggestions({
                 {...stylex.props(composerStyles.suggestionPreviewPositioner)}
               >
                 <PreviewCard.Popup
+                  ref={overlayRef}
                   aria-label={`Details for ${payload.label}`}
                   {...stylex.props(floatingSurfaceStyles.popup, composerStyles.suggestionPreview)}
                 >

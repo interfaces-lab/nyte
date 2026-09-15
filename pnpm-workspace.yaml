@@ -3,8 +3,6 @@ packages:
   - packages/demo/*
   - packages/demo/server/*
 overrides:
-  clsx: npm:cn@^0.3.0
-  tailwind-merge: npm:cn@^0.3.0
   "opentui-spinner@0.0.7>@opentui/core": "0.5.11"
   "opentui-spinner@0.0.7>typescript": "7.0.2"
 allowBuilds:

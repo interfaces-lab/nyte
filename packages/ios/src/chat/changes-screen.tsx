@@ -14,13 +14,7 @@ import { PrimaryButton } from "../ui/primary-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { useRemoteChat } from "./remote-chat.ts";
 import { fileStatus, recordedEdits, type RecordedEdit } from "./turn-changes.ts";
-import {
-  controls,
-  useTheme,
-  spacing,
-  textStyles,
-  tokens,
-} from "../theme.ts";
+import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
 type Source = "agent" | "mac";
 
@@ -36,10 +30,13 @@ type FileSection = {
   removed: number;
   subtitle: string | undefined;
   lines: Line[];
-  truncated: boolean;
 };
 
-const EXPANDED_LINE_LIMIT = 400;
+/** Long patches render their head first; the rest waits for a tap. */
+const LINE_LIMIT = 400;
+
+/** How much of one file is on screen. The header toggles, the footer promotes. */
+type FileView = "collapsed" | "head" | "whole";
 
 /** Parsed patch → display lines with new-side (or old-side) line numbers. */
 function linesOf(file: PatchFile): Line[] {
@@ -72,13 +69,7 @@ function linesOf(file: PatchFile): Line[] {
   return out;
 }
 
-function fileSection(
-  file: PatchFile,
-  path: string,
-  subtitle: string | undefined,
-  expanded: boolean,
-): FileSection {
-  const lines = linesOf(file);
+function fileSection(file: PatchFile, path: string, subtitle: string | undefined): FileSection {
   return {
     key: path + (subtitle ?? ""),
     path,
@@ -86,8 +77,7 @@ function fileSection(
     added: file.added,
     removed: file.removed,
     subtitle,
-    lines,
-    truncated: !expanded && lines.length > EXPANDED_LINE_LIMIT,
+    lines: linesOf(file),
   };
 }
 
@@ -105,8 +95,8 @@ export function ChangesScreen({
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const [source, setSource] = useState<Source>(initialSource ?? "agent");
-  // Sections past three start collapsed; user taps flip the default per file.
-  const [toggled, setToggled] = useState<ReadonlySet<string>>(new Set());
+  // Sections past three start collapsed; taps move one file between views.
+  const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
   const [macRevision, setMacRevision] = useState(0);
   const [macDiffs, setMacDiffs] = useState<
@@ -150,7 +140,6 @@ export function ChangesScreen({
               edit.file,
               path,
               group.length > 1 ? `Edit ${String(index + 1)} of ${String(group.length)}` : undefined,
-              true,
             ),
           );
         });
@@ -164,26 +153,23 @@ export function ChangesScreen({
       if (facts === undefined) continue;
       for (const file of facts.files) {
         const path = file.path ?? diff.path;
-        out.push(fileSection(file, path, undefined, conversationPaths.length <= 3));
+        out.push(fileSection(file, path, undefined));
       }
     }
     return out;
-  }, [source, edits, macDiffs, conversationPaths]);
+  }, [source, edits, macDiffs]);
 
-  const isCollapsed = (section: FileSection) =>
-    (sections.length > 3 && section.path !== initialPath) !== toggled.has(section.key);
-  const toggle = (key: string) =>
-    setToggled((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // Past three files, only the one the user arrived on starts open.
+  const viewOf = (section: FileSection): FileView =>
+    views.get(section.key) ??
+    (sections.length > 3 && section.path !== initialPath ? "collapsed" : "head");
+  const setView = (key: string, view: FileView) =>
+    setViews((current) => new Map(current).set(key, view));
 
   const agentEmpty = chat.state !== undefined && edits.size === 0;
 
   return (
-    <html.div data-layoutconformance="strict" style={styles.screen}>
+    <html.div style={styles.screen}>
       <Host style={{ marginHorizontal: spacing.gutter, marginTop: spacing.sm }}>
         <Picker
           selection={source === "agent" ? 0 : 1}
@@ -210,7 +196,7 @@ export function ChangesScreen({
             description="The agent didn't report file edits in this conversation. Try On Mac to see what's changed there."
           />
         ) : (
-          <DiffSections sections={sections} isCollapsed={isCollapsed} onToggle={toggle} />
+          <DiffSections sections={sections} viewOf={viewOf} onSetView={setView} />
         )
       ) : macDiffs.kind === "loading" ? (
         <html.div style={styles.state}>
@@ -235,8 +221,8 @@ export function ChangesScreen({
       ) : (
         <DiffSections
           sections={sections}
-          isCollapsed={isCollapsed}
-          onToggle={toggle}
+          viewOf={viewOf}
+          onSetView={setView}
           refreshControl={
             <RefreshControl
               tintColor={theme.muted}
@@ -257,22 +243,30 @@ export function ChangesScreen({
 
 function DiffSections({
   sections,
-  isCollapsed,
-  onToggle,
+  viewOf,
+  onSetView,
   refreshControl,
 }: {
   sections: FileSection[];
-  isCollapsed: (section: FileSection) => boolean;
-  onToggle: (key: string) => void;
+  viewOf: (section: FileSection) => FileView;
+  onSetView: (key: string, view: FileView) => void;
   refreshControl?: ReactElement<RefreshControlProps>;
 }) {
   const theme = useTheme();
   return (
-    <SectionList
-      sections={sections.map((section) => ({
-        ...section,
-        data: isCollapsed(section) ? [] : section.lines,
-      }))}
+    <SectionList<Line, FileSection>
+      sections={sections.map((section) => {
+        const view = viewOf(section);
+        return {
+          ...section,
+          data:
+            view === "collapsed"
+              ? []
+              : view === "whole"
+                ? section.lines
+                : section.lines.slice(0, LINE_LIMIT),
+        };
+      })}
       keyExtractor={(item: Line, index: number) =>
         item.kind === "hunk"
           ? `hunk-${String(index)}-${item.text}`
@@ -282,34 +276,44 @@ function DiffSections({
       refreshControl={refreshControl}
       contentContainerStyle={{ paddingBottom: spacing.xl }}
       renderSectionHeader={({ section }) => {
-        const file = section as FileSection;
-        const collapsedNow = isCollapsed(file);
+        const collapsed = viewOf(section) === "collapsed";
         return (
           <html.button
-            aria-expanded={!collapsedNow}
-            onClick={() => onToggle(file.key)}
+            aria-expanded={!collapsed}
+            onClick={() => onSetView(section.key, collapsed ? "head" : "collapsed")}
             style={styles.fileHeader}
           >
             <html.div style={styles.badge}>
-              <html.span style={styles.badgeText}>{file.status}</html.span>
+              <html.span style={styles.badgeText}>{section.status}</html.span>
             </html.div>
             <html.div style={styles.fileHeaderText}>
               <html.span style={[textStyles.secondary, styles.fileName]}>
-                {file.path.split("/").pop()}
+                {section.path.split("/").pop()}
               </html.span>
               <html.span style={textStyles.caption}>
-                {file.subtitle ?? file.path.split("/").slice(0, -1).join("/")}
+                {section.subtitle ?? section.path.split("/").slice(0, -1).join("/")}
               </html.span>
             </html.div>
             <html.span style={[textStyles.caption, styles.totals]}>
-              {`+${String(file.added)} \u2212${String(file.removed)}`}
+              {`+${String(section.added)} \u2212${String(section.removed)}`}
             </html.span>
             <SymbolView
-              name={collapsedNow ? "chevron.down" : "chevron.up"}
+              name={collapsed ? "chevron.down" : "chevron.up"}
               size={13}
               weight="semibold"
               tintColor={theme.tertiary}
             />
+          </html.button>
+        );
+      }}
+      renderSectionFooter={({ section }) => {
+        const hidden = section.lines.length - LINE_LIMIT;
+        if (viewOf(section) !== "head" || hidden <= 0) return null;
+        return (
+          <html.button onClick={() => onSetView(section.key, "whole")} style={styles.showRest}>
+            <html.span style={textStyles.secondary}>
+              {`Show ${String(hidden)} more ${hidden === 1 ? "line" : "lines"}`}
+            </html.span>
           </html.button>
         );
       }}
@@ -345,6 +349,15 @@ function DiffSections({
 }
 
 const styles = css.create({
+  showRest: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: controls.touchTarget,
+    borderWidth: 0,
+    backgroundColor: { default: "transparent", ":active": tokens.fill },
+  },
   screen: {
     display: "flex",
     flexDirection: "column",
@@ -352,7 +365,13 @@ const styles = css.create({
     backgroundColor: tokens.background,
   },
   caption: { paddingInline: spacing.gutter, paddingBlock: spacing.sm },
-  state: { paddingBlock: spacing.xxl, alignItems: "center", gap: spacing.md },
+  state: {
+    display: "flex",
+    flexDirection: "column",
+    paddingBlock: spacing.xxl,
+    alignItems: "center",
+    gap: spacing.md,
+  },
   bottom: (inset: number) => ({ paddingBottom: inset }),
   fileHeader: {
     display: "flex",
@@ -367,10 +386,20 @@ const styles = css.create({
     borderBottomColor: tokens.separator,
     backgroundColor: { default: tokens.background, ":active": tokens.fill },
   },
-  fileHeaderText: { flexGrow: 1, flexShrink: 1, minWidth: 0, alignItems: "flex-start", gap: 1 },
+  fileHeaderText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 1,
+  },
   fileName: { color: tokens.foreground, fontWeight: 600, lineClamp: 1 },
   totals: { fontVariant: "tabular-nums", flexShrink: 0 },
   badge: {
+    display: "flex",
+    flexDirection: "column",
     width: controls.badge,
     height: controls.badge,
     borderRadius: 6,

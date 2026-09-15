@@ -27,7 +27,7 @@ import { useMatch, useRouter } from "@tanstack/react-router";
 import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode, RefObject } from "react";
 import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/core";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
@@ -288,6 +288,7 @@ export function Sidebar(): ReactElement {
   // GitHub state itself. A fixed placeholder keeps its geometry stable while
   // that loads or when the project has no GitHub remote.
   const account = useGitHubAccount();
+  const footerRowRef = useRef<HTMLDivElement>(null);
   const workspaceCollectionID = useId();
   const [collectionExpanded, setCollectionExpanded] = useState(true);
   const settings = useMatch({ from: "/settings/$section", shouldThrow: false });
@@ -798,9 +799,10 @@ export function Sidebar(): ReactElement {
       </SidebarContent>
 
       <div {...stylex.props(styles.footer)}>
-        <div {...stylex.props(styles.footerRow)}>
+        <div ref={footerRowRef} {...stylex.props(styles.footerRow)}>
           <AccountFooterMenu
             account={account}
+            anchor={footerRowRef}
             settingsShortcut={clientActionShortcut(
               clientActions.settings,
               mac,
@@ -861,10 +863,13 @@ export function Sidebar(): ReactElement {
  */
 function AccountFooterMenu({
   account,
+  anchor,
   settingsShortcut,
   onOpenSettings,
 }: {
   account: ReturnType<typeof useGitHubAccount>;
+  /** The whole footer row, so the menu opens over the settings button too. */
+  anchor: RefObject<HTMLDivElement | null>;
   settingsShortcut: string;
   onOpenSettings: (trigger: HTMLElement) => void;
 }): ReactElement {
@@ -880,7 +885,9 @@ function AccountFooterMenu({
         label="Account menu"
         side="top"
         align="start"
+        anchor={anchor}
         sideOffset={4}
+        highlightItemOnHover={false}
         trigger={
           <button
             ref={triggerRef}
@@ -903,6 +910,7 @@ function AccountFooterMenu({
         <MenuItem
           icon="settings"
           meta={settingsShortcut}
+          itemStyle={styles.accountMenuItem}
           onSelect={() => {
             const trigger = triggerRef.current;
             if (trigger !== null) onOpenSettings(trigger);
@@ -910,16 +918,17 @@ function AccountFooterMenu({
         >
           Settings
         </MenuItem>
-        <MenuSeparator />
+        <MenuSeparator inset />
         <MenuItem
           icon="bubble-question"
+          itemStyle={styles.accountMenuItem}
           onSelect={() => void nyte.host.openExternal({ url: REPORT_ISSUE_URL })}
         >
           Report issue
         </MenuItem>
         {state?.kind === "ready" && (
           <>
-            <MenuSeparator />
+            <MenuSeparator inset />
             <MenuItem icon="arrow-wall-left" danger onSelect={() => setConfirmingSignOut(true)}>
               Sign out
             </MenuItem>
@@ -1306,7 +1315,7 @@ function SessionRow({
             onClick={onArchive}
           >
             <span {...stylex.props(styles.actionGlyphArchive)}>
-              <Icon name="archive" size={12} />
+              <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
             </span>
           </button>
         </span>
@@ -1338,7 +1347,7 @@ function SessionRow({
             Copy title
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem icon="archive" onSelect={onArchive}>
+          <ContextMenuItem icon={session.archived ? "unarchive" : "archive"} onSelect={onArchive}>
             {session.archived ? "Restore" : "Archive"}
           </ContextMenuItem>
           <ContextMenuItem icon="trash" danger onSelect={onDelete}>

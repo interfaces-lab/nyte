@@ -23,7 +23,7 @@ export type Task =
     }
   | { readonly kind: "job"; readonly id: string; readonly job: JobInfo };
 
-export type TaskStatus =
+type TaskStatus =
   | "queued"
   | "running"
   | "waiting"
@@ -139,7 +139,7 @@ export function taskActivity(task: Task): string {
   return taskSteps(task.state).at(-1)?.text ?? "";
 }
 
-export interface TaskStep {
+interface TaskStep {
   readonly status: TaskStatus;
   readonly text: string;
 }

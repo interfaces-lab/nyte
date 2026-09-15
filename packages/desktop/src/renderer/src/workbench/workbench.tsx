@@ -553,6 +553,7 @@ function PanelContent({
           historyVisible={sidebarVisible}
           url={view.browserUrl}
           onUrlChange={onBrowserUrl}
+          workspacePath={workspacePath}
           toolbarActions={
             <ToggleIconButton
               icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
@@ -787,7 +788,7 @@ function WorkbenchViewHost({
   );
 }
 
-export interface WorkbenchProps {
+interface WorkbenchProps {
   readonly target: WorkbenchTarget;
   /** Stable stage identity; views are keyed on it together with their data target. */
   readonly paneKey: string;

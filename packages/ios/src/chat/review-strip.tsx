@@ -22,7 +22,7 @@ export function ReviewStrip({
         <html.span style={styles.success}>{`+${String(added)} `}</html.span>
         <html.span style={styles.danger}>{`\u2212${String(removed)}`}</html.span>
       </Chip>
-      <Chip onClick={onAskMerge}>Squash &amp; Merge</Chip>
+      <Chip onClick={onAskMerge}>Ask to merge</Chip>
     </html.div>
   );
 }

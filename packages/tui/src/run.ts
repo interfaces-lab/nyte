@@ -30,7 +30,7 @@ export interface Runtime {
   readonly modelCandidates: readonly Model<Api>[];
 }
 
-export function runProviderCandidates(
+function runProviderCandidates(
   models: Models,
   providerId: string | undefined,
   settings: ResolvedSettings | undefined,
@@ -103,7 +103,7 @@ export async function signedOutRuntime(
   throw new Error("No provider exposes models for a signed-out launch");
 }
 
-export interface HostFallbacks {
+interface HostFallbacks {
   readonly model: Model<Api>;
   readonly thinkingLevel: ThinkingLevel;
 }
@@ -132,7 +132,7 @@ export function tuiPlugins(models: Models): Plugin[] {
   return [warmingPlugin({ models }), notificationsPlugin];
 }
 
-export interface OpenWorkspaceHostOptions {
+interface OpenWorkspaceHostOptions {
   readonly telemetry?: TelemetryContext;
   readonly workspace: TrustedWorkspace;
   readonly settings: ResolvedSettings;

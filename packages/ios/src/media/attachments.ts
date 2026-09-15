@@ -1,7 +1,6 @@
 import type { OperationInput } from "@nyte-ai/protocol";
 import { randomUUID } from "expo-crypto";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
-import { launchImageLibraryAsync } from "expo-image-picker";
 import { Image } from "react-native";
 
 export const MAX_ATTACHMENTS = 3;
@@ -52,30 +51,4 @@ export async function prepareImage(source: string): Promise<StagedImage> {
   } finally {
     context.release();
   }
-}
-
-/** The system picker grants access only to selected photos; selection never sends them. */
-export async function pickImages(
-  remaining: number,
-): Promise<{ images: StagedImage[]; failed: number }> {
-  if (remaining === 0) return { images: [], failed: 0 };
-  const result = await launchImageLibraryAsync({
-    mediaTypes: ["images"],
-    allowsMultipleSelection: true,
-    selectionLimit: remaining,
-    orderedSelection: true,
-    exif: false,
-  });
-  if (result.canceled) return { images: [], failed: 0 };
-  const images: StagedImage[] = [];
-  let failed = 0;
-  // Decode sequentially so several full-resolution photos never occupy memory together.
-  for (const asset of result.assets.slice(0, remaining)) {
-    try {
-      images.push(await prepareImage(asset.uri));
-    } catch {
-      failed += 1;
-    }
-  }
-  return { images, failed };
 }

@@ -15,6 +15,7 @@ import type {
   GitHubRepository,
 } from "../shared/ipc.ts";
 import { errorCode } from "./errors.ts";
+import { ensureShellEnvironment } from "./shell-environment.ts";
 
 const COMMAND_OUTPUT_LIMIT = 1_000_000;
 const DETECTION_TIMEOUT_MS = 3_000;
@@ -54,8 +55,9 @@ function httpsUrl(value: string, hostname?: string): string | undefined {
   }
 }
 
-export const runProviderCommand: CommandRunner = (request) =>
-  new Promise((resolveResult) => {
+export const runProviderCommand: CommandRunner = async (request) => {
+  await ensureShellEnvironment();
+  return new Promise((resolveResult) => {
     const child = spawn(request.command, [...request.args], {
       cwd: request.cwd,
       env: {
@@ -111,6 +113,7 @@ export const runProviderCommand: CommandRunner = (request) =>
       finish({ kind: "timeout" });
     }, request.timeoutMs);
   });
+};
 
 function repositoryPart(value: string): boolean {
   return /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(value);
@@ -133,10 +136,7 @@ function repositoryFromParts(
 }
 
 /** Parse only repository identity. Userinfo and other raw remote data are discarded. */
-export function parseGitHubRemote(
-  remoteName: string,
-  rawRemote: string,
-): GitHubRepository | undefined {
+function parseGitHubRemote(remoteName: string, rawRemote: string): GitHubRepository | undefined {
   const remote = rawRemote.trim();
   const scp = /^(?:[^@\s]+@)?github\.com:([^/\s]+)\/([^/\s]+)\/?$/i.exec(remote);
   if (scp !== null) return repositoryFromParts(remoteName, scp[1], scp[2]);

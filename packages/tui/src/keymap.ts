@@ -27,7 +27,7 @@ import { commandBindings } from "@opentui/keymap/extras";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
 import { CHAT_KEYBINDS, keyStrokes, type ChatCommand } from "./constants.ts";
 
-export interface ChatCommandSpec {
+interface ChatCommandSpec {
   readonly title: string;
   readonly hint?: string;
   readonly placement?: "secondary" | "help";
@@ -42,7 +42,7 @@ export interface ChatCommandSpec {
   readonly run: () => boolean | undefined;
 }
 
-export type ChatCommands = { readonly [K in ChatCommand]?: ChatCommandSpec };
+type ChatCommands = { readonly [K in ChatCommand]?: ChatCommandSpec };
 
 /**
  * The addons every chat keymap needs: the default key parser, `enabled` and
@@ -50,9 +50,7 @@ export type ChatCommands = { readonly [K in ChatCommand]?: ChatCommandSpec };
  * queue a message. The same set goes on the renderer's keymap and the test
  * host's, so a binding proven headless is the binding the terminal runs.
  */
-export function installChatAddons<T extends object, E extends KeymapEvent>(
-  keymap: Keymap<T, E>,
-): void {
+function installChatAddons<T extends object, E extends KeymapEvent>(keymap: Keymap<T, E>): void {
   registerDefaultKeys(keymap);
   registerEnabledFields(keymap);
   registerMetadataFields(keymap);
@@ -217,7 +215,7 @@ export function registerSelectionKeys(
 // ---------------------------------------------------------------------------
 
 /** How long a second escape still counts as part of the same gesture. */
-export const DOUBLE_ESCAPE_MS = 500;
+const DOUBLE_ESCAPE_MS = 500;
 
 /**
  * Escape twice on an empty composer opens the session tree. The first press
@@ -237,9 +235,9 @@ export class DoubleEscape {
   }
 }
 
-export type CtrlCAction = "clear_for_quit" | "shutdown";
+type CtrlCAction = "clear_for_quit" | "shutdown";
 
-export interface CtrlCState {
+interface CtrlCState {
   readonly selecting: boolean;
   readonly prompting: boolean;
   readonly hasDraft: boolean;

@@ -112,7 +112,11 @@ export interface NyteServerOptions {
    * Behind a proxy that changes the scheme or host, list the public origin.
    */
   readonly browserOrigins?: readonly string[];
-  /** Largest call body accepted, in bytes. A positive integer; default 1 MiB. */
+  /**
+   * Largest call body accepted, in bytes. A positive integer; default 8 MiB,
+   * which holds one inline image at the agent's 4.5 MiB base64 bound plus the
+   * surrounding message.
+   */
   readonly maxBodyBytes?: number;
   /**
    * Interval of SSE comment frames that keep an idle watch open through a
@@ -131,7 +135,7 @@ export interface NyteServer {
 }
 
 const MIN_TOKEN_LENGTH = 16;
-const DEFAULT_MAX_BODY_BYTES = 1_048_576;
+const DEFAULT_MAX_BODY_BYTES = 8_388_608;
 const DEFAULT_HEARTBEAT_MS = 15_000;
 const WATCH_QUERY_KEYS: readonly string[] = Object.values(WATCH_QUERY);
 const encoder = new TextEncoder();

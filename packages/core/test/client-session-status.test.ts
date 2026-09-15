@@ -2,17 +2,20 @@ import { expect, test } from "vitest";
 import { sessionMark } from "../src/client.ts";
 import type { HeadInfo, RunPhase } from "@nyte-ai/protocol";
 
-function head(phase: RunPhase): HeadInfo {
+function head(phase: RunPhase, awaitingReply?: true): HeadInfo {
+  const run = { runId: "run", head: "main", phase, startedAt: 0, attempts: 1, config: {} };
   return {
     head: "main",
     tip: null,
-    run: { runId: "run", head: "main", phase, startedAt: 0, attempts: 1, config: {} },
+    run: awaitingReply === undefined ? run : { ...run, awaitingReply },
   };
 }
 
 test("clients derive execution state without treating background waits as a reply request", () => {
   expect(sessionMark({ heads: [] })).toBe("idle");
-  expect(sessionMark({ heads: [head({ kind: "waiting" })] })).toBe("waiting");
+  expect(sessionMark({ heads: [head({ kind: "waiting" }, true)] })).toBe("waiting");
+  // A call parked on a timer or on background work asks nothing of a reader.
+  expect(sessionMark({ heads: [head({ kind: "waiting" })] })).toBe("working");
   expect(sessionMark({ heads: [head({ kind: "retry", at: 10, error: "retry" })] })).toBe("retry");
   expect(sessionMark({ heads: [head({ kind: "failed", error: "failed" })] })).toBe("failed");
 });

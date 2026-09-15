@@ -285,7 +285,7 @@ export interface VcsDiffIdentity {
   readonly path: string;
 }
 
-export interface VcsDiffsIdentity {
+interface VcsDiffsIdentity {
   readonly repositoryId: string;
   readonly revision: string;
   readonly paths: readonly string[];
@@ -465,7 +465,7 @@ export function usageReportOptions(untilDay: string) {
  * it: totals that were true a minute ago beat an empty screen, and the page
  * says which they are.
  */
-export interface UsageQueryView {
+interface UsageQueryView {
   readonly report: UsageSnapshot | undefined;
   readonly error: Error | null;
   /** No report yet. Distinct from refreshing one that is already on screen. */

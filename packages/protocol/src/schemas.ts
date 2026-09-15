@@ -511,6 +511,7 @@ export const RunInfo = typed<RunInfoType>()(
     attempts: Type.Number(),
     config: RunConfig,
     abortRequested: Type.Optional(Type.Literal(true)),
+    awaitingReply: Type.Optional(Type.Literal(true)),
     lease: Type.Optional(open({ owner: Type.String(), expiresAt: Type.Number() })),
   }),
 );

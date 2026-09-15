@@ -2,6 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { Dialog } from "@nyte-ai/ui/dialog";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { focus } from "../components/ui.tsx";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -117,7 +118,7 @@ export function ImagePreview({
         <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Backdrop {...props(styles.backdrop)} />
+        <Dialog.Backdrop ref={overlayRef} {...props(styles.backdrop)} />
         <Dialog.Popup {...props(styles.popup)}>
           <div {...props(styles.toolbar)}>
             <Dialog.Title {...props(styles.title)}>{name}</Dialog.Title>

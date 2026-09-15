@@ -11,7 +11,7 @@ import { css, html } from "react-strict-dom";
 import { prepareImage, type StagedImage } from "./attachments.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
-import { useTheme, spacing, textStyles, tokens } from "../theme.ts";
+import { overCamera, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
 type CameraSheetProps = {
   visible: boolean;
@@ -170,13 +170,22 @@ function CameraSession({ onClose, onCapture }: Omit<CameraSheetProps, "visible">
 
 const styles = css.create({
   notice: {
+    display: "flex",
+    flexDirection: "column",
     flexGrow: 1,
     justifyContent: "center",
     paddingInline: spacing.lg,
   },
   actions: { position: "absolute", insetInlineStart: spacing.lg },
   inset: (top: number) => ({ top: top + spacing.md }),
-  bottom: { position: "absolute", insetInline: spacing.lg, gap: spacing.md, alignItems: "center" },
+  bottom: {
+    display: "flex",
+    flexDirection: "column",
+    position: "absolute",
+    insetInline: spacing.lg,
+    gap: spacing.md,
+    alignItems: "center",
+  },
   bottomInset: (bottom: number) => ({ bottom: bottom + spacing.lg }),
   buttons: {
     display: "flex",
@@ -185,11 +194,13 @@ const styles = css.create({
     justifyContent: "center",
   },
   shutter: {
+    display: "flex",
+    flexDirection: "column",
     width: 68,
     height: 68,
     borderRadius: 34,
     borderWidth: 4,
-    borderColor: "#fff",
+    borderColor: overCamera.foreground,
     backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
