@@ -4,7 +4,7 @@
  * screen warmed. The shell then mounts once, so the first React frame shows
  * the sidebar and the last chat rather than placeholders that fill in.
  */
-export interface RendererStartupOptions {
+interface RendererStartupOptions {
   /** Replace the startup shell with the interface. Runs once, when everything below has landed. */
   readonly mountShell: () => void;
   readonly loadResources: () => Promise<void>;

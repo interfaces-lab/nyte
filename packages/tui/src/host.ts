@@ -24,9 +24,9 @@ import { createHost } from "@nyte-ai/host";
 import type { HostOptions } from "@nyte-ai/host";
 import type { Usage } from "@nyte-ai/schema";
 
-export type StoredCommit = Awaited<ReturnType<Session["objects"]["commits"]>>[number];
+type StoredCommit = Awaited<ReturnType<Session["objects"]["commits"]>>[number];
 
-export interface HostCloseFailure {
+interface HostCloseFailure {
   readonly resource: "sdk" | "store";
   readonly cause: unknown;
 }
@@ -38,7 +38,7 @@ export type HostCloseOutcome =
       readonly failures: readonly HostCloseFailure[];
     };
 
-export interface OpenHostOptions extends Omit<HostOptions, "store"> {
+interface OpenHostOptions extends Omit<HostOptions, "store"> {
   readonly cwd: string;
   readonly storePath: string;
   /** How often the store polls for writes from other processes. */

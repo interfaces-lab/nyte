@@ -6,7 +6,7 @@ import type { HostCloseOutcome } from "./host.ts";
 
 type Cleanup = () => void | HostCloseOutcome | Promise<void | HostCloseOutcome>;
 
-export interface PrintFailure {
+interface PrintFailure {
   readonly phase: "cleanup" | "diagnostic" | "terminal";
   readonly cause: unknown;
 }

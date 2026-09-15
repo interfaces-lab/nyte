@@ -25,6 +25,18 @@ function dropInlinedGhosttyWasm(): Plugin {
   };
 }
 
+// The devtools mount their own root from a dev-only script tag, so nothing in
+// the app imports them and the production graph never reaches them.
+function serveDevtools(): Plugin {
+  return {
+    name: "nyte:serve-devtools",
+    apply: "serve",
+    transformIndexHtml: () => [
+      { tag: "script", attrs: { type: "module", src: "/src/devtools.tsx" }, injectTo: "body" },
+    ],
+  };
+}
+
 export default defineConfig(({ command }) => {
   const watch = command === "serve" ? {} : undefined;
   return {
@@ -79,6 +91,7 @@ export default defineConfig(({ command }) => {
           lightningcssOptions: { targets: { chrome: 142 << 16 } },
         }),
         react({ babel: { plugins: ["babel-plugin-react-compiler"] } }),
+        serveDevtools(),
       ],
       optimizeDeps: { exclude: ["@nyte-ai/ui"], include: ["react", "react-dom/client"] },
       resolve: {

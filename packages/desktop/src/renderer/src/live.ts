@@ -58,8 +58,14 @@ function durableChanged(previous: SessionState | undefined, next: SessionState):
   );
 }
 
+interface SessionFrame {
+  readonly snapshot: SessionSnapshot;
+  readonly live: LiveSnapshot;
+}
+
 class LiveStore {
   private snapshot: LiveSnapshot = IDLE;
+  private projection: { readonly state: SessionState; readonly frame: SessionFrame } | undefined;
   private state: SessionState | undefined;
   /** The state the snapshot cache holds. */
   private published: SessionState | undefined;
@@ -83,6 +89,18 @@ class LiveStore {
     return this.snapshot;
   };
 
+  getFrame = (): SessionFrame | undefined => {
+    const state = this.state;
+    if (state === undefined) return undefined;
+    if (this.projection?.state !== state) {
+      this.projection = {
+        state,
+        frame: { snapshot: snapshotOf(state), live: this.getSnapshot() },
+      };
+    }
+    return this.projection.frame;
+  };
+
   /** The durable part reaches the cache now; the overlay wakes its readers at the next frame. */
   update(sessionId: SessionId, state: SessionState): void {
     const previous = this.published;
@@ -104,6 +122,7 @@ class LiveStore {
     if (this.frame !== undefined) window.cancelAnimationFrame(this.frame);
     this.frame = undefined;
     this.state = undefined;
+    this.projection = undefined;
     this.published = undefined;
     this.snapshot = IDLE;
     this.dirty = false;
@@ -296,6 +315,12 @@ export function useSessionLive(sessionId: SessionId): LiveSnapshot {
   const store = storeFor(sessionId);
   useEffect(() => watchSessionLive(sessionId).dispose, [sessionId]);
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+}
+
+export function useSessionFrame(sessionId: SessionId): SessionFrame | undefined {
+  const store = storeFor(sessionId);
+  useEffect(() => watchSessionLive(sessionId).dispose, [sessionId]);
+  return useSyncExternalStore(store.subscribe, store.getFrame, store.getFrame);
 }
 
 /**

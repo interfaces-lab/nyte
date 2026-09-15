@@ -37,7 +37,7 @@ export function composerMessageContent(
   return parts;
 }
 
-export type ComposerSendPlan =
+type ComposerSendPlan =
   | { readonly kind: "empty" }
   | { readonly kind: "command"; readonly command: ParsedPluginCommand; readonly lane: Lane }
   | { readonly kind: "message"; readonly content: UserMessage["content"]; readonly lane: Lane };

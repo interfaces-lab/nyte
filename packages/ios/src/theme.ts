@@ -27,7 +27,6 @@ const schemes = {
     successFill: platformColors.light.avatarGreenBackground,
     dangerFill: platformColors.light.destructiveMuted,
     warningFill: platformColors.light.avatarOrangeBackground,
-    scrim: "rgba(0,0,0,0.3)",
     shadow: "0 2px 12px rgba(0,0,0,0.08)",
   },
   dark: {
@@ -50,7 +49,6 @@ const schemes = {
     successFill: platformColors.dark.avatarGreenBackground,
     dangerFill: platformColors.dark.destructiveMuted,
     warningFill: platformColors.dark.avatarOrangeBackground,
-    scrim: "rgba(0,0,0,0.5)",
     shadow: "none",
   },
 } as const;
@@ -86,11 +84,8 @@ export const tokens = css.defineVars({
   onPrimary: conditional("onPrimary"),
   success: conditional("success"),
   danger: conditional("danger"),
-  warning: conditional("warning"),
   successFill: conditional("successFill"),
   dangerFill: conditional("dangerFill"),
-  warningFill: conditional("warningFill"),
-  scrim: conditional("scrim"),
   shadow: conditional("shadow"),
 });
 
@@ -101,7 +96,6 @@ export const radii = {
   control: 12,
   card: 16,
   bubble: 20,
-  composer: 26,
   sheet: 28,
   pill: 999,
 };
@@ -110,6 +104,8 @@ export const radii = {
 export const list = {
   gutter: 20,
   leading: 14,
+  // The system spinner draws at 20pt; this brings it down to the glyph column.
+  spinnerScale: 0.7,
   leadingGap: 12,
   rowPaddingBlock: 12,
   titleMetaGap: 2,
@@ -124,21 +120,20 @@ export const controls = {
   statusDot: 8,
   touchTarget: 44,
   metaTarget: 28,
+  // The photo X sits over a corner of the thumbnail; its box reaches past it.
+  photoRemoveTarget: 36,
   primaryHeight: 44,
   chipHeight: 36,
   composerHeight: 52,
   composerButton: 32,
-  fieldMinHeight: 66,
   iconXs: 12,
   iconSm: 15,
   icon: 17,
-  iconNav: 20,
-  iconWeight: "regular",
-  iconWeightStrong: "semibold",
   composerMaxHeight: 176,
   badge: 20,
   diffGutter: 40,
   disabledOpacity: 0.4,
+  pressedOpacity: 0.6,
 } as const;
 
 export const conversation = {
@@ -149,21 +144,21 @@ export const conversation = {
 
 export const media = {
   attachmentSize: 56,
+  recentThumb: 72,
   thumbnailWidth: 180,
   thumbnailHeight: 140,
   bubbleMaxWidthRatio: 0.8,
-  deviceTileSize: 72,
-  deviceTileRadius: 20,
-  macSymbol: 40,
-  phoneSymbol: 34,
+  scanReticle: 240,
 } as const;
 
-export const annotate = {
-  marker: 32,
-  markerRing: 1.5,
-  stroke: 4,
-  mark: "#FF3B30",
-  canvas: "#000",
+/**
+ * Chrome drawn over a camera preview or a photo. These do not follow the
+ * appearance: what sits behind them is never the app's surface.
+ */
+export const overCamera = {
+  backdrop: "#000",
+  foreground: "#fff",
+  scrim: "rgba(0,0,0,0.45)",
 } as const;
 
 export const typography = {
@@ -218,20 +213,10 @@ export const textStyles = css.create({
     lineHeight: `${typography.heading.lineHeight}px`,
     color: tokens.foreground,
   },
-  button: {
-    ...typography.button,
-    lineHeight: `${typography.button.lineHeight}px`,
-    color: tokens.onPrimary,
-  },
   error: {
     ...typography.error,
     lineHeight: `${typography.error.lineHeight}px`,
     color: tokens.danger,
-  },
-  code: {
-    ...typography.code,
-    lineHeight: `${typography.code.lineHeight}px`,
-    color: tokens.foreground,
   },
   diff: {
     ...typography.diff,

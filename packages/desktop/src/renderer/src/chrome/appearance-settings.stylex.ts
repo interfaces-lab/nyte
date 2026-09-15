@@ -1,6 +1,6 @@
 /** Settings navigation in the persistent sidebar and route-owned page content. */
 import * as stylex from "@stylexjs/stylex";
-import { control, settings } from "../theme/schema.stylex.ts";
+import { settings, sidebar } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
 export const appearanceSettingsStyles = stylex.create({
@@ -11,32 +11,19 @@ export const appearanceSettingsStyles = stylex.create({
     minWidth: 0,
     minHeight: 0,
     flex: 1,
-    padding: "9px 8px 12px",
+    paddingInline: sidebar.gutter,
+    paddingBlock: "6px 12px",
   },
-  back: {
-    display: "inline-flex",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 7,
-    height: control.regularHeight,
-    marginBottom: 12,
-    paddingInline: 8,
-    borderStyle: "none",
-    borderRadius: t.radiusBase,
-    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
-    color: t.textSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
-    cursor: "pointer",
-  },
+  back: { marginBlockEnd: sidebar.sectionGap },
+  // The field is one row tall on the rail's grid, and its glyph and placeholder
+  // sit on the icon and label edges the rows below it use.
   search: {
     display: "flex",
     alignItems: "center",
     gap: 9,
-    height: 30,
-    marginBottom: 14,
-    paddingInline: 10,
+    height: sidebar.rowHeight,
+    marginBlockEnd: 16,
+    paddingInline: 7,
     borderRadius: t.radiusLg,
     borderStyle: "none",
     backgroundColor: t.fillSecondary,
@@ -45,6 +32,7 @@ export const appearanceSettingsStyles = stylex.create({
       ":focus-within": `inset 0 0 0 1px ${t.strokePrimary}`,
     },
     color: t.iconTertiary,
+    flexShrink: 0,
   },
   searchIcon: {
     display: "inline-flex",
@@ -64,29 +52,21 @@ export const appearanceSettingsStyles = stylex.create({
     lineHeight: t.leadingSm,
     "::placeholder": { color: t.textTertiary },
   },
-  navList: { display: "flex", flexDirection: "column", gap: 1 },
-  navItem: {
-    "--_nav-fill": { default: "transparent", ":hover": t.fillGhostHover },
+  // Headerless groups read their breaks from the gap, so it has to beat the
+  // gap between two rows of one group.
+  navGroups: {
     display: "flex",
-    alignItems: "center",
-    gap: 7,
-    width: "100%",
-    height: control.regularHeight,
-    paddingInline: 7,
-    borderRadius: t.radiusBase,
-    borderStyle: "none",
-    backgroundColor: "var(--_nav-fill)",
-    color: t.textSecondary,
-    fontSize: t.fontBase,
-    fontWeight: 400,
-    lineHeight: t.leadingBase,
-    letterSpacing: t.letterBase,
-    cursor: "pointer",
-    textDecoration: "none",
+    flexDirection: "column",
+    gap: 16,
+    minHeight: 0,
+    overflowY: "auto",
   },
-  navItemActive: { "--_nav-fill": t.fillGhostSelected, color: t.textPrimary },
+  navList: { display: "flex", flexDirection: "column", gap: sidebar.listGap },
+  navItem: { textDecoration: "none" },
+  /** The arrow keys' cursor while searching; the open section keeps its fill. */
+  navItemHighlighted: { backgroundColor: t.fillGhostHover, color: t.textPrimary },
   emptyNavigation: {
-    padding: "6px 8px",
+    padding: "6px 4px",
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,

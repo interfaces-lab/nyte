@@ -26,13 +26,15 @@ export const usageStyles = stylex.create({
     minHeight: control.regularHeight,
     paddingInline: 8,
   },
-  headingCopy: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
+  headingCopy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  headingTitle: { textWrap: "balance" },
   headingActions: { display: "flex", alignItems: "center", gap: 6 },
   hint: {
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     fontVariantNumeric: "tabular-nums",
+    textWrap: "pretty",
   },
   /** The name above a group, on the same rail as the rows inside it. */
   stack: { display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
@@ -57,7 +59,8 @@ export const usageStyles = stylex.create({
   segment: {
     display: "inline-flex",
     alignItems: "center",
-    height: 22,
+    // 2px group padding + 24px chip = 28px, the same height as Refresh.
+    height: settings.controlHeight,
     paddingInline: 9,
     borderStyle: "none",
     borderRadius: t.radiusBase,
@@ -126,8 +129,10 @@ export const usageStyles = stylex.create({
     minWidth: 2,
     minHeight: 2,
     borderRadius: 2,
-    backgroundColor: t.fillAccentSubtle,
+    // Idle days stay on the fill ramp so a zero does not read as a sliver of spend.
+    backgroundColor: t.fillGhostHover,
   },
+  trendSpent: { backgroundColor: t.fillAccentSubtle },
   /** The tallest bucket keeps the full accent, so the peak is visible, not hovered. */
   trendPeak: { backgroundColor: t.accent },
   trendCaption: {
@@ -149,19 +154,37 @@ export const usageStyles = stylex.create({
     borderRadius: t.radiusXl,
     backgroundColor: t.fillSecondary,
   },
+  /**
+   * The stacked bar sits in its own slot so the hairline under it lines up
+   * with the row dividers, instead of the first name colliding with the rail.
+   */
+  barSlot: {
+    position: "relative",
+    paddingBlockStart: RAIL,
+    paddingBlockEnd: 10,
+    paddingInline: RAIL,
+    "::after": {
+      position: "absolute",
+      insetInline: RAIL,
+      insetBlockEnd: 0,
+      height: 1,
+      backgroundColor: t.strokeQuaternary,
+      content: '""',
+    },
+  },
   bar: {
     display: "flex",
     gap: 2,
-    height: 6,
-    margin: `${String(RAIL)}px ${String(RAIL)}px 2px`,
+    height: 8,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillSecondary,
+    // One step above the group fill, so the unranked remainder is still a track.
+    backgroundColor: t.fillGhostHover,
     overflow: "hidden",
   },
   barSegment: {
     flexGrow: 0,
     flexShrink: 1,
-    minWidth: 0,
+    minWidth: 2,
     borderRadius: 1,
     // A share moves when a history changes under it, so the segment slides.
     transitionProperty: "flex-basis",
@@ -207,32 +230,53 @@ export const usageStyles = stylex.create({
   },
   dot: { width: 7, height: 7, borderRadius: t.radiusFull, flexShrink: 0 },
   rowMeta: {
-    // The dot's width and gap, so the second line starts under the name.
-    paddingInlineStart: 14,
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     fontVariantNumeric: "tabular-nums",
     overflowWrap: "anywhere",
   },
+  /** The dot's width and gap, so a second line starts under the name, not the swatch. */
+  rowMetaInset: { paddingInlineStart: 14 },
   rowValue: {
     flexShrink: 0,
+    minWidth: 72,
     color: t.textPrimary,
     fontSize: t.fontSm,
     fontWeight: 500,
     lineHeight: t.leadingSm,
     fontVariantNumeric: "tabular-nums",
+    textAlign: "end",
     whiteSpace: "nowrap",
   },
   rowShare: {
     flexShrink: 0,
-    minWidth: 34,
+    minWidth: 40,
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     fontVariantNumeric: "tabular-nums",
     textAlign: "end",
     whiteSpace: "nowrap",
+  },
+  /** The unranked remainder: a caption, not an empty data row. */
+  more: {
+    position: "relative",
+    margin: 0,
+    paddingBlock: 8,
+    paddingInline: RAIL,
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+    fontVariantNumeric: "tabular-nums",
+    "::before": {
+      position: "absolute",
+      insetInline: RAIL,
+      insetBlockStart: 0,
+      height: 1,
+      backgroundColor: t.strokeQuaternary,
+      content: '""',
+    },
   },
   series0: { backgroundColor: t.accent },
   series1: { backgroundColor: t.purple },
@@ -248,7 +292,7 @@ export const usageStyles = stylex.create({
   meterTrack: {
     height: 6,
     borderRadius: t.radiusFull,
-    backgroundColor: t.fillSecondary,
+    backgroundColor: t.fillGhostHover,
     overflow: "hidden",
   },
   meterFill: {
@@ -294,11 +338,11 @@ export const usageStyles = stylex.create({
   panelActions: { display: "flex", alignItems: "center", gap: 6, marginTop: 4 },
   notice: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 8,
     margin: 0,
     minHeight: 30,
-    paddingBlock: 5,
+    paddingBlock: 7,
     paddingInline: 10,
     borderRadius: t.radiusLg,
     backgroundColor: t.fillSecondary,
@@ -307,11 +351,19 @@ export const usageStyles = stylex.create({
     lineHeight: t.leadingSm,
     textWrap: "pretty",
   },
-  noticeIcon: { flexShrink: 0, color: t.iconTertiary },
-  noticeCopy: { flex: 1, minWidth: 0 },
+  noticeIcon: {
+    flexShrink: 0,
+    // 14px glyph on 16px type: one pixel down sits on the first line's cap.
+    marginBlockStart: 1,
+    color: t.iconTertiary,
+  },
+  noticeIconAlert: { color: t.textWarning },
+  noticeCopy: { flex: 1, minWidth: 0, paddingBlockStart: 1 },
   noticeAction: {
     flexShrink: 0,
-    padding: 0,
+    minHeight: 24,
+    paddingBlock: 0,
+    paddingInline: 4,
     borderStyle: "none",
     backgroundColor: "transparent",
     color: t.textAccent,

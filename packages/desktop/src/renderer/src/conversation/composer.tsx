@@ -17,7 +17,7 @@ import { trayStyles } from "../theme/tray.stylex.ts";
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ReactElement, ReactNode, RefObject } from "react";
+import type { ReactElement, ReactNode } from "react";
 import type { Lane, PendingItem, SessionId } from "@nyte-ai/core";
 import type { ImageContent } from "@nyte-ai/schema";
 import { errorMessage } from "../../../shared/errors.ts";
@@ -68,7 +68,7 @@ import { composerStyles } from "./styles.stylex.ts";
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 const DROP_PLACEHOLDER = "Drop here to attach…";
 
-export type ComposerSurface = "new-chat" | "follow-up";
+type ComposerSurface = "new-chat" | "follow-up";
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
 
 export interface ComposerImageAttachment {
@@ -134,7 +134,7 @@ export async function readComposerImageAttachments(files: readonly File[]): Prom
   if (imageFiles.length === 0) {
     return {
       attachments: [],
-      error: "Nyte accepts PNG, JPEG, WebP, and GIF images.",
+      error: "Nyte accepts PNG, JPEG, WebP, GIF, and BMP images.",
     };
   }
   const results = await Promise.allSettled(imageFiles.map(readImageAttachment));
@@ -145,7 +145,7 @@ export async function readComposerImageAttachments(files: readonly File[]): Prom
     attachments.length !== imageFiles.length
       ? "Some images could not be read."
       : imageFiles.length !== files.length
-        ? "Nyte accepts PNG, JPEG, WebP, and GIF images."
+        ? "Nyte accepts PNG, JPEG, WebP, GIF, and BMP images."
         : undefined;
   return { attachments, error };
 }
@@ -241,7 +241,7 @@ const SessionModelChip = memo(function SessionModelChip({
 });
 
 /** What the frame is editing instead of composing anew. */
-export type ComposerEditing =
+type ComposerEditing =
   | {
       readonly kind: "queued";
       /** The queued item's lane: Enter keeps it, the modifier swaps it for the other role. */
@@ -254,7 +254,7 @@ export type ComposerEditing =
       readonly onCancel: () => void;
     };
 
-export interface ComposerFrameProps {
+interface ComposerFrameProps {
   /** Placement is caller intent; the follow-up surface derives its own geometry. */
   readonly surface: ComposerSurface;
   /** The draft to show. The frame reports every edit back; the parent owns the value. */
@@ -411,15 +411,18 @@ export function ComposerFrame({
     const submission = area.read();
     const currentDocument = area.readDocument();
     setSubmitting(true);
-    try {
-      await onSubmit(
+    // `onSubmit` may answer synchronously; `Promise.resolve` covers both, and the
+    // chain avoids a `try`/`finally` that would cost this component its
+    // compiler memoization.
+    return Promise.resolve(
+      onSubmit(
         submission,
         submissionLane(action, roles, editing?.kind === "queued" ? editing.lane : undefined),
         currentDocument,
-      );
-    } finally {
-      setSubmitting(false);
-    }
+      ),
+    )
+      .then(() => undefined)
+      .finally(() => setSubmitting(false));
   };
 
   const attachmentList =
@@ -528,7 +531,7 @@ export function ComposerFrame({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/gif,image/jpeg,image/png,image/webp"
+            accept="image/bmp,image/gif,image/jpeg,image/png,image/webp"
             multiple
             disabled={disabled}
             tabIndex={-1}
@@ -816,7 +819,7 @@ export function Composer({
   onViewStateChange?: (state: ComposerViewState) => void;
   inputRef?: (element: ComposerEditorHandle | null) => void;
   autoFocus?: boolean;
-  fileDropRoot?: RefObject<HTMLElement | null>;
+  fileDropRoot?: HTMLElement | null;
   backgroundWork?: { readonly content: ReactNode; readonly onEscape: () => boolean };
   onScrollToBottom?: () => void;
 }): ReactElement {
@@ -865,22 +868,20 @@ export function Composer({
 
   const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
-    try {
-      const result = await readComposerImageAttachments(files);
-      if (result.attachments.length > 0) {
-        setAttachments((current) => [...current, ...result.attachments]);
-      }
-      setAttachmentError(result.error);
-    } finally {
-      setAttachmentReads((count) => count - 1);
-    }
+    return readComposerImageAttachments(files)
+      .then((result) => {
+        if (result.attachments.length > 0) {
+          setAttachments((current) => [...current, ...result.attachments]);
+        }
+        setAttachmentError(result.error);
+      })
+      .finally(() => setAttachmentReads((count) => count - 1));
   }, []);
 
   useLayoutEffect(() => {
-    const root = fileDropRoot?.current;
-    if (root === undefined || root === null) return undefined;
+    if (fileDropRoot === undefined || fileDropRoot === null) return undefined;
     return bindComposerFileDrop({
-      element: root,
+      element: fileDropRoot,
       disabled,
       onFiles: (files) => {
         void addFiles(files);

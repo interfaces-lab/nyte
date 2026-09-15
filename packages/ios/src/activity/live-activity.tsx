@@ -6,33 +6,48 @@ import type { SessionInfo } from "@nyte-ai/protocol";
 const FOREGROUND = "#f2f2f7";
 const MUTED = "#8e8e93";
 const ACCENT = "#0a84ff";
+const WARNING = "#ff9f0a";
 
-function lockScreenUi(active: readonly SessionInfo[]) {
-  const shown = active.slice(0, 3);
-  const extra = active.length - shown.length;
+function titleOf(session: SessionInfo): string {
+  return session.name || "Untitled conversation";
+}
+
+function lockScreenUi(working: readonly SessionInfo[], attention: readonly SessionInfo[]) {
+  const asking = attention.length > 0;
+  const shown = [...attention, ...working].slice(0, 3);
+  const extra = attention.length + working.length - shown.length;
   return (
     <Voltra.VStack style={{ padding: 16, gap: 10 }}>
-      <Voltra.HStack style={{ gap: 6, alignItems: "baseline" }}>
-        <Voltra.Text style={{ color: FOREGROUND, fontSize: 22, fontWeight: "600" }}>
-          {String(active.length)}
+      <Voltra.HStack style={{ gap: 6, alignItems: "center" }}>
+        <Voltra.Symbol
+          name={asking ? "questionmark.circle.fill" : "circle.grid.cross"}
+          tintColor={asking ? WARNING : ACCENT}
+          size={15}
+        />
+        <Voltra.Text style={{ color: FOREGROUND, fontSize: 17, fontWeight: "600" }}>
+          {asking ? `${String(attention.length)} needs you` : `${String(working.length)} working`}
         </Voltra.Text>
-        <Voltra.Text style={{ color: MUTED, fontSize: 15 }}>Active</Voltra.Text>
       </Voltra.HStack>
-      {shown.map((session) => (
-        <Voltra.HStack key={session.sessionId} style={{ gap: 8, alignItems: "center" }}>
-          <Voltra.Text style={{ color: FOREGROUND, fontSize: 15, flex: 1 }} numberOfLines={1}>
-            {session.name || "Untitled conversation"}
-          </Voltra.Text>
-          {session.heads[0]?.run !== undefined ? (
-            <Voltra.Timer
-              startAtMs={session.heads[0].run.startedAt}
-              direction="up"
-              textStyle="timer"
-              style={{ color: MUTED, fontSize: 13 }}
-            />
-          ) : null}
-        </Voltra.HStack>
-      ))}
+      {shown.map((session) => {
+        const waiting = attention.includes(session);
+        return (
+          <Voltra.HStack key={session.sessionId} style={{ gap: 8, alignItems: "center" }}>
+            <Voltra.Text style={{ color: FOREGROUND, fontSize: 15, flex: 1 }} numberOfLines={1}>
+              {titleOf(session)}
+            </Voltra.Text>
+            {waiting ? (
+              <Voltra.Text style={{ color: WARNING, fontSize: 13 }}>Needs input</Voltra.Text>
+            ) : session.heads[0]?.run !== undefined ? (
+              <Voltra.Timer
+                startAtMs={session.heads[0].run.startedAt}
+                direction="up"
+                textStyle="timer"
+                style={{ color: MUTED, fontSize: 13 }}
+              />
+            ) : null}
+          </Voltra.HStack>
+        );
+      })}
       {extra > 0 ? (
         <Voltra.Text style={{ color: MUTED, fontSize: 13 }}>{`${String(extra)} More`}</Voltra.Text>
       ) : null}
@@ -41,30 +56,46 @@ function lockScreenUi(active: readonly SessionInfo[]) {
 }
 
 /**
- * Mirrors the host's working sessions to the Lock Screen and Dynamic Island.
- * It starts when work appears, updates while the set of sessions changes, and
- * ends when nothing is working.
+ * Mirrors the host's live work to the Lock Screen and Dynamic Island. It starts
+ * when work appears, stays up while a conversation waits on the user, and ends
+ * only when nothing is working and nothing is waiting. Tapping it opens the
+ * conversation that needs an answer, or the list.
  */
-export function useWorkLiveActivitySync(active: readonly SessionInfo[]) {
+export function useWorkLiveActivitySync(
+  working: readonly SessionInfo[],
+  attention: readonly SessionInfo[],
+) {
+  // One decision: a question outranks progress everywhere the activity shows.
+  const asking = attention.length > 0;
+  const lead = attention[0] ?? working[0];
+  const count = asking ? attention.length : working.length;
+  const symbol = asking ? "questionmark.circle.fill" : "circle.grid.cross";
+  const tint = asking ? WARNING : ACCENT;
   const variants = {
-    lockScreen: lockScreenUi(active),
+    lockScreen: lockScreenUi(working, attention),
     island: {
-      minimal: <Voltra.Text style={{ color: FOREGROUND }}>{String(active.length)}</Voltra.Text>,
+      minimal: (
+        <Voltra.Text style={{ color: asking ? WARNING : FOREGROUND }}>{String(count)}</Voltra.Text>
+      ),
       compact: {
-        leading: <Voltra.Symbol name="circle.grid.cross" tintColor={ACCENT} size={14} />,
-        trailing: <Voltra.Text style={{ color: FOREGROUND }}>{String(active.length)}</Voltra.Text>,
+        leading: <Voltra.Symbol name={symbol} tintColor={tint} size={14} />,
+        trailing: <Voltra.Text style={{ color: FOREGROUND }}>{String(count)}</Voltra.Text>,
       },
       expanded: {
-        leading: <Voltra.Symbol name="circle.grid.cross" tintColor={ACCENT} size={16} />,
-        trailing: <Voltra.Text style={{ color: FOREGROUND }}>{String(active.length)}</Voltra.Text>,
+        leading: <Voltra.Symbol name={symbol} tintColor={tint} size={16} />,
+        trailing: <Voltra.Text style={{ color: FOREGROUND }}>{String(count)}</Voltra.Text>,
         center: (
           <Voltra.Text style={{ color: FOREGROUND }} numberOfLines={1}>
-            {active[0]?.name ?? "Nyte"}
+            {lead === undefined ? "Nyte" : titleOf(lead)}
           </Voltra.Text>
         ),
         bottom: (
-          <Voltra.Text style={{ color: MUTED }}>
-            {active.length === 0 ? "No active work" : `${String(active.length)} working`}
+          <Voltra.Text style={{ color: asking ? WARNING : MUTED }}>
+            {asking
+              ? "Waiting for your answer"
+              : working.length === 0
+                ? "No active work"
+                : `${String(working.length)} working`}
           </Voltra.Text>
         ),
       },
@@ -73,20 +104,20 @@ export function useWorkLiveActivitySync(active: readonly SessionInfo[]) {
 
   const activity = useLiveActivity(variants, {
     activityName: "nyte-work",
-    deepLinkUrl: "nyte://",
+    deepLinkUrl: lead === undefined ? "nyte://" : `nyte://chat/${lead.sessionId}`,
   });
   const { start, update, end, isActive: liveActive } = activity;
-  const count = active.length;
-  const activeKey = active.map((session) => session.sessionId).join(",");
+  const live = working.length + attention.length;
+  const activeKey = [...attention, ...working].map((session) => session.sessionId).join(",");
 
   useEffect(() => {
-    if (count === 0) {
+    if (live === 0) {
       if (liveActive) void end().catch(() => undefined);
       return;
     }
     if (liveActive) void update().catch(() => undefined);
     else void start().catch(() => undefined);
-  }, [count, activeKey, liveActive, start, update, end]);
+  }, [live, activeKey, liveActive, start, update, end]);
 
   return activity;
 }

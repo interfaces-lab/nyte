@@ -136,8 +136,10 @@ export const proseStyles = stylex.create({
     width: "100%",
     maxWidth: "100%",
     overflowX: "auto",
-    // Horizontal tables must not trap vertical scrolling of the conversation.
-    overscrollBehaviorY: "auto",
+    // A horizontal scroller must not become a vertical one: `overflow-x: auto`
+    // alone computes `overflow-y` to `auto`, which latches the wheel and stops
+    // the conversation under the reader. The transcript owns vertical scroll.
+    overflowY: "hidden",
     borderRadius: t.radiusLg,
     boxShadow: CODE_RING,
   },
@@ -163,6 +165,7 @@ export const proseStyles = stylex.create({
     margin: 0,
     padding: "11px 12px",
     overflowX: "auto",
+    overflowY: "hidden",
     borderRadius: t.radiusLg,
     backgroundColor: t.conversationTechnicalBg,
     boxShadow: CODE_RING,
@@ -192,7 +195,7 @@ export const codeBlockStyles = stylex.create({
       "@media (hover: none)": "1",
     },
   },
-  scroll: { maxWidth: "100%", overflowX: "auto" },
+  scroll: { maxWidth: "100%", overflowX: "auto", overflowY: "hidden" },
   pre: {
     margin: 0,
     padding: "11px 12px",
@@ -227,7 +230,9 @@ export const codeBlockStyles = stylex.create({
 
 export const composerStyles = stylex.create({
   // The dock is an opaque base layer. Transcript content never shows through
-  // the composer or its queue controls.
+  // the composer or its queue controls. Above it a short fade carries the
+  // transcript under the dock instead of cutting it at a hard line, as
+  // Cursor's composer does with its own `to top` strip.
   dock: {
     position: "sticky",
     bottom: 0,
@@ -236,6 +241,15 @@ export const composerStyles = stylex.create({
     width: "100%",
     paddingTop: 12,
     backgroundColor: t.bgBase,
+    "::before": {
+      content: "''",
+      position: "absolute",
+      insetInline: 0,
+      bottom: "100%",
+      height: 32,
+      backgroundImage: `linear-gradient(to top, ${t.bgBase}, transparent)`,
+      pointerEvents: "none",
+    },
   },
   region: {
     display: "flex",
@@ -548,12 +562,6 @@ export const composerStyles = stylex.create({
     animationTimingFunction: "step-end",
     animationIterationCount: "infinite",
   },
-  mentionChipLabel: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
   inputNewChat: { minHeight: 54, maxHeight: 340 },
   inputCompact: {
     minHeight: 24,
@@ -610,7 +618,6 @@ export const composerStyles = stylex.create({
     flexShrink: 0,
     alignItems: "baseline",
     verticalAlign: "baseline",
-    maxWidth: "min(240px, 100%)",
     padding: 0,
     borderStyle: "none",
     backgroundColor: "transparent",
@@ -919,6 +926,43 @@ export const composerStyles = stylex.create({
     lineHeight: t.leadingBase,
     overflowWrap: "anywhere",
     textWrap: "pretty",
+  },
+  // One row per folder on the way to the mention, each stepped in from the one
+  // above it, so the path reads as the walk down to what was mentioned.
+  suggestionPreviewPath: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+    marginBlockStart: 8,
+  },
+  suggestionPreviewPathRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    minWidth: 0,
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  // The same box Pierre's file-type glyph occupies, so folder and file rows
+  // hang their labels on one line.
+  suggestionPreviewPathIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    width: 16,
+    height: 16,
+    color: t.iconTertiary,
+  },
+  suggestionPreviewPathIndent: (depth: number) => ({ paddingInlineStart: depth * 12 }),
+  suggestionPreviewPathLeaf: { color: t.textPrimary },
+  suggestionPreviewPathLabel: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   send: {
     display: "inline-flex",

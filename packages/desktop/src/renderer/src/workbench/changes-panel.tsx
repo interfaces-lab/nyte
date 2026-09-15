@@ -232,9 +232,8 @@ const styles = stylex.create({
   },
 });
 
-function queryError(...errors: readonly (Error | null)[]): string | undefined {
-  const error = errors.find((candidate) => candidate !== null);
-  if (error === undefined) return undefined;
+function queryError(error: Error | null): string | undefined {
+  if (error === null) return undefined;
   const message = error.message;
   return message.length > 160 ? `${message.slice(0, 159)}…` : message;
 }
@@ -340,7 +339,7 @@ function ScopeMeta({ rows }: { readonly rows: readonly ChangeRow[] }): ReactElem
   );
 }
 
-export function uncommittedPatchState(
+function uncommittedPatchState(
   row: UncommittedChangeRow,
   patch: string | undefined,
   diffs: { readonly isLoading: boolean; readonly isError: boolean },
@@ -380,7 +379,7 @@ function changeRows(
   return rows.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-export interface ChangesPanelProps {
+interface ChangesPanelProps {
   readonly sessionId: SessionId | undefined;
   readonly scope: WorkbenchChangesScope;
   readonly selectedPath: string | undefined;
@@ -510,8 +509,31 @@ function ChangesPanelView({
       current.includes(path) ? current.filter((item) => item !== path) : [...current, path],
     );
   };
-  const unavailable =
-    activeScope.kind === "turn" ? queryError(turnsError) : queryError(snapshot.error, turnsError);
+  const vcsError = queryError(snapshot.error);
+  const transcriptError = queryError(turnsError);
+  // Each scope blames its own source first and falls back to the other, so no
+  // failure is ever dropped. A turn diff is built from the transcript alone, so
+  // the Git advice never explains a missing turn. Uncommitted rows come from the
+  // working tree, folded with the changes turns declare, so both reads matter.
+  const vcsFailure =
+    vcsError === undefined
+      ? undefined
+      : {
+          text: "Couldn't read changes. Check that this folder is a Git repository.",
+          detail: vcsError,
+        };
+  const transcriptFailure =
+    transcriptError === undefined
+      ? undefined
+      : { text: "Couldn't read this conversation's changes.", detail: transcriptError };
+  const readFailure =
+    scope.kind === "turn" ? (transcriptFailure ?? vcsFailure) : (vcsFailure ?? transcriptFailure);
+  // The turn's own files are loaded, so its emptiness is a fact that a stale
+  // background failure cannot change.
+  const emptyState: { readonly text: string; readonly detail?: string } =
+    selectedTurn !== undefined
+      ? { text: "This turn made no file changes" }
+      : (readFailure ?? { text: "Working tree is clean" });
   const activeScopeValue = scopeValue(activeScope);
   const activeLabel = selectedTurn?.label ?? "Uncommitted";
   const appearance = useAppearanceSettings();
@@ -606,15 +628,11 @@ function ChangesPanelView({
       </Toolbar.Root>
       {rows.length === 0 ? (
         <div
-          role={unavailable === undefined ? "status" : "alert"}
-          title={unavailable}
+          role={emptyState.detail === undefined ? "status" : "alert"}
+          title={emptyState.detail}
           {...stylex.props(styles.empty)}
         >
-          {unavailable !== undefined
-            ? "Couldn't read changes. Check that this folder is a Git repository."
-            : selectedTurn === undefined
-              ? "Working tree is clean"
-              : "This turn made no file changes"}
+          {emptyState.text}
         </div>
       ) : (
         <div {...stylex.props(styles.body)}>

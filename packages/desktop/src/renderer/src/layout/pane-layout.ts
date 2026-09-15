@@ -46,13 +46,13 @@ export type PaneLayoutAction =
 
 export const BLANK_SELECTION: PaneSelection = { kind: "blank" };
 export const DEFAULT_SPLIT_RATIO = 0.5;
-export const MIN_SPLIT_RATIO = 0.2;
-export const MAX_SPLIT_RATIO = 0.8;
+const MIN_SPLIT_RATIO = 0.2;
+const MAX_SPLIT_RATIO = 0.8;
 /**
  * A ratio alone lets the composer, the model chip, and the header actions
  * collide on a narrow window. Below this the pane clips, so the sash stops.
  */
-export const MIN_PANE_WIDTH = 320;
+const MIN_PANE_WIDTH = 320;
 
 /** Both split commands use the same window-width floor as their menu availability. */
 export function canSplitPane(layout: PaneLayout, windowWidth: number): boolean {

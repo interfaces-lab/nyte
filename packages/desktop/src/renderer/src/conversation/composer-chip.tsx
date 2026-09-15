@@ -87,7 +87,7 @@ export function ComposerChipView({
           <Icon name="x" size={11} />
         </button>
       )}
-      <span {...props(composerStyles.mentionChipLabel)}>{label}</span>
+      {label}
     </span>
   );
 }

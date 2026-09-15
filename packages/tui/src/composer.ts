@@ -43,7 +43,7 @@ export type { MentionFile };
 const MAX_MENTION_RESULTS = 10;
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 type SupportedImageMime = "image/gif" | "image/jpeg" | "image/png" | "image/webp";
-export type ComposerPart =
+type ComposerPart =
   | {
       readonly kind: "file";
       readonly marker: string;
@@ -62,7 +62,7 @@ export interface ShellRun {
   readonly exitCode: number;
 }
 
-export type ComposerPaste =
+type ComposerPaste =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "file"; readonly path: string }
   | { readonly kind: "image"; readonly image: ImageContent };
@@ -124,12 +124,12 @@ export function createClipboardAdapter(clipboard: ClipboardService) {
   };
 }
 
-export interface FileMention {
+interface FileMention {
   readonly source: string;
   readonly path: string;
 }
 
-export interface PreparedComposerPrompt {
+interface PreparedComposerPrompt {
   readonly displayText: string;
   readonly content: UserMessage["content"];
   readonly parts: readonly ComposerPart[];
@@ -214,7 +214,7 @@ function isFolderPath(path: string): boolean {
   return path.endsWith(sep) || path.endsWith("/");
 }
 
-export interface FileMentionQuery {
+interface FileMentionQuery {
   /** The `@token` a completed mention replaces. */
   readonly start: number;
   readonly end: number;
@@ -318,13 +318,13 @@ const FILE_ATTACHMENT_PATTERN = /<file src="(file:\/\/[^"\n]+)">\n([\s\S]*?)\n<\
 const ATTACHMENT_CLOSING_TAG = "</file>";
 const MAX_ATTACHMENT_BYTES = 256_000;
 
-export interface FileAttachment {
+interface FileAttachment {
   readonly source: string;
   readonly path: string;
   readonly text: string;
 }
 
-export function fileAttachmentBlock(path: string, text: string): string {
+function fileAttachmentBlock(path: string, text: string): string {
   return `<file src="${pathToFileURL(path).href}">\n${text}\n${ATTACHMENT_CLOSING_TAG}`;
 }
 
@@ -366,11 +366,11 @@ function commandFromShellAttribute(command: string): string {
     .replaceAll("&amp;", "&");
 }
 
-export interface ShellBlock extends ShellRun {
+interface ShellBlock extends ShellRun {
   readonly source: string;
 }
 
-export function shellBlock(run: ShellRun): string {
+function shellBlock(run: ShellRun): string {
   const closingBreak = run.output.endsWith("\n") ? "" : "\n";
   return `<shell command="${shellCommandAttribute(run.command)}" exit="${String(run.exitCode)}">\n${run.output}${closingBreak}</shell>`;
 }

@@ -28,6 +28,7 @@ import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { cloudSessions } from "../shared/ipc.ts";
 import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
 import { DesktopHost } from "./host.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
 
 const TOKEN = "desktop-server-test-token";
 
@@ -214,9 +215,13 @@ async function desktop(): Promise<{
       },
       navigate: () => undefined,
       close: () => undefined,
+      captureFrame: () => Promise.resolve(undefined),
       setBounds: () => undefined,
+      retain: () => undefined,
+      release: () => undefined,
       warm: async () => undefined,
       dispose: () => undefined,
+      agent: unusedBrowserAgent(),
     },
   });
   cleanups.push(

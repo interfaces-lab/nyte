@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { BrowserSurfaceState, HostEvent } from "../../../shared/ipc.ts";
 import { workbenchController } from "./controller.ts";
 
-export interface BrowserSurfaceView {
+interface BrowserSurfaceView {
   readonly state: BrowserSurfaceState | undefined;
   readonly refusedDownload: string | undefined;
   readonly history: readonly Pick<BrowserSurfaceState, "url" | "title">[];
@@ -63,6 +63,38 @@ export function dismissRefusedDownload(surface: string): void {
 
 export function clearBrowserHistory(): void {
   for (const [surface, view] of views) set(surface, { ...view, history: [] });
+}
+
+/**
+ * An agent opened a page on a surface. Open the Browser tab for the matching
+ * view key so the user sees the page. The page already exists in main — the
+ * renderer is only revealing it, not creating a new one.
+ */
+export function applyBrowserAgentOpened(
+  event: Extract<HostEvent, { kind: "browser_agent_opened" }>,
+): void {
+  // Apply the surface state so the panel adopts the already-live page.
+  const current = views.get(event.surface) ?? EMPTY;
+  set(event.surface, {
+    ...current,
+    state: event.state,
+    refusedDownload: undefined,
+    history: current.history,
+  });
+
+  // The surface id IS the workbench view key (both use the same encoding).
+  // Find it in the snapshot to avoid a branded-string cast.
+  const snapshot = workbenchController.getSnapshot();
+  for (const [viewKey] of snapshot.views) {
+    if (viewKey === event.surface) {
+      workbenchController.actions.openTab(viewKey, "browser");
+      workbenchController.actions.setBrowserUrl(viewKey, event.url);
+      return;
+    }
+  }
+  // The view may not exist yet (the user never opened this session's pane).
+  // That is fine — when they navigate to the session, the controller will
+  // create the view and the panel will adopt the surface.
 }
 
 export function forgetBrowserSurface(surface: string): void {

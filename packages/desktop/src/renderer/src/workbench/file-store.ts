@@ -3,7 +3,7 @@ import { workbenchController } from "./controller.ts";
 import type { WorkbenchController, WorkbenchViewKey } from "./controller.ts";
 import type { FileDocumentSnapshot } from "./file-document.ts";
 
-export interface FileLocation {
+interface FileLocation {
   readonly path: string;
   readonly displayPath: string;
   readonly line?: number;
@@ -11,10 +11,7 @@ export interface FileLocation {
   readonly length?: number;
 }
 
-export interface FileDraft extends Pick<
-  FileDocumentSnapshot,
-  "contents" | "savedContents" | "version"
-> {
+interface FileDraft extends Pick<FileDocumentSnapshot, "contents" | "savedContents" | "version"> {
   readonly revision: number;
 }
 
@@ -27,7 +24,7 @@ export interface FileTab extends FileLocation {
   readonly draft: FileDraft | undefined;
 }
 
-export interface FileTabs {
+interface FileTabs {
   readonly tabs: readonly FileTab[];
   readonly activePath: string | undefined;
   readonly history: readonly FileLocation[];
@@ -317,7 +314,6 @@ export function createFileTabStore(
 
 const fileStore = createFileTabStore();
 export const fileActions = fileStore.actions;
-export const getFileTabs = fileStore.getView;
 
 export function useFileTabs(viewKey: WorkbenchViewKey): FileTabs {
   return useSyncExternalStore(fileStore.subscribe, () => fileStore.getView(viewKey));

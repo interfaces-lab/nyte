@@ -17,7 +17,7 @@ import type { JsonValue } from "@nyte-ai/schema";
 import { isJsonObject, isMissingFile, type JsonObject } from "./json.ts";
 import { isThemeChoice, type ThemeChoice } from "./theme.ts";
 
-export const TRANSPORTS = [
+const TRANSPORTS = [
   "sse",
   "websocket",
   "websocket-cached",

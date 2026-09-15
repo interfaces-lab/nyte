@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { createTwoFilesPatch } from "diff";
 import type { VcsBackend, VcsDiff, VcsStatus } from "@nyte-ai/core";
 import type { DesktopVcsSnapshot } from "../shared/ipc.ts";
+import { ensureShellEnvironment } from "./shell-environment.ts";
 
 interface GitResult {
   readonly stdout: string;
@@ -24,7 +25,12 @@ class GitCommandError extends Error {
   }
 }
 
-function runGit(cwd: string, args: readonly string[], allowDifference = false): Promise<GitResult> {
+async function runGit(
+  cwd: string,
+  args: readonly string[],
+  allowDifference = false,
+): Promise<GitResult> {
+  await ensureShellEnvironment();
   return new Promise((resolveResult, reject) => {
     const child = spawn("git", ["-c", "core.quotepath=false", ...args], {
       cwd,
@@ -86,7 +92,7 @@ function statusKind(code: string): VcsStatus["files"][number]["kind"] {
   return "modified";
 }
 
-export function parseGitStatus(output: string): VcsStatus {
+function parseGitStatus(output: string): VcsStatus {
   const records = output.split("\0");
   const files: VcsStatus["files"][number][] = [];
   let branch: string | undefined;

@@ -34,7 +34,7 @@ export interface StoreLocation {
 }
 
 /** One store's spend per session, or why it could not be read. */
-export interface StoreScan {
+interface StoreScan {
   readonly workspacePath: string | null;
   readonly sessions: readonly {
     readonly sessionId: SessionId;
@@ -44,13 +44,13 @@ export interface StoreScan {
 }
 
 /** The catalog rows the readers price against; plain data, so they cross a thread. */
-export type CatalogModels = readonly Model<Api>[];
+type CatalogModels = readonly Model<Api>[];
 
 export function catalogForUsage(models: Pick<Models, "getModels">): CatalogModels {
   return [...models.getModels("anthropic"), ...models.getModels("openai-codex")];
 }
 
-export interface UsageScanRequest {
+interface UsageScanRequest {
   readonly stores: readonly StoreLocation[];
   readonly catalog: CatalogModels;
 }

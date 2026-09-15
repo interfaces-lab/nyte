@@ -15,7 +15,7 @@ type HostStatus = "checking" | "connected" | "unreachable";
 
 export function SettingsScreen() {
   const theme = useTheme();
-  const { client, connection, disconnect } = useHost();
+  const { client, connection, edit, disconnect } = useHost();
   const insets = useSafeAreaInsets();
   // Results are keyed by revision, so a stale reply never masks a newer check.
   const [result, setResult] = useState<{ revision: number; status: HostStatus }>();
@@ -100,7 +100,6 @@ export function SettingsScreen() {
             </html.div>
           </GroupRow>
           <GroupRow
-            last
             disabled={status === "checking"}
             onClick={() => setRevision((value) => value + 1)}
           >
@@ -108,6 +107,15 @@ export function SettingsScreen() {
             <html.span style={textStyles.body}>
               {status === "unreachable" ? "Try again" : "Check connection"}
             </html.span>
+          </GroupRow>
+          <GroupRow onClick={edit}>
+            <IconTile name="pencil" />
+            <html.div style={styles.rowText}>
+              <html.span style={textStyles.body}>Edit address and token</html.span>
+              <html.span style={textStyles.caption}>
+                Your Mac issues a new pair each time sharing starts.
+              </html.span>
+            </html.div>
           </GroupRow>
         </Group>
         {error !== undefined && (
@@ -119,8 +127,8 @@ export function SettingsScreen() {
           <>
             <SectionHeader label="Workspaces" />
             <Group>
-              {workspaceList.map((workspace, index) => (
-                <GroupRow key={workspace.path} last={index === workspaceList.length - 1}>
+              {workspaceList.map((workspace) => (
+                <GroupRow key={workspace.path}>
                   <IconTile name="folder" />
                   <html.div style={styles.rowText}>
                     <html.span style={textStyles.body}>{workspace.name}</html.span>
@@ -135,7 +143,7 @@ export function SettingsScreen() {
         ) : null}
         <html.div style={styles.signOut}>
           <Group>
-            <GroupRow last align="center" disabled={busy} onClick={confirmDisconnect}>
+            <GroupRow align="center" disabled={busy} onClick={confirmDisconnect}>
               <html.span style={[textStyles.body, styles.danger]}>
                 {busy ? "Disconnecting…" : "Disconnect"}
               </html.span>
@@ -155,12 +163,22 @@ export function SettingsScreen() {
 
 const styles = css.create({
   page: {
+    display: "flex",
+    flexDirection: "column",
     flexGrow: 1,
     paddingTop: spacing.md,
     gap: spacing.md,
   },
   bottomInset: (bottom: number) => ({ paddingBottom: bottom + spacing.lg }),
-  rowText: { flexGrow: 1, flexShrink: 1, minWidth: 0, alignItems: "flex-start", gap: 2 },
+  rowText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 2,
+  },
   path: { lineClamp: 1, textAlign: "start" },
   status: {
     display: "flex",
@@ -178,6 +196,8 @@ const styles = css.create({
   danger: { color: tokens.danger },
   signOut: { paddingTop: list.sectionGap - spacing.md },
   colophon: {
+    display: "flex",
+    flexDirection: "column",
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",

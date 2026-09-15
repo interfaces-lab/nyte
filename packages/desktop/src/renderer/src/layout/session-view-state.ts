@@ -13,12 +13,12 @@ export interface ComposerViewState {
   readonly focused: boolean;
 }
 
-export interface ScrollViewState {
+interface ScrollViewState {
   readonly top: number;
   readonly bottomPinned: boolean;
 }
 
-export interface SplitViewState {
+interface SplitViewState {
   readonly direction: SplitDirection;
   readonly ratio: number;
 }
@@ -29,14 +29,14 @@ export interface SplitViewState {
  * starts from these instead of estimates, so the first render already holds
  * the rows the reader left and nothing shifts once they measure.
  */
-export interface TranscriptViewState {
+interface TranscriptViewState {
   readonly measurements: readonly VirtualItem[];
   readonly viewport: Rect | undefined;
   /** The density these heights were measured under; a switch discards them. */
   readonly density: ToolCallDensity | undefined;
 }
 
-export interface SessionViewState {
+interface SessionViewState {
   readonly composer: ComposerViewState;
   readonly scroll: ScrollViewState;
   readonly transcript: TranscriptViewState;
@@ -55,7 +55,7 @@ export interface ChatDraft extends BlankViewState {
   readonly updatedAt: number;
 }
 
-export type ClaimedChatDraft = Omit<ChatDraft, "id">;
+type ClaimedChatDraft = Omit<ChatDraft, "id">;
 
 export const DEFAULT_COMPOSER_VIEW_STATE: ComposerViewState = {
   draft: "",
@@ -206,7 +206,13 @@ export class SessionViewStateStore {
       fastSettings: current.fastSettings,
       updatedAt: current.composer.draft === composer.draft ? current.updatedAt : Date.now(),
     };
-    drafts.active = this.#createDraft(current.id);
+    // Sending is not a reason to drop the model the reader chose: the pane's
+    // next chat keeps it, and the catalog default applies only before a pick.
+    drafts.active = {
+      ...this.#createDraft(current.id),
+      configuration: current.configuration,
+      fastSettings: current.fastSettings,
+    };
     this.#emit();
     return submitted;
   }

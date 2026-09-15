@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import { FiltersEngine, Request } from "@ghostery/adblocker";
 import type { ElectronRequestType } from "@ghostery/adblocker";
 
-export type BlockDecision =
+type BlockDecision =
   | { readonly kind: "allow" }
   | { readonly kind: "block" }
   | { readonly kind: "redirect"; readonly url: string };
 
-export interface RequestDetails {
+interface RequestDetails {
   readonly url: string;
   readonly resourceType: ElectronRequestType;
   readonly referrer: string;

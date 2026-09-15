@@ -27,7 +27,7 @@ import type { OutboxEntry } from "./outbox.ts";
 import { gutterRows } from "./pending-gutter.ts";
 import type { GutterRow } from "./pending-gutter.ts";
 
-export interface SentMessagesDependencies {
+interface SentMessagesDependencies {
   /**
    * Replace the observer's state with a fresh snapshot, published through
    * `snapshot` before the promise settles. Rejects when the observer stopped

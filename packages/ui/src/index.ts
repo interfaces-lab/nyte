@@ -60,6 +60,5 @@ export { Input } from "./components/ui/input.tsx";
 export type { InputProps } from "./components/ui/input.tsx";
 export { Textarea } from "./components/ui/textarea.tsx";
 export type { TextareaProps } from "./components/ui/textarea.tsx";
-export { cn } from "./lib/utils.ts";
 export { tokens } from "./platform-tokens.stylex.ts";
 export type { StyledProps, XStyle } from "./style.ts";

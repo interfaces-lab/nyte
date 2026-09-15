@@ -12,9 +12,19 @@
       "bundleIdentifier": "dev.nyte.ios",
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "NSLocalNetworkUsageDescription": "Connect to the Nyte host on your Mac, over your local network or tailnet.",
         "NSCameraUsageDescription": "Take a photo to attach to a Nyte message.",
-        "NSMicrophoneUsageDescription": "Use the microphone to dictate a Nyte task."
+        "NSMicrophoneUsageDescription": "Use the microphone to dictate a Nyte task.",
+        "NSSpeechRecognitionUsageDescription": "Use speech recognition to transcribe a Nyte task.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["nyte"]
+          }
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "userInterfaceStyle": "automatic"
     },
@@ -23,11 +33,11 @@
       "expo-secure-store",
       "./plugins/with-scene-lifecycle.cjs",
       [
-        "expo-image-picker",
+        "expo-media-library",
         {
-          "photosPermission": "Choose photos to attach to a Nyte message.",
-          "cameraPermission": "Take a photo to attach to a Nyte message.",
-          "microphonePermission": "Use the microphone to dictate a Nyte task."
+          "photosPermission": "Show your latest photos in the composer so you can attach one.",
+          "savePhotosPermission": false,
+          "isAccessMediaLocationEnabled": false
         }
       ],
       "expo-router",
@@ -49,6 +59,31 @@
     ],
     "experiments": {
       "reactCompiler": true
-    }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/5f78a9e7-057f-490e-ae2a-1dcdb12827d9"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "NyteLiveActivity",
+                  "bundleIdentifier": "dev.nyte.ios.NyteLiveActivity",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.dev.nyte.ios"]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "5f78a9e7-057f-490e-ae2a-1dcdb12827d9"
+      }
+    },
+    "owner": "nameisdaniel"
   }
 }

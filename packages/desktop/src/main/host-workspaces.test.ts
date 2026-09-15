@@ -17,6 +17,7 @@ import { localSessions } from "../shared/ipc.ts";
 import type { HostEvent, WatchEnvelope } from "../shared/ipc.ts";
 import { loadSessionDirectory } from "../renderer/src/session-directory.ts";
 import { DesktopHost } from "./host.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
 import { localDay } from "./usage.ts";
 import { callIpc } from "./ipc-call.ts";
 import { ipcDiagnostics } from "./errors.ts";
@@ -160,9 +161,13 @@ async function fixture() {
         },
         navigate: () => undefined,
         close: () => undefined,
+        captureFrame: () => Promise.resolve(undefined),
         setBounds: () => undefined,
+        retain: () => undefined,
+        release: () => undefined,
         warm: async () => undefined,
         dispose: () => undefined,
+        agent: unusedBrowserAgent(),
       },
     });
     hosts.push(host);

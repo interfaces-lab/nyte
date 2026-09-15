@@ -13,9 +13,9 @@
  */
 import type { TextareaRenderable } from "@opentui/core";
 
-export type DraftKind = "empty" | "blank" | "message";
+type DraftKind = "empty" | "blank" | "message";
 
-export interface DraftSnapshot {
+interface DraftSnapshot {
   readonly text: string;
   readonly kind: DraftKind;
 }

@@ -62,7 +62,7 @@ export function supportedThinkingLevel(
   return levels[0] ?? "off";
 }
 
-export interface TriggerLabel {
+interface TriggerLabel {
   readonly name: string;
   /** Muted after the name: the reasoning level when the model has a choice, then Fast when on. */
   readonly detail: string | undefined;
@@ -86,7 +86,7 @@ export function modelTriggerLabel(
   return { name: option.name, detail: parts.length === 0 ? undefined : parts.join(" · ") };
 }
 
-export interface PickerGroup {
+interface PickerGroup {
   readonly provider: ProviderStatus;
   readonly options: readonly DesktopModelOption[];
 }

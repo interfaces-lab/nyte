@@ -21,11 +21,11 @@ export interface OutboxEntry {
   readonly lastError?: string;
 }
 
-export type OutboxOutcome =
+type OutboxOutcome =
   | { readonly kind: "durable"; readonly change: Oid; readonly key: string }
   | { readonly kind: "withdrawn"; readonly key: string };
 
-export interface OutboxDependencies {
+interface OutboxDependencies {
   readonly send: (input: {
     readonly key: string;
     readonly lane: Lane;
@@ -45,7 +45,7 @@ const FIRST_DELAY_MS = 250;
 const MAX_DELAY_MS = 10_000;
 
 /** Exponential backoff with a ceiling: 250ms, 500ms, 1s, … capped at ten seconds. */
-export function retryDelay(attempt: number): number {
+function retryDelay(attempt: number): number {
   return Math.min(MAX_DELAY_MS, FIRST_DELAY_MS * 2 ** Math.max(0, attempt - 1));
 }
 

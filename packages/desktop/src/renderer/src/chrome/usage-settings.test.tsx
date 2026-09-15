@@ -166,6 +166,45 @@ test("the page leads with Nyte spend by model, then plan limits", () => {
   assert.match(html, /Sign in to Codex/);
 });
 
+test("a ranked list past five models names the remainder instead of growing", () => {
+  const models = ["a", "b", "c", "d", "e", "f"] as const;
+  const html = render({
+    limits,
+    report: snapshot({
+      earliestDay: DAYS.untilDay,
+      sessions: [
+        {
+          sessionId: sessionId("chat-1"),
+          name: "Chat",
+          workspacePath: "/repos/nyte",
+          lastActivityAt: Date.now(),
+        },
+      ],
+      sources: [{ workspacePath: "/repos/nyte", status: "ok", sessions: 1, message: null }],
+      entries: models.map((model, index) => ({
+        day: DAYS.untilDay,
+        workspacePath: "/repos/nyte",
+        sessionId: sessionId("chat-1"),
+        subject: { kind: "model", provider: "anthropic", model: `model-${model}` },
+        totals: {
+          input: 10,
+          output: 10,
+          cacheRead: 0,
+          cacheWrite: 0,
+          reasoning: 0,
+          tokens: 20,
+          cost: 6 - index,
+          turns: 1,
+        },
+      })),
+    }),
+  });
+
+  assert.match(html, /\+1 more/);
+  assert.match(html, /model-a/);
+  assert.doesNotMatch(html, /model-f/);
+});
+
 test("a long chat name wraps instead of hiding behind a tooltip", () => {
   const html = render({ report: spent, limits });
 

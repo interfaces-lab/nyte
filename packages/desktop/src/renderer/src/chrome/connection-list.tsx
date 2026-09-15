@@ -83,7 +83,7 @@ const styles = stylex.create({
   expansion: { gridColumn: "1 / -1", paddingTop: 4 },
 });
 
-export type ConnectionTone = "on" | "off" | "warn" | "err";
+type ConnectionTone = "on" | "off" | "warn" | "err";
 
 export function ConnectionStatus({
   tone,

@@ -221,7 +221,7 @@ const bridge = {
     },
     mobile: {
       state: () => call("host.mobile.state", undefined),
-      start: () => call("host.mobile.start", undefined),
+      start: (input) => call("host.mobile.start", input),
       stop: () => call("host.mobile.stop", undefined),
     },
     openExternal: operation("host.openExternal"),
@@ -239,6 +239,7 @@ const bridge = {
       menu: operation("host.browser.menu"),
       perform: operation("host.browser.perform"),
       close: operation("host.browser.close"),
+      captureFrame: operation("host.browser.captureFrame"),
       setBounds: (message: BrowserBoundsMessage) =>
         ipcRenderer.send(BROWSER_BOUNDS_CHANNEL, message),
     },

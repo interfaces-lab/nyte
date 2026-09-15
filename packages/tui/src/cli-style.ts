@@ -38,7 +38,7 @@ export function cyan(text: string, color: boolean = ansiEnabled()): string {
 }
 
 /** How a finished step reads. One vocabulary for glyphs, colors, and exit codes. */
-export type Severity = "ok" | "warn" | "fail";
+type Severity = "ok" | "warn" | "fail";
 
 interface SeverityStyle {
   readonly glyph: string;

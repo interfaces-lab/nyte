@@ -14,7 +14,7 @@ const EMPTY: Bookmarks = { visible: false, items: [] };
 let current: Bookmarks | undefined;
 const listeners = new Set<() => void>();
 
-export function decodeBookmarks(serialized: string): Bookmarks | undefined {
+function decodeBookmarks(serialized: string): Bookmarks | undefined {
   try {
     const value: unknown = JSON.parse(serialized);
     return Value.Check(schema, value) ? value : undefined;

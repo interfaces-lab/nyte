@@ -58,7 +58,7 @@ const SENDING: OutboxRowState = { kind: "sending" };
 
 export type OutboxSubmission = Omit<SendInput, "key">;
 
-export interface OutboxOptions {
+interface OutboxOptions {
   readonly storage: OutboxStorage;
   readonly send: (input: SendInput) => Promise<SendReceipt>;
   /** Runs once a receipt makes the message durable, before its row leaves the outbox. */

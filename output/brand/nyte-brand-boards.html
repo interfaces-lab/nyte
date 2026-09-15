@@ -1,0 +1,1216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nyte — brand kit boards</title>
+    <style>
+      /*
+       * Three brand directions for Nyte, each rendered as the canonical
+       * case-study board: page mockup 1 (40%), page mockup 2 (40%),
+       * design-system rail (20%) on a 3840 x 2160 canvas.
+       * Boards scale to the viewport; open and use the tabs to switch.
+       */
+      :root {
+        --board-w: 3840px;
+        --board-h: 2160px;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0a0a0c;
+        color: #e8e8ea;
+        font: 14px/1.5 ui-sans-serif, -apple-system, system-ui, sans-serif;
+      }
+      header.chrome {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 20px;
+        background: rgb(10 10 12 / 92%);
+        border-bottom: 1px solid #222;
+        backdrop-filter: blur(8px);
+      }
+      header.chrome h1 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #8b8b93;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+      }
+      .tabs button {
+        padding: 7px 14px;
+        border: 1px solid #2a2a30;
+        border-radius: 999px;
+        background: transparent;
+        color: #b6b6bd;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tabs button[aria-selected="true"] {
+        background: #f2f2f4;
+        border-color: #f2f2f4;
+        color: #0a0a0c;
+      }
+      .note {
+        margin-left: auto;
+        font-size: 12px;
+        color: #6f6f78;
+      }
+      .viewport {
+        overflow: hidden;
+      }
+      .stage {
+        width: var(--board-w);
+        height: var(--board-h);
+        transform-origin: top left;
+      }
+      .board {
+        display: none;
+        width: var(--board-w);
+        height: var(--board-h);
+        padding: 64px;
+        gap: 48px;
+        grid-template-columns: 2fr 2fr 1fr;
+      }
+      .board[data-active="true"] {
+        display: grid;
+      }
+      .page {
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .rail {
+        display: flex;
+        flex-direction: column;
+        gap: 44px;
+        padding: 56px 48px;
+      }
+      .rail h2 {
+        margin: 0 0 8px;
+        font-size: 26px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
+      .type-row {
+        padding: 22px 0;
+        border-bottom: 1px solid currentColor;
+        border-color: color-mix(in srgb, currentColor 18%, transparent);
+      }
+      .type-row .label {
+        font-size: 20px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        opacity: 0.55;
+      }
+      .type-row .face {
+        margin-top: 8px;
+        font-size: 40px;
+      }
+      .type-row .meta {
+        margin-top: 6px;
+        font-size: 20px;
+        opacity: 0.6;
+      }
+      .swatch {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        height: 128px;
+        padding: 18px 20px;
+        margin-bottom: 12px;
+        font-size: 22px;
+      }
+      .chips {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .chip {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        height: 84px;
+        padding: 12px 14px;
+        font-size: 18px;
+      }
+      .chip .hex {
+        opacity: 0.75;
+        font-size: 16px;
+      }
+      .moon-art {
+        margin: 0;
+        white-space: pre;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        line-height: 1.15;
+      }
+
+      /* ---------- Direction 1: Observatory ---------- */
+      #observatory {
+        --ink: #eef1fa;
+        --bg: #0d1020;
+        --panel: #141a2e;
+        --line: #2a3350;
+        --moon: #ffe58a;
+        --cloud: #c8d5f7;
+        --slate: #5878b6;
+        --muted: #8d99bb;
+        background: #06070f;
+        font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      }
+      #observatory .page {
+        background: var(--bg);
+        color: var(--ink);
+      }
+      #observatory .rail {
+        background: var(--panel);
+        color: var(--ink);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      #observatory nav,
+      #nightshift nav,
+      #daybreak nav {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 40px 56px;
+      }
+      #observatory .mark {
+        display: grid;
+        place-items: center;
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        background: radial-gradient(circle at 34% 30%, #ffe58a, #e0ca79 60%, #8a7c46);
+      }
+      .wordmark {
+        font-size: 34px;
+        letter-spacing: 0.02em;
+      }
+      .navlinks {
+        display: flex;
+        gap: 34px;
+        margin-left: 46px;
+        font-size: 22px;
+        opacity: 0.72;
+      }
+      .navcta {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-size: 22px;
+      }
+      .btn {
+        padding: 14px 26px;
+        border-radius: 999px;
+      }
+      #observatory .btn {
+        background: var(--moon);
+        color: #191400;
+      }
+      #observatory .hero {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 40px;
+        align-items: center;
+        padding: 72px 56px 56px;
+      }
+      #observatory h1,
+      #nightshift h1,
+      #daybreak h1 {
+        margin: 0;
+        font-weight: 400;
+      }
+      #observatory h1 {
+        font-size: 92px;
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+      }
+      #observatory .lede {
+        margin: 30px 0 38px;
+        max-width: 24ch;
+        font-size: 26px;
+        line-height: 1.55;
+        color: var(--muted);
+      }
+      .cta-row {
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-size: 22px;
+      }
+      .cmd {
+        padding: 14px 22px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        color: var(--muted);
+      }
+      #observatory .moon-art {
+        font-size: 26px;
+        color: var(--moon);
+        text-shadow: 0 0 46px rgb(255 229 138 / 35%);
+      }
+      #observatory .orbit {
+        display: grid;
+        place-items: center;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        border: 1px solid var(--line);
+        background:
+          radial-gradient(circle at 50% 50%, rgb(88 120 182 / 16%), transparent 62%),
+          repeating-radial-gradient(circle at 50% 50%, transparent 0 78px, var(--line) 78px 79px);
+      }
+      .shot {
+        margin: 0 56px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        overflow: hidden;
+        background: #0a0d1a;
+      }
+      .shot-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+        font-size: 18px;
+        color: var(--muted);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #39415f;
+      }
+      .shot-body {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: 320px;
+      }
+      .shot-side {
+        padding: 22px;
+        border-right: 1px solid var(--line);
+        font-size: 17px;
+        color: var(--muted);
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        line-height: 2.1;
+      }
+      .shot-main {
+        padding: 26px 30px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 18px;
+        line-height: 1.9;
+        color: #c9d2ea;
+      }
+      .bubble {
+        padding: 14px 18px;
+        border-radius: 12px;
+        margin-bottom: 14px;
+      }
+      .proof {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 48px;
+        padding: 56px;
+        margin-top: auto;
+      }
+      .proof h3 {
+        margin: 0 0 12px;
+        font-size: 28px;
+        font-weight: 400;
+      }
+      .proof p {
+        margin: 0;
+        font-size: 21px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+      .eyebrow {
+        font-size: 20px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        opacity: 0.55;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      #observatory .pricing {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 26px;
+        padding: 48px 56px;
+      }
+      #observatory .tier {
+        padding: 36px 32px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+      }
+      #observatory .tier.featured {
+        border-color: var(--moon);
+        background: rgb(255 229 138 / 6%);
+      }
+      #observatory .tier .price {
+        font-size: 64px;
+        margin: 18px 0 8px;
+      }
+      #observatory .tier ul {
+        margin: 26px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 20px;
+        line-height: 2.1;
+        color: var(--muted);
+      }
+      .page-head {
+        padding: 64px 56px 28px;
+      }
+      .page-head h1 {
+        font-size: 74px !important;
+      }
+      .faq {
+        padding: 12px 56px 56px;
+        font-size: 22px;
+        color: var(--muted);
+      }
+      .faq div {
+        padding: 26px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      /* ---------- Direction 2: Night Shift ---------- */
+      #nightshift {
+        --ink: #f4f4ef;
+        --bg: #0b0b0a;
+        --panel: #131311;
+        --line: #2b2b27;
+        --amber: #ffb547;
+        --lime: #c9f560;
+        --muted: #91918a;
+        background: #050504;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      #nightshift .page {
+        background: var(--bg);
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      #nightshift .rail {
+        background: var(--panel);
+        color: var(--ink);
+        border: 1px solid var(--line);
+      }
+      #nightshift nav {
+        border-bottom: 1px solid var(--line);
+        font-size: 21px;
+        letter-spacing: 0.04em;
+      }
+      #nightshift .mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(140deg, var(--amber), #7a4e00);
+        box-shadow: 0 0 0 6px rgb(255 181 71 / 12%);
+      }
+      #nightshift .wordmark {
+        font-size: 30px;
+        letter-spacing: 0.28em;
+        text-transform: uppercase;
+      }
+      #nightshift .btn {
+        border: 1px solid var(--amber);
+        border-radius: 4px;
+        color: var(--amber);
+      }
+      #nightshift .hero {
+        padding: 84px 56px 48px;
+        border-bottom: 1px solid var(--line);
+      }
+      #nightshift h1 {
+        font-size: 104px;
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+        max-width: 16ch;
+      }
+      #nightshift .lede {
+        margin: 34px 0 40px;
+        max-width: 46ch;
+        font-size: 24px;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+      #nightshift .strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border-bottom: 1px solid var(--line);
+      }
+      #nightshift .strip div {
+        padding: 30px 28px;
+        border-right: 1px solid var(--line);
+        font-size: 19px;
+        color: var(--muted);
+      }
+      #nightshift .strip div b {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--ink);
+        font-size: 30px;
+        font-weight: 500;
+      }
+      #nightshift .shot {
+        margin: 44px 56px 0;
+        border-color: var(--line);
+        border-radius: 6px;
+        background: #0e0e0c;
+      }
+      #nightshift .shot-bar,
+      #nightshift .shot-side {
+        border-color: var(--line);
+        color: var(--muted);
+      }
+      #nightshift .shot-body {
+        border-color: var(--line);
+      }
+      #nightshift .shot-main {
+        color: #d8d8cf;
+      }
+      #nightshift .moon-art {
+        font-size: 19px;
+        color: var(--amber);
+      }
+      #nightshift .log {
+        margin-top: auto;
+        padding: 40px 56px 52px;
+        font-size: 20px;
+        line-height: 2;
+        color: var(--muted);
+      }
+      #nightshift .log span {
+        color: var(--lime);
+      }
+      #nightshift table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 21px;
+      }
+      #nightshift td,
+      #nightshift th {
+        padding: 24px 28px;
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        color: var(--muted);
+      }
+      #nightshift th {
+        color: var(--ink);
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font-size: 18px;
+      }
+      #nightshift td:first-child {
+        color: var(--ink);
+      }
+
+      /* ---------- Direction 3: Daybreak ---------- */
+      #daybreak {
+        --ink: #17181c;
+        --bg: #f6f4ef;
+        --panel: #ffffff;
+        --line: #e0dbd1;
+        --dusk: #2f3a63;
+        --cloud: #c8d5f7;
+        --moon: #f2c14e;
+        --muted: #6b6c74;
+        background: #e9e5dc;
+        color: var(--ink);
+        font-family: "Avenir Next", "Futura", "Gill Sans", sans-serif;
+      }
+      #daybreak .page {
+        background: var(--bg);
+        color: var(--ink);
+        border-radius: 28px;
+      }
+      #daybreak .rail {
+        background: var(--panel);
+        color: var(--ink);
+        border-radius: 28px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      #daybreak .mark {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 36% 32%, #fff6dc, var(--moon) 58%, #b98c26);
+      }
+      #daybreak .wordmark {
+        font-size: 32px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      #daybreak .btn {
+        background: var(--dusk);
+        color: #fff;
+      }
+      #daybreak .hero {
+        padding: 90px 64px 40px;
+        text-align: center;
+      }
+      #daybreak h1 {
+        font-size: 96px;
+        line-height: 1.04;
+        letter-spacing: -0.035em;
+        font-weight: 600;
+        margin: 0 auto;
+        max-width: 15ch;
+      }
+      #daybreak .lede {
+        margin: 32px auto 40px;
+        max-width: 42ch;
+        font-size: 26px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+      #daybreak .cta-row {
+        justify-content: center;
+      }
+      #daybreak .cmd {
+        border-color: var(--line);
+        background: #fff;
+        color: var(--muted);
+      }
+      #daybreak .horizon {
+        height: 260px;
+        margin: 8px 64px 0;
+        border-radius: 24px 24px 0 0;
+        background:
+          radial-gradient(circle at 50% 118%, #fff0c4 0 18%, transparent 60%),
+          linear-gradient(180deg, #2f3a63, #6d7cb0 55%, #c8d5f7);
+        position: relative;
+        overflow: hidden;
+      }
+      #daybreak .horizon .moon-art {
+        position: absolute;
+        left: 50%;
+        top: 44px;
+        transform: translateX(-50%);
+        font-size: 20px;
+        color: #ffe9b0;
+      }
+      #daybreak .shot {
+        margin: -180px 110px 0;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 60px 90px -50px rgb(23 24 28 / 45%);
+      }
+      #daybreak .shot-bar,
+      #daybreak .shot-side {
+        border-color: var(--line);
+        color: var(--muted);
+      }
+      #daybreak .shot-main {
+        color: #3a3b42;
+      }
+      #daybreak .proof p,
+      #daybreak .faq {
+        color: var(--muted);
+      }
+      #daybreak .steps {
+        display: grid;
+        gap: 28px;
+        padding: 40px 64px 56px;
+      }
+      #daybreak .step {
+        display: grid;
+        grid-template-columns: 96px 1fr;
+        gap: 28px;
+        align-items: start;
+        padding: 34px 36px;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+      }
+      #daybreak .step .num {
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+        font-size: 30px;
+        color: var(--dusk);
+      }
+      #daybreak .step h3 {
+        margin: 0 0 10px;
+        font-size: 32px;
+        font-weight: 600;
+      }
+      #daybreak .step p {
+        margin: 0;
+        font-size: 22px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <header class="chrome">
+      <h1>Nyte · brand kit</h1>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-target="observatory" aria-selected="true">1 · Observatory</button>
+        <button role="tab" data-target="nightshift" aria-selected="false">2 · Night Shift</button>
+        <button role="tab" data-target="daybreak" aria-selected="false">3 · Daybreak</button>
+      </div>
+      <span class="note">3840 × 2160 board · 40% homepage / 40% supporting page / 20% rail</span>
+    </header>
+
+    <div class="viewport">
+      <div class="stage">
+        <!-- ============ 1 · OBSERVATORY ============ -->
+        <section class="board" id="observatory" data-active="true">
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>Runtime</span><span>Clients</span><span>Docs</span><span>Changelog</span></span>
+              <span class="navcta"><span>Sign in</span><span class="btn">Get Nyte</span></span>
+            </nav>
+            <div class="hero">
+              <div>
+                <p class="eyebrow">Durable agent runtime</p>
+                <h1>Your agents keep working after you close the lid.</h1>
+                <p class="lede">
+                  A local-first kernel that records every turn, survives restarts, and replays the
+                  whole session on any client.
+                </p>
+                <div class="cta-row">
+                  <span class="btn">Download for macOS</span>
+                  <span class="cmd">curl -fsSL nyte.sh/install | sh</span>
+                </div>
+              </div>
+              <div class="orbit">
+                <pre class="moon-art">       #######**
+    #####%%%%%##**=
+  #*###%%%%%%%%##**+:
+ #**##%%%%%@@%%%##*+=:
+#####%%%%@@@%%%##**+=::
+###%%%%%@@@@%%##**+==::
+#%%%%%%@@@%%%#**++==:::
+#%%%%%@@%%%%#**++==::::
+ #%%%%%%%###**++==::::
+  *######***+++==::::
+    ****++++===::::
+       :==::::::</pre>
+              </div>
+            </div>
+            <div class="shot">
+              <div class="shot-bar">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span style="margin-left: 14px">nyte — session · refactor-parser</span>
+              </div>
+              <div class="shot-body">
+                <div class="shot-side">
+                  ▸ refactor parser<br />▸ ship desktop 0.9<br />▸ audit tool errors<br />▸ nightly
+                  bench
+                </div>
+                <div class="shot-main">
+                  <div class="bubble" style="background: #1a2138">
+                    Resume the parser refactor from yesterday.
+                  </div>
+                  <div style="color: #8d99bb">
+                    ↳ replayed 412 events · 3 tool calls pending<br />
+                    ↳ edit packages/core/src/parse.ts<br />
+                    ↳ tests green in 8.2s
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="proof">
+              <div>
+                <h3>Durable by default</h3>
+                <p>Every message, tool call, and error is journaled before it is shown.</p>
+              </div>
+              <div>
+                <h3>One session, any client</h3>
+                <p>Start in the terminal, keep going in the desktop app, mid-turn.</p>
+              </div>
+              <div>
+                <h3>Local first</h3>
+                <p>The host runs in-process on your machine. Remote hosts are optional.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>Runtime</span><span>Clients</span><span>Docs</span><span>Pricing</span></span>
+              <span class="navcta"><span>Sign in</span><span class="btn">Get Nyte</span></span>
+            </nav>
+            <div class="page-head">
+              <p class="eyebrow">Pricing</p>
+              <h1>Pay for the hosted parts. The runtime stays yours.</h1>
+            </div>
+            <div class="pricing">
+              <div class="tier">
+                <p class="eyebrow">Solo</p>
+                <p class="price">Free</p>
+                <p style="color: #8d99bb; font-size: 21px">Local host, unlimited sessions.</p>
+                <ul>
+                  <li>Terminal + desktop clients</li>
+                  <li>Local session store</li>
+                  <li>Bring your own keys</li>
+                </ul>
+              </div>
+              <div class="tier featured">
+                <p class="eyebrow">Team</p>
+                <p class="price">$18</p>
+                <p style="color: #8d99bb; font-size: 21px">Per seat, per month.</p>
+                <ul>
+                  <li>Shared session history</li>
+                  <li>Hosted sync host</li>
+                  <li>Audit trail export</li>
+                  <li>SSO</li>
+                </ul>
+              </div>
+              <div class="tier">
+                <p class="eyebrow">Fleet</p>
+                <p class="price">Talk</p>
+                <p style="color: #8d99bb; font-size: 21px">Self-hosted kernel at scale.</p>
+                <ul>
+                  <li>Serverless hosts</li>
+                  <li>Remote storage adapters</li>
+                  <li>Support SLA</li>
+                </ul>
+              </div>
+            </div>
+            <div class="faq">
+              <div>Does the free tier phone home? No. The local host never leaves your machine.</div>
+              <div>Can I move a session between tiers? Yes — sessions are portable event logs.</div>
+              <div>Which models? Any provider you hold a key for, plus hosted routing on Team.</div>
+            </div>
+          </article>
+
+          <aside class="rail">
+            <div>
+              <h2>Type</h2>
+              <div class="type-row">
+                <div class="label">Display</div>
+                <div class="face" style="font-family: 'Iowan Old Style', Palatino, serif">
+                  Iowan Old Style
+                </div>
+                <div class="meta">Regular · tight −2% · sentence case</div>
+              </div>
+              <div class="type-row">
+                <div class="label">Body</div>
+                <div class="face" style="font-family: 'Iowan Old Style', Palatino, serif">
+                  Same serif, 26/1.55
+                </div>
+                <div class="meta">Long-form, muted slate</div>
+              </div>
+              <div class="type-row">
+                <div class="label">UI / mono</div>
+                <div class="face">SF Mono</div>
+                <div class="meta">Labels, commands, ASCII moon</div>
+              </div>
+            </div>
+            <div>
+              <h2>Color</h2>
+              <div class="swatch" style="background: #0d1020; color: #eef1fa">
+                <span>Night</span><span>#0D1020</span>
+              </div>
+              <div class="swatch" style="background: #141a2e; color: #eef1fa">
+                <span>Surface</span><span>#141A2E</span>
+              </div>
+              <div class="swatch" style="background: #eef1fa; color: #0d1020">
+                <span>Foreground</span><span>#EEF1FA</span>
+              </div>
+              <div class="chips">
+                <div class="chip" style="background: #ffe58a; color: #191400">
+                  <span>Moon</span><span class="hex">#FFE58A</span>
+                </div>
+                <div class="chip" style="background: #5878b6; color: #fff">
+                  <span>Slate</span><span class="hex">#5878B6</span>
+                </div>
+                <div class="chip" style="background: #c8d5f7; color: #141a2e">
+                  <span>Cloud</span><span class="hex">#C8D5F7</span>
+                </div>
+                <div class="chip" style="background: #8d99bb; color: #0d1020">
+                  <span>Muted</span><span class="hex">#8D99BB</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <!-- ============ 2 · NIGHT SHIFT ============ -->
+        <section class="board" id="nightshift">
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>runtime</span><span>cli</span><span>desktop</span><span>docs</span></span>
+              <span class="navcta"><span>github</span><span class="btn">install</span></span>
+            </nav>
+            <div class="hero">
+              <p class="eyebrow" style="color: #ffb547">v0.9 · durable runtime</p>
+              <h1>Sessions that outlive the process.</h1>
+              <p class="lede">
+                Nyte journals every event before it renders one. Kill the app, pull the cable, come
+                back tomorrow — the turn resumes exactly where it stopped.
+              </p>
+              <div class="cta-row">
+                <span class="cmd" style="border-color: #ffb547; color: #ffb547"
+                  >$ curl -fsSL nyte.sh/install | sh</span
+                >
+                <span style="color: #91918a">or download the desktop app →</span>
+              </div>
+            </div>
+            <div class="strip">
+              <div><b>412</b>events replayed / session</div>
+              <div><b>8 ms</b>cold resume</div>
+              <div><b>2</b>clients, one kernel</div>
+              <div><b>0</b>cloud dependencies</div>
+            </div>
+            <div class="shot">
+              <div class="shot-bar">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span style="margin-left: 14px">~/dev/nyte — nyte</span>
+              </div>
+              <div class="shot-body" style="grid-template-columns: 1fr 260px">
+                <div class="shot-main">
+                  <pre class="moon-art">   ######**
+ #%%%%%##**=
+#%%%@@%%##*+=
+#%%@@@%%##*+=:
+ %%%%%##**+=:
+   ***++==:</pre>
+                  <div style="margin-top: 18px; color: #91918a">
+                    ▸ booting kernel … <span style="color: #c9f560">ok</span><br />
+                    ▸ restoring session 8f21a <span style="color: #c9f560">412 events</span><br />
+                    ▸ tool: edit packages/core/src/parse.ts<br />
+                    ▸ tests <span style="color: #c9f560">passed</span> in 8.2s
+                  </div>
+                </div>
+                <div class="shot-side" style="border-left: 1px solid var(--line); border-right: 0">
+                  cost $0.84<br />tokens 61k<br />model sonnet<br />host local
+                </div>
+              </div>
+            </div>
+            <div class="log">
+              <span>●</span> journaled &nbsp; <span>●</span> replayable &nbsp; <span>●</span>
+              offline-safe &nbsp; <span>●</span> MIT core
+            </div>
+          </article>
+
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>runtime</span><span>cli</span><span>desktop</span><span>docs</span></span>
+              <span class="navcta"><span>github</span><span class="btn">install</span></span>
+            </nav>
+            <div class="hero" style="padding-bottom: 36px">
+              <p class="eyebrow" style="color: #ffb547">docs / reference</p>
+              <h1 style="font-size: 76px">Kernel API</h1>
+              <p class="lede" style="margin-bottom: 0">
+                Everything the clients use is public. The host is a library first, an app second.
+              </p>
+            </div>
+            <table>
+              <tr>
+                <th>Call</th>
+                <th>Returns</th>
+                <th>Durability</th>
+              </tr>
+              <tr>
+                <td>createSession()</td>
+                <td>SessionHandle</td>
+                <td>journaled</td>
+              </tr>
+              <tr>
+                <td>send(message)</td>
+                <td>AsyncIterable&lt;Event&gt;</td>
+                <td>journaled</td>
+              </tr>
+              <tr>
+                <td>resume(id)</td>
+                <td>SessionHandle</td>
+                <td>replay</td>
+              </tr>
+              <tr>
+                <td>fork(id, at)</td>
+                <td>SessionHandle</td>
+                <td>copy-on-write</td>
+              </tr>
+              <tr>
+                <td>export(id)</td>
+                <td>EventLog</td>
+                <td>portable</td>
+              </tr>
+            </table>
+            <div class="log" style="padding-top: 44px">
+              <div style="color: #f4f4ef; font-size: 24px; margin-bottom: 18px">
+                const session = await host.resume("8f21a")
+              </div>
+              for await (const event of session.send("continue the refactor")) {<br />
+              &nbsp;&nbsp;render(event) <span>// already on disk</span><br />
+              }
+            </div>
+          </article>
+
+          <aside class="rail">
+            <div>
+              <h2>Type</h2>
+              <div class="type-row">
+                <div class="label">Display</div>
+                <div class="face">SF Mono / Berkeley Mono</div>
+                <div class="meta">Medium · −4% · lowercase</div>
+              </div>
+              <div class="type-row">
+                <div class="label">Body</div>
+                <div class="face">SF Mono Regular</div>
+                <div class="meta">24/1.7 · warm grey</div>
+              </div>
+              <div class="type-row">
+                <div class="label">Label</div>
+                <div class="face">Mono, caps, 0.3em</div>
+                <div class="meta">Eyebrows, table heads</div>
+              </div>
+            </div>
+            <div>
+              <h2>Color</h2>
+              <div class="swatch" style="background: #0b0b0a; color: #f4f4ef">
+                <span>Ink black</span><span>#0B0B0A</span>
+              </div>
+              <div class="swatch" style="background: #131311; color: #f4f4ef">
+                <span>Panel</span><span>#131311</span>
+              </div>
+              <div class="swatch" style="background: #f4f4ef; color: #0b0b0a">
+                <span>Bone</span><span>#F4F4EF</span>
+              </div>
+              <div class="chips">
+                <div class="chip" style="background: #ffb547; color: #1a1000">
+                  <span>Amber</span><span class="hex">#FFB547</span>
+                </div>
+                <div class="chip" style="background: #c9f560; color: #14180a">
+                  <span>Signal</span><span class="hex">#C9F560</span>
+                </div>
+                <div class="chip" style="background: #2b2b27; color: #f4f4ef">
+                  <span>Rule</span><span class="hex">#2B2B27</span>
+                </div>
+                <div class="chip" style="background: #91918a; color: #0b0b0a">
+                  <span>Muted</span><span class="hex">#91918A</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <!-- ============ 3 · DAYBREAK ============ -->
+        <section class="board" id="daybreak">
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>Product</span><span>Runtime</span><span>Docs</span><span>Blog</span></span>
+              <span class="navcta"><span>Sign in</span><span class="btn">Start free</span></span>
+            </nav>
+            <div class="hero">
+              <h1>Work through the night. Pick it up at dawn.</h1>
+              <p class="lede">
+                Nyte keeps long agent sessions alive across restarts, machines, and clients — so the
+                work you left running is still there in the morning.
+              </p>
+              <div class="cta-row">
+                <span class="btn">Start free</span>
+                <span class="cmd">curl -fsSL nyte.sh/install | sh</span>
+              </div>
+            </div>
+            <div class="horizon">
+              <pre class="moon-art">   ######**
+ #%%%%%##**=
+#%%%@@%%##*+=
+#%%@@@%%##*+=:
+ %%%%%##**+=:
+   ***++==:</pre>
+            </div>
+            <div class="shot">
+              <div class="shot-bar">
+                <span class="dot" style="background: #d9d3c7"></span>
+                <span class="dot" style="background: #d9d3c7"></span>
+                <span class="dot" style="background: #d9d3c7"></span>
+                <span style="margin-left: 14px">Nyte — refactor-parser</span>
+              </div>
+              <div class="shot-body" style="border-top: 0">
+                <div class="shot-side" style="line-height: 2.3">
+                  refactor parser<br />ship desktop<br />audit errors<br />nightly bench
+                </div>
+                <div class="shot-main">
+                  <div class="bubble" style="background: #eef1fa; color: #2f3a63">
+                    Resume the parser refactor from yesterday.
+                  </div>
+                  <div style="color: #6b6c74">
+                    ↳ replayed 412 events · 3 tool calls pending<br />↳ tests green in 8.2s
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="proof">
+              <div>
+                <h3 style="font-size: 30px; font-weight: 600">Never lose a turn</h3>
+                <p>Events land on disk before they reach the screen.</p>
+              </div>
+              <div>
+                <h3 style="font-size: 30px; font-weight: 600">Terminal or desktop</h3>
+                <p>The same session, the same kernel, either surface.</p>
+              </div>
+              <div>
+                <h3 style="font-size: 30px; font-weight: 600">Yours to host</h3>
+                <p>Local by default; move to a remote host when you need to.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="page">
+            <nav>
+              <span class="mark"></span>
+              <span class="wordmark">Nyte</span>
+              <span class="navlinks"><span>Product</span><span>Runtime</span><span>Docs</span><span>Blog</span></span>
+              <span class="navcta"><span>Sign in</span><span class="btn">Start free</span></span>
+            </nav>
+            <div class="page-head" style="text-align: center">
+              <p class="eyebrow" style="font-family: inherit; letter-spacing: 0.24em">How it works</p>
+              <h1 style="font-size: 72px; font-weight: 600; margin: 14px auto 0; max-width: 18ch">
+                Three moving parts, one event log.
+              </h1>
+            </div>
+            <div class="steps">
+              <div class="step">
+                <span class="num">01</span>
+                <div>
+                  <h3>The kernel records</h3>
+                  <p>
+                    Each prompt, tool call, and error is appended to a durable log before any client
+                    renders it.
+                  </p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="num">02</span>
+                <div>
+                  <h3>Clients replay</h3>
+                  <p>
+                    The terminal and desktop apps are views over that log. Open either one and the
+                    session rebuilds in milliseconds.
+                  </p>
+                </div>
+              </div>
+              <div class="step">
+                <span class="num">03</span>
+                <div>
+                  <h3>Hosts move</h3>
+                  <p>
+                    Run in-process on your laptop, or point the same session at a long-lived or
+                    serverless host over JSON and SSE.
+                  </p>
+                </div>
+              </div>
+              <div class="step" style="background: #2f3a63; border-color: #2f3a63; color: #fff">
+                <span class="num" style="color: #f2c14e">→</span>
+                <div>
+                  <h3 style="color: #fff">Try it tonight</h3>
+                  <p style="color: #c8d5f7">Free for solo use. No account needed to start.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <aside class="rail">
+            <div>
+              <h2>Type</h2>
+              <div class="type-row">
+                <div class="label">Display</div>
+                <div class="face" style="font-family: 'Avenir Next', sans-serif">Avenir Next</div>
+                <div class="meta">Demi Bold · −3.5% · sentence case</div>
+              </div>
+              <div class="type-row">
+                <div class="label">Body</div>
+                <div class="face" style="font-family: 'Avenir Next', sans-serif">
+                  Avenir Next Regular
+                </div>
+                <div class="meta">26/1.6 · warm grey</div>
+              </div>
+              <div class="type-row">
+                <div class="label">Numeric / mono</div>
+                <div class="face">SF Mono</div>
+                <div class="meta">Steps, commands, app UI</div>
+              </div>
+            </div>
+            <div>
+              <h2>Color</h2>
+              <div class="swatch" style="background: #f6f4ef; color: #17181c">
+                <span>Paper</span><span>#F6F4EF</span>
+              </div>
+              <div class="swatch" style="background: #2f3a63; color: #fff">
+                <span>Dusk</span><span>#2F3A63</span>
+              </div>
+              <div class="swatch" style="background: #17181c; color: #f6f4ef">
+                <span>Ink</span><span>#17181C</span>
+              </div>
+              <div class="chips">
+                <div class="chip" style="background: #f2c14e; color: #2a1f00">
+                  <span>Moon</span><span class="hex">#F2C14E</span>
+                </div>
+                <div class="chip" style="background: #c8d5f7; color: #17181c">
+                  <span>Cloud</span><span class="hex">#C8D5F7</span>
+                </div>
+                <div class="chip" style="background: #e0dbd1; color: #17181c">
+                  <span>Border</span><span class="hex">#E0DBD1</span>
+                </div>
+                <div class="chip" style="background: #6b6c74; color: #fff">
+                  <span>Muted</span><span class="hex">#6B6C74</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </section>
+      </div>
+    </div>
+
+    <script type="module">
+      const stage = document.querySelector(".stage")
+      const viewport = document.querySelector(".viewport")
+      const boards = document.querySelectorAll(".board")
+
+      const fit = () => {
+        const scale = viewport.clientWidth / 3840
+        stage.style.transform = `scale(${scale})`
+        viewport.style.height = `${2160 * scale}px`
+      }
+
+      for (const tab of document.querySelectorAll('[role="tab"]')) {
+        tab.addEventListener("click", () => {
+          for (const other of document.querySelectorAll('[role="tab"]')) {
+            other.setAttribute("aria-selected", String(other === tab))
+          }
+          for (const board of boards) {
+            board.dataset.active = String(board.id === tab.dataset.target)
+          }
+        })
+      }
+
+      addEventListener("resize", fit)
+      fit()
+    </script>
+  </body>
+</html>

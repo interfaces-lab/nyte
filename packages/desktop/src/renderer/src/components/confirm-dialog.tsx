@@ -4,6 +4,7 @@ import { useRef } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
+import { overlayRef } from "./overlay-occlusion.ts";
 import { Button } from "./ui.tsx";
 
 const styles = stylex.create({
@@ -88,7 +89,7 @@ export function ConfirmDialog({
       }}
     >
       <AlertDialog.Portal>
-        <AlertDialog.Backdrop {...stylex.props(styles.backdrop)} />
+        <AlertDialog.Backdrop ref={overlayRef} {...stylex.props(styles.backdrop)} />
         <AlertDialog.Popup
           initialFocus={cancelRef}
           finalFocus={returnFocusRef}

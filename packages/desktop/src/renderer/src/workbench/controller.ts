@@ -11,14 +11,14 @@ import type { Static } from "typebox";
 import { Value } from "typebox/value";
 
 export const WORKBENCH_WIDTH_DEFAULT = 500;
-export const WORKBENCH_WIDTH_MIN = 384;
+const WORKBENCH_WIDTH_MIN = 384;
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 export const WORKBENCH_STAGE_PANE_KEY = "stage";
 /** Read by the title bar to draw the column seam above the open panel. */
 export const WORKBENCH_ACTIVE_WIDTH_VARIABLE = "--nyte-active-workbench-width";
 
 export type WorkbenchTabId = "files" | "changes" | "browser" | "terminal" | "agents";
-export type WorkbenchScrollableTabId = "changes";
+type WorkbenchScrollableTabId = "changes";
 export type WorkbenchViewKey = string & { readonly __brand: "WorkbenchViewKey" };
 export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
@@ -49,7 +49,7 @@ export function workbenchScopeForTarget(
   }
 }
 
-export interface WorkbenchViewIdentity {
+interface WorkbenchViewIdentity {
   readonly key: WorkbenchViewKey;
   readonly paneKey: string;
   readonly target: WorkbenchTarget;
@@ -104,11 +104,11 @@ export function workbenchTabAvailable(scope: WorkbenchScope, tab: WorkbenchTabId
   }
 }
 
-export interface WorkbenchScrollState {
+interface WorkbenchScrollState {
   readonly changes: number;
 }
 
-export type WorkbenchWidthBounds =
+type WorkbenchWidthBounds =
   | { readonly kind: "docked"; readonly min: number; readonly max: number }
   | { readonly kind: "overlay"; readonly min: number; readonly max: number };
 
@@ -125,7 +125,7 @@ export interface WorkbenchViewState {
   readonly browserUrl: string | undefined;
 }
 
-export interface WorkbenchSnapshot {
+interface WorkbenchSnapshot {
   readonly views: ReadonlyMap<WorkbenchViewKey, WorkbenchViewState>;
 }
 
@@ -215,7 +215,7 @@ const persistedWorkbenchSnapshot = Type.Object(
   strict,
 );
 
-export type PersistedWorkbenchSnapshot = Static<typeof persistedWorkbenchSnapshot>;
+type PersistedWorkbenchSnapshot = Static<typeof persistedWorkbenchSnapshot>;
 
 export function activeWorkbenchTab(
   view: WorkbenchViewState,
@@ -244,7 +244,7 @@ export function workbenchTabLabel(tab: WorkbenchTabId): string {
   }
 }
 
-export function clampWorkbenchWidth(width: number): number {
+function clampWorkbenchWidth(width: number): number {
   return Number.isFinite(width)
     ? Math.max(WORKBENCH_WIDTH_MIN, Math.round(width))
     : WORKBENCH_WIDTH_DEFAULT;
@@ -565,9 +565,4 @@ export function useWorkbenchSnapshot(): WorkbenchSnapshot {
     workbenchController.getSnapshot,
     workbenchController.getSnapshot,
   );
-}
-
-export function useWorkbenchView(key: WorkbenchViewKey): WorkbenchViewState {
-  const snapshot = useWorkbenchSnapshot();
-  return snapshot.views.get(key) ?? DEFAULT_VIEW;
 }

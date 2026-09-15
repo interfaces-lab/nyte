@@ -15,7 +15,7 @@ import { t } from "../theme/vars.stylex.ts";
 type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
   Pick<WorkspaceSearchMatch, "line" | "column" | "length">;
 
-export interface WorkspaceSearchProps {
+interface WorkspaceSearchProps {
   readonly onOpen: (location: SearchLocation) => void;
   readonly drafts?: WorkspaceSearchInput["drafts"];
   readonly active?: boolean;
@@ -373,7 +373,6 @@ export function WorkspaceSearchResults({
     );
   }
   const result = state.result;
-  const skipped = result.skipped.binary + result.skipped.tooLarge + result.skipped.unreadable;
   return (
     <div aria-label="Search results" {...props(styles.results)}>
       <div role="status" {...props(styles.status)}>
@@ -383,8 +382,6 @@ export function WorkspaceSearchResults({
             : "No matches found."
           : `${String(result.matchCount)} ${result.matchCount === 1 ? "match" : "matches"} in ${String(result.files.length)} ${result.files.length === 1 ? "file" : "files"}.`}
         {result.truncated && " Search limit reached. Narrow your query or filters."}
-        {skipped > 0 &&
-          ` ${String(skipped)} ${skipped === 1 ? "file" : "files"} skipped: binary, too large, or unreadable.`}
       </div>
       {result.files.map((file) => (
         <section key={file.path} aria-label={file.displayPath}>

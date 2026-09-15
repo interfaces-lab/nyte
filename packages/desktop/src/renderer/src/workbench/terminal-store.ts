@@ -7,17 +7,15 @@ import { nyte } from "../nyte.ts";
 
 export type CommandJobInfo = Extract<JobInfo, { readonly kind: "command" }>;
 
-export type ShellTerminalState =
+type ShellTerminalState =
   | { readonly kind: "starting" }
   | { readonly kind: "running" }
   | { readonly kind: "exited"; readonly exitCode: number }
   | { readonly kind: "failed"; readonly message: string };
 
-export type JobTerminalState = { readonly kind: CommandJobInfo["state"] };
+type JobTerminalState = { readonly kind: CommandJobInfo["state"] };
 
-export type TerminalState = ShellTerminalState | JobTerminalState;
-
-export type TerminalRenderingState =
+type TerminalRenderingState =
   | { readonly kind: "ready" }
   | { readonly kind: "failed"; readonly message: string };
 
@@ -28,12 +26,12 @@ interface TerminalTabFields {
   readonly cwd: string;
 }
 
-export interface ShellTerminalTab extends TerminalTabFields {
+interface ShellTerminalTab extends TerminalTabFields {
   readonly source: { readonly kind: "shell" };
   readonly state: ShellTerminalState;
 }
 
-export interface JobTerminalTab extends TerminalTabFields {
+interface JobTerminalTab extends TerminalTabFields {
   readonly source: {
     readonly kind: "job";
     readonly sessionId: SessionId;
@@ -96,7 +94,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-export interface OwnerTerminals {
+interface OwnerTerminals {
   readonly tabs: readonly TerminalTab[];
   readonly activeId: string | null;
 }

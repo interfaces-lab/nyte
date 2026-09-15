@@ -18,6 +18,7 @@ function page(url: string): BrowserSurfaceState {
     blocking: false,
     blocked: 0,
     error: undefined,
+    agentHolders: 0,
   };
 }
 

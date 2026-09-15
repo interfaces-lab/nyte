@@ -210,13 +210,13 @@ function StageContent({
   return <CustomizeSurface sessionId={shellStage.sessionId} />;
 }
 
-export const rootRoute = createRootRoute();
+const rootRoute = createRootRoute();
 
 /**
  * The stage route. `workspace` is undefined until a folder opens; the stage
  * stays mounted either way and only its data binding changes.
  */
-export const workspaceRoute = createRoute({
+const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "_workspace",
   component: WorkspaceStage,
@@ -224,7 +224,7 @@ export const workspaceRoute = createRoute({
 
 let startupDestinationPending = true;
 
-export const indexRoute = createRoute({
+const indexRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/",
   beforeLoad: async () => {
@@ -257,7 +257,7 @@ function ThreadRouteError(): ReactElement {
   );
 }
 
-export const threadRoute = createRoute({
+const threadRoute = createRoute({
   getParentRoute: () => workspaceRoute,
   path: "/session/$sessionId",
   params: {

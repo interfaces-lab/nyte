@@ -47,7 +47,7 @@ function isSlashCommandNameCharacter(character: string): boolean {
 }
 
 /** Parse one slash command while preserving spaces inside its argument. */
-export function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
+function parseSlashCommand(input: string): ParsedSlashCommand | undefined {
   const value = input.trim();
   const first = value[1];
   if (
@@ -93,7 +93,7 @@ export function promptDraft(text: string): string {
   return text.startsWith("!") ? ` ${text}` : text;
 }
 
-export type SlashKind = "action" | "setting" | "prompt";
+type SlashKind = "action" | "setting" | "prompt";
 
 export interface SlashCommand {
   readonly name: string;
@@ -127,7 +127,7 @@ export const SLASH_COMMANDS = [
   { name: "skills", description: "Browse skills", kind: "action" },
 ] as const satisfies readonly SlashCommand[];
 
-export type BuiltinSlashCommand = (typeof SLASH_COMMANDS)[number];
+type BuiltinSlashCommand = (typeof SLASH_COMMANDS)[number];
 export type BuiltinSlashName = BuiltinSlashCommand["name"];
 
 function aliasesFor(command: SlashCommand): readonly string[] {
@@ -192,10 +192,7 @@ function prefixLength(command: SlashCommand, query: string): number | undefined 
  * the query is a prefix of, shortest first, then fuzzy name matches, and only
  * then descriptions. An empty query lists the whole namespace A–Z.
  */
-export function commandSuggestions(
-  query: string,
-  commands: readonly SlashCommand[],
-): SlashCommand[] {
+function commandSuggestions(query: string, commands: readonly SlashCommand[]): SlashCommand[] {
   let sorted = sortedCommands.get(commands);
   if (sorted === undefined) {
     sorted = commands.toSorted((left, right) => left.name.localeCompare(right.name));
@@ -242,7 +239,7 @@ function opensDraft(text: string, start: number): boolean {
 }
 
 /** The `/token` the cursor is inside, with the commands it matches. */
-export interface SlashCompletion {
+interface SlashCompletion {
   /** The token an accepted command replaces. */
   readonly start: number;
   readonly end: number;
@@ -306,7 +303,7 @@ export function expandInlineSkills(text: string, skills: ReadonlyMap<string, Ski
   return expanded + text.slice(cursor);
 }
 
-export interface SkillInvocation {
+interface SkillInvocation {
   readonly source: string;
   readonly name: string;
   readonly path: string;
@@ -348,7 +345,7 @@ export function slashCommandLabel(command: SlashCommand): string {
   return `/${command.name}`;
 }
 
-export type SlashAcceptance =
+type SlashAcceptance =
   | { readonly action: "execute" }
   | { readonly action: "complete"; readonly token: string };
 

@@ -208,16 +208,17 @@ export function UserMessageView({
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
-    try {
-      const result = await readComposerImageAttachments(files);
-      patchEdit((current) => ({
-        ...current,
-        attachments: [...current.attachments, ...result.attachments],
-        attachmentError: result.error,
-      }));
-    } finally {
-      patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 }));
-    }
+    return readComposerImageAttachments(files)
+      .then((result) => {
+        patchEdit((current) => ({
+          ...current,
+          attachments: [...current.attachments, ...result.attachments],
+          attachmentError: result.error,
+        }));
+      })
+      .finally(() =>
+        patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads - 1 })),
+      );
   };
 
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
@@ -353,13 +354,7 @@ export function UserMessageView({
   );
 }
 
-export function ReasoningBlock({
-  text,
-  streaming,
-}: {
-  text: string;
-  streaming: boolean;
-}): ReactElement {
+function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }): ReactElement {
   const [open, setOpen] = useState<boolean | undefined>();
   const expanded = open ?? streaming;
   return (
@@ -497,7 +492,7 @@ function TurnChangesCard({
   );
 }
 
-export function TurnPartView({
+function TurnPartView({
   part,
   liveTools,
   cwd,

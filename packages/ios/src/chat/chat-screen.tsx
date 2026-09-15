@@ -54,7 +54,7 @@ export function ChatScreen({
   prefill,
 }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
-  // The transparent native header overlays the list; pad past its compact height.
+  // The glass header floats over the list; start the transcript below it.
   const headerHeight = insets.top + 44;
   const window = useWindowDimensions();
   // The list spans the window; rows and the composer share one measured column.
@@ -72,6 +72,8 @@ export function ChatScreen({
   const running = state.run !== undefined && !isTerminalPhase(state.run.phase);
   const stopping = state.run?.abortRequested === true;
   const waiting = waitingCall(state);
+  // The jump pill doubles as the way back to an off-screen question.
+  const answerable = waiting !== undefined;
   const { contentInsetEndAdjustment, onComposerLayout } = useKeyboardChatComposerInset(
     listRef,
     composerRef,
@@ -138,7 +140,7 @@ export function ChatScreen({
   );
 
   return (
-    <html.div data-layoutconformance="strict" style={styles.screen}>
+    <html.div style={styles.screen}>
       <View
         style={{ flexGrow: 1, flexBasis: 0, minHeight: 0 }}
         onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
@@ -216,9 +218,10 @@ export function ChatScreen({
         {!atEnd ? (
           <html.div style={styles.jumpRow}>
             <GlassButton
-              label="Latest"
+              label={answerable ? "Answer question" : "Latest"}
               systemImage="arrow.down"
-              iconOnly
+              iconOnly={!answerable}
+              prominent={answerable}
               onPress={() => {
                 setFollowing(true);
                 void scrollMessageToEnd({ animated: false, closeKeyboard: false });
@@ -235,6 +238,9 @@ export function ChatScreen({
           <Composer
             target={{
               kind: "session",
+              sessionId: state.info.sessionId,
+              head: state.head,
+              heads: state.info.heads.map((entry) => entry.head),
               sending,
               running,
               stopping,

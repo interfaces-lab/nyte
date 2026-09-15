@@ -203,19 +203,33 @@ export function createRunners(input: {
         );
       }
     };
+    const modelLabel = (model: NonNullable<RunConfig["model"]>): string =>
+      model.provider === undefined ? model.id : `${model.provider}/${model.id}`;
     // A resumed child must keep its admitted model even if this host's catalog lost it.
     // Preserve the reference while landing; fail inside the turn so failure settles durably.
     const missingChildModel = (config: RunConfig): string | undefined => {
       if (pooled.parent === undefined) return undefined;
       if (config.model === undefined) return "Subagent requires an exact model.";
       if (input.resolveModel(config.model) !== undefined) return undefined;
-      return `Subagent model is unavailable: ${config.model.provider}/${config.model.id}. No replacement was used.`;
+      return `Subagent model is unavailable: ${modelLabel(config.model)}. No replacement was used.`;
+    };
+    // A selected model is a choice, not a hint: a response never arrives from the
+    // host default under the selection's name. Tools are not gated by this, since
+    // they carry out calls a resolvable model already made; dropping them would
+    // leave those calls without results.
+    const unavailableModel = (config: RunConfig): string | undefined => {
+      const child = missingChildModel(config);
+      if (child !== undefined) return child;
+      if (config.model === undefined || input.resolveModel(config.model) !== undefined) {
+        return undefined;
+      }
+      return `Selected model is unavailable: ${modelLabel(config.model)}. Choose an available model or connect its provider.`;
     };
     const turn: typeof bound.turn = {
       async respond(input) {
         await pool.pluginsSettled();
         await requireRunnerLocation();
-        const error = missingChildModel(input.run.config);
+        const error = unavailableModel(input.run.config);
         if (error !== undefined) {
           const selected = input.run.config.model;
           return {
@@ -251,9 +265,9 @@ export function createRunners(input: {
         telemetry: options.telemetry,
         signal,
         steps: (run) =>
-          missingChildModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
+          unavailableModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
         resolveConfig: (config) =>
-          missingChildModel(config) === undefined ? bound.resolveConfig(config) : config,
+          unavailableModel(config) === undefined ? bound.resolveConfig(config) : config,
         beforeStep: async () => {
           if (pooled.retired || pooled.relocating)
             throw new Error("Session is unavailable for execution");

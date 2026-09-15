@@ -12,7 +12,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
 
 type Glyph = ComponentType<CentralIconBaseProps>;
-export type IconVariant = "outlined" | "filled";
+type IconVariant = "outlined" | "filled";
 
 type GlyphPair = Readonly<Record<IconVariant, Glyph>>;
 
@@ -125,6 +125,7 @@ const GLYPHS = {
   trash: pair(Outlined.IconTrashCan, Filled.IconTrashCan),
   trending: pair(Outlined.IconTrending4, Filled.IconTrending4),
   typescript: pair(Outlined.IconTypescript, Filled.IconTypescript),
+  unarchive: pair(Outlined.IconUnarchiv, Filled.IconUnarchiv),
   unpin: pair(Outlined.IconUnpin, Filled.IconUnpin),
   user: pair(Outlined.IconUser, Filled.IconUser),
   "user-key": pair(Outlined.IconUserKey, Filled.IconUserKey),

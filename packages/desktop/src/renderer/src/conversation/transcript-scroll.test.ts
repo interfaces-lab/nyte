@@ -4,9 +4,7 @@ import {
   activeStickyCandidate,
   initialTranscriptOffset,
   isBottomPinned,
-  overscrollReserve,
-  remainingOverscroll,
-  shouldAdjustScrollForResize,
+  transcriptPaddingEnd,
 } from "./transcript-scroll.ts";
 
 describe("activeStickyCandidate", () => {
@@ -43,32 +41,15 @@ describe("activeStickyCandidate", () => {
   });
 });
 
-describe("overscrollReserve", () => {
-  test("fills the viewport around the prompt, dock, and paddings", () => {
-    assert.equal(
-      overscrollReserve({ viewportHeight: 800, rowHeight: 76, dockHeight: 120 }),
-      800 - 76 - 120 - 16 - 8,
-    );
+describe("transcriptPaddingEnd", () => {
+  test("keeps a fifth of the scrollport as slack, within its bounds", () => {
+    assert.equal(transcriptPaddingEnd(800), 8 + 160);
+    assert.equal(transcriptPaddingEnd(300), 8 + 80);
+    assert.equal(transcriptPaddingEnd(2000), 8 + 240);
   });
 
-  test("never goes negative for a prompt taller than the viewport", () => {
-    assert.equal(overscrollReserve({ viewportHeight: 400, rowHeight: 600, dockHeight: 120 }), 0);
-  });
-});
-
-describe("remainingOverscroll", () => {
-  test("shrinks one pixel per pixel of reply growth", () => {
-    assert.equal(remainingOverscroll({ initial: 500, baseline: 1000, content: 1000 }), 500);
-    assert.equal(remainingOverscroll({ initial: 500, baseline: 1000, content: 1200 }), 300);
-  });
-
-  test("bottoms out at zero once the reply fills the viewport", () => {
-    assert.equal(remainingOverscroll({ initial: 500, baseline: 1000, content: 1500 }), 0);
-    assert.equal(remainingOverscroll({ initial: 500, baseline: 1000, content: 4000 }), 0);
-  });
-
-  test("does not grow past the reservation when content shrinks", () => {
-    assert.equal(remainingOverscroll({ initial: 500, baseline: 1000, content: 900 }), 500);
+  test("keeps the padding alone before the scrollport has a height", () => {
+    assert.equal(transcriptPaddingEnd(0), 8);
   });
 });
 
@@ -79,69 +60,10 @@ describe("isBottomPinned", () => {
   });
 });
 
-describe("shouldAdjustScrollForResize", () => {
-  test("corrects a first estimate for any row starting above the fold", () => {
-    assert.equal(
-      shouldAdjustScrollForResize({
-        start: 100,
-        end: 700,
-        firstMeasure: true,
-        scrollTop: 500,
-        scrollingBackward: false,
-      }),
-      true,
-    );
-    assert.equal(
-      shouldAdjustScrollForResize({
-        start: 600,
-        end: 700,
-        firstMeasure: true,
-        scrollTop: 500,
-        scrollingBackward: false,
-      }),
-      false,
-    );
-  });
-
-  test("leaves a row spanning the fold alone when it grows again", () => {
-    assert.equal(
-      shouldAdjustScrollForResize({
-        start: 100,
-        end: 700,
-        firstMeasure: false,
-        scrollTop: 500,
-        scrollingBackward: false,
-      }),
-      false,
-    );
-    assert.equal(
-      shouldAdjustScrollForResize({
-        start: 100,
-        end: 400,
-        firstMeasure: false,
-        scrollTop: 500,
-        scrollingBackward: false,
-      }),
-      true,
-    );
-  });
-
-  test("skips corrections while scrolling up", () => {
-    assert.equal(
-      shouldAdjustScrollForResize({
-        start: 100,
-        end: 400,
-        firstMeasure: false,
-        scrollTop: 500,
-        scrollingBackward: true,
-      }),
-      false,
-    );
-  });
-});
-
 describe("initialTranscriptOffset", () => {
-  const layout = { paddingStart: 16, paddingEnd: 8, viewportHeight: 500 };
+  const layout = { viewportHeight: 500 };
+  // 16 top, 8 bottom, and the 100px of slack a 500px scrollport carries.
+  const padding = 16 + transcriptPaddingEnd(500);
 
   test("a reader away from the bottom resumes at their offset", () => {
     assert.equal(
@@ -161,7 +83,7 @@ describe("initialTranscriptOffset", () => {
         sizes: [100, 900, 300],
         scroll: { top: 0, bottomPinned: true },
       }),
-      1324 - 500,
+      1300 + padding - 500,
     );
   });
 

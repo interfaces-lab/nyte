@@ -20,7 +20,7 @@ interface PendingChange {
 }
 
 /** Closing a pane returns a guarded restoration, so Undo cannot replace a newer selection. */
-export type HideSession = (sessionId: SessionId) => () => void;
+type HideSession = (sessionId: SessionId) => () => void;
 
 function applyChange(session: SessionInfo, change: SessionChange): SessionInfo | null {
   switch (change.kind) {

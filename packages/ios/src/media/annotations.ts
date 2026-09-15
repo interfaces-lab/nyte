@@ -13,7 +13,7 @@ export type AnnotationPoint = {
   comment: string;
 };
 
-export type ImageAnnotation = {
+type ImageAnnotation = {
   image: StagedImage;
   points: AnnotationPoint[];
 };

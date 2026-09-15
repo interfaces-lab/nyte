@@ -88,8 +88,25 @@ const ACTIVITY = new Map([
   ["edit", "Editing files"],
   ["write", "Editing files"],
   ["task", "Waiting for subagent"],
+  ["wait_task", "Waiting for subagent"],
   ["websearch", "Searching the web"],
 ]);
+
+/**
+ * Tools that hand work to a child session. `task` starts one; `wait_task`
+ * joins one that a previous turn started. Both mean the same thing to a
+ * reader, so both name the wait and neither belongs inside a work group.
+ */
+export type SubagentToolKind = "spawn" | "await";
+
+const SUBAGENT_TOOLS = new Map<string, SubagentToolKind>([
+  ["task", "spawn"],
+  ["wait_task", "await"],
+]);
+
+export function subagentToolKind(name: string): SubagentToolKind | undefined {
+  return SUBAGENT_TOOLS.get(name);
+}
 
 /**
  * The status for the tools currently running, oldest first. Subagent waits
@@ -99,7 +116,7 @@ const ACTIVITY = new Map([
 export function runActivityLabel(runningToolNames: readonly string[]): string | undefined {
   const newest = runningToolNames.at(-1);
   if (newest === undefined) return undefined;
-  const subagents = runningToolNames.filter((name) => name === "task").length;
+  const subagents = runningToolNames.filter((name) => subagentToolKind(name) !== undefined).length;
   if (subagents > 1) return "Waiting for subagents";
   if (subagents === 1) return ACTIVITY.get("task");
   return ACTIVITY.get(newest);

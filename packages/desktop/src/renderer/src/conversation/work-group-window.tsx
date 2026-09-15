@@ -8,7 +8,25 @@ import type { WorkGroupEntries } from "./work-group-entries.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 
 const ROW_ESTIMATE = 24;
+
+/**
+ * Measured heights outlive the transcript unmounting a group that scrolled out
+ * of view. Nothing here knows which session a group belongs to, so the cache is
+ * process-wide: it keeps only the most recently measured groups, and a restore
+ * is accepted only when the snapshot names the rows the group actually holds.
+ */
+const MAX_CACHED_GROUPS = 64;
 const measurements = new Map<string, VirtualItem[]>();
+
+function rememberMeasurements(cacheKey: string, snapshot: VirtualItem[]): void {
+  // Re-inserting moves the group to the newest end of the Map's insertion order.
+  measurements.delete(cacheKey);
+  measurements.set(cacheKey, snapshot);
+  for (const oldest of measurements.keys()) {
+    if (measurements.size <= MAX_CACHED_GROUPS) break;
+    measurements.delete(oldest);
+  }
+}
 
 export function workGroupScrollport(viewport: HTMLElement): HTMLElement {
   const outer = viewport.parentElement?.closest("[data-nyte-scrollport]");
@@ -46,10 +64,21 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
   renderEntry: (entry: Entry) => ReactNode;
 }) {
   const planeRef = useRef<HTMLDivElement>(null);
-  // Heights measured under another density describe different rows.
-  const cacheKey = groupKey === undefined ? undefined : `${density}:${groupKey}`;
+  // Heights measured under another density describe different rows. A blank
+  // group key names no group: a provider can report a tool call with an empty id.
+  const cacheKey = groupKey === undefined || groupKey === "" ? undefined : `${density}:${groupKey}`;
   const [restore] = useState(() => {
-    const cached = cacheKey === undefined ? [] : (measurements.get(cacheKey) ?? []);
+    const snapshot = cacheKey === undefined ? undefined : measurements.get(cacheKey);
+    // Row keys are the virtualizer's identity. A snapshot that names rows this
+    // group does not hold was measured by another group under a colliding key,
+    // since group keys come from provider call ids that repeat across chats.
+    const cached =
+      snapshot !== undefined &&
+      snapshot.every(
+        (item) => item.index >= entries.count || item.key === entries.keyAt(item.index),
+      )
+        ? snapshot
+        : [];
     const sizes = new Map(cached.map((item) => [item.key, item.size]));
     let total = 0;
     for (let index = 0; index < entries.count; index += 1) {
@@ -188,7 +217,7 @@ export function WorkGroupWindow<Entry extends { readonly key: string }>({
   });
   useLayoutEffect(
     () => () => {
-      if (cacheKey !== undefined) measurements.set(cacheKey, virtualizer.takeSnapshot());
+      if (cacheKey !== undefined) rememberMeasurements(cacheKey, virtualizer.takeSnapshot());
     },
     [cacheKey, virtualizer],
   );

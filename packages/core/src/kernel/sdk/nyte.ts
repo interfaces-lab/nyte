@@ -14,6 +14,7 @@ import { cancel, pending, redeliver, submit } from "../queue.ts";
 import { createHead, deleteHead, fastForward, moveHead } from "../stacks.ts";
 import { navigationTarget, transcriptFromCommits } from "../views/index.ts";
 import { toJsonValue } from "../json.ts";
+import { normalizeImageContent } from "../../utils/image.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
@@ -283,9 +284,14 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const { session } = pooled;
         const head = input.head ?? MAIN;
         const lane = input.lane === undefined ? defaultLane() : servedLane(input.lane);
+        // Clients attach whatever the OS handed them; bound it before it lands.
+        const content =
+          typeof input.content === "string"
+            ? input.content
+            : [...(await normalizeImageContent(input.content))];
         const message = {
           kind: "message",
-          message: { role: "user", content: input.content, timestamp: Date.now() },
+          message: { role: "user", content, timestamp: Date.now() },
         } satisfies CommitBody;
         const submission = attributed(
           {
@@ -317,6 +323,10 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       },
       async redeliver(input) {
         pool.alive();
+        const content =
+          input.content === undefined || typeof input.content === "string"
+            ? input.content
+            : [...(await normalizeImageContent(input.content))];
         return redeliver(
           (await pool.open(input.sessionId)).session,
           attributed(
@@ -324,7 +334,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
               head: input.head ?? MAIN,
               change: input.change,
               lane: servedLane(input.lane),
-              content: input.content,
+              content,
               before: input.before,
             },
             options.actor,

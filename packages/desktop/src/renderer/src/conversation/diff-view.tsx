@@ -5,15 +5,16 @@
  * the shadow tree go through `unsafeCSS`.
  */
 import * as stylex from "@stylexjs/stylex";
-import type { FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
-import { PatchDiff } from "@pierre/diffs/react";
-import { memo } from "react";
+import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
+import { parsePatchFiles } from "@pierre/diffs";
+import { FileDiff } from "@pierre/diffs/react";
+import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { ParsedDiff } from "./tool-detail.ts";
 
-export type DiffViewVariant = "inline" | "workbench" | "stack";
+type DiffViewVariant = "inline" | "workbench" | "stack";
 
 const SHADOW_CSS = `
 [data-line-type="context"],
@@ -86,6 +87,37 @@ const PATCH_STACK = { ...PATCH_OPTIONS, overflow: "wrap" } satisfies FileDiffOpt
   undefined
 >;
 
+const rawStyles = stylex.create({
+  raw: {
+    margin: 0,
+    padding: "8px 12px",
+    overflowX: "auto",
+    whiteSpace: "pre",
+    fontFamily: "var(--nyte-font-family-mono, monospace)",
+    fontSize: "12px",
+    lineHeight: "18px",
+  },
+});
+
+type RenderablePatch =
+  | { readonly kind: "files"; readonly files: readonly FileDiffMetadata[] }
+  | { readonly kind: "raw"; readonly text: string };
+
+/**
+ * A patch is external input: one tool result can describe several files, and one
+ * file edited twice in a turn arrives as two diffs under the same path. Parse the
+ * whole thing and render every entry, because the singular components reject
+ * anything but one file and there is no error boundary above this to catch it.
+ */
+function renderablePatch(patch: string): RenderablePatch {
+  try {
+    const files = parsePatchFiles(patch).flatMap((parsed) => parsed.files);
+    return files.length > 0 ? { kind: "files", files } : { kind: "raw", text: patch };
+  } catch {
+    return { kind: "raw", text: patch };
+  }
+}
+
 export const DiffView = memo(function DiffView({
   path,
   label,
@@ -100,6 +132,7 @@ export const DiffView = memo(function DiffView({
   const headed = variant === "workbench";
   const stacked = variant === "stack";
   const appearance = useAppearanceSettings();
+  const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
 
   return (
     <div
@@ -133,15 +166,23 @@ export const DiffView = memo(function DiffView({
               : diffStyles.bodyInline,
         )}
       >
-        <PatchDiff
-          patch={diff.patch}
-          options={{
-            ...(stacked ? PATCH_STACK : PATCH_OPTIONS),
-            themeType: appearance.theme,
-          }}
-          className={stylex.props(diffStyles.patch).className}
-          disableWorkerPool
-        />
+        {renderable.kind === "raw" ? (
+          <pre {...stylex.props(rawStyles.raw)}>{renderable.text}</pre>
+        ) : (
+          // A path can repeat within one patch, so it cannot key these on its own.
+          renderable.files.map((fileDiff, index) => (
+            <FileDiff
+              key={`${String(index)}:${fileDiff.name ?? path}`}
+              fileDiff={fileDiff}
+              options={{
+                ...(stacked ? PATCH_STACK : PATCH_OPTIONS),
+                themeType: appearance.theme,
+              }}
+              className={stylex.props(diffStyles.patch).className}
+              disableWorkerPool
+            />
+          ))
+        )}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@
  */
 
 /** Sub-pixel layout must never count as scrolled away. */
-export const FOLLOW_SLACK_PX = 5;
+const FOLLOW_SLACK_PX = 5;
 
 /** Quiet spell after the reader's last input before following resumes. */
 export const FOLLOW_RESUME_MS = 10_000;
@@ -17,9 +17,9 @@ export interface ScrollMetrics {
   readonly scrollHeight: number;
 }
 
-export type FollowWindow = "preview" | "opened";
+type FollowWindow = "preview" | "opened";
 
-export interface FollowStep {
+interface FollowStep {
   readonly paused: boolean;
   readonly resumeTimer: "arm" | "clear";
 }

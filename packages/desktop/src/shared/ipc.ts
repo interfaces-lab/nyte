@@ -133,6 +133,7 @@ export const HOST_OPERATION_PATHS = [
   "host.browser.menu",
   "host.browser.perform",
   "host.browser.close",
+  "host.browser.captureFrame",
   "host.terminal.create",
   "host.terminal.write",
   "host.terminal.resize",
@@ -214,17 +215,31 @@ export type ServerConnectOutcome =
   | { readonly kind: "failed"; readonly message: string };
 
 /**
+ * How far a share reaches. `simulator` binds loopback, so only a simulator on
+ * this Mac can open it. `tailnet` binds this machine's Tailscale address, so
+ * the user's own signed-in devices reach it over cellular or any network,
+ * and nothing on the local wifi can.
+ */
+export type MobileShareReach = "simulator" | "tailnet";
+
+/** Why a tailnet share is not offered, so the UI can say what to fix. */
+export type TailnetAvailability =
+  | { readonly kind: "ready"; readonly ip: string; readonly name: string | undefined }
+  | { readonly kind: "unavailable"; readonly state: string }
+  | { readonly kind: "missing" };
+
+/**
  * The local store this desktop is serving to the iOS app, frozen at the target
- * selected when sharing started. The listener binds 127.0.0.1 only, so the
- * address reaches a simulator on this Mac and nothing else. The token lives
- * for this share alone; stopping discards it.
+ * selected when sharing started. The token lives for this share alone;
+ * stopping discards it.
  */
 export type MobileShareState =
-  | { readonly kind: "off" }
+  | { readonly kind: "off"; readonly tailnet: TailnetAvailability }
   | {
       readonly kind: "sharing";
       readonly address: string;
       readonly token: string;
+      readonly reach: MobileShareReach;
       readonly target:
         | { readonly kind: "home" }
         | { readonly kind: "project"; readonly workspace: WorkspaceInfo };
@@ -517,6 +532,8 @@ export interface BrowserSurfaceState {
   /** Requests blocked since the current page started loading. */
   readonly blocked: number;
   readonly error: { readonly code: number; readonly description: string } | undefined;
+  /** Number of agent (session) holders currently retaining this surface. */
+  readonly agentHolders: number;
 }
 
 export const BROWSER_ACTIONS = [
@@ -569,7 +586,13 @@ export type HostEvent =
   | { kind: "mobile_share_changed" }
   | { kind: "status"; message: string }
   | { kind: "browser_changed"; surface: string; state: BrowserSurfaceState }
-  | { kind: "browser_download_refused"; surface: string; url: string };
+  | { kind: "browser_download_refused"; surface: string; url: string }
+  | {
+      kind: "browser_agent_opened";
+      surface: string;
+      url: string;
+      state: BrowserSurfaceState;
+    };
 
 // ---------------------------------------------------------------------------
 // the renderer-facing bridge, the SDK interfaces verbatim
@@ -694,8 +717,8 @@ export interface HostBridge {
   };
   mobile: {
     state(): Promise<MobileShareState>;
-    /** Serve the selected local target on loopback; a later folder change does not move the share. */
-    start(): Promise<MobileShareState>;
+    /** Serve the selected local target; a later folder change does not move the share. */
+    start(input: { reach: MobileShareReach }): Promise<MobileShareState>;
     /** Close the listener and its streams. Work a session already accepted continues. */
     stop(): Promise<void>;
   };
@@ -710,7 +733,11 @@ export interface HostBridge {
     close(input: { id: string }): Promise<void>;
   };
   browser: {
-    open(input: { surface: string; url: string }): Promise<BrowserSurfaceState>;
+    open(input: {
+      surface: string;
+      url: string;
+      owner?: { kind: "home" } | { kind: "project"; path: string };
+    }): Promise<BrowserSurfaceState>;
     navigate(input: { surface: string; action: BrowserNavigationAction }): Promise<void>;
     menu(input: {
       surface: string;
@@ -720,6 +747,11 @@ export interface HostBridge {
     }): Promise<BrowserMenuAction | undefined>;
     perform(input: { surface: string; action: BrowserAction }): Promise<void>;
     close(input: { surface: string }): Promise<void>;
+    /**
+     * The page's current pixels as a data URL, captured without showing the
+     * view. The panel paints it while an overlay forces the page to hide.
+     */
+    captureFrame(input: { surface: string }): Promise<string | undefined>;
     setBounds(message: BrowserBoundsMessage): void;
   };
   onEvent(listener: (event: HostEvent) => void): Disposer;
@@ -817,6 +849,7 @@ export interface CallMethodByPath {
   readonly "host.browser.menu": NyteBridge["host"]["browser"]["menu"];
   readonly "host.browser.perform": NyteBridge["host"]["browser"]["perform"];
   readonly "host.browser.close": NyteBridge["host"]["browser"]["close"];
+  readonly "host.browser.captureFrame": NyteBridge["host"]["browser"]["captureFrame"];
   readonly "host.terminal.create": NyteBridge["host"]["terminal"]["create"];
   readonly "host.terminal.write": NyteBridge["host"]["terminal"]["write"];
   readonly "host.terminal.resize": NyteBridge["host"]["terminal"]["resize"];

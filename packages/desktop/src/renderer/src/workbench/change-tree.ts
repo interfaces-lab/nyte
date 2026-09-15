@@ -4,13 +4,13 @@
  * narrow column keeps the basename and +/- readable.
  */
 
-export interface ChangeFileGroup {
+interface ChangeFileGroup {
   readonly path: string;
   readonly label: string;
   readonly files: readonly string[];
 }
 
-export interface ChangeTreeVisibleRow {
+interface ChangeTreeVisibleRow {
   readonly kind: "directory" | "file";
   readonly path: string;
   readonly label: string;

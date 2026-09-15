@@ -34,7 +34,7 @@ const result: WorkspaceSearchResult = {
   ],
   matchCount: 3,
   truncated: false,
-  skipped: { binary: 0, tooLarge: 0, unreadable: 0 },
+  skipped: null,
 };
 
 test("search starts idle with named matching controls and no replace or ignore override", () => {
@@ -171,14 +171,15 @@ test("idle, loading and completed empty states make different announcements", ()
   assert.doesNotMatch(empty, /Searching…/);
 });
 
-test("partial results and skipped files never claim a complete workspace search", () => {
+test("partial results never claim a complete workspace search", () => {
   const html = renderResults({
     kind: "ready",
-    result: { ...result, truncated: true, skipped: { binary: 2, tooLarge: 1, unreadable: 1 } },
+    result: { ...result, truncated: true },
   });
   assert.match(html, /3 matches in 2 files/);
   assert.match(html, /Search limit reached. Narrow your query or filters/);
-  assert.match(html, /4 files skipped: binary, too large, or unreadable/);
+  // ripgrep cannot count what it skipped, so the panel never claims a number.
+  assert.doesNotMatch(html, /files skipped/);
   assert.match(html, /<mark[^>]*>Hello<\/mark>/);
   const empty = renderResults({
     kind: "ready",

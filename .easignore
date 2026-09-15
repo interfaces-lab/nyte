@@ -1,0 +1,57 @@
+# What EAS Build uploads. This file REPLACES .gitignore for the build archive,
+# so it repeats those patterns as well as adding its own. Anything dropped from
+# here starts being uploaded again, including Pods and node_modules.
+#
+# Workspace package directories are deliberately NOT excluded. pnpm-lock.yaml
+# lists all eighteen as importers, and a frozen-lockfile install fails when one
+# is missing. The app icon also resolves to packages/desktop/build/icon.png.
+
+# --- Mirrors the repository's .gitignore files ---
+node_modules/
+dist/
+/bin/
+.nyte/
+.turbo/
+.DS_Store
+.vercel
+.wrangler/
+.env*
+__pycache__/
+*.pyc
+.uji/
+
+# packages/desktop
+packages/desktop/out/
+packages/desktop/resources/adblock.bin
+packages/desktop/benchmark/results/
+*.log*
+
+# packages/docs
+packages/docs/.source/
+packages/docs/.next/
+*.tsbuildinfo
+packages/docs/next-env.d.ts
+
+# packages/ios: regenerated on the build worker by prebuild and pod install.
+packages/ios/.expo/
+packages/ios/ios/
+packages/ios/android/
+packages/ios/.voltra/
+packages/ios/build/
+
+# --- Not needed to build the app ---
+
+# Design and brand scratch output: 189 MB of the repository's 209 MB of tracked
+# files, and no part of the app bundle.
+output/
+
+# Repository tooling with no role in a Metro bundle or a native build.
+.github/
+.pnpm-store/
+docs/
+licenses/
+
+# The presence of this file switches EAS off the `git archive` path and onto a
+# plain file copy, which sweeps in .git unless it is named here. At 224 MB it
+# was most of the upload.
+.git/

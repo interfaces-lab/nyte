@@ -6,6 +6,18 @@ import { isAbsolute } from "node:path";
 const TIMEOUT_MS = 3_000;
 const OUTPUT_LIMIT = 64 * 1024;
 
+let shared: (() => Promise<void>) | undefined;
+
+/**
+ * Shared across the process: a GUI launch inherits a minimal PATH, and every
+ * spawned tool needs the login shell's one. Startup kicks this off and the
+ * spawn sites await it, so no window waits on a user's shell profile.
+ */
+export function ensureShellEnvironment(): Promise<void> {
+  shared ??= createShellEnvironmentRepair();
+  return shared();
+}
+
 /** One attempt per startup, including concurrent callers and failed attempts. */
 export function createShellEnvironmentRepair({
   env = process.env,
@@ -16,9 +28,9 @@ export function createShellEnvironmentRepair({
   platform?: NodeJS.Platform;
   timeoutMs?: number;
 } = {}): () => Promise<void> {
-  let pending: Promise<void> | undefined;
+  let attempt: Promise<void> | undefined;
   return () => {
-    pending ??= (async () => {
+    attempt ??= (async () => {
       if (platform === "win32") return;
       try {
         const shell = env.SHELL || userInfo().shell || "/bin/sh";
@@ -32,7 +44,7 @@ export function createShellEnvironmentRepair({
         // Environment recovery must never prevent startup or expose shell output.
       }
     })();
-    return pending;
+    return attempt;
   };
 }
 

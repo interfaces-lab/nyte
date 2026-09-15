@@ -4,6 +4,7 @@ import { Switch } from "@nyte-ai/ui/switch";
 import * as stylex from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
 import { Icon } from "../components/icons.tsx";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { focus } from "../components/ui.tsx";
 import { settingsPatterns as styles } from "../theme/settings-patterns.stylex.ts";
 
@@ -110,7 +111,7 @@ export function SettingsSelect<T extends string>({
           alignItemWithTrigger={false}
           {...stylex.props(styles.selectPositioner)}
         >
-          <Select.Popup {...stylex.props(styles.selectPopup)}>
+          <Select.Popup ref={overlayRef} {...stylex.props(styles.selectPopup)}>
             <Select.List {...stylex.props(styles.selectList)}>
               {options.map((option) => (
                 <Select.Item

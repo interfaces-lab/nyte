@@ -1,7 +1,7 @@
 import type { ToolCallDensity } from "../theme/boot.ts";
 
 export type WorkGroupReveal = "default" | "open" | "closed";
-export type WorkGroupBody = "none" | "preview" | "list";
+type WorkGroupBody = "none" | "preview" | "list";
 
 /**
  * Compact keeps live work behind a clipped window unless the reader opens it.

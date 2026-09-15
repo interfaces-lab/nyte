@@ -226,7 +226,7 @@ export interface SessionApi {
 /** Reads and writes on the session itself, as opposed to the plugin's own storage. */
 export interface PluginSession {
   /** The name, if any, and whether this session is a child another session spawned. */
-  info(): Promise<{ readonly name?: string; readonly child: boolean }>;
+  info(): Promise<{ readonly id?: string; readonly name?: string; readonly child: boolean }>;
   rename(name: string): Promise<void>;
   /** The main branch as the model would see it next: the prompt and the messages. */
   context(): Promise<PluginContext>;

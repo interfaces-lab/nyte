@@ -28,15 +28,15 @@ export const SOURCES = [
   "frontend-qa",
 ] as const;
 
-export type SessionGrouping = (typeof GROUPINGS)[number];
-export type SessionOrdering = (typeof ORDERINGS)[number];
+type SessionGrouping = (typeof GROUPINGS)[number];
+type SessionOrdering = (typeof ORDERINGS)[number];
 export type SessionShowField = (typeof SHOW_FIELDS)[number];
 export type SessionStatus = (typeof STATUSES)[number];
 export type SessionPullRequest = (typeof PULL_REQUESTS)[number];
 export type SessionEnvironment = (typeof ENVIRONMENTS)[number];
 export type SessionSource = (typeof SOURCES)[number];
 
-export const DEFAULT_SOURCES: readonly SessionSource[] = [
+const DEFAULT_SOURCES: readonly SessionSource[] = [
   "desktop",
   "mobile",
   "web",
@@ -85,6 +85,8 @@ export function sessionIsDraft(session: SessionInfo): boolean {
 function statusOf(session: SessionInfo, read: ReadSessions): SessionStatus {
   const mark = sessionMark(session);
   switch (mark) {
+    // `sessionMark` reports `waiting` only for a run parked on a reply; one
+    // parked on background work arrives here as `working`.
     case "waiting":
     case "failed":
       return "needs-attention";

@@ -1430,7 +1430,7 @@ function taskPreview(part: ToolTurnPart | ShellExecution) {
  * settled result. Unified diffs from edit details or shell output render
  * with DiffRenderable; everything else shows a capped preview.
  */
-export class ToolCard {
+class ToolCard {
   readonly container: BoxRenderable;
 
   private readonly transcript: Transcript;
@@ -1987,7 +1987,7 @@ export class ToolCard {
  * lie the block could never take back, while dropping the row would move the
  * message the run is about to answer.
  */
-export type TurnStatus =
+type TurnStatus =
   | {
       readonly kind: "open";
       readonly phase: RunInfo["phase"];
@@ -2003,7 +2003,7 @@ type PartBlock =
   | { readonly kind: "thinking"; readonly block: ReasoningBlock; readonly contentIndex: number };
 
 /** One visual owner for a user request and every assistant step it drives. */
-export class TurnBlock {
+class TurnBlock {
   private readonly transcript: Transcript;
   readonly root: TurnSection;
   private readonly settled = new Set<string>();

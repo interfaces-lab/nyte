@@ -1,61 +1,70 @@
 import type { SessionInfo } from "@nyte-ai/protocol";
+import { sessionMark } from "@nyte-ai/core/client";
 import { SymbolView } from "expo-symbols";
+import { ActivityIndicator } from "react-native";
 import { css, html } from "react-strict-dom";
 import { controls, list, useTheme, radii, textStyles, tokens, typography } from "../theme.ts";
-import { elapsed, formatActivity, latestRun, markOf, statusLabels } from "./sessions.ts";
+import { elapsed, formatActivity, latestRun, rowStatus } from "./sessions.ts";
 
+/**
+ * One line under the title: the status word plus its clock. A conversation with
+ * no run yet shows its preview instead, because "New" says less than the text
+ * the user typed.
+ */
 function Meta({ session, now }: { session: SessionInfo; now: number }) {
-  const theme = useTheme();
-  const mark = markOf(session);
+  const mark = sessionMark(session);
   const run = latestRun(session);
-  const time = formatActivity(session.lastActivityAt, now);
-  const running = mark === "working" || mark === "retry";
+  const clock =
+    mark === "working" || mark === "retry"
+      ? run === undefined
+        ? undefined
+        : elapsed(run.startedAt, now)
+      : formatActivity(session.lastActivityAt, now);
+  const lead =
+    mark === "idle" && run === undefined && session.preview !== undefined && session.preview !== ""
+      ? session.preview
+      : rowStatus(session);
+  return (
+    <html.span
+      style={[
+        textStyles.secondary,
+        styles.meta,
+        mark === "waiting" && styles.needsInput,
+        mark === "failed" && styles.failed,
+      ]}
+    >
+      {clock === undefined ? lead : `${lead} \u00b7 ${clock}`}
+    </html.span>
+  );
+}
 
-  if (running) {
-    const since = run !== undefined ? ` · ${elapsed(run.startedAt, now)}` : "";
+/** The row's single status glyph, in the column every row shares. */
+function Status({ session }: { session: SessionInfo }) {
+  const theme = useTheme();
+  const mark = sessionMark(session);
+  if (mark === "working" || mark === "retry") {
     return (
-      <html.span style={[textStyles.secondary, styles.meta]}>
-        {`${statusLabels[mark]}${since}`}
-      </html.span>
-    );
-  }
-  if (mark === "waiting") {
-    return (
-      <html.span style={[textStyles.secondary, styles.meta, styles.needsInput]}>
-        {`${statusLabels.waiting} · ${time}`}
-      </html.span>
+      <ActivityIndicator
+        size="small"
+        color={mark === "retry" ? theme.warning : theme.accent}
+        style={{ transform: [{ scale: list.spinnerScale }] }}
+      />
     );
   }
   if (mark === "failed") {
+    return <SymbolView name="xmark" size={controls.iconXs} tintColor={theme.danger} />;
+  }
+  if (mark === "idle" && latestRun(session) !== undefined) {
     return (
-      <html.span style={styles.metaRow}>
-        <SymbolView name="xmark" size={controls.iconXs} tintColor={theme.danger} />
-        <html.span style={[textStyles.secondary, styles.meta, styles.failed]}>
-          {`Failed · ${time}`}
-        </html.span>
-      </html.span>
+      <SymbolView
+        name="checkmark"
+        size={controls.iconXs}
+        tintColor={theme.success}
+        weight="semibold"
+      />
     );
   }
-  if (run !== undefined) {
-    return (
-      <html.span style={styles.metaRow}>
-        <SymbolView
-          name="checkmark"
-          size={controls.iconXs}
-          tintColor={theme.success}
-          weight="semibold"
-        />
-        <html.span style={[textStyles.secondary, styles.meta]}>{`Finished · ${time}`}</html.span>
-      </html.span>
-    );
-  }
-  return (
-    <html.span style={[textStyles.secondary, styles.meta]}>
-      {session.preview === undefined || session.preview === ""
-        ? `New · ${time}`
-        : `${session.preview} · ${time}`}
-    </html.span>
-  );
+  return <html.div style={[styles.dot, mark === "waiting" ? styles.dotWaiting : styles.dotIdle]} />;
 }
 
 export function SessionRow({
@@ -69,32 +78,14 @@ export function SessionRow({
   last?: boolean;
   onPress: () => void;
 }) {
-  const theme = useTheme();
-  const mark = markOf(session);
   return (
     <html.button
-      aria-label={`${session.name || "Untitled conversation"}, ${statusLabels[mark]}`}
+      aria-label={`${session.name || "Untitled conversation"}, ${rowStatus(session)}`}
       onClick={onPress}
       style={styles.row}
     >
       <html.div style={styles.leading}>
-        {mark === "working" || mark === "retry" ? (
-          <SymbolView
-            name="circle.grid.cross"
-            size={controls.iconXs}
-            tintColor={mark === "retry" ? theme.warning : theme.accent}
-            animationSpec={{ effect: { type: "pulse" }, repeating: true }}
-          />
-        ) : (
-          <html.div
-            style={[
-              styles.dot,
-              mark === "waiting" && styles.dotWaiting,
-              mark === "failed" && styles.dotFailed,
-              mark === "idle" && styles.dotIdle,
-            ]}
-          />
-        )}
+        <Status session={session} />
       </html.div>
       <html.div style={[styles.text, !last && styles.separator]}>
         <html.span style={[textStyles.body, styles.title]}>
@@ -117,6 +108,8 @@ const styles = css.create({
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
   leading: {
+    display: "flex",
+    flexDirection: "column",
     width: list.leading,
     height: `${typography.body.lineHeight}px`,
     marginTop: list.rowPaddingBlock,
@@ -131,9 +124,10 @@ const styles = css.create({
     borderRadius: radii.pill,
   },
   dotWaiting: { backgroundColor: tokens.accent },
-  dotFailed: { backgroundColor: tokens.danger },
   dotIdle: { backgroundColor: tokens.tertiary },
   text: {
+    display: "flex",
+    flexDirection: "column",
     flexGrow: 1,
     flexShrink: 1,
     minWidth: 0,
@@ -148,7 +142,6 @@ const styles = css.create({
   },
   title: { textAlign: "start", lineClamp: 1 },
   meta: { textAlign: "start", lineClamp: 1, fontVariant: "tabular-nums" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   needsInput: { color: tokens.foreground },
   failed: { color: tokens.danger },
 });

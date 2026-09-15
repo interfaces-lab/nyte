@@ -244,6 +244,13 @@ export interface RunInfo {
   /** Inputs recorded by the executing host; older runs may omit resolved defaults. */
   readonly config: RunConfig;
   readonly abortRequested?: true;
+  /**
+   * The `waiting` phase covers both a call parked on a participant's reply and
+   * one parked on background work. Set only while the phase is `waiting`, and
+   * only for the first: a list can tell a question from a timer without opening
+   * the session and reading its `parked` calls.
+   */
+  readonly awaitingReply?: true;
   readonly lease?: { readonly owner: string; readonly expiresAt: number };
 }
 

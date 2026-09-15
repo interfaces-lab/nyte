@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Release without the format, lint, and typecheck gates"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -58,8 +64,11 @@ jobs:
             fi
           done
       - run: pnpm format
+        if: ${{ !inputs.force }}
       - run: pnpm lint
+        if: ${{ !inputs.force }}
       - run: pnpm typecheck
+        if: ${{ !inputs.force }}
 
   tui:
     needs: verify

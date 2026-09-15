@@ -46,7 +46,7 @@ function render(jobs?: readonly JobInfo[], open?: BackgroundWorkSection) {
           onOpenChange={() => {}}
           onInspect={() => {}}
           onOpenTerminal={() => {}}
-          viewportRef={{ current: null }}
+          viewport={null}
         />
       </QueryClientProvider>,
     );

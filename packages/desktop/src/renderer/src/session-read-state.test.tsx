@@ -100,7 +100,7 @@ test("opening active work does not mark its future completion read", () => {
 test("execution and attention indicators take priority over unread completion", () => {
   const cases = [
     ["working", "Running"],
-    ["waiting", "Needs attention"],
+    ["waiting", "Waiting"],
     ["retry", "Retrying"],
     ["failed", "Failed"],
   ] as const;
@@ -134,12 +134,40 @@ test("read receipts are independent for sessions and heads", () => {
   assert.equal(indicator({ ...first, heads: [...first.heads, ...branch.heads] }, state), "");
 });
 
-test("failed and blocked threads stay under Needs attention after opening", () => {
+/**
+ * The regression that motivated the outline: a parked run drew the same filled
+ * disc as an unread completion, in a different hue, so the row looked like
+ * something had happened. Compare the atomic style classes, which stand for the
+ * resolved declarations: accessible names always differ and would hide two
+ * states that look alike, and StyleX's debug classes name the style key rather
+ * than what it renders. Asserting that they differ, not what they are, leaves
+ * restyling free.
+ */
+test("every row state looks different from the others", () => {
+  const looksLike = (markup: string): string =>
+    (markup.match(/class="([^"]*)"/)?.[1] ?? "")
+      .split(" ")
+      .filter((token) => token !== "" && !token.includes("__"))
+      .sort()
+      .join(" ");
+  const looks = [
+    ...(["working", "waiting", "retry", "failed"] as const).map((mark) =>
+      looksLike(renderToStaticMarkup(<StatusDot mark={mark} />)),
+    ),
+    looksLike(renderToStaticMarkup(<StatusDot mark="idle" unread />)),
+    looksLike(renderToStaticMarkup(<StatusDot mark="idle" />)),
+  ];
+  assert.equal(new Set(looks).size, looks.length);
+});
+
+test("failed threads stay under Needs attention after opening, and parked ones stay under Working", () => {
   const state = new SessionReadState();
-  const row = session({ kind: "failed", error: "Provider failed" });
-  state.markRead(row);
+  const failed = session({ kind: "failed", error: "Provider failed" });
+  const parked = { ...session({ kind: "waiting" }), sessionId: sessionId("parked") };
+  state.markRead(failed);
+  state.markRead(parked);
   const groups = sessionsForView(
-    [row],
+    [failed, parked],
     { ...DEFAULT_SESSION_VIEW, grouping: "status" },
     "local",
     1000,
@@ -147,7 +175,7 @@ test("failed and blocked threads stay under Needs attention after opening", () =
   );
   assert.deepEqual(
     groups.map((group) => group.label),
-    ["Needs attention"],
+    ["Needs attention", "Working"],
   );
 });
 

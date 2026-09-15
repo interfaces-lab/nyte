@@ -175,7 +175,7 @@ const styles = stylex.create({
   emptyTitle: { color: t.textSecondary, fontSize: t.fontBase, lineHeight: t.leadingBase },
 });
 
-export interface ModelPickerProps {
+interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
   thinkingLevel: ThinkingLevel | undefined;

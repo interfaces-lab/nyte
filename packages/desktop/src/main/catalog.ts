@@ -170,7 +170,7 @@ function firstPreferred(
 }
 
 /** What the desktop can do for a provider's login flow while it runs. */
-export interface LoginHost {
+interface LoginHost {
   /** Aborting ends the provider's flow, including any device-code polling. */
   readonly signal: AbortSignal;
   openExternal(url: string): void;

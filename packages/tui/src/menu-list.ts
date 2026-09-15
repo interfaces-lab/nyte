@@ -18,7 +18,7 @@ function truncate(text: string, width: number): string {
   return width <= 1 ? truncateDisplay(text, width) : truncateDisplay(text, width, GLYPHS.ellipsis);
 }
 
-export interface MenuStatus {
+interface MenuStatus {
   readonly text: string;
   readonly tone: "dim" | "ok" | "running" | "warning" | "error" | "muted";
 }

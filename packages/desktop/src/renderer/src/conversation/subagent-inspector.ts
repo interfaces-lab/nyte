@@ -6,7 +6,7 @@
 import { createContext, useContext } from "react";
 import type { SessionId } from "@nyte-ai/core";
 
-export interface SubagentInspector {
+interface SubagentInspector {
   readonly sessionId: SessionId;
   readonly inspect: (childSessionId: SessionId) => void;
 }

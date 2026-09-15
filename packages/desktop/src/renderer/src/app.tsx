@@ -9,7 +9,7 @@ import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
 import { paneControllerForWorkspace } from "./layout/pane-context.tsx";
 import { BLANK_SELECTION } from "./layout/pane-layout.ts";
-import { applyBrowserEvent } from "./workbench/browser-surfaces.ts";
+import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
 import { applyTerminalEvent } from "./workbench/terminal-store.ts";
 import { handleOpenOutcome } from "./chrome/open-workspace.tsx";
 import { applyLoginEvent } from "./chrome/login-attempts.ts";
@@ -74,6 +74,9 @@ function useHostEvents(): void {
         case "browser_changed":
         case "browser_download_refused":
           applyBrowserEvent(event);
+          return;
+        case "browser_agent_opened":
+          applyBrowserAgentOpened(event);
           return;
         case "terminal_data":
         case "terminal_exit":
