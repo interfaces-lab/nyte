@@ -93,6 +93,15 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const attachments = new Set<Attachment>();
   const background: unknown[] = [];
   const landing = options.landing ?? DEFAULT_LANDING;
+  /**
+   * Lanes a live run lands at its response boundaries. A parked call denies the
+   * head those boundaries, so input waiting in one of these is input the parked
+   * call is holding up; input in an idle-landing lane waits for the run to end
+   * either way.
+   */
+  const boundaryLanes = landing.lanes
+    .filter((policy) => policy.lands === "boundary")
+    .map((policy) => policy.lane);
 
   /** Where a send with no lane goes: the first lane the runner serves. */
   const defaultLane = (): string => {
@@ -159,7 +168,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       background.push(cause);
     },
   });
-  const subagents = createSubagents({ options, pool, runners, defaultLane });
+  const subagents = createSubagents({ options, pool, runners, defaultLane, boundaryLanes });
   const relocation = createRelocation({ options, pool, runners, subagents });
   const summaries = createSummaries({ options, pool, resolveModel: resolveModelRef });
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });

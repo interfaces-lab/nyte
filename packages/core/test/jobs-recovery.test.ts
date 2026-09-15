@@ -57,6 +57,7 @@ async function fixture() {
     const jobs = createJobs({
       session: connection,
       childId: () => sessionId("child"),
+      boundaryLanes: ["steer"],
       backgroundChild: async () => {},
       interruptChild: async (id) => {
         interruptions.push(id);
