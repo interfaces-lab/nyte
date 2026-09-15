@@ -1,7 +1,12 @@
 /** A stdio MCP server with one `echo` tool, run as a child process by the MCP tests. */
+import { writeFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+
+// Given a path, the server records its pid there so a test can watch it exit.
+const pidFile = process.argv[2];
+if (pidFile !== undefined) writeFileSync(pidFile, String(process.pid));
 
 const server = new McpServer(
   { name: "echo", version: "0" },
