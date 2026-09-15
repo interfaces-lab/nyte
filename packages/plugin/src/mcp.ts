@@ -308,7 +308,6 @@ function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
     description: tool.description ?? "",
     parameters: Unsafe<Record<string, JsonValue>>({ ...tool.inputSchema }),
     replay: "never",
-    promptSnippet: `${name}: ${firstLine(tool.description ?? `MCP tool ${tool.name} on ${server}`)}`,
     async execute(_toolCallId, params, signal) {
       // The registry validated `params` against `inputSchema`, an object schema.
       if (!isRecord(params)) throw new Error(`${name} expects an object`);
