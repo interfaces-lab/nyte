@@ -6,9 +6,8 @@ import type { MentionFile } from "@nyte-ai/protocol";
 import { findRipgrepFiles } from "./ripgrep.ts";
 
 const MAX_MENTION_FILES = 5_000;
-
-/** The wire type, re-exported so callers of this module keep one import. */
-export type { MentionFile };
+/** What one `@` menu shows before it scrolls, and so what a reply carries. */
+const MENTION_ROWS = 50;
 
 /**
  * Files offered by `@` and their parent folders. Ripgrep applies ignore files
@@ -78,12 +77,13 @@ export async function discoverMentionFiles(
 /**
  * The subset a `@` query names, best matches first: a leading match on the
  * basename beats one inside it, which beats a match elsewhere in the path.
- * Remote clients cannot walk the workspace, so the host narrows before sending.
+ * Remote clients cannot walk the workspace, so the host narrows before sending,
+ * and one menu's worth is as much as any of them shows.
  */
 export function rankMentionFiles(
   files: readonly MentionFile[],
   query: string,
-  limit: number,
+  limit: number = MENTION_ROWS,
 ): MentionFile[] {
   const needle = query.trim().toLocaleLowerCase();
   if (needle === "") return files.slice(0, limit);

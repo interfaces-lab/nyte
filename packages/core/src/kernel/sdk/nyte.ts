@@ -72,9 +72,6 @@ interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
 }
 
-/** Rows a client asks for without saying how many; enough to fill a menu. */
-const DEFAULT_MENTION_LIMIT = 50;
-
 function toModelInfo(model: NyteOptions["model"]): ModelInfo {
   return {
     id: model.id,
@@ -589,8 +586,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
             ? await pool.cwdForNewSession()
             : await relocation.sessionCwd({ sessionId: input.sessionId });
         if (cwd === undefined) return [];
-        const found = await discoverMentionFiles(cwd);
-        return rankMentionFiles(found, input?.query ?? "", input?.limit ?? DEFAULT_MENTION_LIMIT);
+        return rankMentionFiles(await discoverMentionFiles(cwd), input?.query ?? "");
       },
       vcs: {
         async status() {

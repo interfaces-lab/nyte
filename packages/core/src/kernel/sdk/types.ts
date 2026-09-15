@@ -288,12 +288,12 @@ export interface Workspace {
   forget(input: { readonly path: string }): Promise<void>;
   /**
    * Files and folders `@` can name, narrowed on the host. `sessionId` picks the
-   * session's directory; without one the SDK's own working directory answers.
+   * session's directory; without one the directory a new session would start in
+   * answers. The host caps how many come back.
    */
   files(input?: {
     readonly sessionId?: SessionId;
     readonly query?: string;
-    readonly limit?: number;
   }): Promise<readonly MentionFile[]>;
   vcs: {
     status(): Promise<VcsStatus | undefined>;

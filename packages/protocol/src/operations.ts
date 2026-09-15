@@ -212,19 +212,13 @@ export const OPERATIONS = Object.freeze({
     list(VcsDiff),
   ),
   /**
-   * Files `@` can name in the served workspace. A remote client cannot walk the
-   * host's filesystem, so the host both discovers and narrows: `query` filters
-   * and `limit` caps the reply, because a large repository's whole tree is not a
-   * payload a phone should receive to show ten rows.
+   * Files `@` can name in the workspace a session runs in. A remote client
+   * cannot walk the host's filesystem, so the host both discovers and narrows:
+   * `query` filters, and the host caps the reply, because a large repository's
+   * whole tree is not a payload a phone should receive to show ten rows.
    */
   "workspace.files": operation(
-    optional(
-      strict({
-        sessionId: Type.Optional(SessionId),
-        query: Type.Optional(Type.String()),
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
-      }),
-    ),
+    optional(strict({ sessionId: Type.Optional(SessionId), query: Type.Optional(Type.String()) })),
     list(MentionFile),
   ),
 
