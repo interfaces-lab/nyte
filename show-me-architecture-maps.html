@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Three coding-agent architectures</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #141414;
+        --panel: #181818;
+        --fg: #fcfcfc;
+        --muted: #fcfcfc99;
+        --faint: #fcfcfc66;
+        --border: #fcfcfc26;
+        --border-weak: #fcfcfc1a;
+        --accent: #459ffe;
+        --ok: #38d591;
+        --bad: #ff5667;
+        --warn: #ffaf38;
+        --violet: #a97efe;
+        --orange: #ff8838;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+        --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.6 var(--ui);
+        -webkit-font-smoothing: antialiased;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: #141414f2;
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-weak);
+      }
+      .bar {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 14px 24px;
+        display: flex;
+        align-items: baseline;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .bar h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .bar h1 span {
+        color: var(--faint);
+        font-weight: 400;
+      }
+      nav {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+      }
+      nav button {
+        font: 500 13px/1 var(--ui);
+        color: var(--muted);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        padding: 7px 12px;
+        cursor: pointer;
+      }
+      nav button:hover {
+        background: #7777772c;
+        color: var(--fg);
+      }
+      nav button[aria-selected="true"] {
+        background: #fafafa;
+        color: #141414;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 28px 24px 96px;
+      }
+      .board {
+        display: none;
+      }
+      .board.active {
+        display: block;
+      }
+      .lede {
+        font-size: 16px;
+        line-height: 1.55;
+        color: var(--fg);
+        max-width: 78ch;
+        margin: 0 0 28px;
+      }
+      h2 {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--faint);
+        font-weight: 600;
+        margin: 0 0 6px;
+      }
+      h3 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 44px 0 10px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border-weak);
+      }
+      .board > h3:first-of-type {
+        border-top: none;
+        padding-top: 0;
+        margin-top: 34px;
+      }
+      p.note {
+        color: var(--muted);
+        max-width: 88ch;
+        margin: 12px 0 0;
+        font-size: 13.5px;
+      }
+      p.note b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+      code {
+        font: 12.5px/1.4 var(--mono);
+        background: #7777772c;
+        padding: 1.5px 5px;
+        border-radius: 4px;
+        color: #e6e6e6;
+      }
+      .graph {
+        background: var(--panel);
+        border: 1px solid var(--border-weak);
+        border-radius: 12px;
+        padding: 20px 16px;
+        margin-top: 14px;
+        overflow-x: auto;
+      }
+      .graph svg {
+        max-width: 100%;
+        height: auto;
+        display: block;
+        margin: 0 auto;
+      }
+      pre.mermaid {
+        margin: 0;
+        font: 12px/1.5 var(--mono);
+        color: var(--faint);
+      }
+      table.deps {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14px;
+        font-size: 13px;
+      }
+      table.deps th {
+        text-align: left;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: var(--faint);
+        font-weight: 600;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      table.deps td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border-weak);
+        vertical-align: top;
+        color: var(--muted);
+      }
+      table.deps td:first-child,
+      table.deps td:nth-child(2) {
+        white-space: nowrap;
+      }
+      table.deps td code {
+        background: none;
+        padding: 0;
+        color: var(--fg);
+      }
+      td.bad {
+        color: var(--bad);
+      }
+      td.ok {
+        color: var(--ok);
+      }
+      td.warn {
+        color: var(--warn);
+      }
+      .callout {
+        border: 1px solid #ff566744;
+        background: #ff263c17;
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-top: 18px;
+      }
+      .callout p {
+        margin: 0;
+        color: #ffb3ba;
+        font-size: 13.5px;
+        max-width: 88ch;
+      }
+      .callout p + p {
+        margin-top: 8px;
+      }
+      .callout b {
+        color: #ff8f9a;
+      }
+      .legend {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--faint);
+      }
+      .legend span::before {
+        content: "";
+        display: inline-block;
+        width: 22px;
+        height: 0;
+        border-top: 2px solid currentColor;
+        margin-right: 7px;
+        vertical-align: middle;
+      }
+      .legend .dash::before {
+        border-top-style: dashed;
+        color: var(--bad);
+      }
+      .legend .solid::before {
+        color: var(--ok);
+      }
+      @media (max-width: 720px) {
+        .bar {
+          padding: 12px 16px;
+        }
+        main {
+          padding: 20px 16px 64px;
+        }
+        nav {
+          margin-left: 0;
+          width: 100%;
+          overflow-x: auto;
+        }
+        table.deps th:nth-child(3),
+        table.deps td:nth-child(3) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <h1>Architecture maps <span>/ where a package boundary is, and what crosses it</span></h1>
+        <nav role="tablist">
+          <button role="tab" aria-selected="true" data-board="nyte">Nyte</button>
+          <button role="tab" aria-selected="false" data-board="pi">pi-coding-agent</button>
+          <button role="tab" aria-selected="false" data-board="opencode">opencode v2</button>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <!-- ============================== NYTE ============================== -->
+      <section class="board active" id="nyte">
+        <p class="lede">
+          Nyte is a git object database with messages in place of files, wrapped in an SDK, exposed
+          over an HTTP wire, and drawn by three clients. Seventeen packages, one truth store, and a
+          view layer that gets recomputed more times than it is written.
+        </p>
+
+        <h3>Package graph</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart LR
+  subgraph found["foundation - zero workspace deps"]
+    schema["schema<br/>Message, Model, Tool, Skill"]
+    telemetry["telemetry<br/>span contract + otel"]
+    ui["ui<br/>Base UI components + tokens"]
+  end
+
+  subgraph spine["spine"]
+    protocol["protocol<br/>26 wire ops, TypeBox schemas, SSE codec<br/>OWNS Turn, TurnPart, ContextStatus, FileChange"]
+    ai["ai<br/>provider streams, OAuth, model catalog"]
+    core["core<br/>kernel + views + SDK<br/>25k lines"]
+  end
+
+  subgraph compose["composition"]
+    plugin["plugin<br/>built-ins, MCP, native compaction"]
+    host["host<br/>models + plugin modes + workspace trust"]
+    server["server<br/>HTTP handler over the SDK"]
+    client["client<br/>HTTP client of the same wire"]
+  end
+
+  subgraph clients["clients"]
+    tui["tui<br/>Bun binary"]
+    desktop["desktop<br/>Electron, embeds the host"]
+    ios["ios<br/>Expo, remote only"]
+    docs["docs<br/>website"]
+  end
+
+  schema --> protocol
+  schema --> ai
+  schema --> core
+  telemetry --> ai
+  telemetry --> core
+
+  protocol -->|"types + schemas, re-exported so a SessionInfo is one type everywhere"| core
+  protocol -->|"op table + SSE framing"| server
+  protocol -->|"op table + SSE framing"| client
+  ai -->|"StreamFn + ModelCatalog"| core
+
+  core -->|"Nyte SDK + Store + plugin API"| host
+  core -->|"plugin contract + tool binding"| plugin
+  core -->|"SDK surface to expose"| server
+  plugin -->|"built-in set per mode"| host
+  ai -->|"catalog + credentials"| host
+  client -->|"RemoteNyte, same shape as local"| server
+
+  host -->|"one composed Nyte"| tui
+  host -->|"one composed Nyte"| desktop
+  core -->|"SDK, views, SessionObserver"| tui
+  core -->|"SDK, views, SessionObserver"| desktop
+  core -->|"views + SessionObserver only"| ios
+  client -->|"remote SDK"| desktop
+  client -->|"remote SDK"| ios
+  server -->|"in-process HTTP for Cloud chats"| desktop
+  ui --> desktop
+  ui --> ios
+  ui --> docs
+</pre>
+        </div>
+        <p class="note">
+          The shape worth noticing: <code>protocol</code> declares the view types and
+          <code>core</code> computes them, so the wire contract and the projection are owned by
+          different packages on purpose. <code>desktop</code> depends on nine workspace packages
+          including both <code>host</code> and <code>server</code> and <code>client</code>. It runs
+          a local host, an in-process HTTP server, and a remote client all at once.
+        </p>
+
+        <h3>Core internals: the four authorities and what reads them</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  subgraph truth["durable truth - kernel/"]
+    obj["objects<br/>content-addressed, immutable<br/>hashObject"]
+    refs["refs<br/>the only mutable state<br/>multi-ref CAS via refs.update"]
+    lease["leases<br/>fenced execution rights<br/>lease.ts renews during calls"]
+    ev["events<br/>one ordered stream per session<br/>outbox.ts buffers deltas"]
+  end
+
+  subgraph backends["store backends"]
+    sqlite["sqlite.ts<br/>5 tables, BEGIN IMMEDIATE"]
+    pg["postgres/<br/>session row locks, db-clock leases, 250ms poll"]
+    worker["store-worker.ts + store-rpc.ts<br/>off-thread store"]
+  end
+
+  subgraph exec["execution"]
+    adm["admission.ts<br/>ONLY user input starts model work<br/>live | settling | idle"]
+    step["step.ts<br/>one durable step, then drive loops it"]
+    turn["turn.ts<br/>respond, tools, durable tools"]
+    loop["agent-loop.ts<br/>the provider call"]
+    eff["effects.ts<br/>intent to waiting to signal to result"]
+    queue["queue.ts<br/>submit, pending, cancel per lane"]
+    comp["compaction.ts<br/>checkpoints + branch summaries"]
+    gc["gc.ts<br/>mark from refs, sweep aged"]
+  end
+
+  subgraph proj["views/ - PROJECTION 1"]
+    tr["transcript.ts<br/>transcriptFromCommits<br/>appendTranscriptCommit"]
+    live["live-parts.ts<br/>foldLiveParts"]
+    pres["presentation.ts<br/>projectToolView, presentTool<br/>createPresenter"]
+    ctx["context.ts<br/>projectContextStatus"]
+    tree["tree.ts<br/>projectTree, navigationTarget"]
+    chg["changes.ts<br/>changesFromTurns, diffStat, readPatch"]
+    usg["usage.ts<br/>projectUsage, mergeUsageSummaries"]
+  end
+
+  subgraph sdk["sdk/ - the client contract"]
+    api["nyte.ts createNyte<br/>sessions, messages, runs, heads, jobs, plugins, workspace, provider"]
+    reads["reads.ts<br/>page, snapshot, context, changes"]
+    watch["watch.ts + events.ts<br/>SessionEvent stream"]
+    runner["runner.ts<br/>drive loops + aborts"]
+    adv["advance.ts<br/>one leased step for a scheduler"]
+    sub["subagent-host.ts<br/>child sessions + jobs"]
+  end
+
+  subgraph tools["tools/ + plugins/"]
+    tl["bash, edit, read, write, ls<br/>bind-tool.ts"]
+    pl["plugins/hooks.ts<br/>transform_context, before_compaction,<br/>before_request, before_tool, after_tool"]
+    rg["ripgrep.ts + files.ts<br/>search, mention discovery"]
+  end
+
+  obj --> refs
+  refs --> ev
+  lease -.->|"fences"| refs
+  sqlite --> obj
+  pg --> obj
+  worker --> sqlite
+
+  adm -->|"decides what lands"| step
+  queue -->|"pending batch"| adm
+  step --> turn
+  turn --> loop
+  turn --> eff
+  eff --> tl
+  loop -->|"deltas"| ev
+  step -->|"one CAS publish"| refs
+  comp --> refs
+  gc --> obj
+  pl -.->|"hooks into"| turn
+  rg --> tl
+
+  obj -->|"commit chain via objects.chain"| tr
+  tr --> ctx
+  tr --> chg
+  obj --> usg
+  refs --> tree
+  ev --> live
+
+  tr --> reads
+  ctx --> reads
+  reads --> api
+  watch --> api
+  runner --> step
+  adv --> step
+  api --> sub
+</pre>
+        </div>
+        <p class="note">
+          Everything in <code>kernel/</code> is a helper over four things: objects, refs, leases,
+          events. A feature that can be a ref is a ref. The rule that keeps the whole thing sane
+          lives in one file, <code>admission.ts</code>: only a batch carrying a user message may
+          start a run. Background results, reconnects and recovery can wake a runner but never start
+          one.
+        </p>
+
+        <h3>Request flow: keystroke to durable commit and back</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  key["user types in composer<br/>desktop renderer or tui"]
+  out["outbox.ts<br/>optimistic local row, idempotency key"]
+  send["sdk messages.send<br/>or POST v1/call/messages.send"]
+  q["queue.ts submit<br/>refs/queues/head/lane/tip CAS"]
+  wake["runner wakes<br/>runner.ts"]
+  ad{"admission.ts<br/>what does the latest run allow?"}
+  land["step.ts lands the batch<br/>new Run in phase respond"]
+  turnr["turn.ts respond<br/>context.ts builds model messages"]
+  hook["plugins before_request<br/>transform_context"]
+  prov["ai: provider stream<br/>SSE deltas"]
+  ob["outbox.ts<br/>delta events with runId, attempt, index"]
+  commit["assistant commit written<br/>objects then one CAS on head + run"]
+  tools{"tool calls?"}
+  eff["effects.ts sandwich per call<br/>intent, waiting, signal, result"]
+  exec["tools/ bash edit read write ls<br/>or plugin or MCP tool"]
+  res["result commits, run back to respond"]
+  done["run done, failed, or aborted"]
+  stream["events stream<br/>SSE watch or in-process"]
+  obs["core/client SessionObserver<br/>foldEvent"]
+  ui2["client redraws"]
+
+  key --> out --> send --> q --> wake --> ad
+  ad -->|"idle + user message"| land
+  ad -->|"live"| land
+  ad -->|"settling a stop"| done
+  land --> turnr --> hook --> prov
+  prov --> ob --> stream
+  prov --> commit
+  commit --> tools
+  tools -->|"yes"| eff --> exec --> res --> turnr
+  tools -->|"no"| done
+  commit --> stream
+  res --> stream
+  done --> stream
+  stream --> obs --> ui2
+</pre>
+        </div>
+        <p class="note">
+          A runner keeps nothing in memory across a step. The next step re-reads refs. That is why a
+          crash, a takeover, or a serverless scheduler calling <code>sdk.advance</code> one step at
+          a time all behave the same.
+        </p>
+
+        <h3>The projection path — this is the part you asked about</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  commits["kernel objects<br/>Commit chain, the only truth"]
+
+  subgraph p1["PROJECTION 1 - core/kernel/views"]
+    t1["transcriptFromCommits<br/>Commit chain to Turn array"]
+    l1["foldLiveParts<br/>deltas to LiveParts overlay"]
+    c1["projectContextStatus"]
+    u1["projectUsage"]
+    v1["projectToolView + presentTool"]
+  end
+
+  snap["SessionSnapshot<br/>session, head, config, context,<br/>transcript Turn array, pending, run, parked"]
+  wire["the wire<br/>protocol SSE + HTTP, or in-process"]
+
+  subgraph p2["PROJECTION 2 - core/client, still core's code"]
+    fold["foldEvent + appendTranscriptCommit + foldLiveParts<br/>replays the same rules incrementally"]
+    st["SessionState<br/>info, head, transcript, parts, pending, run, parked"]
+    obs["SessionObserver<br/>recovery, resnapshot, cursors"]
+  end
+
+  subgraph p3d["PROJECTION 3a - desktop renderer"]
+    d1["live-fold.ts projectLive<br/>LiveParts to text, thinking, tools, order maps"]
+    d2["transcript-presentation.ts<br/>displayTranscriptParts, userTextSegments"]
+    d3["transcript-rows.ts<br/>transcriptRows, conversationMessages"]
+    d4["work-group-presentation.ts<br/>groups tool parts again"]
+    d5["tool-detail.ts<br/>wraps core presenter with local refiners"]
+    d6["sidebar-view.ts, change-scopes.ts,<br/>preference-projection.ts"]
+    dr["React render"]
+  end
+
+  subgraph p3t["PROJECTION 3b - tui"]
+    tt["transcript.ts<br/>3245 lines, its own Transcript class"]
+    tp["pending-gutter, pending-tail, scrolling"]
+    tr2["ANSI render"]
+  end
+
+  subgraph p3i["PROJECTION 3c - ios"]
+    it["chat/messages.tsx<br/>its own third rendering of Turn"]
+    ir["React Native render"]
+  end
+
+  commits --> t1
+  commits --> c1
+  commits --> u1
+  t1 --> snap
+  c1 --> snap
+  snap --> wire
+  l1 --> wire
+  wire --> fold --> st
+  obs --> st
+
+  st -->|"parts"| d1
+  st -->|"transcript.items"| d2
+  st -->|"transcript.items"| d3
+  d2 --> d4
+  d3 --> dr
+  d4 --> dr
+  d1 --> dr
+  d6 --> dr
+  v1 -->|"SHARED, consumed as given"| d5 --> d4
+
+  st --> tt --> tp --> tr2
+  v1 -->|"SHARED"| tt
+
+  st --> it --> ir
+  v1 -->|"SHARED"| it
+
+  classDef reproject stroke-dasharray: 5 4
+  class d1,d2,d3,d4,d6,tt,it reproject
+</pre>
+        </div>
+        <div class="legend">
+          <span class="solid">solid — consumed in the shape core supplied</span>
+          <span class="dash">dashed — the consumer re-derives what it was handed</span>
+        </div>
+
+        <div class="callout">
+          <p>
+            <b>The honest version of your complaint.</b> Core computes the transcript once
+            (<code>transcriptFromCommits</code>), ships it as <code>Turn[]</code> inside a
+            <code>SessionSnapshot</code>, and then <code>core/client</code> replays the identical
+            fold rules incrementally so a restore and a live append land on the same items. That
+            second pass is defensible. It is core's own code, it is pure, and its whole reason to
+            exist is that a stream cannot re-fetch a snapshot per token.
+          </p>
+          <p>
+            The third pass is where it goes wrong. <code>Turn[]</code> arrives at the renderer and
+            each of the three clients rebuilds a display model from it independently: desktop in
+            <code>transcript-rows.ts</code> + <code>transcript-presentation.ts</code> +
+            <code>work-group-presentation.ts</code>, the TUI in a 3,245-line
+            <code>transcript.ts</code>, iOS in <code>chat/messages.tsx</code>. Three answers to
+            "what rows does this conversation have", three places a grouping bug can live, three
+            places to fix it.
+          </p>
+          <p>
+            <b>The counter-evidence, so you judge it fairly.</b> Tool presentation was already
+            pulled back into core. <code>projectToolView</code> and <code>presentTool</code> ship
+            from <code>core/views</code> and all three clients call them. So the boundary is not
+            missing, it just stops one level too early. It covers a tool call and not a turn, a
+            group, or a row.
+          </p>
+          <p>
+            <b>Also worth flagging.</b> <code>desktop/live-fold.ts projectLive</code> is the
+            defensible one of the dashed nodes. Its own comment says "no folding rules" — it turns
+            core's ordered overlay into Map lookups for React identity. It is an index, not a second
+            fold. Do not lump it in with the others when you decide what to move.
+          </p>
+        </div>
+
+        <h3>Dependency contracts</h3>
+        <table class="deps">
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Consumed by</th>
+              <th>Capability supplied</th>
+              <th>Consumer reshapes it?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>@nyte-ai/schema</code></td>
+              <td><code>protocol, ai, core</code></td>
+              <td>pi-derived Message, Model, Tool, Skill types. No runtime.</td>
+              <td class="ok">No — types only</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/protocol</code></td>
+              <td><code>core</code></td>
+              <td>
+                Declares <code>Turn</code>, <code>TurnPart</code>, <code>ContextStatus</code>,
+                <code>FileChange</code>; core re-exports them so a decoded and a local value are one
+                type.
+              </td>
+              <td class="ok">No — core computes into protocol's shape</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/protocol</code></td>
+              <td><code>server, client</code></td>
+              <td>26 operations, TypeBox schemas, SSE codec, wire envelopes.</td>
+              <td class="ok">No — both written against it</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/ai</code></td>
+              <td><code>core</code></td>
+              <td>
+                <code>StreamFn</code> and <code>ModelCatalog</code>; core never sees credentials.
+              </td>
+              <td class="ok">No — injected, not wrapped</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core</code></td>
+              <td><code>host</code></td>
+              <td>
+                <code>createNyte</code> plus the Store contract; host picks catalog, plugin mode,
+                trust.
+              </td>
+              <td class="ok">No — composition, not re-derivation</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core</code></td>
+              <td><code>server</code></td>
+              <td>The SDK surface, published verbatim as HTTP + SSE.</td>
+              <td class="ok">No — 1:1 with the op table</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/client</code></td>
+              <td><code>desktop, tui, ios</code></td>
+              <td>
+                <code>SessionObserver</code>, <code>foldEvent</code>, <code>SessionState</code>.
+                Recovery, cursors and resnapshot live here, not in clients.
+              </td>
+              <td class="ok">No — the shared win of this design</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/views</code> <em>(tool presentation)</em></td>
+              <td><code>desktop, tui, ios</code></td>
+              <td>
+                <code>projectToolView</code>, <code>presentTool</code>,
+                <code>createPresenter</code>.
+              </td>
+              <td class="ok">No — all three call it directly</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/views</code> <em>(transcript)</em></td>
+              <td><code>desktop</code> (22 import sites)</td>
+              <td><code>Turn[]</code> with parts, outcome, ordering already resolved.</td>
+              <td class="bad">
+                Yes — rebuilt into rows, display parts and work groups in three renderer files
+              </td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/views</code> <em>(transcript)</em></td>
+              <td><code>tui</code> (2 import sites)</td>
+              <td>Same <code>Turn[]</code>.</td>
+              <td class="bad">Yes — 3,245-line local <code>transcript.ts</code> owns layout</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/views</code> <em>(transcript)</em></td>
+              <td><code>ios</code></td>
+              <td>Same <code>Turn[]</code>.</td>
+              <td class="bad">
+                Yes — third independent renderer in <code>chat/messages.tsx</code>
+              </td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/core/views</code> <em>(live parts)</em></td>
+              <td><code>desktop</code></td>
+              <td><code>LiveParts</code>, already folded and ordered.</td>
+              <td class="warn">
+                Partly — <code>projectLive</code> re-indexes into Maps for React identity, but adds
+                no folding rules
+              </td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/host</code></td>
+              <td><code>desktop, tui</code></td>
+              <td>One composed <code>Nyte</code>: models, plugin mode, workspace trust.</td>
+              <td class="ok">No</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/client</code></td>
+              <td><code>desktop, ios</code></td>
+              <td><code>RemoteNyte</code>, structurally the same as a local SDK.</td>
+              <td class="ok">No — same call sites serve local and Cloud</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/server</code></td>
+              <td><code>desktop</code></td>
+              <td>In-process HTTP handler so Cloud chats reuse the wire path.</td>
+              <td class="ok">No</td>
+            </tr>
+            <tr>
+              <td><code>@nyte-ai/ui</code></td>
+              <td><code>desktop, ios, docs</code></td>
+              <td>Base UI components and platform tokens.</td>
+              <td class="ok">No</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================== PI ============================== -->
+      <!--INJECT:PI-->
+
+      <!-- ============================ OPENCODE ============================ -->
+      <!--INJECT:OPENCODE-->
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: "base",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", nodeSpacing: 36, rankSpacing: 52, useMaxWidth: true },
+        themeVariables: {
+          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+          fontSize: "12px",
+          background: "#181818",
+          primaryColor: "#212121",
+          primaryTextColor: "#fcfcfc",
+          primaryBorderColor: "#fcfcfc4d",
+          lineColor: "#fcfcfc80",
+          secondaryColor: "#1f1f1f",
+          tertiaryColor: "#1a1a1a",
+          clusterBkg: "#14141400",
+          clusterBorder: "#fcfcfc26",
+          edgeLabelBackground: "#181818",
+          titleColor: "#fcfcfc99",
+          nodeBorder: "#fcfcfc4d",
+        },
+      });
+
+      const blocks = [...document.querySelectorAll("pre.mermaid")];
+      for (const [index, block] of blocks.entries()) {
+        const source = block.textContent;
+        try {
+          const { svg } = await mermaid.render(`graph-${index}`, source);
+          block.outerHTML = svg;
+        } catch (error) {
+          block.textContent = `mermaid failed to parse this graph\n\n${error}\n\n${source}`;
+          block.style.color = "#ff5667";
+          block.style.whiteSpace = "pre-wrap";
+        }
+      }
+
+      const tabs = [...document.querySelectorAll("nav button")];
+      const boards = [...document.querySelectorAll(".board")];
+      for (const tab of tabs) {
+        tab.addEventListener("click", () => {
+          for (const other of tabs) other.setAttribute("aria-selected", String(other === tab));
+          for (const board of boards)
+            board.classList.toggle("active", board.id === tab.dataset.board);
+          window.scrollTo({ top: 0 });
+        });
+      }
+    </script>
+  </body>
+</html>

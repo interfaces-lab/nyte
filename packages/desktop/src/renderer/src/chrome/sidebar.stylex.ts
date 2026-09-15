@@ -539,10 +539,13 @@ export const sidebarStyles = stylex.create({
     flexShrink: 0,
   },
   footerRow: { display: "flex", alignItems: "center", gap: 2, minWidth: 0 },
+  // The footer is the one row that is always on screen. It answers the pointer
+  // with its label and glyph alone, so a resting rail never carries a lit row.
   accountButton: {
     width: "auto",
     minWidth: 0,
     flex: 1,
+    backgroundColor: "transparent",
   },
   footerSettings: {
     display: "grid",
@@ -552,18 +555,30 @@ export const sidebarStyles = stylex.create({
     padding: 0,
     borderStyle: "none",
     borderRadius: t.radiusBase,
-    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
-    color: t.iconTertiary,
+    backgroundColor: "transparent",
+    color: { default: t.iconTertiary, ":hover": t.iconPrimary },
     cursor: "pointer",
     flexShrink: 0,
   },
+  // Open Settings is a state, not a pointer answer, so it keeps its fill.
   footerSettingsActive: {
-    backgroundColor: {
-      default: t.fillGhostSelected,
-      ":hover": t.fillGhostSelected,
-    },
+    backgroundColor: t.fillGhostSelected,
     color: t.iconPrimary,
   },
   avatarSlot: { borderRadius: t.radiusSm, overflow: "hidden" },
   avatar: { display: "block", width: "100%", height: "100%", objectFit: "cover" },
+  /**
+   * Pointing is not selecting: with the menu's hover highlight off, the label
+   * brightens under the pointer and the fill stays the keyboard cursor's, so a
+   * filled row always means "Enter opens this". The danger item keeps its own
+   * colour, which already reads as a state.
+   */
+  accountMenuItem: {
+    color: {
+      default: t.textSecondary,
+      ":hover": t.textPrimary,
+      ":is([data-highlighted])": t.textPrimary,
+      ":is([data-disabled])": t.textDisabled,
+    },
+  },
 });

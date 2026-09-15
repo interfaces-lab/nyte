@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
 import { CursorExpired, NyteClosed, UnknownSession, WorkspaceTrustRequired } from "@nyte-ai/core";
+import { WorkspaceFileError } from "@nyte-ai/core/files";
 import { bridgeError, errorMessage } from "../shared/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
@@ -51,6 +52,16 @@ test("expected failures preserve category and cursor but redact local identifier
     if (result.error.code === "cursor_expired") assert.equal(result.error.floor, 17);
     assert.doesNotMatch(JSON.stringify(result), /secret-session|secret-project/);
   }
+  assert.equal(ipcDiagnostics.size, 0);
+});
+
+test("a file identity race keeps its retry guidance instead of becoming an opaque diagnostic", async () => {
+  const result = await ipcResult(() => {
+    throw new WorkspaceFileError("changed");
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.error.code, "invalid_input");
+  assert.match(result.error.message, /retry the operation/);
   assert.equal(ipcDiagnostics.size, 0);
 });
 

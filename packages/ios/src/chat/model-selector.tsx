@@ -180,7 +180,13 @@ export function ModelPickerSheet({
 }
 
 const styles = css.create({
-  sheet: { flexGrow: 1, gap: spacing.sm, backgroundColor: tokens.background },
+  sheet: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    gap: spacing.sm,
+    backgroundColor: tokens.background,
+  },
   header: {
     display: "flex",
     flexDirection: "row",
@@ -190,6 +196,7 @@ const styles = css.create({
   },
   heading: { flexGrow: 1, margin: 0 },
   searchField: {
+    display: "flex",
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -208,7 +215,13 @@ const styles = css.create({
     gap: spacing.sm,
     padding: spacing.gutter,
   },
-  failure: { alignItems: "stretch", gap: spacing.md, padding: spacing.gutter },
+  failure: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: spacing.md,
+    padding: spacing.gutter,
+  },
   row: {
     borderWidth: 0,
     minHeight: controls.touchTarget,
@@ -224,6 +237,13 @@ const styles = css.create({
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
   rowLast: { borderBottomWidth: 0 },
-  rowText: { flexGrow: 1, flexShrink: 1, alignItems: "flex-start", gap: spacing.xs },
+  rowText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
   modelName: { lineClamp: 1, textAlign: "start" },
 });

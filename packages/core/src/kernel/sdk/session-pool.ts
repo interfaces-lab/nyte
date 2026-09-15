@@ -344,8 +344,26 @@ export function createSessionPool(input: {
   const currentRun = async (session: Session, head: HeadName): Promise<RunInfo | undefined> => {
     const stored = await readRun(session, head);
     if (stored === undefined) return undefined;
-    const lease = await session.leases.read(headRef(head));
-    return runInfo(stored.run, lease);
+    const [lease, awaitingReply] = await Promise.all([
+      session.leases.read(headRef(head)),
+      awaitsReply(session, stored.run),
+    ]);
+    const projected = runInfo(stored.run, lease);
+    return awaitingReply ? { ...projected, awaitingReply } : projected;
+  };
+
+  /**
+   * Whether a parked run waits on a participant rather than on background work.
+   * Only a parked run pays the effect read; every other phase answers from the
+   * run alone, so listing a directory of idle sessions costs nothing extra.
+   */
+  const awaitsReply = async (session: Session, run: Run): Promise<true | undefined> => {
+    if (run.phase.kind !== "waiting") return undefined;
+    const views = await listEffects(session, run.id);
+    const asks = views.some(
+      (view) => view.effect.state === "waiting" && view.effect.selection !== undefined,
+    );
+    return asks ? true : undefined;
   };
 
   /** The run's calls still parked for a reply. A finished run has none. */

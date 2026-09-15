@@ -5,45 +5,83 @@ and tool execution. This package uses `@nyte-ai/client` for HTTP/SSE and the
 Node-free `@nyte-ai/core/client` `SessionObserver` for transcript state and recovery.
 
 The app is organized as a single stack behind a saved host connection: a
-root Agents list with sections for needs-input, working, pinned, and earlier
-sessions plus a persistent capsule composer, a pushed Settings page, a
+root Agents list with sections for needs-input, failed, working, pinned, and
+earlier sessions plus a persistent capsule composer, a pushed Settings page, a
 conversation with streamed replies and follow-ups, a review page, a
 changed-files page with agent-edit and on-Mac diff views, an expanded compose
-sheet with real on-device dictation, and a markup editor that bakes numbered
-comments and drawn marks into attached photos. Working sessions mirror to a
-lock-screen Live Activity automatically. Expo Router provides stack
-navigation, header search and menus, and sheets; the connect flow gates all of
-them.
+sheet with model choice and real on-device dictation, and a markup editor that
+bakes numbered comments and drawn marks into attached photos. Working and
+waiting sessions mirror to a lock-screen Live Activity automatically. Expo
+Router provides stack navigation, header search and menus, and sheets; the
+connect flow gates all of them.
 
 The app supports a saved host connection, chat status, streamed replies,
 follow-up messages while a run works, a separate Stop action, answers to waiting
-selections, and host-backed model selection. Changed-file review shows run
-evidence and lets you inspect the current workspace diff. Opening review preserves the composer and selection
-drafts. Returning from background refreshes the list and rechecks the host.
-Failed sends retain the draft and retry key while that conversation remains open.
-Each completed message and expanded disclosure has a copy button that
-copies its Markdown source. Photo library selection and
-VisionCamera capture stage up to three JPEGs locally; only Send transmits them.
-The review page's merge action sends a merge instruction to the host agent —
-there is no dedicated merge, pull-request, or deployment API — so its result
-arrives in the transcript like any other run. A durable offline outbox, QR
-pairing, and relay discovery are not implemented.
+selections, and host-backed model selection. Stop keeps its own control beside
+the field, so it never replaces Send or the microphone. Changed-file review
+shows run evidence and lets you inspect the current workspace diff; long patches
+render their first 400 lines with the rest one tap away. Opening review
+preserves the composer and selection drafts. Returning from background reloads
+the list in place and rechecks the host. Failed sends retain the draft and retry
+key while that conversation remains open. Long-pressing a completed message or
+an expanded disclosure offers Copy, which copies its Markdown source. Photo
+library selection and VisionCamera capture stage up to three JPEGs locally; only
+Send transmits them. Markup keeps an undo for the last point or stroke and
+confirms before discarding. The review page's merge action sends a merge
+instruction to the host agent. There is no dedicated merge, pull-request, or
+deployment API, so its result arrives in the transcript like any other run, and
+both entry points call it "Ask to merge". A durable offline outbox and relay
+discovery are not implemented.
 
 ## Connecting
 
-Nyte desktop exposes the connection under Settings › Server › iOS Simulator. Starting it binds the server to `127.0.0.1` on an ephemeral port
-with a random token and offers Copy address and Copy token. The app's connect
+Nyte desktop exposes the connection under Settings › Server › iOS app. It offers
+two reaches. **Simulator on this Mac** binds `127.0.0.1`; **Over Tailscale** binds
+this machine's tailnet address, read from `tailscale status --json`, and is offered
+only while that daemon reports `Running`. Either way the listener takes an ephemeral
+port and a random token, and offers Copy address and Copy token. The app's connect
 screen takes a name, that address, and that token, then verifies `/v1/info`
 before saving. Verification gives up after ten seconds and can be cancelled, so
 a wrong address does not hold the form.
 
-Because the server listens on loopback, only the iOS Simulator on the same Mac
-can reach it. A physical iPhone, a relay, or remote access is not supported yet.
-Plain HTTP is accepted only for loopback and private IPv4 addresses, checked
-numerically; anything else must be HTTPS. The token is stored in the iOS
-Keychain and masked in the form by default. Autofill is disabled in the input
-configuration, but iOS may still offer to save it in Passwords. No
+Because each start issues a new address and token, Settings › Edit address and
+token reopens the same form on the saved details, with Cancel returning to the
+list. Disconnect stays separate and still deletes the saved token. When the list
+cannot reach the host it offers Try again and a way into those settings.
+
+The connect screen can also read a pairing code: `nyte://connect?name=…&url=…&token=…`,
+scanned with the back camera through VisionCamera's `useObjectOutput`, which
+reads QR codes through AVFoundation without an ML dependency. A scanned address
+goes through the same `parseConnection` policy as a typed one, so a public HTTP
+host is refused either way. The Mac does not publish such a code yet, and a
+simulator has no camera, so the scan button only appears on a device with one.
+
+A loopback share reaches only the iOS Simulator on the same Mac. A Tailscale share
+reaches a physical iPhone signed in to the same tailnet, on any network, and
+nothing on the local wifi: the listener binds the tailnet address alone. A public
+relay and remote access without Tailscale are not supported yet.
+
+Plain HTTP is accepted for loopback, private IPv4 addresses, the Tailscale
+`100.64.0.0/10` range, and `.ts.net` names, checked numerically; anything else
+must be HTTPS. The Tailscale range is shared address space rather than a private
+network, so it is allowed for a narrower reason than the others: reaching one
+means the device is already inside an authenticated tailnet.
+
+That `parseConnection` check is the real gate, because App Transport Security
+cannot express it: ATS exception domains are domain names, so nothing can permit
+cleartext to `100.64.0.0/10`, and `NSAllowsLocalNetworking` does not cover a
+tailnet address. `NSAllowsArbitraryLoads` is therefore on in `app.json`, and the
+address policy above decides what may be reached. The token is stored
+in the iOS Keychain and masked in the form by default. Autofill is disabled in
+the input configuration, but iOS may still offer to save it in Passwords. No
 provider credentials or deployment secrets belong in the bundle.
+
+Connect-screen wording lives in [`src/connection/connect-copy.ts`](src/connection/connect-copy.ts)
+rather than in the screen. Each stage of an attempt owns a title naming what
+happened and a body naming what to do next, and `classifyConnectFailure` decides
+which stage a failure is: a server that refuses the token, one that never
+answers, and one that answers as something other than Nyte need different
+instructions. Retry is offered only where the same details could still work.
 
 ## Development
 
@@ -79,7 +117,8 @@ recognition also require the development build — Live Activities are not
 available in Expo Go. The Voltra plugin generates the extension target, its
 `group.dev.nyte.ios` app group, and `NSSupportsLiveActivities` at prebuild
 time; the speech plugin supplies the microphone and speech-recognition usage
-descriptions. The native Xcode project is generated from `app.json` and ignored by
+descriptions. The native Xcode project is generated from `app.json` and `app.config.ts`
+and ignored by
 Git. Change app config rather than editing generated native files. Real-device
 signing requires your own Apple team.
 
@@ -96,6 +135,61 @@ use the SDK from the selected Xcode:
 SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" pod install
 ```
 
+## Builds and variants
+
+`app.json` holds everything the builds share. [`app.config.ts`](app.config.ts)
+layers three variants on top of it, chosen by `APP_VARIANT`:
+
+| `APP_VARIANT` | Name | Bundle identifier | Scheme | APNs |
+| --- | --- | --- | --- | --- |
+| `development` | Nyte Dev | `dev.nyte.ios.dev` | `nyte-dev` | `development` |
+| `preview` | Nyte Preview | `dev.nyte.ios.preview` | `nyte-preview` | `production` |
+| unset or `production` | Nyte | `dev.nyte.ios` | `nyte` | `production` |
+
+The identifiers differ so the three install side by side. An unset variant
+resolves to production, because that is the one a release must not get wrong by
+omission. Each variant's Live Activity app group follows its bundle identifier,
+so one variant cannot read another's activity state.
+
+Inspect a resolved config before building:
+
+```sh
+APP_VARIANT=preview pnpm --dir packages/ios exec expo config --json
+```
+
+EAS profiles live in [`eas.json`](eas.json) and set `APP_VARIANT` per profile:
+
+```sh
+pnpm --dir packages/ios build:dev         # simulator dev client
+pnpm --dir packages/ios build:preview     # internal distribution
+pnpm --dir packages/ios build:production  # App Store and TestFlight
+pnpm --dir packages/ios submit            # upload the production build
+```
+
+The EAS project is `@nameisdaniel/nyte-ios`; its id lives in `app.json` under
+`extra.eas.projectId`. `eas init` writes the whole resolved config back to that
+file, including the Live Activity extension the Voltra plugin generates for
+whichever variant resolved at the time. That plugin appends rather than
+replaces, so `app.config.ts` drops the generated `extra.eas.build` block before
+the plugin runs again; keeping it would give a non-production build two
+extensions, one of them holding the production bundle identifier.
+
+### APNs environment
+
+`@use-voltra/ios-client` writes `aps-environment: development` into the
+entitlements whenever its push support is on, whatever is being built. Device
+tokens are scoped to the environment named there, and a token minted under one
+is rejected by the other without an error the app can see, so a TestFlight build
+carrying the sandbox entitlement would fail to receive pushes.
+[`plugins/with-aps-environment.cjs`](plugins/with-aps-environment.cjs) runs after
+it and writes the value the variant needs. It must stay last in the plugin list.
+
+Push is enabled at the entitlement level only. Nothing sends Live Activity
+pushes yet: `useWorkLiveActivitySync` drives `start`, `update`, and `end` from
+the app, so the Lock Screen activity stops updating once iOS suspends the app.
+Moving those updates to APNs needs a sender holding an Apple push key, which
+belongs to the host rather than this package.
+
 ## Source layout
 
 Start in `src/app/_layout.tsx` for startup, providers, the connection gate,
@@ -108,10 +202,10 @@ and render the owning feature's screen body.
 | Location | Owns |
 | --- | --- |
 | `src/app/` | Expo Router route tree: root layout and thin route files |
-| `src/connection/` | Connection form, address validation, Keychain, host client creation, and the host context behind the gate |
+| `src/connection/` | Connection form, pairing-code scanner, address validation, Keychain, host client creation, and the host context behind the gate |
 | `src/chat/` | Conversation screens, list rows and grouping, composer, compose sheet, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
 | `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
-| `src/activity/` | The Voltra Live Activity, synchronized from working sessions |
+| `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
 | `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
 | `src/settings/` | Settings page: host row, workspaces, connection status, and disconnect |
 | `src/annotate/` | Photo markup editor: numbered points, drawn marks, and comments |
@@ -154,23 +248,29 @@ The interface follows the chat and keyboard behavior demonstrated by
 this app independently implements its patterns using published libraries.
 
 The Agents list is one sectioned session list under a large-title header with
-an integrated search field and a filter menu; a new conversation starts from
-the capsule composer pinned above the safe area. Review and changed-files
-screens derive edit evidence from the transcript rather than a second host
-read. Disconnect lives in Settings as a grouped destructive row with a
-confirmation before removing the saved token. Version sits in a centered
-footer, not a settings row. Empty screens share one title/body scale and
-short, specific copy.
+an integrated search field, a debounced query, and a filter menu; a new
+conversation starts from the capsule composer pinned above the safe area, and
+the header's compose button opens the sheet when the task needs a model or
+attachments first. Sections name what they hold, so failed runs sit under Failed
+rather than Needs input, the filter menu picks sections instead of re-deriving
+its own rules, and each row's label reads the same status its text shows. Review and changed-files screens derive edit evidence from the transcript
+rather than a second host read. Disconnect lives in Settings as a grouped
+destructive row with a confirmation before removing the saved token. Version
+sits in a centered footer, not a settings row. Empty screens share one
+title/body scale and short, specific copy, and name the filter or search that
+hid the rest.
 
 Expo UI's SwiftUI `Button` supplies native `glass` and `glassProminent` controls
-on supported iOS versions, including iOS 27. `GlassButton` is the single native
-control boundary: its `Host` handles SwiftUI sizing, while React Native owns the
-safe area and keyboard insets. SwiftUI owns the glass material and accessibility
-behavior. In-content primary actions (Connect, Ask to merge) use prominent
-glass. Settings actions stay grouped list rows. The home and chat capsule is a
-`glassEffect` behind the React Native field; plus and mic are glass circle
-controls. Send and stop stay solid primary discs so the send spinner can sit
-on an opaque fill. Nyte's accent token colors primary actions; neutral controls
+on supported iOS versions, including iOS 27. `GlassButton` is the native control
+boundary for icon and toolbar actions: its `Host` handles SwiftUI sizing, while
+React Native owns the safe area and keyboard insets. SwiftUI sizes a
+string-label button to its text, so full-width in-content actions (Connect, Ask
+to merge) are `PrimaryButton`, a solid capsule drawn with the shared tokens.
+Settings actions stay grouped list rows. The home and chat capsule is a
+`glassEffect` behind the React Native field; the effect paints an empty
+container, since a filled SwiftUI shape would draw over it. Plus and mic are
+glass circle controls. Send and stop stay solid discs so the send spinner can
+sit on an opaque fill. Nyte's accent token colors primary actions; neutral controls
 use the foreground token. Message content stays on solid surfaces.
 
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,

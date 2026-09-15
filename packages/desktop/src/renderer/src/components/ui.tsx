@@ -5,6 +5,7 @@ import { Tooltip } from "@nyte-ai/ui/tooltip";
 import * as stylex from "@stylexjs/stylex";
 import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
+import { overlayRef } from "./overlay-occlusion.ts";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { SessionMark } from "@nyte-ai/core/client";
@@ -117,6 +118,7 @@ const styles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    boxSizing: "border-box",
     width: 8,
     height: 8,
     borderRadius: t.radiusFull,
@@ -125,8 +127,8 @@ const styles = stylex.create({
   },
   statusWorking: { width: 15, height: 15, color: t.textAccent },
   statusRetry: { width: 15, height: 15, color: t.textWarning },
-  statusWaiting: { backgroundColor: t.textWarning },
-  statusFailed: { backgroundColor: t.textDanger },
+  statusWaiting: { width: 14, height: 14, backgroundColor: "transparent", color: t.textWarning },
+  statusFailed: { width: 14, height: 14, backgroundColor: "transparent", color: t.textDanger },
   statusIdle: { backgroundColor: "transparent" },
   statusUnread: { backgroundColor: t.textAccent },
   kbd: {
@@ -205,7 +207,9 @@ export function Hint({
           collisionPadding={8}
           {...stylex.props(styles.tooltipPositioner)}
         >
-          <Tooltip.Popup {...stylex.props(styles.tooltipPopup)}>{content}</Tooltip.Popup>
+          <Tooltip.Popup ref={overlayRef} {...stylex.props(styles.tooltipPopup)}>
+            {content}
+          </Tooltip.Popup>
         </Tooltip.Positioner>
       </Tooltip.Portal>
     </Tooltip.Root>
@@ -355,6 +359,8 @@ export function HintToggleIconButton({
 const STATUS_MARK_LABEL = {
   idle: "Idle",
   working: "Running",
+  // `sessionMark` reports this only for a run parked on a reply. A run parked on
+  // background work reads as running, because nothing is being asked of anyone.
   waiting: "Needs attention",
   retry: "Retrying",
   failed: "Failed",
@@ -379,6 +385,11 @@ function statusMarkStyle(mark: SessionMark) {
   }
 }
 
+/**
+ * One glyph per row state, distinguished by shape before colour: a spinner
+ * while a run works, a question when it needs an answer, a warning when it
+ * failed, and a filled dot for a completion you have not read.
+ */
 export function StatusDot({
   mark,
   unread = false,
@@ -397,6 +408,8 @@ export function StatusDot({
       )}
     >
       {(mark === "working" || mark === "retry") && <Spinner />}
+      {mark === "waiting" && <Icon name="bubble-question" size={14} variant="filled" />}
+      {mark === "failed" && <Icon name="warning" size={14} variant="filled" />}
     </span>
   );
 }

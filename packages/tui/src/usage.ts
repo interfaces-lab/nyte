@@ -13,7 +13,7 @@ export interface UsageCardRow {
   readonly tokens: string;
 }
 
-export type WorkspaceUsageCard =
+type WorkspaceUsageCard =
   | { readonly kind: "empty"; readonly title: string; readonly message: string }
   | {
       readonly kind: "usage";
@@ -24,7 +24,7 @@ export type WorkspaceUsageCard =
       readonly thisChat?: string;
     };
 
-export type LocalUsageCard =
+type LocalUsageCard =
   | { readonly kind: "message"; readonly message: string }
   | {
       readonly kind: "usage";

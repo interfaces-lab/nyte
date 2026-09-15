@@ -48,7 +48,7 @@ const FILTER_CYCLE: readonly TreeFilter[] = ["default", "no-tools", "users", "al
 type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary" | "config" | "note";
 
 /** One drawn row of the tree. */
-export interface TreeRow {
+interface TreeRow {
   readonly oid: Oid;
   readonly node: SessionTreeNode;
   /** Gutters, connectors, and the fold glyph, three cells per level. */
@@ -116,7 +116,7 @@ function callSummary(call: ToolCallSummary): string {
 }
 
 /** Every tool call in the tree by id, from the assistant messages that made them. */
-export function toolCalls(tree: SessionTree): ReadonlyMap<string, ToolCallSummary> {
+function toolCalls(tree: SessionTree): ReadonlyMap<string, ToolCallSummary> {
   const calls = new Map<string, ToolCallSummary>();
   const visit = (node: SessionTreeNode): void => {
     const { body } = node.commit;
@@ -240,7 +240,7 @@ function containsActive(node: VisibleNode): boolean {
   return node.node.active || node.children.some(containsActive);
 }
 
-export interface TreeLayoutOptions {
+interface TreeLayoutOptions {
   readonly filter?: TreeFilter;
   readonly query?: string;
   /** Rows whose descendants are hidden. */
@@ -253,7 +253,7 @@ export interface TreeLayoutOptions {
  * single-child chain stays flat. A folded branch row keeps its glyph and
  * drops everything under it.
  */
-export function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow[] {
+function layoutTree(tree: SessionTree, options: TreeLayoutOptions = {}): TreeRow[] {
   const filter = options.filter ?? "default";
   const query = options.query ?? "";
   const folded = options.folded ?? new Set<Oid>();
@@ -360,7 +360,7 @@ function foldGlyph(foldable: boolean, folded: boolean): string {
 }
 
 /** Index of `oid`, else of its nearest ancestor with a row, else the last row. */
-export function nearestRowIndex(
+function nearestRowIndex(
   rows: readonly TreeRow[],
   parents: ReadonlyMap<Oid, Oid | null>,
   oid: Oid | null,
@@ -522,7 +522,7 @@ class TreeRows extends Renderable {
   }
 }
 
-export interface TreeSelectorOptions {
+interface TreeSelectorOptions {
   readonly tree: SessionTree;
   /** Initial highlight; defaults to the head's tip. */
   readonly selectedOid?: Oid | null;
@@ -530,7 +530,7 @@ export interface TreeSelectorOptions {
   readonly filter?: TreeFilter;
 }
 
-export interface TreeSelectorShell {
+interface TreeSelectorShell {
   readonly renderer: CliRenderer;
   readonly theme: CliTheme;
   readonly nextId: (prefix?: string) => string;

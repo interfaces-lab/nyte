@@ -130,7 +130,7 @@ function localSource(spec: string, directory: string) {
 // spurious onChange); all die with dispose(). Missing retryable targets are
 // polled until they can be armed without relying on a racy chain of ancestor
 // watches.
-export function createSourceWatcher(onChange: () => void) {
+function createSourceWatcher(onChange: () => void) {
   const watchers = new Map<string, ReturnType<typeof watch>>();
   const watched = new Map<string, Set<string> | null>();
   const missing = new Set<string>();
@@ -242,7 +242,7 @@ function isMissing(cause: unknown): boolean {
 
 /** Based on https://github.com/anomalyco/opencode/blob/c72b535deeacc2496ea610f1bea1a7661b3c2d93/packages/tui/src/plugin/source.bun.ts */
 
-export async function prepareSource(
+async function prepareSource(
   entrypoint: string,
   track: (file: string, directory?: boolean) => void,
 ) {
@@ -328,7 +328,7 @@ export async function prepareSource(
 
 // Keep source fingerprints and import attempts together. Filesystem events
 // should reload changed local graphs, not repeat unchanged evaluations.
-export function createPluginSources(watchSource: (file: string) => Promise<void>) {
+function createPluginSources(watchSource: (file: string) => Promise<void>) {
   const sources = new Map<string, Source>();
   const watching = new Set<Promise<void>>();
   return {
@@ -391,7 +391,7 @@ interface Registration {
   active: boolean;
 }
 
-export async function discoverTuiPlugins(target: PluginTarget): Promise<string[]> {
+async function discoverTuiPlugins(target: PluginTarget): Promise<string[]> {
   const directories = pluginDirectories(target).map((directory) => join(directory.path, "tui"));
   const entries = await Promise.all(
     directories.map(async (directory) => {

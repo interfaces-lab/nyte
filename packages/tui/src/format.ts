@@ -30,7 +30,7 @@ export function resultSummary(text: string): string | undefined {
   return lines === 1 ? undefined : `${String(lines)} lines`;
 }
 
-export interface Preview {
+interface Preview {
   readonly text: string;
   /** Lines the cut dropped. Head cuts leave labelling to the caller; the others embed theirs. */
   readonly omitted: number;
@@ -146,9 +146,9 @@ export interface PowerlineState {
   readonly pct: number;
 }
 
-export type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
+type PowerlineTone = "workspace" | "model" | "effort" | "queue" | "usage";
 
-export type UsageLevel = "ok" | "warning" | "error";
+type UsageLevel = "ok" | "warning" | "error";
 
 export type PowerlineSegment =
   | { readonly text: string; readonly tone: Exclude<PowerlineTone, "usage"> }
@@ -240,7 +240,7 @@ export function fitPowerlineSegments(
   return kept;
 }
 
-export interface HintGroup {
+interface HintGroup {
   readonly key: string;
   readonly label: string;
 }

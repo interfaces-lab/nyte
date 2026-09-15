@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { describeHostError } from "../connection/connection.ts";
 
-export type ModelCatalogState =
+type ModelCatalogState =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
   | { kind: "ready"; models: readonly ModelInfo[]; defaultModel: ModelInfo | undefined };

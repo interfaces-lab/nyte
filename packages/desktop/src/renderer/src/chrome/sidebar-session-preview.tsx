@@ -6,6 +6,7 @@ import { Icon } from "../components/icons.tsx";
 import { ContextMenu } from "../components/menu.tsx";
 import { floatingSurfaceStyles } from "../theme/floating-surface.stylex.ts";
 import { layer } from "../theme/schema.stylex.ts";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { t } from "../theme/vars.stylex.ts";
 
 const styles = stylex.create({
@@ -113,6 +114,7 @@ export function SessionPreviewCard({
           {...stylex.props(styles.positioner)}
         >
           <PreviewCard.Popup
+            ref={overlayRef}
             aria-label={`Details for ${title}`}
             {...stylex.props(floatingSurfaceStyles.popup, styles.popup)}
           >

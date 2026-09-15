@@ -14,6 +14,8 @@ export function IconTile({ name, color }: { name: SFSymbol; color?: string }) {
 
 const styles = css.create({
   tile: {
+    display: "flex",
+    flexDirection: "column",
     width: list.tile,
     height: list.tile,
     borderRadius: radii.tile,

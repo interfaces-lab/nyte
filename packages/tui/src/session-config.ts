@@ -31,7 +31,7 @@ export interface ConfigPatch {
   readonly thinkingLevel?: ThinkingLevel;
 }
 
-export type ConfigureResult =
+type ConfigureResult =
   | { readonly kind: "acknowledged" }
   /** No dispatch was needed, or a newer request carried this change instead. */
   | { readonly kind: "superseded" }
@@ -49,7 +49,7 @@ export interface SubmissionSlot {
   release(): void;
 }
 
-export interface SessionConfiguratorOptions {
+interface SessionConfiguratorOptions {
   readonly configure: (patch: ConfigPatch) => Promise<ConfigureOutcome>;
   /** SDK selected session inputs, including acknowledged config that has not landed yet. */
   readonly readSelected: () => RunChoice;
@@ -83,7 +83,7 @@ interface Preparation {
     | Extract<ConfigureResult, { kind: "failed" }>;
 }
 
-export function sameChoice(left: RunChoice, right: RunChoice): boolean {
+function sameChoice(left: RunChoice, right: RunChoice): boolean {
   return (
     left.model.provider === right.model.provider &&
     left.model.id === right.model.id &&

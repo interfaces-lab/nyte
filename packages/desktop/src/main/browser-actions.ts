@@ -66,7 +66,7 @@ export async function showBrowserMenu({
   return action;
 }
 
-export async function saveBrowserScreenshot({
+async function saveBrowserScreenshot({
   contents,
   window,
 }: {

@@ -47,7 +47,7 @@ export function keyboardNavigates(key: string, editing: boolean): boolean {
 }
 
 /** True while the caret sits in a field, where every key but Tab is text entry. */
-export function editingText(element: Element | null): boolean {
+function editingText(element: Element | null): boolean {
   if (!(element instanceof HTMLElement)) return false;
   if (element.isContentEditable || element instanceof HTMLTextAreaElement) return true;
   return element instanceof HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(element.type);

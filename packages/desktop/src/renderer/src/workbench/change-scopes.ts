@@ -5,7 +5,7 @@ import type { WorkbenchChangesScope } from "./controller.ts";
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
 
-export interface TurnChangeOption {
+interface TurnChangeOption {
   readonly scope: TurnChangesScope;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };

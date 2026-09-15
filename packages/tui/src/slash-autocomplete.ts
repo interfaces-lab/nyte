@@ -26,7 +26,7 @@ import type { SlashCommand } from "./slash.ts";
 import type { CliTheme } from "./theme.ts";
 import { cellOffset } from "./width.ts";
 
-export type SlashInput = Pick<
+type SlashInput = Pick<
   TextareaRenderable,
   "plainText" | "cursorOffset" | "clear" | "focus" | "setText" | "editBuffer"
 >;

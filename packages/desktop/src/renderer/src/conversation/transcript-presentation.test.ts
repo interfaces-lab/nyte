@@ -39,6 +39,31 @@ describe("transcript presentation", () => {
     ]);
   });
 
+  test("a tool call after an answer does not pull the answer into the episode", () => {
+    const answer = assistant(
+      "a",
+      0,
+      "Found the actual cause, and it's a config bug:\n\n- `app.json` hardcodes the group\n- `app.config.ts` spreads it into every variant",
+    );
+    const tool: TurnPart = { kind: "tool", callId: "edit", toolName: "edit" };
+
+    assert.deepEqual(displayTranscriptParts([answer, tool]), [
+      { kind: "response", parts: [answer] },
+      { kind: "work", parts: [tool] },
+    ]);
+  });
+
+  test("a status line waits for the episode its activity opens", () => {
+    const narration = assistant("a", 0, "Let me check the config.");
+    const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
+    const answer = assistant("b", 0, "Fixed it.");
+
+    assert.deepEqual(displayTranscriptParts([narration, tool, answer]), [
+      { kind: "work", parts: [narration, tool] },
+      { kind: "response", parts: [answer] },
+    ]);
+  });
+
   test("assistant-only turns remain one response", () => {
     const first = assistant("a", 0, "One");
     const second = assistant("a", 1, "Two");

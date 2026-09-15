@@ -1,4 +1,4 @@
-import { WorkspaceFileError } from "@nyte-ai/core/files";
+import { WorkspaceFileError, WorkspaceSearchError } from "@nyte-ai/core/files";
 import { InvalidRipgrepPattern } from "@nyte-ai/core/ripgrep";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -47,11 +47,19 @@ export function ipcFailure(cause: unknown): IpcFailure {
   if (cause instanceof ExpectedHostError) return cause.error;
   if (cause instanceof InvalidRipgrepPattern)
     return { code: "invalid_input", message: cause.message, issues: [] };
+  // Workspace search rewraps a rejected pattern, so the bare ripgrep error above
+  // only reaches here from the direct search path.
+  if (cause instanceof WorkspaceSearchError)
+    return { code: "invalid_input", message: cause.message, issues: [] };
   if (cause instanceof WorkspaceFileError) {
     switch (cause.reason) {
       case "outside_workspace":
         return { code: "forbidden", message: cause.message };
       case "not_file":
+      // The path no longer names the file that was opened, so the request cannot
+      // be served as asked. It never reaches a remote client: workspace files are
+      // desktop's own IPC calls, not protocol operations.
+      case "changed":
         return { code: "invalid_input", message: cause.message, issues: [] };
       case "too_large":
       case "drafts_too_large":

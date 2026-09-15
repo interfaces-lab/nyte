@@ -11,7 +11,7 @@ const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
 export const VERSION = packageMetadata.version;
 
-export interface ReleaseInfo {
+interface ReleaseInfo {
   /** Semver without the leading `v`. */
   readonly version: string;
   readonly url: string;

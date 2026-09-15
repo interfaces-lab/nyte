@@ -40,12 +40,14 @@ import type {
   HostState,
   GitHubProviderState,
   LocalFontCatalog,
+  MobileShareReach,
   MobileShareState,
   OpenWorkspaceOutcome,
   PreferenceChange,
   SdkOperationPath,
   ServerConnectOutcome,
   ServerState,
+  TailnetAvailability,
   UsageSnapshot,
   UsageWindow,
   WatchEnvelope,
@@ -56,6 +58,8 @@ import { loadPersistedCatalog, login, readCatalog } from "./catalog.ts";
 import type { ResolvedCatalog } from "./catalog.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import type { BrowserSurfaces } from "./browser.ts";
+import type { BrowserAgent } from "./browser-agent.ts";
+import { browserToolsPlugin } from "./browser-tools.ts";
 import { TerminalSessions } from "./terminals.ts";
 import { createGitHubProvider, runProviderCommand } from "./github.ts";
 import type { CommandRunner, CommandResult, GitHubProvider } from "./github.ts";
@@ -72,6 +76,7 @@ import { createGitVcs } from "./vcs.ts";
 import type { DesktopGitVcs } from "./vcs.ts";
 import { startMobileShare } from "./mobile-share.ts";
 import type { MobileShare } from "./mobile-share.ts";
+import { findTailnetAddress } from "./tailnet.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
 import { serverCatalog, serverConnectionProblem } from "./server-connection.ts";
@@ -193,6 +198,7 @@ const DIRECTORY_SERVER_BUDGET_MS = 1_500;
 interface ActiveMobileShare {
   readonly share: MobileShare;
   readonly open: OpenLocalTarget;
+  readonly reach: MobileShareReach;
 }
 
 /** A store the page will read, with what only the SDK can say about it. */
@@ -369,9 +375,10 @@ export class DesktopHost {
       case "host.mobile.state":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.mobileShareState();
-      case "host.mobile.start":
-        CALL_INPUT_SCHEMAS[path].Parse(input);
-        return this.startMobileShare();
+      case "host.mobile.start": {
+        const { reach } = CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.startMobileShare(reach);
+      }
       case "host.mobile.stop":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.stopMobileShare();
@@ -392,6 +399,8 @@ export class DesktopHost {
       case "host.browser.close":
         this.dependencies.browser.close(CALL_INPUT_SCHEMAS[path].Parse(input));
         return undefined;
+      case "host.browser.captureFrame":
+        return this.dependencies.browser.captureFrame(CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.terminal.create": {
         const generation = this.terminalGeneration;
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
@@ -532,6 +541,12 @@ export class DesktopHost {
   watchStop(watchId: string): void {
     this.watches.get(watchId)?.abort();
     this.watches.delete(watchId);
+  }
+
+  /** A reloaded renderer never sends its stops; its watches would pump into a dead frame. */
+  stopWatches(): void {
+    for (const stop of this.watches.values()) stop.abort();
+    this.watches.clear();
   }
 
   async close(): Promise<void> {
@@ -793,6 +808,7 @@ export class DesktopHost {
               // The producer retained only this failure record, not its original Error.
               message: ipcFailure(failure).message,
             }),
+          extra: [browserToolsPlugin({ agent: this.dependencies.browser.agent })],
         },
       });
       const base = { sdk, store, sessionAttachments: new Map<SessionId, Disposer>() };
@@ -964,16 +980,41 @@ export class DesktopHost {
 
   private async mobileShareState(): Promise<MobileShareState> {
     const active = await this.activeMobileShare();
-    if (active === undefined) return { kind: "off" };
+    if (active === undefined) return { kind: "off", tailnet: await this.tailnetAvailability() };
     return {
       kind: "sharing",
       address: active.share.address,
       token: active.share.token,
+      reach: active.reach,
       target:
         active.open.kind === "home"
           ? { kind: "home" }
           : { kind: "project", workspace: active.open.workspace },
     };
+  }
+
+  /** Read fresh each time: the daemon can start or stop while Settings is open. */
+  private async tailnetAvailability(): Promise<TailnetAvailability> {
+    const lookup = await findTailnetAddress(process.platform);
+    if (lookup.kind !== "ready") return lookup;
+    return { kind: "ready", ip: lookup.address.ip, name: lookup.address.name };
+  }
+
+  /**
+   * The address a tailnet share binds. Resolved at start rather than reused
+   * from a cached reading: binding an address whose interface went down fails
+   * with a message that explains nothing.
+   */
+  private async requireTailnetHost(): Promise<string> {
+    const lookup = await findTailnetAddress(process.platform);
+    if (lookup.kind === "ready") return lookup.address.ip;
+    throw new ExpectedHostError({
+      code: "not_found",
+      message:
+        lookup.kind === "missing"
+          ? "Tailscale isn't installed on this Mac"
+          : "Tailscale isn't running. Start it, then share again.",
+    });
   }
 
   /** The running share, or nothing once a start has failed. */
@@ -995,11 +1036,12 @@ export class DesktopHost {
    * only once trusted; the server target is never a candidate because
    * selection is always local.
    */
-  private async startMobileShare(): Promise<MobileShareState> {
+  private async startMobileShare(reach: MobileShareReach): Promise<MobileShareState> {
     if (this.closed)
       throw new ExpectedHostError({ code: "closed", message: "The window closed before sharing" });
     if (this.mobileShare === undefined) {
       const pending = (async (): Promise<ActiveMobileShare> => {
+        const host = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
         const open = await this.prepare();
         if (open.kind === "project") await this.requireTrust(open.workspace.path);
         if (this.closed)
@@ -1008,6 +1050,7 @@ export class DesktopHost {
             message: "The window closed before sharing",
           });
         const share = await startMobileShare({
+          host,
           sdk: {
             ...open.sdk,
             provider: {
@@ -1029,7 +1072,7 @@ export class DesktopHost {
           version: this.dependencies.appVersion ?? "dev",
           attach: (sessionId) => this.attachSession(open, sessionId),
         });
-        return { share, open };
+        return { share, open, reach };
       })();
       this.mobileShare = pending;
       try {

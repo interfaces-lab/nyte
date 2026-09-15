@@ -33,7 +33,7 @@ import {
 } from "./stacked-diff.ts";
 import { useClientBox } from "./use-client-box.ts";
 
-export type ChangesStackItem =
+type ChangesStackItem =
   | (Extract<ChangeStackSection, { kind: "diff" }> & {
       readonly parsed: ParsedDiff;
       readonly added: number;

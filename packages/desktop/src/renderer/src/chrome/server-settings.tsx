@@ -8,11 +8,18 @@
 import { Input } from "@nyte-ai/ui";
 import * as stylex from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import type { Transition } from "motion/react";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
 import { errorMessage } from "../../../shared/errors.ts";
-import type { MobileShareState, ServerState } from "../../../shared/ipc.ts";
+import type {
+  MobileShareReach,
+  MobileShareState,
+  ServerState,
+  TailnetAvailability,
+} from "../../../shared/ipc.ts";
 import { Icon } from "../components/icons.tsx";
 import { Button, IconButton } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
@@ -21,9 +28,17 @@ import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { ConnectionList, ConnectionRow, ConnectionStatus } from "./connection-list.tsx";
 import { modelsSettingsStyles as styles } from "./models-settings.stylex.ts";
+import { PairingCode, pairingPayload } from "./pairing-code.tsx";
 
 const shareStyles = stylex.create({
   panel: { display: "flex", flexDirection: "column", gap: 8 },
+  // The pane keeps one height per step and animates between them, so the row
+  // below it never jumps while the user switches.
+  steps: { display: "grid", overflow: "hidden" },
+  step: { gridArea: "1 / 1", display: "flex", flexDirection: "column", gap: 8 },
+  switcher: { display: "inline-flex", gap: 2, alignSelf: "flex-start" },
+  scan: { display: "flex", alignItems: "center", gap: 12 },
+  scanText: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0 },
   // One grid for both fields so the value boxes share a left edge and width.
   fields: {
     display: "grid",
@@ -271,44 +286,114 @@ function shareTargetLabel(
 /** The address and token the simulator needs, with the token hidden until asked for. */
 function SharePanel({ state }: { state: Extract<MobileShareState, { kind: "sharing" }> }) {
   const [revealed, setRevealed] = useState(false);
+  const [step, setStep] = useState<"scan" | "details">("scan");
+  const reducedMotion = useReducedMotion();
+  const transition: Transition =
+    reducedMotion === true ? { duration: 0 } : { type: "spring", duration: 0.28, bounce: 0 };
+  // Forward and back read as movement in opposite directions.
+  const offset = step === "scan" ? -8 : 8;
+  const payload = pairingPayload({ address: state.address, token: state.token });
+
   return (
     <div {...stylex.props(shareStyles.panel)}>
-      <div {...stylex.props(shareStyles.fields)}>
-        <span {...stylex.props(shareStyles.label)}>Address</span>
-        <code aria-label="Share address" {...stylex.props(shareStyles.value)}>
-          {state.address}
-        </code>
-        <span {...stylex.props(shareStyles.fieldActions)}>
-          <CopyButton label="Address" value={state.address} />
-        </span>
-        <span {...stylex.props(shareStyles.label)}>Token</span>
-        <code aria-label="Share token" {...stylex.props(shareStyles.value)}>
-          {revealed ? state.token : "••••••••••••••••"}
-        </code>
-        <span {...stylex.props(shareStyles.fieldActions)}>
-          <CopyButton label="Token" value={state.token} />
-          <IconButton
-            compact
-            icon="eye"
-            label={revealed ? "Hide token" : "Reveal token"}
-            aria-pressed={revealed}
-            onClick={() => setRevealed((value) => !value)}
-          />
-        </span>
+      <div {...stylex.props(shareStyles.switcher)} role="group" aria-label="Pairing method">
+        <Button
+          variant={step === "scan" ? "primary" : "ghost"}
+          aria-pressed={step === "scan"}
+          onClick={() => setStep("scan")}
+        >
+          Scan
+        </Button>
+        <Button
+          variant={step === "details" ? "primary" : "ghost"}
+          aria-pressed={step === "details"}
+          onClick={() => setStep("details")}
+        >
+          Address and token
+        </Button>
       </div>
-      <span {...stylex.props(styles.deviceCodeNote)}>
-        Enter these in the iOS app. Loopback only, so a physical phone can't reach it. The token is
-        new for every share and never written to disk.
-      </span>
+      <motion.div layout {...stylex.props(shareStyles.steps)} transition={transition}>
+        <AnimatePresence initial={false} mode="popLayout">
+          {step === "scan" ? (
+            <motion.div
+              key="scan"
+              layout="position"
+              initial={{ opacity: 0, x: offset }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: offset }}
+              transition={transition}
+              {...stylex.props(shareStyles.step)}
+            >
+              <div {...stylex.props(shareStyles.scan)}>
+                <PairingCode value={payload} size={132} />
+                <span {...stylex.props(shareStyles.scanText)}>
+                  <span {...stylex.props(shareStyles.label)}>
+                    In the iOS app, tap Scan QR code on the connect screen.
+                  </span>
+                  <span {...stylex.props(styles.deviceCodeNote)}>
+                    The code carries this share's token, so treat it like the token itself. It stops
+                    working when you stop sharing.
+                  </span>
+                </span>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="details"
+              layout="position"
+              initial={{ opacity: 0, x: offset }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: offset }}
+              transition={transition}
+              {...stylex.props(shareStyles.step)}
+            >
+              <div {...stylex.props(shareStyles.fields)}>
+                <span {...stylex.props(shareStyles.label)}>Address</span>
+                <code aria-label="Share address" {...stylex.props(shareStyles.value)}>
+                  {state.address}
+                </code>
+                <span {...stylex.props(shareStyles.fieldActions)}>
+                  <CopyButton label="Address" value={state.address} />
+                </span>
+                <span {...stylex.props(shareStyles.label)}>Token</span>
+                <code aria-label="Share token" {...stylex.props(shareStyles.value)}>
+                  {revealed ? state.token : "••••••••••••••••"}
+                </code>
+                <span {...stylex.props(shareStyles.fieldActions)}>
+                  <CopyButton label="Token" value={state.token} />
+                  <IconButton
+                    compact
+                    icon="eye"
+                    label={revealed ? "Hide token" : "Reveal token"}
+                    aria-pressed={revealed}
+                    onClick={() => setRevealed((value) => !value)}
+                  />
+                </span>
+              </div>
+              <span {...stylex.props(styles.deviceCodeNote)}>
+                {state.reach === "tailnet"
+                  ? "Enter these in the iOS app. Reachable from your signed-in Tailscale devices on any network, and from nothing else. The token is new for every share and never written to disk."
+                  : "Enter these in the iOS app. Loopback only, so a physical phone can't reach it. The token is new for every share and never written to disk."}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   );
+}
+
+function tailnetDetail(tailnet: TailnetAvailability): string {
+  if (tailnet.kind === "missing") return "Tailscale isn't installed on this Mac.";
+  if (tailnet.kind === "unavailable") return "Tailscale isn't running. Start it, then share again.";
+  return `Reachable at ${tailnet.name ?? tailnet.ip} from your signed-in devices, on any network.`;
 }
 
 function MobileShareSettings(): ReactElement {
   const client = useQueryClient();
   const share = useMobileShareState();
   const start = useMutation({
-    mutationFn: () => nyte.host.mobile.start(),
+    mutationFn: (reach: MobileShareReach) => nyte.host.mobile.start({ reach }),
     onError: (cause) =>
       toast.error(`Couldn't start sharing: ${errorMessage(cause)}`, { id: "mobile-share" }),
     onSettled: () => client.invalidateQueries({ queryKey: keys.mobileShare }),
@@ -325,30 +410,56 @@ function MobileShareSettings(): ReactElement {
   return (
     <section {...stylex.props(settingsPatterns.section)}>
       <div {...stylex.props(settingsPatterns.sectionHeader)}>
-        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>iOS Simulator</h2>
+        <h2 {...stylex.props(settingsPatterns.sectionTitle)}>iOS app</h2>
         <p {...stylex.props(settingsPatterns.sectionDescription)}>
-          Serve the selected folder's chats to the Nyte iOS app in a simulator on this Mac. The
-          phone sees the same conversations; runs still execute here.
+          Serve the selected folder's chats to the Nyte iOS app. The phone sees the same
+          conversations; runs still execute here.
         </p>
       </div>
       <ConnectionList>
         {state === undefined ? null : state.kind === "off" ? (
-          <ConnectionRow
-            glyph={<Icon name="phone" size={16} />}
-            title="Not sharing"
-            detail="Keeps serving the folder selected now, even after you switch folders."
-            actions={
-              <Button variant="primary" disabled={pending} onClick={() => start.mutate()}>
-                {start.isPending ? "Starting…" : "Start sharing"}
-              </Button>
-            }
-          />
+          <>
+            <ConnectionRow
+              glyph={<Icon name="phone" size={16} />}
+              title="Simulator on this Mac"
+              detail="Loopback only. Keeps serving the folder selected now, even after you switch folders."
+              actions={
+                <Button
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => start.mutate("simulator")}
+                >
+                  {start.isPending && start.variables === "simulator"
+                    ? "Starting…"
+                    : "Start sharing"}
+                </Button>
+              }
+            />
+            <ConnectionRow
+              glyph={<Icon name="phone" size={16} />}
+              title="Over Tailscale"
+              detail={tailnetDetail(state.tailnet)}
+              actions={
+                <Button
+                  variant="primary"
+                  disabled={pending || state.tailnet.kind !== "ready"}
+                  onClick={() => start.mutate("tailnet")}
+                >
+                  {start.isPending && start.variables === "tailnet" ? "Starting…" : "Start sharing"}
+                </Button>
+              }
+            />
+          </>
         ) : (
           <ConnectionRow
             glyph={<Icon name="phone" size={16} />}
             title={`Sharing ${shareTargetLabel(state.target)}`}
             detail={state.target.kind === "home" ? undefined : state.target.workspace.path}
-            status={<ConnectionStatus tone="on">Serving</ConnectionStatus>}
+            status={
+              <ConnectionStatus tone="on">
+                {state.reach === "tailnet" ? "Serving over Tailscale" : "Serving to simulator"}
+              </ConnectionStatus>
+            }
             actions={
               <Button variant="ghost" disabled={pending} onClick={() => stop.mutate()}>
                 {stop.isPending ? "Stopping…" : "Stop sharing"}

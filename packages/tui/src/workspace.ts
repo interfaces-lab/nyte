@@ -10,7 +10,7 @@ import type { PowerlineState } from "./format.ts";
 
 const run = promisify(execFile);
 
-export type WorkspaceStatus = Pick<PowerlineState, "workspace" | "branch" | "dirty">;
+type WorkspaceStatus = Pick<PowerlineState, "workspace" | "branch" | "dirty">;
 
 async function git(cwd: string, args: readonly string[]): Promise<string | undefined> {
   try {

@@ -23,6 +23,7 @@ import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/core";
 import { sessionId as sessionIdSchema } from "../../../shared/schemas.ts";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
 import { orderedPanes, paneById } from "./pane-layout.ts";
@@ -171,7 +172,7 @@ function SessionDragSurface({ children }: { readonly children: ReactNode }): Rea
       </div>
       <DragOverlay dropAnimation={null} zIndex={10_000}>
         {dragged === undefined ? null : (
-          <div {...stylex.props(styles.overlay)}>
+          <div ref={overlayRef} {...stylex.props(styles.overlay)}>
             <span {...stylex.props(styles.overlayTitle)}>{dragged.title}</span>
           </div>
         )}

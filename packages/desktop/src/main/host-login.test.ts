@@ -14,6 +14,7 @@ import type {
 import type { Api, Model } from "@nyte-ai/schema";
 import type { DesktopCatalog, HostEvent, LoginOutcome } from "../shared/ipc.ts";
 import { DesktopHost } from "./host.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
 
 interface RecordedRefresh {
   readonly allowNetwork: boolean;
@@ -281,9 +282,13 @@ async function desktop(createModels: () => MutableModels) {
       },
       navigate: () => undefined,
       close: () => undefined,
+      captureFrame: () => Promise.resolve(undefined),
       setBounds: () => undefined,
+      retain: () => undefined,
+      release: () => undefined,
       warm: async () => undefined,
       dispose: () => undefined,
+      agent: unusedBrowserAgent(),
     },
   });
   cleanups.push(

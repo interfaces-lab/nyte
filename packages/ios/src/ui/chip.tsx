@@ -26,6 +26,8 @@ export function Chip({
 
 const styles = css.create({
   chip: {
+    display: "flex",
+    flexDirection: "column",
     height: controls.chipHeight,
     paddingInline: 14,
     borderRadius: radii.pill,

@@ -14,9 +14,9 @@ import type { AppInfo } from "../../../shared/app-menu.ts";
 type WorkspaceStage = { readonly kind: "workspace" };
 type CustomizeStage = { readonly kind: "customize"; readonly sessionId: SessionId | undefined };
 
-export type ShellStage = WorkspaceStage | CustomizeStage;
+type ShellStage = WorkspaceStage | CustomizeStage;
 
-export const SIDEBAR_WIDTH_DEFAULT = 220;
+const SIDEBAR_WIDTH_DEFAULT = 220;
 export const SIDEBAR_WIDTH_MIN = 190;
 export const SIDEBAR_WIDTH_MAX = 400;
 export const SIDEBAR_WIDTH_STEP = 8;

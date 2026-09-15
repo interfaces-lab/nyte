@@ -76,17 +76,21 @@
    */
   [data-nyte-scrollport] {
     scrollbar-gutter: stable;
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
     overscroll-behavior: contain;
+  }
+
+  /*
+   * A pane holds its scroll at the edge; a block inside one hands the rest
+   * back. Without this a code block, diff, or tool output stops the
+   * conversation dead once its own content runs out. Cursor spells the same
+   * thing `allowScrollChaining` on its nested scroll areas.
+   */
+  [data-nyte-scrollport] [data-nyte-scrollport] {
+    overscroll-behavior: auto;
   }
 
   [data-nyte-scrollport="balanced"] {
     scrollbar-gutter: stable both-edges;
-  }
-
-  [data-nyte-scrollport]:hover {
-    scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
   [data-nyte-scrollport]::-webkit-scrollbar {

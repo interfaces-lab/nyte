@@ -12,5 +12,5 @@
     "strict": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "app.config.ts"]
 }

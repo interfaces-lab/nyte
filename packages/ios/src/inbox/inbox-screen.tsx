@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
@@ -9,20 +9,34 @@ import type { SessionInfo } from "@nyte-ai/protocol";
 import { useHost } from "../connection/host-context.tsx";
 import { SessionRow } from "../chat/session-row.tsx";
 import { Composer } from "../chat/composer.tsx";
-import { isActive, needsAttention, useSessionList } from "../chat/sessions.ts";
+import {
+  hasFailed,
+  isActive,
+  needsAttention,
+  needsInput,
+  useSessionList,
+} from "../chat/sessions.ts";
 import { useWorkLiveActivitySync } from "../activity/live-activity.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
+import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
+import { FilterGrid } from "./filter-grid.tsx";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
-type Filter = "all" | "attention" | "working" | "pinned";
+// The menu order is the source of truth; the type and the labels derive from it.
+const filterOrder = ["all", "attention", "working", "pinned"] as const;
+
+type Filter = (typeof filterOrder)[number];
 
 const filterLabels: Record<Filter, string> = {
   all: "All Agents",
-  attention: "Needs input",
+  attention: "Needs you",
   working: "Working",
   pinned: "Pinned",
 };
+
+/** Typing in the search field must not spend one host request per keystroke. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 function isToday(session: SessionInfo, now: number): boolean {
   const then = new Date(session.lastActivityAt);
@@ -45,7 +59,6 @@ function SessionSection({
   now: number;
   first: boolean;
 }) {
-  if (sessions.length === 0) return null;
   return (
     <>
       <SectionHeader label={title} first={first} />
@@ -66,37 +79,45 @@ export function InboxScreen() {
   const theme = useTheme();
   const { client, connection } = useHost();
   const insets = useSafeAreaInsets();
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const { list, busy, error, refresh, reload, more } = useSessionList(client, query.trim());
-  // Latched by each pull; the spinner shows only while the load it asked for runs.
-  const [pulling, setPulling] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { list, busy, error, refresh, reload, more } = useSessionList(client, search);
+  // A pull is the only load that blanks the rows, so the spinner belongs to it
+  // alone; returning to the app reloads in place and never sets loading.
+  const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const sessions = (list.kind === "ready" ? list.sessions : []).filter(
     (session) => !session.archived,
   );
   const working = sessions.filter(isActive);
-  const attention = sessions.filter((session) => needsAttention(session) && !isActive(session));
-  const pinned = sessions.filter(
-    (session) => session.pinned && !isActive(session) && !needsAttention(session),
-  );
-  const rest = sessions.filter(
-    (session) => !session.pinned && !isActive(session) && !needsAttention(session),
-  );
-  const today = rest.filter((session) => isToday(session, now));
-  const earlier = rest.filter((session) => !isToday(session, now));
+  const attention = sessions.filter((session) => needsInput(session) && !isActive(session));
+  const failed = sessions.filter((session) => hasFailed(session) && !isActive(session));
+  const settled = sessions.filter((session) => !isActive(session) && !needsAttention(session));
+  const pinned = settled.filter((session) => session.pinned);
+  const rest = settled.filter((session) => !session.pinned);
 
-  const filtered =
-    filter === "attention"
-      ? sessions.filter(needsAttention)
-      : filter === "working"
-        ? sessions.filter(isActive)
-        : filter === "pinned"
-          ? sessions.filter((session) => session.pinned)
-          : sessions;
+  // One table drives the sections, the filter menu, and the empty state, so a
+  // row can never sit in a section the filter of the same name hides. Groups
+  // with no filter of their own show only in the unfiltered list.
+  const groups: readonly {
+    title: string;
+    filter?: Exclude<Filter, "all">;
+    sessions: readonly SessionInfo[];
+  }[] = [
+    { title: "Needs input", filter: "attention", sessions: attention },
+    { title: "Failed", filter: "attention", sessions: failed },
+    { title: "Working", filter: "working", sessions: working },
+    { title: "Pinned", filter: "pinned", sessions: pinned },
+    { title: "Today", sessions: rest.filter((session) => isToday(session, now)) },
+    { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
+  ];
+  const visible = groups.filter(
+    (group) => group.sessions.length > 0 && (filter === "all" || group.filter === filter),
+  );
 
-  useWorkLiveActivitySync(working);
+  useWorkLiveActivitySync(working, attention);
 
   // Returning to the list rechecks the host without blanking the rows.
   useFocusEffect(
@@ -126,30 +147,17 @@ export function InboxScreen() {
           onPress={() => router.push("/settings")}
         />
       </Stack.Toolbar>
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Menu
-          icon="line.3.horizontal.decrease"
-          accessibilityLabel="Filter agents"
-          separateBackground
-          inline
-        >
-          {(Object.keys(filterLabels) as Filter[]).map((key) => (
-            <Stack.Toolbar.MenuAction
-              key={key}
-              isOn={filter === key}
-              onPress={() => setFilter(key)}
-            >
-              {filterLabels[key]}
-            </Stack.Toolbar.MenuAction>
-          ))}
-        </Stack.Toolbar.Menu>
-      </Stack.Toolbar>
+      <Stack.Toolbar placement="right"></Stack.Toolbar>
       <Stack.SearchBar
         placement="automatic"
         allowToolbarIntegration={false}
         hideWhenScrolling
         placeholder="Search agents"
-        onChangeText={(event) => setQuery(event.nativeEvent.text)}
+        onChangeText={(event) => {
+          const text = event.nativeEvent.text.trim();
+          clearTimeout(searchTimer.current);
+          searchTimer.current = setTimeout(() => setSearch(text), SEARCH_DEBOUNCE_MS);
+        }}
       />
       <ScrollView
         style={{ flex: 1 }}
@@ -164,69 +172,101 @@ export function InboxScreen() {
         refreshControl={
           <RefreshControl
             tintColor={theme.muted}
-            refreshing={pulling && list.kind === "loading"}
+            refreshing={pulled && list.kind === "loading"}
             onRefresh={() => {
-              setPulling(true);
+              setPulled(true);
               setNow(Date.now());
               refresh();
             }}
           />
         }
       >
-        {list.kind === "loading" && (
+        {list.kind === "ready" && search === "" ? (
+          <FilterGrid
+            cards={[
+              { id: "all", label: filterLabels.all, icon: "square.stack", tint: theme.muted },
+              {
+                id: "attention",
+                label: filterLabels.attention,
+                icon: "bell.badge",
+                tint: theme.warning,
+                count: attention.length + failed.length,
+              },
+              {
+                id: "working",
+                label: filterLabels.working,
+                icon: "circle.grid.cross",
+                tint: theme.accent,
+                count: working.length,
+              },
+              {
+                id: "pinned",
+                label: filterLabels.pinned,
+                icon: "pin",
+                tint: theme.success,
+                count: pinned.length,
+              },
+            ]}
+            active={filter}
+            onSelect={setFilter}
+          />
+        ) : null}
+        {list.kind === "loading" && !pulled && (
           <html.div style={styles.state}>
             <ActivityIndicator color={theme.muted} />
           </html.div>
         )}
         {list.kind === "failed" && (
-          <EmptyState title="Couldn't load agents" description={list.message} />
+          <EmptyState
+            title="Couldn't load agents"
+            description={list.message}
+            systemImage="laptopcomputer.slash"
+          >
+            <html.div style={styles.stateActions}>
+              <GlassButton label="Try again" onPress={refresh} />
+              <GlassButton
+                label="Connection"
+                systemImage="gearshape"
+                onPress={() => router.push("/settings")}
+              />
+            </html.div>
+          </EmptyState>
         )}
         {list.kind === "ready" &&
-          (filtered.length === 0 ? (
+          (visible.length === 0 ? (
             <EmptyState
-              title={query.trim() === "" ? "No agents yet" : "No matching agents"}
+              title={
+                search !== ""
+                  ? "No matching agents"
+                  : filter === "all"
+                    ? "No agents yet"
+                    : `Nothing in ${filterLabels[filter]}`
+              }
               description={
-                query.trim() === ""
-                  ? "Describe a task below. Your Mac runs it and it shows up here."
-                  : "Try another name."
+                search !== ""
+                  ? "Try another name."
+                  : filter === "all"
+                    ? "Describe a task below. Your Mac runs it and it shows up here."
+                    : "Other agents are hidden by this filter."
               }
               systemImage="square.stack"
-            />
-          ) : filter === "all" ? (
-            <>
-              <SessionSection title="Needs input" sessions={attention} now={now} first />
-              <SessionSection
-                title="Working"
-                sessions={working}
-                now={now}
-                first={attention.length === 0}
-              />
-              <SessionSection
-                title="Pinned"
-                sessions={pinned}
-                now={now}
-                first={attention.length === 0 && working.length === 0}
-              />
-              <SessionSection
-                title="Today"
-                sessions={today}
-                now={now}
-                first={attention.length === 0 && working.length === 0 && pinned.length === 0}
-              />
-              <SessionSection
-                title="Earlier"
-                sessions={earlier}
-                now={now}
-                first={
-                  attention.length === 0 &&
-                  working.length === 0 &&
-                  pinned.length === 0 &&
-                  today.length === 0
-                }
-              />
-            </>
+            >
+              {search === "" && filter !== "all" ? (
+                <html.div style={styles.stateActions}>
+                  <GlassButton label="Show all agents" onPress={() => setFilter("all")} />
+                </html.div>
+              ) : null}
+            </EmptyState>
           ) : (
-            <SessionSection title={filterLabels[filter]} sessions={filtered} now={now} first />
+            visible.map((group, index) => (
+              <SessionSection
+                key={group.title}
+                title={group.title}
+                sessions={group.sessions}
+                now={now}
+                first={index === 0}
+              />
+            ))
           ))}
         {list.kind === "ready" && list.next !== undefined && (
           <html.button onClick={() => void more()} disabled={busy} style={styles.showMore}>
@@ -250,9 +290,22 @@ export function InboxScreen() {
 }
 
 const styles = css.create({
-  state: { paddingBlock: spacing.xxl, alignItems: "center" },
+  state: {
+    display: "flex",
+    flexDirection: "column",
+    paddingBlock: spacing.xxl,
+    alignItems: "center",
+  },
+  stateActions: {
+    display: "flex",
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingTop: spacing.md,
+  },
   listError: { margin: 0, paddingInline: spacing.gutter },
   showMore: {
+    display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     minHeight: controls.touchTarget,
     justifyContent: "center",

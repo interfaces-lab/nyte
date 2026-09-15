@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import { SymbolView } from "expo-symbols";
+import { SymbolView, type SFSymbol } from "expo-symbols";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, useWindowDimensions } from "react-native";
 import { css, html } from "react-strict-dom";
@@ -84,6 +84,53 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
           ? "failed"
           : undefined;
 
+  // One decision drives the headline, its symbol, its tint, and the detail line,
+  // so the four can never describe different states.
+  const readiness: { headline: string; symbol: SFSymbol; tint: string; detail: string } = running
+    ? {
+        headline: "Agent is working",
+        symbol: "clock",
+        tint: theme.muted,
+        detail: `${statusLabels[mark]}${run === undefined ? "" : ` \u00b7 ${formatDuration(now - run.startedAt)}`}`,
+      }
+    : waiting !== undefined
+      ? {
+          headline: "Needs your answer",
+          symbol: "questionmark.circle.fill",
+          tint: theme.warning,
+          detail: "Waiting for your answer",
+        }
+      : changes.length === 0
+        ? {
+            headline: "No file changes",
+            symbol: "doc",
+            tint: theme.muted,
+            detail: "The agent hasn't edited files in this conversation.",
+          }
+        : outcome === "failed"
+          ? {
+              headline: "Failed with changes",
+              symbol: "xmark.circle.fill",
+              tint: theme.danger,
+              detail: "The run failed.",
+            }
+          : outcome === "aborted"
+            ? {
+                headline: "Stopped with changes",
+                symbol: "stop.circle.fill",
+                tint: theme.muted,
+                detail: "Stopped. Check the diff first.",
+              }
+            : {
+                headline: "Ready for review",
+                symbol: "checkmark.circle.fill",
+                tint: theme.success,
+                detail:
+                  changedTurn === undefined
+                    ? "Finished"
+                    : `Finished in ${formatDuration(changedTurn.durationMs)}`,
+              };
+
   async function merge() {
     if (merging) return;
     setMerging(true);
@@ -100,10 +147,7 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
 
   if (chat.state === undefined) {
     return (
-      <html.div
-        data-layoutconformance="strict"
-        style={[styles.centered, styles.topInset(insets.top)]}
-      >
+      <html.div style={[styles.centered, styles.topInset(insets.top)]}>
         {chat.error !== undefined ? (
           <EmptyState title="Couldn't load review" description={chat.error} />
         ) : (
@@ -142,60 +186,10 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
           </html.span>
         </html.div>
         <html.div style={styles.readiness}>
-          <html.span style={textStyles.headline}>
-            {running
-              ? "Agent is working"
-              : waiting !== undefined
-                ? "Needs your answer"
-                : changes.length === 0
-                  ? "No file changes"
-                  : outcome === "failed"
-                    ? "Failed with changes"
-                    : outcome === "aborted"
-                      ? "Stopped with changes"
-                      : "Ready for review"}
-          </html.span>
+          <html.span style={textStyles.headline}>{readiness.headline}</html.span>
           <html.div style={styles.evidence}>
-            <SymbolView
-              name={
-                running
-                  ? "clock"
-                  : waiting !== undefined
-                    ? "questionmark.circle.fill"
-                    : changes.length === 0
-                      ? "doc"
-                      : outcome === "failed"
-                        ? "xmark.circle.fill"
-                        : outcome === "aborted"
-                          ? "stop.circle.fill"
-                          : "checkmark.circle.fill"
-              }
-              size={controls.icon}
-              tintColor={
-                waiting !== undefined
-                  ? theme.warning
-                  : outcome === "failed"
-                    ? theme.danger
-                    : running || changes.length === 0 || outcome === "aborted"
-                      ? theme.muted
-                      : theme.success
-              }
-            />
-            <html.span style={textStyles.secondary}>
-              {running
-                ? `${statusLabels[mark]}${run === undefined ? "" : ` · ${formatDuration(now - run.startedAt)}`}`
-                : waiting !== undefined
-                  ? "Waiting for your answer"
-                  : changes.length === 0
-                    ? "The agent hasn't edited files in this conversation."
-                    : outcome === "failed"
-                      ? "The run failed."
-                      : outcome === "aborted"
-                        ? "Stopped. Check the diff first."
-                        : changedTurn === undefined
-                          ? "Finished"
-                          : `Finished in ${formatDuration(changedTurn.durationMs)}`}
-            </html.span>
+            <SymbolView name={readiness.symbol} size={controls.icon} tintColor={readiness.tint} />
+            <html.span style={textStyles.secondary}>{readiness.detail}</html.span>
           </html.div>
           {mergeError !== undefined && (
             <html.p role="alert" style={textStyles.error}>
@@ -205,25 +199,26 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
           {waiting !== undefined ? (
             <PrimaryButton label="Answer in chat" onClick={() => router.back()} />
           ) : changes.length > 0 ? (
-            <PrimaryButton
-              label={merging ? "Asking Nyte to merge…" : "Ask to merge"}
-              disabled={running || merging}
-              onClick={() => confirmMergeRequest({ onSend: () => void merge() })}
-            />
+            <>
+              <PrimaryButton
+                label={merging ? "Asking Nyte to merge…" : "Ask to merge"}
+                disabled={running || merging}
+                onClick={() => confirmMergeRequest({ onSend: () => void merge() })}
+              />
+              <html.p style={textStyles.caption}>
+                Sends a follow-up to the agent on your Mac. It runs git there and replies in the
+                conversation.
+              </html.p>
+            </>
           ) : null}
-          <html.p style={textStyles.caption}>
-            Sends a follow-up to the agent on your Mac. It runs git there and replies in the
-            conversation.
-          </html.p>
         </html.div>
         {changes.length > 0 && (
           <>
             <SectionHeader label="Changed files" first />
             <Group>
-              {changes.map((file, index) => (
+              {changes.map((file) => (
                 <GroupRow
                   key={file.path}
-                  last={index === changes.length - 1}
                   onClick={() =>
                     router.push(`/changes/${sessionId}?path=${encodeURIComponent(file.path)}`)
                   }
@@ -263,6 +258,8 @@ export function ReviewScreen({ sessionId }: { sessionId: SessionId }) {
 
 const styles = css.create({
   page: {
+    display: "flex",
+    flexDirection: "column",
     flexGrow: 1,
     paddingInline: list.gutter,
     paddingTop: spacing.md,
@@ -303,6 +300,8 @@ const styles = css.create({
   removed: { color: tokens.danger },
   rule: { width: 1, height: 14, backgroundColor: tokens.separator },
   readiness: {
+    display: "flex",
+    flexDirection: "column",
     gap: spacing.md,
     padding: spacing.lg,
     backgroundColor: tokens.surface,
@@ -313,7 +312,15 @@ const styles = css.create({
     boxShadow: tokens.shadow,
   },
   evidence: { display: "flex", flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  fileText: { flexGrow: 1, flexShrink: 1, minWidth: 0, alignItems: "flex-start", gap: 2 },
+  fileText: {
+    display: "flex",
+    flexDirection: "column",
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-start",
+    gap: 2,
+  },
   fileName: {
     color: tokens.foreground,
     lineClamp: 1,

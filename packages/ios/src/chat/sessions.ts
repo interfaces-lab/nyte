@@ -6,7 +6,7 @@ import { AppState } from "react-native";
 import { describeHostError } from "../connection/connection.ts";
 import type { Theme } from "../theme.ts";
 
-export type SessionListState =
+type SessionListState =
   | { kind: "loading" }
   | { kind: "failed"; message: string }
   | {
@@ -23,22 +23,32 @@ export const statusLabels: Record<SessionMark, string> = {
   idle: "Ready",
 };
 
-export function markOf(session: SessionInfo): SessionMark {
-  return sessionMark(session);
-}
-
 export function isActive(session: SessionInfo): boolean {
   const mark = sessionMark(session);
   return mark === "working" || mark === "retry";
 }
 
 export function needsAttention(session: SessionInfo): boolean {
-  const mark = sessionMark(session);
-  return mark === "waiting" || mark === "failed" || session.activation.kind === "requires";
+  return needsInput(session) || hasFailed(session);
 }
 
-export function hasFinishedRun(session: SessionInfo): boolean {
-  return session.heads.some((head) => head.run?.phase.kind === "done");
+/** A question or an activation the user has to answer. */
+export function needsInput(session: SessionInfo): boolean {
+  return sessionMark(session) === "waiting" || session.activation.kind === "requires";
+}
+
+export function hasFailed(session: SessionInfo): boolean {
+  return sessionMark(session) === "failed";
+}
+
+/**
+ * The status word a row prints. Rows say "Finished" and "New" where the mark
+ * says "Ready", so labels and speech read the same text.
+ */
+export function rowStatus(session: SessionInfo): string {
+  const mark = sessionMark(session);
+  if (mark !== "idle") return statusLabels[mark];
+  return latestRun(session) === undefined ? "New" : "Finished";
 }
 
 /** The run a list row reports on: the newest head's run, when it exists. */
@@ -72,7 +82,7 @@ export function elapsed(at: number, now: number): string {
 export function markTone(mark: SessionMark, theme: Theme): { color: string; fill: string } {
   switch (mark) {
     case "working":
-      return { color: theme.accent, fill: theme.warningFill };
+      return { color: theme.accent, fill: theme.fill };
     case "retry":
       return { color: theme.warning, fill: theme.warningFill };
     case "waiting":
@@ -138,14 +148,16 @@ export function useSessionList(client: NyteClient, search = "") {
 
   useEffect(() => {
     activeClient.current = client;
+    // Returning to the app rechecks the host; the rows stay up so the list
+    // never blanks and loses its scroll position.
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") refresh();
+      if (state === "active") reload();
     });
     return () => {
       activeClient.current = undefined;
       subscription.remove();
     };
-  }, [client, refresh]);
+  }, [client, reload]);
 
   async function more() {
     if (busy || list.kind !== "ready" || list.next === undefined) return;

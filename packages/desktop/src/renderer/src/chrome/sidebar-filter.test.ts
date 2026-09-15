@@ -17,7 +17,7 @@ const NOW = Date.UTC(2026, 8, 2, 12);
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const MAIN_HEAD = "main" satisfies HeadName;
 
-type FixtureStatus = "done" | "draft" | "working" | "needs-attention" | "retry" | "failed";
+type FixtureStatus = "done" | "draft" | "working" | "waiting" | "retry" | "failed";
 type FixtureRun = NonNullable<SessionInfo["heads"][number]["run"]>;
 
 function session({
@@ -44,7 +44,7 @@ function session({
           config: {},
           lease: { owner: "test", expiresAt: updatedAt + 1_000 },
         }
-      : status === "needs-attention"
+      : status === "waiting"
         ? {
             runId: `run-${id}`,
             head: MAIN_HEAD,
@@ -103,7 +103,7 @@ describe("sidebar session filtering", () => {
     callId: "task-call",
     depth: 1,
   };
-  const children = (["working", "done", "draft", "needs-attention"] as const).map((status) => ({
+  const children = (["working", "done", "draft", "waiting"] as const).map((status) => ({
     ...session({ id: `child-${status}`, updatedAt: NOW, status, pinned: true }),
     parent,
   }));
@@ -195,7 +195,7 @@ describe("sidebar session filtering", () => {
 describe("sidebar session ordering and grouping", () => {
   test("orders pinned sessions first, then applies the selected ordering", () => {
     const sessions = [
-      session({ id: "recent-unpinned", updatedAt: NOW, status: "needs-attention" }),
+      session({ id: "recent-unpinned", updatedAt: NOW, status: "waiting" }),
       session({ id: "older-pinned", updatedAt: NOW - 30, pinned: true }),
       session({ id: "newer-pinned", updatedAt: NOW - 20, pinned: true }),
       session({ id: "older-unpinned", updatedAt: NOW - 40 }),
@@ -231,7 +231,9 @@ describe("sidebar session ordering and grouping", () => {
         session({ id: "done", updatedAt: NOW, status: "done" }),
         session({ id: "draft", updatedAt: NOW, status: "draft" }),
         session({ id: "working", updatedAt: NOW, status: "working" }),
-        session({ id: "attention", updatedAt: NOW, status: "needs-attention" }),
+        // A parked run shares the Working group with a running one, most recent first.
+        session({ id: "waiting", updatedAt: NOW - 10, status: "waiting" }),
+        session({ id: "attention", updatedAt: NOW, status: "failed" }),
       ],
       view({ grouping: "status" }),
       "local",
@@ -246,7 +248,7 @@ describe("sidebar session ordering and grouping", () => {
       })),
       [
         { key: "needs-attention", label: "Needs attention", sessions: ["attention"] },
-        { key: "working", label: "Working", sessions: ["working"] },
+        { key: "working", label: "Working", sessions: ["working", "waiting"] },
         { key: "draft", label: "Draft", sessions: ["draft"] },
         { key: "done", label: "Done", sessions: ["done"] },
       ],

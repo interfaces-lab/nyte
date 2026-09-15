@@ -1,8 +1,12 @@
 /**
  * One local SDK served to the iOS app over `@nyte-ai/server`: a Node listener
- * on 127.0.0.1 and an ephemeral port, a bearer token made for this share and
- * kept only in memory. The server package owns parsing, auth, and SSE;
- * Hono adapts Node's request and response streams.
+ * on an ephemeral port, a bearer token made for this share and kept only in
+ * memory. The server package owns parsing, auth, and SSE; Hono adapts Node's
+ * request and response streams.
+ *
+ * The listener binds one address, never every interface. Loopback reaches a
+ * simulator on this Mac; a tailnet address reaches this user's own devices
+ * over Tailscale's authenticated network and nothing on the local wifi.
  *
  * Runners stay with the desktop host: a phone that drives a session attaches
  * it through the same per-session attachment the desktop uses for its own
@@ -15,8 +19,10 @@ import { getRequestListener } from "@hono/node-server";
 import type { Nyte, SessionId } from "@nyte-ai/core";
 import { createNyteServer } from "@nyte-ai/server";
 
-export interface MobileShareOptions {
+interface MobileShareOptions {
   readonly sdk: Nyte;
+  /** The single address to bind and advertise; loopback when absent. */
+  readonly host?: string;
   /** The desktop's release, answered on `/v1/info`. */
   readonly version: string;
   /** Volunteer this process as the session's runner; idempotent per session. */
@@ -24,7 +30,7 @@ export interface MobileShareOptions {
 }
 
 export interface MobileShare {
-  /** `http://127.0.0.1:<port>`, the exact base URL a client enters. */
+  /** `http://<host>:<port>`, the exact base URL a client enters. */
   readonly address: string;
   readonly token: string;
   /** Close the listener, drop its connections, and end open watches. Accepted SDK work continues. */
@@ -37,6 +43,7 @@ const DRAIN_MS = 500;
 
 export async function startMobileShare(options: MobileShareOptions): Promise<MobileShare> {
   const { sdk, attach } = options;
+  const host = options.host ?? LOOPBACK;
   // 256 bits, URL-safe so it pastes anywhere a bearer can go; never written to disk or logs.
   const token = randomBytes(32).toString("base64url");
   const server = createNyteServer({
@@ -77,13 +84,13 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
   });
   const listener = createServer(
     getRequestListener((request) => server.fetch(request), {
-      hostname: LOOPBACK,
+      hostname: host,
       overrideGlobalObjects: false,
     }),
   );
   await new Promise<void>((resolve, reject) => {
     listener.once("error", reject);
-    listener.listen(0, LOOPBACK, () => {
+    listener.listen(0, host, () => {
       listener.off("error", reject);
       resolve();
     });
@@ -95,7 +102,7 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
     throw new Error("The share listener has no TCP address");
   }
   return {
-    address: `http://${LOOPBACK}:${String(bound.port)}`,
+    address: `http://${host}:${String(bound.port)}`,
     token,
     async stop() {
       // Watches end with a `closed` frame first, so a reading client hears why.

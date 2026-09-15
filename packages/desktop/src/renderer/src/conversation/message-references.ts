@@ -14,7 +14,7 @@ export type MessageReference =
   | { readonly kind: "skill"; readonly name: string; readonly path: string }
   | { readonly kind: "mention"; readonly id: "current-conversation" };
 
-export type MessagePart =
+type MessagePart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "reference"; readonly reference: MessageReference; readonly source: string };
 
@@ -25,7 +25,7 @@ export const CONVERSATION_MENTION: MessageReference = {
 const CONVERSATION_MENTION_TEXT = "@current-conversation";
 
 /** `[$name](path)`: the persisted skill link the transcript already hides. */
-export const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
+const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
 /** The expanded form persisted by clients that load skill instructions before sending. */
 const SKILL_INVOCATION_PATTERN =
   /<skill name="(?<invocationName>[^"\r\n]*)" location="(?<invocationPath>[^"\r\n]*)">\n[\s\S]*?\n<\/skill>(?:\n\n)?/gu;
@@ -151,7 +151,7 @@ export function fileFromUrl(url: string): MentionFile | undefined {
   };
 }
 
-export interface DraftParseOptions {
+interface DraftParseOptions {
   readonly form: "draft";
   /** Catalog entries by URL; a known file keeps its workspace label and relative path. */
   readonly files?: ReadonlyMap<string, MentionFile>;
@@ -159,11 +159,11 @@ export interface DraftParseOptions {
   readonly complete?: boolean;
 }
 
-export interface MessageParseOptions {
+interface MessageParseOptions {
   readonly form: "message";
 }
 
-export type MessageParseOptionsUnion = DraftParseOptions | MessageParseOptions;
+type MessageParseOptionsUnion = DraftParseOptions | MessageParseOptions;
 
 function unescapeXml(value: string): string {
   return value
@@ -294,4 +294,54 @@ export function draftPreviewText(text: string): string {
     .join("")
     .trim();
   return visible.split(/\r?\n/u)[0] || "Draft";
+}
+
+interface WorkspaceFileIndex {
+  readonly byPath: ReadonlyMap<string, MentionFile>;
+  /** Basenames naming exactly one file; an ambiguous one would link to the wrong file. */
+  readonly byLabel: ReadonlyMap<string, MentionFile>;
+}
+
+/**
+ * One index per file list. Every code span in a transcript resolves against
+ * the same one instead of scanning thousands of paths per span, and the list
+ * arrives from a query whose identity changes only when the files do.
+ */
+let indexed:
+  | { readonly files: readonly MentionFile[]; readonly index: WorkspaceFileIndex }
+  | undefined;
+
+function workspaceFileIndex(files: readonly MentionFile[]): WorkspaceFileIndex {
+  if (indexed?.files === files) return indexed.index;
+  const byPath = new Map<string, MentionFile>();
+  const byLabel = new Map<string, MentionFile>();
+  const ambiguous = new Set<string>();
+  for (const file of files) {
+    byPath.set(file.displayPath, file);
+    if (byLabel.has(file.label)) ambiguous.add(file.label);
+    byLabel.set(file.label, file);
+  }
+  for (const label of ambiguous) byLabel.delete(label);
+  const index = { byPath, byLabel };
+  indexed = { files, index };
+  return index;
+}
+
+/**
+ * Inline code that names a real workspace file becomes a link; everything else
+ * stays literal. A glob, a shell line, or a path that does not exist is not a
+ * file, so the reader never gets a link that goes nowhere. Matching the
+ * basename lets prose say `thread.tsx` when only one file answers to it.
+ */
+export function inlineCodeReference(
+  text: string,
+  files: readonly MentionFile[],
+): MessageReference | undefined {
+  const candidate = text.trim().replace(/^\.\//u, "");
+  if (candidate === "" || /[\s*?{}[\]]/u.test(candidate)) return undefined;
+  const index = workspaceFileIndex(files);
+  const file =
+    index.byPath.get(candidate) ??
+    (candidate.includes("/") ? undefined : index.byLabel.get(candidate));
+  return file === undefined ? undefined : { kind: "file", file };
 }

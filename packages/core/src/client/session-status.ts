@@ -8,8 +8,10 @@ export function sessionMark(session: Pick<SessionInfo, "heads">): SessionMark {
   for (const head of session.heads) {
     const kind = head.run?.phase.kind;
     switch (kind) {
+      // A run parked on background work is still in flight. Only one parked on a
+      // participant's reply is waiting on the person reading the list.
       case "waiting":
-        return "waiting";
+        return head.run?.awaitingReply === true ? "waiting" : "working";
       case "retry":
         return "retry";
       case "respond":

@@ -12,11 +12,11 @@ const APPEARANCE_STORAGE_KEY = "nyte:appearance:v1";
 
 export type { ThemePreference } from "../nyte.ts";
 export type ToolCallDensity = "compact" | "balanced" | "detailed";
-export type LocalFontSelection = `local:${string}`;
+type LocalFontSelection = `local:${string}`;
 /** Bundled/system stacks plus one installed family discovered by the host. */
 export type UiFont = "inter" | "system" | LocalFontSelection;
 export type CodeFont = "system" | "jetbrains-mono" | LocalFontSelection;
-export type FontSmoothing = "antialiased" | "auto";
+type FontSmoothing = "antialiased" | "auto";
 
 export interface AppearanceSettings {
   readonly theme: ThemePreference;
@@ -240,10 +240,6 @@ export function setAppearanceSettings(next: AppearanceSettings): void {
   }
   apply(next);
   for (const listener of listeners) listener();
-}
-
-export function currentThemeIsDark(): boolean {
-  return document.documentElement.dataset["theme"] === "dark";
 }
 
 apply(appearance);

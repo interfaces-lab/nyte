@@ -1,6 +1,6 @@
 import { toast } from "@nyte-ai/ui/sonner";
 
-export interface UndoableAction {
+interface UndoableAction {
   undo(): void;
   /** Irreversible work starts only when the notification closes without Undo. */
   commit?(): void;

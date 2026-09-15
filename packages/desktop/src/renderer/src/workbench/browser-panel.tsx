@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 import type { BrowserBoundsMessage, BrowserNavigationAction } from "../../../shared/ipc.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons";
+import { overlayCovers, subscribeOverlayRects } from "../components/overlay-occlusion.ts";
 import { focus, IconButton } from "../components/ui";
 import { workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
@@ -212,28 +213,45 @@ const styles = stylex.create({
     fontSize: t.fontSm,
     cursor: "pointer",
   },
+  agentBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    paddingInline: 6,
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+  },
+  // Sits under the native view at all times, so hiding the page reveals a
+  // still frame that is already painted rather than an empty panel.
+  frozenFrame: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+    objectPosition: "top",
+    pointerEvents: "none",
+  },
+  // The still frame is not the live page; a light wash says so without words.
+  frozenVeil: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: t.bgBase,
+    opacity: 0.15,
+    pointerEvents: "none",
+  },
 });
 
-const CLOSE_GRACE_MS = 50;
-const pendingCloses = new Map<string, ReturnType<typeof setTimeout>>();
-
-function keepSurface(surface: string): void {
-  const pending = pendingCloses.get(surface);
-  if (pending === undefined) return;
-  clearTimeout(pending);
-  pendingCloses.delete(surface);
+/** Retain this surface's view holder in main. */
+function retainSurface(surface: string): void {
+  void nyte.host.browser.open({ surface, url: "" }).catch(() => undefined);
 }
 
+/** Release this surface's view holder in main. */
 function releaseSurface(surface: string): void {
-  keepSurface(surface);
-  pendingCloses.set(
-    surface,
-    setTimeout(() => {
-      pendingCloses.delete(surface);
-      forgetBrowserSurface(surface);
-      void nyte.host.browser.close({ surface }).catch(() => undefined);
-    }, CLOSE_GRACE_MS),
-  );
+  forgetBrowserSurface(surface);
+  void nyte.host.browser.close({ surface }).catch(() => undefined);
 }
 
 function sameBounds(a: BrowserBoundsMessage, b: BrowserBoundsMessage): boolean {
@@ -250,7 +268,8 @@ function useSurfaceBounds(
   slot: RefObject<HTMLDivElement | null>,
   surface: string,
   visible: boolean,
-): void {
+): boolean {
+  const [covered, setCovered] = useState(false);
   const lastRef = useRef<BrowserBoundsMessage | undefined>(undefined);
   useLayoutEffect(() => {
     const element = slot.current;
@@ -259,10 +278,19 @@ function useSurfaceBounds(
     const measure = (): void => {
       frame = undefined;
       const rect = element.getBoundingClientRect();
+      // The page composites above the renderer, so it has to step aside while a
+      // menu or a dialog overlaps it.
+      const overlapped = overlayCovers({
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+      });
+      setCovered(overlapped);
       const message: BrowserBoundsMessage = {
         surface,
         bounds: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
-        visible: visible && rect.width > 0 && rect.height > 0,
+        visible: visible && !overlapped && rect.width > 0 && rect.height > 0,
       };
       if (lastRef.current !== undefined && sameBounds(lastRef.current, message)) return;
       lastRef.current = message;
@@ -277,9 +305,13 @@ function useSurfaceBounds(
     }
     window.addEventListener("resize", schedule);
     document.addEventListener("scroll", schedule, { capture: true, passive: true });
+    // The overlay store already batches to a frame, so this applies at once
+    // rather than a frame after the popup painted.
+    const unsubscribe = subscribeOverlayRects(measure);
     measure();
     return () => {
       observer.disconnect();
+      unsubscribe();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", schedule, { capture: true });
       if (frame !== undefined) cancelAnimationFrame(frame);
@@ -290,15 +322,42 @@ function useSurfaceBounds(
       }
     };
   }, [slot, surface, visible]);
+  return covered;
 }
 
-export interface BrowserPanelProps {
+/**
+ * The page's last pixels, painted in the slot the native view sits over and
+ * refreshed whenever an overlay forces the page to hide, so an open menu leaves
+ * a still frame behind it instead of an empty panel. A frame belongs to the url
+ * it was taken from; after a navigation the old one is not shown again.
+ */
+function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
+  const [frame, setFrame] = useState<{ url: string; image: string } | undefined>(undefined);
+  useEffect(() => {
+    if (url === "" || !covered) return;
+    let live = true;
+    void nyte.host.browser
+      .captureFrame({ surface })
+      .then((image) => {
+        if (live && image !== undefined) setFrame({ url, image });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [surface, url, covered]);
+  return frame?.url === url ? frame.image : undefined;
+}
+
+interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
   readonly historyVisible: boolean;
   readonly url: string | undefined;
   readonly onUrlChange: (url: string | undefined) => void;
   readonly toolbarActions?: ReactNode;
+  /** Workspace path for per-workspace cookie jars. Null for home. */
+  readonly workspacePath: string | null;
 }
 
 export function BrowserPanel({
@@ -308,6 +367,7 @@ export function BrowserPanel({
   url,
   onUrlChange,
   toolbarActions,
+  workspacePath,
 }: BrowserPanelProps): ReactElement {
   const bookmarks = useBookmarks();
   const slotRef = useRef<HTMLDivElement>(null);
@@ -319,20 +379,26 @@ export function BrowserPanel({
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
-  useSurfaceBounds(slotRef, surface, showSurface);
+  const covered = useSurfaceBounds(slotRef, surface, showSurface);
+  const pageFrame = usePageFrame(surface, hasPage ? state.url : "", covered);
 
   useEffect(() => {
-    keepSurface(surface);
     if (url !== undefined) {
-      void nyte.host.browser.open({ surface, url }).then(
-        (state) => applyBrowserEvent({ kind: "browser_changed", surface, state }),
+      const owner =
+        workspacePath === null
+          ? ({ kind: "home" } as const)
+          : ({ kind: "project", path: workspacePath } as const);
+      // open() in main retains the view holder for this surface.
+      void nyte.host.browser.open({ surface, url, owner }).then(
+        (openState) => applyBrowserEvent({ kind: "browser_changed", surface, state: openState }),
         (cause: unknown) => {
           setFailure(errorMessage(cause));
         },
       );
     }
+    // Release the view holder when the panel unmounts or the surface changes.
     return () => releaseSurface(surface);
-  }, [surface, url]);
+  }, [surface, url, workspacePath]);
 
   const navigate = (action: BrowserNavigationAction): void => {
     void nyte.host.browser.navigate({ surface, action }).catch(() => undefined);
@@ -373,6 +439,7 @@ export function BrowserPanel({
 
   const loading = state?.loading === true;
   const secure = state?.secure ?? "none";
+  const agentActive = (state?.agentHolders ?? 0) > 0;
 
   return (
     <section aria-label="Browser" {...stylex.props(styles.panel)}>
@@ -447,6 +514,15 @@ export function BrowserPanel({
           onClick={() => void nyte.host.openExternal({ url: currentUrl }).catch(() => undefined)}
         />
         <IconButton icon="more" label="Browser actions" onClick={openMenu} aria-haspopup="menu" />
+        {agentActive && (
+          <span
+            {...stylex.props(styles.agentBadge)}
+            title="An agent is driving this page"
+            aria-label="Agent active"
+          >
+            <Icon name="sparkle" size={12} />
+          </span>
+        )}
         {toolbarActions}
       </div>
       {failure !== undefined && (
@@ -510,6 +586,10 @@ export function BrowserPanel({
       )}
       <div {...stylex.props(styles.body)}>
         <div ref={slotRef} {...stylex.props(styles.slot)}>
+          {pageFrame !== undefined && (
+            <img src={pageFrame} alt="" aria-hidden="true" {...stylex.props(styles.frozenFrame)} />
+          )}
+          {covered && pageFrame !== undefined && <div {...stylex.props(styles.frozenVeil)} />}
           {!hasPage && failure === undefined && (
             <div {...stylex.props(styles.message)}>
               <span {...stylex.props(styles.messageTitle)}>Nothing open</span>

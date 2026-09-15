@@ -3,6 +3,7 @@ import {
   parsePatchFacts,
   projectToolView,
   runActivityLabel,
+  subagentToolKind,
   type ParsedPatch,
 } from "@nyte-ai/core/views";
 import type { SessionId, ToolProgress, ToolTurnPart } from "@nyte-ai/core";
@@ -11,7 +12,7 @@ import { sessionId } from "@nyte-ai/protocol";
 
 export type ParsedDiff = Pick<ParsedPatch, "patch" | "added" | "removed">;
 
-export type ToolBody =
+type ToolBody =
   | { kind: "none" }
   | { kind: "output"; text: string }
   | { kind: "diff"; path: string; diff: ParsedDiff };
@@ -48,27 +49,49 @@ function isJsonObject(
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export interface SubagentCall {
-  readonly title: string;
-  /** Known once the tool has reported the child it spawned. */
-  readonly childSessionId: SessionId | undefined;
-}
-
 /**
- * What a task call says about its subagent. The title is the one the model
- * gave the task, else the model it selected, which is also what the job
- * and the child's result carry as their title.
+ * What a delegation says about its subagent, drawn as its own row either way.
+ * A spawn names the title the model gave the task, else the model it selected,
+ * which is also what the job and the child's result carry. An await names only
+ * a job id, so the jobs list supplies the rest.
  */
+export type SubagentCall =
+  | {
+      readonly kind: "spawn";
+      readonly title: string;
+      /** Known once the tool has reported the child it spawned. */
+      readonly childSessionId: SessionId | undefined;
+    }
+  | { readonly kind: "await"; readonly jobId: string };
+
 export function subagentCall(
   part: ToolTurnPart,
   progress: ToolProgress | undefined,
 ): SubagentCall | undefined {
-  if (part.toolName !== "task") return undefined;
+  const kind = subagentToolKind(part.toolName);
   const args = isJsonObject(part.args) ? part.args : {};
-  const title = [args.title, args.model].find(
-    (value): value is string => typeof value === "string" && value !== "",
-  );
-  return { title: title ?? "Subagent", childSessionId: childSessionId(part, progress) };
+  switch (kind) {
+    case "await": {
+      const { jobId } = args;
+      return typeof jobId === "string" && jobId !== "" ? { kind: "await", jobId } : undefined;
+    }
+    case "spawn": {
+      const title = [args.title, args.model].find(
+        (value): value is string => typeof value === "string" && value !== "",
+      );
+      return {
+        kind: "spawn",
+        title: title ?? "Subagent",
+        childSessionId: childSessionId(part, progress),
+      };
+    }
+    case undefined:
+      return undefined;
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
 }
 
 function childSessionId(

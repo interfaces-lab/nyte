@@ -1,23 +1,27 @@
 import { createContext, use, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { NyteClient } from "@nyte-ai/client";
-import { describeHostError, type Connection } from "./connection.ts";
+import type { Connection } from "./connection.ts";
+import type { ConnectFailure } from "./connect-copy.ts";
 import {
+  connectHost,
   createHostClient,
   forgetConnection,
   readConnection,
-  saveConnection,
-  verifyHost,
 } from "./host.ts";
 
-export type HostConnectionState =
+type HostConnectionState =
   | { kind: "loading" }
-  | { kind: "setup"; notice?: string }
-  | { kind: "connected"; connection: Connection; client: NyteClient };
+  // `editing` carries the live session the form replaces, so Cancel restores it.
+  | { kind: "setup"; notice?: string; editing?: HostTarget }
+  | ({ kind: "connected" } & HostTarget);
 
-export type HostSession = {
+type HostTarget = { connection: Connection; client: NyteClient };
+
+type HostSession = {
   client: NyteClient;
   connection: Connection;
+  edit: () => void;
   disconnect: () => Promise<void>;
 };
 
@@ -57,23 +61,32 @@ export function useHostConnection() {
     };
   }, []);
 
-  async function connect(connection: Connection, signal: AbortSignal) {
-    try {
-      await verifyHost(connection, signal);
-    } catch (cause) {
-      throw new Error(describeHostError(cause));
-    }
-    if (signal.aborted) throw new Error("Connection cancelled.");
-    try {
-      await saveConnection(connection);
-    } catch {
-      throw new Error("Couldn't save the token in the Keychain. Try again.");
-    }
-    if (signal.aborted) {
-      await forgetConnection();
-      throw new Error("Connection cancelled.");
-    }
+  /** Undefined means connected. A failure stays itself, so no `catch` can rename it. */
+  async function connect(
+    connection: Connection,
+    signal: AbortSignal,
+  ): Promise<ConnectFailure | undefined> {
+    const result = await connectHost(connection, signal);
+    if (result.kind !== "connected") return result;
     setHost({ kind: "connected", connection, client: createHostClient(connection) });
+    return undefined;
+  }
+
+  /** Re-opens the form on the saved details. The token stays until one replaces it. */
+  function edit() {
+    setHost((current) =>
+      current.kind === "connected"
+        ? { kind: "setup", editing: { connection: current.connection, client: current.client } }
+        : current,
+    );
+  }
+
+  function cancelEdit() {
+    setHost((current) =>
+      current.kind === "setup" && current.editing !== undefined
+        ? { kind: "connected", ...current.editing }
+        : current,
+    );
   }
 
   async function disconnect() {
@@ -81,5 +94,5 @@ export function useHostConnection() {
     setHost({ kind: "setup" });
   }
 
-  return { host, connect, disconnect };
+  return { host, connect, edit, cancelEdit, disconnect };
 }

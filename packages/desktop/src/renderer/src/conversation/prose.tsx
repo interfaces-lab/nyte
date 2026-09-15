@@ -13,8 +13,12 @@ import type { Components, ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
 import { nyte } from "../nyte.ts";
+import { useMentionFiles } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
+import { ComposerChipView } from "./composer-chip.tsx";
 import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { inlineCodeReference } from "./message-references.ts";
+import { useReferenceOpener } from "./reference-opener.tsx";
 import { proseStyles } from "./styles.stylex.ts";
 
 type MarkdownPreProps = ComponentProps<"pre"> & ExtraProps;
@@ -34,6 +38,26 @@ function codeLanguage(className: string | undefined): string {
     if (name.startsWith("language-")) return name.slice("language-".length);
   }
   return "";
+}
+
+/**
+ * Inline code the workspace can resolve draws as the chip a mention would,
+ * so a path the model names opens where a path the reader typed opens. The
+ * file list is the composer's own query; a surface with no opener never asks
+ * for it and every span stays literal.
+ */
+function MarkdownCode({
+  node: _node,
+  className: _className,
+  ...elementProps
+}: ComponentProps<"code"> & ExtraProps): ReactElement {
+  const openable = useReferenceOpener() !== undefined;
+  const files = useMentionFiles(openable);
+  const reference = openable
+    ? inlineCodeReference(nodeText(elementProps.children), files.data ?? [])
+    : undefined;
+  if (reference === undefined) return <code {...elementProps} {...props(proseStyles.inlineCode)} />;
+  return <ComposerChipView reference={reference} />;
 }
 
 function MarkdownPre({
@@ -97,9 +121,7 @@ const markdownComponents = {
   strong: ({ node: _node, className: _className, ...elementProps }) => (
     <strong {...elementProps} {...props(proseStyles.strong)} />
   ),
-  code: ({ node: _node, className: _className, ...elementProps }) => (
-    <code {...elementProps} {...props(proseStyles.inlineCode)} />
-  ),
+  code: MarkdownCode,
   a: ({ node: _node, className: _className, onClick: _onClick, href, ...elementProps }) => (
     <a
       {...elementProps}

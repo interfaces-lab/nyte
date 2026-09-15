@@ -9,6 +9,7 @@ import type { NyteOptions } from "@nyte-ai/core";
 import { createHost } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { DesktopHost } from "./host.ts";
+import { unusedBrowserAgent } from "./browser-stub.ts";
 import { ipcDiagnostics, ipcFailure } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
 
@@ -90,9 +91,13 @@ async function fixture(active: boolean) {
       open: () => assert.fail("Browser is unused"),
       navigate: () => undefined,
       close: () => undefined,
+      captureFrame: () => Promise.resolve(undefined),
       setBounds: () => undefined,
+      retain: () => undefined,
+      release: () => undefined,
       warm: async () => undefined,
       dispose: () => undefined,
+      agent: unusedBrowserAgent(),
     },
   });
   hosts.push(host);

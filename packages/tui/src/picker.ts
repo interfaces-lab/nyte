@@ -63,7 +63,7 @@ export interface MenuScreen {
   readonly onHighlight?: (id: string) => void;
 }
 
-export interface InlineMenuOptions {
+interface InlineMenuOptions {
   readonly renderer: CliRenderer;
   readonly keymap: ReturnType<typeof createChatKeymap>;
   readonly theme: CliTheme;

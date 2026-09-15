@@ -60,7 +60,7 @@ export function recordedEdits(items: readonly Turn[]): Map<string, RecordedEdit[
   return groups;
 }
 
-export type FileStatus = "A" | "M" | "D" | "R";
+type FileStatus = "A" | "M" | "D" | "R";
 
 export function fileStatus(file: PatchFile): FileStatus {
   if (file.oldFileName === "/dev/null") return "A";

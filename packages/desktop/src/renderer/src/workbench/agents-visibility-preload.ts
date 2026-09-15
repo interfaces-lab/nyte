@@ -5,7 +5,7 @@ import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const visibilityParent = sessionId("visibility-parent");
 export const visibilityChild = sessionId("visibility-child");
-export const visibilityOther = sessionId("visibility-other");
+const visibilityOther = sessionId("visibility-other");
 
 const runningJob: JobInfo = {
   id: "visibility-job",

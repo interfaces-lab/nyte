@@ -14,7 +14,7 @@ export type ComposerOperation =
   | { readonly kind: "submit" | "save-edit"; readonly lane: string }
   | { readonly kind: "cancel-edit" | "stop" | "tree" | "clear" | "quit" };
 
-export interface ComposerActionState {
+interface ComposerActionState {
   readonly busy: boolean;
   /** One of the user's `!` commands is running; Esc stops it, nothing else changes. */
   readonly shell: boolean;
@@ -28,11 +28,7 @@ export interface ComposerActionState {
   readonly completion: { readonly accepting: boolean; readonly queueable: boolean } | undefined;
 }
 
-export type ComposerActionName =
-  | "chat.submit"
-  | "chat.queue.submit"
-  | "chat.interrupt"
-  | "chat.quit";
+type ComposerActionName = "chat.submit" | "chat.queue.submit" | "chat.interrupt" | "chat.quit";
 
 const ACTION_NAMES = [
   "chat.submit",
@@ -41,19 +37,19 @@ const ACTION_NAMES = [
   "chat.quit",
 ] as const satisfies readonly ComposerActionName[];
 
-export interface ComposerAction {
+interface ComposerAction {
   readonly label: string;
   readonly reason: string | undefined;
   readonly operation: ComposerOperation;
 }
 
 /** Every composer action for one state, so a key, a hint row, and help agree. */
-export interface ComposerActionSet {
+interface ComposerActionSet {
   readonly primaryLane: string;
   readonly actions: Readonly<Record<ComposerActionName, ComposerAction>>;
 }
 
-export function sameActionState(left: ComposerActionState, right: ComposerActionState): boolean {
+function sameActionState(left: ComposerActionState, right: ComposerActionState): boolean {
   return (
     left.busy === right.busy &&
     left.shell === right.shell &&
@@ -82,10 +78,7 @@ function completionReason(
 }
 
 /** Pure: reads nothing but its arguments, so it runs once per state, not once per getter. */
-export function projectComposerActions(
-  state: ComposerActionState,
-  roles: LaneRoles,
-): ComposerActionSet {
+function projectComposerActions(state: ComposerActionState, roles: LaneRoles): ComposerActionSet {
   const primaryLane =
     state.editingLane ?? (state.busy && !state.waiting ? roles[state.followUp] : roles.steer);
   const submission = state.editingLane === undefined ? "submit" : "save-edit";
@@ -225,7 +218,7 @@ export class ComposerActions {
 }
 
 /** The registered bindings are the only source of displayed keycaps. */
-export function actionEntries(shell: Shell) {
+function actionEntries(shell: Shell) {
   const entries = shell.keymap.getCommandEntries({
     visibility: "active",
     namespace: ["composer", "completion", "chat"],

@@ -31,6 +31,8 @@ export { pluginFactKey } from "./storage.ts";
 export type { Choice, Selection, SelectionReply } from "@nyte-ai/protocol";
 export { ToolError, toolResultContent } from "../utils/tool-result.ts";
 export { bindTool } from "../tools/bind-tool.ts";
+/** Shared truncation helpers so tool output notices read identically to `read` and `bash`. */
+export { truncateHead, formatSize, type TruncationResult } from "../tools/support/truncate.ts";
 
 /** What a hook handler is handed, and what a `before_tool` policy decides. */
 export type {

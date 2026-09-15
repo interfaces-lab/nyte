@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import type { TurnPart } from "@nyte-ai/core";
-import { estimateRowSize, promptRowCount, transcriptRows } from "./transcript-rows.ts";
+import { estimateRowSize, transcriptRows } from "./transcript-rows.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 
 function turn(id: string, parts: TurnPart[]): RenderedTurn {
@@ -115,25 +115,6 @@ describe("transcriptRows", () => {
       selections: 0,
     });
     assert.equal(configOnly[0]?.kind, "skeleton");
-  });
-});
-
-describe("promptRowCount", () => {
-  test("counts landed and in-flight prompts, not records or replies", () => {
-    const rows = transcriptRows({
-      loading: false,
-      failed: false,
-      turns: [
-        turn("t1", [user, prose("hi")]),
-        turn("t2", [prose("continuation")]),
-        { kind: "summary", commit: "s1", at: 0, body: { kind: "summary", text: "..." } },
-      ],
-      landing: [{ key: "p1", content: "again", pending: false }],
-      retrying: undefined,
-      working: true,
-      selections: 0,
-    });
-    assert.equal(promptRowCount(rows), 2);
   });
 });
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AppInfo } from "../../../shared/app-menu.ts";
 import appIcon from "../../../../build/icon-macos.svg";
 import { Icon } from "../components/icons.tsx";
+import { overlayRef } from "../components/overlay-occlusion.ts";
 import { focus } from "../components/ui.tsx";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -104,7 +105,7 @@ export function AboutDialog({ info, onClose }: { info: AppInfo; onClose: () => v
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop {...props(styles.backdrop)} />
+        <Dialog.Backdrop ref={overlayRef} {...props(styles.backdrop)} />
         <Dialog.Popup {...props(styles.popup)}>
           <Dialog.Close aria-label="Close About" {...props(styles.close, focus.ring)}>
             <Icon name="x" size={20} />

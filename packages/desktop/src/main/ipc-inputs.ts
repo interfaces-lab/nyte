@@ -196,10 +196,23 @@ export const CALL_INPUT_SCHEMAS = {
   "host.server.disconnect": compile(noInput),
   "host.server.createSession": compile(noInput),
   "host.mobile.state": compile(noInput),
-  "host.mobile.start": compile(noInput),
+  "host.mobile.start": compile(
+    strict({ reach: Type.Union([Type.Literal("simulator"), Type.Literal("tailnet")]) }),
+  ),
   "host.mobile.stop": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
-  "host.browser.open": compile(strict({ surface: nonEmpty, url: Type.String() })),
+  "host.browser.open": compile(
+    strict({
+      surface: nonEmpty,
+      url: Type.String(),
+      owner: Type.Optional(
+        Type.Union([
+          strict({ kind: Type.Literal("home") }),
+          strict({ kind: Type.Literal("project"), path: nonEmpty }),
+        ]),
+      ),
+    }),
+  ),
   "host.browser.navigate": compile(
     strict({
       surface: nonEmpty,
@@ -218,6 +231,7 @@ export const CALL_INPUT_SCHEMAS = {
     strict({ surface: nonEmpty, action: Type.Enum(BROWSER_ACTIONS) }),
   ),
   "host.browser.close": compile(strict({ surface: nonEmpty })),
+  "host.browser.captureFrame": compile(strict({ surface: nonEmpty })),
   "host.terminal.create": compile(
     strict({ id: nonEmpty, workspacePath: Type.Union([nonEmpty, Type.Null()]) }),
   ),

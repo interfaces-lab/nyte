@@ -172,7 +172,7 @@ import { checkForUpdate } from "./version.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
 import { requestWorkspaceTrust } from "./workspace-trust.ts";
 
-export type TuiExit =
+type TuiExit =
   | { readonly kind: "quit" }
   | { readonly kind: "signal"; readonly signal: "SIGINT" | "SIGTERM" };
 
@@ -275,7 +275,7 @@ function userPrompts(state: SessionState): string[] {
  * A completion's continuation turn has no user part, so a stop after a
  * background result landed retracts nothing and keeps the result in context.
  */
-export function unansweredRequest(
+function unansweredRequest(
   state: SessionState,
 ): Extract<SessionState["transcript"]["items"][number], { kind: "turn" }> | undefined {
   const last = state.transcript.items.at(-1);
@@ -299,7 +299,7 @@ function modelChoices(runtime: Runtime, available: readonly Model<Api>[]): Choic
   }));
 }
 
-export function createTuiRenderer(): Promise<CliRenderer> {
+function createTuiRenderer(): Promise<CliRenderer> {
   // Grammars are registered before the first renderer so the tree-sitter
   // worker knows them the moment it starts.
   registerSyntaxParsers();
@@ -580,7 +580,7 @@ interface InteractiveOptions {
   readonly clipboard?: ClipboardService;
 }
 
-export class Interactive {
+class Interactive {
   private readonly usageCaches = createUsageScanCaches();
   private readonly tasks: TaskBrowser;
   private tuiPlugins: PluginProvider;

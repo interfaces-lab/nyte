@@ -383,6 +383,8 @@ const styles = css.create({
     paddingBlock: spacing.xs,
   },
   userBubble: {
+    display: "flex",
+    flexDirection: "column",
     backgroundColor: tokens.raised,
     borderRadius: radii.bubble,
     paddingInline: 14,
@@ -406,7 +408,7 @@ const styles = css.create({
   disclosureButton: {
     opacity: { default: 1, ":active": controls.disabledOpacity },
     borderWidth: 0,
-    minHeight: 32,
+    minHeight: controls.touchTarget,
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
@@ -428,7 +430,7 @@ const styles = css.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    minHeight: controls.metaTarget,
+    minHeight: controls.touchTarget,
     opacity: { default: 1, ":active": controls.disabledOpacity },
   },
   workLabel: {},
@@ -450,6 +452,8 @@ const styles = css.create({
     backgroundColor: { default: "transparent", ":active": tokens.fill },
   },
   editBadge: {
+    display: "flex",
+    flexDirection: "column",
     width: controls.badge,
     height: controls.badge,
     borderRadius: 6,

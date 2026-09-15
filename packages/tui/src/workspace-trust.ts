@@ -9,14 +9,14 @@ import {
 } from "./constants.ts";
 import type { CliTheme } from "./theme.ts";
 
-export type WorkspaceTrustDecision = "trust" | "decline";
+type WorkspaceTrustDecision = "trust" | "decline";
 
 function consume(key: KeyEvent): void {
   key.preventDefault();
   key.stopPropagation();
 }
 
-export interface WorkspaceTrustDialogOptions {
+interface WorkspaceTrustDialogOptions {
   readonly renderer: CliRenderer;
   readonly theme: CliTheme;
   readonly cwd: string;

@@ -11,7 +11,7 @@ interface ParsedDiffCacheEntry {
 
 const parsedDiffs = new Map<string, ParsedDiffCacheEntry>();
 
-export function diffIdentityKey(identity: VcsDiffIdentity): string {
+function diffIdentityKey(identity: VcsDiffIdentity): string {
   return JSON.stringify([identity.repositoryId, identity.revision, identity.path]);
 }
 
@@ -37,8 +37,4 @@ export function parseCachedDiff(identity: VcsDiffIdentity, patch: string): Parse
     if (oldest !== undefined) parsedDiffs.delete(oldest);
   }
   return entry.parsed;
-}
-
-export function clearParsedDiffCache(): void {
-  parsedDiffs.clear();
 }

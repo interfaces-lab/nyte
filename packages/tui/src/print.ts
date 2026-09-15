@@ -13,7 +13,7 @@ export interface PrintOutput {
   error(text: string): void;
 }
 
-export interface PrintOptions {
+interface PrintOptions {
   readonly nyte: Pick<Nyte, "messages" | "runs" | "sessions" | "watch">;
   readonly sessionId: SessionId;
   readonly configure?: Pick<

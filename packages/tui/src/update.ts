@@ -46,7 +46,7 @@ export type UpdateProgress =
   | { readonly kind: "percent"; readonly percent: number }
   | { readonly kind: "verified" };
 
-export interface UpdateOptions {
+interface UpdateOptions {
   /** Install this release instead of the newest one. A leading `v` is fine. */
   readonly version?: string;
   readonly report?: (event: UpdateProgress) => void;
@@ -56,7 +56,7 @@ export interface UpdateOptions {
 }
 
 /** `nyte-v0.2.0-darwin-arm64`, or `undefined` when no release is built for the platform. */
-export function releaseAssetName(
+function releaseAssetName(
   version: string,
   platform: string = process.platform,
   arch: string = process.arch,
@@ -78,7 +78,7 @@ function parseSha256(text: string): string | undefined {
  * standalone executable serves its modules from the `/$bunfs/` virtual
  * filesystem and reports itself as `process.execPath`.
  */
-export function installedBinaryPath(
+function installedBinaryPath(
   moduleUrl: string = import.meta.url,
   execPath: string = process.execPath,
 ): string | undefined {
@@ -90,13 +90,13 @@ export function installedBinaryPath(
   return execPath;
 }
 
-export type UpdateTarget =
+type UpdateTarget =
   | { readonly kind: "install"; readonly version: string; readonly explicit: boolean }
   | { readonly kind: "current"; readonly version: string }
   | { readonly kind: "failed"; readonly message: string };
 
 /** Decide what to install: an explicit version wins; otherwise the latest when it is newer. */
-export async function resolveUpdateTarget(
+async function resolveUpdateTarget(
   options: Pick<UpdateOptions, "version" | "fetchFn">,
   current: string = VERSION,
 ): Promise<UpdateTarget> {

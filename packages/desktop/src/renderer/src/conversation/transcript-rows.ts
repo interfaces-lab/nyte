@@ -3,10 +3,12 @@
  * one element the thread screen used to render in flow; keys match the ones
  * those elements carried so React state (edits, folds) survives the move.
  */
-import type { Turn, UserTurnPart } from "@nyte-ai/core";
+import type { Lane, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/core";
+import { isTerminalPhase } from "@nyte-ai/core/views";
+import type { OutboxRow } from "../outbox.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 
-export interface LandingMessage {
+interface LandingMessage {
   readonly key: string;
   readonly content: UserTurnPart["content"];
   /** Held behind a live run: drawn muted until the message lands. */
@@ -33,8 +35,17 @@ export type TranscriptRow =
   /** Selections parked on this session; delegated sessions' are discovered by the row itself. */
   | { readonly kind: "selections"; readonly key: "selections"; readonly selections: number };
 
-export function turnRowKey(turn: Turn): string {
-  return turn.kind === "turn" ? turn.id : `${turn.kind}:${turn.commit}`;
+/**
+ * A landing prompt and the turn it commits into are the same row. The outbox
+ * mints a submission key, the landed change carries it back, and reusing it
+ * here means the commit re-measures an existing row instead of replacing it —
+ * which is what makes the transcript hold still mid-stream. A request opens
+ * its turn, so the key is on the first part or the turn never carried one.
+ */
+function turnRowKey(turn: Turn): string {
+  if (turn.kind !== "turn") return `${turn.kind}:${turn.commit}`;
+  const opening = turn.parts[0];
+  return (opening?.kind === "user" ? opening.key : undefined) ?? turn.id;
 }
 
 /** A turn the transcript draws. A config turn can never reach a row. */
@@ -48,6 +59,57 @@ export type RenderedTurn = Exclude<Turn, { readonly kind: "config" }>;
  */
 export function rendersInTranscript(turn: Turn): turn is RenderedTurn {
   return turn.kind !== "config";
+}
+
+export function conversationMessages({
+  snapshot,
+  unsent,
+  steerLane,
+}: {
+  readonly snapshot: SessionSnapshot | undefined;
+  readonly unsent: readonly OutboxRow[];
+  readonly steerLane: Lane;
+}) {
+  const running = snapshot?.run !== undefined && !isTerminalPhase(snapshot.run.phase);
+  const represented = new Set<string>();
+  for (const turn of snapshot?.transcript ?? []) {
+    if (turn.kind !== "turn") continue;
+    for (const part of turn.parts) {
+      if (part.kind === "user" && part.key !== undefined) represented.add(part.key);
+    }
+  }
+  const pending = snapshot?.pending ?? [];
+  for (const item of pending) {
+    if (item.key !== undefined) represented.add(item.key);
+  }
+  // The durable item arrives before its outbox row leaves; one key, one row.
+  const local = unsent.filter((row) => !represented.has(row.key));
+  // Whether a submitted message steers a live run or opens the next turn is
+  // read from the snapshot alone, so one coherent read moves each message from
+  // the outbox to `pending` to the transcript without a detour through the
+  // composer strip. While a run is live only the boundary lane draws here —
+  // muted until it lands; the lanes that wait for an idle head keep the tray.
+  const landing: LandingMessage[] = [
+    ...pending
+      .filter((item) => !running || item.lane === steerLane)
+      .map((item) => ({
+        // The receipt names the change; the key it carried keeps the same row.
+        key: item.key ?? item.change,
+        content: item.content,
+        pending: running,
+      })),
+    ...local
+      .filter((row) => row.state.kind !== "failed" && (!running || row.lane === steerLane))
+      .map((row) => ({ key: row.key, content: row.content, pending: running })),
+  ];
+  return {
+    running,
+    landing,
+    queued: running ? pending.filter((item) => item.lane !== steerLane) : [],
+    unsent: local.filter(
+      (row) => row.state.kind === "failed" || (running && row.lane !== steerLane),
+    ),
+  };
 }
 
 export function transcriptRows({
@@ -94,22 +156,6 @@ export function transcriptRows({
   rows.push({ kind: "live", key: "live", working });
   rows.push({ kind: "selections", key: "selections", selections });
   return rows;
-}
-
-/** How many prompts the reader has sent, whether landed or still in flight. */
-export function promptRowCount(rows: readonly TranscriptRow[]): number {
-  let count = 0;
-  for (const row of rows) {
-    if (row.kind === "landing") count += 1;
-    if (row.kind === "turn" && rowHasPrompt(row)) count += 1;
-  }
-  return count;
-}
-
-export function rowHasPrompt(row: TranscriptRow): boolean {
-  if (row.kind === "landing") return true;
-  if (row.kind !== "turn" || row.turn.kind !== "turn") return false;
-  return row.turn.parts.some((part) => part.kind === "user");
 }
 
 const USER_ROW_ESTIMATE = 76;

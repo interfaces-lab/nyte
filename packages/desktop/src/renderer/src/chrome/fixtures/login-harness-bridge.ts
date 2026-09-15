@@ -26,7 +26,7 @@ export interface HarnessFailures {
 }
 
 /** What the test drives from Node through `page.evaluate`. */
-export interface LoginHarness {
+interface LoginHarness {
   readonly calls: readonly RecordedHostCall[];
   readonly clipboard: readonly string[];
   /** Which boundary calls refuse from now on. */

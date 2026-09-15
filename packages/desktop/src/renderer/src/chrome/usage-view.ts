@@ -47,10 +47,10 @@ const RANGE_LENGTHS: Readonly<Record<Exclude<UsageRange, "all">, number>> = {
 /** Past this many days a per-day point is noise, so the series buckets by week. */
 const WEEKLY_ABOVE_DAYS = 120;
 
-export type UsageGrain = "day" | "week";
+type UsageGrain = "day" | "week";
 
 /** One bucket of the trend: when it is, and what it cost. */
-export interface UsagePoint {
+interface UsagePoint {
   readonly label: string;
   readonly cost: number;
 }
@@ -133,7 +133,7 @@ export function formatTokens(tokens: number): string {
   return `${(tokens / 1_000_000_000).toFixed(2)}B`;
 }
 
-export function formatCount(value: number): string {
+function formatCount(value: number): string {
   return group(String(Math.round(value)));
 }
 
@@ -264,7 +264,7 @@ function priorWindow(
 }
 
 /** The last path segment, which is what a person calls the folder. */
-export function folderLabel(path: string | null): string {
+function folderLabel(path: string | null): string {
   if (path === null) return "Home";
   const segments = path.split("/").filter((segment) => segment !== "");
   return segments.at(-1) ?? path;
@@ -277,7 +277,7 @@ function folderParent(path: string | null): string | undefined {
   return segments.at(-2);
 }
 
-export function chatLabel(name: string | undefined): string {
+function chatLabel(name: string | undefined): string {
   const trimmed = name?.trim();
   return trimmed === undefined || trimmed === "" ? "Untitled chat" : trimmed;
 }
@@ -493,12 +493,12 @@ export function describeEmptyRange(
  * Claude Code and Codex fold whole histories with no days, so the comparison
  * across tools is all-time and Nyte joins it with its all-time sum.
  */
-export const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
-export type UsageTool = (typeof USAGE_TOOLS)[number];
+const USAGE_TOOLS = ["nyte", "claudeCode", "codex"] as const;
+type UsageTool = (typeof USAGE_TOOLS)[number];
 
 /** The two tools whose history is a file on this machine rather than Nyte's own. */
 export const LOCAL_TOOLS = ["claudeCode", "codex"] as const;
-export type LocalTool = (typeof LOCAL_TOOLS)[number];
+type LocalTool = (typeof LOCAL_TOOLS)[number];
 
 export const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
   nyte: "Nyte",
@@ -507,20 +507,20 @@ export const USAGE_TOOL_LABELS: Readonly<Record<UsageTool, string>> = {
 };
 
 /** Where each tool's history lives, for the row that found none. */
-export const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
+const USAGE_TOOL_HOMES: Readonly<Record<LocalTool, string>> = {
   claudeCode: "CLAUDE_CONFIG_DIR or ~/.claude",
   codex: "CODEX_HOME or ~/.codex",
 };
 
 /** A total and the rows that make it up. */
-export interface UsageBreakdown {
+interface UsageBreakdown {
   readonly amount: string;
   readonly meta: string;
   readonly rows: readonly UsageRow[];
 }
 
 /** A history that answered, or the sentence explaining why it did not. */
-export type LocalHistoryView =
+type LocalHistoryView =
   | {
       readonly kind: "rows";
       readonly rows: readonly UsageRow[];
@@ -675,7 +675,7 @@ export function deriveTools(report: UsageSnapshot): UsageBreakdown {
 // ---------------------------------------------------------------------------
 
 /** The account behind a subscription window, named the way its provider is. */
-export const LIMIT_PROVIDER_LABELS: Readonly<Record<AccountUsage["provider"], string>> = {
+const LIMIT_PROVIDER_LABELS: Readonly<Record<AccountUsage["provider"], string>> = {
   anthropic: "Claude",
   "openai-codex": "Codex",
 };
@@ -698,7 +698,7 @@ export interface LimitMeter {
   readonly reset: string;
 }
 
-export interface AccountView {
+interface AccountView {
   readonly title: string;
   readonly meters: readonly LimitMeter[];
   /** Set instead of meters, saying why the provider gave none. */

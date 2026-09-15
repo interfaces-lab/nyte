@@ -1,7 +1,8 @@
-import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
-/** Browser panel pages: one `WebContentsView` per surface in a guest partition. */
+/** Browser panel pages: one `WebContentsView` per surface, plus the guest sessions, holders, and agent control over them. */
+import { createHash } from "node:crypto";
 import { app, session, WebContentsView } from "electron";
 import type { BrowserWindow, Session, WebContents } from "electron";
+import { showBrowserMenu, performBrowserAction } from "./browser-actions.ts";
 import type {
   BrowserBoundsMessage,
   BrowserNavigationAction,
@@ -9,6 +10,7 @@ import type {
   HostEvent,
   HostBridge,
 } from "../shared/ipc.ts";
+import type { SessionId } from "@nyte-ai/core";
 import { loadBlocker, type Blocker } from "./adblock.ts";
 import {
   httpsUpgrade,
@@ -17,35 +19,122 @@ import {
   surfaceSecurity,
   webUrl,
 } from "./browser-policy.ts";
+import { sessionSurfaceId } from "./browser-agent.ts";
+import type { BrowserAgent, BrowserHolder, BrowserOwner, BrowserRect } from "./browser-agent.ts";
+import {
+  createSurfaceRuntime,
+  attachConsoleCapture,
+  takeSnapshot,
+  performClick,
+  performType,
+  performPress,
+  performScroll,
+  performWait,
+  performEvaluate,
+  performCapture,
+} from "./browser-runtime.ts";
+import type { SurfaceRuntime } from "./browser-runtime.ts";
 
-const PARTITION = "persist:nyte-browser";
+/** A surface stays alive while at least one holder retains it. */
+interface HolderState {
+  readonly holders: Set<BrowserHolder>;
+  lastBounds: BrowserRect;
+}
+
+/** Per-workspace guest session: its own cookie jar and storage. */
+interface GuestSession {
+  readonly session: Session;
+  readonly plainHosts: Set<string>;
+  readonly upgrades: Map<number, string>;
+}
+
+const DEFAULT_BOUNDS: BrowserRect = { x: 0, y: 0, width: 1280, height: 800 };
+
+/** Off-screen bounds preserving the last known size so the page viewport is never 0×0. */
+function offscreenBounds(state: HolderState): BrowserRect {
+  const width = state.lastBounds.width > 0 ? state.lastBounds.width : DEFAULT_BOUNDS.width;
+  const height = state.lastBounds.height > 0 ? state.lastBounds.height : DEFAULT_BOUNDS.height;
+  return { x: -10000, y: -10000, width, height };
+}
+
+function hasViewHolder(state: HolderState): boolean {
+  for (const holder of state.holders) {
+    if (holder.startsWith("view:")) return true;
+  }
+  return false;
+}
+
+function countSessionHolders(state: HolderState): number {
+  let count = 0;
+  for (const holder of state.holders) {
+    if (holder.startsWith("session:")) count += 1;
+  }
+  return count;
+}
+
+/** Returns true when the surface now has zero holders and should be destroyed. */
+function release(state: HolderState, holder: BrowserHolder): boolean {
+  state.holders.delete(holder);
+  return state.holders.size === 0;
+}
+
+function partitionName(owner: BrowserOwner): string {
+  if (owner.kind === "home") return "persist:nyte-browser";
+  const hash = createHash("sha256").update(owner.path).digest("hex").slice(0, 16);
+  return `persist:nyte-browser-${hash}`;
+}
 
 export interface BrowserSurfaces {
   menu: HostBridge["browser"]["menu"];
   perform: HostBridge["browser"]["perform"];
-  open(input: { readonly surface: string; readonly url: string }): BrowserSurfaceState;
+  open(input: {
+    readonly surface: string;
+    readonly url: string;
+    readonly owner?: BrowserOwner;
+  }): BrowserSurfaceState;
   navigate(input: { readonly surface: string; readonly action: BrowserNavigationAction }): void;
   close(input: { readonly surface: string }): void;
+  /** The page's current pixels as a data URL, captured without showing the view. */
+  captureFrame(input: { readonly surface: string }): Promise<string | undefined>;
   setBounds(message: BrowserBoundsMessage): void;
+  /** Retain a surface with a holder. Creates the surface if it does not exist. */
+  retain(input: {
+    readonly surface: string;
+    readonly holder: BrowserHolder;
+    readonly owner?: BrowserOwner;
+  }): void;
+  /** Release a holder from a surface. Destroys the surface when no holders remain. */
+  release(input: { readonly surface: string; readonly holder: BrowserHolder }): void;
   /** Load the filter engine ahead of the first page so that open is not the slow path. */
   warm(): Promise<void>;
   dispose(): void;
+  /** The BrowserAgent implementation for the tools plugin. */
+  agent: BrowserAgent;
 }
 
 export interface BrowserSurfacesDependencies {
   readonly window: () => BrowserWindow | undefined;
   readonly emit: (event: HostEvent) => void;
   readonly filterListPath: string;
+  /**
+   * Whether the window has been shown at least once. Mouse input is dropped
+   * until then. When omitted, inferred from the window being visible.
+   */
+  readonly windowShown?: () => boolean;
 }
 
 interface Surface {
   readonly id: string;
   readonly view: WebContentsView;
+  readonly holderState: HolderState;
+  readonly runtime: SurfaceRuntime;
+  readonly guestSession: GuestSession;
   bounds: BrowserBoundsMessage["bounds"];
   visible: boolean;
   attached: boolean;
   blocked: number;
   error: BrowserSurfaceState["error"];
+  owner: BrowserOwner;
 }
 
 function guestUserAgent(): string {
@@ -58,11 +147,17 @@ function guestUserAgent(): string {
 export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies): BrowserSurfaces {
   const surfaces = new Map<string, Surface>();
   const byWebContents = new Map<number, Surface>();
-  const upgrades = new Map<number, string>();
-  const plainHosts = new Set<string>();
-  let guestSession: Session | undefined;
   let blocker: Blocker | undefined;
   let blockerReady: Promise<void> | undefined;
+
+  /** Per-owner guest sessions, keyed by partition name. */
+  const guestSessions = new Map<string, GuestSession>();
+
+  const isWindowShown = (): boolean => {
+    if (dependencies.windowShown !== undefined) return dependencies.windowShown();
+    const window = dependencies.window();
+    return window !== undefined && !window.isDestroyed() && window.isVisible();
+  };
 
   const ensureBlocker = (): Promise<void> => {
     blockerReady ??= loadBlocker(dependencies.filterListPath).then((loaded) => {
@@ -71,35 +166,45 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     return blockerReady;
   };
 
-  const ensureSession = (): Session => {
-    if (guestSession !== undefined) return guestSession;
+  const ensureGuestSession = (owner: BrowserOwner): GuestSession => {
+    const partition = partitionName(owner);
+    const existing = guestSessions.get(partition);
+    if (existing !== undefined) return existing;
+
     void ensureBlocker();
-    const guest = session.fromPartition(PARTITION);
+
+    const guest = session.fromPartition(partition);
+    const plainHosts = new Set<string>();
+    const upgrades = new Map<number, string>();
+
     guest.setUserAgent(guestUserAgent());
     guest.setSpellCheckerEnabled(false);
+
     guest.setPermissionRequestHandler((_contents, permission, callback) => {
       callback(permissionAllowed(permission));
     });
     guest.setPermissionCheckHandler((_contents, permission) => permissionAllowed(permission));
+
     guest.on("will-download", (event, item, contents) => {
       event.preventDefault();
-      const surface = byWebContents.get(contents.id);
-      if (surface === undefined) return;
-      dependencies.emit({
-        kind: "browser_download_refused",
-        surface: surface.id,
-        url: item.getURL(),
-      });
+      const surfaceId = byWebContents.get(contents.id)?.id;
+      if (surfaceId !== undefined) {
+        dependencies.emit({
+          kind: "browser_download_refused",
+          surface: surfaceId,
+          url: item.getURL(),
+        });
+      }
     });
+
     guest.webRequest.onBeforeRequest((details, callback) => {
       if (blocker !== undefined) {
         const decision = blocker.decide(details);
         if (decision.kind !== "allow") {
-          const surface =
-            details.webContentsId === undefined
-              ? undefined
-              : byWebContents.get(details.webContentsId);
-          if (surface !== undefined) surface.blocked += 1;
+          if (details.webContentsId !== undefined) {
+            const surface = byWebContents.get(details.webContentsId);
+            if (surface !== undefined) surface.blocked += 1;
+          }
           callback(decision.kind === "block" ? { cancel: true } : { redirectURL: decision.url });
           return;
         }
@@ -116,15 +221,19 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       if (details.webContentsId !== undefined) upgrades.set(details.webContentsId, details.url);
       callback({ redirectURL: upgraded });
     });
+
     guest.webRequest.onBeforeSendHeaders((details, callback) => {
       callback({ requestHeaders: { ...details.requestHeaders, "Sec-GPC": "1" } });
     });
-    guestSession = guest;
-    return guest;
+
+    const guestSession: GuestSession = { session: guest, plainHosts, upgrades };
+    guestSessions.set(partition, guestSession);
+    return guestSession;
   };
 
   const stateOf = (surface: Surface): BrowserSurfaceState => {
     const contents = surface.view.webContents;
+    const agentHolders = countSessionHolders(surface.holderState);
     if (contents.isDestroyed()) {
       return {
         url: "",
@@ -136,6 +245,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         blocking: blocker !== undefined,
         blocked: surface.blocked,
         error: surface.error,
+        agentHolders,
       };
     }
     const url = contents.getURL();
@@ -149,11 +259,23 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       blocking: blocker !== undefined,
       blocked: surface.blocked,
       error: surface.error,
+      agentHolders,
     };
   };
 
   const publish = (surface: Surface): void => {
     dependencies.emit({ kind: "browser_changed", surface: surface.id, state: stateOf(surface) });
+  };
+
+  /**
+   * A hidden page keeps keyboard focus unless it is handed back, which leaves a
+   * menu that just opened over the page unable to receive arrow keys.
+   */
+  const hide = (surface: Surface, window: BrowserWindow): void => {
+    const contents = surface.view.webContents;
+    const held = !contents.isDestroyed() && contents.isFocused();
+    surface.view.setVisible(false);
+    if (held) window.webContents.focus();
   };
 
   const apply = (surface: Surface): void => {
@@ -163,8 +285,21 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       window.contentView.addChildView(surface.view);
       surface.attached = true;
     }
+
+    // A zero-sized view lays the page out at a 0-wide viewport, which changes what is
+    // visible and ruins screenshots, so an unplaced or unmeasured surface is parked
+    // off-screen at a real size instead.
+    const placed =
+      hasViewHolder(surface.holderState) && surface.bounds.width > 0 && surface.bounds.height > 0;
+    if (!placed) {
+      hide(surface, window);
+      surface.view.setBounds(offscreenBounds(surface.holderState));
+      return;
+    }
+
     surface.view.setBounds(surface.bounds);
-    surface.view.setVisible(surface.visible && surface.error === undefined);
+    if (surface.visible && surface.error === undefined) surface.view.setVisible(true);
+    else hide(surface, window);
   };
 
   const load = (surface: Surface, url: string): void => {
@@ -177,6 +312,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   };
 
   const wire = (surface: Surface, contents: WebContents): void => {
+    const guestSession = surface.guestSession;
+
     contents.setWindowOpenHandler(({ url }) => {
       const target = webUrl(url);
       if (target !== undefined) load(surface, target);
@@ -195,7 +332,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     });
     contents.on("did-stop-loading", () => publish(surface));
     contents.on("did-navigate", () => {
-      upgrades.delete(contents.id);
+      guestSession.upgrades.delete(contents.id);
       publish(surface);
     });
     contents.on("dom-ready", () => {
@@ -212,10 +349,10 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
         if (!isMainFrame) return;
-        const retry = plainRetry(validatedURL, upgrades.get(contents.id), errorCode);
-        upgrades.delete(contents.id);
+        const retry = plainRetry(validatedURL, guestSession.upgrades.get(contents.id), errorCode);
+        guestSession.upgrades.delete(contents.id);
         if (retry !== undefined) {
-          plainHosts.add(new URL(retry).host);
+          guestSession.plainHosts.add(new URL(retry).host);
           load(surface, retry);
           return;
         }
@@ -227,33 +364,41 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     );
     contents.on("render-process-gone", (_event, details) => {
       surface.error = { code: 0, description: `The page stopped (${details.reason})` };
+      surface.runtime.error = surface.error;
       apply(surface);
       publish(surface);
     });
+
+    attachConsoleCapture(contents, surface.runtime);
   };
 
-  const create = (id: string): Surface => {
-    const guest = ensureSession();
+  const create = (id: string, owner: BrowserOwner): Surface => {
+    const guestSession = ensureGuestSession(owner);
     const view = new WebContentsView({
       webPreferences: {
-        session: guest,
+        session: guestSession.session,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
-        backgroundThrottling: true,
+        // Keep timers running while hidden so an agent's page stays responsive.
+        backgroundThrottling: false,
         devTools: false,
       },
     });
     const surface: Surface = {
       id,
       view,
+      holderState: { holders: new Set(), lastBounds: DEFAULT_BOUNDS },
+      runtime: createSurfaceRuntime(),
+      guestSession,
       bounds: { x: 0, y: 0, width: 0, height: 0 },
       visible: false,
       attached: false,
       blocked: 0,
       error: undefined,
+      owner,
     };
     surfaces.set(id, surface);
     byWebContents.set(view.webContents.id, surface);
@@ -265,7 +410,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     surfaces.delete(surface.id);
     const contents = surface.view.webContents;
     byWebContents.delete(contents.id);
-    upgrades.delete(contents.id);
+    surface.guestSession.upgrades.delete(contents.id);
     const window = dependencies.window();
     if (surface.attached && window !== undefined && !window.isDestroyed()) {
       window.contentView.removeChildView(surface.view);
@@ -273,13 +418,212 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     if (!contents.isDestroyed()) contents.close();
   };
 
+  /** Resolve a surface for an agent session, or fail. */
+  const surfaceForSession = (sessionId: SessionId): Surface | undefined => {
+    return surfaces.get(sessionSurfaceId(sessionId));
+  };
+
+  const agent: BrowserAgent = {
+    async open(input) {
+      const target = webUrl(input.url);
+      if (target === undefined) {
+        return {
+          kind: "failed",
+          failure: { kind: "closed" },
+        };
+      }
+
+      const surfId = sessionSurfaceId(input.session);
+      const holder: BrowserHolder = `session:${input.session}`;
+      let surface = surfaces.get(surfId);
+
+      if (surface === undefined) {
+        surface = create(surfId, input.owner);
+      }
+
+      surface.holderState.holders.add(holder);
+
+      const contents = surface.view.webContents;
+      if (contents.isDestroyed()) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      if (contents.getURL() !== target || surface.error !== undefined) {
+        load(surface, target);
+      }
+
+      apply(surface);
+
+      // Tell the renderer so it can reveal the Browser tab for this surface.
+      dependencies.emit({
+        kind: "browser_agent_opened",
+        surface: surfId,
+        url: target,
+        state: stateOf(surface),
+      });
+
+      await waitForSettle(contents, input.signal);
+
+      const state = await takeSnapshot(contents, surface.runtime);
+      return { kind: "ok", state };
+    },
+
+    async snapshot(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      const contents = surface.view.webContents;
+      if (contents.isDestroyed()) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      const state = await takeSnapshot(contents, surface.runtime, input.ref);
+      return { kind: "ok", state };
+    },
+
+    async click(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      return performClick(
+        surface.view.webContents,
+        surface.runtime,
+        input.ref,
+        input.button ?? "left",
+        input.double ?? false,
+        isWindowShown(),
+        input.signal,
+      );
+    },
+
+    async type(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      return performType(
+        surface.view.webContents,
+        surface.runtime,
+        input.ref,
+        input.text,
+        input.clear ?? false,
+        input.submit ?? false,
+        isWindowShown(),
+        input.signal,
+      );
+    },
+
+    async press(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      return performPress(
+        surface.view.webContents,
+        surface.runtime,
+        input.key,
+        input.ref,
+        isWindowShown(),
+        input.signal,
+      );
+    },
+
+    async scroll(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      return performScroll(
+        surface.view.webContents,
+        surface.runtime,
+        input,
+        isWindowShown(),
+        input.signal,
+      );
+    },
+
+    async wait(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "failed", failure: { kind: "closed" } };
+      }
+
+      return performWait(surface.view.webContents, surface.runtime, input, input.signal);
+    },
+
+    console(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) return [];
+
+      const entries = surface.runtime.consoleBuffer.slice(0, input.limit);
+      if (input.clear) {
+        surface.runtime.consoleBuffer.length = 0;
+      }
+      return entries;
+    },
+
+    async evaluate(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) {
+        return { kind: "threw", message: "No page is open for this session" };
+      }
+
+      return performEvaluate(
+        surface.view.webContents,
+        surface.runtime,
+        input.expression,
+        input.ref,
+      );
+    },
+
+    async capture(input) {
+      const surface = surfaceForSession(input.session);
+      if (surface === undefined) return undefined;
+
+      return performCapture(surface.view.webContents);
+    },
+
+    release(input) {
+      const surfId = sessionSurfaceId(input.session);
+      const surface = surfaces.get(surfId);
+      if (surface === undefined) return;
+
+      const holder: BrowserHolder = `session:${input.session}`;
+      const shouldDestroy = release(surface.holderState, holder);
+      if (shouldDestroy) {
+        destroy(surface);
+      } else {
+        apply(surface);
+      }
+    },
+
+    sessionSurfaceId(sessionId) {
+      return sessionSurfaceId(sessionId);
+    },
+  };
+
   return {
-    open({ surface: id, url }) {
+    open({ surface: id, url, owner }) {
       const target = webUrl(url);
       if (target === undefined) throw new Error("Only web addresses can open in the browser panel");
-      const surface = surfaces.get(id) ?? create(id);
+      const surfaceOwner = owner ?? { kind: "home" };
+      const surface = surfaces.get(id) ?? create(id, surfaceOwner);
+
+      // Renderer open acts as a view holder retain.
+      surface.holderState.holders.add(`view:${id}`);
+
       const contents = surface.view.webContents;
       if (contents.getURL() !== target || surface.error !== undefined) load(surface, target);
+      // The renderer may have sent this surface's bounds before the holder
+      // existed, and it will not resend an identical message, so place it now.
+      apply(surface);
       return stateOf(surface);
     },
     navigate({ surface: id, action }) {
@@ -314,7 +658,19 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     },
     async perform({ surface: id, action }) {
       if (action === "clear-history") {
+        const requestingSurface = surfaces.get(id);
+        const requestingOwner = requestingSurface?.owner;
         for (const surface of surfaces.values()) {
+          // History is per cookie jar, so only the requesting surface's owner is cleared.
+          if (requestingOwner !== undefined) {
+            if (surface.owner.kind !== requestingOwner.kind) continue;
+            if (
+              surface.owner.kind === "project" &&
+              requestingOwner.kind === "project" &&
+              surface.owner.path !== requestingOwner.path
+            )
+              continue;
+          }
           const contents = surface.view.webContents;
           if (contents.isDestroyed()) continue;
           contents.navigationHistory.clear();
@@ -322,27 +678,70 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         }
         return;
       }
+      const surface = surfaces.get(id);
       return performBrowserAction({
         action,
-        contents: surfaces.get(id)?.view.webContents,
-        guest: ensureSession(),
+        contents: surface?.view.webContents,
+        guest: ensureGuestSession(surface?.owner ?? { kind: "home" }).session,
         window: dependencies.window(),
       });
     },
     close({ surface: id }) {
       const surface = surfaces.get(id);
-      if (surface !== undefined) destroy(surface);
+      if (surface === undefined) return;
+      // Renderer close releases the view holder, not an immediate destroy.
+      const shouldDestroy = release(surface.holderState, `view:${id}`);
+      if (shouldDestroy) {
+        destroy(surface);
+      } else {
+        // Surface survives (agent holds it); move off-screen.
+        apply(surface);
+      }
+    },
+    retain({ surface: id, holder, owner }) {
+      const surfaceOwner = owner ?? { kind: "home" };
+      const surface = surfaces.get(id) ?? create(id, surfaceOwner);
+      surface.holderState.holders.add(holder);
+      apply(surface);
+    },
+    release({ surface: id, holder }) {
+      const surface = surfaces.get(id);
+      if (surface === undefined) return;
+      const shouldDestroy = release(surface.holderState, holder);
+      if (shouldDestroy) {
+        destroy(surface);
+      } else {
+        apply(surface);
+      }
+    },
+    async captureFrame({ surface: id }) {
+      const surface = surfaces.get(id);
+      if (surface === undefined) return undefined;
+      const contents = surface.view.webContents;
+      if (contents.isDestroyed() || contents.getURL() === "") return undefined;
+      try {
+        // stayHidden keeps an already-hidden page from flashing into view, and
+        // lets an occluded page still answer with its last pixels.
+        const image = await contents.capturePage(undefined, { stayHidden: true });
+        return image.isEmpty() ? undefined : image.toDataURL();
+      } catch {
+        return undefined;
+      }
     },
     setBounds({ surface: id, bounds, visible }) {
       const surface = surfaces.get(id);
       if (surface === undefined) return;
-      surface.bounds = {
+      const roundedBounds = {
         x: Math.round(bounds.x),
         y: Math.round(bounds.y),
         width: Math.round(bounds.width),
         height: Math.round(bounds.height),
       };
+      surface.bounds = roundedBounds;
       surface.visible = visible;
+      if (roundedBounds.width > 0 && roundedBounds.height > 0) {
+        surface.holderState.lastBounds = roundedBounds;
+      }
       apply(surface);
     },
     warm() {
@@ -354,5 +753,36 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         destroy(surface);
       }
     },
+    agent,
   };
+}
+
+/**
+ * Resolve once the page is worth reading. Measured on Electron 44: a response the
+ * server never completes fires no event at all, not even `dom-ready`, so the bounded
+ * wait is the only exit from it; a view destroyed mid-load fires only `destroyed`.
+ * Returning while a page still loads is safe because the state carries `loading`, and
+ * the model can wait longer with browser_wait.
+ */
+const SETTLE_LIMIT_MS = 10_000;
+
+function waitForSettle(contents: WebContents, signal?: AbortSignal): Promise<void> {
+  if (contents.isDestroyed() || !contents.isLoading()) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      contents.removeListener("did-stop-loading", done);
+      contents.removeListener("did-fail-load", done);
+      contents.removeListener("destroyed", done);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    timer = setTimeout(done, SETTLE_LIMIT_MS);
+    contents.on("did-stop-loading", done);
+    contents.on("did-fail-load", done);
+    contents.on("destroyed", done);
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
