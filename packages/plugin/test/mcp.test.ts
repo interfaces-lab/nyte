@@ -4,6 +4,10 @@
  * the model, and a server that cannot start is a warning, not a broken session.
  */
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, test, vi } from "vitest";
 import type { SessionEvent, StreamFn } from "@nyte-ai/core";
@@ -94,6 +98,21 @@ test("a server that cannot start fails with its stderr and never rejects ready()
   assert.equal(status.kind, "failed");
   if (status.kind === "failed") assert.match(status.error, /boom/);
   handle.release();
+});
+
+test("closing the pool before a server starts never spawns it", async () => {
+  const { servers } = open("nyte-mcp-orphan-");
+  const pidFile = join(tmpdir(), `nyte-mcp-pid-${randomUUID()}`);
+  const handle = servers.acquire(
+    "echo",
+    { ...echoServer, args: [...(echoServer.args ?? []), pidFile] },
+    "/tmp",
+  );
+  // The close lands while the connect is still loading the SDK, before any client exists.
+  await servers.close();
+  await handle.ready();
+  // The fixture records its pid at startup, so the file appearing means a server was left running.
+  await assert.rejects(readFile(pidFile, "utf8"), /ENOENT/);
 });
 
 test("the plugin offers the server's tools to the model and runs a call through it", async () => {

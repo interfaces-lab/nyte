@@ -102,7 +102,8 @@ export interface McpServerHandle {
 
 interface Connection {
   status: McpServerStatus;
-  client: Client | undefined;
+  /** Undefined while connecting, the client once open, `"ended"` once closed for good. */
+  client: Client | "ended" | undefined;
   readonly ready: Promise<void>;
   settle: () => void;
 }
@@ -204,10 +205,12 @@ function openConnection(slot: Slot): Connection {
   return connection;
 }
 
+/** Terminal: a connect still in flight sees `"ended"` and closes the client it opened. */
 async function closeConnection(connection: Connection): Promise<void> {
   const { client } = connection;
-  connection.client = undefined;
-  await client?.close().catch(() => undefined);
+  connection.client = "ended";
+  if (client === undefined || client === "ended") return;
+  await client.close().catch(() => undefined);
 }
 
 function notify(slot: Slot): void {
@@ -225,8 +228,14 @@ function fail(slot: Slot, connection: Connection, error: string): void {
 
 async function connectServer(slot: Slot, connection: Connection): Promise<void> {
   const { config, cwd } = slot;
+  // `closeConnection` reassigns the property while this function awaits; reading it through a
+  // closure keeps the declared type, which the compiler's flow analysis would otherwise narrow away.
+  const ended = (): boolean => connection.client === "ended";
   const { Client, StdioClientTransport, getDefaultEnvironment, StreamableHTTPClientTransport } =
     await loadSdk();
+  // Loading the SDK is the only window where a close finds no client to shut down. Past it,
+  // `connection.client` is set before `connect` spawns the server, so a close reaches it.
+  if (ended()) return;
   const client = new Client({ name: "nyte", version: "0" });
   let stderrTail = "";
   const transport =
