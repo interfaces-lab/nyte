@@ -195,7 +195,6 @@
   --nyte-shadow-workbench: 0 0 8px 2px
     color-mix(in srgb, var(--nyte-shadow-primary) 40%, transparent);
   --nyte-scrollbar-thumb: color-mix(in srgb, var(--nyte-base) 14%, transparent);
-  --nyte-scrollbar-thumb-hover: color-mix(in srgb, var(--nyte-base) 22%, transparent);
   --nyte-shadow-control: var(--nyte-shadow-secondary);
   /* Menus float on one soft layer; the surface's inset hairline draws the edge. */
   --nyte-shadow-popover:
@@ -289,7 +288,6 @@
   --nyte-settings-control-max-width: 160px;
   --nyte-settings-page-title-size: calc(var(--nyte-font-size-base) + 4px);
   --nyte-settings-page-title-line-height: calc(var(--nyte-font-size-base) + 8px);
-  --nyte-scrollbar-lane: 12px;
   --nyte-control-compact-height: 26px;
   --nyte-control-regular-height: 30px;
   --nyte-menu-width: 200px;

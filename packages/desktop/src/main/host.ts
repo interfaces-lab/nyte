@@ -80,7 +80,12 @@ import { findTailnetAddress } from "./tailnet.ts";
 import { ServerSettingsStore } from "./server-settings.ts";
 import type { ServerSettings } from "./server-settings.ts";
 import { serverCatalog, serverConnectionProblem } from "./server-connection.ts";
-import { createModelPreferencesStore, readLastWorkspace, rememberWorkspace } from "./workspaces.ts";
+import {
+  createBrowserAccessStore,
+  createModelPreferencesStore,
+  readLastWorkspace,
+  rememberWorkspace,
+} from "./workspaces.ts";
 
 export type DesktopUpdateActivity =
   | { readonly kind: "idle" }
@@ -223,6 +228,7 @@ export class DesktopHost {
   private readonly trustStore = createTrustStore();
   private readonly registry = createWorkspaceRegistry();
   private readonly preferences = createModelPreferencesStore();
+  private readonly browserAccess = createBrowserAccessStore();
   private readonly serverSettings = new ServerSettingsStore(join(nyteHome(), "server.json"));
   private readonly usageScan: UsageScanReader;
   private readonly otel: ReturnType<typeof createOtelExport>;
@@ -808,7 +814,12 @@ export class DesktopHost {
               // The producer retained only this failure record, not its original Error.
               message: ipcFailure(failure).message,
             }),
-          extra: [browserToolsPlugin({ agent: this.dependencies.browser.agent })],
+          extra: [
+            browserToolsPlugin({
+              agent: this.dependencies.browser.agent,
+              access: this.browserAccess,
+            }),
+          ],
         },
       });
       const base = { sdk, store, sessionAttachments: new Map<SessionId, Disposer>() };

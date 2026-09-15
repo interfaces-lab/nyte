@@ -71,19 +71,21 @@
 
   /*
    * Native scrolling is one cross-tree browser contract, rather than a
-   * pseudo-element recipe repeated by every StyleX component.
+   * pseudo-element recipe repeated by every StyleX component. Chromium drops
+   * every `::-webkit-scrollbar` rule on a scroller that sets `scrollbar-width`
+   * or `scrollbar-color`, so the standard properties are the whole contract.
    * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/index.css
    */
   [data-nyte-scrollport] {
     scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
     overscroll-behavior: contain;
   }
 
   /*
    * A pane holds its scroll at the edge; a block inside one hands the rest
-   * back. Without this a code block, diff, or tool output stops the
-   * conversation dead once its own content runs out. Cursor spells the same
-   * thing `allowScrollChaining` on its nested scroll areas.
+   * back, so a code block, diff, or tool output cannot stop the conversation.
    */
   [data-nyte-scrollport] [data-nyte-scrollport] {
     overscroll-behavior: auto;
@@ -93,37 +95,8 @@
     scrollbar-gutter: stable both-edges;
   }
 
-  [data-nyte-scrollport]::-webkit-scrollbar {
-    width: var(--nyte-scrollbar-lane);
-    height: var(--nyte-scrollbar-lane);
-  }
-
-  [data-nyte-scrollport]::-webkit-scrollbar-track,
-  [data-nyte-scrollport]::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  [data-nyte-scrollport]::-webkit-scrollbar-thumb {
-    border: calc(var(--nyte-scrollbar-lane) / 3) solid transparent;
-    border-radius: var(--nyte-radius-full);
-    background-color: transparent;
-    background-clip: padding-box;
-    transition: background-color var(--nyte-duration-fast) var(--nyte-easing-out);
-  }
-
-  [data-nyte-scrollport]:hover::-webkit-scrollbar-thumb {
-    background-color: var(--nyte-scrollbar-thumb);
-  }
-
-  [data-nyte-scrollport]::-webkit-scrollbar-thumb:hover,
-  [data-nyte-scrollport]::-webkit-scrollbar-thumb:active {
-    background-color: var(--nyte-scrollbar-thumb-hover);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    [data-nyte-scrollport]::-webkit-scrollbar-thumb {
-      transition-duration: 0s;
-    }
+  [data-nyte-scrollport]:hover {
+    scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
   }
 
   /* Shiki dual-theme output: pick the palette side by the html attribute. */

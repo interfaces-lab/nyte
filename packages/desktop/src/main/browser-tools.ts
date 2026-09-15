@@ -12,6 +12,8 @@ import { Type } from "typebox";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { BrowserAgent, BrowserActionResult, BrowserOwner } from "./browser-agent.ts";
+import { isBrowserAccessLevel } from "./browser-access.ts";
+import type { BrowserAccessLevel, BrowserAccessMemory } from "./browser-access.ts";
 import { sessionId } from "@nyte-ai/core";
 import {
   renderPageReport,
@@ -25,12 +27,6 @@ export const BROWSER_TOOLS_PLUGIN_ID = "browser-tools";
 
 const BROWSER_GATE_KEY = "browser-access";
 
-type BrowserAccessLevel = "full" | "read" | "off";
-
-function isBrowserAccessLevel(value: unknown): value is BrowserAccessLevel {
-  return value === "full" || value === "read" || value === "off";
-}
-
 /** Tools that change the page or run code in it. Each needs `full`, never `read`. */
 const WRITE_TOOLS = new Set(["browser_click", "browser_type", "browser_press", "browser_evaluate"]);
 
@@ -40,7 +36,7 @@ const WRITE_TOOLS = new Set(["browser_click", "browser_type", "browser_press", "
  */
 function browserAccessSelection(): Selection {
   return {
-    title: "Allow browser access for this session?",
+    title: "Allow browser access for this folder?",
     choices: [
       {
         id: "full",
@@ -54,7 +50,7 @@ function browserAccessSelection(): Selection {
         description:
           "Open pages and read content using your signed-in browser profile, including pages only you can see. No clicking, typing, or code evaluation.",
       },
-      { id: "off", label: "Off", description: "Hide all browser tools for this session." },
+      { id: "off", label: "Off", description: "Hide all browser tools in this folder." },
     ],
   };
 }
@@ -132,26 +128,35 @@ const EvaluateParams = closed({
 });
 
 const CANCELLED = "Browser operation cancelled.";
-const OFF = "Browser access is off for this session.";
+const OFF = "Browser access is off for this folder.";
 const READ_ONLY =
-  "Browser access is read-only for this session, so this tool cannot run. Ask the user to allow full browser access if you need to click, type, or evaluate.";
+  "Browser access is read-only for this folder, so this tool cannot run. Ask the user to allow full browser access if you need to click, type, or evaluate.";
 
 const refuse = (text: string) => new ToolError({ content: [{ type: "text", text }], details: {} });
 
-export function browserToolsPlugin(options: { readonly agent: BrowserAgent }) {
-  const { agent } = options;
+export function browserToolsPlugin(options: {
+  readonly agent: BrowserAgent;
+  readonly access: BrowserAccessMemory;
+}) {
+  const { agent, access } = options;
   return definePlugin({
     id: BROWSER_TOOLS_PLUGIN_ID,
     async session(api: SessionApi) {
       const info = await api.session.info();
       if (info.id === undefined) return;
       const sid = sessionId(info.id);
-      const owner: BrowserOwner = { kind: "project", path: api.env.cwd };
+      const folder = api.env.cwd;
+      const owner: BrowserOwner = { kind: "project", path: folder };
 
       const stored = await api.storage.get(BROWSER_GATE_KEY);
       let accessLevel: BrowserAccessLevel | undefined = isBrowserAccessLevel(stored)
         ? stored
-        : undefined;
+        : await access.read(folder);
+      // Seed the session fact from the remembered answer so the settings row
+      // and this session's tools show the same level from the first turn.
+      if (!isBrowserAccessLevel(stored) && accessLevel !== undefined) {
+        await api.storage.set(BROWSER_GATE_KEY, accessLevel);
+      }
       const factName = `${BROWSER_TOOLS_PLUGIN_ID}:${BROWSER_GATE_KEY}`;
       api.events.subscribe((event) => {
         if (event.kind !== "fact") return;
@@ -165,13 +170,16 @@ export function browserToolsPlugin(options: { readonly agent: BrowserAgent }) {
         const next = isBrowserAccessLevel(event.value) ? event.value : undefined;
         if (next === accessLevel) return;
         accessLevel = next;
+        // Settings changes land here rather than through the gate; remember
+        // them too, or the next session would reopen on the old answer.
+        if (next !== undefined) void access.remember(folder, next);
         api.tools.rebuild();
       });
 
       api.signal.addEventListener("abort", () => agent.release({ session: sid }), { once: true });
 
-      /** Park on first use; park again when a write tool is reached under `read`. */
-      /** Asked once per session. A read-only session refuses write tools rather than asking again. */
+      /** Park on first use in a folder with no remembered answer. */
+      /** A read-only folder refuses write tools rather than asking again. */
       function requireAccess(toolName: string): void {
         if (accessLevel === undefined) throw new ToolWait({ selection: browserAccessSelection() });
         if (accessLevel === "off") throw refuse(OFF);
@@ -302,6 +310,7 @@ export function browserToolsPlugin(options: { readonly agent: BrowserAgent }) {
             // The fact event lands later; the woken call must see its own answer.
             accessLevel = chosen;
             await api.storage.set(BROWSER_GATE_KEY, chosen);
+            await access.remember(folder, chosen);
             if (chosen === "off") throw refuse(OFF);
             if (chosen !== "full" && WRITE_TOOLS.has(spec.name)) {
               throw refuse(`"${spec.name}" requires full browser access, which was not granted.`);
