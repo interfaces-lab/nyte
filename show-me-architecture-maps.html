@@ -142,15 +142,48 @@
         background: var(--panel);
         border: 1px solid var(--border-weak);
         border-radius: 12px;
-        padding: 20px 16px;
         margin-top: 14px;
-        overflow-x: auto;
+        position: relative;
+      }
+      .scroller {
+        overflow: auto;
+        padding: 20px 16px;
+        max-height: 82vh;
+        overscroll-behavior: contain;
       }
       .graph svg {
-        max-width: 100%;
-        height: auto;
+        max-width: none;
         display: block;
         margin: 0 auto;
+      }
+      .zoom {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        display: flex;
+        gap: 2px;
+        background: #212121e6;
+        border: 1px solid var(--border-weak);
+        border-radius: 7px;
+        padding: 2px;
+        z-index: 2;
+      }
+      .zoom button {
+        font: 500 11px/1 var(--mono);
+        color: var(--faint);
+        background: transparent;
+        border: none;
+        border-radius: 5px;
+        padding: 5px 8px;
+        cursor: pointer;
+      }
+      .zoom button:hover {
+        background: #77777740;
+        color: var(--fg);
+      }
+      .zoom button[data-on="true"] {
+        background: #fafafa;
+        color: #141414;
       }
       pre.mermaid {
         margin: 0;
@@ -253,9 +286,18 @@
           width: 100%;
           overflow-x: auto;
         }
-        table.deps th:nth-child(3),
-        table.deps td:nth-child(3) {
-          display: none;
+        /* Scroll the table rather than drop a column; the third one carries the answer. */
+        table.deps {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+        table.deps td {
+          min-width: 160px;
+          white-space: normal;
+        }
+        .scroller {
+          max-height: 70vh;
         }
       }
     </style>
@@ -268,6 +310,7 @@
           <button role="tab" aria-selected="true" data-board="nyte">Nyte</button>
           <button role="tab" aria-selected="false" data-board="pi">pi-coding-agent</button>
           <button role="tab" aria-selected="false" data-board="opencode">opencode v2</button>
+          <button role="tab" aria-selected="false" data-board="compare">compare</button>
         </nav>
       </div>
     </header>
@@ -736,10 +779,977 @@
       </section>
 
       <!-- ============================== PI ============================== -->
-      <!--INJECT:PI-->
+      <section class="board" id="pi">
+        <p class="lede">
+          Pi is a layered monolith: a generic agent loop (<code>pi-agent-core</code>) and a provider
+          client (<code>pi-ai</code>) sit underneath one thick host class,
+          <code>core/agent-session.ts</code>, which owns queues, compaction, tools, extensions and
+          persistence, and which every run mode (TUI, print, RPC) wraps with its own I/O. The
+          persisted artifact is an append-only JSONL entry tree, and almost every view in the
+          product is computed from that tree — often twice, once live from the event stream and once
+          by re-walking the entries.
+        </p>
+
+        <h3>Package graph</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart LR
+  subgraph ee["earendil workspace"]
+    chord["chord<br/>structured concurrency"]
+    ai["pi-ai<br/>providers, catalog, credentials"]
+    agentcore["pi-agent-core<br/>Agent plus agentLoop"]
+    tui["pi-tui<br/>terminal component tree"]
+  end
+  subgraph tp["third party"]
+    tb["typebox"]
+    jiti["jiti"]
+    undici["undici"]
+    photon["photon-node"]
+    mmd["grok-mermaid"]
+    hljs["highlight.js and marked"]
+    misc["diff, ignore, minimatch,<br/>yaml, proper-lockfile"]
+  end
+  pi["pi-coding-agent<br/>AgentSession, SessionManager,<br/>tools, extensions, three modes"]
+  surf["bin pi<br/>SDK createAgentSession<br/>rpc-entry"]
+
+  chord -->|"cancel scopes and context keys<br/>the loop runs inside"| agentcore
+  ai -->|"StreamFn and Message types<br/>the loop streams through"| agentcore
+  agentcore -->|"run loop, AgentState, AgentTool,<br/>beforeToolCall and afterToolCall hooks"| pi
+  ai -->|"provider streaming, model catalog,<br/>CredentialStore, RetryPolicy"| pi
+  tui -->|"Component, TUI, ScrollView, editor,<br/>key decoding, overlay"| pi
+  tb -->|"tool parameter schemas shipped to<br/>providers, plus theme JSON validation"| pi
+  jiti -->|"loads user TypeScript extensions<br/>in a separate module cache"| pi
+  undici -->|"global HTTP dispatcher, proxy,<br/>idle timeout for provider calls"| pi
+  photon -->|"decode, resize and exif fix for<br/>pasted or attached images"| pi
+  mmd -->|"mermaid source into ANSI blocks<br/>inside the live transcript"| pi
+  hljs -->|"highlights code in the TUI and again,<br/>vendored, inside exported HTML"| pi
+  misc -->|"unified diffs, gitignore matching,<br/>settings and auth file locks"| pi
+  pi --> surf
+</pre>
+        </div>
+        <p class="note">
+          Only four edges carry behaviour: the run loop, the provider stream, the widget tree, and
+          the schema type. <code>chord</code> is declared by <code>pi-coding-agent</code> but never
+          imported by its own source — it reaches the process through <code>pi-agent-core</code>,
+          which uses <code>chord/context</code> for cancellation and context keys. Everything else
+          is leaf infrastructure.
+        </p>
+
+        <h3>Request flow</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  key["keystroke<br/>pi-tui terminal reader"]
+  main["main.ts and cli/args.ts<br/>parse flags, choose mode"]
+  rt["core/agent-session-runtime.ts<br/>owns session plus cwd-bound services"]
+  im["modes/interactive/interactive-mode.ts<br/>editor submit handler"]
+  print["modes/print-mode.ts<br/>single shot, text or json"]
+  rpc["modes/rpc/rpc-mode.ts<br/>JSONL commands on stdin"]
+  sess["core/agent-session.ts prompt<br/>skills, templates, steer and followUp queues"]
+  ext["core/extensions/runner.ts<br/>input, tool_call, tool_result hooks"]
+  agent["pi-agent-core Agent<br/>agentLoop turn machine"]
+  conv["core/messages.ts convertToLlm<br/>AgentMessage into provider Message"]
+  stream["pi-ai stream over undici<br/>provider SSE deltas"]
+  tools["core/tools bash, read, edit,<br/>write, grep, find, ls"]
+  evt["AgentSession _handleAgentEvent<br/>widens AgentEvent into AgentSessionEvent"]
+  ui["chat components<br/>live incremental render"]
+  sm["core/session-manager.ts<br/>appendMessage advances the leaf"]
+  disk["session JSONL<br/>append-only entry tree"]
+
+  key --> im
+  main --> rt
+  rt --> im
+  rt --> print
+  rt --> rpc
+  im -->|"submitted text"| sess
+  print -->|"initial message"| sess
+  rpc -->|"prompt, steer, follow_up"| sess
+  sess -->|"input event, extension commands,<br/>skill and template expansion"| ext
+  sess -->|"Agent.prompt or queue for the next turn"| agent
+  agent -->|"context snapshot"| conv
+  conv --> stream
+  stream -->|"assistant message deltas"| agent
+  agent -->|"validate args, beforeToolCall,<br/>execute, afterToolCall"| tools
+  tools -->|"toolResult message"| agent
+  agent -->|"AgentEvent"| evt
+  evt -->|"dispatched to extensions first"| ext
+  evt -->|"listeners notified before persistence"| ui
+  evt -->|"on message_end"| sm
+  sm --> disk
+</pre>
+        </div>
+        <p class="note">
+          Mode choice happens once in <code>main.ts</code>; all three modes receive the same
+          <code>AgentSessionRuntime</code> and differ only in the I/O layer bolted onto
+          <code>AgentSession</code>. Note the ordering inside <code>_handleAgentEvent</code>:
+          extensions, then UI listeners, then the JSONL write. The screen is updated from the event,
+          not from the record that is about to be written.
+        </p>
+
+        <h3>Projection path</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  disk["session JSONL entries<br/>the one source of truth"]
+  evt["AgentSessionEvent stream<br/>live, ephemeral"]
+  bce["SessionManager.buildContextEntries<br/>compaction-aware branch walk"]
+  bsc["buildSessionContext<br/>entries into AgentMessage list"]
+  state["AgentState.messages<br/>in-memory mirror held by Agent"]
+  conv["convertToLlm<br/>provider-shaped Message list"]
+  live["InteractiveMode.handleEvent<br/>transcript built from deltas"]
+  rebuild["InteractiveMode.renderSessionEntries<br/>same transcript rebuilt from entries"]
+  missLive["cache-stats detectCacheMiss<br/>notice on message_end"]
+  missRebuild["cache-stats collectCacheMisses<br/>same notices re-derived on rebuild"]
+  stats["AgentSession.getSessionStats<br/>usage totals over all entries"]
+  footer["FooterComponent.render<br/>walks all entries again every frame"]
+  breakdown["usage-totals getUsageCostBreakdown<br/>third walk for the cost table"]
+  ctx["getContextUsage<br/>estimateContextTokens over messages"]
+  html["core/export-html<br/>entries plus systemPrompt into one JSON blob"]
+  htmlTools["export-html/tool-renderer<br/>re-runs TUI renderers offscreen into ANSI"]
+  browser["template.js in the browser<br/>rebuilds tree, path and stats in JS"]
+  rpcstate["RpcSessionState and JsonAgentSessionEvent"]
+  client["RpcClient<br/>re-accumulates the transcript from events"]
+
+  disk --> bce
+  bce --> bsc
+  bsc --> state
+  state --> conv
+  state --> ctx
+  evt --> live
+  evt --> missLive
+  bce --> rebuild
+  disk --> missRebuild
+  missRebuild --> rebuild
+  disk --> stats
+  disk --> footer
+  disk --> breakdown
+  stats --> ctx
+  disk --> html
+  html --> htmlTools
+  html --> browser
+  evt --> rpcstate
+  rpcstate --> client
+  disk -->|"get_entries and get_messages"| client
+
+  classDef reproject stroke-dasharray:4 3
+  class rebuild,missRebuild,footer,breakdown,htmlTools,browser,client reproject
+</pre>
+        </div>
+        <p class="note">
+          Dashed nodes recompute something the system already had. Five distinct double-derivations:
+          (1) the transcript, rendered live from events and rebuilt from entries after resume,
+          compaction, theme change, or thinking toggle; (2) cache-miss notices, computed once live
+          and once again during rebuild by two functions in the same file; (3) usage and cost
+          totals, walked out of <code>getEntries</code> by <code>getSessionStats</code>, by the
+          footer on every frame, by <code>getUsageCostBreakdown</code>, and a fourth time by
+          <code>computeStats</code> inside the exported HTML; (4) tool output, rendered by
+          <code>pi-tui</code> components to the terminal and re-rendered by the same components at a
+          fixed width 100 into ANSI, then converted to HTML for export; (5) the tree and branch
+          path, walked by <code>SessionManager</code> in Node and walked again in JavaScript inside
+          <code>template.js</code>. None of these share a memoized projection: the only cached view
+          is <code>AgentState.messages</code>, which is itself a mirror of the entry tree.
+        </p>
+
+        <h3>Dependency contracts</h3>
+        <table class="deps">
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Consumed by</th>
+              <th>Capability supplied</th>
+              <th>Consumer reshapes it?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>@earendil-works/pi-agent-core</code></td>
+              <td><code>core/agent-session.ts</code>, <code>core/sdk.ts</code></td>
+              <td>
+                <code>Agent</code> plus <code>agentLoop</code>: turn machine, steering and follow-up
+                queues, parallel or sequential tool execution, <code>AgentState</code>,
+                <code>AgentTool</code>, <code>beforeToolCall</code> and
+                <code>afterToolCall</code> hooks, an <code>AgentEvent</code> stream.
+              </td>
+              <td class="bad">
+                Yes — <code>AgentSession</code> widens <code>AgentEvent</code> into its own
+                <code>AgentSessionEvent</code> union (compaction, retry, queue, bash,
+                entry_appended) and mirrors <code>AgentState.messages</code> into a separate JSONL
+                entry tree that it then reads back.
+              </td>
+            </tr>
+            <tr>
+              <td><code>@earendil-works/pi-ai</code></td>
+              <td>
+                <code>core/model-runtime.ts</code>, <code>core/compaction</code>,
+                <code>pi-agent-core</code>
+              </td>
+              <td>
+                Provider streaming (<code>StreamFn</code>,
+                <code>AssistantMessageEventStream</code>), model catalog and
+                <code>Models</code> store, <code>CredentialStore</code> with OAuth,
+                <code>RetryPolicy</code>, canonical message and content types.
+              </td>
+              <td class="bad">
+                Yes — <code>ModelRuntime</code> recomposes built-in, <code>models.json</code> and
+                extension provider layers, then <code>ModelRegistry</code> wraps it a second time as
+                a synchronous facade for extensions, so the same catalogue exists in two shapes.
+              </td>
+            </tr>
+            <tr>
+              <td><code>@earendil-works/pi-tui</code></td>
+              <td>
+                <code>modes/interactive/**</code>, <code>core/tools/renderers</code>,
+                <code>core/export-html</code>
+              </td>
+              <td>
+                <code>Component</code> tree, <code>TUI</code>, <code>ScrollView</code>, editor and
+                autocomplete, key decoding, overlays, differential terminal painting.
+              </td>
+              <td class="bad">
+                Partly — the TUI path consumes components directly, but
+                <code>export-html/tool-renderer.ts</code> re-runs the same
+                <code>renderCall</code> and <code>renderResult</code> components offscreen at width
+                100 and converts their ANSI back into HTML.
+              </td>
+            </tr>
+            <tr>
+              <td><code>@earendil-works/chord</code></td>
+              <td><code>pi-agent-core</code> only</td>
+              <td>
+                Structured concurrency: cancellation scopes, <code>withCancel</code>,
+                <code>withAbortSignal</code>, typed context keys used for telemetry propagation.
+              </td>
+              <td class="ok">
+                No — declared as a direct dependency for version pinning but never imported by
+                <code>pi-coding-agent</code> source; it is exercised through the agent core.
+              </td>
+            </tr>
+            <tr>
+              <td><code>typebox</code></td>
+              <td>
+                <code>core/tools/*</code>, <code>core/extensions/types.ts</code>, theme loader
+              </td>
+              <td>
+                <code>TSchema</code> parameter schemas with <code>Static</code> inference, used as
+                the tool contract for built-in and extension tools and to validate user theme JSON.
+              </td>
+              <td class="ok">
+                No — schemas pass straight through to the provider tool definitions; renderers are
+                split into <code>tools/renderers/*</code> specifically to avoid pulling the schema
+                graph.
+              </td>
+            </tr>
+            <tr>
+              <td><code>jiti</code></td>
+              <td><code>core/extensions/loader.ts</code></td>
+              <td>
+                Runtime TypeScript module loading for user extensions, with an isolated module cache
+                per extension root.
+              </td>
+              <td class="ok">
+                No — modules load as given; the separate cache is an accepted consequence,
+                documented where the global theme can read back as undefined.
+              </td>
+            </tr>
+            <tr>
+              <td><code>undici</code></td>
+              <td><code>core/http-dispatcher.ts</code></td>
+              <td>
+                Global HTTP agent with proxy support and a configurable idle timeout for long
+                provider streams.
+              </td>
+              <td class="ok">
+                No — installed once as the process dispatcher before any provider call.
+              </td>
+            </tr>
+            <tr>
+              <td><code>@silvia-odwyer/photon-node</code></td>
+              <td><code>utils/image-*</code>, resize worker</td>
+              <td>
+                WASM image decode, resize and format conversion for pasted screenshots and
+                <code>@file</code> image attachments.
+              </td>
+              <td class="ok">No — output feeds straight into <code>ImageContent</code> blocks.</td>
+            </tr>
+            <tr>
+              <td><code>grok-mermaid</code></td>
+              <td><code>modes/interactive/components/mermaid.ts</code></td>
+              <td>Renders mermaid source into terminal-drawable output for assistant messages.</td>
+              <td class="ok">
+                No — plugged in as a markdown transformer, the same extension point third-party
+                plugins use.
+              </td>
+            </tr>
+            <tr>
+              <td><code>highlight.js</code> and vendored <code>marked</code></td>
+              <td>TUI theme, <code>export-html/vendor</code></td>
+              <td>
+                Syntax highlighting and markdown rendering for code blocks and assistant prose.
+              </td>
+              <td class="bad">
+                Yes — highlighting happens once in Node for the terminal and again in the browser
+                from a vendored copy inside the exported HTML, from the same session entries.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <code>diff</code>, <code>ignore</code>, <code>minimatch</code>, <code>yaml</code>,
+                <code>proper-lockfile</code>, <code>semver</code>
+              </td>
+              <td>
+                <code>core/tools/edit-diff.ts</code>, <code>core/package-manager.ts</code>, settings
+                and auth stores
+              </td>
+              <td>
+                Unified patches for the edit tool, gitignore and glob matching for package resource
+                discovery, frontmatter parsing, cross-process locks on
+                <code>settings.json</code> and <code>auth.json</code>, update checks.
+              </td>
+              <td class="ok">No — leaf utilities, each used at one boundary.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Extension boundary</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart LR
+  subgraph host["pi hands the plugin"]
+    evs["37 typed events<br/>session, context, provider,<br/>turn, message, tool, input"]
+    ctx["ExtensionContext<br/>ReadonlySessionManager, ModelRegistry,<br/>model, cwd, signal, abort, compact"]
+    cmdctx["ExtensionCommandContext<br/>newSession, fork, switchSession,<br/>navigateTree, reload, waitForIdle"]
+    uictx["ExtensionUIContext<br/>select, confirm, input, editor,<br/>widgets, footer, header, theme, overlay"]
+    runtime["ExtensionRuntime<br/>event bus subscription tied to<br/>the current session lifetime"]
+  end
+  subgraph plugin["the plugin may hand back"]
+    tool["registerTool<br/>typebox schema plus execute<br/>plus renderCall and renderResult"]
+    cmd["registerCommand, registerShortcut,<br/>registerFlag"]
+    rend["registerMessageRenderer,<br/>registerEntryRenderer,<br/>registerMarkdownTransformer"]
+    prov["registerProvider<br/>baseUrl, models, oauth, streamSimple"]
+    mut["sendMessage, sendUserMessage,<br/>appendEntry, setLabel, setSessionName,<br/>setActiveTools, setModel"]
+    veto["handler return values<br/>block a tool call, rewrite a result,<br/>cancel switch, fork or compaction,<br/>supply its own summary"]
+  end
+  runner["core/extensions/runner.ts<br/>ExtensionRunner"]
+  sessn["core/agent-session.ts"]
+
+  host --> runner
+  runner --> plugin
+  plugin --> runner
+  runner -->|"wrapRegisteredTool into AgentTool,<br/>tool hooks read the live runner"| sessn
+  sessn -->|"emits events, rebinds on reload<br/>and on every session replacement"| runner
+</pre>
+        </div>
+        <p class="note">
+          The boundary is broad but one-directional in ownership: plugins never hold the
+          <code>Agent</code> or a writable <code>SessionManager</code>. They get a
+          <code>ReadonlySessionManager</code>, a read-only footer data provider, and mutation only
+          through named actions. The strongest thing a plugin hands back is a veto or a rewrite:
+          <code>tool_call</code> can block, <code>tool_result</code> can replace content,
+          <code>session_before_compact</code> can cancel or return its own
+          <code>CompactionResult</code>, and <code>context</code> can rewrite the message list on
+          its way to the provider. Extension tool wrappers only adapt execution; interception moved
+          into <code>AgentSession</code>'s agent-core hooks so a reload swaps the runner without
+          reinstalling anything.
+        </p>
+      </section>
 
       <!-- ============================ OPENCODE ============================ -->
-      <!--INJECT:OPENCODE-->
+      <section class="board" id="opencode">
+        <p class="lede">
+          OpenCode v2 is an event-sourced local agent server: a single Bun process owns a SQLite
+          event log, folds durable session events into projected read models inside one Effect layer
+          graph, and exposes the whole thing as an Effect <code>HttpApi</code> plus one SSE feed
+          that every client — terminal, web, desktop — talks to identically. The interesting tension
+          is that the authoritative fold lives in <code>core</code>, but each client re-runs a
+          version of it locally to get streaming latency.
+        </p>
+
+        <h3>Package graph</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart LR
+  subgraph contracts["contracts"]
+    schema["opencode schema<br/>public domain and durable event shapes"]
+    protocol["opencode protocol<br/>HttpApi endpoint and error definitions"]
+    util["opencode util<br/>layer-node graph, fs, hashing"]
+  end
+  subgraph domain["domain and runtime"]
+    core["opencode core<br/>session runtime, Bus, projectors, sqlite"]
+    ai["opencode ai<br/>LLMClient.stream and provider routing"]
+    codemode["opencode codemode<br/>confined TS interpreter over tool schemas"]
+    plugin["opencode plugin<br/>plugin Context and hook interfaces"]
+    pluginbrowser["opencode plugin-browser<br/>browser tunnel, proxy, browser tools"]
+  end
+  subgraph edge["process edge"]
+    server["opencode server<br/>HttpApi handlers and EventFeed SSE"]
+    client["opencode client<br/>generated clients plus createData store"]
+    sdk["opencode sdk<br/>embedded server plus client"]
+  end
+  subgraph clients["clients"]
+    cli["opencode cli<br/>process lifecycle and service election"]
+    tui["opencode tui<br/>opentui solid terminal app"]
+    app["opencode app<br/>solid web app"]
+    sessionui["opencode session-ui<br/>transcript, tool, diff components"]
+    ui["opencode ui<br/>design system primitives"]
+    desktop["opencode desktop<br/>electron shell plus sidecar server"]
+  end
+  fn["opencode function<br/>standalone cloudflare worker, no workspace deps"]
+  satellites["secondary<br/>console, stats, posts, web, storybook, enterprise<br/>simulation, latex, merman, theme, http-recorder, httpapi-codegen"]
+
+  schema -->|"durable event payloads and domain shapes"| protocol
+  schema -->|"the same shapes, core owns their behavior"| core
+  schema -->|"decoded response types"| client
+  protocol -->|"endpoint definitions the handlers must satisfy"| server
+  protocol -->|"one HttpApi drives promise, effect, and solid codegen"| client
+  util -->|"global versus location layer-node tiers"| core
+  ai -->|"one llm.stream call per physical attempt"| core
+  codemode -->|"execute sandbox plus rendered tool catalog"| core
+  plugin -->|"Context domains and hook typing core implements"| core
+  plugin -->|"tui-side plugin surface and discovery"| tui
+  pluginbrowser -->|"browser tunnel and page tools"| core
+  pluginbrowser -->|"browser pane bridge"| app
+  core -->|"Session service, Bus, LocationServiceMap; server exposes it as HTTP plus SSE"| server
+  core -->|"same services embedded in-process"| sdk
+  server -->|"boots the http listener inside the cli process"| cli
+  server -->|"in-process HttpApi for embedders"| sdk
+  client -->|"typed calls plus the createData solid store"| tui
+  client -->|"the identical createData solid store"| app
+  client -->|"types only, the host injects its own store"| sessionui
+  client -->|"plugin domains extend the generated api client"| plugin
+  tui -->|"terminal app mounted by the cli command handler"| cli
+  ui -->|"shared primitives and theming"| sessionui
+  ui -->|"shared primitives and theming"| app
+  ui -->|"shared token and icon vocabulary"| tui
+  sessionui -->|"transcript, tool, and diff rendering"| app
+  app -->|"whole solid app loaded in the electron renderer"| desktop
+  satellites -->|"theme tokens, latex, merman, story fixtures"| tui
+  satellites -->|"simulation harness for deterministic runs"| server
+  satellites -->|"console and enterprise reuse the transcript"| sessionui
+</pre>
+        </div>
+        <p class="note">
+          Read the arrows as "supplies capability to". The repo enforces the direction in
+          <code>AGENTS.md</code>: schema flows into core and protocol, both flow into server, and
+          client runtime code may reach schema and protocol but never core or server.
+          <code>sdk</code> is the one package allowed to compose client, core, and server at once.
+          <code>tui</code> nominally depends on <code>core</code> but imports exactly one helper
+          from it — the TUI really lives behind the HTTP boundary like every other client.
+        </p>
+
+        <h3>Request flow</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  subgraph clientside["tui process"]
+    keypress["tui component prompt<br/>submit keybinding"]
+    optimistic["createData sendAdmission<br/>optimistic local inbox item"]
+    httpcall["generated client session.prompt<br/>POST api session sessionID prompt"]
+  end
+  subgraph http["server package"]
+    authz["middleware authorization<br/>local password credential"]
+    locmw["middleware session-location<br/>resolves the Location ref"]
+    handler["handlers session.ts<br/>handle session.prompt"]
+  end
+  subgraph globallayer["core, global Effect layer"]
+    facade["Session.Service forSession<br/>id-bound admission operations"]
+    prepare["SessionPrompt.prepare<br/>plugin hooks and attachment resolution"]
+    bus["Bus.publish<br/>session.inbox.enqueued"]
+    projector["SessionProjector<br/>one transaction per event batch"]
+    updater["SessionMessageUpdater.update<br/>immer fold into message rows"]
+    store[("sqlite<br/>event, session_inbox, session_message, session_v2")]
+    execution["SessionExecution.wake<br/>SessionRunCoordinator claims the drain"]
+  end
+  subgraph loclayer["core, per-Location Effect layer"]
+    laymap["LocationServiceMap<br/>LayerMap keyed by Location ref"]
+    runner["SessionRunner.drain<br/>session runner llm.ts"]
+    context["SessionContext select then load<br/>agent, instructions, Tool.Snapshot"]
+    step["SessionStep<br/>one logical step, N physical attempts"]
+    tools["Tool registry execute<br/>decode, permission assert, bound output"]
+  end
+  subgraph back["stream back out"]
+    llm["opencode ai LLMClient.stream<br/>provider sse normalized to LLMEvent"]
+    publish["runner publish-llm-event<br/>text.delta, tool.called, step.ended"]
+    feed["server EventFeed<br/>public filter, schema encode, frame once"]
+    sse["GET api event<br/>dropping queue of 4096 per connection"]
+    handle["createData handleEvent<br/>re-folds deltas into the solid store"]
+    rows["tui rows.ts reduce<br/>grouped transcript rows on screen"]
+  end
+
+  keypress -->|"prompt text and attachments"| optimistic
+  optimistic -->|"echoes locally, then sends"| httpcall
+  httpcall -->|"http request"| authz
+  authz --> locmw
+  locmw -->|"typed ctx payload"| handler
+  handler -->|"session.prompt with resume and delivery"| facade
+  facade -->|"interruptible preparation"| prepare
+  prepare -->|"durable inbox fact"| bus
+  bus -->|"transactional projection"| projector
+  projector -->|"durable message folding"| updater
+  updater -->|"projected rows"| store
+  projector -->|"advisory wake after commit"| execution
+  execution -->|"loads session, enters its Location"| laymap
+  laymap -->|"Instance.Services for this directory"| runner
+  runner -->|"reloads projected history each step"| context
+  context -->|"assembled request and captured tools"| step
+  step -->|"one stream call per attempt"| llm
+  llm -->|"deltas and tool calls"| publish
+  step -->|"local calls durable before side effects"| tools
+  tools -->|"ToolOutcome, one terminal event"| publish
+  publish -->|"durable and live-only events"| bus
+  bus -->|"one global listener, outside location middleware"| feed
+  feed -->|"shared immutable sse frame"| sse
+  sse -->|"OpenCodeEvent"| handle
+  handle -->|"store.session.message"| rows
+  store -->|"authoritative read on reconnect"| handle
+</pre>
+        </div>
+        <p class="note">
+          Two Effect service tiers do the structural work. <code>makeGlobalNode</code> nodes — Bus,
+          Database, SessionProjector, SessionExecution — are process-wide and Session-ID addressed.
+          <code>makeLocationNode</code> nodes — SessionRunner, tools, permissions, plugins,
+          filesystem — are built per <code>Location.Ref</code> through a <code>LayerMap</code> and
+          only acquired when a drain actually starts. That is why admission (durable, global) and
+          execution (placed, local) are separate code paths rather than one call stack.
+        </p>
+
+        <h3>Projection path</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  eventlog[("core durable event log<br/>table event, per-aggregate sequence")]
+  fold["core SessionMessageUpdater<br/>canonical fold, durable events to messages"]
+  projected[("session_message projection<br/>authoritative SessionMessage.Info")]
+  read["GET api session messages<br/>request-response read model"]
+  live["GET api event<br/>durable events plus live-only deltas"]
+
+  cdata["client solid createData handleEvent<br/>second fold of the same event stream"]
+  cstore["solid store session.message<br/>client copy of SessionMessage.Info"]
+
+  tuirows["tui rows.ts and grouping session.ts<br/>visible rows, reasoning and exploration groups"]
+  apptl["app timeline controller-projection<br/>visibleTimelineMessages and session-domain"]
+  mini["tui mini stream-v2.transport<br/>third fold, straight off the sse feed"]
+
+  suitool["session-ui current-tool-state<br/>tool input, output, error, failed"]
+  tuitool["tui util tool-display and mini tool.ts<br/>same tool view recomputed for the terminal"]
+
+  corediff["core SessionDiff.turn<br/>snapshot-to-snapshot patches per turn"]
+  suidiff["session-ui session-diff normalize<br/>re-parses patches into view diffs"]
+
+  corestatus["core sessions.active plus execution events<br/>process-local busy periods"]
+  clientstatus["store session.active and session-ui session_status<br/>client idle versus running"]
+
+  desktopnode["desktop renderer<br/>hosts app, reuses its store as-is"]
+
+  eventlog -->|"ordered durable facts"| fold
+  fold -->|"one row per visible message"| projected
+  projected -->|"paged, authoritative"| read
+  eventlog -->|"public filter and encode"| live
+  read -->|"hydration and reconnect"| cstore
+  live -->|"deltas for latency"| cdata
+  cdata -->|"reconstructs the same shape"| cstore
+  cstore -->|"messages plus pending inbox"| tuirows
+  cstore -->|"messages plus pending inbox"| apptl
+  cstore -->|"tool content and metadata"| suitool
+  cstore -->|"tool content and metadata"| tuitool
+  live -->|"bypasses createData entirely"| mini
+  corediff -->|"FileDiffInfo over http"| suidiff
+  corestatus -->|"active snapshot plus lifecycle events"| clientstatus
+  apptl -->|"rendered by"| suitool
+  apptl --> desktopnode
+  suidiff --> desktopnode
+
+  classDef reproject stroke-dasharray: 4 3
+  class cdata,tuirows,apptl,mini,suitool,tuitool,suidiff,clientstatus reproject
+</pre>
+        </div>
+        <p class="note">
+          Dashed nodes re-derive state that already exists upstream. The canonical owner is
+          <code>core</code>: <code>SessionMessageUpdater</code> folds durable events into
+          <code>session_message</code> rows inside the projection transaction, and
+          <code>GET /api/session/{id}/messages</code> is the authoritative read. Nothing downstream
+          is told to trust that fold exclusively, so the same fold is written again in
+          <code>client/solid/data.ts</code> (for streaming latency) and a third time in
+          <code>tui/mini/stream-v2.transport.ts</code> (for print mode, which never builds a store).
+          Above that, TUI and app each own a private "which messages are visible" rule and a private
+          transcript-grouping pass — the rules agree today by convention, not by construction.
+        </p>
+
+        <h3>Dependency contracts</h3>
+        <table class="deps">
+          <thead>
+            <tr>
+              <th>Package</th>
+              <th>Consumed by</th>
+              <th>Capability supplied</th>
+              <th>Consumer reshapes it?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>@opencode/schema</code></td>
+              <td><code>@opencode/core</code>, <code>@opencode/protocol</code></td>
+              <td>
+                Public domain shapes and durable event payloads; the single vocabulary for session,
+                message, inbox, permission, instruction.
+              </td>
+              <td class="ok">
+                No — core persists and returns these shapes; protocol wraps them in endpoints
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/protocol</code></td>
+              <td><code>@opencode/server</code>, <code>@opencode/client</code></td>
+              <td>
+                Effect <code>HttpApi</code> endpoint definitions, error taxonomy, and the
+                <code>OpenCodeEvent</code> SSE contract. 139 endpoints, audited in
+                <code>V2_HTTP_API_AUDIT.md</code>.
+              </td>
+              <td class="ok">
+                No — server implements the assembled API, client is generated from it
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/core</code></td>
+              <td><code>@opencode/server</code></td>
+              <td>
+                Session facade, Bus with typed observation and durable log, LocationServiceMap,
+                projected read models, transactional projectors.
+              </td>
+              <td class="ok">
+                No — handlers forward results; EventFeed only filters, encodes, and frames once
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/ai</code></td>
+              <td><code>@opencode/core</code></td>
+              <td>
+                <code>LLMClient.stream</code>, provider routing and packages, normalized
+                <code>LLMEvent</code>, context-overflow and incomplete-stream classification.
+              </td>
+              <td class="ok">
+                No — one stream call per physical attempt, events republished verbatim
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/codemode</code></td>
+              <td><code>@opencode/core</code></td>
+              <td>
+                Confined TypeScript interpreter over schema-described tools, plus the rendered
+                <code>execute</code> catalog and namespace machinery.
+              </td>
+              <td class="ok">No — core supplies the catalog, codemode runs it</td>
+            </tr>
+            <tr>
+              <td><code>@opencode/plugin</code></td>
+              <td><code>@opencode/core</code></td>
+              <td>
+                The plugin <code>Context</code> (23 domains), transform editors, and hook typing.
+                Core's <code>PluginHooks</code> implements exactly five hook domains: aisdk,
+                session, permission, shell, tool.
+              </td>
+              <td class="ok">
+                No — core's hook registry is typed directly from the plugin interfaces
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/plugin-browser</code></td>
+              <td><code>@opencode/core</code>, <code>@opencode/app</code></td>
+              <td>
+                Browser tunnel, proxy, RPC, and page-level tools registered through the normal
+                plugin tool surface.
+              </td>
+              <td class="ok">No — registers tools via the same <code>Tools.register</code> seam</td>
+            </tr>
+            <tr>
+              <td><code>@opencode/util</code></td>
+              <td>core, server, cli, tui, app, session-ui</td>
+              <td>
+                <code>layer-node</code> graph with two tiers (<code>makeGlobalNode</code>,
+                <code>makeLocationNode</code>), fs helpers, hashing, process and npm utilities.
+              </td>
+              <td class="ok">No — the tier tags are the boundary everything else builds on</td>
+            </tr>
+            <tr>
+              <td><code>@opencode/server</code> SSE feed</td>
+              <td><code>@opencode/client</code> <code>createData</code></td>
+              <td>
+                One encoded feed of public events: durable session facts plus live-only text,
+                reasoning, tool-input, and compaction deltas.
+              </td>
+              <td class="bad">
+                Yes — <code>handleEvent</code> re-runs core's
+                <code>SessionMessageUpdater</code> fold in the client to rebuild
+                <code>SessionMessage.Info</code>
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/client</code> store</td>
+              <td><code>@opencode/tui</code></td>
+              <td>
+                <code>store.session.message</code>, <code>.pending</code>, <code>.permission</code>,
+                <code>.active</code> — the client-side projection of session state.
+              </td>
+              <td class="bad">
+                Yes — <code>rows.ts</code> plus <code>grouping/session.ts</code> re-derive visible
+                messages, reasoning and exploration groups, and turn usage
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/client</code> store</td>
+              <td><code>@opencode/app</code></td>
+              <td>
+                The identical <code>createData</code> store, reached through
+                <code>runtime/server/sync.tsx</code> and the server registry.
+              </td>
+              <td class="bad">
+                Yes — <code>timeline/controller-projection.ts</code> and
+                <code>session-domain.ts</code> re-derive the visible set with their own queued and
+                revert rules
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/client</code> types</td>
+              <td><code>@opencode/session-ui</code></td>
+              <td>
+                Wire types only; the host passes its own store into <code>session-ui</code>'s
+                <code>DataProvider</code>.
+              </td>
+              <td class="bad">
+                Yes for tool state — <code>current-tool-state.ts</code> re-derives input, output,
+                error, and failure from the stored tool state, and
+                <code>tui/util/tool-display.ts</code> plus <code>tui/mini/tool.ts</code> derive the
+                same view again
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/core</code> <code>SessionDiff</code></td>
+              <td><code>@opencode/session-ui</code></td>
+              <td>
+                <code>FileDiffInfo</code> per turn, computed by comparing the range's first and last
+                snapshots.
+              </td>
+              <td class="bad">
+                Yes — <code>session-diff.ts</code> re-parses the patch text into its own
+                <code>ViewDiff</code> with a local cache
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/session-ui</code></td>
+              <td><code>@opencode/app</code>, console, enterprise</td>
+              <td>
+                Transcript, tool renderers, review panes, markdown streaming, Pierre diff
+                integration.
+              </td>
+              <td class="ok">No — app composes the components directly</td>
+            </tr>
+            <tr>
+              <td><code>@opencode/ui</code></td>
+              <td>session-ui, app, tui</td>
+              <td>Design-system primitives, theme tokens, icon sprites, i18n context.</td>
+              <td class="ok">No — consumed as components and tokens</td>
+            </tr>
+            <tr>
+              <td><code>@opencode/app</code></td>
+              <td><code>@opencode/desktop</code></td>
+              <td>
+                The entire Solid application, imported as <code>@opencode/app/desktop</code> by the
+                Electron renderer.
+              </td>
+              <td class="ok">
+                No — desktop adds sidecar server lifecycle, IPC, and native menus only
+              </td>
+            </tr>
+            <tr>
+              <td><code>@opencode/server</code>, <code>@opencode/tui</code></td>
+              <td><code>@opencode/cli</code></td>
+              <td>
+                HTTP listener plus the mounted terminal app; the CLI owns service election,
+                credentials, and the managed background process.
+              </td>
+              <td class="ok">No — CLI wires lifecycle, it does not reimplement either</td>
+            </tr>
+            <tr>
+              <td>
+                <code>@opencode/core</code>, <code>@opencode/server</code>,
+                <code>@opencode/client</code>
+              </td>
+              <td><code>@opencode/sdk</code></td>
+              <td>
+                Embedded in-process server plus a client bound to it; the only package permitted to
+                compose all three tiers.
+              </td>
+              <td class="ok">No — composition, not reshaping</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Plugin boundary</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart LR
+  subgraph handsin["what core hands a plugin"]
+    ctx["Plugin Context<br/>app, location info, options"]
+    api["generated api client domains<br/>session, model, provider, vcs, skill, mcp"]
+    editors["transform editors<br/>agent, command, model, provider, tool, reference, skill, vcs, websearch"]
+    toolsreg["narrow Tools registration capability<br/>not the internal registry"]
+    hookev["hook events in five domains<br/>aisdk, session, permission, shell, tool"]
+  end
+  subgraph handsback["what a plugin may hand back"]
+    setup["setup effect or promise<br/>returns a cleanup function"]
+    newtools["Tool.make values registered by name<br/>in a plugin-owned Scope"]
+    mutate["mutated editor state<br/>add, update, remove, namespace"]
+    reqedit["mutated SessionRequest<br/>system, messages, options, tools"]
+    reject["Tool.Error from execute.before<br/>the only failing hook"]
+    result["replacement outcomes<br/>compaction result, title, tool result"]
+  end
+  subgraph runtimes["execution surfaces"]
+    supervisor["core PluginSupervisor<br/>location-scoped activation and readiness"]
+    codemodebox["codemode interpreter<br/>execute over the schema-described catalog"]
+    browserbox["plugin-browser<br/>tunnel, proxy, page tools over rpc"]
+  end
+
+  ctx --> setup
+  api -->|"plugin domains extend the api client"| setup
+  editors -->|"synchronous editor callbacks"| mutate
+  toolsreg -->|"latest active registration for a name wins"| newtools
+  hookev -->|"session request and compaction hooks"| reqedit
+  hookev -->|"tool execute.before"| reject
+  hookev -->|"title, compaction, tool outcome"| result
+  setup -->|"fresh Scope per activation"| supervisor
+  newtools -->|"registered tools become catalog entries"| codemodebox
+  newtools -->|"browser tools register the same way"| browserbox
+  mutate -->|"reload reruns every transform"| supervisor
+  reqedit -->|"applied before the physical attempt"| supervisor
+  result -->|"skips the model request when set"| supervisor
+</pre>
+        </div>
+        <p class="note">
+          The boundary is narrow by design: a Location plugin gets the
+          <code>Tools</code> registration capability, never the registry, and each activation builds
+          its tools in a plugin-owned <code>Scope</code> — closing it removes exactly that
+          registration and reveals the next-latest one. Only <code>tool execute.before</code> has a
+          failure channel; every other hook returns <code>never</code> on failure, so a plugin
+          cannot fail a step by misbehaving in a hook. Sharing <code>Tool.Tool</code> does not imply
+          equal authority: built-ins capture trusted Location services (FileSystem, PermissionV2)
+          that application plugins cannot reach. <code>codemode</code> is not a plugin host — it is
+          the sandbox that executes whatever ends up in the registered catalog.
+        </p>
+      </section>
+      <section class="board" id="compare">
+        <p class="lede">
+          All three systems fold events into a view. All three fold them more than once. What
+          differs is how far down the shared code reaches before each client starts inventing its
+          own answer.
+        </p>
+
+        <h3>Where the fold lives in each system</h3>
+        <div class="graph">
+          <pre class="mermaid">flowchart TB
+  subgraph o["opencode v2"]
+    direction TB
+    o1["SQLite event log"] --&gt; o2["message-updater fold"] --&gt; o3["session_message<br/>projected read model"] --&gt; o4["HTTP read, hydration only"]
+    o1 --&gt; o5["SSE raw deltas"] --&gt; o6["createData fold"]
+    o5 --&gt; o7["tui stream-v2 fold"]
+  end
+  subgraph p["pi"]
+    direction TB
+    p1["JSONL entry tree"] --&gt; p2["buildContextEntries"] --&gt; p3["AgentSessionEvent stream"] --&gt; p4["InteractiveMode live render"]
+    p2 --&gt; p5["renderSessionEntries<br/>rebuilds the same chat"]
+  end
+  subgraph n["Nyte"]
+    direction TB
+    n1["kernel commits"] --&gt; n2["views<br/>transcriptFromCommits"] --&gt; n3["SessionSnapshot<br/>Turn array on the wire"] --&gt; n4["core/client foldEvent<br/>same rules, incremental"] --&gt; n5["3 clients<br/>own row + group layer"]
+  end
+
+  classDef reproject stroke-dasharray: 5 4
+  class n5,p5,o6,o7 reproject
+</pre>
+        </div>
+        <p class="note">
+          Nyte and opencode both put the canonical fold in core. The difference is what the live
+          stream carries. Nyte ships a <code>Turn</code> the client appends with core's own
+          <code>appendTranscriptCommit</code>, so the second fold is still core's code. OpenCode
+          ships raw deltas, so every client that wants sub-second streaming has to write the fold
+          itself, and two of them did.
+        </p>
+
+        <h3>Scorecard</h3>
+        <table class="deps">
+          <thead>
+            <tr>
+              <th>Question</th>
+              <th>Nyte</th>
+              <th>pi-coding-agent</th>
+              <th>opencode v2</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Durable shape</td>
+              <td>Content-addressed objects + refs, git model</td>
+              <td>Append-only JSONL entry tree</td>
+              <td>SQLite event log + projected read models</td>
+            </tr>
+            <tr>
+              <td>Who may start model work</td>
+              <td class="ok">One file, <code>admission.ts</code>: user input only</td>
+              <td class="warn">Queue inside <code>AgentSession</code>, no separate rule</td>
+              <td class="ok">Inbox row then <code>SessionExecution.wake</code></td>
+            </tr>
+            <tr>
+              <td>Canonical view owner</td>
+              <td class="ok">core <code>views/</code></td>
+              <td class="bad">Nobody. Entry tree walked ad hoc</td>
+              <td class="ok">core <code>message-updater.ts</code></td>
+            </tr>
+            <tr>
+              <td>What the live stream carries</td>
+              <td class="ok">Deltas plus commits the client folds with core's own code</td>
+              <td class="warn">Typed events, rendered separately from entries</td>
+              <td class="bad">Raw deltas; each client rebuilds the fold</td>
+            </tr>
+            <tr>
+              <td>Tool presentation</td>
+              <td class="ok">Shared: <code>projectToolView</code> + <code>presentTool</code></td>
+              <td class="bad">TUI components re-run offscreen for HTML export</td>
+              <td class="bad">Three copies: session-ui, tui, tui/mini</td>
+            </tr>
+            <tr>
+              <td>Row / turn grouping</td>
+              <td class="bad">Three copies (desktop, tui, ios)</td>
+              <td class="bad">Two copies (live vs rebuild)</td>
+              <td class="bad">Two copies, neither canonical</td>
+            </tr>
+            <tr>
+              <td>Usage totals</td>
+              <td class="ok">One <code>projectUsage</code></td>
+              <td class="bad">Four walks, one of them per frame</td>
+              <td class="warn">Core owns it; clients re-merge</td>
+            </tr>
+            <tr>
+              <td>Worst repeat found</td>
+              <td>3,245-line tui <code>transcript.ts</code></td>
+              <td>Footer recomputes cost totals every frame</td>
+              <td>1,901-line <code>stream-v2.transport.ts</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>What this says about Nyte</h3>
+        <div class="callout">
+          <p>
+            Nyte is the best of the three on this axis, and that is exactly why the remaining gap is
+            worth closing. It already proved the pattern works: tool presentation moved into
+            <code>core/views</code> and all three clients now call it instead of guessing. Nothing
+            about that was hard. The same move has simply not been made for rows and groups.
+          </p>
+          <p>
+            The concrete next step is not a rewrite. It is one more view function beside
+            <code>projectToolView</code>. Something like
+            <code>projectTranscriptRows(turns, options)</code> returning the row list and work
+            groups, with per-client rendering left where it is. That deletes most of
+            <code>transcript-rows.ts</code>, most of <code>work-group-presentation.ts</code>, and a
+            large part of the TUI's transcript class, and it gives iOS the grouping it currently
+            does not have.
+          </p>
+          <p>
+            Leave <code>desktop/live-fold.ts</code> alone. It is an index for React identity, not a
+            second fold, and moving it into core would make core care about a rendering framework.
+          </p>
+        </div>
+      </section>
     </main>
 
     <script type="module">
@@ -749,7 +1759,7 @@
         startOnLoad: false,
         theme: "base",
         securityLevel: "loose",
-        flowchart: { curve: "basis", nodeSpacing: 36, rankSpacing: 52, useMaxWidth: true },
+        flowchart: { curve: "basis", nodeSpacing: 34, rankSpacing: 50, useMaxWidth: false },
         themeVariables: {
           fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
           fontSize: "12px",
@@ -770,15 +1780,62 @@
 
       const blocks = [...document.querySelectorAll("pre.mermaid")];
       for (const [index, block] of blocks.entries()) {
-        const source = block.textContent;
+        // The parser turns `<br/>` in the source into a real element, so `textContent`
+        // would join the two lines into one word. Read the markup back instead.
+        const source = block.innerHTML
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, "&");
+        const graph = block.closest(".graph");
         try {
           const { svg } = await mermaid.render(`graph-${index}`, source);
-          block.outerHTML = svg;
+          graph.innerHTML = `<div class="scroller">${svg}</div>`;
+          addZoom(graph);
         } catch (error) {
           block.textContent = `mermaid failed to parse this graph\n\n${error}\n\n${source}`;
           block.style.color = "#ff5667";
           block.style.whiteSpace = "pre-wrap";
         }
+      }
+
+      /** Natural size keeps labels legible; fit is there when you want the whole shape at once. */
+      function addZoom(graph) {
+        const svg = graph.querySelector("svg");
+        const scroller = graph.querySelector(".scroller");
+        const box = svg.viewBox.baseVal;
+        const natural = box.width || 1000;
+        svg.removeAttribute("height");
+        const available = scroller.clientWidth || document.querySelector("main").clientWidth - 32;
+        const levels = [
+          ["fit", 0],
+          ["100%", 1],
+          ["150%", 1.5],
+        ];
+        const bar = document.createElement("div");
+        bar.className = "zoom";
+        const apply = (factor, button) => {
+          for (const other of bar.children) other.dataset.on = String(other === button);
+          if (factor === 0) {
+            svg.style.width = "100%";
+            svg.style.maxWidth = `${natural}px`;
+          } else {
+            svg.style.maxWidth = "none";
+            svg.style.width = `${natural * factor}px`;
+          }
+          svg.style.height = "auto";
+        };
+        for (const [label, factor] of levels) {
+          const button = document.createElement("button");
+          button.textContent = label;
+          button.addEventListener("click", () => apply(factor, button));
+          bar.append(button);
+        }
+        graph.append(bar);
+        // A graph wider than its column starts at natural size; a small one starts fit.
+        const wide = natural > available;
+        apply(wide ? 1 : 0, bar.children[wide ? 1 : 0]);
       }
 
       const tabs = [...document.querySelectorAll("nav button")];

@@ -12,16 +12,22 @@ const ADDRESS = "100.126.254.2:53211";
 
 describe("connectCopy", () => {
   it("gives every stage a next step, so no outcome is a dead end", () => {
-    const stages: ConnectStage[] = [
-      { kind: "idle" },
-      { kind: "verifying", address: ADDRESS },
-      { kind: "rejected", reason: "Enter the full address, including http:// or https://." },
-      { kind: "refused" },
-      { kind: "silent", address: ADDRESS },
-      { kind: "wrongServer", address: ADDRESS },
-      { kind: "cancelled" },
-    ];
-    for (const stage of stages) {
+    // Keyed by kind, so a stage added without copy fails to compile here too.
+    const stages: { [K in ConnectStage["kind"]]: Extract<ConnectStage, { kind: K }> } = {
+      idle: { kind: "idle" },
+      verifying: { kind: "verifying", address: ADDRESS },
+      rejected: {
+        kind: "rejected",
+        reason: "Enter the full address, including http:// or https://.",
+      },
+      refused: { kind: "refused" },
+      silent: { kind: "silent", address: ADDRESS },
+      wrongServer: { kind: "wrongServer", address: ADDRESS },
+      notSaved: { kind: "notSaved" },
+      unexpected: { kind: "unexpected", detail: "Reply is not valid JSON" },
+      cancelled: { kind: "cancelled" },
+    };
+    for (const stage of Object.values(stages)) {
       const copy = connectCopy(stage);
       expect(copy.title.length, stage.kind).toBeGreaterThan(0);
       expect(copy.body.length, stage.kind).toBeGreaterThan(0);
@@ -77,10 +83,8 @@ describe("classifyConnectFailure", () => {
     }
   });
 
-  it("treats an unrecognized cause as no answer, the recoverable reading", () => {
-    expect(classifyConnectFailure(new Error("boom"), ADDRESS)).toEqual({
-      kind: "silent",
-      address: ADDRESS,
-    });
+  it("keeps a failed save and an unrecognized ending apart from a Mac that never answered", () => {
+    expect(connectCopy({ kind: "notSaved" }).body).not.toContain("Nothing replied");
+    expect(connectCopy({ kind: "unexpected", detail: "boom" }).body).toContain("boom");
   });
 });

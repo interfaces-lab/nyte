@@ -3,12 +3,7 @@ import type { ReactNode } from "react";
 import type { NyteClient } from "@nyte-ai/client";
 import type { Connection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
-import {
-  connectHost,
-  createHostClient,
-  forgetConnection,
-  readConnection,
-} from "./host.ts";
+import { connectHost, createHostClient, forgetConnection, readConnection } from "./host.ts";
 
 type HostConnectionState =
   | { kind: "loading" }
