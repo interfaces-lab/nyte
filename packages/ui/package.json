@@ -15,6 +15,7 @@
     "./number-field": "./src/number-field.ts",
     "./popover": "./src/popover.ts",
     "./preview-card": "./src/preview-card.ts",
+    "./row": "./src/row.ts",
     "./select": "./src/select.ts",
     "./slider": "./src/slider.ts",
     "./sonner": "./src/sonner.ts",

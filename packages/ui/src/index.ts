@@ -56,6 +56,8 @@ export type {
   DropdownMenuShortcutProps,
   DropdownMenuSubTriggerProps,
 } from "./components/ui/dropdown-menu.tsx";
+export { Row } from "./components/ui/row.tsx";
+export type { RowProps, RowTrailingReveal } from "./components/ui/row.tsx";
 export { Input } from "./components/ui/input.tsx";
 export type { InputProps } from "./components/ui/input.tsx";
 export { Textarea } from "./components/ui/textarea.tsx";
