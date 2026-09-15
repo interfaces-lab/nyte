@@ -246,6 +246,34 @@ test("untrusted send queues once, reports the requirement, and runs after trust"
   );
 });
 
+test("a skill added to a trusted project reaches the session without a restart", async () => {
+  const { root, createHost } = await fixture();
+  const host = createHost();
+  const path = join(root, "skills-project");
+  await mkdir(join(path, ".nyte", "skills"), { recursive: true });
+  assert.equal((await host.call("host.openWorkspace", { path })).kind, "opened");
+  await host.call("host.trustWorkspace", { path });
+  await host.call("sessions.create", { name: "Skills" });
+  // The first catalog read resolves plugins, which is when the sources start being watched.
+  const before = await host.call("plugins.catalog", undefined);
+  assert.equal(
+    before.skills.some((skill) => skill.name === "brew-tea"),
+    false,
+  );
+  await mkdir(join(path, ".nyte", "skills", "brew-tea"));
+  await writeFile(
+    join(path, ".nyte", "skills", "brew-tea", "SKILL.md"),
+    "---\nname: brew-tea\ndescription: Make a pot of tea\n---\nBoil the water first.\n",
+  );
+  await vi.waitFor(
+    async () => {
+      const catalog = await host.call("plugins.catalog", undefined);
+      assert.ok(catalog.skills.some((skill) => skill.name === "brew-tea"));
+    },
+    { timeout: 10_000, interval: 100 },
+  );
+});
+
 test("IPC keeps the SDK queued and duplicate receipts verbatim and redacts host trust failures", async () => {
   const { root, createHost } = await fixture();
   const host = createHost();
