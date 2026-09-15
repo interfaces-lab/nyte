@@ -129,7 +129,6 @@ export function subagentsPlugin(host: SubagentHost) {
 Waits for the final report by default. Use background=true only when you can continue without the result; when you later need it, call wait_task with the returned job id. A finished background report joins your active run or waits for the user's next message; it never starts a new turn on its own.
 Never poll, sleep, or relaunch a task to check progress. Use stop_task with the returned job id to cancel it.`,
     parameters: taskParameters,
-    promptSnippet: "Run a task in a separate agent session",
     replay: "never",
     prepareArguments(value) {
       if (!Value.Check(taskParameters, value)) {
@@ -180,7 +179,6 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
     description:
       "Stop a task started by this session using its job id. Cancels the child agent and its running work. Already finished tasks are unchanged.",
     parameters: taskJobParameters,
-    promptSnippet: "Stop a running task by job id",
     replay: "never",
     prepareArguments(value) {
       if (!Value.Check(taskJobParameters, value)) {
@@ -210,7 +208,6 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
     description:
       "Wait for a task this session already started and return its report, by job id. The wait is durable and never re-runs the task. Cancelling only this wait leaves the task running; stop_task cancels the task itself. Aborting a run still cancels that run's own tasks.",
     parameters: taskJobParameters,
-    promptSnippet: "Wait for a started task and return its report",
     replay: "never",
     prepareArguments(value) {
       if (!Value.Check(taskJobParameters, value)) {
