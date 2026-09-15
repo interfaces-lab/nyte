@@ -2,7 +2,12 @@ import { lazyStream } from "./api/lazy.ts";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import { defaultProviderAuthContext as defaultAuthContext } from "./auth/context.ts";
 import { InMemoryCredentialStore } from "./auth/credential-store.ts";
-import { type AuthResolutionOverrides, ModelsError, resolveProviderAuth } from "./auth/resolve.ts";
+import {
+  type AuthResolutionOverrides,
+  DEFAULT_OAUTH_REFRESH_TIMEOUT_MS,
+  ModelsError,
+  resolveProviderAuth,
+} from "./auth/resolve.ts";
 import type {
   AuthCheck,
   AuthContext,
@@ -512,7 +517,12 @@ class ModelsImpl implements MutableModels {
         provider.id,
         async (current) => {
           if (current?.type !== "oauth" || Date.now() < current.expires) return undefined;
-          return oauth.refresh(current, signal);
+          // Same cap as request-path refresh: this runs while the credential
+          // lock is held, so a hung request would block every other client.
+          return oauth.refresh(
+            current,
+            AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_OAUTH_REFRESH_TIMEOUT_MS)]),
+          );
         },
         { signal },
       );

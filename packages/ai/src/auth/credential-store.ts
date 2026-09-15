@@ -63,7 +63,8 @@ export class InMemoryCredentialStore implements CredentialStore {
       async () => {
         const current = this.credentials.get(providerId);
         const next = await fn(current);
-        options?.signal?.throwIfAborted();
+        // Nyte divergence: pi drops the result when the signal aborted here.
+        // A rotated token has no second copy, so `CredentialStore` stores it.
         if (next !== undefined) this.credentials.set(providerId, next);
         return next ?? current;
       },
