@@ -759,7 +759,7 @@ describe("Models runtime", () => {
     expect(await credentials.read("p1")).toEqual({ type: "api_key", key: "first" });
   });
 
-  it("passes cancellation to OAuth refresh and preserves the previous credential", async () => {
+  it("passes cancellation to OAuth refresh and keeps a token that rotated anyway", async () => {
     const credentials = new InMemoryCredentialStore();
     const previous: OAuthCredential = {
       type: "oauth",
@@ -801,9 +801,12 @@ describe("Models runtime", () => {
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
     expect(receivedSignal?.aborted).toBe(true);
     expect(receivedSignal?.reason).toBe(controller.signal.reason);
-    finishRefresh?.({ ...previous, access: "new", expires: Date.now() + 60_000 });
+    // A refresh that ignored the signal and resolved has already spent the
+    // stored refresh token, so its result is the only usable credential left.
+    const rotated = { ...previous, access: "new", expires: Date.now() + 60_000 };
+    finishRefresh?.(rotated);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(await credentials.read("p1")).toEqual(previous);
+    expect(await credentials.read("p1")).toEqual(rotated);
   });
 
   it("resolves auth: stored credential owns the provider, ambient only when nothing stored", async () => {
