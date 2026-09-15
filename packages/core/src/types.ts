@@ -373,13 +373,6 @@ export interface AgentTool<
   replay?: "never" | "safe";
   /** Settles this tool's waiting calls on wake (design record: "Wait and wake"). */
   wake?: ToolWake;
-  /**
-   * One line for the system prompt's Available-tools list. A tool without one
-   * is still callable; it just goes unmentioned in the prompt (pi's rule).
-   */
-  promptSnippet?: string;
-  /** Guideline bullets this tool contributes to the system prompt's Guidelines section. */
-  promptGuidelines?: readonly string[];
 }
 
 /** Context snapshot passed into the low-level agent loop. */

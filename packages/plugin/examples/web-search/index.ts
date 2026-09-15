@@ -234,7 +234,6 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
         name: WEB_SEARCH_TOOL_NAME,
         description: webSearchDescription,
         parameters: webSearchParameters,
-        promptSnippet: "Search the web for current information",
         replay: "safe",
         providers: [],
         async execute(_toolCallId, params, signal, onUpdate) {
