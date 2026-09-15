@@ -115,6 +115,25 @@ test("closing the pool before a server starts never spawns it", async () => {
   await assert.rejects(readFile(pidFile, "utf8"), /ENOENT/);
 });
 
+test("a server that never answers does not hold up the session", async () => {
+  const { workspace, servers } = open("nyte-mcp-slow-");
+  // The child starts and then says nothing, so the handshake runs to its 30s timeout.
+  const config = {
+    mute: { command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"] },
+  };
+  const started = Date.now();
+  const sdk = await workspace.open({
+    streamFn: (model) => respond(model, [{ type: "text", text: "ok" }]),
+    model: testModel,
+    plugins: [inlinePlugin(mcpPlugin({ servers, config }), { version: mcpConfigVersion(config) })],
+  });
+  assert.deepEqual(await prompt(sdk, workspace.sessionId, "hi"), { kind: "idle" });
+  assert.ok(
+    Date.now() - started < 10_000,
+    "the session waited on a server instead of opening without it",
+  );
+}, 60_000);
+
 test("the plugin offers the server's tools to the model and runs a call through it", async () => {
   const { workspace, servers } = open("nyte-mcp-plugin-");
   const offered: string[][] = [];
