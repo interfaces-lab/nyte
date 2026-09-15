@@ -142,7 +142,12 @@ function overlayEnvAuthContext(base: AuthContext, env: ProviderEnv): AuthContext
 }
 
 const DEFAULT_OAUTH_MINIMUM_VALIDITY_MS = 5 * 60 * 1000;
-const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 15_000;
+/**
+ * Cap on one token refresh. Every refresh runs inside `CredentialStore.modify`,
+ * so this is also how long a refresh can hold the credential lock other clients
+ * are waiting on.
+ */
+export const DEFAULT_OAUTH_REFRESH_TIMEOUT_MS = 15_000;
 
 /**
  * OAuth resolution with double-checked locking: tokens with less than five

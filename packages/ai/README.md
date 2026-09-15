@@ -27,6 +27,25 @@ Most flows are ports from pi; each file names its upstream source and the revisi
 | `opencode`, `opencode-go` | `OPENCODE_API_KEY` or a stored key | Baked snapshot, refreshed from models.opencode.ai |
 | `github-copilot` | GitHub device sign-in or an injected bearer token | Generated definitions, filtered by OAuth account model IDs |
 
+## Credential storage
+
+`FileCredentialStore` keeps one credential per provider in `~/.nyte/auth.json`. A TUI, a desktop
+window, and a host can all write that file, so every mutation takes `auth.json.lock` and holds it
+across the whole read-modify-write, including the OAuth refresh that `Models` runs inside `modify`.
+A rotating refresh token is therefore spent once, not once per client. The lock names its owning
+process, host, and acquisition, so a crashed client's lock is taken over at once when it came from
+this machine. Any lock older than a minute is reclaimed even if a process still claims it, because
+pids get reused and a suspended machine wakes with held locks; a refresh interrupted that way costs
+the user a sign-in, so refreshes are capped well below that. A holder whose lock was reclaimed
+reports that nothing was written instead of publishing over the client that holds it now.
+
+Writes publish by renaming a temporary file over `auth.json`, so readers take no lock and never
+observe a half-written file. A file that cannot be read fails the operation instead of resolving
+empty, including for providers that would otherwise fall back to an environment variable: an
+unparseable `auth.json` is a typo to fix, not a reason to overwrite every stored login. Entries
+that this version cannot parse are reported as no credential and left on disk untouched, so a
+downgrade cannot drop credentials a newer build wrote.
+
 ## GitHub Copilot
 
 The OAuth flow follows [Pi at `71dca871`](https://github.com/earendil-works/pi/blob/71dca871bc80b6bc97be37f0ca3189399d651fff/packages/ai/src/auth/oauth/github-copilot.ts):

@@ -85,7 +85,9 @@ export interface CredentialStore {
    * return the new credential, or undefined to leave the entry unchanged.
    * Mutual exclusion per provider id, cross-process too where the backing
    * store supports it (e.g. a file lock). Resolves with the post-write
-   * credential. Rejections from `fn` propagate.
+   * credential. Rejections from `fn` propagate. A credential `fn` returned is
+   * stored even when the operation aborts afterwards, because a refresh has
+   * already rotated the token the stored one replaces.
    */
   modify(
     providerId: string,
