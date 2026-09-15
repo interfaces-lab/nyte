@@ -1,6 +1,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobInfo, SessionId } from "@nyte-ai/core";
+import { Row } from "@nyte-ai/ui/row";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { nyte } from "../nyte.ts";
 import { keys } from "../queries.ts";
@@ -64,30 +65,26 @@ const styles = create({
     height: `min(70dvh, ${String(Math.min(Math.max(220, height), height + 36))}px)`,
   }),
   row: {
-    "--work-actions-opacity": {
-      default: "0",
-      ":hover": "1",
-      ":focus-within": "1",
-      "@media (hover: none)": "1",
-    },
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-    minHeight: tray.rowHeight,
-    width: "100%",
-    paddingInlineEnd: 4,
-    borderRadius: 6,
-    backgroundColor: {
+    "--nyte-row-height": tray.rowHeight,
+    "--nyte-row-gap": "6px",
+    "--nyte-row-padding-inline": tray.rowInset,
+    // This list wants a lighter resting fill than the shared hover step.
+    "--_row-fill": {
       default: "transparent",
       ":hover": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
       ":focus-within": `color-mix(in srgb, ${t.fillGhostHover} 50%, transparent)`,
     },
+    paddingInlineEnd: 4,
+    borderRadius: 6,
+    lineHeight: tray.lineHeight,
+    color: t.textPrimary,
   },
-  rowButton: {
+  agentHead: { display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 },
+  rowLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  showMore: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    flex: 1,
     minWidth: 0,
     minHeight: tray.rowHeight,
     paddingBlock: 4,
@@ -100,9 +97,6 @@ const styles = create({
     color: t.textPrimary,
     cursor: "pointer",
   },
-  rowLabel: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  agentRow: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 1 },
-  agentHead: { display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 },
   agentModel: {
     flexShrink: 1,
     minWidth: 0,
@@ -111,13 +105,6 @@ const styles = create({
     whiteSpace: "nowrap",
     color: t.textTertiary,
     fontSize: t.fontSm,
-  },
-  agentStatus: { color: t.textTertiary, fontSize: t.fontSm, lineHeight: t.leadingSm },
-  rowStatus: {
-    flexShrink: 0,
-    marginInlineStart: "auto",
-    color: t.textSecondary,
-    fontSize: t.fontBase,
   },
   statusIcon: {
     display: "inline-flex",
@@ -472,27 +459,11 @@ export function BackgroundWork({
                         {Math.min(recentLimit, sections.finished.length)} Recent
                       </div>
                     )}
-                    <div {...props(styles.row)}>
-                      <button
-                        id={`${trayId}-${job.id}`}
-                        type="button"
-                        aria-label={
-                          job.kind === "command"
-                            ? `Open terminal for ${job.title}`
-                            : `View output for ${job.title}`
-                        }
-                        title={job.title}
-                        {...props(styles.rowButton, focus.ringInset)}
-                        onClick={() => {
-                          if (job.kind === "command") {
-                            onOpenTerminal(job);
-                            onOpenChange(undefined);
-                            return;
-                          }
-                          action.reset();
-                          setPreviewId(job.id);
-                        }}
-                      >
+                    <Row
+                      xstyle={styles.row}
+                      interactive
+                      trailingReveal="hover"
+                      leading={
                         <span
                           aria-hidden="true"
                           {...props(styles.statusIcon, job.state === "failed" && styles.error)}
@@ -514,43 +485,64 @@ export function BackgroundWork({
                             />
                           )}
                         </span>
-                        {job.kind === "command" ? (
-                          <>
-                            <span {...props(styles.rowLabel)}>{job.title}</span>
-                            <span {...props(styles.rowStatus)}>{jobStateLabel(job)}</span>
-                          </>
+                      }
+                      label={
+                        job.kind === "command" ? (
+                          job.title
                         ) : (
-                          <span {...props(styles.agentRow)}>
-                            <span {...props(styles.agentHead)}>
-                              <span {...props(styles.rowLabel)}>{job.title}</span>
-                              <SubagentModel
-                                childSessionId={job.childSessionId}
-                                style={styles.agentModel}
-                              />
-                            </span>
-                            <span {...props(styles.agentStatus)}>{jobStateLabel(job)}</span>
+                          <span {...props(styles.agentHead)}>
+                            <span {...props(styles.rowLabel)}>{job.title}</span>
+                            <SubagentModel
+                              childSessionId={job.childSessionId}
+                              style={styles.agentModel}
+                            />
                           </span>
-                        )}
-                      </button>
-                      {jobControls(job).cancel && (
+                        )
+                      }
+                      description={job.kind === "command" ? undefined : jobStateLabel(job)}
+                      meta={job.kind === "command" ? jobStateLabel(job) : undefined}
+                      primary={
                         <button
+                          id={`${trayId}-${job.id}`}
                           type="button"
-                          aria-label={`Stop ${job.title}`}
-                          {...props(styles.action, styles.rowAction, focus.ringInset)}
-                          disabled={pendingAction}
-                          onClick={() => action.mutate({ jobId: job.id, operation: "cancel" })}
-                        >
-                          Stop
-                        </button>
-                      )}
-                    </div>
+                          aria-label={
+                            job.kind === "command"
+                              ? `Open terminal for ${job.title}`
+                              : `View output for ${job.title}`
+                          }
+                          title={job.title}
+                          onClick={() => {
+                            if (job.kind === "command") {
+                              onOpenTerminal(job);
+                              onOpenChange(undefined);
+                              return;
+                            }
+                            action.reset();
+                            setPreviewId(job.id);
+                          }}
+                        />
+                      }
+                      trailing={
+                        jobControls(job).cancel ? (
+                          <button
+                            type="button"
+                            aria-label={`Stop ${job.title}`}
+                            {...props(styles.action, styles.rowAction, focus.ringInset)}
+                            disabled={pendingAction}
+                            onClick={() => action.mutate({ jobId: job.id, operation: "cancel" })}
+                          >
+                            Stop
+                          </button>
+                        ) : undefined
+                      }
+                    />
                   </div>
                 ),
               )}
               {sections.finished.length > recentLimit && (
                 <button
                   type="button"
-                  {...props(styles.rowButton, focus.ringInset)}
+                  {...props(styles.showMore, focus.ringInset)}
                   onClick={() => setRecentLimit((limit) => limit + 8)}
                 >
                   More

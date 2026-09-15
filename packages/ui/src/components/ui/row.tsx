@@ -25,14 +25,21 @@ interface RowOwnProps {
   readonly label: React.ReactNode;
   /** A second line under the label. Its presence is what stacks the body. */
   readonly description?: React.ReactNode;
-  /** Trailing text such as a time or a count. */
+  /** Trailing text such as a time or a count. Sits inside the primary region. */
   readonly meta?: React.ReactNode;
-  /** Actions, a switch, or a chevron. */
+  /**
+   * The element wrapping the leading lane, the body, and the meta: a `button`
+   * for a command, an `a` for navigation. Actions in `trailing` are siblings of
+   * this element rather than children, because a row whose whole shell is a
+   * button cannot hold one.
+   */
+  readonly primary?: useRender.RenderProp;
+  /** Actions, a switch, or a chevron. Rendered outside the primary region. */
   readonly trailing?: React.ReactNode;
   readonly trailingReveal?: RowTrailingReveal;
   readonly selected?: boolean;
   readonly disabled?: boolean;
-  /** Applies the pointer cursor and the default hover fill. */
+  /** Applies the hover fill to the shell and the pointer cursor to the primary region. */
   readonly interactive?: boolean;
 }
 
@@ -49,8 +56,10 @@ export type RowProps = StyledProps<useRender.ComponentProps<"div">> & RowOwnProp
  * size or density prop: a dense list is a surface that measures differently,
  * not a different kind of row.
  *
- * Render it as the element the surface needs — a `button` for a command, an
- * `a` for navigation, an `li` inside a list — through `render`.
+ * The shell owns the fill and the reveal so hovering anywhere lights the whole
+ * row. `primary` owns the click target and the focus ring, and only spans the
+ * leading lane, the body, and the meta, which is what leaves room for actions
+ * beside it.
  */
 export function Row({
   className,
@@ -60,6 +69,7 @@ export function Row({
   label,
   leading,
   meta,
+  primary,
   render,
   selected = false,
   style,
@@ -68,6 +78,16 @@ export function Row({
   xstyle,
   ...props
 }: RowProps) {
+  const body =
+    description === undefined ? (
+      <span {...stylex.props(styles.label)}>{label}</span>
+    ) : (
+      <span {...stylex.props(styles.body)}>
+        <span {...stylex.props(styles.label)}>{label}</span>
+        <span {...stylex.props(styles.description)}>{description}</span>
+      </span>
+    );
+
   return useRender({
     defaultTagName: "div",
     render,
@@ -90,19 +110,32 @@ export function Row({
       ),
       children: (
         <>
-          {leading !== undefined && <span {...stylex.props(styles.leading)}>{leading}</span>}
-          {description === undefined ? (
-            <span {...stylex.props(styles.label)}>{label}</span>
-          ) : (
-            <span {...stylex.props(styles.body)}>
-              <span {...stylex.props(styles.label)}>{label}</span>
-              <span {...stylex.props(styles.description)}>{description}</span>
-            </span>
-          )}
-          {meta !== undefined && <span {...stylex.props(styles.meta)}>{meta}</span>}
+          <RowPrimary interactive={interactive} render={primary}>
+            {leading !== undefined && <span {...stylex.props(styles.leading)}>{leading}</span>}
+            {body}
+            {meta !== undefined && <span {...stylex.props(styles.meta)}>{meta}</span>}
+          </RowPrimary>
           {trailing !== undefined && <span {...stylex.props(styles.trailing)}>{trailing}</span>}
         </>
       ),
+    },
+  });
+}
+
+interface RowPrimaryProps {
+  readonly children: React.ReactNode;
+  readonly interactive: boolean;
+  readonly render?: useRender.RenderProp;
+}
+
+function RowPrimary({ children, interactive, render }: RowPrimaryProps) {
+  return useRender({
+    defaultTagName: "span",
+    render,
+    props: {
+      "data-slot": "row-primary",
+      ...stylex.props(styles.primary, interactive && render !== undefined && styles.primaryAction),
+      children,
     },
   });
 }
@@ -130,11 +163,6 @@ const styles = stylex.create({
     fontSize: fontVars["--nyte-font-size-body"],
     lineHeight: fontVars["--nyte-leading-body"],
     textAlign: "start",
-    // A row sits flush in a scroll container, where an outset ring would clip.
-    outlineColor: colorVars["--nyte-color-focus-ring"],
-    outlineStyle: { default: "none", ":focus-visible": "solid" },
-    outlineWidth: controlVars["--nyte-control-focus-width"],
-    outlineOffset: "-2px",
     transitionProperty: "background-color, color",
     transitionDuration: {
       default: motionVars["--nyte-motion-fast"],
@@ -142,11 +170,32 @@ const styles = stylex.create({
     },
     transitionTimingFunction: motionVars["--nyte-motion-ease-out"],
   },
-  interactive: {
+  primary: {
+    display: "flex",
+    alignItems: "center",
+    gap: "inherit",
+    flex: 1,
+    minWidth: 0,
+    borderStyle: "none",
+    borderRadius: "inherit",
+    backgroundColor: "transparent",
+    color: "inherit",
+    font: "inherit",
+    textAlign: "start",
+    // A row sits flush in a scroll container, where an outset ring would clip.
+    outlineColor: colorVars["--nyte-color-focus-ring"],
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: controlVars["--nyte-control-focus-width"],
+    outlineOffset: "-2px",
+  },
+  primaryAction: {
     cursor: "pointer",
+  },
+  interactive: {
     "--_row-fill": {
       default: "transparent",
       ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted"] },
+      ":focus-within": colorVars["--nyte-color-muted"],
     },
   },
   selected: {
