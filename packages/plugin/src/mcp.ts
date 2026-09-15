@@ -74,6 +74,12 @@ export type McpServerConfig = Static<typeof McpServerConfig>;
 export type McpConfig = Readonly<Record<string, McpServerConfig>>;
 
 const STARTUP_TIMEOUT_MS = 30_000;
+/**
+ * How long session activation waits for servers to connect. A healthy server answers
+ * well inside it; past it the session opens without those tools rather than holding the
+ * first message behind a slow or broken server, and they arrive with its status change.
+ */
+const ACTIVATION_WAIT_MS = 2_000;
 const CATALOG_TIMEOUT_MS = 30_000;
 /** Tool calls run as long as the model's turn does; the turn's signal ends them. */
 const CALL_TIMEOUT_MS = 12 * 60 * 60 * 1_000;
@@ -489,6 +495,12 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
           });
         }
       });
+      api.status.add((draft) => {
+        const handles = [...active.values()];
+        const connected = handles.filter((handle) => handle.status().kind === "connected").length;
+        if (connected === handles.length) return;
+        draft.set("mcp", { text: `MCP ${String(connected)}/${String(handles.length)}` });
+      });
       api.commands.add((draft) => {
         draft.set("mcp", {
           description: "MCP servers and their status; `reconnect` retries failed ones",
@@ -508,16 +520,27 @@ export function mcpPlugin(input: { readonly servers: McpServers; readonly config
         });
       });
 
-      // 5. Start from the stored choices. A step that starts after activation
-      //    sees every server that will answer.
+      // 5. Start from the stored choices, waiting briefly so a healthy server's tools are
+      //    in the first request. A slower one joins the session when it connects.
       await Promise.all(
         configured.map(async ([name, config]) => {
           apply(name, config, isEnabled(await api.storage.get(enabledKey(name)), config));
         }),
       );
-      await Promise.all(Array.from(active.values(), (handle) => handle.ready()));
+      await Promise.race([
+        Promise.all(Array.from(active.values(), (handle) => handle.ready())),
+        activationDeadline(),
+      ]);
       refresh();
     },
+  });
+}
+
+/** Resolves after the activation budget without holding the process open. */
+function activationDeadline(): Promise<void> {
+  return new Promise((settle) => {
+    const timer = setTimeout(settle, ACTIVATION_WAIT_MS);
+    timer.unref();
   });
 }
 
