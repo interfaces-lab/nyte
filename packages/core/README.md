@@ -24,6 +24,8 @@ Only user input starts model work. A live run continues on its own authority (to
 
 `task` waits for its report by default. Use `background: true` only for work the parent can continue without. When that report becomes necessary, `wait_task({ jobId })` waits for the existing job and resumes the same parent run. It does not spawn a replacement task or require polling. `stop_task({ jobId })` cancels the task; cancelling a wait alone only stops the observation. Aborting a run still cancels every job that run owns.
 
+A parked task holds the turn, so it yields when the user sends something that is waiting on this run: `wait_task` returns with the task still running, and a foreground task moves to background and returns its job id. The task keeps running either way, and its report arrives as a completion. A report a wait already carried is not repeated as a completion.
+
 ## Image reads
 
 The built-in `read` tool keeps small supported images unchanged. Larger images are resized to at most 2,000 pixels per side and a 4.5 MiB base64 payload, following Pi's limits. BMP files are converted to PNG or JPEG. Re-encoding applies EXIF orientation first. Images that cannot be processed are omitted with a text explanation. Processing uses Photon's self-contained WASM build through `@cf-wasm/photon/node`.

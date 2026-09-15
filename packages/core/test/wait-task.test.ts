@@ -118,8 +118,10 @@ const delegate = call("start", "task", {
 
 test("a parked wait_task resumes the parent when the background child completes", async () => {
   const release = Promise.withResolvers<void>();
+  const reports: string[] = [];
   const nyte = await open(
     script(({ text, context }) => {
+      reports.push(text);
       if (text === "child")
         return { answer: assistant("child report ready"), wait: release.promise };
       const waited = lastWaitResult(context);
@@ -171,6 +173,8 @@ test("a parked wait_task resumes the parent when the background child completes"
         : [],
     );
     expect(answers.at(-1)).toContain("heard: child report ready");
+    // The wait handed the report to the agent, so the completion is not repeated.
+    expect(reports.filter((text) => text.startsWith("Background "))).toHaveLength(0);
     for (const job of await nyte.jobs.list({ sessionId: parent.sessionId })) {
       expect(job.state).toBe("completed");
     }

@@ -277,10 +277,19 @@ running foreground work to background without restarting it. `jobs.cancel`
 cancels that job, not the whole parent run. `wait_task` parks a new job that
 observes an owned subagent job until it ends, then settles with the stored
 report; it never re-runs the task, and cancelling the wait leaves the observed
-job running. Aborting the parent cancels every job
-that run owns, foreground or background, command or subagent; a run that ends on
-its own leaves its background work running, and that work's result then waits
-for the next user message.
+job running. A wait holds back the completion message while it carries a report
+and claims it on the way out, so an awaited report is heard once. Aborting the
+parent cancels every job that run owns, foreground or background, command or
+subagent; a run that ends on its own leaves its background work running, and
+that work's result then waits for the next user message.
+
+A parked call gives the head no response boundary, so user input queued for this
+run would wait for the child. Both parked shapes yield instead: `wait_task`
+settles with the task still running, and a foreground subagent job moves to
+background, which settles its call with the receipt. Only input in a lane that
+lands at a boundary counts; input queued for an idle head waits for the run
+either way. Yielding never touches the child: it keeps working, and its report
+arrives as a completion.
 
 Execution holds a renewable, fenced lease on the job ref, independently of the
 head lease. Closing a UI panel or switching chats does not cancel the job.
