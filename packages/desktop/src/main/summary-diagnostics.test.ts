@@ -83,6 +83,8 @@ async function fixture(active: boolean) {
     emitHostEvent: () => undefined,
     emitWatchEvent: () => undefined,
     openExternal: () => assert.fail("External browser is unused"),
+    revealPath: () => undefined,
+    showContextMenu: () => Promise.resolve(undefined),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {

@@ -225,6 +225,8 @@ const bridge = {
       stop: () => call("host.mobile.stop", undefined),
     },
     openExternal: operation("host.openExternal"),
+    revealPath: operation("host.revealPath"),
+    contextMenu: operation("host.contextMenu"),
     terminal: {
       create: operation("host.terminal.create"),
       write: operation("host.terminal.write"),

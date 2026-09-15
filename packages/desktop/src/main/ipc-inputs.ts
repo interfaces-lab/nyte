@@ -3,7 +3,12 @@
  * code through `new Function`, which the renderer's CSP forbids. Renderer code
  * imports `typebox/value` and never `typebox/compile`.
  */
-import { BROWSER_ACTIONS, HOST_OPERATION_PATHS, SDK_OPERATION_PATHS } from "../shared/ipc.ts";
+import {
+  BROWSER_ACTIONS,
+  CONTEXT_MENU_ROLES,
+  HOST_OPERATION_PATHS,
+  SDK_OPERATION_PATHS,
+} from "../shared/ipc.ts";
 import { Type } from "typebox";
 import { WorkspaceSearchSchema } from "@nyte-ai/core/files";
 import type { Static, TProperties, TSchema } from "typebox";
@@ -201,6 +206,30 @@ export const CALL_INPUT_SCHEMAS = {
   ),
   "host.mobile.stop": compile(noInput),
   "host.openExternal": compile(strict({ url: Type.String() })),
+  "host.revealPath": compile(strict({ path: nonEmpty })),
+  "host.contextMenu": compile(
+    strict({
+      items: Type.Array(
+        Type.Union([
+          strict({ kind: Type.Literal("separator") }),
+          strict({
+            kind: Type.Literal("role"),
+            role: Type.Enum(CONTEXT_MENU_ROLES),
+            label: nonEmpty,
+          }),
+          strict({
+            kind: Type.Literal("item"),
+            label: nonEmpty,
+            accelerator: Type.Optional(nonEmpty),
+            enabled: Type.Optional(Type.Boolean()),
+          }),
+        ]),
+        { maxItems: 40 },
+      ),
+      x: Type.Integer(),
+      y: Type.Integer(),
+    }),
+  ),
   "host.browser.open": compile(
     strict({
       surface: nonEmpty,

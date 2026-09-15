@@ -151,6 +151,8 @@ async function fixture() {
       emitHostEvent: (event) => events.push(event),
       emitWatchEvent: (event) => watchEvents.push(event),
       openExternal: () => undefined,
+      revealPath: () => undefined,
+      showContextMenu: () => Promise.resolve(undefined),
       pickFolder: async () => undefined,
       listFonts: async () => ({ sans: [], monospace: [] }),
       browser: {

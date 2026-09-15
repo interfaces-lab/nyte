@@ -71,6 +71,8 @@ async function desktop(): Promise<{ host: DesktopHost; events: HostEvent[]; root
     emitHostEvent: (event) => events.push(event),
     emitWatchEvent: () => undefined,
     openExternal: () => undefined,
+    revealPath: () => undefined,
+    showContextMenu: () => Promise.resolve(undefined),
     pickFolder: async () => undefined,
     listFonts: async () => ({ sans: [], monospace: [] }),
     browser: {

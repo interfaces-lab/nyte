@@ -128,6 +128,8 @@ export const HOST_OPERATION_PATHS = [
   "host.mobile.start",
   "host.mobile.stop",
   "host.openExternal",
+  "host.revealPath",
+  "host.contextMenu",
   "host.browser.open",
   "host.browser.navigate",
   "host.browser.menu",
@@ -549,6 +551,24 @@ export type BrowserMenuAction = BrowserAction | "toggle-bookmarks";
 
 export type BrowserNavigationAction = "back" | "forward" | "reload" | "stop";
 
+/**
+ * Clipboard and selection roles run in the focused web contents, so a native
+ * paste keeps the formats a renderer-side clipboard read cannot reach.
+ */
+export const CONTEXT_MENU_ROLES = ["cut", "copy", "paste", "selectAll"] as const;
+export type ContextMenuRole = (typeof CONTEXT_MENU_ROLES)[number];
+
+export type ContextMenuTemplateItem =
+  | { readonly kind: "separator" }
+  | { readonly kind: "role"; readonly role: ContextMenuRole; readonly label: string }
+  | {
+      readonly kind: "item";
+      readonly label: string;
+      /** Electron accelerator shown right-aligned; it is display only here. */
+      readonly accelerator?: string;
+      readonly enabled?: boolean;
+    };
+
 export interface BrowserBounds {
   readonly x: number;
   readonly y: number;
@@ -723,6 +743,18 @@ export interface HostBridge {
     stop(): Promise<void>;
   };
   openExternal(input: { url: string }): Promise<void>;
+  /** Show a file or folder in the system file manager. */
+  revealPath(input: { path: string }): Promise<void>;
+  /**
+   * Pop a native context menu at the cursor and resolve the chosen item's index
+   * in `items`, or undefined when it is dismissed. Native menus float above the
+   * `WebContentsView`s that browser panels composite over the renderer.
+   */
+  contextMenu(input: {
+    items: readonly ContextMenuTemplateItem[];
+    x: number;
+    y: number;
+  }): Promise<number | undefined>;
   terminal: {
     create(input: { id: string; workspacePath: string | null }): Promise<TerminalInfo>;
     write(input: { id: string; data: string }): Promise<void>;
@@ -844,6 +876,8 @@ export interface CallMethodByPath {
   readonly "host.mobile.start": NyteBridge["host"]["mobile"]["start"];
   readonly "host.mobile.stop": NyteBridge["host"]["mobile"]["stop"];
   readonly "host.openExternal": NyteBridge["host"]["openExternal"];
+  readonly "host.revealPath": NyteBridge["host"]["revealPath"];
+  readonly "host.contextMenu": NyteBridge["host"]["contextMenu"];
   readonly "host.browser.open": NyteBridge["host"]["browser"]["open"];
   readonly "host.browser.navigate": NyteBridge["host"]["browser"]["navigate"];
   readonly "host.browser.menu": NyteBridge["host"]["browser"]["menu"];

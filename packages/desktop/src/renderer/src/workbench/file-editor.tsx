@@ -1,9 +1,11 @@
 import { Editor } from "@pierre/diffs/edit";
+import type { EditorOptions, EditorType } from "@pierre/diffs/edit";
 import { CodeView, EditProvider } from "@pierre/diffs/react";
 import type { CodeViewHandle, CodeViewItem } from "@pierre/diffs/react";
 import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import {
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -11,11 +13,12 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactElement, Ref } from "react";
+import type { MouseEvent, ReactElement, Ref } from "react";
 import type { WorkspaceFileDocument } from "../../../shared/ipc.ts";
 import { Button } from "../components/ui.tsx";
+import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
-import { useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
+import { useHostState, useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { WorkbenchViewKey } from "./controller.ts";
@@ -47,6 +50,18 @@ const EDITOR_CSS = `
   --diffs-bg: var(--nyte-bg-editor);
 }
 `;
+
+/**
+ * CodeView merges these behind its own per-surface options, so the factory only
+ * has to construct the editor. A module constant keeps the context value stable.
+ */
+function createEditor<EType extends EditorType>(
+  type: EType,
+  options: EditorOptions<EType, undefined, undefined>,
+  editStateKey?: string,
+): Editor<EType, undefined, undefined> {
+  return new Editor(type, options, editStateKey);
+}
 
 const styles = create({
   root: {
@@ -200,6 +215,7 @@ function TextFileEditor({
   const line =
     clickedLine.navigationRevision === navigationRevision ? clickedLine.line : (file.line ?? 1);
   const appearance = useAppearanceSettings();
+  const host = useHostState();
   const saveFile = useSaveWorkspaceFile();
   const disk = useWorkspaceFile(file.path);
   const dirty = snapshot.contents !== snapshot.savedContents;
@@ -251,42 +267,50 @@ function TextFileEditor({
 
   useLayoutEffect(() => {
     const editor = viewer.current?.getEditor(file.path);
-    if (editor instanceof Editor) replaceContents(editor, snapshot.contents);
+    if (editor !== undefined) replaceContents(editor, snapshot.contents);
   }, [file.path, snapshot.contents]);
 
-  const attachEditor = (
-    editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
-  ): void => {
-    if (editor.getFile() === undefined) return;
-    replaceContents(editor, buffer.getSnapshot().contents);
-    const target = navigation.current;
-    if (!target.active || target.line === undefined || appliedNavigation.current >= target.revision)
-      return;
-    appliedNavigation.current = target.revision;
-    viewer.current?.scrollTo({
-      type: "line",
-      id: file.path,
-      lineNumber: target.line,
-      align: "center",
-    });
-    viewer.current?.setSelectedLines({
-      id: file.path,
-      range: { start: target.line, end: target.line },
-    });
-    editor.focus({
-      lineNumber: target.line,
-      character: (target.column ?? 1) - 1,
-      preventScroll: true,
-    });
-    if (target.column !== undefined && target.length !== undefined)
-      editor.setSelections([
-        {
-          start: { line: target.line - 1, character: target.column - 1 },
-          end: { line: target.line - 1, character: target.column - 1 + target.length },
-          direction: "forward",
-        },
-      ]);
-  };
+  const attachEditor = useCallback(
+    (
+      editor: Pick<Editor, "getFile" | "getText" | "applyEdits" | "focus" | "setSelections">,
+    ): void => {
+      if (editor.getFile() === undefined) return;
+      replaceContents(editor, buffer.getSnapshot().contents);
+      const target = navigation.current;
+      if (
+        !target.active ||
+        target.line === undefined ||
+        appliedNavigation.current >= target.revision
+      )
+        return;
+      appliedNavigation.current = target.revision;
+      viewer.current?.scrollTo({
+        type: "line",
+        id: file.path,
+        lineNumber: target.line,
+        align: "center",
+      });
+      viewer.current?.setSelectedLines({
+        id: file.path,
+        range: { start: target.line, end: target.line },
+      });
+      editor.focus({
+        lineNumber: target.line,
+        character: (target.column ?? 1) - 1,
+        preventScroll: true,
+      });
+      if (target.column !== undefined && target.length !== undefined)
+        editor.setSelections([
+          {
+            start: { line: target.line - 1, character: target.column - 1 },
+            end: { line: target.line - 1, character: target.column - 1 + target.length },
+            direction: "forward",
+          },
+        ]);
+    },
+    // Everything else this reads is a ref, stable for the life of the tab.
+    [buffer, file.path],
+  );
 
   useLayoutEffect(() => {
     navigation.current = {
@@ -297,7 +321,7 @@ function TextFileEditor({
       length: file.length,
     };
     const editor = viewer.current?.getEditor(file.path);
-    if (editor instanceof Editor) attachEditor(editor);
+    if (editor !== undefined) attachEditor(editor);
   });
 
   const save = (): Promise<void> =>
@@ -314,6 +338,52 @@ function TextFileEditor({
     buffer.discard(result.data);
   };
   useImperativeHandle(ref, () => ({ save, discard }));
+
+  /** Formatting lands as an ordinary edit, so it stays on the undo stack. */
+  const format = async (): Promise<void> => {
+    const current = buffer.getSnapshot();
+    const result = await nyte.host.files.format({
+      path: file.path,
+      contents: current.contents,
+      version: current.version,
+    });
+    if (result.kind === "formatted") buffer.edit(result.contents);
+  };
+
+  const openContextMenu = (event: MouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    void showContextMenu(event, [
+      { kind: "role", role: "cut", label: "Cut" },
+      { kind: "role", role: "copy", label: "Copy" },
+      { kind: "role", role: "paste", label: "Paste" },
+      { kind: "role", role: "selectAll", label: "Select All" },
+      { kind: "separator" },
+      { kind: "item", label: "Format Document", run: () => void format() },
+      {
+        kind: "item",
+        label: "Save",
+        accelerator: "CmdOrCtrl+S",
+        enabled: dirty,
+        run: () => void save(),
+      },
+      { kind: "separator" },
+      {
+        kind: "item",
+        label: "Copy Path",
+        run: () => void navigator.clipboard.writeText(file.path),
+      },
+      {
+        kind: "item",
+        label: "Copy Relative Path",
+        run: () => void navigator.clipboard.writeText(file.displayPath),
+      },
+      {
+        kind: "item",
+        label: revealLabel(host.data?.platform),
+        run: () => void nyte.host.revealPath({ path: file.path }),
+      },
+    ]);
+  };
 
   useEffect(() => {
     if (
@@ -358,24 +428,21 @@ function TextFileEditor({
               : `${blameLine.author} · ${new Date(blameLine.authorTime * 1000).toLocaleDateString()} · ${blameLine.summary}`;
 
   return (
-    <div aria-hidden={!active} inert={!active} {...props(styles.root, !active && styles.hidden)}>
-      <EditProvider
-        createEditor={(type, options, editStateKey) =>
-          new Editor(
-            type,
-            {
-              ...options,
-              historyMaxEntries: 200,
-              ownsVerticalViewport: true,
-              onAttach: attachEditor,
-            },
-            editStateKey,
-          )
-        }
-      >
+    <div
+      aria-hidden={!active}
+      inert={!active}
+      onContextMenu={openContextMenu}
+      {...props(styles.root, !active && styles.hidden)}
+    >
+      <EditProvider createEditor={createEditor}>
         <CodeView
           ref={viewer}
           initialItems={initialItems}
+          editorOptions={{
+            historyMaxEntries: 200,
+            ownsVerticalViewport: true,
+            onAttach: attachEditor,
+          }}
           options={{
             theme: { light: "github-light", dark: "github-dark" },
             themeType: appearance.theme,

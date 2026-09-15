@@ -39,6 +39,7 @@ import type {
   HostEvent,
   HostState,
   GitHubProviderState,
+  HostBridge,
   LocalFontCatalog,
   MobileShareReach,
   MobileShareState,
@@ -112,6 +113,10 @@ export interface DesktopHostDependencies {
   /** Push one watch envelope to the subscribing window. */
   emitWatchEvent(envelope: WatchEnvelope): void;
   openExternal(url: string): void;
+  /** Show a file or folder in the system file manager. */
+  revealPath(path: string): void;
+  /** Native right-click menu, with the renderer's own signature. */
+  showContextMenu: HostBridge["contextMenu"];
   browser: BrowserSurfaces;
   listFonts(): Promise<LocalFontCatalog>;
   /** Native folder picker; resolves undefined on cancel. */
@@ -393,6 +398,13 @@ export class DesktopHost {
         this.dependencies.openExternal(safeExternalUrl(url));
         return undefined;
       }
+      case "host.revealPath": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        this.dependencies.revealPath(decoded.path);
+        return undefined;
+      }
+      case "host.contextMenu":
+        return this.dependencies.showContextMenu(CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.browser.open":
         return this.dependencies.browser.open(CALL_INPUT_SCHEMAS[path].Parse(input));
       case "host.browser.navigate":

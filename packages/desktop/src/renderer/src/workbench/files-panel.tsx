@@ -1,4 +1,3 @@
-import { Button } from "@nyte-ai/ui";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
@@ -6,10 +5,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../../shared/errors.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
-import { Icon } from "../components/icons.tsx";
-import type { IconName } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator, MenuSwitchItem } from "../components/menu.tsx";
+import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { IconButton } from "../components/ui.tsx";
+import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { refreshVcs, useHostState, useMentionFiles, useVcsSnapshot } from "../queries.ts";
 import { workbench } from "../theme/schema.stylex.ts";
@@ -111,122 +110,7 @@ const styles = create({
     "--trees-level-gap-override": "5px",
     "--trees-padding-inline-override": "6px",
   },
-  contextMenu: {
-    display: "flex",
-    flexDirection: "column",
-    width: 190,
-    padding: 4,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.bgElevated,
-    boxShadow: t.shadowPopover,
-    color: t.textPrimary,
-  },
-  contextMenuItem: {
-    display: "grid",
-    gridTemplateColumns: "14px minmax(0, 1fr)",
-    alignItems: "center",
-    columnGap: 7,
-    minHeight: 28,
-    paddingInline: 7,
-    borderStyle: "none",
-    borderRadius: t.radiusSm,
-    outline: "none",
-    backgroundColor: {
-      default: "transparent",
-      ":hover": t.fillGhostHover,
-      ":focus-visible": t.fillGhostHover,
-    },
-    color: "inherit",
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    textAlign: "start",
-    cursor: "default",
-  },
-  contextMenuIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: t.iconSecondary,
-  },
-  contextMenuLabel: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
 });
-
-function FilesContextMenu({
-  item,
-  absolutePath,
-  context,
-  onOpen,
-  onSearch,
-}: {
-  readonly item: ContextMenuItem;
-  readonly absolutePath: string | undefined;
-  readonly context: ContextMenuOpenContext;
-  readonly onOpen: () => void;
-  readonly onSearch: () => void;
-}): ReactElement {
-  const action = (icon: IconName, label: string, run: () => void) => (
-    <Button
-      unstyled
-      type="button"
-      role="menuitem"
-      tabIndex={-1}
-      {...props(styles.contextMenuItem)}
-      onClick={() => {
-        context.close();
-        run();
-      }}
-    >
-      <span aria-hidden="true" {...props(styles.contextMenuIcon)}>
-        <Icon name={icon} size={13} />
-      </span>
-      <span {...props(styles.contextMenuLabel)}>{label}</span>
-    </Button>
-  );
-
-  return (
-    <div
-      role="menu"
-      aria-label={`${item.name} actions`}
-      tabIndex={-1}
-      {...props(styles.contextMenu)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          context.close();
-          return;
-        }
-        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-        const items = Array.from(
-          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'),
-        );
-        if (items.length === 0) return;
-        event.preventDefault();
-        const current = items.findIndex((candidate) => candidate === document.activeElement);
-        const next =
-          event.key === "Home"
-            ? 0
-            : event.key === "End"
-              ? items.length - 1
-              : event.key === "ArrowDown"
-                ? (current + 1) % items.length
-                : (current - 1 + items.length) % items.length;
-        items[next]?.focus();
-      }}
-    >
-      {item.kind === "file" && action("file", "Open", onOpen)}
-      {action("search", "Search Files", onSearch)}
-      {action("copy", "Copy Relative Path", () => void navigator.clipboard.writeText(item.path))}
-      {absolutePath !== undefined &&
-        action("copy", "Copy Path", () => void navigator.clipboard.writeText(absolutePath))}
-      {action("refresh", "Refresh Explorer", refreshVcs)}
-    </div>
-  );
-}
 
 export function FilesPanel({
   viewKey,
@@ -253,11 +137,59 @@ export function FilesPanel({
   const menuRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const editors = useRef(new Map<string, FileEditorHandle>());
+  // The tree keeps its creation-time composition callbacks; read late values through refs.
+  const hostState = useRef(host.data);
+  useLayoutEffect(() => {
+    hostState.current = host.data;
+  }, [host.data]);
   const activeFile = tabs.tabs.find((file) => file.path === tabs.activePath);
   const showSearch = (): void => {
     setSearchOpened(true);
     setSidebar("search");
     requestAnimationFrame(() => searchRef.current?.querySelector("input")?.focus());
+  };
+  const copyPath = (value: string): void => {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => setCopyError(undefined))
+      .catch((cause: unknown) => setCopyError(errorMessage(cause)));
+  };
+  /**
+   * Serves the row's menu button and its right-click. The tree keeps its own
+   * open state, so close it before the native menu takes over the pointer.
+   */
+  const openRowMenu = (item: ContextMenuItem, context: ContextMenuOpenContext): void => {
+    context.close({ restoreFocus: false });
+    const file = fileEntries.current?.find((entry) => entry.displayPath === item.path);
+    const root = hostState.current?.workspace?.path;
+    // Directories are not in the file list, so their location comes from the root.
+    const separator = hostState.current?.platform === "win32" ? "\\" : "/";
+    const relative = item.path.replace(/\/$/, "");
+    const absolutePath =
+      file?.path ?? (root === undefined ? undefined : `${root}${separator}${relative}`);
+    void showContextMenu({ clientX: context.anchorRect.left, clientY: context.anchorRect.bottom }, [
+      file !== undefined && {
+        kind: "item",
+        label: "Open",
+        run: () => fileActions.open(viewKey, file),
+      },
+      absolutePath !== undefined && {
+        kind: "item",
+        label: revealLabel(hostState.current?.platform),
+        run: () => void nyte.host.revealPath({ path: absolutePath }),
+      },
+      { kind: "separator" },
+      { kind: "item", label: "Search Files", run: showSearch },
+      { kind: "separator" },
+      absolutePath !== undefined && {
+        kind: "item",
+        label: "Copy Path",
+        run: () => copyPath(absolutePath),
+      },
+      { kind: "item", label: "Copy Relative Path", run: () => copyPath(relative) },
+      { kind: "separator" },
+      { kind: "item", label: "Refresh Explorer", run: refreshVcs },
+    ]);
   };
   const { model } = useFileTree({
     paths: [],
@@ -265,7 +197,15 @@ export function FilesPanel({
     flattenEmptyDirectories: true,
     initialExpansion: 1,
     search: false,
-    composition: { contextMenu: { triggerMode: "both", buttonVisibility: "when-needed" } },
+    composition: {
+      contextMenu: {
+        triggerMode: "both",
+        buttonVisibility: "when-needed",
+        // The native menu replaces the tree's own surface for both triggers.
+        render: () => null,
+        onOpen: (item, context) => openRowMenu(item, context),
+      },
+    },
     onSelectionChange: (paths) => {
       const path = paths.findLast((candidate) => !candidate.endsWith("/"));
       // useFileTree keeps its creation-time listeners; file discovery finishes later.
@@ -528,24 +468,7 @@ export function FilesPanel({
                 Could not load files. {files.error.message}
               </div>
             )}
-            <FileTree
-              model={model}
-              className={props(styles.tree).className}
-              renderContextMenu={(item, context) => (
-                <FilesContextMenu
-                  item={item}
-                  context={context}
-                  absolutePath={files.data?.find((file) => file.displayPath === item.path)?.path}
-                  onOpen={() => {
-                    const file = files.data?.find(
-                      (candidate) => candidate.displayPath === item.path,
-                    );
-                    if (file !== undefined) fileActions.open(viewKey, file);
-                  }}
-                  onSearch={showSearch}
-                />
-              )}
-            />
+            <FileTree model={model} className={props(styles.tree).className} />
           </div>
           <div
             ref={searchRef}
