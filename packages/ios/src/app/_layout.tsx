@@ -104,11 +104,13 @@ export default function RootLayout() {
 }
 
 const styles = css.create({
+  // The screen's own box: its parent is the native root, not a flex container,
+  // so it fills by size rather than by growing inside one.
   root: {
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1,
-    flexShrink: 1,
+    width: "100%",
+    height: "100%",
     backgroundColor: tokens.background,
   },
   centered: {

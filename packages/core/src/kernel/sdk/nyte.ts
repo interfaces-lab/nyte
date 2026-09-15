@@ -15,6 +15,7 @@ import { createHead, deleteHead, fastForward, moveHead } from "../stacks.ts";
 import { navigationTarget, transcriptFromCommits } from "../views/index.ts";
 import { toJsonValue } from "../json.ts";
 import { normalizeImageContent } from "../../utils/image.ts";
+import { discoverMentionFiles, rankMentionFiles } from "../../mention-files.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
@@ -70,6 +71,9 @@ import {
 interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
 }
+
+/** Rows a client asks for without saying how many; enough to fill a menu. */
+const DEFAULT_MENTION_LIMIT = 50;
 
 function toModelInfo(model: NyteOptions["model"]): ModelInfo {
   return {
@@ -572,6 +576,21 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       async forget(input) {
         pool.alive();
         await options.workspaces?.forget(input.path);
+      },
+      /**
+       * Discovery runs where the files are. One session names its own
+       * directory; without one the host's own working directory answers, which
+       * is the folder a new session would start in.
+       */
+      async files(input) {
+        pool.alive();
+        const cwd =
+          input?.sessionId === undefined
+            ? await pool.cwdForNewSession()
+            : await relocation.sessionCwd({ sessionId: input.sessionId });
+        if (cwd === undefined) return [];
+        const found = await discoverMentionFiles(cwd);
+        return rankMentionFiles(found, input?.query ?? "", input?.limit ?? DEFAULT_MENTION_LIMIT);
       },
       vcs: {
         async status() {

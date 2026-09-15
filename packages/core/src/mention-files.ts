@@ -2,20 +2,13 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import type { MentionFile } from "@nyte-ai/protocol";
 import { findRipgrepFiles } from "./ripgrep.ts";
 
 const MAX_MENTION_FILES = 5_000;
 
-export interface MentionFile {
-  /** Absolute path. Directories carry a trailing separator. */
-  readonly path: string;
-  /** The `file:` URL a message spells the mention as (`@file:///…`). */
-  readonly url: string;
-  /** Path relative to the workspace root, forward slashes, `/` suffix for directories. */
-  readonly displayPath: string;
-  /** Basename, `/` suffix for directories. */
-  readonly label: string;
-}
+/** The wire type, re-exported so callers of this module keep one import. */
+export type { MentionFile };
 
 /**
  * Files offered by `@` and their parent folders. Ripgrep applies ignore files
@@ -80,4 +73,35 @@ export async function discoverMentionFiles(
         label: basename(path) + (directory ? "/" : ""),
       };
     });
+}
+
+/**
+ * The subset a `@` query names, best matches first: a leading match on the
+ * basename beats one inside it, which beats a match elsewhere in the path.
+ * Remote clients cannot walk the workspace, so the host narrows before sending.
+ */
+export function rankMentionFiles(
+  files: readonly MentionFile[],
+  query: string,
+  limit: number,
+): MentionFile[] {
+  const needle = query.trim().toLocaleLowerCase();
+  if (needle === "") return files.slice(0, limit);
+  const ranked: { file: MentionFile; rank: number; index: number }[] = [];
+  for (const [index, file] of files.entries()) {
+    const label = file.label.toLocaleLowerCase();
+    const displayPath = file.displayPath.toLocaleLowerCase();
+    const rank = label.startsWith(needle)
+      ? 0
+      : label.includes(needle)
+        ? 1
+        : displayPath.includes(needle)
+          ? 2
+          : undefined;
+    if (rank !== undefined) ranked.push({ file, rank, index });
+  }
+  return ranked
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .slice(0, limit)
+    .map((entry) => entry.file);
 }

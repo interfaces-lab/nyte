@@ -686,6 +686,11 @@ export function createSessionPool(input: {
     activationFor,
     activeFor,
     catalogForNewSession,
+    /** Where a new session would start, without creating or activating one. */
+    async cwdForNewSession(): Promise<string | undefined> {
+      const resolved = await resolveHostActivation({ kind: "new-session" });
+      return resolved.kind === "active" ? resolved.env.cwd : undefined;
+    },
     /** A global plugin swap replaces the host's answer for every unscoped session and the catalog. */
     setPluginsOverride(plugins: readonly LoadedPlugin[]): void {
       pluginsOverride = plugins;

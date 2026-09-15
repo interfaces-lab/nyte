@@ -28,6 +28,7 @@ import {
   JobInfo,
   JobActionOutcome,
   Landing,
+  MentionFile,
   ModelInfo,
   MoveOutcome,
   NonEmptyString,
@@ -209,6 +210,22 @@ export const OPERATIONS = Object.freeze({
   "workspace.vcs.diff": operation(
     optional(strict({ paths: Type.Optional(Type.Array(Type.String())) })),
     list(VcsDiff),
+  ),
+  /**
+   * Files `@` can name in the served workspace. A remote client cannot walk the
+   * host's filesystem, so the host both discovers and narrows: `query` filters
+   * and `limit` caps the reply, because a large repository's whole tree is not a
+   * payload a phone should receive to show ten rows.
+   */
+  "workspace.files": operation(
+    optional(
+      strict({
+        sessionId: Type.Optional(SessionId),
+        query: Type.Optional(Type.String()),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+      }),
+    ),
+    list(MentionFile),
   ),
 
   "provider.models.list": operation(none, list(ModelInfo)),

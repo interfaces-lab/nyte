@@ -10,7 +10,7 @@ import type { NyteClient } from "@nyte-ai/client";
 import type { SessionId, VcsDiff } from "@nyte-ai/protocol";
 import { parsePatchFacts, type PatchFile } from "@nyte-ai/core/views";
 import { EmptyState } from "../ui/empty-state.tsx";
-import { PrimaryButton } from "../ui/primary-button.tsx";
+import { GlassButton } from "../ui/glass-button.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { useRemoteChat } from "./remote-chat.ts";
 import { fileStatus, recordedEdits, type RecordedEdit } from "./turn-changes.ts";
@@ -170,7 +170,10 @@ export function ChangesScreen({
 
   return (
     <html.div style={styles.screen}>
-      <Host style={{ marginHorizontal: spacing.gutter, marginTop: spacing.sm }}>
+      <Host
+        matchContents={{ vertical: true }}
+        style={{ marginHorizontal: spacing.gutter, marginTop: spacing.sm }}
+      >
         <Picker
           selection={source === "agent" ? 0 : 1}
           onSelectionChange={(selection) => setSource(selection === 1 ? "mac" : "agent")}
@@ -207,11 +210,7 @@ export function ChangesScreen({
           <html.p role="alert" style={textStyles.error}>
             {macDiffs.message}
           </html.p>
-          <PrimaryButton
-            label="Try again"
-            tone="secondary"
-            onClick={() => setMacRevision((v) => v + 1)}
-          />
+          <GlassButton label="Try again" fill onPress={() => setMacRevision((v) => v + 1)} />
         </html.div>
       ) : sections.length === 0 ? (
         <EmptyState
@@ -361,7 +360,8 @@ const styles = css.create({
   screen: {
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1,
+    width: "100%",
+    height: "100%",
     backgroundColor: tokens.background,
   },
   caption: { paddingInline: spacing.gutter, paddingBlock: spacing.sm },

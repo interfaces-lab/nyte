@@ -102,7 +102,7 @@ const styles = css.create({
     display: "flex",
     flexDirection: "row",
     alignItems: "flex-start",
-    width: "100%",
+    // Content-box sizing: a width of 100% plus the gutter would overflow the list.
     paddingInlineStart: list.gutter,
     borderWidth: 0,
     backgroundColor: { default: "transparent", ":active": tokens.fill },

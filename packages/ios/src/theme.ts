@@ -18,6 +18,9 @@ const schemes = {
     border: platformColors.light.borderSubtle,
     separator: platformColors.light.borderWeak,
     accent: platformColors.light.accent,
+    // A label on an accent fill stays light in both appearances, the way the
+    // system tints a prominent button, so both take the dark palette's foreground.
+    onAccent: platformColors.dark.foreground,
     primary: platformColors.light.primary,
     onPrimary: platformColors.light.primaryForeground,
     // The platform light success fails contrast as small text; deepen it.
@@ -41,6 +44,7 @@ const schemes = {
     border: platformColors.dark.borderWeak,
     separator: platformColors.dark.borderWeak,
     accent: platformColors.dark.accent,
+    onAccent: platformColors.dark.foreground,
     primary: platformColors.dark.primary,
     onPrimary: platformColors.dark.primaryForeground,
     success: platformColors.dark.success,
@@ -80,6 +84,7 @@ export const tokens = css.defineVars({
   border: conditional("border"),
   separator: conditional("separator"),
   accent: conditional("accent"),
+  onAccent: conditional("onAccent"),
   primary: conditional("primary"),
   onPrimary: conditional("onPrimary"),
   success: conditional("success"),
@@ -123,6 +128,8 @@ export const controls = {
   // The photo X sits over a corner of the thumbnail; its box reaches past it.
   photoRemoveTarget: 36,
   primaryHeight: 44,
+  // A screen's own action, taller than the toolbar controls beside it.
+  fillHeight: 50,
   chipHeight: 36,
   composerHeight: 52,
   composerButton: 32,
@@ -175,6 +182,23 @@ export const typography = {
   diff: { fontSize: 12, lineHeight: 18, fontWeight: 400, fontFamily: "Menlo" },
   section: { fontSize: 18, lineHeight: 24, fontWeight: 600 },
 } as const;
+
+/**
+ * A panel that grows out of the composer: the capsule's own surface and radius,
+ * raised above the transcript it covers. The attachment choices and the `@`/`/`
+ * menu are the same object to the eye, so they are the same rule here.
+ */
+export const surfaces = css.create({
+  panel: {
+    borderRadius: radii.bubble,
+    borderWidth: controls.hairline,
+    borderStyle: "solid",
+    borderColor: tokens.border,
+    backgroundColor: tokens.surface,
+    boxShadow: tokens.shadow,
+    overflow: "hidden",
+  },
+});
 
 // RSD interprets numeric line heights as ratios; native props require pixels.
 export const textStyles = css.create({

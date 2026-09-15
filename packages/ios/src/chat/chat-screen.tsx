@@ -16,7 +16,7 @@ import type { ReplyOutcome, SelectionReply } from "@nyte-ai/protocol";
 import { waitingCall, type SessionState } from "@nyte-ai/core/client";
 import type { FileChange } from "@nyte-ai/core/views";
 import type { UserContent } from "./remote-chat.ts";
-import { spacing, tokens } from "../theme.ts";
+import { spacing, tokens, useTheme } from "../theme.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { WaitingSelection } from "./waiting-selection.tsx";
@@ -53,6 +53,7 @@ export function ChatScreen({
   onOpenReview,
   prefill,
 }: ChatScreenProps) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   // The glass header floats over the list; start the transcript below it.
   const headerHeight = insets.top + 44;
@@ -186,7 +187,6 @@ export function ChatScreen({
           estimatedItemSize={140}
           initialScrollAtEnd
           keyboardLiftBehavior="whenAtEnd"
-          keyboardOffset={insets.bottom}
           keyboardDismissMode="interactive"
           keyboardShouldPersistTaps="handled"
           contentInsetEndAdjustment={contentInsetEndAdjustment}
@@ -211,10 +211,7 @@ export function ChatScreen({
           }
         />
       </View>
-      <KeyboardStickyView
-        offset={{ opened: insets.bottom + spacing.xs }}
-        style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
-      >
+      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
         {!atEnd ? (
           <html.div style={styles.jumpRow}>
             <GlassButton
@@ -229,7 +226,13 @@ export function ChatScreen({
             />
           </html.div>
         ) : null}
-        <View ref={composerRef} onLayout={onComposerLayout}>
+        {/* One opaque bar over the transcript: the review chips share the
+            composer's fill rather than letting rows scroll behind them. */}
+        <View
+          ref={composerRef}
+          onLayout={onComposerLayout}
+          style={{ backgroundColor: theme.canvas }}
+        >
           {changes !== undefined ? (
             <html.div style={styles.gutters(layout.paddingLeft, layout.paddingRight)}>
               <ReviewStrip changes={changes} onReview={onOpenReview} onAskMerge={onAskMerge} />
@@ -250,6 +253,8 @@ export function ChatScreen({
             }}
             placeholder="Follow up…"
             prefill={prefill}
+            backdrop="canvas"
+            gutters={{ left: layout.paddingLeft, right: layout.paddingRight }}
           />
         </View>
       </KeyboardStickyView>
@@ -258,13 +263,21 @@ export function ChatScreen({
 }
 
 const styles = css.create({
+  // The route's view is native, so the screen fills by size rather than by
+  // growing as a flex child of it.
   screen: {
     display: "flex",
     flexDirection: "column",
-    flexGrow: 1,
+    width: "100%",
+    height: "100%",
     backgroundColor: tokens.canvas,
   },
   gutters: (left: number, right: number) => ({ paddingLeft: left, paddingRight: right }),
   empty: { paddingInline: spacing.sm },
-  jumpRow: { display: "flex", alignItems: "center", paddingBottom: spacing.sm },
+  jumpRow: {
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "center",
+    paddingBottom: spacing.sm,
+  },
 });
