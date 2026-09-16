@@ -10,3 +10,9 @@
   A floating surface that can overlap a page must register with
   `renderer/src/components/overlay-occlusion.ts`, or it renders behind the page.
   Register in the shared primitive, not in feature code.
+- Renderer geometry sits on the design scale, and colors come from tokens; the lint
+  reports both with the fix. Do not widen the scale in `lint/design-scale.js` to fit a
+  value: use a step, or name the measurement in `renderer/src/theme/schema.stylex.ts`.
+- A `stylex.defineConsts` value used as a CSS length must be a `"var(--nyte-*)"` string.
+  `defineConsts` emits no declarations and works only by inlining, so a bare number
+  resolves to an undeclared variable wherever a file is transformed alone.

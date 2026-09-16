@@ -9,6 +9,14 @@ import { displayAddress } from "../connection/connection.ts";
 import { Group, GroupRow } from "../ui/group.tsx";
 import { IconTile } from "../ui/icon-tile.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
+import { ChoiceRow, SwitchRow } from "./setting-rows.tsx";
+import {
+  useAppearance,
+  useDateSections,
+  useFilterCards,
+  useTranscriptFont,
+  useTwoLinePreview,
+} from "./preferences.ts";
 import { list, spacing, textStyles, tokens, useTheme } from "../theme.ts";
 
 type HostStatus = "checking" | "connected" | "unreachable";
@@ -22,6 +30,11 @@ export function SettingsScreen() {
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const appearance = useAppearance();
+  const transcriptFont = useTranscriptFont();
+  const [filterCards, setFilterCards] = useFilterCards();
+  const [dateSections, setDateSections] = useDateSections();
+  const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
   const [workspaces, setWorkspaces] = useState<
     { kind: "loading" } | { kind: "failed" } | { kind: "ready"; list: readonly WorkspaceInfo[] }
   >({ kind: "loading" });
@@ -129,6 +142,17 @@ export function SettingsScreen() {
           {error}
         </html.p>
       )}
+      <SectionHeader label="Style" />
+      <Group separator="label">
+        <ChoiceRow label="Appearance" setting={appearance} />
+        <ChoiceRow label="Transcript font" setting={transcriptFont} />
+      </Group>
+      <SectionHeader label="List" />
+      <Group separator="label">
+        <SwitchRow label="Show filters" value={filterCards} onChange={setFilterCards} />
+        <SwitchRow label="Sections by date" value={dateSections} onChange={setDateSections} />
+        <SwitchRow label="Two-line preview" value={twoLinePreview} onChange={setTwoLinePreview} />
+      </Group>
       {workspaceList !== undefined && workspaceList.length > 0 ? (
         <>
           <SectionHeader label="Workspaces" />

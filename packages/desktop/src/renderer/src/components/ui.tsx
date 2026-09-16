@@ -6,7 +6,7 @@ import * as stylex from "@stylexjs/stylex";
 import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
 import { overlayRef } from "./overlay-occlusion.ts";
-import { layer } from "../theme/schema.stylex.ts";
+import { glyph, layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { SessionMark } from "@nyte-ai/core/client";
 import { Icon, type IconName } from "./icons";
@@ -107,13 +107,17 @@ const styles = stylex.create({
     },
     opacity: { ":disabled": 0.5 },
   },
+  /**
+   * One box for every icon button. The glyph follows from it: `Icon`'s own
+   * 16px default centres in 28px, and `glyph.box` cannot serve here because it
+   * is a CSS length and `Icon` sizes itself from a number.
+   */
   iconButton: {
     width: 28,
     paddingInline: 0,
     flexShrink: 0,
     color: t.iconSecondary,
   },
-  compactIconButton: { width: 24, height: 24 },
   statusDot: {
     display: "inline-flex",
     alignItems: "center",
@@ -125,8 +129,8 @@ const styles = stylex.create({
     flexShrink: 0,
     pointerEvents: "none",
   },
-  statusWorking: { width: 15, height: 15, color: t.textAccent },
-  statusRetry: { width: 15, height: 15, color: t.textWarning },
+  statusWorking: { width: glyph.box, height: glyph.box, color: t.textAccent },
+  statusRetry: { width: glyph.box, height: glyph.box, color: t.textWarning },
   statusWaiting: { width: 14, height: 14, backgroundColor: "transparent", color: t.textWarning },
   statusFailed: { width: 14, height: 14, backgroundColor: "transparent", color: t.textDanger },
   statusIdle: { backgroundColor: "transparent" },
@@ -156,7 +160,7 @@ const styles = stylex.create({
   tooltipPopup: {
     maxWidth: 260,
     paddingBlock: 4,
-    paddingInline: 7,
+    paddingInline: 6,
     borderRadius: t.radiusBase,
     backgroundColor: t.bgElevated,
     boxShadow: `${t.shadowPopover}, inset 0 0 0 1px ${t.strokeSecondary}`,
@@ -247,8 +251,6 @@ export function Button({
 interface IconButtonProps extends Omit<JSX.IntrinsicElements["button"], "className" | "style"> {
   icon: IconName | ReactElement;
   label: string;
-  size?: number;
-  compact?: boolean;
 }
 
 interface ToggleIconButtonProps extends Omit<IconButtonProps, "aria-pressed" | "onClick"> {
@@ -259,8 +261,6 @@ interface ToggleIconButtonProps extends Omit<IconButtonProps, "aria-pressed" | "
 export function IconButton({
   icon,
   label,
-  size = 15,
-  compact = false,
   type = "button",
   disabled,
   ...rest
@@ -271,15 +271,9 @@ export function IconButton({
       render={<button type={type} {...rest} />}
       aria-label={label}
       title={label}
-      {...stylex.props(
-        styles.buttonBase,
-        focus.ring,
-        styles.ghost,
-        styles.iconButton,
-        compact && styles.compactIconButton,
-      )}
+      {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
     >
-      {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
+      {isValidElement(icon) ? icon : <Icon name={icon} />}
     </BaseButton>
   );
 }
@@ -287,8 +281,6 @@ export function IconButton({
 export function ToggleIconButton({
   icon,
   label,
-  size = 15,
-  compact = false,
   pressed,
   onPressedChange,
   type = "button",
@@ -303,15 +295,9 @@ export function ToggleIconButton({
       render={<button type={type} {...rest} />}
       aria-label={label}
       title={label}
-      {...stylex.props(
-        styles.buttonBase,
-        focus.ring,
-        styles.ghost,
-        styles.iconButton,
-        compact && styles.compactIconButton,
-      )}
+      {...stylex.props(styles.buttonBase, focus.ring, styles.ghost, styles.iconButton)}
     >
-      {isValidElement(icon) ? icon : <Icon name={icon} size={size} />}
+      {isValidElement(icon) ? icon : <Icon name={icon} />}
     </Toggle>
   );
 }

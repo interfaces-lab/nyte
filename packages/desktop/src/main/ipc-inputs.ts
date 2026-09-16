@@ -72,6 +72,12 @@ const model = strict({ provider: nonEmpty, id: nonEmpty });
 const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
 /** A local calendar day. Anything else would fold history onto the wrong dates. */
 const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
+/** A commit-ish the renderer names. A leading `-` would read as a git option. */
+const revision = Type.String({
+  minLength: 1,
+  maxLength: 200,
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._/^~@{}-]*$",
+});
 
 export const WORKSPACE_EDITOR_INPUT_SCHEMAS = {
   search: compile(
@@ -181,6 +187,61 @@ export const CALL_INPUT_SCHEMAS = {
     ]),
   ),
   "host.vcs.snapshot": compile(noInput),
+  "host.vcs.contents": compile(strict({ path: nonEmpty, base: Type.Enum(["head", "index"]) })),
+  "host.vcs.diff": compile(
+    Type.Union([
+      strict({
+        scope: Type.Enum(["worktree", "staged", "unstaged"]),
+        paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
+        ignoreWhitespace: Type.Optional(Type.Boolean()),
+      }),
+      strict({
+        scope: Type.Literal("commit"),
+        commit: revision,
+        paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
+        ignoreWhitespace: Type.Optional(Type.Boolean()),
+      }),
+    ]),
+  ),
+  "host.vcs.log": compile(
+    strict({
+      limit: Type.Integer({ minimum: 1, maximum: 1000 }),
+      before: Type.Optional(revision),
+    }),
+  ),
+  "host.vcs.refs": compile(noInput),
+  "host.vcs.revert": compile(
+    strict({ paths: Type.Array(nonEmpty, { minItems: 1, maxItems: 1000 }) }),
+  ),
+  "host.vcs.stage": compile(
+    strict({
+      paths: Type.Array(nonEmpty, { minItems: 1, maxItems: 1000 }),
+      staged: Type.Boolean(),
+    }),
+  ),
+  "host.vcs.commit": compile(
+    strict({
+      // A message of only whitespace never reaches git.
+      message: Type.String({ minLength: 1, maxLength: 20_000, pattern: "\\S" }),
+      all: Type.Optional(Type.Boolean()),
+      paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
+    }),
+  ),
+  "host.vcs.createBranch": compile(
+    strict({
+      // `git check-ref-format` is the real check; this only bounds the operand.
+      name: Type.String({ minLength: 1, maxLength: 255 }),
+      checkout: Type.Boolean(),
+    }),
+  ),
+  "host.vcs.push": compile(strict({ setUpstream: Type.Optional(Type.Boolean()) })),
+  "host.vcs.createPullRequest": compile(
+    strict({
+      title: Type.String({ minLength: 1, maxLength: 512, pattern: "\\S" }),
+      body: Type.Optional(Type.String({ maxLength: 65_536 })),
+      draft: Type.Optional(Type.Boolean()),
+    }),
+  ),
   "host.files.list": compile(strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) })),
   "host.files.cancelList": compile(
     strict({ requestId: Type.String({ minLength: 1, maxLength: 128 }) }),

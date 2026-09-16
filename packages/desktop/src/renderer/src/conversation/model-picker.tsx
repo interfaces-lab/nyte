@@ -22,7 +22,7 @@ import {
   MenuSwitchItem,
 } from "../components/menu.tsx";
 import { focus } from "../components/ui.tsx";
-import { control } from "../theme/schema.stylex.ts";
+import { menu } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
 import {
@@ -50,10 +50,10 @@ const styles = stylex.create({
   trigger: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     maxWidth: "100%",
     height: 24,
-    paddingInline: 7,
+    paddingInline: 6,
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: "transparent",
@@ -76,18 +76,18 @@ const styles = stylex.create({
   },
   triggerDetail: { flexShrink: 0, color: t.textTertiary, whiteSpace: "nowrap" },
   palette: {
-    width: `min(${control.modelMenuWidth}, var(--available-width))`,
+    width: `min(${menu.modelWidth}, var(--available-width))`,
     maxWidth: "var(--available-width)",
-    maxHeight: `min(${control.menuMaxHeight}, var(--available-height))`,
+    maxHeight: `min(${menu.maxHeight}, var(--available-height))`,
     borderRadius: t.radius2xl,
   },
   parameterPalette: {
-    width: `min(${control.parameterMenuWidth}, var(--available-width))`,
-    minWidth: `min(${control.parameterMenuWidth}, var(--available-width))`,
-    maxWidth: `min(${control.parameterMenuWidth}, var(--available-width))`,
+    width: `min(${menu.parameterWidth}, var(--available-width))`,
+    minWidth: `min(${menu.parameterWidth}, var(--available-width))`,
+    maxWidth: `min(${menu.parameterWidth}, var(--available-width))`,
   },
   modelPopup: { overflowY: "hidden" },
-  // The same anatomy as the footer item: compact height inside the popup's
+  // The same anatomy as the footer item: one menu row inside the popup's
   // padding, text on the rows' inline edge, the shared separator beneath.
   // flexShrink: 0 because the popup is a capped flex column and the list
   // takes the slack; without it the field is squeezed on long lists.
@@ -95,7 +95,7 @@ const styles = stylex.create({
     display: "flex",
     flexShrink: 0,
     alignItems: "center",
-    height: control.compactHeight,
+    height: menu.itemHeight,
     paddingInline: 8,
   },
   searchInput: {
@@ -123,7 +123,7 @@ const styles = stylex.create({
     alignItems: "baseline",
     gap: 6,
     paddingInline: 8,
-    paddingBlock: "4px 3px",
+    paddingBlock: "4px 2px",
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
@@ -134,7 +134,7 @@ const styles = stylex.create({
     gridTemplateColumns: "minmax(0, 1fr) 14px",
     alignItems: "center",
     columnGap: 8,
-    minHeight: control.compactHeight,
+    minHeight: menu.itemHeight,
     paddingBlock: 4,
     paddingInline: 8,
     borderRadius: t.radiusLg,

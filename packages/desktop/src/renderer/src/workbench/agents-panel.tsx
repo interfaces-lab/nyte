@@ -415,7 +415,6 @@ function VisibleAgentsPanel({
         <span {...stylex.props(styles.spacer)} />
         {selected?.state === "running" && selected.mode === "foreground" && (
           <IconButton
-            compact
             icon="layers"
             label="Run in background"
             disabled={action.isPending}
@@ -424,7 +423,6 @@ function VisibleAgentsPanel({
         )}
         {selected?.state === "running" && (
           <IconButton
-            compact
             icon="square"
             label="Stop agent"
             disabled={action.isPending}

@@ -242,7 +242,7 @@ export const settingsPatterns = stylex.create({
     alignItems: "center",
     columnGap: 6,
     minHeight: 24,
-    paddingBlock: 3,
+    paddingBlock: 2,
     paddingInline: 4,
     borderRadius: t.radiusSm,
     outline: "none",
@@ -280,7 +280,7 @@ export const settingsPatterns = stylex.create({
     flexShrink: 0,
     alignItems: "center",
     height: 36,
-    paddingInline: 14,
+    paddingInline: 12,
     boxShadow: `inset 0 -1px 0 0 ${t.strokeQuaternary}`,
   },
   fontSelectSearchInput: {
@@ -315,7 +315,7 @@ export const settingsPatterns = stylex.create({
   fontSelectGroupLabel: {
     paddingBlockStart: 6,
     paddingBlockEnd: 2,
-    paddingInline: 14,
+    paddingInline: 12,
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
@@ -323,12 +323,12 @@ export const settingsPatterns = stylex.create({
   fontSelectItem: {
     minHeight: 30,
     paddingBlock: 0,
-    paddingInline: 14,
+    paddingInline: 12,
     borderRadius: t.radiusBase,
   },
   fontSelectEmpty: {
     flexShrink: 0,
-    padding: "10px 14px",
+    padding: "10px 12px",
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,

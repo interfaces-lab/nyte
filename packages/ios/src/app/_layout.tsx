@@ -6,11 +6,13 @@ import { Stack } from "expo-router/stack";
 import { css, html } from "react-strict-dom";
 import { ConnectScreen } from "../connection/connect-screen.tsx";
 import { HostProvider, useHostConnection } from "../connection/host-context.tsx";
+import { useAppliedAppearance } from "../settings/preferences.ts";
 import { useTheme, spacing, tokens, typography } from "../theme.ts";
 
 export const unstable_settings = { anchor: "index" };
 
 export default function RootLayout() {
+  useAppliedAppearance();
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
   const { host, connect, edit, cancelEdit, disconnect } = useHostConnection();

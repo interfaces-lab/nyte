@@ -3,10 +3,16 @@ import { useLiveActivity } from "@use-voltra/ios-client";
 import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/protocol";
 
-const FOREGROUND = "#f2f2f7";
-const MUTED = "#8e8e93";
-const ACCENT = "#0a84ff";
-const WARNING = "#ff9f0a";
+// WidgetKit renders this content in its own process, over a background that
+// follows the device appearance, and it keeps rendering while the app is
+// suspended. A fixed palette therefore suits one appearance and washes out in
+// the other, so the activity names SwiftUI's adaptive colors instead of the
+// app's brand hexes: they resolve per appearance at draw time, and the Dynamic
+// Island, which is always dark, resolves them as light-on-black.
+const FOREGROUND = "primary";
+const MUTED = "secondary";
+const ACCENT = "blue";
+const WARNING = "orange";
 
 function titleOf(session: SessionInfo): string {
   return session.name || "Untitled conversation";

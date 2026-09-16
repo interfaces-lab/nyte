@@ -94,7 +94,11 @@ function node(script, ...rest) {
 }
 
 function pnpm(...rest) {
-  return run("pnpm", ["exec", ...rest]);
+  const launcher = process.env.npm_execpath;
+  if (launcher !== undefined && launcher.length > 0) {
+    return run(process.execPath, [launcher, "exec", ...rest]);
+  }
+  return run(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", ...rest]);
 }
 
 function run(command, commandArgs) {

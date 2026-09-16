@@ -77,7 +77,6 @@ export const t = stylex.defineConsts({
 
   // status colors
   accent: "var(--nyte-accent)",
-  success: "var(--nyte-success)",
   added: "var(--nyte-added)",
   removed: "var(--nyte-removed)",
   red: "var(--nyte-red)",
@@ -109,6 +108,7 @@ export const t = stylex.defineConsts({
   composerRingActive: "var(--nyte-composer-ring-active)",
 
   // shadows
+  shadowPrimary: "var(--nyte-shadow-primary)",
   shadowControlColor: "var(--nyte-shadow-control)",
   shadowPopover: "var(--nyte-shadow-popover)",
   shadowModal: "var(--nyte-shadow-modal)",

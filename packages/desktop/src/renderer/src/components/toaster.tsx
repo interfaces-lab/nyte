@@ -2,7 +2,7 @@ import { Toaster as Sonner, useSonner } from "@nyte-ai/ui/sonner";
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useRef } from "react";
 import type { ReactElement } from "react";
-import { layer } from "../theme/schema.stylex.ts";
+import { layer, toast } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon } from "./icons.tsx";
@@ -28,7 +28,7 @@ const styles = stylex.create({
     boxSizing: "border-box",
     width: "var(--width)",
     minHeight: 48,
-    padding: "12px 44px 12px 12px",
+    padding: `12px ${toast.closeGutter} 12px 12px`,
     overflow: "visible",
     borderStyle: "none",
     borderRadius: t.radius2xl,

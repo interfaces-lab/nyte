@@ -21,6 +21,7 @@ import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { FilterGrid } from "./filter-grid.tsx";
+import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
 // The menu order is the source of truth; the type and the labels derive from it.
@@ -53,21 +54,24 @@ function SessionSection({
   sessions,
   now,
   first,
+  twoLines,
 }: {
-  title: string;
+  title?: string;
   sessions: readonly SessionInfo[];
   now: number;
   first: boolean;
+  twoLines: boolean;
 }) {
   return (
     <>
-      <SectionHeader label={title} first={first} />
+      {title === undefined ? null : <SectionHeader label={title} first={first} />}
       {sessions.map((session, index) => (
         <SessionRow
           key={session.sessionId}
           session={session}
           now={now}
           last={index === sessions.length - 1}
+          twoLines={twoLines}
           onPress={() => router.push(`/chat/${session.sessionId}`)}
         />
       ))}
@@ -87,6 +91,9 @@ export function InboxScreen() {
   // alone; returning to the app reloads in place and never sets loading.
   const [pulled, setPulled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [filterCards] = useFilterCards();
+  const [dateSections] = useDateSections();
+  const [twoLinePreview] = useTwoLinePreview();
 
   const sessions = (list.kind === "ready" ? list.sessions : []).filter(
     (session) => !session.archived,
@@ -100,9 +107,18 @@ export function InboxScreen() {
 
   // One table drives the sections, the filter menu, and the empty state, so a
   // row can never sit in a section the filter of the same name hides. Groups
-  // with no filter of their own show only in the unfiltered list.
+  // with no filter of their own show only in the unfiltered list. Settled
+  // agents split by day only while the date sections are on; otherwise they
+  // run together under no heading at all.
+  const settledGroups: readonly { title?: string; sessions: readonly SessionInfo[] }[] =
+    dateSections
+      ? [
+          { title: "Today", sessions: rest.filter((session) => isToday(session, now)) },
+          { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
+        ]
+      : [{ sessions: rest }];
   const groups: readonly {
-    title: string;
+    title?: string;
     filter?: Exclude<Filter, "all">;
     sessions: readonly SessionInfo[];
   }[] = [
@@ -110,11 +126,14 @@ export function InboxScreen() {
     { title: "Failed", filter: "attention", sessions: failed },
     { title: "Working", filter: "working", sessions: working },
     { title: "Pinned", filter: "pinned", sessions: pinned },
-    { title: "Today", sessions: rest.filter((session) => isToday(session, now)) },
-    { title: "Earlier", sessions: rest.filter((session) => !isToday(session, now)) },
+    ...settledGroups,
   ];
+  // Hiding the filter cards also hides the only way back out of a filter, so
+  // the list falls back to showing everything while they are off.
+  const activeFilter = filterCards ? filter : "all";
   const visible = groups.filter(
-    (group) => group.sessions.length > 0 && (filter === "all" || group.filter === filter),
+    (group) =>
+      group.sessions.length > 0 && (activeFilter === "all" || group.filter === activeFilter),
   );
 
   useWorkLiveActivitySync(working, attention);
@@ -181,7 +200,7 @@ export function InboxScreen() {
           />
         }
       >
-        {list.kind === "ready" && search === "" ? (
+        {list.kind === "ready" && search === "" && filterCards ? (
           <FilterGrid
             cards={[
               {
@@ -244,20 +263,20 @@ export function InboxScreen() {
               title={
                 search !== ""
                   ? "No matching agents"
-                  : filter === "all"
+                  : activeFilter === "all"
                     ? "No agents yet"
-                    : `Nothing in ${filterLabels[filter]}`
+                    : `Nothing in ${filterLabels[activeFilter]}`
               }
               description={
                 search !== ""
                   ? "Try another name."
-                  : filter === "all"
+                  : activeFilter === "all"
                     ? "Describe a task below. Your Mac runs it and it shows up here."
                     : "Other agents are hidden by this filter."
               }
               systemImage="square.stack"
             >
-              {search === "" && filter !== "all" ? (
+              {search === "" && activeFilter !== "all" ? (
                 <html.div style={styles.stateActions}>
                   <GlassButton label="Show all agents" onPress={() => setFilter("all")} />
                 </html.div>
@@ -266,11 +285,12 @@ export function InboxScreen() {
           ) : (
             visible.map((group, index) => (
               <SessionSection
-                key={group.title}
+                key={group.title ?? "settled"}
                 title={group.title}
                 sessions={group.sessions}
                 now={now}
                 first={index === 0}
+                twoLines={twoLinePreview}
               />
             ))
           ))}

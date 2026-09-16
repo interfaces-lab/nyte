@@ -29,8 +29,50 @@ const SAMPLE = [
 ].join("\n");
 
 describe("stacked diff geometry", () => {
-  test("measures the hunk header and each displayed line, not git file headers", () => {
-    assert.deepEqual(stackedPatchLines(SAMPLE), ["@@ -1,2 +1,2 @@", "keep", "old", "new"]);
+  test("measures each displayed line, not git file headers", () => {
+    assert.deepEqual(stackedPatchLines(SAMPLE), ["keep", "old", "new"]);
+  });
+
+  test("reserves the collapsed band's rows per gap, not per hunk", () => {
+    // A first hunk at line 1 has no gap above it; Pierre draws no band there.
+    const twoHunks = [
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,2 +1,2 @@",
+      " keep",
+      "-old",
+      "+new",
+      "@@ -40,1 +40,1 @@",
+      "-far",
+      "+near",
+      "",
+    ].join("\n");
+    assert.deepEqual(stackedPatchLines(twoHunks), ["keep", "old", "new", "", "", "far", "near"]);
+
+    const midFile = [
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -40,1 +40,1 @@",
+      "-far",
+      "+near",
+      "",
+    ].join("\n");
+    assert.deepEqual(stackedPatchLines(midFile), ["", "", "far", "near"]);
+
+    // Hunks that touch leave no gap between them.
+    const adjacent = [
+      "--- a/src/a.ts",
+      "+++ b/src/a.ts",
+      "@@ -1,2 +1,2 @@",
+      " keep",
+      "-old",
+      "+new",
+      "@@ -3,1 +3,1 @@",
+      "-near",
+      "+next",
+      "",
+    ].join("\n");
+    assert.deepEqual(stackedPatchLines(adjacent), ["keep", "old", "new", "near", "next"]);
   });
 
   test("builds offsets from pretext heights so spy and jump share one table", () => {
@@ -39,8 +81,8 @@ describe("stacked diff geometry", () => {
       { path: "b.ts", height: 200 },
     ]);
     assert.deepEqual(offsets, [
-      { path: "a.ts", top: 0, height: 100 },
-      { path: "b.ts", top: 100, height: 200 },
+      { path: "a.ts", top: 0, height: 100, estimate: 100 },
+      { path: "b.ts", top: 100, height: 200, estimate: 200 },
     ]);
     assert.equal(stackedScrollHeight(offsets), 300 + STACKED_LIST_PADDING_END);
     assert.equal(
@@ -77,7 +119,7 @@ describe("stacked diff geometry", () => {
       contentWidth: 40,
       measureHeight: (text) => (text.length > 6 ? 40 : 20),
     });
-    assert.equal(height, STACKED_HEADER_HEIGHT + 40 + 20 + 20 + 20);
+    assert.equal(height, STACKED_HEADER_HEIGHT + 20 + 20 + 20);
   });
 
   test("pending files are header-only until the patch arrives", () => {
@@ -141,8 +183,16 @@ describe("stacked diff geometry", () => {
     );
   });
 
+  test("reserves the gutter and line padding Pierre puts around the text", () => {
+    // Ten characters of chrome plus the number column's 8px, while line
+    // numbers fit its four-digit minimum.
+    assert.equal(stackedGutterWidth(10), 108);
+    // A fifth and sixth digit widen the number column by one character each.
+    assert.equal(stackedGutterWidth(10, 6), 128);
+    assert.equal(stackedGutterWidth(10, 3), 108);
+  });
+
   test("sizes the rail label slot from the same chrome the row paints", () => {
-    assert.equal(stackedGutterWidth(24), 44);
     assert.equal(
       railLabelMaxWidth({ rowWidth: 174, depth: 1, statsWidth: 28, hasPip: true }),
       174 - 12 - 10 - 16 - 5 - 33 - 11,

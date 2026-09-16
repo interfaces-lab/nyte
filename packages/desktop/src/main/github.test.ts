@@ -378,3 +378,154 @@ it("serves GitHub from Home and never sends command output or exceptions to tele
     await host.close();
   }
 });
+
+interface PullRequestScenario {
+  /** What `gh pr view` answers for the current branch. */
+  readonly existing?: boolean;
+  /** What `gh pr create` answers, when it is allowed to run at all. */
+  readonly create?: CommandResult;
+  readonly auth?: CommandResult;
+  readonly remote?: boolean;
+  readonly branch?: string;
+}
+
+const noPullRequest = completed("", 1, "no pull requests found for branch feature");
+
+function pullRequestRunner(scenario: PullRequestScenario, calls: CommandRequest[]): CommandRunner {
+  return async (request) => {
+    calls.push(request);
+    if (request.command === "git") {
+      if (scenario.remote === false) return completed("", 128);
+      if (request.args[0] === "symbolic-ref") {
+        const branch = scenario.branch ?? "feature";
+        return completed(branch, branch === "" ? 1 : 0);
+      }
+      return completed(request.args.length === 1 ? "origin\n" : "git@github.com:owner/repo.git\n");
+    }
+    if (request.args[0] === "api") return completed(JSON.stringify(account));
+    if (request.args[1] === "view")
+      return scenario.existing === true ? completed(JSON.stringify(pull)) : noPullRequest;
+    if (request.args[1] === "create")
+      return scenario.create ?? completed("https://github.com/owner/repo/pull/13\n");
+    return scenario.auth ?? completed(authenticated);
+  };
+}
+
+describe("GitHub pull request creation", () => {
+  it("creates a pull request for the checked-out branch and answers with its URL", async () => {
+    const calls: CommandRequest[] = [];
+    const result = await createGitHubProvider(
+      "/workspace",
+      pullRequestRunner({}, calls),
+    ).createPullRequest({ title: "feat: ship it", body: "why", draft: true });
+
+    expect(result).toEqual({ kind: "created", url: "https://github.com/owner/repo/pull/13" });
+    const create = calls.find((call) => call.args[1] === "create");
+    expect(create).toMatchObject({ command: "gh", cwd: "/workspace" });
+    expect(create?.args).toEqual([
+      "pr",
+      "create",
+      "--repo",
+      "owner/repo",
+      "--title",
+      "feat: ship it",
+      "--body",
+      "why",
+      "--draft",
+    ]);
+  });
+
+  it("omits --draft and sends an empty body when neither is asked for", async () => {
+    const calls: CommandRequest[] = [];
+    await createGitHubProvider("/workspace", pullRequestRunner({}, calls)).createPullRequest({
+      title: "feat: ship it",
+    });
+
+    const create = calls.find((call) => call.args[1] === "create");
+    expect(create?.args).not.toContain("--draft");
+    expect(create?.args.slice(-2)).toEqual(["--body", ""]);
+  });
+
+  it("answers exists without creating anything when the branch already has one", async () => {
+    const calls: CommandRequest[] = [];
+    const result = await createGitHubProvider(
+      "/workspace",
+      pullRequestRunner({ existing: true }, calls),
+    ).createPullRequest({ title: "feat: ship it" });
+
+    expect(result).toEqual({
+      kind: "exists",
+      pullRequest: expect.objectContaining({ number: 12 }),
+    });
+    expect(calls.some((call) => call.args[1] === "create")).toBe(false);
+  });
+
+  it("answers exists when another client opened one between the read and the create", async () => {
+    const calls: CommandRequest[] = [];
+    let opened = false;
+    const run: CommandRunner = async (request) => {
+      const inner = pullRequestRunner({ existing: opened }, calls);
+      if (request.command === "gh" && request.args[1] === "create") {
+        calls.push(request);
+        opened = true;
+        return completed("", 1, "a pull request for branch feature already exists: #12");
+      }
+      return inner(request);
+    };
+    const result = await createGitHubProvider("/workspace", run).createPullRequest({
+      title: "feat: ship it",
+    });
+
+    expect(result).toEqual({
+      kind: "exists",
+      pullRequest: expect.objectContaining({ number: 12 }),
+    });
+  });
+
+  it.each([
+    ["missing CLI", { auth: { kind: "missing" } }, { kind: "cli_missing" }],
+    ["signed out", { auth: completed("", 1) }, { kind: "signed_out" }],
+    ["no GitHub remote", { remote: false }, { kind: "no_remote" }],
+  ] satisfies readonly (readonly [string, PullRequestScenario, unknown])[])(
+    "refuses before creating anything: %s",
+    async (_label, scenario, expected) => {
+      const calls: CommandRequest[] = [];
+      const result = await createGitHubProvider(
+        "/workspace",
+        pullRequestRunner(scenario, calls),
+      ).createPullRequest({ title: "feat: ship it" });
+
+      expect(result).toEqual(expected);
+      expect(calls.some((call) => call.args[1] === "create")).toBe(false);
+    },
+  );
+
+  it("answers no_remote at Home, where there is no repository to open one for", async () => {
+    const calls: CommandRequest[] = [];
+    const result = await createGitHubProvider(
+      undefined,
+      pullRequestRunner({}, calls),
+    ).createPullRequest({ title: "feat: ship it" });
+
+    expect(result).toEqual({ kind: "no_remote" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    ["a failing create", completed("SECRET stdout", 1, "SECRET stderr")],
+    ["a timeout", { kind: "timeout" }],
+    ["output that is not a GitHub URL", completed("https://evil.test/owner/repo/pull/13\n")],
+  ] satisfies readonly (readonly [string, CommandResult])[])(
+    "reports %s as failed without leaking command output",
+    async (_label, create) => {
+      const result = await createGitHubProvider(
+        "/workspace",
+        pullRequestRunner({ create }, []),
+      ).createPullRequest({ title: "feat: ship it" });
+
+      expect(result).toMatchObject({ kind: "failed", message: expect.any(String) });
+      expect(JSON.stringify(result)).not.toContain("SECRET");
+      expect(JSON.stringify(result)).not.toContain("evil.test");
+    },
+  );
+});

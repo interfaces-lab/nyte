@@ -11,7 +11,15 @@ import { elapsed, formatActivity, latestRun, rowStatus } from "./sessions.ts";
  * no run yet shows its preview instead, because "New" says less than the text
  * the user typed.
  */
-function Meta({ session, now }: { session: SessionInfo; now: number }) {
+function Meta({
+  session,
+  now,
+  twoLines,
+}: {
+  session: SessionInfo;
+  now: number;
+  twoLines: boolean;
+}) {
   const mark = sessionMark(session);
   const run = latestRun(session);
   const clock =
@@ -28,7 +36,7 @@ function Meta({ session, now }: { session: SessionInfo; now: number }) {
     <html.span
       style={[
         textStyles.secondary,
-        styles.meta,
+        twoLines ? styles.metaTwoLines : styles.meta,
         mark === "waiting" && styles.needsInput,
         mark === "failed" && styles.failed,
       ]}
@@ -71,11 +79,14 @@ export function SessionRow({
   session,
   now,
   last = false,
+  twoLines = false,
   onPress,
 }: {
   session: SessionInfo;
   now: number;
   last?: boolean;
+  /** Lets the status-and-preview line wrap onto a second line. */
+  twoLines?: boolean;
   onPress: () => void;
 }) {
   return (
@@ -91,7 +102,7 @@ export function SessionRow({
         <html.span style={[textStyles.body, styles.title]}>
           {session.name || "Untitled conversation"}
         </html.span>
-        <Meta session={session} now={now} />
+        <Meta session={session} now={now} twoLines={twoLines} />
       </html.div>
     </html.button>
   );
@@ -142,6 +153,7 @@ const styles = css.create({
   },
   title: { textAlign: "start", lineClamp: 1 },
   meta: { textAlign: "start", lineClamp: 1, fontVariant: "tabular-nums" },
+  metaTwoLines: { textAlign: "start", lineClamp: 2, fontVariant: "tabular-nums" },
   needsInput: { color: tokens.foreground },
   failed: { color: tokens.danger },
 });

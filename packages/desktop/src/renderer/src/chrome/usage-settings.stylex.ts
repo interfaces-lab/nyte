@@ -5,7 +5,7 @@
  * change repaints without measuring anything.
  */
 import * as stylex from "@stylexjs/stylex";
-import { control, settings } from "../theme/schema.stylex.ts";
+import { settings } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
 /** Tall enough to read a shape, short enough to stay under the numbers it serves. */
@@ -23,7 +23,7 @@ export const usageStyles = stylex.create({
     justifyContent: "space-between",
     flexWrap: "wrap",
     gap: 8,
-    minHeight: control.regularHeight,
+    minHeight: settings.headingHeight,
     paddingInline: 8,
   },
   headingCopy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
@@ -61,7 +61,7 @@ export const usageStyles = stylex.create({
     alignItems: "center",
     // 2px group padding + 24px chip = 28px, the same height as Refresh.
     height: settings.controlHeight,
-    paddingInline: 9,
+    paddingInline: 8,
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: {
@@ -85,7 +85,7 @@ export const usageStyles = stylex.create({
   },
 
   /** The one number the page is about, and the sentence that qualifies it. */
-  headline: { display: "flex", flexDirection: "column", gap: 3, paddingInline: 8 },
+  headline: { display: "flex", flexDirection: "column", gap: 2, paddingInline: 8 },
   amount: {
     color: t.textPrimary,
     fontSize: t.font2xl,
@@ -204,7 +204,7 @@ export const usageStyles = stylex.create({
     alignItems: "baseline",
     gap: 12,
     minHeight: 38,
-    paddingBlock: 9,
+    paddingBlock: 8,
     paddingInline: RAIL,
     "::before": {
       position: "absolute",
@@ -221,14 +221,14 @@ export const usageStyles = stylex.create({
   rowName: {
     display: "flex",
     alignItems: "center",
-    gap: 7,
+    gap: 8,
     minWidth: 0,
     color: t.textPrimary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
     overflowWrap: "anywhere",
   },
-  dot: { width: 7, height: 7, borderRadius: t.radiusFull, flexShrink: 0 },
+  dot: { width: 8, height: 8, borderRadius: t.radiusFull, flexShrink: 0 },
   rowMeta: {
     color: t.textTertiary,
     fontSize: t.fontXs,
@@ -237,7 +237,7 @@ export const usageStyles = stylex.create({
     overflowWrap: "anywhere",
   },
   /** The dot's width and gap, so a second line starts under the name, not the swatch. */
-  rowMetaInset: { paddingInlineStart: 14 },
+  rowMetaInset: { paddingInlineStart: 16 },
   rowValue: {
     flexShrink: 0,
     minWidth: 72,
@@ -286,7 +286,7 @@ export const usageStyles = stylex.create({
   series5: { backgroundColor: t.magenta },
 
   /** A subscription window: how much is gone, and when it comes back. */
-  meter: { display: "flex", flexDirection: "column", gap: 5 },
+  meter: { display: "flex", flexDirection: "column", gap: 4 },
   meterHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
   meterHigh: { color: t.textWarning },
   meterTrack: {
@@ -342,7 +342,7 @@ export const usageStyles = stylex.create({
     gap: 8,
     margin: 0,
     minHeight: 30,
-    paddingBlock: 7,
+    paddingBlock: 6,
     paddingInline: 10,
     borderRadius: t.radiusLg,
     backgroundColor: t.fillSecondary,
@@ -396,5 +396,5 @@ export const skeletonStyles = stylex.create({
     animationTimingFunction: "ease-in-out",
     animationIterationCount: "infinite",
   },
-  row: { display: "flex", flexDirection: "column", gap: 7, minHeight: 38, paddingBlock: 9 },
+  row: { display: "flex", flexDirection: "column", gap: 6, minHeight: 38, paddingBlock: 8 },
 });
