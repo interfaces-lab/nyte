@@ -546,6 +546,14 @@ export const composerStyles = stylex.create({
     textDecorationLine: { default: "none", ":hover": "underline" },
     cursor: "pointer",
   },
+  composerUrlPill: {
+    color: t.textCyan,
+    backgroundColor: t.bgSubtle,
+    borderRadius: t.radiusLg,
+    paddingInline: 4,
+    paddingBlock: 0,
+    textDecorationLine: "none",
+  },
   readOnly: {
     outlineStyle: "none",
     minWidth: 0,
