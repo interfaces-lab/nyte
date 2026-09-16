@@ -56,6 +56,7 @@ import type {
   ComposerSubmission,
 } from "./composer-document.ts";
 import { ComposerDecorators, useComposerSurface } from "./composer-surface.tsx";
+import { clipboardReferenceFromPaste } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
@@ -308,11 +309,23 @@ export function ComposerEditor({
       editor.registerCommand(
         PASTE_COMMAND,
         (event) => {
-          if (onFilesSelected === undefined || !(event instanceof ClipboardEvent)) return false;
-          const attachments = Array.from(event.clipboardData?.files ?? []);
-          if (attachments.length === 0) return false;
+          if (!(event instanceof ClipboardEvent)) return false;
+          const files = Array.from(event.clipboardData?.files ?? []);
+          if (files.length > 0) {
+            if (onFilesSelected === undefined) return false;
+            event.preventDefault();
+            onFilesSelected(files);
+            return true;
+          }
+          const clipboard = clipboardReferenceFromPaste(
+            event.clipboardData?.getData("text/plain") ?? "",
+          );
+          if (clipboard === undefined) return false;
           event.preventDefault();
-          onFilesSelected(attachments);
+          editor.update(() => $insertComposerReference(clipboard), {
+            discrete: true,
+            tag: HISTORY_PUSH_TAG,
+          });
           return true;
         },
         COMMAND_PRIORITY_HIGH,
