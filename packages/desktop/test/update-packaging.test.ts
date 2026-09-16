@@ -59,7 +59,7 @@ describe("Sparkle packaging boundary", () => {
     expect(config).toMatchObject({
       executableName: "Nyte",
       extraMetadata: { name: "Nyte" },
-      linux: { desktopName: "Nyte", executableName: "Nyte" },
+      linux: { executableName: "Nyte" },
       win: { executableName: "Nyte" },
     });
   });
@@ -73,7 +73,7 @@ describe("Sparkle packaging boundary", () => {
       productName: "Nyte",
       executableName: "Nyte",
       extraMetadata: { name: "Nyte", productName: "Nyte" },
-      linux: { desktopName: "Nyte", executableName: "Nyte" },
+      linux: { executableName: "Nyte" },
       win: { executableName: "Nyte" },
       mac: {
         hardenedRuntime: true,

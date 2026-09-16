@@ -64,11 +64,6 @@ export default {
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
   },
-  linux: {
-    target: ["AppImage"],
-    category: "Development",
-    desktopName: productName,
-    executableName: productName,
-  },
+  linux: { target: ["AppImage"], category: "Development", executableName: productName },
   win: { target: ["nsis"], executableName: productName },
 } satisfies Configuration;
