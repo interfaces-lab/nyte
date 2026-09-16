@@ -220,9 +220,8 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          shopt -s nullglob
-          archive=(packages/desktop/dist/Nyte-"${GITHUB_REF_NAME#v}"-mac-arm64.zip)
-          if (( ${#archive[@]} == 0 )); then
+          zip="packages/desktop/dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip"
+          if [[ ! -f "$zip" ]]; then
             echo "No macOS desktop archive; skipping appcast."
             exit 0
           fi
@@ -233,7 +232,7 @@ jobs:
           key="$RUNNER_TEMP/sparkle-private-key"
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
           chmod 600 "$key"
-          pnpm --dir packages/desktop update:appcast "${archive[0]#packages/desktop/}" --key-file "$key"
+          pnpm --dir packages/desktop update:appcast "dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip" --key-file "$key"
       - name: Publish desktop update feed
         shell: bash
         env:

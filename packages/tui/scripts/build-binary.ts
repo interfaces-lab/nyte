@@ -31,7 +31,9 @@ try {
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
   });
   if (!result.success) {
-    throw new Error(result.logs.map((log) => log.message).join("\n"));
+    throw new Error(
+      result.logs.map((log) => String(log)).join("\n") || "Bundle failed with empty logs",
+    );
   }
   if (process.platform === "darwin") {
     const signed = spawnSync("codesign", ["--force", "--sign", "-", executable], {
