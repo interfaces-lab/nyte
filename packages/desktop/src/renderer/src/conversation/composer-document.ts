@@ -141,7 +141,7 @@ export function $composerReferences(): readonly MessageReference[] {
   );
 }
 
-/** Instructions come from their nodes; a typed lookalike is text and stays text. */
+/** A typed lookalike is text and stays text. */
 export function $composerSubmission(): ComposerSubmission {
   const text = $getRoot()
     .getChildren()
