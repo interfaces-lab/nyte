@@ -94,10 +94,7 @@ function node(script, ...rest) {
 }
 
 function pnpm(...rest) {
-  const launcher = process.env.npm_execpath;
-  if (launcher !== undefined && launcher.length > 0) {
-    return run(process.execPath, [launcher, "exec", ...rest]);
-  }
+  // spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
   return run(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", ...rest]);
 }
 
