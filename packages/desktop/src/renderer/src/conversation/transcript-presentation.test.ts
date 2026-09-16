@@ -17,7 +17,7 @@ const assistant = (commit: string, contentIndex: number, text: string): TurnPart
 });
 
 describe("transcript presentation", () => {
-  test("compact mode folds intermediate narration, reasoning, and tools into one work episode", () => {
+  test("an episode holds reasoning and tools; narration stands on its own", () => {
     const user: TurnPart = { kind: "user", commit: "u", parent: null, content: "Please fix it" };
     const thought: TurnPart = { kind: "thinking", commit: "a", contentIndex: 0, text: "Looking" };
     const commentary = assistant("a", 1, "I am checking the files.");
@@ -26,16 +26,43 @@ describe("transcript presentation", () => {
 
     assert.deepEqual(displayTranscriptParts([user, thought, commentary, tool, response]), [
       { kind: "part", part: user },
-      { kind: "work", parts: [thought, commentary, tool] },
+      { kind: "work", parts: [thought] },
+      { kind: "response", parts: [commentary] },
+      { kind: "work", parts: [tool] },
       { kind: "response", parts: [response] },
     ]);
   });
 
-  test("a tool-ending failed turn does not promote commentary to a final response", () => {
+  /**
+   * The reader must never watch text move. Text arrives before the parts that
+   * follow it, so its row has to be decided without them.
+   */
+  test("a part's placement never changes as the turn grows", () => {
+    const narration = assistant("a", 0, "Let me check the config.");
+    const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
+    const note: TurnPart = { kind: "note", commit: "n", text: "Request failed." };
+    const answer = assistant("b", 0, "Found it.");
+    const growing = [narration, tool, answer, note];
+
+    const placement = (parts: readonly TurnPart[], part: TurnPart): string | undefined =>
+      displayTranscriptParts(parts).find((row) =>
+        row.kind === "part" ? row.part === part : row.parts.some((each) => each === part),
+      )?.kind;
+
+    for (const [index, part] of growing.entries()) {
+      const first = placement(growing.slice(0, index + 1), part);
+      for (let length = index + 2; length <= growing.length; length += 1) {
+        assert.equal(placement(growing.slice(0, length), part), first, `part ${index} moved`);
+      }
+    }
+  });
+
+  test("a tool-ending failed turn keeps its narration in the transcript", () => {
     const commentary = assistant("a", 0, "Checking one more thing.");
     const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
     assert.deepEqual(displayTranscriptParts([commentary, tool]), [
-      { kind: "work", parts: [commentary, tool] },
+      { kind: "response", parts: [commentary] },
+      { kind: "work", parts: [tool] },
     ]);
   });
 
@@ -50,17 +77,6 @@ describe("transcript presentation", () => {
     assert.deepEqual(displayTranscriptParts([answer, tool]), [
       { kind: "response", parts: [answer] },
       { kind: "work", parts: [tool] },
-    ]);
-  });
-
-  test("a status line waits for the episode its activity opens", () => {
-    const narration = assistant("a", 0, "Let me check the config.");
-    const tool: TurnPart = { kind: "tool", callId: "read", toolName: "read" };
-    const answer = assistant("b", 0, "Fixed it.");
-
-    assert.deepEqual(displayTranscriptParts([narration, tool, answer]), [
-      { kind: "work", parts: [narration, tool] },
-      { kind: "response", parts: [answer] },
     ]);
   });
 

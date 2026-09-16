@@ -73,6 +73,10 @@ const colorDefaults = {
     "color-mix(in srgb, var(--nyte-color-editor) 16%, var(--nyte-color-fill))",
   "--nyte-color-primary-foreground": "var(--nyte-color-fill-label)",
   "--nyte-color-bubble-user-foreground": "var(--nyte-color-action-label)",
+  // A filled control that is not the primary action: it reads as a surface at
+  // rest, half the muted wash, and lifts to the muted step on hover.
+  "--nyte-color-secondary":
+    "light-dark(color-mix(in srgb, var(--nyte-color-hue-neutral) 4%, transparent), color-mix(in srgb, var(--nyte-color-hue-neutral) 8%, transparent))",
   "--nyte-color-muted":
     "light-dark(color-mix(in srgb, var(--nyte-color-hue-neutral) 9%, transparent), color-mix(in srgb, var(--nyte-color-hue-neutral) 17%, transparent))",
   "--nyte-color-muted-hover":

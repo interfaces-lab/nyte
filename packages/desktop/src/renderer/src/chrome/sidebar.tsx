@@ -19,8 +19,8 @@ import { sessionMark } from "@nyte-ai/core/client";
 import { draftPreviewText } from "../conversation/message-references.ts";
 import { userDisplayText } from "../conversation/transcript-presentation.ts";
 import * as stylex from "@stylexjs/stylex";
-import { Button as BaseButton } from "@nyte-ai/ui/button";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { Row } from "@nyte-ai/ui/row";
 import { Toggle } from "@nyte-ai/ui/toggle";
 import { toast } from "@nyte-ai/ui/sonner";
 import { useMatch, useRouter } from "@tanstack/react-router";
@@ -989,55 +989,35 @@ function WorkspaceRow({
   readonly onRemove: () => void;
   readonly children: ReactNode;
 }): ReactElement {
-  const trigger = (
-    <Collapsible.Trigger
-      title={available ? path : `${path} (${unavailableDetail})`}
-      aria-current={active ? "location" : undefined}
-      {...stylex.props(styles.row, styles.workspaceRowTrigger, focus.ringInset)}
+  const row = (
+    <Row
+      revealActions
+      xstyle={[styles.rowSurface, styles.workspaceRow, !available && styles.workspaceUnavailable]}
     >
-      <span {...stylex.props(styles.rowIcon)}>
-        <span {...stylex.props(styles.workspaceGlyph)}>
-          <span {...stylex.props(styles.workspaceFolder)}>
-            <Icon name={expanded ? "folder-open" : "folder"} size={14} />
+      <Row.Primary
+        xstyle={styles.workspacePrimary}
+        render={
+          <Collapsible.Trigger
+            title={available ? path : `${path} (${unavailableDetail})`}
+            aria-current={active ? "location" : undefined}
+          />
+        }
+      >
+        <Row.Leading xstyle={styles.rowIcon}>
+          <span {...stylex.props(styles.workspaceGlyph)}>
+            <span {...stylex.props(styles.workspaceFolder)}>
+              <Icon name={expanded ? "folder-open" : "folder"} size={14} />
+            </span>
+            <span
+              {...stylex.props(styles.workspaceChevron, expanded && styles.workspaceChevronOpen)}
+            >
+              <Icon name="chevron-down" size={13} />
+            </span>
           </span>
-          <span {...stylex.props(styles.workspaceChevron, expanded && styles.workspaceChevronOpen)}>
-            <Icon name="chevron-down" size={13} />
-          </span>
-        </span>
-      </span>
-      <span {...stylex.props(styles.rowTitle, !available && styles.workspaceUnavailable)}>
-        {name}
-      </span>
-    </Collapsible.Trigger>
-  );
-  return (
-    <Collapsible.Root
-      open={expanded}
-      onOpenChange={onExpandedChange}
-      {...stylex.props(styles.section)}
-    >
-      <div {...stylex.props(styles.workspaceRowShell)}>
-        <ContextMenu label={`Actions for ${name}`} trigger={trigger}>
-          <ContextMenuItem
-            icon="new-chat-folder"
-            disabled={onNewChat === undefined}
-            onSelect={() => onNewChat?.()}
-          >
-            New chat
-          </ContextMenuItem>
-          {onArchiveAll !== undefined && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuItem icon="archive" onSelect={onArchiveAll}>
-                Archive all chats
-              </ContextMenuItem>
-            </>
-          )}
-          <ContextMenuSeparator />
-          <ContextMenuItem icon="trash" danger onSelect={onRemove}>
-            Remove from sidebar
-          </ContextMenuItem>
-        </ContextMenu>
+        </Row.Leading>
+        <Row.Label>{name}</Row.Label>
+      </Row.Primary>
+      <Row.Actions placement="overlay" xstyle={styles.workspaceActions}>
         <button
           type="button"
           aria-label={`New chat in ${name}`}
@@ -1048,7 +1028,36 @@ function WorkspaceRow({
         >
           <Icon name="new-chat-folder" size={13} />
         </button>
-      </div>
+      </Row.Actions>
+    </Row>
+  );
+  return (
+    <Collapsible.Root
+      open={expanded}
+      onOpenChange={onExpandedChange}
+      {...stylex.props(styles.section)}
+    >
+      <ContextMenu label={`Actions for ${name}`} trigger={row}>
+        <ContextMenuItem
+          icon="new-chat-folder"
+          disabled={onNewChat === undefined}
+          onSelect={() => onNewChat?.()}
+        >
+          New chat
+        </ContextMenuItem>
+        {onArchiveAll !== undefined && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem icon="archive" onSelect={onArchiveAll}>
+              Archive all chats
+            </ContextMenuItem>
+          </>
+        )}
+        <ContextMenuSeparator />
+        <ContextMenuItem icon="trash" danger onSelect={onRemove}>
+          Remove from sidebar
+        </ContextMenuItem>
+      </ContextMenu>
       <Collapsible.Panel {...stylex.props(styles.sessionList)}>{children}</Collapsible.Panel>
     </Collapsible.Root>
   );
@@ -1073,27 +1082,32 @@ function DraftRow({
     return () => clearTimeout(timeout);
   }, [draft.composer.draft]);
   const row = (
-    <motion.div
-      layout={layoutEnabled ? "position" : false}
-      initial={false}
-      {...stylex.props(
-        styles.sessionRowShell,
-        styles.sessionRowShellTimed,
+    <Row
+      render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
+      selected={selected}
+      revealActions
+      xstyle={[
+        styles.rowSurface,
+        styles.sessionRow,
+        styles.draftRow,
         selected && styles.rowSelected,
-      )}
+      ]}
     >
       {selected && (
-        <motion.div
-          key={layoutEnabled ? "moving" : "static"}
-          aria-hidden="true"
-          initial={false}
-          layout={layoutEnabled ? "position" : false}
-          layoutId={layoutEnabled ? "selected-session" : undefined}
-          layoutCrossfade={false}
-          {...stylex.props(styles.sessionSelection)}
+        <Row.Backdrop
+          xstyle={styles.sessionSelection}
+          render={
+            <motion.div
+              key={layoutEnabled ? "moving" : "static"}
+              initial={false}
+              layout={layoutEnabled ? "position" : false}
+              layoutId={layoutEnabled ? "selected-session" : undefined}
+              layoutCrossfade={false}
+            />
+          }
         />
       )}
-      <BaseButton
+      <Row.Primary
         render={
           <button
             type="button"
@@ -1102,37 +1116,32 @@ function DraftRow({
             onClick={onOpen}
           />
         }
-        {...stylex.props(
-          styles.row,
-          styles.sessionRow,
-          styles.draftRow,
-          focus.ringInset,
-          selected && styles.rowSelected,
-        )}
       >
-        <span {...stylex.props(styles.rowIcon)}>
+        <Row.Leading xstyle={styles.rowIcon}>
           <span role="img" aria-label="Draft" {...stylex.props(styles.draftDot)} />
-        </span>
-        <span {...stylex.props(styles.rowTitle, styles.sessionTitle)}>{title}</span>
-      </BaseButton>
-      <span data-nyte-session-row-actions="" {...stylex.props(styles.sessionTrailing)}>
-        <span {...stylex.props(styles.rowActions)}>
-          <button
-            type="button"
-            aria-label={`Delete draft: ${title}`}
-            title="Delete draft"
-            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Icon name="trash" size={12} />
-          </button>
-        </span>
-        <span {...stylex.props(styles.rowMeta)}>{formatTimeAgo(draft.updatedAt)}</span>
-      </span>
-    </motion.div>
+        </Row.Leading>
+        <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+        <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(draft.updatedAt)}</Row.Meta>
+      </Row.Primary>
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={[styles.rowActions, styles.rowActionsBesideMeta]}
+      >
+        <button
+          type="button"
+          aria-label={`Delete draft: ${title}`}
+          title="Delete draft"
+          {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete();
+          }}
+        >
+          <Icon name="trash" size={12} />
+        </button>
+      </Row.Actions>
+    </Row>
   );
 
   return (
@@ -1222,42 +1231,45 @@ function SessionRow({
 
   if (draftName !== undefined) {
     return (
-      <motion.div
-        layout={layoutEnabled ? "position" : false}
-        initial={false}
-        {...stylex.props(styles.sessionRenameRow)}
+      <Row
+        render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
+        xstyle={[styles.rowSurface, styles.sessionRenameRow]}
       >
-        <span {...stylex.props(styles.rowIcon)}>
+        <Row.Leading xstyle={styles.rowIcon}>
           <StatusDot mark={mark} unread={unread} />
-        </span>
-        <input
-          aria-label={`Rename ${title}`}
-          autoFocus
-          {...stylex.props(styles.sessionRenameInput)}
-          value={draftName}
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => setDraftName(event.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") commitRename();
-            if (event.key === "Escape") setDraftName(undefined);
-          }}
-        />
-      </motion.div>
+        </Row.Leading>
+        <Row.Label>
+          <input
+            aria-label={`Rename ${title}`}
+            autoFocus
+            {...stylex.props(styles.sessionRenameInput)}
+            value={draftName}
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => setDraftName(event.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitRename();
+              if (event.key === "Escape") setDraftName(undefined);
+            }}
+          />
+        </Row.Label>
+      </Row>
     );
   }
 
   const row = (
-    <motion.div
-      ref={setNodeRef}
-      layout={layoutEnabled ? "position" : false}
-      initial={false}
-      {...stylex.props(
-        styles.sessionRowShell,
-        showUpdated && styles.sessionRowShellTimed,
+    <Row
+      render={
+        <motion.div ref={setNodeRef} layout={layoutEnabled ? "position" : false} initial={false} />
+      }
+      selected={selected}
+      revealActions
+      xstyle={[
+        styles.rowSurface,
+        styles.sessionRow,
         selected && styles.rowSelected,
         isDragging && styles.rowDragging,
-      )}
+      ]}
       onPointerEnter={() => {
         warmSoon();
       }}
@@ -1268,62 +1280,65 @@ function SessionRow({
       onFocusCapture={warmNow}
     >
       {selected && (
-        <motion.div
-          key={layoutEnabled ? "moving" : "static"}
-          aria-hidden="true"
-          initial={false}
-          layout={layoutEnabled ? "position" : false}
-          // Hidden panels must never become shared-layout destinations.
-          layoutId={layoutEnabled ? "selected-session" : undefined}
-          layoutCrossfade={false}
-          {...stylex.props(styles.sessionSelection)}
+        <Row.Backdrop
+          xstyle={styles.sessionSelection}
+          render={
+            <motion.div
+              key={layoutEnabled ? "moving" : "static"}
+              initial={false}
+              layout={layoutEnabled ? "position" : false}
+              // Hidden panels must never become shared-layout destinations.
+              layoutId={layoutEnabled ? "selected-session" : undefined}
+              layoutCrossfade={false}
+            />
+          }
         />
       )}
-      <BaseButton
+      <Row.Primary
         render={
-          <button type="button" aria-current={selected ? "page" : undefined} onClick={onOpen} />
+          <button
+            type="button"
+            aria-current={selected ? "page" : undefined}
+            onClick={onOpen}
+            {...listeners}
+          />
         }
-        {...listeners}
-        {...stylex.props(
-          styles.row,
-          styles.sessionRow,
-          focus.ringInset,
-          selected && styles.rowSelected,
-        )}
       >
-        <span {...stylex.props(styles.rowIcon)}>
+        <Row.Leading xstyle={styles.rowIcon}>
           <StatusDot mark={mark} unread={unread} />
-        </span>
-        <span {...stylex.props(styles.rowTitle, styles.sessionTitle)}>{title}</span>
-      </BaseButton>
-      <span data-nyte-session-row-actions="" {...stylex.props(styles.sessionTrailing)}>
-        <span {...stylex.props(styles.rowActions)}>
-          <button
-            type="button"
-            aria-label={session.pinned ? "Unpin" : "Pin"}
-            title={session.pinned ? "Unpin" : "Pin"}
-            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
-            onClick={onPin}
-          >
-            <Icon name={session.pinned ? "unpin" : "pin"} size={12} />
-          </button>
-          <button
-            type="button"
-            aria-label={session.archived ? "Restore" : "Archive"}
-            title={session.archived ? "Restore" : "Archive"}
-            {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
-            onClick={onArchive}
-          >
-            <span {...stylex.props(styles.actionGlyphArchive)}>
-              <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
-            </span>
-          </button>
-        </span>
-        {showUpdated ? (
-          <span {...stylex.props(styles.rowMeta)}>{formatTimeAgo(session.lastActivityAt)}</span>
-        ) : null}
-      </span>
-    </motion.div>
+        </Row.Leading>
+        <Row.Label xstyle={styles.sessionLabel}>{title}</Row.Label>
+        {showUpdated && (
+          <Row.Meta xstyle={styles.rowMeta}>{formatTimeAgo(session.lastActivityAt)}</Row.Meta>
+        )}
+      </Row.Primary>
+      <Row.Actions
+        placement="overlay"
+        data-nyte-session-row-actions=""
+        xstyle={[styles.rowActions, showUpdated && styles.rowActionsBesideMeta]}
+      >
+        <button
+          type="button"
+          aria-label={session.pinned ? "Unpin" : "Pin"}
+          title={session.pinned ? "Unpin" : "Pin"}
+          {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+          onClick={onPin}
+        >
+          <Icon name={session.pinned ? "unpin" : "pin"} size={12} />
+        </button>
+        <button
+          type="button"
+          aria-label={session.archived ? "Restore" : "Archive"}
+          title={session.archived ? "Restore" : "Archive"}
+          {...stylex.props(styles.action, styles.sessionAction, focus.ringInset)}
+          onClick={onArchive}
+        >
+          <span {...stylex.props(styles.actionGlyphArchive)}>
+            <Icon name={session.archived ? "unarchive" : "archive"} size={12} />
+          </span>
+        </button>
+      </Row.Actions>
+    </Row>
   );
 
   return (

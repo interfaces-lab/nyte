@@ -23,6 +23,14 @@ The package command disables publishing. Platform-specific packaging scripts are
 
 Photon is also listed as a desktop runtime dependency so Electron externalizes core's image processor instead of embedding its WASM in the main entry.
 
+## Design scale
+
+Colour, type, radius, shadow, and motion change with the appearance, so they live in `src/renderer/src/theme/tokens.css` behind the typed handles in `vars.stylex.ts`. Spacing and sizing do not change with the appearance: a gap is the same 6px in every theme, and wrapping that in `space.x6` would add a name without adding a decision. So the scale is enforced by `lint/design-scale.js` rather than tokenised, and its messages name the steps and the escape hatch.
+
+A measurement that carries a decision, such as a traffic-light lane, a row height, a panel width, or a toast's close lane, is not a step. Name it in `theme/schema.stylex.ts`, back it with a `--nyte-*` custom property, and reference the token. A `defineConsts` value used as a length must be that `"var(--nyte-*)"` string and never a bare number: `defineConsts` emits no declarations and works only by inlining, so a number resolves to an undeclared variable wherever a file is transformed alone. Glyph sizes are the standing exception to the grid, not to that rule; icons and the spinner are drawn on an odd grid, so `schema.stylex.ts` names them in `glyph`.
+
+The rules read style objects, not the rendered page. Anything the compiler resolves, anything computed, and anything passed as a prop is on the scale by convention rather than by check, so a green lint is not proof the tree is on it.
+
 ## Sidebar
 
 Each workspace shows five chat items by default, including drafts. Lists with six or fewer items show everything without a toggle. **Show more** reveals the full filtered list; **Show less** returns it to five. Each workspace expands independently, including Home and Cloud.

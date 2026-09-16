@@ -68,6 +68,7 @@ const styles = create({
     "--nyte-row-height": tray.rowHeight,
     "--nyte-row-gap": "6px",
     "--nyte-row-padding-inline": tray.rowInset,
+    "--nyte-row-leading-size": "16px",
     // This list wants a lighter resting fill than the shared hover step.
     "--_row-fill": {
       default: "transparent",
@@ -105,16 +106,6 @@ const styles = create({
     whiteSpace: "nowrap",
     color: t.textTertiary,
     fontSize: t.fontSm,
-  },
-  statusIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 16,
-    height: 16,
-    flexShrink: 0,
-    lineHeight: 0,
-    color: t.iconSecondary,
   },
   recent: {
     paddingBlock: 6,
@@ -164,7 +155,6 @@ const styles = create({
     // Header spacing reserves a non-overlapping 40px target around the 28px control.
     "::before": { content: '""', position: "absolute", inset: -6 },
   },
-  rowAction: { opacity: { default: "var(--work-actions-opacity)", ":disabled": 0.5 } },
   preview: {
     minHeight: 0,
     overflowY: "auto",
@@ -459,14 +449,33 @@ export function BackgroundWork({
                         {Math.min(recentLimit, sections.finished.length)} Recent
                       </div>
                     )}
-                    <Row
-                      xstyle={styles.row}
-                      interactive
-                      trailingReveal="hover"
-                      leading={
-                        <span
+                    <Row xstyle={styles.row} interactive revealActions>
+                      <Row.Primary
+                        render={
+                          <button
+                            id={`${trayId}-${job.id}`}
+                            type="button"
+                            aria-label={
+                              job.kind === "command"
+                                ? `Open terminal for ${job.title}`
+                                : `View output for ${job.title}`
+                            }
+                            title={job.title}
+                            onClick={() => {
+                              if (job.kind === "command") {
+                                onOpenTerminal(job);
+                                onOpenChange(undefined);
+                                return;
+                              }
+                              action.reset();
+                              setPreviewId(job.id);
+                            }}
+                          />
+                        }
+                      >
+                        <Row.Leading
                           aria-hidden="true"
-                          {...props(styles.statusIcon, job.state === "failed" && styles.error)}
+                          xstyle={job.state === "failed" && styles.error}
                         >
                           {job.kind === "command" ? (
                             <Icon name="console" size={16} />
@@ -484,58 +493,39 @@ export function BackgroundWork({
                               size={14}
                             />
                           )}
-                        </span>
-                      }
-                      label={
-                        job.kind === "command" ? (
-                          job.title
+                        </Row.Leading>
+                        {job.kind === "command" ? (
+                          <>
+                            <Row.Label>{job.title}</Row.Label>
+                            <Row.Meta>{jobStateLabel(job)}</Row.Meta>
+                          </>
                         ) : (
-                          <span {...props(styles.agentHead)}>
-                            <span {...props(styles.rowLabel)}>{job.title}</span>
-                            <SubagentModel
-                              childSessionId={job.childSessionId}
-                              style={styles.agentModel}
-                            />
-                          </span>
-                        )
-                      }
-                      description={job.kind === "command" ? undefined : jobStateLabel(job)}
-                      meta={job.kind === "command" ? jobStateLabel(job) : undefined}
-                      primary={
-                        <button
-                          id={`${trayId}-${job.id}`}
-                          type="button"
-                          aria-label={
-                            job.kind === "command"
-                              ? `Open terminal for ${job.title}`
-                              : `View output for ${job.title}`
-                          }
-                          title={job.title}
-                          onClick={() => {
-                            if (job.kind === "command") {
-                              onOpenTerminal(job);
-                              onOpenChange(undefined);
-                              return;
-                            }
-                            action.reset();
-                            setPreviewId(job.id);
-                          }}
-                        />
-                      }
-                      trailing={
-                        jobControls(job).cancel ? (
+                          <Row.Body>
+                            <Row.Label xstyle={styles.agentHead}>
+                              <span {...props(styles.rowLabel)}>{job.title}</span>
+                              <SubagentModel
+                                childSessionId={job.childSessionId}
+                                style={styles.agentModel}
+                              />
+                            </Row.Label>
+                            <Row.Description>{jobStateLabel(job)}</Row.Description>
+                          </Row.Body>
+                        )}
+                      </Row.Primary>
+                      {jobControls(job).cancel && (
+                        <Row.Actions>
                           <button
                             type="button"
                             aria-label={`Stop ${job.title}`}
-                            {...props(styles.action, styles.rowAction, focus.ringInset)}
+                            {...props(styles.action, focus.ringInset)}
                             disabled={pendingAction}
                             onClick={() => action.mutate({ jobId: job.id, operation: "cancel" })}
                           >
                             Stop
                           </button>
-                        ) : undefined
-                      }
-                    />
+                        </Row.Actions>
+                      )}
+                    </Row>
                   </div>
                 ),
               )}

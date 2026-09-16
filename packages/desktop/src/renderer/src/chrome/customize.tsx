@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { Tabs } from "@nyte-ai/ui/tabs";
+import { Row } from "@nyte-ai/ui/row";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
@@ -112,29 +113,27 @@ export function PluginSettings({
           const choice = setting.choices.find((choice) => choice.id === setting.current);
           const detail = choice?.status ?? choice?.description;
           return (
-            <div key={setting.id} {...stylex.props(styles.row)}>
-              <span {...stylex.props(styles.rowBody)}>
-                <span {...stylex.props(styles.rowTitle)}>{setting.label}</span>
-                <span {...stylex.props(styles.rowDetail)}>{setting.owner}</span>
-                {detail !== undefined && (
-                  <span title={detail} {...stylex.props(styles.rowDetail)}>
-                    {detail}
-                  </span>
-                )}
-              </span>
-              <SettingsSelect
-                label={setting.label}
-                disabled={sessionId === undefined || apply.isPending}
-                value={setting.current}
-                options={setting.choices.map((choice) => ({
-                  value: choice.id,
-                  label: choice.label,
-                }))}
-                onValueChange={(choiceId) => {
-                  if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
-                }}
-              />
-            </div>
+            <Row key={setting.id} xstyle={styles.row}>
+              <Row.Body>
+                <Row.Label xstyle={styles.rowTitle}>{setting.label}</Row.Label>
+                <Row.Description>{setting.owner}</Row.Description>
+                {detail !== undefined && <Row.Description title={detail}>{detail}</Row.Description>}
+              </Row.Body>
+              <Row.Actions>
+                <SettingsSelect
+                  label={setting.label}
+                  disabled={sessionId === undefined || apply.isPending}
+                  value={setting.current}
+                  options={setting.choices.map((choice) => ({
+                    value: choice.id,
+                    label: choice.label,
+                  }))}
+                  onValueChange={(choiceId) => {
+                    if (sessionId !== undefined) apply.mutate({ id: setting.id, choiceId });
+                  }}
+                />
+              </Row.Actions>
+            </Row>
           );
         })}
       </div>
@@ -166,22 +165,22 @@ function Inventory({
       return (
         <div {...stylex.props(styles.list)}>
           {inventory.plugins.map((plugin) => (
-            <div key={plugin.id} {...stylex.props(styles.row)}>
-              <span {...stylex.props(styles.rowIcon)}>
+            <Row key={plugin.id} xstyle={styles.row}>
+              <Row.Leading>
                 <Icon name="mcp" size={14} />
-              </span>
-              <span {...stylex.props(styles.rowBody)}>
-                <span {...stylex.props(styles.rowTitle)}>{plugin.id}</span>
-                <span title={pluginDetail(plugin)} {...stylex.props(styles.rowDetail)}>
+              </Row.Leading>
+              <Row.Body>
+                <Row.Label xstyle={styles.rowTitle}>{plugin.id}</Row.Label>
+                <Row.Description title={pluginDetail(plugin)}>
                   {pluginDetail(plugin)}
-                </span>
-              </span>
+                </Row.Description>
+              </Row.Body>
               <span
                 {...stylex.props(styles.badge, plugin.status === "failed" && styles.failedBadge)}
               >
                 {plugin.status}
               </span>
-            </div>
+            </Row>
           ))}
         </div>
       );
@@ -189,17 +188,15 @@ function Inventory({
       return (
         <div {...stylex.props(styles.list)}>
           {inventory.skills.map((skill) => (
-            <div key={skill.filePath} {...stylex.props(styles.row)}>
-              <span {...stylex.props(styles.rowIcon)}>
+            <Row key={skill.filePath} xstyle={styles.row}>
+              <Row.Leading>
                 <Icon name="skills" size={14} />
-              </span>
-              <span {...stylex.props(styles.rowBody)}>
-                <span {...stylex.props(styles.rowTitle)}>{skill.name}</span>
-                <span title={skill.description} {...stylex.props(styles.rowDetail)}>
-                  {skill.description}
-                </span>
-              </span>
-            </div>
+              </Row.Leading>
+              <Row.Body>
+                <Row.Label xstyle={styles.rowTitle}>{skill.name}</Row.Label>
+                <Row.Description title={skill.description}>{skill.description}</Row.Description>
+              </Row.Body>
+            </Row>
           ))}
         </div>
       );

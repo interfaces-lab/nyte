@@ -123,7 +123,7 @@ async function readImage(
   mimeType: string,
 ): Promise<AgentToolResult<ReadToolDetails | undefined>> {
   const processed = await processImage(buffer, mimeType);
-  if (!processed.ok) {
+  if (processed.kind === "omitted") {
     return {
       content: toolResultContent(`Read image file [${mimeType}]\n${processed.message}`),
       details: undefined,

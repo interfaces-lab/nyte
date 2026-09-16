@@ -41,7 +41,7 @@ const styles = stylex.create({
     boxShadow: t.shadowModal,
     transform: "translate(-50%, -50%)",
   },
-  inner: { display: "flex", flexDirection: "column", gap: 14 },
+  inner: { display: "flex", flexDirection: "column", gap: 12 },
   title: { fontSize: t.fontLg, fontWeight: 600, color: t.textPrimary },
   path: {
     padding: "6px 10px",

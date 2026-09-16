@@ -1,18 +1,21 @@
 /**
  * The `rename` plugin: `/rename <name>` names the chat, `/rename` alone asks a
- * model for a name from the conversation so far, and a root chat with no name
- * is named in the background on its first prompt. The prompt, the request
- * shape, and the trigger are opencode v2's; `gpt-5.6-luna` at medium effort is
- * asked first, then the chat's own model when that fails.
+ * model for a name from the conversation so far, a root chat with no name is
+ * named in the background on its first prompt, and the `rename_chat` tool lets
+ * the model name the chat itself. The prompt, the request shape, and the
+ * trigger are opencode v2's; `gpt-5.6-luna` at medium effort is asked first,
+ * then the chat's own model when that fails.
  *
  * Based on https://github.com/anomalyco/opencode/blob/v2/packages/core/src/plugin/agent.ts (PROMPT_TITLE),
- * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/session/title.ts, and
- * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/session/runner/llm.ts (first-prompt trigger)
+ * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/session/title.ts,
+ * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/session/runner/llm.ts (first-prompt trigger), and
+ * https://github.com/anomalyco/opencode/blob/v2/packages/core/src/tool/plugin/opencode.ts (session_rename)
  */
 import { contentText, uuidv7 } from "@nyte-ai/ai";
 import type { Api, Model, Models, SimpleStreamOptions } from "@nyte-ai/ai";
 import { definePlugin } from "@nyte-ai/plugin";
 import type { Message } from "@nyte-ai/schema";
+import { Type } from "typebox";
 
 export const TITLE_PROMPT = `You are a title generator. You output ONLY a thread title. Nothing else.
 
@@ -148,6 +151,15 @@ export async function generateTitle(
   return undefined;
 }
 
+const renameParameters = Type.Object(
+  {
+    name: Type.String({
+      description: "A single line naming what this conversation is about, at most 50 characters",
+    }),
+  },
+  { additionalProperties: false },
+);
+
 export function renamePlugin(deps: { readonly models: TitleModels; readonly model: Model<Api> }) {
   return definePlugin({
     id: "rename",
@@ -160,6 +172,32 @@ export function renamePlugin(deps: { readonly models: TitleModels; readonly mode
         if ((await api.session.info()).name !== before) return;
         await api.session.rename(title);
       };
+      // Named `rename_chat`, not `rename`, because the model sees it beside the
+      // file tools, where a bare `rename` reads as renaming a path.
+      api.tools.add((draft) =>
+        draft.set("rename_chat", {
+          name: "rename_chat",
+          description:
+            "Rename this chat so the user can find it later. Call it once the work has a " +
+            "subject, or when the chat turns to something its current name no longer describes. " +
+            "This names the conversation; it does not rename files.",
+          parameters: renameParameters,
+          // Renaming is idempotent, so a call whose outcome was lost can run again.
+          replay: "safe",
+          execute: async (_callId, params) => {
+            // Trimmed and capped like a generated title: both names come from a model.
+            const name = params.name.trim().slice(0, MAX_TITLE_CHARS);
+            if (name === "") throw new Error("A chat name cannot be blank");
+            await api.session.rename(name);
+            // `title` is the heading a client shows on the row; without it the row reads "rename_chat".
+            return {
+              content: [{ type: "text", text: `Chat named ${name}` }],
+              details: { name },
+              title: name,
+            };
+          },
+        }),
+      );
       api.commands.add((draft) => {
         draft.set("rename", {
           description: "Name the chat; with no name, the model picks one",

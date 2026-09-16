@@ -57,6 +57,9 @@ vi.mock("../queries.ts", () => ({
   useSessionSnapshot: () => reads.session,
   useVcsSnapshot: () => reads.vcs,
   useVcsDiffs: () => ({ data: [], isLoading: false, isError: false }),
+  useVcsScopedDiffs: () => ({ data: [], isLoading: false, isError: false }),
+  useVcsLog: () => ({ data: { commits: [], hasMore: false }, isLoading: false, isError: false }),
+  useVcsRefs: () => ({ data: { local: [], remote: [] }, isLoading: false, isError: false }),
   refreshVcs: () => undefined,
 }));
 
@@ -108,7 +111,10 @@ const repository: DesktopVcsSnapshot = {
   kind: "repository",
   repositoryId: "repo",
   revision: "rev-1",
-  status: { files: [] },
+  status: { branch: "main", files: [] },
+  head: { oid: "abcdef1", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 },
+  staged: [],
+  unstaged: [],
 };
 const readFailure = new Error("session read failed");
 

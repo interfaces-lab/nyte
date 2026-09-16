@@ -20,9 +20,39 @@ export const WORKBENCH_ACTIVE_WIDTH_VARIABLE = "--nyte-active-workbench-width";
 export type WorkbenchTabId = "files" | "changes" | "browser" | "terminal" | "agents";
 type WorkbenchScrollableTabId = "changes";
 export type WorkbenchViewKey = string & { readonly __brand: "WorkbenchViewKey" };
+/**
+ * Which set of changes the Changes panel shows. `uncommitted` is the whole
+ * working tree; `staged` and `unstaged` are the two sides of the index;
+ * `turn` is one conversation turn's declared edits; `commit` is one commit
+ * against its parent. Only `uncommitted` survives a restart: the others name
+ * a turn, a commit or an index state that a later window may not hold.
+ */
 export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
-  | { readonly kind: "turn"; readonly turnId: Oid };
+  | { readonly kind: "staged" }
+  | { readonly kind: "unstaged" }
+  | { readonly kind: "turn"; readonly turnId: Oid }
+  | { readonly kind: "commit"; readonly oid: string };
+
+export function sameChangesScope(
+  left: WorkbenchChangesScope,
+  right: WorkbenchChangesScope,
+): boolean {
+  switch (left.kind) {
+    case "uncommitted":
+    case "staged":
+    case "unstaged":
+      return right.kind === left.kind;
+    case "turn":
+      return right.kind === "turn" && right.turnId === left.turnId;
+    case "commit":
+      return right.kind === "commit" && right.oid === left.oid;
+    default: {
+      const _exhaustive: never = left;
+      return _exhaustive;
+    }
+  }
+}
 
 export type WorkbenchTarget =
   | { readonly kind: "home" }
@@ -498,11 +528,7 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
     },
     selectChangesScope(key, scope) {
       update(key, (current) => {
-        const unchanged =
-          current.changesScope.kind === scope.kind &&
-          (scope.kind === "uncommitted" ||
-            (current.changesScope.kind === "turn" && current.changesScope.turnId === scope.turnId));
-        return unchanged
+        return sameChangesScope(current.changesScope, scope)
           ? current
           : {
               ...current,

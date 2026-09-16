@@ -3,7 +3,10 @@ import { describe, test } from "vitest";
 import {
   changeFileGroups,
   changeFileTone,
+  changeSelectionSummary,
   filesChangedLabel,
+  filterChangePaths,
+  matchesChangePathQuery,
   visibleChangeTreeRows,
 } from "./change-tree.ts";
 
@@ -101,6 +104,142 @@ describe("change file groups", () => {
         ["packages/desktop/src/"],
       ).map((row) => row.label),
       ["src"],
+    );
+  });
+});
+
+const entries = [
+  { path: "packages/desktop/src/renderer/theme/styles.ts", status: "modified" },
+  { path: "packages/desktop/src/renderer/theme/vars.ts", status: "deleted" },
+  { path: "packages/core/src/kernel/step.ts", status: "added" },
+  { path: "notes.md", status: "untracked" },
+] as const;
+
+describe("change path filter", () => {
+  test("keeps every path for a blank query", () => {
+    assert.equal(matchesChangePathQuery("a/b.ts", "   "), true);
+    assert.deepEqual(
+      filterChangePaths(entries, { query: "" }),
+      entries.map((entry) => entry.path),
+    );
+  });
+
+  test("matches a case-insensitive subsequence of the path", () => {
+    assert.equal(matchesChangePathQuery("packages/desktop/src/theme.ts", "DSKTHEME"), true);
+    assert.equal(matchesChangePathQuery("packages/desktop/src/theme.ts", "themedesk"), false);
+  });
+
+  test("matching a directory keeps its files", () => {
+    assert.deepEqual(filterChangePaths(entries, { query: "theme/" }), [
+      "packages/desktop/src/renderer/theme/styles.ts",
+      "packages/desktop/src/renderer/theme/vars.ts",
+    ]);
+  });
+
+  test("matching a file keeps its ancestors as group headers", () => {
+    assert.deepEqual(labels(filterChangePaths(entries, { query: "step.ts" })), [
+      {
+        kind: "directory",
+        label: "kernel",
+        depth: 0,
+        path: "packages/core/src/kernel/",
+      },
+      {
+        kind: "file",
+        label: "step.ts",
+        depth: 1,
+        path: "packages/core/src/kernel/step.ts",
+      },
+    ]);
+  });
+
+  test("filters by change status", () => {
+    assert.deepEqual(filterChangePaths(entries, { statuses: ["added", "untracked"] }), [
+      "packages/core/src/kernel/step.ts",
+      "notes.md",
+    ]);
+    assert.deepEqual(
+      filterChangePaths(entries, { statuses: [] }),
+      entries.map((entry) => entry.path),
+    );
+  });
+
+  test("drops entries without a status when a status filter is set", () => {
+    assert.deepEqual(filterChangePaths([{ path: "a.ts" }], { statuses: ["modified"] }), []);
+    assert.deepEqual(filterChangePaths([{ path: "a.ts" }], {}), ["a.ts"]);
+  });
+
+  test("filters by a caller-supplied viewed predicate", () => {
+    const isViewed = (path: string) => path.endsWith("vars.ts");
+    assert.deepEqual(filterChangePaths(entries, { viewed: { mode: "viewed", isViewed } }), [
+      "packages/desktop/src/renderer/theme/vars.ts",
+    ]);
+    assert.deepEqual(filterChangePaths(entries, { viewed: { mode: "not-viewed", isViewed } }), [
+      "packages/desktop/src/renderer/theme/styles.ts",
+      "packages/core/src/kernel/step.ts",
+      "notes.md",
+    ]);
+    assert.deepEqual(
+      filterChangePaths(entries, { viewed: { mode: "all" } }),
+      entries.map((entry) => entry.path),
+    );
+  });
+
+  test("combines query, status, and viewed axes", () => {
+    assert.deepEqual(
+      filterChangePaths(entries, {
+        query: "theme",
+        statuses: ["modified", "deleted"],
+        viewed: { mode: "not-viewed", isViewed: (path) => path.endsWith("vars.ts") },
+      }),
+      ["packages/desktop/src/renderer/theme/styles.ts"],
+    );
+  });
+});
+
+describe("filtered tree rows", () => {
+  test("regroups a narrowed path set with short labels", () => {
+    assert.deepEqual(
+      labels(filterChangePaths(entries, { query: "src" })).map((row) => row.label),
+      ["kernel", "step.ts", "theme", "styles.ts", "vars.ts"],
+    );
+  });
+
+  test("keeps collapsed directories collapsed after narrowing", () => {
+    assert.deepEqual(
+      labels(filterChangePaths(entries, { query: "theme" }), [
+        "packages/desktop/src/renderer/theme/",
+      ]).map((row) => row.label),
+      ["theme"],
+    );
+  });
+
+  test("renders an empty tree when nothing matches", () => {
+    assert.deepEqual(labels(filterChangePaths(entries, { query: "zzz" })), []);
+  });
+});
+
+describe("change selection summary", () => {
+  test("reports none, some, and all", () => {
+    const paths = ["a.ts", "b.ts"];
+    assert.equal(
+      changeSelectionSummary(paths, () => false),
+      "none",
+    );
+    assert.equal(
+      changeSelectionSummary(paths, (path) => path === "a.ts"),
+      "some",
+    );
+    assert.equal(
+      changeSelectionSummary(paths, () => true),
+      "all",
+    );
+  });
+
+  test("reports none for an empty list", () => {
+    assert.equal(
+      changeSelectionSummary([], () => true),
+      "none",
     );
   });
 });

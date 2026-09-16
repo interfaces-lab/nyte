@@ -8,6 +8,8 @@ import { homedir } from "node:os";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type {
+  DesktopVcsPullRequestInput,
+  DesktopVcsPullRequestResult,
   GitHubAccount,
   GitHubProviderState,
   GitHubPullRequest,
@@ -21,6 +23,8 @@ const COMMAND_OUTPUT_LIMIT = 1_000_000;
 const DETECTION_TIMEOUT_MS = 3_000;
 const QUERY_TIMEOUT_MS = 8_000;
 const SIGN_IN_TIMEOUT_MS = 5 * 60_000;
+/** `gh pr create` publishes the branch first, so it outlives an ordinary query. */
+const PULL_REQUEST_TIMEOUT_MS = 60_000;
 
 export type CommandResult =
   | {
@@ -247,13 +251,15 @@ export function decodeGitHubPullRequestOutput(output: string): GitHubPullRequest
  * What the person reading the message can do next. The `gh` exit code and
  * stderr say nothing to them, so they never reach the renderer.
  */
-type GitHubAction = "sign-in" | "sign-out" | "account" | "pull-request";
+type GitHubAction = "sign-in" | "sign-out" | "account" | "pull-request" | "create-pull-request";
 
 const ACTION_RECOVERY: Readonly<Record<GitHubAction, string>> = {
   "sign-in": "Couldn't sign in to GitHub. Run `gh auth login` in a terminal, then try again.",
   "sign-out": "Couldn't sign out of GitHub. Run `gh auth logout` in a terminal, then try again.",
   account: "Couldn't read your GitHub account. Try again.",
   "pull-request": "Couldn't read this branch's pull request. Try again.",
+  "create-pull-request":
+    "Couldn't open a pull request. Run `gh pr create` in a terminal to see why.",
 };
 
 function commandFailed(result: CommandResult, action: GitHubAction): string {
@@ -390,6 +396,79 @@ export interface GitHubProvider {
   readonly state: () => Promise<GitHubProviderState>;
   readonly signIn: () => Promise<GitHubProviderState>;
   readonly signOut: () => Promise<GitHubProviderState>;
+  /**
+   * Open a pull request for the checked-out branch. Every precondition is read
+   * from the provider state first, so a missing `gh`, a signed-out account, a
+   * repository without a GitHub remote, and an existing pull request are
+   * answered rather than run into.
+   */
+  readonly createPullRequest: (
+    input: DesktopVcsPullRequestInput,
+  ) => Promise<DesktopVcsPullRequestResult>;
+}
+
+/** The state a pull request request can be refused from, before `gh pr create` runs. */
+function refusal(state: GitHubProviderState): DesktopVcsPullRequestResult | undefined {
+  if (state.kind === "cli_missing") return { kind: "cli_missing" };
+  if (state.kind === "signed_out") return { kind: "signed_out" };
+  if (state.kind === "error") return { kind: "failed", message: state.message };
+  if (state.repository === undefined) return { kind: "no_remote" };
+  if (state.pullRequest.kind === "ready") {
+    return { kind: "exists", pullRequest: state.pullRequest.pullRequest };
+  }
+  return undefined;
+}
+
+async function createPullRequest(
+  cwd: string,
+  state: GitHubProviderState,
+  input: DesktopVcsPullRequestInput,
+  run: CommandRunner,
+): Promise<DesktopVcsPullRequestResult> {
+  const refused = refusal(state);
+  if (refused !== undefined) return refused;
+  if (state.kind !== "ready" || state.repository === undefined) {
+    return { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] };
+  }
+  const result = await run({
+    command: "gh",
+    args: [
+      "pr",
+      "create",
+      "--repo",
+      `${state.repository.owner}/${state.repository.name}`,
+      "--title",
+      input.title,
+      "--body",
+      input.body ?? "",
+      ...(input.draft === true ? ["--draft"] : []),
+    ],
+    cwd,
+    timeoutMs: PULL_REQUEST_TIMEOUT_MS,
+  });
+  if (result.kind === "missing") return { kind: "cli_missing" };
+  if (result.kind !== "completed") {
+    return { kind: "failed", message: commandFailed(result, "create-pull-request") };
+  }
+  if (result.code !== 0) {
+    // Another client can open one between the state read and this command.
+    if (/already exists/iu.test(result.stderr)) {
+      const current = await accountState(cwd, state.repository, run);
+      if (current.kind === "ready" && current.pullRequest.kind === "ready") {
+        return { kind: "exists", pullRequest: current.pullRequest.pullRequest };
+      }
+    }
+    return { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] };
+  }
+  // `gh` prints the new pull request's URL; nothing else from its output crosses IPC.
+  const url = result.stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .map((line) => httpsUrl(line, "github.com"))
+    .find((candidate) => candidate !== undefined);
+  return url === undefined
+    ? { kind: "failed", message: ACTION_RECOVERY["create-pull-request"] }
+    : { kind: "created", url };
 }
 
 export function createGitHubProvider(
@@ -428,5 +507,13 @@ export function createGitHubProvider(
       ? { kind: "cli_missing", repository: detected }
       : { kind: "error", repository: detected, message: commandFailed(result, action) };
   };
-  return { state, signIn: () => changeAuth("sign-in"), signOut: () => changeAuth("sign-out") };
+  return {
+    state,
+    signIn: () => changeAuth("sign-in"),
+    signOut: () => changeAuth("sign-out"),
+    createPullRequest: async (input) => {
+      if (workspace === undefined) return { kind: "no_remote" };
+      return createPullRequest(cwd, await state(), input, run);
+    },
+  };
 }

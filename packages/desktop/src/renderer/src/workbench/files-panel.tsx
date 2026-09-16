@@ -54,7 +54,7 @@ const styles = create({
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
-    paddingInline: 5,
+    paddingInline: 4,
     color: t.textPrimary,
     fontSize: t.fontBase,
     textOverflow: "ellipsis",
@@ -277,16 +277,12 @@ export function FilesPanel({
     >
       <div {...props(styles.toolbar)}>
         <IconButton
-          compact
-          size={16}
           icon="arrow-left"
           label="Go Back"
           disabled={tabs.historyIndex <= 0}
           onClick={() => fileActions.back(viewKey)}
         />
         <IconButton
-          compact
-          size={16}
           icon="arrow-right"
           label="Go Forward"
           disabled={tabs.historyIndex >= tabs.history.length - 1}
@@ -304,18 +300,10 @@ export function FilesPanel({
           label="File options"
           align="end"
           popupStyle={styles.menu}
-          trigger={
-            <IconButton
-              compact
-              size={16}
-              ref={menuRef}
-              icon="more-horizontal"
-              label="File options"
-            />
-          }
+          trigger={<IconButton ref={menuRef} icon="more-horizontal" label="File options" />}
         >
           <MenuItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
             meta={macPlatform(undefined) ? "⌘S" : "Ctrl+S"}
             disabled={activeFile === undefined || !activeFile.dirty}
@@ -326,7 +314,7 @@ export function FilesPanel({
             Save File
           </MenuItem>
           <MenuItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
             disabled={activeFile === undefined || !activeFile.dirty}
             onSelect={() => {
@@ -338,7 +326,7 @@ export function FilesPanel({
           </MenuItem>
           <MenuSeparator inset />
           <MenuItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
             disabled={activeFile === undefined}
             onSelect={() => {
@@ -353,45 +341,40 @@ export function FilesPanel({
           </MenuItem>
           <MenuSeparator inset />
           <MenuSwitchItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
-            tone="green"
             checked={preferences.lineNumbers}
             onCheckedChange={(checked) => setFilePreference("lineNumbers", checked)}
           >
             Line Numbers
           </MenuSwitchItem>
           <MenuSwitchItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
-            tone="green"
             checked={preferences.wordWrap}
             onCheckedChange={(checked) => setFilePreference("wordWrap", checked)}
           >
             Word Wrap
           </MenuSwitchItem>
           <MenuSwitchItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
-            tone="green"
             checked={preferences.gitBlame}
             onCheckedChange={(checked) => setFilePreference("gitBlame", checked)}
           >
             Git Blame
           </MenuSwitchItem>
           <MenuSwitchItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
-            tone="green"
             checked={preferences.autoSave}
             onCheckedChange={(checked) => setFilePreference("autoSave", checked)}
           >
             Auto Save
           </MenuSwitchItem>
           <MenuSwitchItem
-            size="compact"
+            background="highlightOnly"
             layout="plain"
-            tone="green"
             checked={preferences.formatOnSave}
             onCheckedChange={(checked) => setFilePreference("formatOnSave", checked)}
           >
@@ -399,16 +382,12 @@ export function FilesPanel({
           </MenuSwitchItem>
         </Menu>
         <IconButton
-          compact
-          size={16}
           icon="search"
           label="Search Files"
           aria-pressed={sidebar === "search"}
           onClick={showSearch}
         />
         <IconButton
-          compact
-          size={16}
           icon="list"
           label="Browse Files"
           aria-pressed={sidebar === "explorer"}

@@ -33,10 +33,8 @@
   --nyte-magenta: #ff309b;
   --nyte-danger: #c21d2e;
   --nyte-warn: #ff9800;
-  --nyte-success: #00c972;
   --nyte-added: #00c972;
   --nyte-removed: #c21d2e;
-  --nyte-modified: #ff9800;
   --nyte-diff-added-line-background: oklch(0.663 0.162 155.537 / 0.141);
   --nyte-diff-added-text-background: oklch(0.666 0.162 155.968 / 0.22);
   --nyte-diff-removed-line-background: oklch(0.703 0.192 13.697 / 0.22);
@@ -128,8 +126,6 @@
   --nyte-icon-primary: var(--nyte-base);
   --nyte-icon-secondary: color-mix(in srgb, var(--nyte-base) 66%, transparent);
   --nyte-icon-tertiary: color-mix(in srgb, var(--nyte-base) 52%, transparent);
-  --nyte-icon-quaternary: color-mix(in srgb, var(--nyte-base) 28%, transparent);
-  --nyte-bg-primary: color-mix(in srgb, var(--nyte-base) 20%, transparent);
   --nyte-bg-secondary: color-mix(in srgb, var(--nyte-base) 14%, transparent);
   --nyte-bg-tertiary: color-mix(in srgb, var(--nyte-base) 8%, transparent);
   --nyte-bg-quaternary: color-mix(in srgb, var(--nyte-base) 6%, transparent);
@@ -186,9 +182,6 @@
   --nyte-shadow-secondary: color-mix(in srgb, var(--nyte-shadow-primary) 60%, transparent);
   --nyte-shadow-tertiary: color-mix(in srgb, var(--nyte-shadow-primary) 30%, transparent);
   --nyte-box-shadow-soft: 0 0 8px 2px var(--nyte-shadow-tertiary);
-  --nyte-box-shadow-popup:
-    0 3px 8px var(--nyte-shadow-secondary), 0 2px 5px var(--nyte-shadow-secondary),
-    0 1px 1px var(--nyte-shadow-secondary);
   --nyte-box-shadow-lg:
     inset 0 0 4px #ffffff0d, 0 0 3px var(--nyte-shadow-secondary),
     0 16px 24px var(--nyte-shadow-tertiary);
@@ -231,7 +224,6 @@
   --nyte-font-size-sm: calc(var(--nyte-font-size-base) - 1px);
   /* Chat, composer, and bubbles use 15px type on 13px chrome. */
   --nyte-font-size-lg: calc(var(--nyte-font-size-base) + 2px);
-  --nyte-font-size-xl: calc(var(--nyte-font-size-base) + 3px);
   --nyte-font-size-2xl: calc(var(--nyte-font-size-base) + 6px);
   --nyte-line-height-xs: calc(var(--nyte-font-size-base) + 1px);
   --nyte-line-height-sm: calc(var(--nyte-font-size-base) + 3px);
@@ -248,8 +240,6 @@
   --nyte-radius-lg: 8px;
   --nyte-radius-xl: 12px;
   --nyte-radius-2xl: 14px;
-  --nyte-radius-3xl: 16px;
-  --nyte-radius-4xl: 18px;
   --nyte-radius-full: 9999px;
   --nyte-duration-instant: 50ms;
   --nyte-duration-fast: 100ms;
@@ -261,9 +251,23 @@
 
   /* ── desktop layout schema ── */
   --nyte-titlebar-height: 35px;
+  /*
+   * macOS reserves this lane for the traffic lights at 100% zoom. The main
+   * process places the buttons itself in `src/main/index.ts`; both sides
+   * describe the same lane.
+   */
+  --nyte-titlebar-traffic-light-inset: 72px;
+  /*
+   * The box a status glyph occupies: the spinner's 4x4 grid of 3px squares at a
+   * 4px pitch, and the icons that share that slot. It is a custom property
+   * rather than a bare number in the schema because a dev build transforms each
+   * file alone, where a numeric const compiles to a variable nothing declares
+   * and the sizing is dropped.
+   */
+  --nyte-glyph-box: 15px;
   --nyte-sidebar-width: 220px;
   --nyte-sidebar-handle-width: 8px;
-  --nyte-compact-row-height: 28px;
+  --nyte-sidebar-row-height: 28px;
   --nyte-sidebar-gutter: 8px;
   --nyte-sidebar-row-padding-inline: 4px;
   --nyte-sidebar-row-gap: 6px;
@@ -288,13 +292,14 @@
   --nyte-settings-control-max-width: 160px;
   --nyte-settings-page-title-size: calc(var(--nyte-font-size-base) + 4px);
   --nyte-settings-page-title-line-height: calc(var(--nyte-font-size-base) + 8px);
-  --nyte-control-compact-height: 26px;
-  --nyte-control-regular-height: 30px;
+  /* A settings section heading, which stands taller than the rows beneath it. */
+  --nyte-settings-heading-height: 30px;
+  /* One menu row: items, group headings, and the model picker's footer item. */
+  --nyte-menu-item-height: 26px;
   --nyte-menu-width: 200px;
   --nyte-model-menu-width: 230px;
   --nyte-parameter-menu-width: 220px;
   --nyte-menu-max-height: min(320px, calc(100vh - 32px));
-  --nyte-section-gap: 16px;
   --nyte-conversation-measure: 840px;
   --nyte-prose-measure: 840px;
   --nyte-conversation-gutter: 16px;
@@ -302,6 +307,7 @@
   --nyte-conversation-turn-gap: 14px;
   --nyte-conversation-row-gap: 8px;
   --nyte-conversation-row-min-height: 22px;
+  --nyte-conversation-edge-fade: 32px;
   /* Queue, agents, and terminals share one tray geometry. */
   --nyte-tray-radius: var(--nyte-radius-xl);
   /*
@@ -324,8 +330,95 @@
   --nyte-workbench-panel-width: 384px;
   --nyte-workbench-header-height: 35px;
   --nyte-workbench-file-list-width: 200px;
+  --nyte-pane-sash-size: 9px;
+  --nyte-pane-divider-gap: 5px;
+  --nyte-toast-close-gutter: 44px;
+  /** Must equal `STACKED_DIFF_LINE_HEIGHT`, which sizes the stack's estimate. */
   --nyte-diff-line-height: 20px;
   --nyte-diff-preview-max-height: min(480px, 60vh);
+}
+
+/*
+ * ── the kit palette, re-pointed at this one ──
+ *
+ * `@nyte-ai/ui` ships `platform-tokens.css` with its own anchors and its own
+ * ramp under `--nyte-color-*`. The renderer imports that file before this one
+ * (`main.tsx`), so the desktop app ran two palettes at once: kit components —
+ * sonner, dialog, tooltip, button — painted from anchors that ignore the
+ * desktop's mode and its workspace tint.
+ *
+ * These declarations win on cascade order, being the later of two `:root`
+ * rules at equal specificity, and bind the kit's names to the steps above.
+ * The kit's own values stay the standalone default for the docs site and the
+ * demos, which load `platform-tokens.css` alone.
+ *
+ * Overriding an anchor carries the kit's derived steps with it: anything the
+ * kit mixes from `--nyte-color-base` or a hue re-tints here without being
+ * named again. Tokens listed as untouched below are exactly that case.
+ */
+:root {
+  /* anchors */
+  --nyte-color-base: var(--nyte-base);
+  --nyte-color-editor: var(--nyte-editor);
+  --nyte-color-chrome: var(--nyte-chrome);
+  --nyte-color-sidebar: var(--nyte-sidebar);
+  --nyte-color-raised: var(--nyte-bg-raised);
+  --nyte-color-fill: var(--nyte-fill-primary);
+  --nyte-color-fill-label: var(--nyte-text-invert);
+  --nyte-color-action-label: var(--nyte-action-label);
+  --nyte-color-accent-base: var(--nyte-accent-base);
+  --nyte-color-hue-red: var(--nyte-red);
+  --nyte-color-hue-orange: var(--nyte-orange);
+  --nyte-color-hue-violet: var(--nyte-purple);
+  --nyte-color-hue-green: var(--nyte-green);
+  /* `--nyte-color-hue-neutral` and `--nyte-color-scrim-base` keep the kit
+     values: this palette names no neutral hue, and its scrim is a finished
+     color rather than an anchor, mapped below. */
+
+  /* surfaces */
+  --nyte-color-background: var(--nyte-bg-editor);
+  --nyte-color-popover: var(--nyte-bg-elevated);
+  /* `--nyte-color-field-background` keeps the kit value; a field here takes the
+     raised tone through the anchor above rather than a named step. */
+
+  /* text */
+  --nyte-color-foreground: var(--nyte-text-primary);
+  --nyte-color-popover-foreground: var(--nyte-text-primary);
+  --nyte-color-muted-foreground: var(--nyte-text-tertiary);
+  --nyte-color-tertiary-foreground: var(--nyte-text-quaternary);
+  --nyte-color-accent: var(--nyte-text-accent);
+  --nyte-color-success: var(--nyte-text-success);
+  --nyte-color-warning: var(--nyte-text-warning);
+  --nyte-color-destructive: var(--nyte-text-danger);
+
+  /* fills */
+  --nyte-color-primary: var(--nyte-fill-primary);
+  --nyte-color-primary-hover: var(--nyte-fill-primary-hover);
+  --nyte-color-primary-foreground: var(--nyte-text-invert);
+  --nyte-color-secondary: var(--nyte-bg-quinary);
+  --nyte-color-muted: var(--nyte-bg-tertiary);
+  --nyte-color-muted-hover: var(--nyte-bg-secondary);
+  --nyte-color-destructive-muted: var(--nyte-bg-danger-subtle);
+  --nyte-color-scrim: var(--nyte-bg-scrim);
+  /* `--nyte-color-destructive-hover` keeps the kit formula: this palette holds
+     one danger wash, not a second hover step. It re-tints from the red anchor. */
+
+  /* strokes */
+  --nyte-color-border-subtle: var(--nyte-stroke-quaternary);
+  --nyte-color-border-weak: var(--nyte-stroke-tertiary);
+  --nyte-color-border: var(--nyte-stroke-secondary);
+  --nyte-color-border-strong: var(--nyte-stroke-primary);
+  /* The kit rings on the base at 40%; this palette rings on the accent. */
+  --nyte-color-ring: var(--nyte-stroke-focused);
+  --nyte-color-focus-ring: var(--nyte-focus-ring);
+
+  /*
+   * Untouched, for want of an equivalent here: the fifteen `--nyte-color-avatar-*`
+   * steps and the three `--nyte-color-bubble-*` steps. Avatars and chat bubbles
+   * are kit anatomy the desktop does not render, and inventing a step for each
+   * would put a value in this file that nothing on this side reads. Both groups
+   * still follow the anchors above wherever they mix from one.
+   */
 }
 
 :root[data-tint-active="true"] {
@@ -352,7 +445,6 @@
 
 /* Ring for keyboard navigation only; a click into a field is not a request for one. */
 :root[data-nyte-focus-modality="pointer"] {
+  /* The kit's ring follows, being bound to this one above. */
   --nyte-focus-ring: transparent;
-  /* The kit's own ring: desktop loads platform-tokens.css without ui/index.css. */
-  --nyte-color-focus-ring: transparent;
 }

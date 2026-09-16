@@ -12,13 +12,18 @@ import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { diffStyles } from "./styles.stylex.ts";
+import type { DiffFilesLoader } from "./diff-expansion.ts";
 import type { ParsedDiff } from "./tool-detail.ts";
 
 type DiffViewVariant = "inline" | "workbench" | "stack";
 
 const SHADOW_CSS = `
+/*
+ * Context rows and gutter spacers take the plain editor background. This also
+ * opts them out of Pierre's hover and selected-line mixes, which the flat
+ * surface does not use.
+ */
 [data-line-type="context"],
-[data-separator],
 [data-gutter-buffer] {
   --diffs-line-bg: var(--diffs-bg);
 }
@@ -56,6 +61,141 @@ const SHADOW_CSS = `
 *:hover {
   scrollbar-color: var(--nyte-scrollbar-thumb) transparent;
 }
+
+/*
+ * Collapsed context between hunks. Pierre emits the row once per grid column
+ * and hides the wrapper in the code column, so the count lands in the line
+ * number gutter, where it is clipped to a few characters, and the wide column
+ * shows a bare tinted band. Cursor puts the count in the code column instead,
+ * on a band the width of the code, which is what the row is for.
+ */
+[data-separator] {
+  background-color: transparent;
+  /*
+   * Two rows: a band the height of one line with room above and below, so the
+   * gap reads as a break rather than another line, and the stack's arithmetic
+   * still lands on whole rows. A minimum rather than a height, because Pierre
+   * pins this row type to 32px and an expanded region has to be able to grow
+   * the row past two lines.
+   */
+  height: auto;
+  min-height: calc(var(--nyte-diff-line-height) * 2);
+}
+
+/*
+ * The count and the expand controls live in the gutter copy and overflow
+ * across the band. That copy is the one Pierre pins while the code scrolls,
+ * and it carries a z-index of 3, so they stay put, stay on top of the line
+ * numbers, and stay reachable at any horizontal scroll offset. The code copy
+ * keeps the band but drops its duplicates, so every control exists once.
+ */
+[data-gutter] [data-separator-wrapper] {
+  /* Shared by the band's inset and the buttons drawn over it; an absolutely
+   * positioned child resolves its inset against the padding box, so it cannot
+   * inherit the padding itself. */
+  --nyte-diff-separator-inset: 8px;
+  display: flex;
+  padding-inline-start: var(--nyte-diff-separator-inset);
+  background-color: transparent;
+}
+
+[data-gutter] [data-separator-content],
+[data-gutter] [data-unmodified-lines] {
+  /* Only the text escapes the gutter; the tint must not, or it double-paints
+   * over the code copy's band. */
+  min-width: 0;
+  overflow: visible;
+}
+
+[data-content] [data-unmodified-lines],
+[data-content] [data-expand-button] {
+  display: none;
+}
+
+/*
+ * Expansion controls. Pierre lays the buttons out as grid columns ahead of the
+ * band; in this gutter copy there is no room for them, so they are lifted out
+ * of flow and drawn over the leading edge of the band, where Cursor puts them,
+ * and the count is indented to clear them.
+ */
+[data-gutter] [data-expand-button] {
+  position: absolute;
+  inset-inline-start: var(--nyte-diff-separator-inset);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-width: 0;
+  height: 20px;
+  border: 0;
+  border-radius: var(--nyte-radius-sm);
+  background-color: transparent;
+  color: var(--nyte-icon-secondary);
+  cursor: pointer;
+}
+
+/* Up and down, when one expansion cannot close the gap, sit side by side. */
+[data-gutter] [data-expand-button] + [data-expand-button] {
+  inset-inline-start: calc(var(--nyte-diff-separator-inset) + 24px);
+}
+
+[data-gutter] [data-expand-button]:hover {
+  background-color: var(--nyte-bg-quaternary);
+  color: var(--nyte-icon-primary);
+}
+
+/*
+ * Pierre's trailing "Expand all" stays hidden, as it is by default: the pinned
+ * gutter copy is a few characters wide, so a trailing text button has nowhere
+ * to sit, and repeated clicks on the chevrons reach the same lines.
+ */
+[data-expand-button][data-expand-all-button] {
+  display: none;
+}
+
+[data-gutter] [data-separator][data-expand-index] [data-separator-content] {
+  padding-inline-start: 24px;
+}
+
+[data-gutter] [data-separator-wrapper][data-separator-multi-button] [data-separator-content] {
+  padding-inline-start: 48px;
+}
+
+[data-content] [data-separator-wrapper] {
+  display: flex;
+  padding-inline-end: 8px;
+  background-color: transparent;
+}
+
+[data-separator-content] {
+  /* The band runs the full width of the row, as Cursor's does. */
+  flex: 1;
+  background-color: var(--nyte-bg-tertiary);
+  color: var(--nyte-text-tertiary);
+  /*
+   * Fixed like the row it sits in. The diff's line box is a fixed 20px, so a
+   * label that tracked the code font would clip against it at large sizes.
+   */
+  height: calc(var(--nyte-diff-line-height) + 8px);
+  font-size: 12px;
+  line-height: calc(var(--nyte-diff-line-height) + 8px);
+}
+
+/* The two column copies meet, so only the outer corners round. */
+[data-gutter] [data-separator-content] {
+  padding-inline: 8px 0;
+  border-start-start-radius: var(--nyte-radius-base);
+  border-end-start-radius: var(--nyte-radius-base);
+}
+
+[data-content] [data-separator-content] {
+  padding-inline: 0 8px;
+  border-start-end-radius: var(--nyte-radius-base);
+  border-end-end-radius: var(--nyte-radius-base);
+}
 `;
 
 /**
@@ -82,10 +222,13 @@ const PATCH_OPTIONS = {
   unsafeCSS: SHADOW_CSS,
 } satisfies FileDiffOptions<undefined, undefined>;
 
-const PATCH_STACK = { ...PATCH_OPTIONS, overflow: "wrap" } satisfies FileDiffOptions<
-  undefined,
-  undefined
->;
+/**
+ * Lines revealed per click. Short enough that one click reads as a step rather
+ * than as the whole file arriving, and it decides the control: a gap this size
+ * or smaller closes in one click and gets a single stacked chevron, a longer
+ * one gets an up and a down chevron.
+ */
+const EXPANSION_LINE_COUNT = 20;
 
 const rawStyles = stylex.create({
   raw: {
@@ -123,16 +266,46 @@ export const DiffView = memo(function DiffView({
   label,
   diff,
   variant,
+  layout = "unified",
+  wordWrap,
+  expandContext = true,
+  loadDiffFiles,
 }: {
   readonly path: string;
   readonly label?: string;
   readonly diff: ParsedDiff;
   readonly variant: DiffViewVariant;
+  readonly layout?: "unified" | "split";
+  /** Defaults to the variant's own behavior: the stack wraps, the rest scroll. */
+  readonly wordWrap?: boolean;
+  readonly expandContext?: boolean;
+  /**
+   * Supplies both whole sides of a file so a collapsed gap can be widened.
+   * Without it Pierre draws no expand control, which is what a transcript
+   * receipt wants: its patch is the record, and the working tree has moved on.
+   * Keep the identity stable across renders, or every render reloads.
+   */
+  readonly loadDiffFiles?: DiffFilesLoader;
 }): ReactElement {
   const headed = variant === "workbench";
   const stacked = variant === "stack";
   const appearance = useAppearanceSettings();
   const renderable = useMemo(() => renderablePatch(diff.patch), [diff.patch]);
+  const wrapped = wordWrap ?? stacked;
+  const expansion = expandContext ? loadDiffFiles : undefined;
+  const options = useMemo<FileDiffOptions<undefined, undefined>>(
+    () => ({
+      ...PATCH_OPTIONS,
+      diffStyle: layout,
+      overflow: wrapped ? "wrap" : "scroll",
+      themeType: appearance.theme,
+      // `expandUnchanged` stays off: it would open every gap at once, and the
+      // point of the band is that the reader chooses.
+      loadDiffFiles: expansion,
+      expansionLineCount: EXPANSION_LINE_COUNT,
+    }),
+    [layout, wrapped, appearance.theme, expansion],
+  );
 
   return (
     <div
@@ -174,10 +347,7 @@ export const DiffView = memo(function DiffView({
             <FileDiff
               key={`${String(index)}:${fileDiff.name ?? path}`}
               fileDiff={fileDiff}
-              options={{
-                ...(stacked ? PATCH_STACK : PATCH_OPTIONS),
-                themeType: appearance.theme,
-              }}
+              options={options}
               className={stylex.props(diffStyles.patch).className}
               disableWorkerPool
             />

@@ -22,6 +22,7 @@ import type {
   ThinkingLevel,
   UsageSubject,
   WorkspaceInfo,
+  VcsDiff,
   VcsStatus,
 } from "@nyte-ai/core";
 import type { AccountUsage, ClaudeCodeUsage, CodexUsage } from "@nyte-ai/host/usage";
@@ -113,6 +114,16 @@ export const HOST_OPERATION_PATHS = [
   "host.logout",
   "host.setPreference",
   "host.vcs.snapshot",
+  "host.vcs.contents",
+  "host.vcs.diff",
+  "host.vcs.log",
+  "host.vcs.refs",
+  "host.vcs.revert",
+  "host.vcs.stage",
+  "host.vcs.commit",
+  "host.vcs.createBranch",
+  "host.vcs.push",
+  "host.vcs.createPullRequest",
   "host.files.list",
   "host.files.cancelList",
   "host.files.read",
@@ -312,20 +323,241 @@ export interface ProviderStatus {
   readonly signIn: readonly SignInMethod[];
 }
 
-/** Desktop-local repository identity and cache revision. Core remains provider-neutral. */
+/**
+ * Where the checkout stands relative to its branch and upstream. `oid` is
+ * `null` on an unborn HEAD, where a branch name already exists but points at
+ * no commit. A detached HEAD carries an `oid` and no branch.
+ */
+export interface DesktopVcsHead {
+  readonly oid: string | null;
+  readonly branch?: string;
+  /** Short upstream ref (`origin/main`) when the branch tracks one. */
+  readonly upstream?: string;
+  readonly ahead: number;
+  readonly behind: number;
+}
+
+/**
+ * Desktop-local repository identity and cache revision. Core remains
+ * provider-neutral. `status` stays the whole-tree view; `staged` and
+ * `unstaged` split the same records by the index and worktree status columns,
+ * so one file can appear in both with different kinds. The git backend always
+ * answers with all three; they are optional for callers that construct a
+ * snapshot from the status alone.
+ */
 export type DesktopVcsSnapshot =
   | {
       readonly kind: "not_repository";
       readonly repositoryId: string;
       readonly revision: "not-repository";
       readonly status: VcsStatus;
+      readonly head?: DesktopVcsHead;
+      readonly staged?: VcsStatus["files"];
+      readonly unstaged?: VcsStatus["files"];
     }
   | {
       readonly kind: "repository";
       readonly repositoryId: string;
       readonly revision: string;
       readonly status: VcsStatus;
+      readonly head?: DesktopVcsHead;
+      readonly staged?: VcsStatus["files"];
+      readonly unstaged?: VcsStatus["files"];
     };
+
+/** What the desktop git backend answers with: the split and head are always read. */
+export type DesktopGitSnapshot = DesktopVcsSnapshot & {
+  readonly head: DesktopVcsHead;
+  readonly staged: VcsStatus["files"];
+  readonly unstaged: VcsStatus["files"];
+};
+
+/**
+ * Which comparison a diff read asks for. `worktree` is everything since the
+ * last commit, staged or not; `staged` is the index against HEAD; `unstaged`
+ * is the worktree against the index; `commit` is one commit against its parent.
+ */
+export type DesktopVcsDiffScope = "worktree" | "staged" | "unstaged" | "commit";
+
+export interface DesktopVcsDiffInput {
+  readonly scope: DesktopVcsDiffScope;
+  /** Required by the `commit` scope and ignored by every other one. */
+  readonly commit?: string;
+  /** Narrow the read to these workspace-relative paths. */
+  readonly paths?: readonly string[];
+  readonly ignoreWhitespace?: boolean;
+}
+
+export interface DesktopVcsCommit {
+  readonly oid: string;
+  readonly shortOid: string;
+  readonly subject: string;
+  readonly author: string;
+  /** Commit time in epoch milliseconds. */
+  readonly committedAt: number;
+}
+
+/** One page of history. `hasMore` is read from one extra commit, not a count. */
+export interface DesktopVcsLog {
+  readonly commits: readonly DesktopVcsCommit[];
+  readonly hasMore: boolean;
+}
+
+export interface DesktopVcsLogInput {
+  readonly limit: number;
+  /** Continue strictly older than this commit; omitted starts at HEAD. */
+  readonly before?: string;
+}
+
+/** Short ref names. `current` is absent on a detached HEAD. */
+export interface DesktopVcsRefs {
+  readonly current?: string;
+  readonly local: readonly string[];
+  readonly remote: readonly string[];
+}
+
+export interface DesktopVcsRevertInput {
+  /** Workspace-relative paths to discard, each checked against the workspace root. */
+  readonly paths: readonly string[];
+}
+
+/** Why one path was left alone. A path with nothing to revert is reported here, never as a failure. */
+export interface DesktopVcsRevertSkip {
+  readonly path: string;
+  readonly reason: string;
+}
+
+/**
+ * What a revert did, path by path. Tracked files are restored from HEAD in
+ * both the index and the worktree; untracked files are moved to the OS trash,
+ * so an untracked revert is recoverable outside Nyte.
+ */
+export interface DesktopVcsRevert {
+  readonly reverted: readonly string[];
+  readonly skipped: readonly DesktopVcsRevertSkip[];
+}
+
+export interface DesktopVcsStageInput {
+  /** Workspace-relative paths, each checked against the workspace root. */
+  readonly paths: readonly string[];
+  /** `true` adds the path to the index, `false` removes it from the index. */
+  readonly staged: boolean;
+}
+
+/** Why one path's index entry was left alone, in git's own words. */
+export interface DesktopVcsStageSkip {
+  readonly path: string;
+  readonly reason: string;
+}
+
+/**
+ * What a stage change did, path by path. `staged` lists the paths that now
+ * match the request, whether they were added to or removed from the index. A
+ * path git refused is reported in `skipped`, and the rest of the batch applies.
+ */
+export interface DesktopVcsStage {
+  readonly staged: readonly string[];
+  readonly skipped: readonly DesktopVcsStageSkip[];
+}
+
+export interface DesktopVcsCommitInput {
+  /** Passed to git as an argument. A whitespace-only message is refused before git runs. */
+  readonly message: string;
+  /** Commit every tracked change, staged or not. */
+  readonly all?: boolean;
+  /** Commit only these workspace-relative paths. */
+  readonly paths?: readonly string[];
+}
+
+/**
+ * `failed` carries git's own first line: a rejected hook, a signing or identity
+ * problem, and an unresolved conflict all land here rather than throwing.
+ */
+export type DesktopVcsCommitResult =
+  | {
+      readonly kind: "committed";
+      readonly oid: string;
+      readonly shortOid: string;
+      readonly summary: string;
+    }
+  | { readonly kind: "nothing_to_commit" }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export interface DesktopVcsCreateBranchInput {
+  readonly name: string;
+  /** Move HEAD to the new branch instead of only creating it. */
+  readonly checkout: boolean;
+}
+
+/** `invalid_name` is `git check-ref-format`'s verdict, not a local guess. */
+export type DesktopVcsCreateBranch =
+  | { readonly kind: "created" }
+  | { readonly kind: "exists" }
+  | { readonly kind: "invalid_name"; readonly reason?: string }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export interface DesktopVcsPushInput {
+  /**
+   * Publish a branch that tracks nothing, against the single configured
+   * remote. Without it an untracked branch answers `no_upstream`.
+   */
+  readonly setUpstream?: boolean;
+}
+
+/**
+ * A push is never forced and never runs on a detached HEAD, which answers
+ * `failed`. `rejected` is the remote refusing a non-fast-forward update, so
+ * the branch needs a pull first.
+ */
+export type DesktopVcsPush =
+  | {
+      readonly kind: "pushed";
+      readonly remote: string;
+      readonly branch: string;
+    }
+  | { readonly kind: "up_to_date"; readonly remote?: string; readonly branch?: string }
+  | { readonly kind: "no_upstream"; readonly branch: string }
+  | { readonly kind: "rejected"; readonly reason: string; readonly branch?: string }
+  | { readonly kind: "failed"; readonly reason: string; readonly branch?: string };
+
+export interface DesktopVcsPullRequestInput {
+  readonly title: string;
+  readonly body?: string;
+  readonly draft?: boolean;
+}
+
+/**
+ * Every state `gh` can leave a pull request request in. `exists` carries the
+ * pull request already open for this branch; nothing is created then.
+ */
+export type DesktopVcsPullRequestResult =
+  | { readonly kind: "created"; readonly url: string }
+  | { readonly kind: "exists"; readonly pullRequest: GitHubPullRequest }
+  | { readonly kind: "cli_missing" }
+  | { readonly kind: "signed_out" }
+  | { readonly kind: "no_remote" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/** Which side a diff was computed against: the last commit or the staged index. */
+export type DesktopVcsBase = "head" | "index";
+
+export interface DesktopVcsContentsInput {
+  readonly path: string;
+  readonly base: DesktopVcsBase;
+}
+
+/**
+ * Both sides of one file, so a partial patch can be rendered with full context.
+ * A side is `null` when the file does not exist there: `old` for added or
+ * untracked files, `new` for deleted ones. Binary files report no contents.
+ */
+export interface DesktopVcsContents {
+  readonly path: string;
+  readonly old: { readonly contents: string } | null;
+  readonly new: { readonly contents: string } | null;
+  readonly binary: boolean;
+  readonly truncated: boolean;
+}
 
 export interface GitHubRepository {
   readonly owner: string;
@@ -709,6 +941,33 @@ export interface HostBridge {
   vcs: {
     /** Revision is desktop cache identity; status still comes from the generic VCS backend. */
     snapshot(): Promise<DesktopVcsSnapshot>;
+    /** Read-only both-sides file read that hydrates a partial patch with full file context. */
+    contents(input: DesktopVcsContentsInput): Promise<DesktopVcsContents>;
+    /** One patch per changed file in the requested scope; unchanged files are omitted. */
+    diff(input: DesktopVcsDiffInput): Promise<readonly VcsDiff[]>;
+    /** A page of history, newest first. An unborn HEAD has no commits. */
+    log(input: DesktopVcsLogInput): Promise<DesktopVcsLog>;
+    refs(): Promise<DesktopVcsRefs>;
+    /**
+     * Discard each path's working-tree state: tracked files go back to HEAD,
+     * untracked files go to the OS trash. Needs workspace trust, like every
+     * other host mutation.
+     */
+    revert(input: DesktopVcsRevertInput): Promise<DesktopVcsRevert>;
+    /** Add each path to the index or remove it from the index. Needs workspace trust. */
+    stage(input: DesktopVcsStageInput): Promise<DesktopVcsStage>;
+    /**
+     * Commit the index, or the named paths, or every tracked change with
+     * `all`. Hook, signing, identity, and conflict failures answer `failed`
+     * instead of throwing. Needs workspace trust.
+     */
+    commit(input: DesktopVcsCommitInput): Promise<DesktopVcsCommitResult>;
+    /** Create a branch, optionally checking it out. Needs workspace trust. */
+    createBranch(input: DesktopVcsCreateBranchInput): Promise<DesktopVcsCreateBranch>;
+    /** Push the current branch. Never forced, never from a detached HEAD. Needs workspace trust. */
+    push(input: DesktopVcsPushInput): Promise<DesktopVcsPush>;
+    /** Open a pull request for the current branch through `gh`. Needs workspace trust. */
+    createPullRequest(input: DesktopVcsPullRequestInput): Promise<DesktopVcsPullRequestResult>;
   };
   files: WorkspaceEditorBridge & {
     /** Files and their parent folders offered for `@` mentions. */
@@ -861,6 +1120,16 @@ export interface CallMethodByPath {
   readonly "host.logout": NyteBridge["host"]["logout"];
   readonly "host.setPreference": NyteBridge["host"]["setPreference"];
   readonly "host.vcs.snapshot": NyteBridge["host"]["vcs"]["snapshot"];
+  readonly "host.vcs.contents": NyteBridge["host"]["vcs"]["contents"];
+  readonly "host.vcs.diff": NyteBridge["host"]["vcs"]["diff"];
+  readonly "host.vcs.log": NyteBridge["host"]["vcs"]["log"];
+  readonly "host.vcs.refs": NyteBridge["host"]["vcs"]["refs"];
+  readonly "host.vcs.revert": NyteBridge["host"]["vcs"]["revert"];
+  readonly "host.vcs.stage": NyteBridge["host"]["vcs"]["stage"];
+  readonly "host.vcs.commit": NyteBridge["host"]["vcs"]["commit"];
+  readonly "host.vcs.createBranch": NyteBridge["host"]["vcs"]["createBranch"];
+  readonly "host.vcs.push": NyteBridge["host"]["vcs"]["push"];
+  readonly "host.vcs.createPullRequest": NyteBridge["host"]["vcs"]["createPullRequest"];
   readonly "host.files.list": NyteBridge["host"]["files"]["list"];
   readonly "host.files.cancelList": NyteBridge["host"]["files"]["cancelList"];
   readonly "host.files.read": NyteBridge["host"]["files"]["read"];

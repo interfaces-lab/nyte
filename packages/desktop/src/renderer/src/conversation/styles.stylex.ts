@@ -6,7 +6,7 @@
  * Based on https://github.com/b-nnett/grok-bot-0.18-reconstructed/blob/a9f633e09d49a85829b8236331b9e21f7e612634/frontend/src/recovered/features/conversation/workspace/view.css
  */
 import * as stylex from "@stylexjs/stylex";
-import { conversation, diffView, layer, tray } from "../theme/schema.stylex.ts";
+import { conversation, diffView, layer, pane, tray } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
 const caretBlink = stylex.keyframes({
@@ -75,7 +75,7 @@ export const proseStyles = stylex.create({
     gap: 8,
     marginInline: 0,
     marginBlockStart: { default: 8, ":is(li > ul, li > ol)": 4, ":first-child": 0 },
-    marginBlockEnd: { default: 18, ":last-child": 0 },
+    marginBlockEnd: { default: 16, ":last-child": 0 },
     paddingInlineStart: "2em",
   },
   listItem: { whiteSpace: "normal" },
@@ -163,7 +163,7 @@ export const proseStyles = stylex.create({
   fallbackPre: {
     width: "100%",
     margin: 0,
-    padding: "11px 12px",
+    padding: 12,
     overflowX: "auto",
     overflowY: "hidden",
     borderRadius: t.radiusLg,
@@ -198,7 +198,7 @@ export const codeBlockStyles = stylex.create({
   scroll: { maxWidth: "100%", overflowX: "auto", overflowY: "hidden" },
   pre: {
     margin: 0,
-    padding: "11px 12px",
+    padding: 12,
     color: t.textPrimary,
     fontFamily: t.fontMono,
     fontSize: t.fontCode,
@@ -231,6 +231,13 @@ export const codeBlockStyles = stylex.create({
 export const composerStyles = stylex.create({
   // The dock is an opaque base layer. Transcript content never shows through
   // the composer or its queue controls.
+  //
+  // Rows dissolve into the dock instead of being cut at its edge. Cursor's
+  // glass build masks the scroller itself, which needs the composer to sit
+  // outside it; ours is sticky inside, so this is Cursor's overlay recipe for
+  // that case (`.composer-fade-overlay`): one solid block of the dock's own
+  // colour, masked away upward. A painted gradient would interpolate toward
+  // transparent black and cast grey over the rows it is meant to fade.
   dock: {
     position: "sticky",
     bottom: 0,
@@ -239,6 +246,16 @@ export const composerStyles = stylex.create({
     width: "100%",
     paddingTop: 12,
     backgroundColor: t.bgBase,
+    "::before": {
+      content: "''",
+      position: "absolute",
+      insetInline: 0,
+      bottom: "100%",
+      height: conversation.edgeFade,
+      backgroundColor: t.bgBase,
+      maskImage: "linear-gradient(to top, black, transparent)",
+      pointerEvents: "none",
+    },
   },
   region: {
     display: "flex",
@@ -419,7 +436,7 @@ export const composerStyles = stylex.create({
   frameFollowUpCompact: {
     gap: 6,
     minHeight: 40,
-    padding: "5px 8px 5px 10px",
+    padding: "4px 8px 4px 10px",
     borderRadius: t.radiusFull,
   },
   frameFollowUpExpanded: { borderRadius: conversation.composerExpandedRadius },
@@ -846,7 +863,7 @@ export const composerStyles = stylex.create({
     whiteSpace: "nowrap",
   },
   suggestionGroupStart: {
-    marginBlockStart: 5,
+    marginBlockStart: pane.dividerGap,
     // A section divider sits in the gap, independent of the rounded row highlight.
     "::before": {
       content: '""',
@@ -894,7 +911,7 @@ export const composerStyles = stylex.create({
   suggestionPreviewAttribution: {
     display: "flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     marginBlockStart: 6,
     color: t.textTertiary,
     fontSize: t.fontSm,
@@ -928,7 +945,7 @@ export const composerStyles = stylex.create({
   suggestionPreviewPathRow: {
     display: "flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     minWidth: 0,
     color: t.textTertiary,
     fontSize: t.fontSm,
@@ -1125,7 +1142,6 @@ export const diffStyles = stylex.create({
     "--diffs-bg-buffer-override": t.bgEditor,
     "--diffs-bg-context-override": t.bgEditor,
     "--diffs-bg-context-gutter-override": t.bgEditor,
-    "--diffs-bg-separator-override": t.fillSecondary,
     "--diffs-bg-addition-override": t.diffAddedLineBg,
     "--diffs-bg-deletion-override": t.diffRemovedLineBg,
     "--diffs-bg-addition-emphasis-override": t.diffAddedTextBg,
@@ -1134,6 +1150,9 @@ export const diffStyles = stylex.create({
     "--diffs-addition-color-override": t.added,
     "--diffs-deletion-color-override": t.removed,
     "--diffs-gap-style": "none",
+    // Pierre pads the code grid top and bottom. The section header already
+    // spaces the patch, and the stack's height arithmetic counts rows alone.
+    "--diffs-gap-block": "0px",
     "--diffs-min-number-column-width": "calc(4ch + 8px)",
     "--diffs-font-family": t.fontMono,
     "--diffs-header-font-family": t.fontSans,
@@ -1202,7 +1221,7 @@ export const toolCallStyles = stylex.create({
   lineDetailed: {
     width: "100%",
     minHeight: 32,
-    paddingInline: 9,
+    paddingInline: 8,
     borderRadius: t.radiusLg,
     backgroundColor: t.conversationTechnicalBg,
     boxShadow: CODE_RING,
@@ -1373,7 +1392,7 @@ export const toolGroupStyles = stylex.create({
     display: "inline-flex",
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     width: "fit-content",
     maxWidth: "100%",
     minHeight: conversation.rowMinHeight,
@@ -1384,7 +1403,7 @@ export const toolGroupStyles = stylex.create({
   toggle: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     width: "fit-content",
     maxWidth: "100%",
     minHeight: conversation.rowMinHeight,
@@ -1437,7 +1456,7 @@ export const toolGroupStyles = stylex.create({
   calls: {
     display: "flex",
     flexDirection: "column",
-    gap: 7,
+    gap: 6,
     marginBlockStart: 4,
     paddingBlock: 2,
     paddingInlineStart: 16,
@@ -1470,13 +1489,26 @@ export const toolGroupStyles = stylex.create({
     insetInlineStart: 0,
     width: "100%",
     minWidth: 0,
-    paddingBlockEnd: 7,
+    paddingBlockEnd: 6,
   },
-  commentary: { minWidth: 0 },
   thinking: { minWidth: 0, opacity: 0.68 },
 });
 
 export const USER_MESSAGE_PREVIEW_LINES = 3.5;
+
+/** The prompt's own block padding, which the collapsed preview fades through. */
+const USER_PROMPT_PADDING_BLOCK = 8;
+
+/** Room for a chip's background above the first line, which the clip would cut. */
+const USER_PREVIEW_BLEED_TOP = 2;
+
+/**
+ * Cursor's collapsed-message fade (`UMs`): it spans the clipped fractional line
+ * plus the whole line above it, and runs out through the prompt's bottom
+ * padding. The half line is gone before the clip, so nothing reads as sliced
+ * text against the prompt's edge.
+ */
+const USER_PREVIEW_FADE = `calc(${t.leadingLg} * ${(USER_MESSAGE_PREVIEW_LINES % 1) + 1} + ${USER_PROMPT_PADDING_BLOCK}px)`;
 
 export const turnStyles = stylex.create({
   turn: {
@@ -1489,10 +1521,10 @@ export const turnStyles = stylex.create({
     // layout containment leaves that alone (no overflow clip, no scroller).
     contain: "layout",
   },
-  // The row paints nothing of its own: a slab behind the prompt shows as a
-  // strip wherever the scrollport's backdrop is not the flat base colour
-  // (vibrancy, tint, gradients). The opaque prompt covers what scrolls under
-  // it and lifts with a shadow while stuck; the scrollport fades its top edge.
+  // The row's inset is the transcript's top edge while the prompt is stuck:
+  // it paints the pane colour, so rows scrolling past vanish behind it instead
+  // of surfacing above the prompt. The scrollport drops its own fade then,
+  // which would otherwise make this strip translucent.
   userRow: {
     position: { default: "sticky", "[data-sticky-disabled='true']": "relative" },
     zIndex: { default: layer.stickyContent, "[data-sticky-disabled='true']": "auto" },
@@ -1502,6 +1534,7 @@ export const turnStyles = stylex.create({
     minWidth: 0,
     paddingTop: 10,
     marginBottom: 4,
+    backgroundColor: { default: null, "[data-sticky-active='true']": t.bgBase },
     "--_user-prompt-shadow": {
       default: "none",
       "[data-sticky-active='true']": t.conversationUserShadow,
@@ -1519,7 +1552,7 @@ export const turnStyles = stylex.create({
     display: "block",
     width: "100%",
     minWidth: 0,
-    paddingBlock: 8,
+    paddingBlock: USER_PROMPT_PADDING_BLOCK,
     paddingInline: 10,
     borderWidth: 1,
     borderStyle: "solid",
@@ -1545,8 +1578,16 @@ export const turnStyles = stylex.create({
   },
   userPreview: { overflow: "hidden" },
   userPreviewCollapsed: { maxHeight: `calc(${t.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES})` },
+  // The preview bleeds into the prompt's padding so the fade has somewhere to
+  // finish; negative margins give the bleed back, leaving the row's height and
+  // the toggle's place unchanged.
   userPreviewFade: {
-    maskImage: "linear-gradient(to bottom, #000 calc(100% - 48px), transparent)",
+    maxHeight: `calc(${t.leadingLg} * ${USER_MESSAGE_PREVIEW_LINES} + ${USER_PREVIEW_BLEED_TOP + USER_PROMPT_PADDING_BLOCK}px)`,
+    paddingTop: USER_PREVIEW_BLEED_TOP,
+    marginTop: -USER_PREVIEW_BLEED_TOP,
+    paddingBottom: USER_PROMPT_PADDING_BLOCK,
+    marginBottom: -USER_PROMPT_PADDING_BLOCK,
+    maskImage: `linear-gradient(to bottom, #000 calc(100% - ${USER_PREVIEW_FADE}), transparent 100%)`,
   },
   userPreviewToggle: {
     display: "block",
@@ -1724,7 +1765,7 @@ export const turnStyles = stylex.create({
   reasoningToggle: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     width: "fit-content",
     minHeight: conversation.rowMinHeight,
     padding: 0,
@@ -1784,7 +1825,7 @@ export const turnStyles = stylex.create({
   historyToggle: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     width: "fit-content",
     maxWidth: "100%",
     minWidth: 0,
@@ -1819,7 +1860,7 @@ export const turnStyles = stylex.create({
     width: "100%",
     marginTop: 4,
     paddingBlock: 2,
-    paddingInlineStart: 14,
+    paddingInlineStart: 12,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: t.conversationGuide,

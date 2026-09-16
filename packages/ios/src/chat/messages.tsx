@@ -21,6 +21,7 @@ import {
   tokens,
 } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
+import { useTranscriptFont } from "../settings/preferences.ts";
 import { elapsed } from "./sessions.ts";
 import { fileStatus, formatDuration, type ConversationTurn } from "./turn-changes.ts";
 
@@ -41,10 +42,11 @@ export function Markdown({
   streaming?: boolean;
 }) {
   const theme = useTheme();
+  const transcriptFont = useTranscriptFont();
   return (
     <EnrichedMarkdownText
       markdown={text}
-      markdownStyle={markdownStyle(theme)}
+      markdownStyle={markdownStyle(theme, transcriptFont.value)}
       flavor="github"
       streamingAnimation={streaming}
       enableTaskListItemToggle={false}

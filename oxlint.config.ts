@@ -4,6 +4,8 @@ export default defineConfig({
   // Generated brand assets and audit evidence, not source.
   ignorePatterns: ["output/**"],
   plugins: ["react", "eslint", "typescript", "unicorn", "import"],
+  // The desktop design scale: enforced on StyleX sources, not wrapped in tokens.
+  jsPlugins: ["./packages/desktop/lint/design-scale.js"],
   categories: {
     correctness: "error",
   },
@@ -106,6 +108,9 @@ export default defineConfig({
     {
       files: ["packages/desktop/src/renderer/**/*.{ts,tsx}"],
       rules: {
+        "nyte-design/spacing-scale": "error",
+        "nyte-design/size-grid": "error",
+        "nyte-design/no-raw-colors": "error",
         "eslint/no-restricted-imports": [
           "error",
           {
@@ -127,6 +132,18 @@ export default defineConfig({
             ],
           },
         ],
+      },
+    },
+    {
+      // The tint preview paints the raw hue the user is choosing, and the QR
+      // code needs a white quiet zone a camera can read; neither resolves
+      // through the palette.
+      files: [
+        "packages/desktop/src/renderer/src/chrome/appearance-panel.stylex.ts",
+        "packages/desktop/src/renderer/src/chrome/pairing-code.tsx",
+      ],
+      rules: {
+        "nyte-design/no-raw-colors": "off",
       },
     },
     {

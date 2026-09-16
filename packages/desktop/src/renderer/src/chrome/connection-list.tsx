@@ -5,6 +5,7 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import type { ReactElement, ReactNode } from "react";
+import { settings } from "../theme/schema.stylex.ts";
 import { settingsPatterns } from "../theme/settings-patterns.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
@@ -16,7 +17,7 @@ const styles = stylex.create({
     alignItems: "center",
     columnGap: 12,
     rowGap: 8,
-    minHeight: 61,
+    minHeight: settings.rowMinHeight,
     padding: 12,
     "::after": {
       position: "absolute",

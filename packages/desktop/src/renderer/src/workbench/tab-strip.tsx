@@ -67,7 +67,7 @@ const styles = create({
     alignItems: "center",
     flexShrink: 0,
     maxWidth: 200,
-    height: 25,
+    height: 26,
     borderRadius: t.radiusBase,
     backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
     color: t.textTertiary,
@@ -78,7 +78,7 @@ const styles = create({
     alignItems: "center",
     minWidth: 0,
     height: "100%",
-    paddingInlineStart: 5,
+    paddingInlineStart: 4,
     paddingInlineEnd: 6,
     borderStyle: "none",
     borderRadius: t.radiusBase,
@@ -104,8 +104,8 @@ const styles = create({
   typescriptIcon: { color: t.textAccent },
   javascriptIcon: { color: t.textWarning },
   dirty: {
-    width: 5,
-    height: 5,
+    width: 6,
+    height: 6,
     flexShrink: 0,
     borderRadius: "50%",
     backgroundColor: t.textWarning,
@@ -423,7 +423,7 @@ export function WorkbenchTabStrip({
       </Tabs.Root>
       <Menu
         label="New workbench tab"
-        trigger={<IconButton compact size={16} icon="plus" label="New workbench tab" />}
+        trigger={<IconButton icon="plus" label="New workbench tab" />}
       >
         {workbenchTabs(scope).map((tab) => (
           <MenuItem

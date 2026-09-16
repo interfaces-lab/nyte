@@ -4,6 +4,7 @@
  */
 import { create, keyframes, props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
+import { glyph } from "../theme/schema.stylex.ts";
 
 const pulse = keyframes({
   "0%": { opacity: 0.4 },
@@ -26,7 +27,7 @@ const squares = Array.from({ length: 16 }, (_, index) => ({
 })).filter((square) => !cornerIndices.has(square.index));
 
 const styles = create({
-  root: { flexShrink: 0, width: 15, height: 15, color: "inherit" },
+  root: { flexShrink: 0, width: glyph.box, height: glyph.box, color: "inherit" },
   square: {
     opacity: 0.7,
     animationName: { default: pulse, "@media (prefers-reduced-motion: reduce)": "none" },

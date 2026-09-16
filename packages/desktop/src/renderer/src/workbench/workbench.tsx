@@ -15,7 +15,7 @@ import type { IconName } from "../components/icons";
 import { focus, IconButton, ToggleIconButton } from "../components/ui";
 import { Menu, MenuItem } from "../components/menu.tsx";
 import { useHostState, useSessionSnapshot } from "../queries.ts";
-import { layer, workbench } from "../theme/schema.stylex";
+import { glyph, layer, workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import {
   clampWorkbenchWidthToBounds,
@@ -73,7 +73,8 @@ const styles = create({
     borderInlineStartColor: t.strokeTertiary,
   },
   railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
-  railHostCompact: { width: 44, minWidth: 44 },
+  /** The icon rail's 34px box plus its 6px margins. */
+  railHostIcon: { width: 46, minWidth: 46 },
   panelOverlay: {
     position: "absolute",
     zIndex: layer.workbench,
@@ -88,22 +89,27 @@ const styles = create({
   rail: {
     display: "flex",
     flexDirection: "column",
-    gap: 15,
+    gap: 16,
     width: "100%",
     minWidth: 0,
-    paddingBlock: 5,
+    paddingBlock: 4,
     paddingInline: 8,
     color: t.textSecondary,
   },
-  compactRail: {
+  /**
+   * The icon-only rail, shown when the stage is too narrow for the full one.
+   * Its width holds one 28px icon button inside the 2px padding and hairline
+   * border; `rail` above is the wide rail that lists open tabs.
+   */
+  iconRail: {
     display: "flex",
     flexDirection: "column",
     gap: 1,
     boxSizing: "border-box",
-    width: 32,
-    marginBlockStart: 5,
+    width: 34,
+    marginBlockStart: 4,
     marginInline: 6,
-    padding: 3,
+    padding: 2,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: t.strokeTertiary,
@@ -112,9 +118,9 @@ const styles = create({
     color: t.textSecondary,
     boxShadow: `0 1px 2px ${t.shadowControlColor}`,
   },
-  compactRailDivider: {
+  iconRailDivider: {
     height: 1,
-    marginInline: 3,
+    marginInline: 2,
     backgroundColor: t.strokeTertiary,
   },
   railSection: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
@@ -122,7 +128,7 @@ const styles = create({
     display: "flex",
     alignItems: "center",
     minHeight: 24,
-    paddingInline: 7,
+    paddingInline: 6,
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
@@ -140,7 +146,7 @@ const styles = create({
     justifyContent: "center",
     width: 24,
     height: 24,
-    marginInlineEnd: -5,
+    marginInlineEnd: -4,
     padding: 0,
     borderStyle: "none",
     borderRadius: t.radiusBase,
@@ -148,16 +154,16 @@ const styles = create({
     color: t.iconTertiary,
     cursor: "pointer",
   },
-  railCollapseGlyph: { display: "inline-flex", marginInlineStart: -5 },
+  railCollapseGlyph: { display: "inline-flex", marginInlineStart: -4 },
   railRow: {
     display: "flex",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
     width: "100%",
     minWidth: 0,
     minHeight: 28,
-    paddingBlock: 3,
-    paddingInline: 7,
+    paddingBlock: 2,
+    paddingInline: 6,
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: {
@@ -175,7 +181,7 @@ const styles = create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 15,
+    width: glyph.box,
     flexShrink: 0,
     color: t.iconSecondary,
   },
@@ -267,7 +273,7 @@ function RailRow({
   );
 }
 
-function CompactWorkbenchRail({
+function IconWorkbenchRail({
   viewKey,
   scope,
   workspacePath,
@@ -284,11 +290,11 @@ function CompactWorkbenchRail({
   };
 
   return (
-    <nav aria-label="Workbench navigation" {...props(styles.compactRail)}>
+    <nav aria-label="Workbench navigation" {...props(styles.iconRail)}>
       <Menu
         label="Open workbench panel"
         align="end"
-        trigger={<IconButton compact icon="plus" size={15} label="Open workbench panel" />}
+        trigger={<IconButton icon="plus" label="Open workbench panel" />}
       >
         {workbenchTabs(scope).map((tab) => (
           <MenuItem
@@ -306,19 +312,15 @@ function CompactWorkbenchRail({
           </MenuItem>
         ))}
       </Menu>
-      <span aria-hidden="true" {...props(styles.compactRailDivider)} />
+      <span aria-hidden="true" {...props(styles.iconRailDivider)} />
       <IconButton
-        compact
         icon="globe"
-        size={14}
         label="Open Browser"
         onClick={() => workbenchController.actions.openTab(viewKey, "browser")}
       />
-      <IconButton compact icon="console" size={14} label="Open Terminal" onClick={openTerminal} />
+      <IconButton icon="console" label="Open Terminal" onClick={openTerminal} />
       <IconButton
-        compact
         icon={tabIcons[directTab]}
-        size={14}
         label={`Open ${workbenchTabLabel(directTab)}`}
         onClick={() => workbenchController.actions.openTab(viewKey, directTab)}
       />
@@ -614,7 +616,7 @@ function WorkbenchViewHost({
   const panelRef = useRef<HTMLElement>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
-  const compactRail = bounds.kind === "overlay";
+  const iconRail = bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
   const selectPath = useCallback(
@@ -705,15 +707,15 @@ function WorkbenchViewHost({
         styles.panel,
         panelVisible && styles.panelOpen,
         !panelVisible && styles.railHost,
-        !panelVisible && compactRail && styles.railHostCompact,
+        !panelVisible && iconRail && styles.railHostIcon,
         panelVisible && (view.maximized || bounds.kind === "overlay") && styles.panelOverlay,
         !hostVisible && styles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
       {!panelVisible &&
-        (compactRail ? (
-          <CompactWorkbenchRail viewKey={viewKey} scope={scope} workspacePath={workspacePath} />
+        (iconRail ? (
+          <IconWorkbenchRail viewKey={viewKey} scope={scope} workspacePath={workspacePath} />
         ) : (
           <WorkbenchRail
             viewKey={viewKey}

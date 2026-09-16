@@ -13,7 +13,15 @@ import {
   renamePlugin,
   type TitleModels,
 } from "../examples/rename.ts";
-import { prompt, respond, runCommand, testModel, TestWorkspace } from "./host.ts";
+import {
+  prompt,
+  respond,
+  runCommand,
+  testModel,
+  toolCall,
+  toolParts,
+  TestWorkspace,
+} from "./host.ts";
 
 const workspaces: TestWorkspace[] = [];
 afterEach(async () => {
@@ -166,4 +174,39 @@ test("a root chat with no name is titled in the background on its first prompt, 
   assert.equal(titles.calls.length, 2);
   assert.equal((await sdk.sessions.get({ sessionId: named.sessionId }))?.name, "mine");
   assert.equal((await sdk.sessions.get({ sessionId: child.sessionId }))?.name, undefined);
+});
+
+test("the rename_chat tool names the chat, trimming and capping; a blank name is refused", async () => {
+  const world = workspace();
+  const titles = titleProvider();
+  const padded = `  Retry budget for 500s ${"x".repeat(200)}  `;
+  // A blank name first, then a padded, over-long one: the tool owns both.
+  const names = ["   ", padded];
+  const sdk = await world.open({
+    streamFn: (model) => {
+      const name = names.shift();
+      return name === undefined
+        ? respond(model, [{ type: "text", text: "done" }])
+        : respond(model, [toolCall(`r-${String(names.length)}`, "rename_chat", { name })]);
+    },
+    plugins: [inlinePlugin(renamePlugin({ models: titles.models, model: primary }))],
+    model: primary,
+  });
+
+  // Named by hand first, so the first-prompt titling stays out of the way.
+  await sdk.sessions.rename({ sessionId: world.sessionId, name: "draft" });
+
+  await prompt(sdk, world.sessionId, "Investigate production 500s");
+
+  const expected = padded.trim().slice(0, 100);
+  assert.equal((await sdk.sessions.get({ sessionId: world.sessionId }))?.name, expected);
+  assert.equal(titles.calls.length, 0, "the tool names the chat without asking a model");
+
+  const [blank, named, ...rest] = await toolParts(sdk, world.sessionId);
+  assert.ok(named !== undefined && rest.length === 0);
+  assert.equal(blank?.result?.isError, true);
+  assert.equal(named.result?.isError, false);
+  assert.equal(named.result?.output, `Chat named ${expected}`);
+  assert.deepEqual(named.result?.details, { name: expected });
+  assert.equal(named.result?.title, expected);
 });

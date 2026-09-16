@@ -249,10 +249,18 @@ export const textStyles = css.create({
   },
 });
 
-export function markdownStyle(theme: Theme): MarkdownStyle {
+/** The face the transcript's prose is set in. */
+export type TranscriptFont = "system" | "monospaced";
+
+export function markdownStyle(theme: Theme, transcriptFont: TranscriptFont): MarkdownStyle {
+  // A monospaced transcript borrows the face the code blocks already use, so a
+  // reply reads as one font rather than two.
+  const prose =
+    transcriptFont === "monospaced" ? { fontFamily: typography.code.fontFamily } : undefined;
   return {
     paragraph: {
       ...typography.body,
+      ...prose,
       fontWeight: String(typography.body.fontWeight),
       color: theme.foreground,
     },
@@ -291,6 +299,7 @@ export function markdownStyle(theme: Theme): MarkdownStyle {
     link: { color: theme.accent, underline: false },
     list: {
       ...typography.body,
+      ...prose,
       fontWeight: String(typography.body.fontWeight),
       color: theme.foreground,
       bulletColor: theme.muted,
@@ -298,6 +307,7 @@ export function markdownStyle(theme: Theme): MarkdownStyle {
     },
     blockquote: {
       ...typography.body,
+      ...prose,
       fontWeight: String(typography.body.fontWeight),
       color: theme.muted,
       borderColor: theme.separator,
@@ -320,6 +330,7 @@ export function markdownStyle(theme: Theme): MarkdownStyle {
     thematicBreak: { color: theme.separator },
     table: {
       ...typography.body,
+      ...prose,
       fontWeight: String(typography.body.fontWeight),
       color: theme.foreground,
       borderColor: theme.separator,

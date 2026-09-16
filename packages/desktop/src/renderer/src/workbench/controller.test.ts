@@ -135,6 +135,31 @@ describe("workbench geometry", () => {
     assert.equal(controller.getView(key), selected);
   });
 
+  test("index and commit scopes are held by identity, not by kind alone", () => {
+    const controller = createWorkbenchController();
+    const key = workbenchViewKey({ paneKey: "index-scope", target: { kind: "home" } });
+
+    controller.actions.selectChangesScope(key, { kind: "staged" });
+    assert.deepEqual(controller.getView(key).changesScope, { kind: "staged" });
+    const staged = controller.getView(key);
+    controller.actions.selectChangesScope(key, { kind: "staged" });
+    assert.equal(controller.getView(key), staged);
+
+    controller.actions.selectPath(key, "src/a.ts");
+    controller.actions.selectChangesScope(key, { kind: "unstaged" });
+    assert.deepEqual(controller.getView(key).changesScope, { kind: "unstaged" });
+    assert.equal(controller.getView(key).selectedPath, undefined);
+
+    controller.actions.selectChangesScope(key, { kind: "commit", oid: "c0ffee" });
+    const commit = controller.getView(key);
+    assert.deepEqual(commit.changesScope, { kind: "commit", oid: "c0ffee" });
+    controller.actions.selectChangesScope(key, { kind: "commit", oid: "c0ffee" });
+    assert.equal(controller.getView(key), commit);
+    // A different commit is a different scope even though the kind matches.
+    controller.actions.selectChangesScope(key, { kind: "commit", oid: "deadbee" });
+    assert.deepEqual(controller.getView(key).changesScope, { kind: "commit", oid: "deadbee" });
+  });
+
   test("both workbench toggles restore the selected panel and its state", () => {
     const controller = createWorkbenchController();
     const key = workbenchViewKey({ paneKey: "width-state", target: { kind: "home" } });
@@ -224,6 +249,7 @@ describe("workbench tabs", () => {
     controller.actions.openTab(first, "browser");
     controller.actions.openTab(first, "changes");
     controller.actions.selectChangesScope(first, { kind: "turn", turnId: "old-turn" });
+    controller.actions.selectChangesScope(second, { kind: "commit", oid: "old-commit" });
     controller.actions.closeTab(first, "browser");
     controller.actions.toggle(first);
     controller.actions.openTab(second, "browser");
@@ -236,6 +262,7 @@ describe("workbench tabs", () => {
     assert.equal(restored.getView(first).activeTab, "changes");
     assert.equal(restored.getView(first).expanded, false);
     assert.deepEqual(restored.getView(first).changesScope, { kind: "uncommitted" });
+    assert.deepEqual(restored.getView(second).changesScope, { kind: "uncommitted" });
     assert.deepEqual(restored.getView(second).openTabs, []);
     assert.equal(restored.getView(second).activeTab, null);
   });

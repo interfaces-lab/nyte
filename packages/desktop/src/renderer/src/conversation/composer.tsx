@@ -447,7 +447,7 @@ export function ComposerFrame({
                 onClick={() => onAttachmentRemove(attachment.id)}
                 {...stylex.props(composerStyles.attachmentRemove, focus.ring)}
               >
-                <Icon name="x" size={12} />
+                <Icon name="x" />
               </Button>
             )}
           </li>
@@ -648,7 +648,7 @@ export function ComposerFrame({
                     focus.ring,
                   )}
                 >
-                  <Icon name="plus" size={17} />
+                  <Icon name="plus" />
                 </Button>
               }
             >
@@ -702,7 +702,7 @@ export function ComposerFrame({
                   focus.ring,
                 )}
               >
-                <Icon name="square" size={12} />
+                <Icon name="square" />
               </Button>
             ) : (
               <Button
@@ -718,7 +718,7 @@ export function ComposerFrame({
                   focus.ring,
                 )}
               >
-                <Icon name="arrow-up" size={15} />
+                <Icon name="arrow-up" />
               </Button>
             )}
           </div>
@@ -1165,7 +1165,6 @@ export function Composer({
                           ? "Edit queued message"
                           : "Send or clear your draft to edit this"
                       }
-                      size={12}
                       disabled={!canBeginEdit}
                       onClick={() => beginEdit(item)}
                     />
@@ -1173,14 +1172,12 @@ export function Composer({
                       <IconButton
                         icon="arrow-up"
                         label="Send now"
-                        size={14}
                         onClick={() => void sendPendingNow(item)}
                       />
                     )}
                     <IconButton
                       icon="trash"
                       label="Remove queued message"
-                      size={12}
                       onClick={() => void cancelPending(item)}
                     />
                   </div>
@@ -1210,7 +1207,6 @@ export function Composer({
                 <IconButton
                   icon="trash"
                   label="Remove unsent message"
-                  size={12}
                   onClick={() => outbox.cancel(row.key)}
                 />
               </div>
@@ -1235,7 +1231,7 @@ export function Composer({
             focus.ring,
           )}
         >
-          <Icon name="chevron-down" size={13} />
+          <Icon name="chevron-down" />
         </Button>
       )}
       <div role="region" aria-label="Conversation input" {...stylex.props(composerStyles.region)}>
@@ -1244,7 +1240,7 @@ export function Composer({
             role={feedback.kind === "error" ? "alert" : "status"}
             {...stylex.props(composerStyles.queued)}
           >
-            <Icon name={feedback.kind === "error" ? "bubble-question" : "sparkle"} size={12} />
+            <Icon name={feedback.kind === "error" ? "bubble-question" : "sparkle"} />
             <span {...stylex.props(composerStyles.queuedText)}>{feedback.message}</span>
             {feedback.restore !== undefined && (
               <Button
@@ -1256,7 +1252,7 @@ export function Composer({
                 Restore draft
               </Button>
             )}
-            <IconButton icon="x" label="Dismiss" size={12} onClick={() => setFeedback(undefined)} />
+            <IconButton icon="x" label="Dismiss" onClick={() => setFeedback(undefined)} />
           </div>
         )}
 

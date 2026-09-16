@@ -6,6 +6,7 @@
 import { createServer } from "node:http";
 import { getRequestListener } from "@hono/node-server";
 import { createNyte } from "@nyte-ai/core";
+import { inlinePlugin } from "@nyte-ai/core/plugins";
 import { createNyteServer } from "@nyte-ai/server";
 import { SqliteStore } from "@nyte-ai/core/store";
 
@@ -24,6 +25,40 @@ const model = {
   maxTokens: 8000,
 };
 
+/**
+ * Commands and skills so the `/` menu has something real to list. A scratch
+ * host loads no plugin files, so these are contributed inline.
+ */
+const reviewPlugin = inlinePlugin({
+  id: "review",
+  session(api) {
+    api.commands.add((draft) => {
+      draft.set("summarize", {
+        description: "Summarize this conversation",
+        run: () => ({ prompt: "Summarize this conversation in three bullets." }),
+      });
+      draft.set("clear-notes", {
+        description: "Drop the scratch notes",
+        run: () => "Scratch notes dropped.",
+      });
+    });
+    api.resources.add((draft) => {
+      draft.set("code-review", {
+        name: "code-review",
+        description: "Review a diff for correctness and style",
+        content: "Review the diff.",
+        filePath: "/tmp/skills/code-review/SKILL.md",
+      });
+      draft.set("release-notes", {
+        name: "release-notes",
+        description: "Draft release notes from recent commits",
+        content: "Draft the notes.",
+        filePath: "/tmp/skills/release-notes/SKILL.md",
+      });
+    });
+  },
+});
+
 const sdk = await createNyte({
   store: new SqliteStore("/tmp/nyte-sim-review.db", { watchPollIntervalMs: 5 }),
   streamFn: async function* () {
@@ -36,7 +71,7 @@ const sdk = await createNyte({
       provider === model.provider && id === model.id ? model : undefined,
     getAvailable: async () => [model],
   },
-  plugins: [],
+  plugins: [reviewPlugin],
   env: { cwd: process.cwd() },
 });
 
