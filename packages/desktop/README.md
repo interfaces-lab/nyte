@@ -179,7 +179,9 @@ The behavior follows the installed Cursor reference where Nyte has the correspon
 | Persisted skill instructions | Display as a chip, with instruction contents hidden |
 | Read-only spacing | Collapse three or more newlines to two; remove empty edge lines while preserving inline spaces |
 | Read-only chip activation | Opens its reference without also editing the message |
-| Web URLs | Lexical detects URLs; HTTP and HTTPS links open through the desktop host |
+| Web URLs in the editable composer | Paint as a pill. The URL remains the text. The caret stays in the path |
+| Web URLs in a sent message | Inherit-color links. HTTP and HTTPS open through the desktop host |
+| A text paste of four or more lines, or 512 or more characters | Becomes a `Clipboard (N lines)` chip. A single URL never does. The body lives in the draft token, stays hidden in the view, and unwraps on send |
 | Long sent messages | Text preview collapses after 3.5 lines; attachments remain outside the text collapse |
 | More than 100,000 source characters | Shows `Message is too long to display` |
 

@@ -3,11 +3,13 @@ import { describe, test } from "vitest";
 import { composerMessageContent, composerPromptText } from "./composer-send.ts";
 import {
   CONVERSATION_MENTION,
+  clipboardReferenceFromPaste,
   draftPreviewText,
   fileFromUrl,
   inlineCodeReference,
   messageDraftText,
   messageParts,
+  referencePromptText,
   referenceText,
   skillInstruction,
 } from "./message-references.ts";
@@ -122,6 +124,89 @@ test("sidebar draft previews preserve visible skills without exposing token synt
   assert.equal(draftPreviewText("/rev"), "/rev");
   assert.equal(draftPreviewText("@file:///project/example.ts Fix this"), "example.ts Fix this");
   assert.equal(draftPreviewText("  \n  "), "Draft");
+});
+
+describe("clipboard chips", () => {
+  const body = "one\ntwo\nthree\nfour";
+
+  test("a paste becomes a chip at four lines or 512 characters, never for a URL", () => {
+    assert.equal(clipboardReferenceFromPaste("one\ntwo\nthree"), undefined);
+    assert.deepEqual(clipboardReferenceFromPaste(body), { kind: "clipboard", body });
+    assert.equal(clipboardReferenceFromPaste("x".repeat(511)), undefined);
+    assert.deepEqual(clipboardReferenceFromPaste("x".repeat(512)), {
+      kind: "clipboard",
+      body: "x".repeat(512),
+    });
+    assert.equal(clipboardReferenceFromPaste("https://example.com/a/b"), undefined);
+    assert.equal(clipboardReferenceFromPaste("http://example.com/a/b"), undefined);
+    assert.equal(
+      clipboardReferenceFromPaste(`https://example.com/${"a".repeat(500)}`),
+      undefined,
+    );
+    assert.equal(clipboardReferenceFromPaste("www.example.com"), undefined);
+    assert.equal(clipboardReferenceFromPaste(""), undefined);
+  });
+
+  test("a restored clipboard token is a chip and a long draft without one is not", () => {
+    const pasted = clipboardReferenceFromPaste(body);
+    assert.deepEqual(pasted, { kind: "clipboard", body });
+    if (pasted === undefined) return;
+    const draft = `see ${referenceText(pasted)} please`;
+    const parts = messageParts(draft, { form: "draft", complete: true });
+    assert.equal(parts[1]?.kind, "reference");
+    if (parts[1]?.kind !== "reference") return;
+    assert.equal(parts[1].reference.kind, "clipboard");
+    if (parts[1].reference.kind !== "clipboard") return;
+    assert.equal(parts[1].reference.body, body);
+    assert.equal(referencePromptText(pasted), body);
+    assert.equal(draftPreviewText(draft), "see Clipboard (4 lines) please");
+    const longLine = clipboardReferenceFromPaste("x".repeat(512));
+    assert.deepEqual(longLine, { kind: "clipboard", body: "x".repeat(512) });
+    if (longLine === undefined) return;
+    assert.equal(draftPreviewText(referenceText(longLine)), "Clipboard (1 line)");
+
+    const long = `${"line\n".repeat(20)}plain`;
+    assert.equal(
+      messageParts(long, { form: "draft", complete: true }).every((part) => part.kind === "text"),
+      true,
+    );
+  });
+
+  test("a clipboard token round-trips quotes, backslashes, and newlines", () => {
+    const special = `"quoted"\nC:\\temp\nthird\nfourth`;
+    const pasted = clipboardReferenceFromPaste(special);
+    assert.deepEqual(pasted, { kind: "clipboard", body: special });
+    if (pasted === undefined) return;
+    const token = referenceText(pasted);
+    assert.equal(token.includes("\n"), false);
+    const parts = messageParts(`x ${token} y`, { form: "draft", complete: true });
+    assert.equal(parts[1]?.kind, "reference");
+    if (parts[1]?.kind !== "reference") return;
+    assert.equal(parts[1].reference.kind, "clipboard");
+    if (parts[1].reference.kind !== "clipboard") return;
+    assert.equal(parts[1].reference.body, special);
+    assert.equal(
+      messageParts(token, { form: "draft", complete: false })[0]?.kind,
+      "reference",
+    );
+  });
+
+  test("a token-shaped string in a sent message stays text", () => {
+    const pasted = clipboardReferenceFromPaste(body);
+    assert.deepEqual(pasted, { kind: "clipboard", body });
+    if (pasted === undefined) return;
+    const token = referenceText(pasted);
+    assert.deepEqual(messageParts(token, { form: "message" }), [{ kind: "text", text: token }]);
+    assert.deepEqual(messageParts("@clipboard/2:{}", { form: "draft", complete: true }), [
+      { kind: "text", text: "@clipboard/2:{}" },
+    ]);
+    assert.deepEqual(messageParts("@clipboard/2:\"\"", { form: "draft", complete: true }), [
+      { kind: "text", text: "@clipboard/2:\"\"" },
+    ]);
+    assert.deepEqual(messageParts("@clipboard/12:\"short\"", { form: "draft", complete: true }), [
+      { kind: "text", text: "@clipboard/12:\"short\"" },
+    ]);
+  });
 });
 
 describe("inlineCodeReference", () => {

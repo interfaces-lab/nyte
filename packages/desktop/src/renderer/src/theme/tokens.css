@@ -336,6 +336,8 @@
   /** Must equal `STACKED_DIFF_LINE_HEIGHT`, which sizes the stack's estimate. */
   --nyte-diff-line-height: 20px;
   --nyte-diff-preview-max-height: min(480px, 60vh);
+  --nyte-clipboard-preview-max-width: 360px;
+  --nyte-clipboard-preview-max-height: 240px;
 }
 
 /*

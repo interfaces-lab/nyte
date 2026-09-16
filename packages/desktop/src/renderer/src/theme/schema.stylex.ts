@@ -118,6 +118,11 @@ export const diffView = stylex.defineConsts({
   previewMaxHeight: "var(--nyte-diff-preview-max-height)",
 });
 
+export const clipboardPreview = stylex.defineConsts({
+  maxWidth: "var(--nyte-clipboard-preview-max-width)",
+  maxHeight: "var(--nyte-clipboard-preview-max-height)",
+});
+
 export const control = stylex.defineConsts({
   sectionGap: "var(--nyte-section-gap)",
 });

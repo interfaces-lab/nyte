@@ -39,6 +39,7 @@ export function workbenchReferenceOpener(input: {
           fileActions.open(viewKey, { path: reference.path, displayPath, preview: true });
       }
       case "mention":
+      case "clipboard":
         return undefined;
       default: {
         const exhaustive: never = reference;
