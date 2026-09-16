@@ -10,6 +10,7 @@ import { SqliteStore } from "@nyte-ai/core/store";
 import { inlinePlugin } from "@nyte-ai/plugin";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { browserToolsPlugin } from "./browser-tools.ts";
+import { BrowserAccessStore } from "./browser-access.ts";
 import type {
   BrowserActionResult,
   BrowserAgent,
@@ -129,8 +130,9 @@ function calls(...steps: readonly Step[]): StreamFn {
 }
 
 /** An SDK holding one browser session, torn down when the test ends. */
-async function browserSession(agent: BrowserAgent, streamFn: StreamFn) {
-  const directory = await mkdtemp(join(tmpdir(), "nyte-browser-tools-"));
+async function browserSession(agent: BrowserAgent, streamFn: StreamFn, folder?: string) {
+  // Reopening a folder keeps its remembered answer; its first session removes it.
+  const directory = folder ?? (await mkdtemp(join(tmpdir(), "nyte-browser-tools-")));
   const store = new SqliteStore(join(directory, "sessions.db"));
   const sdk = await createNyte({
     store,
@@ -138,13 +140,20 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn) {
     streamFn,
     env: { cwd: directory },
     models: { getModels: () => [model], getAvailable: async () => [model], getModel: () => model },
-    plugins: [inlinePlugin(browserToolsPlugin({ agent }))],
+    plugins: [
+      inlinePlugin(
+        browserToolsPlugin({
+          agent,
+          access: new BrowserAccessStore(join(directory, "browser-access.json")),
+        }),
+      ),
+    ],
   });
   sdk.attach();
   onTestFinished(async () => {
     await sdk.close();
     await store.close();
-    await rm(directory, { recursive: true, force: true });
+    if (folder === undefined) await rm(directory, { recursive: true, force: true });
   });
   const session = (await sdk.sessions.create()).sessionId;
 
@@ -156,6 +165,8 @@ async function browserSession(agent: BrowserAgent, streamFn: StreamFn) {
   };
 
   return {
+    /** The folder this session runs in, so a later session can reopen it. */
+    directory,
     /** Send a user turn, which makes the scripted model call its next tool. */
     async say(content: string) {
       await sdk.messages.send({ sessionId: session, content });
@@ -195,7 +206,7 @@ test("the first browser call asks for access before anything reaches the page", 
   await page.say("Open the page");
 
   const prompt = await page.accessPrompt();
-  assert.equal(prompt.selection?.title, "Allow browser access for this session?");
+  assert.equal(prompt.selection?.title, "Allow browser access for this folder?");
   assert.deepEqual(
     prompt.selection?.choices.map((choice) => choice.id),
     ["full", "read", "off"],
@@ -207,7 +218,7 @@ test("the first browser call asks for access before anything reaches the page", 
   assert.ok(agent.calls.includes("open"));
 });
 
-test("a write tool under read-only access asks again before it runs", async () => {
+test("a write tool under read-only access is refused without asking again", async () => {
   const agent = fakeAgent();
   const page = await browserSession(
     agent,
@@ -217,7 +228,7 @@ test("a write tool under read-only access asks again before it runs", async () =
   await page.say("Click sign in");
   await page.answer("read");
 
-  await page.reports(/requires full browser access/);
+  await page.reports(/read-only for this folder/);
   assert.equal(agent.calls.length, 0, "a read-only session may not click");
 });
 
@@ -231,8 +242,52 @@ test("turning access off refuses the call", async () => {
   await page.say("Open the page");
   await page.answer("off");
 
-  await page.reports(/Browser access is off for this session/);
+  await page.reports(/Browser access is off for this folder/);
   assert.equal(agent.calls.length, 0, "a refused session may not reach the browser");
+});
+
+test("a later session in the same folder opens on the remembered answer", async () => {
+  const first = await browserSession(
+    fakeAgent(),
+    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
+  );
+  await first.say("Open the page");
+  await first.answer("read");
+  await first.reports(/Hello from the page/);
+
+  const agent = fakeAgent();
+  const later = await browserSession(
+    agent,
+    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
+    first.directory,
+  );
+
+  await later.say("Open it again");
+
+  await later.reports(/Hello from the page/);
+  assert.ok(agent.calls.includes("open"), "the remembered answer must not be asked for again");
+});
+
+test("a folder that answered read-only still refuses write tools in a later session", async () => {
+  const first = await browserSession(
+    fakeAgent(),
+    calls({ tool: "browser_open", args: { url: "https://example.test/" } }),
+  );
+  await first.say("Open the page");
+  await first.answer("read");
+  await first.reports(/Hello from the page/);
+
+  const agent = fakeAgent();
+  const later = await browserSession(
+    agent,
+    calls({ tool: "browser_click", args: { ref: "s1e1", element: "Sign in" } }),
+    first.directory,
+  );
+
+  await later.say("Click sign in");
+
+  await later.reports(/read-only for this folder/);
+  assert.equal(agent.calls.length, 0, "a read-only folder may not click");
 });
 
 test("a ref whose name is not what the model described is refused", async () => {

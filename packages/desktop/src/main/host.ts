@@ -74,7 +74,6 @@ import { loadPersistedCatalog, login, readCatalog } from "./catalog.ts";
 import type { ResolvedCatalog } from "./catalog.ts";
 import { safeExternalUrl } from "./external-url.ts";
 import type { BrowserSurfaces } from "./browser.ts";
-import type { BrowserAgent } from "./browser-agent.ts";
 import { browserToolsPlugin } from "./browser-tools.ts";
 import { TerminalSessions } from "./terminals.ts";
 import { createGitHubProvider, runProviderCommand } from "./github.ts";
@@ -173,6 +172,12 @@ interface OpenServerTarget {
   readonly kind: "server";
   readonly baseUrl: string;
   readonly sdk: NyteClient;
+  /**
+   * Aborts when this server stops being the configured one. A local target
+   * lives as long as the host, so only the server needs a lifetime of its own
+   * for its watches to end with it.
+   */
+  readonly closing: AbortController;
   sessions: readonly SessionInfo[];
   /** What the last completed list read said; a read still in flight does not change it. */
   availability: CloudAvailability;
@@ -196,6 +201,7 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
   return {
     kind: "server",
     baseUrl: settings.baseUrl,
+    closing: new AbortController(),
     sdk: createNyteClient({
       baseUrl: settings.baseUrl,
       token: settings.token,
@@ -343,6 +349,51 @@ export class DesktopHost {
       case "host.vcs.snapshot":
         CALL_INPUT_SCHEMAS[path].Parse(input);
         return this.requireProject().vcs.snapshot();
+      case "host.vcs.contents":
+        return this.requireProject().vcs.contents(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.vcs.diff":
+        return this.requireProject().vcs.scopedDiff(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.vcs.log":
+        return this.requireProject().vcs.log(CALL_INPUT_SCHEMAS[path].Parse(input));
+      case "host.vcs.refs":
+        CALL_INPUT_SCHEMAS[path].Parse(input);
+        return this.requireProject().vcs.refs();
+      case "host.vcs.revert": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return project.vcs.revert(decoded);
+      }
+      case "host.vcs.stage": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return project.vcs.stage(decoded);
+      }
+      case "host.vcs.commit": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return project.vcs.commit(decoded);
+      }
+      case "host.vcs.createBranch": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return project.vcs.createBranch(decoded);
+      }
+      case "host.vcs.push": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return project.vcs.push(decoded);
+      }
+      case "host.vcs.createPullRequest": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const project = this.requireProject();
+        await this.requireTrust(project.workspace.path);
+        return this.github().createPullRequest(decoded);
+      }
       case "host.files.list": {
         const { requestId } = CALL_INPUT_SCHEMAS[path].Parse(input);
         const cwd = this.requireProject().workspace.path;
@@ -542,22 +593,38 @@ export class DesktopHost {
         const open = await this.owner(input.sessionId);
         if (stop.signal.aborted) return;
         this.attachSession(open, input.sessionId);
+        // Disconnecting the server ends its watches; a request the renderer
+        // did not stop would otherwise keep streaming from the old base URL
+        // with a token the desktop has already forgotten.
+        const closing = open.kind === "server" ? open.closing.signal : undefined;
+        const signal =
+          closing === undefined ? stop.signal : AbortSignal.any([stop.signal, closing]);
         const source =
           input.live === true
-            ? open.sdk.watch({ sessionId: input.sessionId, live: true, signal: stop.signal })
+            ? open.sdk.watch({ sessionId: input.sessionId, live: true, signal })
             : input.afterSeq === undefined
-              ? open.sdk.watch({ sessionId: input.sessionId, signal: stop.signal })
+              ? open.sdk.watch({ sessionId: input.sessionId, signal })
               : open.sdk.watch({
                   sessionId: input.sessionId,
                   afterSeq: input.afterSeq,
-                  signal: stop.signal,
+                  signal,
                 });
         for await (const event of source) {
           if (stop.signal.aborted) return;
           this.dependencies.emitWatchEvent({ watchId: input.watchId, kind: "event", event });
         }
         if (!stop.signal.aborted) {
-          this.dependencies.emitWatchEvent({ watchId: input.watchId, kind: "ended" });
+          // An aborted stream ends the iterator rather than throwing, so the
+          // disconnect is reported here instead of from the catch below.
+          this.dependencies.emitWatchEvent(
+            closing?.aborted === true
+              ? {
+                  watchId: input.watchId,
+                  kind: "ended",
+                  error: { code: "closed", message: "The server was disconnected." },
+                }
+              : { watchId: input.watchId, kind: "ended" },
+          );
         }
       } catch (cause) {
         if (!stop.signal.aborted) {
@@ -1175,6 +1242,7 @@ export class DesktopHost {
   /** Watches on the old server end; the renderer resumes them against the new one or not at all. */
   private forgetServerSessions(): void {
     if (this.server === undefined) return;
+    this.server.closing.abort();
     for (const [sessionId, owner] of this.sessionOwners) {
       if (owner === this.server) this.sessionOwners.delete(sessionId);
     }
@@ -1387,6 +1455,7 @@ export class DesktopHost {
           "git.symbolic-ref",
           "gh.api",
           "gh.pr.view",
+          "gh.pr.create",
           "gh.auth.status",
           "gh.auth.login",
           "gh.auth.logout",

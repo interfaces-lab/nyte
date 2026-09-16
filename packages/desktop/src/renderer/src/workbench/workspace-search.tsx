@@ -154,7 +154,7 @@ const styles = create({
     gap: 8,
     minHeight: 24,
     width: "100%",
-    paddingBlock: 3,
+    paddingBlock: 2,
     paddingInlineStart: 32,
     paddingInlineEnd: 8,
     marginBlockEnd: 2,

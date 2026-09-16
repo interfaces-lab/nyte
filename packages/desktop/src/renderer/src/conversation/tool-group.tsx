@@ -61,12 +61,6 @@ function WorkEntryView({
   }
   const { part } = entry;
   switch (part.kind) {
-    case "assistant":
-      return (
-        <div {...stylex.props(toolGroupStyles.commentary)}>
-          <Prose markdown={part.text} />
-        </div>
-      );
     case "thinking":
       return (
         <div {...stylex.props(toolGroupStyles.thinking)}>

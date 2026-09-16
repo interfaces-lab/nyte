@@ -12,7 +12,7 @@ import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-a
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
 import type { AgentTool } from "../src/types.ts";
-import { DEFAULT_IMAGE_LIMITS, processImage } from "../src/utils/image.ts";
+import { IMAGE_LIMITS, processImage } from "../src/utils/image.ts";
 import type { StreamFn } from "../src/types.ts";
 import { assistant, openStore, sleep, within } from "./kernel/helpers.ts";
 
@@ -36,9 +36,9 @@ function dimensions(base64: string): { readonly width: number; readonly height: 
 
 test("processImage bounds dimensions and reports the coordinate scale", async () => {
   const processed = await processImage(oversizedPng(), "image/png");
-  assert.ok(processed.ok);
+  assert.ok(processed.kind === "image", "an oversized PNG is still delivered");
   assert.deepEqual(dimensions(processed.data), { width: 2000, height: 1000 });
-  assert.ok(processed.data.length <= DEFAULT_IMAGE_LIMITS.maxBase64Bytes);
+  assert.ok(processed.data.length <= IMAGE_LIMITS.maxBase64Bytes);
   assert.ok(
     processed.hints.some((hint) => hint.includes("Multiply coordinates by 1.20")),
     processed.hints.join("\n"),

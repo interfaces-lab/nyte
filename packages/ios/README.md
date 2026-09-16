@@ -121,6 +121,11 @@ pnpm --dir packages/ios ios
 
 The local scene lifecycle config plugin supplies the single-window scene delegate required by the iOS 27 SDK. Expo 57 still generates the older app lifecycle, as tracked in [Expo issue 46664](https://github.com/expo/expo/issues/46664). Remove the plugin and its Swift adapter once a stable Expo prebuild template includes `ExpoAppSceneDelegate`. The adapter keeps window creation in the scene and forwards lifecycle and link events through Expo.
 
+MMKV is a Nitro module, so adding it needs a fresh `prebuild` and `pod install`
+before the app will launch. It ships its own Nitrogen output built against
+`react-native-nitro-modules` 0.35, one minor behind the version VisionCamera
+and Nitro Image pin here; check the Pods build after upgrading either side.
+
 Native Markdown and SF Symbols require a development build; Expo Go cannot
 load them. Voltra's `NyteLiveActivity` extension and on-device speech
 recognition also require the development build — Live Activities are not
@@ -217,7 +222,7 @@ and render the owning feature's screen body.
 | `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
 | `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
 | `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
-| `src/settings/` | Settings page: host row, workspaces, connection status, and disconnect |
+| `src/settings/` | Settings page: host row, workspaces, connection status, disconnect, and the stored display preferences |
 | `src/annotate/` | Photo markup editor: numbered points, drawn marks, and comments |
 | `src/media/` | Photo picking, local image preparation, camera capture, annotation notes, and the shared attachment thumbnail |
 | `src/ui/` | Shared native glass buttons and empty states |
@@ -231,6 +236,19 @@ composer sits on the keyboard's top edge while it is open and clears the home
 indicator while it is closed, so the screens around it pass no keyboard offsets
 of their own. `chat/completions.ts` and `chat/suggestion-menu.tsx` own the `@`
 and `/` menus.
+`settings/preferences.ts` owns the device's own settings — appearance,
+transcript font, and what the Agents list shows — in one MMKV instance. They
+describe this phone rather than the host, so they never travel over the wire,
+and the Keychain still holds the token. MMKV reads synchronously, so the first
+paint already has the stored value instead of flashing a default. A setting is
+one list of value-and-label choices whose first entry is the default, so the
+options cannot drift from the words on screen and no setting can lack a
+fallback; a hook hands a row that list together with the current choice, so a
+row cannot show one setting's value over another's menu. Appearance stores the
+argument `Appearance.setColorScheme` takes, including its `unspecified` for
+following the system, rather than a second spelling to translate. Stored text is
+external input, and `settings/choice.ts` keeps that resolution free of native
+imports so `test/preferences.test.ts` can check it.
 `chat/messages.tsx` owns message and Markdown rendering. Keep a feature's state
 and components together; add a shared UI component only when several features
 use it. Protocol types and execution rules stay in their existing workspace
@@ -285,7 +303,11 @@ draws an accent capsule from the shared tokens and lets the row own the width.
 `prominent` means the accent tint rather than the desktop's near-black primary,
 because a black capsule is not what iOS calls a prominent action.
 Settings actions stay grouped list rows, and a row that opens a screen carries
-the disclosure chevron. The home and chat capsule is a
+the disclosure chevron. A preference resolves on the row instead: a pull-down
+menu shows its value beside `chevron.up.chevron.down`, and a switch toggles in
+place, so choosing one never leaves the page. Grouped cards separate from the
+page by their surface alone; the hairlines between rows start under the leading
+tile, or under the label in groups that have none. The home and chat capsule is a
 `glassEffect` behind the React Native field; the effect paints an empty
 container, since a filled SwiftUI shape would draw over it. Plus and mic are
 glass circle controls. Send and stop stay solid discs so the send spinner can
@@ -297,9 +319,13 @@ with no WebView bridge. All screens consume colors, typography, spacing, radii,
 and control metrics from `src/theme.ts`. Colors are generated from the canonical
 `packages/ui/src/platform-tokens.stylex.ts` through `@nyte-ai/ui/platform-colors`;
 `pnpm --dir packages/ui check:tokens` rejects stale CSS or native color output.
-The app follows the system appearance: `userInterfaceStyle` is `automatic`, RSD
-`css` tokens resolve light and dark values through `prefers-color-scheme`, and
-native controls read the active palette through `useTheme()`. Native type sizes
+The app follows the system appearance by default: `userInterfaceStyle` is
+`automatic`, RSD `css` tokens resolve light and dark values through
+`prefers-color-scheme`, and native controls read the active palette through
+`useTheme()`. Settings can override it, and that override goes through
+`Appearance.setColorScheme`, so `useColorScheme`, `prefers-color-scheme`, the
+navigation theme, and native controls all move together instead of splitting
+into a second source of truth. Native type sizes
 and touch targets stay in the iOS theme rather than inheriting desktop density.
 
 Legend List owns message virtualization and sent-message anchoring. Keyboard
@@ -326,6 +352,7 @@ streaming fetch, and Keychain integration.
 | `react-native-keyboard-controller` | Native keyboard coordination |
 | `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |
 | `expo-symbols`, `expo-clipboard` | SF Symbols and local message copying |
+| `react-native-mmkv` 4 | Synchronous storage for display preferences |
 | `react-native-vision-camera` 5.2 | Native still-photo capture |
 | `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
 | `expo-image-picker`, `expo-image-manipulator` | System photo selection and local JPEG resizing |

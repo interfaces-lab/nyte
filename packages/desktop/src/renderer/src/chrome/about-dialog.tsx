@@ -28,7 +28,7 @@ const styles = create({
     width: "min(440px, calc(100vw - 48px))",
     maxHeight: "calc(100dvh - 48px)",
     overflowY: "auto",
-    padding: "36px 32px 32px",
+    padding: 32,
     borderRadius: 20,
     outline: "none",
     backgroundColor: t.bgElevated,
@@ -56,7 +56,7 @@ const styles = create({
     height: 112,
     marginBottom: 12,
     flexShrink: 0,
-    filter: "drop-shadow(0 12px 16px rgb(0 0 0 / 0.18))",
+    filter: `drop-shadow(0 12px 16px ${t.shadowPrimary})`,
   },
   title: {
     margin: 0,
@@ -74,7 +74,7 @@ const styles = create({
     fontVariantNumeric: "tabular-nums",
   },
   credit: {
-    margin: "20px 0 28px",
+    margin: "20px 0 24px",
     color: t.textSecondary,
     fontSize: 13,
     lineHeight: 1.5,

@@ -77,6 +77,14 @@ const styles = stylex.create({
     },
     color: colorVars["--nyte-color-foreground"],
   },
+  secondary: {
+    backgroundColor: {
+      default: colorVars["--nyte-color-secondary"],
+      ":hover": { "@media (hover: hover)": colorVars["--nyte-color-muted"] },
+      "[data-popup-open]": colorVars["--nyte-color-muted"],
+    },
+    color: colorVars["--nyte-color-foreground"],
+  },
   destructive: {
     backgroundColor: {
       default: colorVars["--nyte-color-destructive-muted"],
@@ -105,6 +113,7 @@ const styles = stylex.create({
 
 const variantStyles = {
   default: styles.default,
+  secondary: styles.secondary,
   outline: styles.outline,
   ghost: styles.ghost,
   destructive: styles.destructive,

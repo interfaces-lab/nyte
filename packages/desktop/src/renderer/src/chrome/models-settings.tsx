@@ -10,6 +10,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
+import { Row } from "@nyte-ai/ui/row";
 import type { ThinkingLevel } from "@nyte-ai/core";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { Button, focus } from "../components/ui.tsx";
@@ -498,30 +499,32 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             </div>
             <Collapsible.Panel {...stylex.props(styles.groupPanel)}>
               {matching.map((option) => (
-                <div key={option.key} {...stylex.props(styles.modelRow)}>
-                  <span {...stylex.props(styles.modelBody)}>
-                    <span {...stylex.props(styles.modelName)}>{option.name}</span>
-                    <span
+                <Row key={option.key} xstyle={styles.modelRow}>
+                  <Row.Body>
+                    <Row.Label>{option.name}</Row.Label>
+                    <Row.Description
                       title="Context window · price per million tokens, input / output"
-                      {...stylex.props(styles.modelMeta)}
+                      xstyle={settingsPatterns.numeral}
                     >
                       {formatContextWindow(option.contextWindow)} · {formatPricing(option.cost)}
-                    </span>
-                  </span>
-                  <SettingsSwitch
-                    label={`Show ${option.name}`}
-                    checked={!option.hidden}
-                    disabled={setPreference.isPending}
-                    onCheckedChange={(show) =>
-                      setPreference.mutate({
-                        kind: "models",
-                        provider: provider.id,
-                        ids: [option.id],
-                        hidden: !show,
-                      })
-                    }
-                  />
-                </div>
+                    </Row.Description>
+                  </Row.Body>
+                  <Row.Actions>
+                    <SettingsSwitch
+                      label={`Show ${option.name}`}
+                      checked={!option.hidden}
+                      disabled={setPreference.isPending}
+                      onCheckedChange={(show) =>
+                        setPreference.mutate({
+                          kind: "models",
+                          provider: provider.id,
+                          ids: [option.id],
+                          hidden: !show,
+                        })
+                      }
+                    />
+                  </Row.Actions>
+                </Row>
               ))}
             </Collapsible.Panel>
           </Collapsible.Root>

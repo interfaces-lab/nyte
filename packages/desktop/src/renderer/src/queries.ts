@@ -34,6 +34,10 @@ import type {
 import { localSessions } from "../../shared/ipc.ts";
 import type {
   DesktopCatalog,
+  DesktopVcsDiffInput,
+  DesktopVcsLog,
+  DesktopVcsLogInput,
+  DesktopVcsRefs,
   DesktopVcsSnapshot,
   HostState,
   MobileShareState,
@@ -291,6 +295,91 @@ interface VcsDiffsIdentity {
   readonly paths: readonly string[];
 }
 
+/**
+ * Scope-aware VCS keys. They nest under the `["vcs"]` prefix `refreshVcs`
+ * invalidates, so a run or a save refreshes history and refs with the status.
+ */
+export const vcsKeys = {
+  scopedDiffs: (
+    repositoryId: string,
+    revision: string,
+    scopeKey: string,
+    pathsKey: string,
+    ignoreWhitespace: boolean,
+  ) =>
+    [
+      "vcs",
+      "diffs",
+      "scoped",
+      repositoryId,
+      revision,
+      scopeKey,
+      pathsKey,
+      ignoreWhitespace,
+    ] as const,
+  log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
+  refs: ["vcs", "refs"] as const,
+};
+
+export interface VcsScopedDiffsIdentity {
+  readonly repositoryId: string;
+  readonly revision: string;
+  readonly request: DesktopVcsDiffInput;
+}
+
+/**
+ * One patch per changed file in a diff scope: the whole working tree, either
+ * side of the index, or one commit. A commit read still carries the working
+ * revision, so a scope switch never paints a diff from a stale snapshot.
+ */
+export function useVcsScopedDiffs(identity: VcsScopedDiffsIdentity | undefined, enabled: boolean) {
+  const request = identity?.request;
+  const scopeKey =
+    request === undefined
+      ? ""
+      : request.scope === "commit"
+        ? `commit:${request.commit ?? ""}`
+        : request.scope;
+  const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
+  const ignoreWhitespace = request?.ignoreWhitespace === true;
+  return useQuery<readonly VcsDiff[]>({
+    queryKey:
+      identity === undefined
+        ? vcsKeys.scopedDiffs("unavailable", "unavailable", "", "", false)
+        : vcsKeys.scopedDiffs(
+            identity.repositoryId,
+            identity.revision,
+            scopeKey,
+            pathsKey,
+            ignoreWhitespace,
+          ),
+    queryFn: () => (request === undefined ? [] : nyte.host.vcs.diff(request)),
+    // A commit scope without a commit would read the whole working tree instead.
+    enabled:
+      enabled &&
+      request !== undefined &&
+      (request.scope !== "commit" || (request.commit ?? "") !== ""),
+  });
+}
+
+/** A page of history, newest first. `before` continues strictly older than that commit. */
+export function useVcsLog(input: DesktopVcsLogInput, enabled: boolean) {
+  return useQuery<DesktopVcsLog>({
+    queryKey: vcsKeys.log(input.limit, input.before ?? null),
+    queryFn: () => nyte.host.vcs.log(input),
+    enabled,
+  });
+}
+
+/** Local and remote short ref names, and the branch HEAD is on. */
+export function useVcsRefs(enabled: boolean) {
+  return useQuery<DesktopVcsRefs>({
+    queryKey: vcsKeys.refs,
+    queryFn: () => nyte.host.vcs.refs(),
+    enabled,
+  });
+}
+
 export function useVcsDiffs(identity: VcsDiffsIdentity | undefined, enabled: boolean) {
   const pathsKey = identity === undefined ? "" : [...identity.paths].toSorted().join("\0");
   return useQuery<readonly VcsDiff[]>({
@@ -307,6 +396,7 @@ export function useVcsDiffs(identity: VcsDiffsIdentity | undefined, enabled: boo
 }
 
 export function refreshVcs(): void {
+  // The prefix covers the snapshot, both diff families, the log and the refs.
   void queryClient.invalidateQueries({ queryKey: ["vcs"] });
   void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
 }

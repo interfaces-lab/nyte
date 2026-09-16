@@ -88,7 +88,7 @@ import {
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
 import { outbox, useOutboxRows } from "../use-outbox.ts";
-import { conversation, layer } from "../theme/schema.stylex.ts";
+import { conversation, layer, pane } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
@@ -205,9 +205,13 @@ const styles = stylex.create({
   },
   body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   conversation: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  // The stuck prompt sits 10px below the top edge; content scrolling through
-  // that gap fades out instead of cutting off at the edge. Rows resize under
-  // the virtualizer's own corrections, so the browser's anchoring stays out.
+  // Rows dissolve at the top edge the way they do at the composer, over the
+  // same distance. A stuck prompt covers that edge with its own opaque inset
+  // and turns the mask off: masking the scrollport would make the strip
+  // translucent again and let rows surface above the prompt.
+  //
+  // Rows resize under the virtualizer's own corrections, so the browser's
+  // anchoring stays out.
   scroll: {
     display: "flex",
     flexDirection: "column",
@@ -217,7 +221,7 @@ const styles = stylex.create({
     overflowAnchor: "none",
     maskImage: {
       default: null,
-      "[data-scrolled='true']": "linear-gradient(to bottom, transparent, black 10px)",
+      "[data-top-fade='true']": `linear-gradient(to bottom, transparent, black ${conversation.edgeFade})`,
     },
   },
   // The plane's height is the virtualizer's total; rows sit inside it at
@@ -244,7 +248,7 @@ const styles = stylex.create({
   rowFirst: { paddingTop: 0 },
   banner: {
     width: "fit-content",
-    padding: "5px 10px",
+    padding: "4px 10px",
     borderRadius: t.radiusLg,
     backgroundColor: t.fillWarningSubtle,
     color: t.textWarning,
@@ -277,7 +281,7 @@ const styles = stylex.create({
   workspaceContext: {
     display: "flex",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     minWidth: 0,
     paddingInline: 4,
     color: t.textSecondary,
@@ -291,7 +295,7 @@ const styles = stylex.create({
   },
   workspaceContextButton: {
     height: 26,
-    paddingInline: 5,
+    paddingInline: 4,
     borderStyle: "none",
     borderRadius: t.radiusBase,
     backgroundColor: {
@@ -303,7 +307,7 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   workspaceContextPath: { maxWidth: 280 },
-  workspaceContextStatic: { height: 26, paddingInline: 5 },
+  workspaceContextStatic: { height: 26, paddingInline: 4 },
   workspaceContextText: {
     minWidth: 0,
     overflow: "hidden",
@@ -325,8 +329,8 @@ const styles = stylex.create({
     outlineColor: t.focusRing,
     outlineOffset: -2,
   },
-  sashRight: { width: 9, cursor: "col-resize" },
-  sashDown: { height: 9, cursor: "row-resize" },
+  sashRight: { width: pane.sashSize, cursor: "col-resize" },
+  sashDown: { height: pane.sashSize, cursor: "row-resize" },
   sashLine: { backgroundColor: t.strokeTertiary, pointerEvents: "none" },
   sashLineRight: { width: 1, height: "100%" },
   sashLineDown: { width: "100%", height: 1 },
@@ -364,11 +368,10 @@ function setDataState(element: HTMLElement, name: string, active: boolean): void
  * state here avoids cloning the prompt or rerendering the transcript on
  * every scroll tick; React continues to own the row and its edit state.
  * A turn's top comes from the virtualizer's cached item start plus the row's
- * gap padding, so a scroll tick reads no rects. The scrollport learns whether
- * it is scrolled so it can fade its top edge under the stuck prompt.
+ * gap padding, so a scroll tick reads no rects. The scrollport also learns
+ * whether its top edge is exposed, which is what decides the fade there.
  */
 function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVirtualizer): void {
-  setDataState(scroll, "scrolled", scroll.scrollTop > 0);
   // Item starts are computed lazily; the total forces the cache current.
   virtualizer.getTotalSize();
   // Only turn rows carry the marker, so the scrollport is a safe query root.
@@ -393,6 +396,7 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
   const active = activeStickyCandidate(candidates, scroll.scrollTop, isBottomPinned(scroll));
   const activeRow = active === undefined ? undefined : candidateRows[active];
   for (const row of rows) setDataState(row, "stickyActive", row === activeRow);
+  setDataState(scroll, "topFade", scroll.scrollTop > 0 && activeRow === undefined);
 }
 
 /**

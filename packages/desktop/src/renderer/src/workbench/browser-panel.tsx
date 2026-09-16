@@ -92,7 +92,7 @@ const styles = stylex.create({
   blocked: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 3,
+    gap: 2,
     flexShrink: 0,
     paddingInline: 4,
     color: t.textTertiary,
@@ -128,7 +128,7 @@ const styles = stylex.create({
     flexShrink: 0,
     minHeight: 0,
     overflowY: "auto",
-    padding: 5,
+    padding: 4,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: t.strokeTertiary,
@@ -242,11 +242,6 @@ const styles = stylex.create({
     pointerEvents: "none",
   },
 });
-
-/** Retain this surface's view holder in main. */
-function retainSurface(surface: string): void {
-  void nyte.host.browser.open({ surface, url: "" }).catch(() => undefined);
-}
 
 /** Release this surface's view holder in main. */
 function releaseSurface(surface: string): void {

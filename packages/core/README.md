@@ -26,9 +26,11 @@ Only user input starts model work. A live run continues on its own authority (to
 
 A parked task holds the turn, so it yields when the user sends something that is waiting on this run: `wait_task` returns with the task still running, and a foreground task moves to background and returns its job id. The task keeps running either way, and its report arrives as a completion. A report a wait already carried is not repeated as a completion.
 
-## Image reads
+## Images
 
-The built-in `read` tool keeps small supported images unchanged. Larger images are resized to at most 2,000 pixels per side and a 4.5 MiB base64 payload, following Pi's limits. BMP files are converted to PNG or JPEG. Re-encoding applies EXIF orientation first. Images that cannot be processed are omitted with a text explanation. Processing uses Photon's self-contained WASM build through `@cf-wasm/photon/node`.
+Every image that enters history passes through [`src/utils/image.ts`](src/utils/image.ts): `read` attachments, images a tool returns (plugins, MCP bridges, screenshot tools), and images a client attaches to a message. Supported images already within bounds are kept unchanged. Anything else is resized to at most 2,000 pixels per side and a 4.5 MiB base64 payload, following Pi's limits: PNG first, then descending JPEG quality, then smaller dimensions. Unsupported formats such as BMP are converted, and re-encoding applies EXIF orientation first. A resized image carries a note with its original size and the factor that maps coordinates back to it.
+
+An image `read` cannot process is omitted with a text explanation, since `read` can be retried. An image a tool or a client supplied is passed through untouched instead, because the producer already chose to send it and the failure may only mean the image backend is unavailable. Processing uses Photon's self-contained WASM build through `@cf-wasm/photon/node`, in-process on the caller's thread.
 
 ## Verification
 

@@ -95,8 +95,8 @@ const styles = stylex.create({
   titleSlotWorkbenchOpen: {
     insetInlineEnd: "calc(var(--nyte-active-workbench-width, 500px) + 44px)",
   },
-  // macOS reserves a 72px traffic-light lane at 100% zoom.
-  barMac: { paddingInlineStart: 72 },
+  // macOS reserves a traffic-light lane at the leading edge.
+  barMac: { paddingInlineStart: shell.trafficLightInset },
   actionTrack: {
     display: "inline-flex",
     alignItems: "center",

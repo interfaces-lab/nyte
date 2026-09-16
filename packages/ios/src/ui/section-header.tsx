@@ -1,11 +1,14 @@
 import { css, html } from "react-strict-dom";
 import { list, textStyles } from "../theme.ts";
 
-/** Sentence-case section label, inset to the list gutter. */
+/**
+ * Sentence-case section label, inset to the list gutter. It names the group
+ * below without competing with it, so it stays at caption size in grey.
+ */
 export function SectionHeader({ label, first = false }: { label: string; first?: boolean }) {
   return (
     <html.div style={[styles.header, !first && styles.following]}>
-      <html.span style={textStyles.secondary}>{label}</html.span>
+      <html.span style={textStyles.caption}>{label}</html.span>
     </html.div>
   );
 }

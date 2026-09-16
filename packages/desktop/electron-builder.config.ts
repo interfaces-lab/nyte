@@ -2,14 +2,18 @@ import type { Configuration } from "electron-builder";
 import { electronSparkle } from "electron-sparkle/electron-builder";
 
 const updateTest = process.env["NYTE_UPDATE_TEST"] === "1";
+const productName = updateTest ? "Nyte Update Test" : "Nyte";
 const publicKey =
   process.env["NYTE_SPARKLE_PUBLIC_KEY"] ??
   (updateTest ? undefined : "u6NmdrN0PD5XXdy2KJyUfyvzB3hCtI3+6Gf1bg8IYDc=");
 
 export default {
   appId: updateTest ? "ai.nyte.desktop.update-test" : "ai.nyte.desktop",
-  productName: updateTest ? "Nyte Update Test" : "Nyte",
-  extraMetadata: { productName: updateTest ? "Nyte Update Test" : "Nyte" },
+  productName,
+  // Workspace name is `@nyte-ai/desktop`. electron-builder would otherwise emit
+  // `@nyte-aidesktop`, which AppImage and NSIS reject as an executable name.
+  executableName: productName,
+  extraMetadata: { name: productName, productName },
   beforePack: (context) => {
     if (context.electronPlatformName !== "darwin") return;
     if (
@@ -60,6 +64,11 @@ export default {
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
   },
-  linux: { target: ["AppImage"], category: "Development" },
-  win: { target: ["nsis"] },
+  linux: {
+    target: ["AppImage"],
+    category: "Development",
+    desktopName: productName,
+    executableName: productName,
+  },
+  win: { target: ["nsis"], executableName: productName },
 } satisfies Configuration;

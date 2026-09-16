@@ -9,13 +9,26 @@ import { controls, list, radii, spacing, tokens, useTheme } from "../theme.ts";
 /**
  * A rounded surface card holding rows. The card draws the hairlines between its
  * rows, so a row never carries the separator's inset into its own content.
+ * The surface alone separates the card from the page: a border and a shadow on
+ * top of it would state the same edge three times.
  */
-export function Group({ children }: { children: ReactNode }) {
+export function Group({
+  children,
+  separator = "tile",
+}: {
+  children: ReactNode;
+  /** Where the hairlines start: under the leading tile, or under the label. */
+  separator?: "tile" | "label";
+}) {
   return (
     <html.div style={styles.group}>
       {Children.toArray(children).map((child, index) => (
         <Fragment key={index}>
-          {index === 0 ? null : <html.div style={styles.separator} />}
+          {index === 0 ? null : (
+            <html.div
+              style={[styles.separator, separator === "tile" ? styles.pastTile : styles.pastLabel]}
+            />
+          )}
           {child}
         </Fragment>
       ))}
@@ -71,9 +84,6 @@ const styles = css.create({
     marginInline: list.gutter,
     backgroundColor: tokens.surface,
     borderRadius: radii.card,
-    borderWidth: controls.hairline,
-    borderColor: tokens.border,
-    boxShadow: tokens.shadow,
     overflow: "hidden",
   },
   row: {
@@ -97,6 +107,7 @@ const styles = css.create({
   separator: {
     height: controls.hairline,
     backgroundColor: tokens.separator,
-    marginInlineStart: spacing.md + list.tile + spacing.md,
   },
+  pastTile: { marginInlineStart: spacing.md + list.tile + spacing.md },
+  pastLabel: { marginInlineStart: spacing.md },
 });

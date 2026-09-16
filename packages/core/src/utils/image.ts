@@ -20,7 +20,7 @@ export interface ImageLimits {
 }
 
 /** Pi's bounds: 2,000px per side and 4.5 MiB of base64, below Anthropic's 5 MiB limit. */
-export const DEFAULT_IMAGE_LIMITS: ImageLimits = {
+export const IMAGE_LIMITS: ImageLimits = {
   maxWidth: 2000,
   maxHeight: 2000,
   maxBase64Bytes: 4.5 * 1024 * 1024,
@@ -31,12 +31,12 @@ const JPEG_QUALITIES: readonly number[] = [80, 70, 55, 40];
 
 export type ProcessedImage =
   | {
-      readonly ok: true;
+      readonly kind: "image";
       readonly data: string;
       readonly mimeType: string;
       readonly hints: readonly string[];
     }
-  | { readonly ok: false; readonly message: string };
+  | { readonly kind: "omitted"; readonly message: string };
 
 const SUPPORTED_MIME_TYPES = new Map<string, string>([
   ["image/png", "image/png"],
@@ -102,15 +102,11 @@ function dimensionHint(args: {
 }
 
 /**
- * Convert an unsupported format to PNG and bound the result to `limits`.
+ * Convert an unsupported format to PNG and bound the result to `IMAGE_LIMITS`.
  * Strategy: orient, scale into the dimension bounds, then at each size try PNG
  * and descending JPEG qualities, shrinking 25% per round until something fits.
  */
-export async function processImage(
-  bytes: Uint8Array,
-  mimeType: string,
-  limits: ImageLimits = DEFAULT_IMAGE_LIMITS,
-): Promise<ProcessedImage> {
+export async function processImage(bytes: Uint8Array, mimeType: string): Promise<ProcessedImage> {
   const sourceMimeType = supportedMimeType(mimeType);
   let image: PhotonImage | undefined;
   try {
@@ -118,12 +114,12 @@ export async function processImage(
     const base64Size = Math.ceil(bytes.byteLength / 3) * 4;
     if (
       sourceMimeType !== undefined &&
-      image.get_width() <= limits.maxWidth &&
-      image.get_height() <= limits.maxHeight &&
-      base64Size <= limits.maxBase64Bytes
+      image.get_width() <= IMAGE_LIMITS.maxWidth &&
+      image.get_height() <= IMAGE_LIMITS.maxHeight &&
+      base64Size <= IMAGE_LIMITS.maxBase64Bytes
     ) {
       return {
-        ok: true,
+        kind: "image",
         data: Buffer.from(bytes).toString("base64"),
         mimeType: sourceMimeType,
         hints: [],
@@ -133,12 +129,16 @@ export async function processImage(
     image = await orient(image, bytes);
     const originalWidth = image.get_width();
     const originalHeight = image.get_height();
-    const scale = Math.min(1, limits.maxWidth / originalWidth, limits.maxHeight / originalHeight);
+    const scale = Math.min(
+      1,
+      IMAGE_LIMITS.maxWidth / originalWidth,
+      IMAGE_LIMITS.maxHeight / originalHeight,
+    );
     let width = Math.max(1, Math.round(originalWidth * scale));
     let height = Math.max(1, Math.round(originalHeight * scale));
     while (true) {
       for (const candidate of encodeCandidates(image, width, height)) {
-        if (candidate.data.length > limits.maxBase64Bytes) continue;
+        if (candidate.data.length > IMAGE_LIMITS.maxBase64Bytes) continue;
         const hints: string[] = [];
         if (sourceMimeType !== candidate.mimeType) {
           hints.push(`[Image converted from ${mimeType} to ${candidate.mimeType}.]`);
@@ -146,7 +146,7 @@ export async function processImage(
         if (width !== originalWidth || height !== originalHeight) {
           hints.push(dimensionHint({ originalWidth, originalHeight, width, height }));
         }
-        return { ok: true, data: candidate.data, mimeType: candidate.mimeType, hints };
+        return { kind: "image", data: candidate.data, mimeType: candidate.mimeType, hints };
       }
       if (width === 1 && height === 1) break;
       width = Math.max(1, Math.floor(width * 0.75));
@@ -155,14 +155,14 @@ export async function processImage(
   } catch {
     // A corrupt or undecodable payload must not be forwarded to the provider.
     return {
-      ok: false,
+      kind: "omitted",
       message: "[Image omitted: could not be converted to a supported inline image format.]",
     };
   } finally {
     image?.free();
   }
   return {
-    ok: false,
+    kind: "omitted",
     message: "[Image omitted: could not be resized below the inline image size limit.]",
   };
 }
@@ -173,32 +173,22 @@ export async function processImage(
  *
  * A block that cannot be processed is kept as it arrived: the producer already
  * decided to send it, and the failure may only mean the image backend is
- * unavailable. Returns the input array when nothing changed, so callers can
- * skip rewriting the message.
+ * unavailable. Content without images is returned as it came in, so callers
+ * can skip rewriting the message.
  */
 export async function normalizeImageContent(
   content: readonly (TextContent | ImageContent)[],
-  limits: ImageLimits = DEFAULT_IMAGE_LIMITS,
 ): Promise<readonly (TextContent | ImageContent)[]> {
   if (!content.some((block) => block.type === "image")) return content;
 
   const normalized: (TextContent | ImageContent)[] = [];
-  let changed = false;
   for (const block of content) {
     if (block.type !== "image") {
       normalized.push(block);
       continue;
     }
-    const processed = await processImage(Buffer.from(block.data, "base64"), block.mimeType, limits);
-    if (!processed.ok) {
-      normalized.push(block);
-      continue;
-    }
-    if (
-      processed.data === block.data &&
-      processed.mimeType === block.mimeType &&
-      processed.hints.length === 0
-    ) {
+    const processed = await processImage(Buffer.from(block.data, "base64"), block.mimeType);
+    if (processed.kind === "omitted") {
       normalized.push(block);
       continue;
     }
@@ -206,7 +196,6 @@ export async function normalizeImageContent(
     if (processed.hints.length > 0) {
       normalized.push({ type: "text", text: processed.hints.join("\n") });
     }
-    changed = true;
   }
-  return changed ? normalized : content;
+  return normalized;
 }

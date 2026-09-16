@@ -384,6 +384,34 @@ test.each(["done", "failed"] as const)(
   },
 );
 
+test("disconnecting ends a live cloud watch the renderer never stopped", async () => {
+  const { baseUrl } = await remoteHost();
+  const { host, watchEvents } = await desktop();
+  await host.call("host.server.connect", { baseUrl, token: TOKEN });
+  const created = await host.call("host.server.createSession", undefined);
+
+  host.watchStart({ watchId: "cloud", sessionId: created.sessionId, live: true });
+  await vi.waitFor(() => {
+    assert.ok(
+      watchEvents.some((envelope) => envelope.kind === "event" && envelope.event.kind === "synced"),
+    );
+  });
+
+  // The renderer keeps its subscription across a disconnect, so the host has to
+  // end the stream itself rather than leave it reading the old server.
+  await host.call("host.server.disconnect", undefined);
+  await vi.waitFor(() => {
+    const ended = watchEvents.find((envelope) => envelope.kind === "ended");
+    assert.ok(ended, "the watch reported that it ended");
+    assert.equal(ended.error?.code, "closed");
+  });
+
+  const settled = watchEvents.length;
+  await host.call("host.server.createSession", undefined).catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(watchEvents.length, settled, "no event arrives after the watch ended");
+});
+
 test("a stalled server list neither holds the local directory nor loses the last Cloud chats", async () => {
   const { server } = await remoteHost();
   // A proxy in front of the real server: session lists are held until released.

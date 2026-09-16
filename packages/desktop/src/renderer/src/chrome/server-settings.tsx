@@ -259,7 +259,6 @@ function CopyButton({ label, value }: { label: string; value: string }): ReactEl
   const [copied, setCopied] = useState(false);
   return (
     <IconButton
-      compact
       icon={copied ? "checkmark" : "copy"}
       label={copied ? "Copied" : `Copy ${label.toLocaleLowerCase()}`}
       onClick={() => {
@@ -362,7 +361,6 @@ function SharePanel({ state }: { state: Extract<MobileShareState, { kind: "shari
                 <span {...stylex.props(shareStyles.fieldActions)}>
                   <CopyButton label="Token" value={state.token} />
                   <IconButton
-                    compact
                     icon="eye"
                     label={revealed ? "Hide token" : "Reveal token"}
                     aria-pressed={revealed}

@@ -20,10 +20,10 @@ export const appearanceSettingsStyles = stylex.create({
   search: {
     display: "flex",
     alignItems: "center",
-    gap: 9,
+    gap: sidebar.rowGap,
     height: sidebar.rowHeight,
     marginBlockEnd: 16,
-    paddingInline: 7,
+    paddingInline: sidebar.rowPaddingInline,
     borderRadius: t.radiusLg,
     borderStyle: "none",
     backgroundColor: t.fillSecondary,
@@ -38,6 +38,7 @@ export const appearanceSettingsStyles = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
+    width: sidebar.iconSlot,
     flexShrink: 0,
   },
   searchInput: {

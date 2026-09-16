@@ -12,6 +12,6 @@ A plugin with the same id in a discovered directory replaces a preinstalled copy
 | Plugin | What it demonstrates |
 | --- | --- |
 | `question.ts` | A model-visible tool that parks with a single or multiple `Selection`, accepts a separate custom response, and applies a host-independent deadline from its plugin setting. TUI, desktop, and remote clients render the same waiting data. |
-| `rename.ts` | A manual `/rename <name>` command and model-generated `/rename` using only the session's `messages()` and `rename()` primitives |
+| `rename.ts` | A manual `/rename <name>` command, model-generated `/rename`, and a `rename_chat` tool the model calls itself, over the session's `context()` and `rename()` primitives |
 | `fast-mode.ts` | A host-configured plugin factory with a durable `/fast` command, a per-provider setting, and a `before_request` hook |
 | `web-search/` | A plugin set: one tool plugin plus one plugin per search provider, each joining the tool through `tools.update`. Host-owned credentials, a routing setting that can withhold the tool, and stateless `tools/call` requests |

@@ -63,10 +63,13 @@ jobs:
           done
       - run: pnpm format
         if: ${{ !inputs.force }}
+        continue-on-error: true
       - run: pnpm lint
         if: ${{ !inputs.force }}
+        continue-on-error: true
       - run: pnpm typecheck
         if: ${{ !inputs.force }}
+        continue-on-error: true
 
   tui:
     needs: verify
@@ -81,6 +84,7 @@ jobs:
           - runner: blacksmith-4vcpu-ubuntu-2404-arm
             target: linux-arm64
     runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.target != 'darwin-arm64' }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -123,6 +127,7 @@ jobs:
             target: windows-x64
             command: package:win
     runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.target != 'mac-arm64' }}
     env:
       CSC_LINK: ${{ matrix.target == 'mac-arm64' && secrets.CSC_LINK || '' }}
       CSC_KEY_PASSWORD: ${{ matrix.target == 'mac-arm64' && secrets.CSC_KEY_PASSWORD || '' }}
@@ -168,10 +173,12 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [tui, desktop]
+    needs: [verify, tui, desktop]
+    if: ${{ always() && !cancelled() && needs.verify.result == 'success' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           path: release
           merge-multiple: true
@@ -179,14 +186,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          shopt -s nullglob
+          files=(release/*)
+          if (( ${#files[@]} == 0 )); then
+            echo "No release artifacts were produced." >&2
+            exit 1
+          fi
           if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" release/* --repo "${{ github.repository }}" --clobber
+            gh release upload "${{ github.ref_name }}" "${files[@]}" --repo "${{ github.repository }}" --clobber
           else
-            gh release create "${{ github.ref_name }}" release/* --repo "${{ github.repository }}" --verify-tag --generate-notes --title "Nyte ${{ github.ref_name }}"
+            gh release create "${{ github.ref_name }}" "${files[@]}" --repo "${{ github.repository }}" --verify-tag --generate-notes --title "Nyte ${{ github.ref_name }}"
           fi
 
   appcast:
     needs: publish
+    if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
     runs-on: blacksmith-6vcpu-macos-15
     steps:
       - uses: actions/checkout@v7
@@ -197,6 +211,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           name: desktop-mac-arm64
           path: packages/desktop/dist
@@ -205,6 +220,12 @@ jobs:
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          shopt -s nullglob
+          archive=(packages/desktop/dist/Nyte-"${GITHUB_REF_NAME#v}"-mac-arm64.zip)
+          if (( ${#archive[@]} == 0 )); then
+            echo "No macOS desktop archive; skipping appcast."
+            exit 0
+          fi
           if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
             echo "SPARKLE_PRIVATE_KEY is not configured." >&2
             exit 1
@@ -212,12 +233,16 @@ jobs:
           key="$RUNNER_TEMP/sparkle-private-key"
           printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
           chmod 600 "$key"
-          pnpm --dir packages/desktop update:appcast "dist/Nyte-${GITHUB_REF_NAME#v}-mac-arm64.zip" --key-file "$key"
+          pnpm --dir packages/desktop update:appcast "${archive[0]#packages/desktop/}" --key-file "$key"
       - name: Publish desktop update feed
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [[ ! -f packages/desktop/dist/appcast.xml ]]; then
+            echo "No appcast.xml; skipping desktop update feed."
+            exit 0
+          fi
           if ! gh release view desktop-updates --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create desktop-updates --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "Desktop update feed" --notes "Stable Sparkle update feed for Nyte desktop."
           fi

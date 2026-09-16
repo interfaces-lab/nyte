@@ -15,7 +15,7 @@ import { useId } from "react";
 import type { ReactElement, ReactNode, Ref } from "react";
 import type { StyleXStyles } from "@stylexjs/stylex";
 import { floatingSurfaceStyles } from "../theme/floating-surface.stylex.ts";
-import { control, layer } from "../theme/schema.stylex.ts";
+import { layer, menu } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { overlayRef } from "./overlay-occlusion.ts";
@@ -32,7 +32,7 @@ const styles = stylex.create({
   popup: {
     display: "flex",
     flexDirection: "column",
-    minWidth: `min(max(${control.menuWidth}, var(--anchor-width)), var(--available-width))`,
+    minWidth: `min(max(${menu.width}, var(--anchor-width)), var(--available-width))`,
     maxWidth: `min(max(320px, var(--anchor-width)), var(--available-width))`,
     maxHeight: "var(--available-height)",
     padding: 4,
@@ -80,7 +80,7 @@ const styles = stylex.create({
     gridTemplateColumns: "14px minmax(0, 1fr) auto",
     alignItems: "start",
     columnGap: 8,
-    minHeight: control.compactHeight,
+    minHeight: menu.itemHeight,
     paddingBlock: 4,
     paddingInline: 8,
     borderRadius: t.radiusLg,
@@ -102,29 +102,23 @@ const styles = stylex.create({
     gridTemplateColumns: "12px minmax(0, 1fr) auto",
     columnGap: 6,
     minHeight: 24,
-    paddingBlock: 3,
+    paddingBlock: 2,
     paddingInline: 4,
     borderRadius: t.radiusSm,
     fontSize: t.fontBase,
     lineHeight: t.leadingBase,
   },
-  itemCompact: {
+  // A row whose own control already shows its state, so a checked row is not
+  // also painted as a selection; only the highlight under the pointer paints.
+  itemHighlightOnly: {
     backgroundColor: {
       default: "transparent",
       "[data-checked]": "transparent",
       "[data-highlighted]": t.bgCard,
       "[data-checked][data-highlighted]": t.bgCard,
     },
-    minHeight: 28,
-    paddingBlock: 4,
-    paddingInline: 8,
     borderRadius: t.radiusSm,
-    lineHeight: "20px",
   },
-  labelCompact: { lineHeight: "20px" },
-  metaCompact: { minHeight: 20, lineHeight: "20px" },
-  switchTrackCompact: { width: 24, height: 14 },
-  switchThumbCompact: { width: 10, height: 10 },
   itemPlain: { gridTemplateColumns: "minmax(0, 1fr) auto" },
   itemRadio: { gridTemplateColumns: "14px minmax(0, 1fr) auto 14px" },
   itemRadioPlain: { gridTemplateColumns: "minmax(0, 1fr) auto 14px" },
@@ -167,15 +161,15 @@ const styles = stylex.create({
     minHeight: t.leadingBase,
     color: t.textSecondary,
   },
-  separator: { height: 1, marginBlock: 3, marginInline: -4, backgroundColor: t.strokeSecondary },
+  separator: { height: 1, marginBlock: 4, marginInline: -4, backgroundColor: t.strokeSecondary },
   separatorInset: { marginBlock: 4, marginInline: 8 },
   // The heading row owns the height; the label and the action are plain text
   // boxes with matching metrics, so they centre on the same line.
-  groupHeading: { display: "flex", alignItems: "center", minHeight: control.compactHeight },
+  groupHeading: { display: "flex", alignItems: "center", minHeight: menu.itemHeight },
   groupLabel: {
     flex: 1,
     paddingInline: 6,
-    paddingBlock: 3,
+    paddingBlock: 2,
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
@@ -183,7 +177,7 @@ const styles = stylex.create({
   },
   groupAction: {
     paddingInline: 6,
-    paddingBlock: 3,
+    paddingBlock: 2,
     borderRadius: t.radiusBase,
     outline: "none",
     color: { default: t.textTertiary, "[data-highlighted]": t.textPrimary },
@@ -210,8 +204,8 @@ const styles = stylex.create({
     borderRadius: t.radiusFull,
     backgroundColor: t.fillGhostSelected,
   },
-  switchTrackOn: { backgroundColor: t.fillAccent },
-  switchTrackGreen: { backgroundColor: t.switchActive },
+  /* "On" reads the same everywhere, so it is the switch token, not the accent. */
+  switchTrackOn: { backgroundColor: t.switchActive },
   switchThumb: {
     width: 12,
     height: 12,
@@ -336,7 +330,14 @@ export function Menu({
   );
 }
 
-type MenuSize = "medium" | "small" | "compact";
+type MenuSize = "default" | "small";
+
+/**
+ * How a row paints its background. `highlightOnly` suppresses the checked fill,
+ * leaving the pointer highlight as the row's only paint, for rows whose own
+ * control already shows their state.
+ */
+type MenuItemBackground = "default" | "highlightOnly";
 
 interface ItemBodyProps {
   readonly icon?: IconName;
@@ -352,7 +353,7 @@ function ItemBody({
   icon,
   leading,
   meta,
-  size = "medium",
+  size = "default",
   layout = "menu",
   children,
 }: ItemBodyProps): ReactElement {
@@ -365,24 +366,8 @@ function ItemBody({
           {leading ?? (icon !== undefined && <Icon name={icon} size={small ? 12 : 14} />)}
         </span>
       )}
-      <span
-        {...stylex.props(
-          styles.label,
-          small && styles.labelSmall,
-          size === "compact" && styles.labelCompact,
-        )}
-      >
-        {children}
-      </span>
-      <span
-        {...stylex.props(
-          styles.meta,
-          small && styles.metaSmall,
-          size === "compact" && styles.metaCompact,
-        )}
-      >
-        {meta}
-      </span>
+      <span {...stylex.props(styles.label, small && styles.labelSmall)}>{children}</span>
+      <span {...stylex.props(styles.meta, small && styles.metaSmall)}>{meta}</span>
     </>
   );
 }
@@ -394,6 +379,7 @@ interface MenuItemProps extends ItemBodyProps {
   readonly closeOnClick?: boolean;
   readonly textValue?: string;
   readonly selected?: boolean;
+  readonly background?: MenuItemBackground;
   readonly itemStyle?: StyleXStyles;
   readonly onPointerMove?: () => void;
   readonly onSelect: () => void;
@@ -409,7 +395,8 @@ export function MenuItem({
   closeOnClick = true,
   textValue,
   selected = false,
-  size = "medium",
+  size = "default",
+  background = "default",
   layout = "menu",
   itemStyle,
   onPointerMove,
@@ -426,7 +413,7 @@ export function MenuItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
-        size === "compact" && styles.itemCompact,
+        background === "highlightOnly" && styles.itemHighlightOnly,
         layout === "plain" && styles.itemPlain,
         danger && styles.itemDanger,
         itemStyle,
@@ -450,6 +437,7 @@ interface MenuRadioItemProps extends ItemBodyProps {
   readonly closeOnClick?: boolean;
   /** Typeahead text when the body is more than a label. */
   readonly label?: string;
+  readonly background?: MenuItemBackground;
   /** Base UI focuses the highlighted item, so this is the highlight signal. */
   readonly onFocus?: () => void;
 }
@@ -463,7 +451,8 @@ export function MenuRadioItem({
   closeOnClick = true,
   label,
   onFocus,
-  size = "medium",
+  size = "default",
+  background = "default",
   layout = "menu",
   children,
 }: MenuRadioItemProps): ReactElement {
@@ -478,7 +467,7 @@ export function MenuRadioItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
-        size === "compact" && styles.itemCompact,
+        background === "highlightOnly" && styles.itemHighlightOnly,
         layout === "plain" && styles.itemPlain,
       )}
     >
@@ -505,6 +494,7 @@ interface MenuCheckboxItemProps extends ItemBodyProps {
   readonly checked: boolean;
   readonly disabled?: boolean;
   readonly closeOnClick?: boolean;
+  readonly background?: MenuItemBackground;
   readonly onCheckedChange: (checked: boolean) => void;
 }
 
@@ -515,7 +505,8 @@ export function MenuCheckboxItem({
   meta,
   disabled = false,
   closeOnClick = false,
-  size = "medium",
+  size = "default",
+  background = "default",
   onCheckedChange,
   children,
 }: MenuCheckboxItemProps): ReactElement {
@@ -528,7 +519,7 @@ export function MenuCheckboxItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
-        size === "compact" && styles.itemCompact,
+        background === "highlightOnly" && styles.itemHighlightOnly,
       )}
     >
       <ItemBody
@@ -551,19 +542,19 @@ export function MenuCheckboxItem({
 }
 
 interface MenuSwitchItemProps extends Omit<ItemBodyProps, "meta"> {
-  readonly tone?: "accent" | "green";
   readonly checked: boolean;
   readonly disabled?: boolean;
+  readonly background?: MenuItemBackground;
   readonly onCheckedChange: (checked: boolean) => void;
 }
 
 export function MenuSwitchItem({
-  tone = "accent",
   checked,
   icon,
   leading,
   disabled = false,
-  size = "medium",
+  size = "default",
+  background = "default",
   layout = "menu",
   onCheckedChange,
   children,
@@ -577,7 +568,7 @@ export function MenuSwitchItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
-        size === "compact" && styles.itemCompact,
+        background === "highlightOnly" && styles.itemHighlightOnly,
         layout === "plain" && styles.itemPlain,
       )}
     >
@@ -589,20 +580,9 @@ export function MenuSwitchItem({
         meta={
           <span
             aria-hidden="true"
-            {...stylex.props(
-              styles.switchTrack,
-              size === "compact" && styles.switchTrackCompact,
-              checked && styles.switchTrackOn,
-              checked && tone === "green" && styles.switchTrackGreen,
-            )}
+            {...stylex.props(styles.switchTrack, checked && styles.switchTrackOn)}
           >
-            <span
-              {...stylex.props(
-                styles.switchThumb,
-                size === "compact" && styles.switchThumbCompact,
-                checked && styles.switchThumbOn,
-              )}
-            />
+            <span {...stylex.props(styles.switchThumb, checked && styles.switchThumbOn)} />
           </span>
         }
       >
@@ -626,7 +606,7 @@ export function MenuSubmenu({
   value,
   icon,
   leading,
-  size = "medium",
+  size = "default",
   layout = "menu",
   disabled = false,
   align = "start",
@@ -643,7 +623,6 @@ export function MenuSubmenu({
         {...stylex.props(
           styles.item,
           size === "small" && styles.itemSmall,
-          size === "compact" && styles.itemCompact,
           layout === "plain" && styles.itemPlain,
           styles.submenuTriggerOpen,
         )}
@@ -734,7 +713,8 @@ export function ContextMenuItem({
   disabled = false,
   danger = false,
   textValue,
-  size = "medium",
+  size = "default",
+  background = "default",
   layout = "menu",
   onSelect,
   children,
@@ -746,7 +726,7 @@ export function ContextMenuItem({
       {...stylex.props(
         styles.item,
         size === "small" && styles.itemSmall,
-        size === "compact" && styles.itemCompact,
+        background === "highlightOnly" && styles.itemHighlightOnly,
         layout === "plain" && styles.itemPlain,
         danger && styles.itemDanger,
       )}
