@@ -68,6 +68,8 @@ import {
   sessionReadState,
   useReadSessions,
 } from "../session-read-state.ts";
+import { useDebouncedValue } from "../use-debounced-value.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useGitHubAccount } from "./github-account.ts";
 import { handleOpenOutcome } from "./open-workspace.tsx";
@@ -1076,11 +1078,7 @@ function DraftRow({
   readonly onOpen: () => void;
   readonly onDelete: () => void;
 }): ReactElement {
-  const [title, setTitle] = useState(() => draftPreviewText(draft.composer.draft));
-  useEffect(() => {
-    const timeout = setTimeout(() => setTitle(draftPreviewText(draft.composer.draft)), 100);
-    return () => clearTimeout(timeout);
-  }, [draft.composer.draft]);
+  const title = draftPreviewText(useDebouncedValue(draft.composer.draft, 100));
   const row = (
     <Row
       render={<motion.div layout={layoutEnabled ? "position" : false} initial={false} />}
@@ -1222,12 +1220,9 @@ function SessionRow({
     onHover();
   };
 
-  useEffect(
-    () => () => {
-      if (warmTimer.current !== undefined) window.clearTimeout(warmTimer.current);
-    },
-    [],
-  );
+  useMountEffect(() => () => {
+    if (warmTimer.current !== undefined) window.clearTimeout(warmTimer.current);
+  });
 
   if (draftName !== undefined) {
     return (

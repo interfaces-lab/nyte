@@ -334,26 +334,11 @@ function VisibleAgentsPanel({
 }): ReactElement {
   const host = useHostState();
   const selectedId = useSelectedAgent(owner);
-  const jobs = useJobs(sessionId);
-  const { refetch: refetchJobs } = jobs;
-  useEffect(() => {
-    if (sessionId !== undefined) void refetchJobs({ cancelRefetch: false });
-  }, [refetchJobs, sessionId]);
+  const jobs = useJobs(sessionId, "always");
   const agents = (jobs.data ?? [])
     .filter((job): job is SubagentJob => job.kind === "subagent")
     .toSorted((left, right) => right.updatedAt - left.updatedAt);
   const selected = agents.find((job) => job.childSessionId === selectedId) ?? agents[0];
-
-  // The selection tracks the agent the reader picked; a stale one falls back
-  // to the newest without leaving a dangling id behind.
-  useEffect(() => {
-    if (
-      selectedId !== undefined &&
-      selected?.childSessionId !== selectedId &&
-      jobs.data !== undefined
-    )
-      agentActions.clear(owner);
-  }, [jobs.data, owner, selected, selectedId]);
 
   if (sessionId === undefined || (jobs.data !== undefined && agents.length === 0)) {
     return (

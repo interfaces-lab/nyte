@@ -261,14 +261,17 @@ export function useSessionSnapshot(sessionId: SessionId) {
 
 /**
  * The jobs of one chat. Job events invalidate this; the poll while one runs
- * covers a job that settles without an event reaching this window.
+ * covers a job that settles without an event reaching this window. The client
+ * default keeps a settled list across mounts; pass `"always"` when a view must
+ * re-read on every visit.
  */
-export function useJobs(sessionId: SessionId | undefined) {
+export function useJobs(sessionId: SessionId | undefined, refetchOnMount?: "always") {
   return useQuery({
     queryKey: keys.jobs(sessionId),
     queryFn: (): Promise<readonly JobInfo[]> =>
       sessionId === undefined ? Promise.resolve([]) : nyte.jobs.list({ sessionId }),
     enabled: sessionId !== undefined,
+    refetchOnMount,
     refetchInterval: (query) =>
       query.state.data?.some((job) => job.state === "running") === true ? 2_000 : false,
   });

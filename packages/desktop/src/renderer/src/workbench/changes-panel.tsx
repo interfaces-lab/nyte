@@ -1,6 +1,6 @@
 /** Local working-tree, commit and per-turn declared changes. GitHub never participates in this path. */
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/core";
 import { changesFromTurns } from "@nyte-ai/core/views";
@@ -181,9 +181,8 @@ export function revertConfirmation(target: RevertTarget): {
  * The rail owns the only search surface, so the toolbar's filter command goes
  * through the field the rail renders rather than a second copy of its state.
  */
-function focusFileFilter(panel: HTMLElement | null): void {
-  const field = panel?.querySelector('input[aria-label="Filter changed files"]');
-  if (!(field instanceof HTMLInputElement)) return;
+function focusFileFilter(field: HTMLInputElement | null): void {
+  if (field === null) return;
   field.focus();
   field.select();
 }
@@ -232,13 +231,12 @@ function ChangesPanelView({
   const declared = useMemo(() => changesFromTurns(turns), [turns]);
   const snapshot = useVcsSnapshot(true);
   const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
-  const panelRef = useRef<HTMLElement | null>(null);
+  const filterInput = useRef<HTMLInputElement>(null);
   // The affordance that opened the confirmation, so closing it returns focus there.
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | undefined>(undefined);
   const [reverting, setReverting] = useState(false);
   const [revertError, setRevertError] = useState<string | undefined>(undefined);
-  const [filterFocusRevision, setFilterFocusRevision] = useState(0);
   // Collapse state belongs to the panel so the toolbar can command it, but it
   // describes one scope's files: switching scope starts over rather than
   // collapsing same-named files in the scope that replaced them.
@@ -471,10 +469,9 @@ function ChangesPanelView({
   );
 
   const filterFiles = (): void => {
-    // The rail is display:none while the tree is hidden, so it has to be shown
-    // before its field can take focus; the effect below waits for that render.
+    // The rail is display:none while hidden; focus lands the frame after it shows.
     if (!fileTreeVisible) onToggleFileTree();
-    setFilterFocusRevision((revision) => revision + 1);
+    requestAnimationFrame(() => focusFileFilter(filterInput.current));
   };
 
   // Only a working tree has a state to go back to: a turn's patch and a
@@ -524,14 +521,8 @@ function ChangesPanelView({
       };
     });
   };
-  useEffect(() => {
-    if (filterFocusRevision === 0 || !fileTreeVisible) return;
-    focusFileFilter(panelRef.current);
-  }, [fileTreeVisible, filterFocusRevision]);
-
   return (
     <section
-      ref={panelRef}
       {...stylex.props(styles.panel)}
       aria-label="Workspace changes"
       onKeyDown={(event) => {
@@ -593,6 +584,7 @@ function ChangesPanelView({
             activePath={activePath}
             statsKey={activeScopeValue}
             fonts={fonts}
+            filterInputRef={filterInput}
             onRevealPath={onRevealPath}
             onRevertPath={revertPath}
             onViewedChange={(path, viewed) => {

@@ -1,12 +1,12 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterContextProvider } from "@tanstack/react-router";
-import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
 import { keys, loadLocalResources, queryClient } from "./queries.ts";
 import { currentRouteSession, router, Shell } from "./router";
 import { nyte } from "./nyte.ts";
 import type { HostState } from "./nyte.ts";
+import { useMountEffect } from "./use-mount-effect.ts";
 import { paneControllerForWorkspace } from "./layout/pane-context.tsx";
 import { BLANK_SELECTION } from "./layout/pane-layout.ts";
 import { applyBrowserEvent, applyBrowserAgentOpened } from "./workbench/browser-surfaces.ts";
@@ -32,7 +32,7 @@ function bindRouteToOpenFolder(): void {
 
 /** Host events reshape the world; queries re-read it. */
 function useHostEvents(): void {
-  useEffect(() => {
+  useMountEffect(() => {
     return nyte.host.onEvent((event) => {
       switch (event.kind) {
         case "workspace_trust_required":
@@ -88,18 +88,18 @@ function useHostEvents(): void {
         }
       }
     });
-  }, []);
+  });
 }
 
 export function App(): ReactElement {
   useHostEvents();
-  useEffect(() => {
+  useMountEffect(() => {
     const frame = requestAnimationFrame(() => {
       performance.mark("nyte:shell-ready");
       performance.measure("nyte:startup-to-shell", "nyte:startup", "nyte:shell-ready");
     });
     return () => cancelAnimationFrame(frame);
-  }, []);
+  });
   return (
     <QueryClientProvider client={queryClient}>
       <RouterContextProvider router={router}>

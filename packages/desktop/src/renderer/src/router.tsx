@@ -89,11 +89,12 @@ const styles = stylex.create({
 export function Shell(): ReactElement {
   const host = useHostState();
   const workspacePath = host.data?.workspace?.path;
+  const hostLoaded = host.data !== undefined;
 
   useEffect(() => {
-    if (host.data === undefined) return;
+    if (!hostLoaded) return;
     void activateOutbox(workspacePath);
-  }, [host.data, workspacePath]);
+  }, [hostLoaded, workspacePath]);
 
   return (
     <Tooltip.Provider delay={600} closeDelay={0} timeout={400}>

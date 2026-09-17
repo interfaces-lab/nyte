@@ -8,7 +8,7 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import { useId, useState } from "react";
-import type { ReactElement } from "react";
+import type { ReactElement, RefObject } from "react";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Icon } from "../components/icons.tsx";
@@ -361,6 +361,7 @@ export function ChangesSidebar({
   activePath,
   statsKey,
   fonts,
+  filterInputRef,
   onRevealPath,
   onRevertPath,
   onViewedChange,
@@ -372,6 +373,8 @@ export function ChangesSidebar({
   /** Remounts the animated counters when the scope changes rather than tweening across it. */
   readonly statsKey: string;
   readonly fonts: { readonly ui: string; readonly xs: string };
+  /** The panel's filter command focuses the rail's field, which is display:none while the rail is hidden. */
+  readonly filterInputRef?: RefObject<HTMLInputElement | null>;
   readonly onRevealPath: (path: string) => void;
   /** Absent outside a working tree, where there is nothing to revert to; the affordance renders disabled. */
   readonly onRevertPath?: (path: string) => void;
@@ -416,6 +419,7 @@ export function ChangesSidebar({
         <div {...stylex.props(styles.field)}>
           <Icon name="search" size={12} />
           <input
+            ref={filterInputRef}
             id={searchId}
             type="text"
             aria-label="Filter changed files"

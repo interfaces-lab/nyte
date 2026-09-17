@@ -1,7 +1,9 @@
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useId, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import type { ReactElement } from "react";
 import { focus } from "../components/ui.tsx";
+import { keys } from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { CodeBlock } from "./code-block.tsx";
 import type { DiagramResult } from "./mermaid-render.ts";
@@ -68,7 +70,6 @@ const styles = stylex.create({
 });
 
 type DiagramState = DiagramResult | { readonly kind: "pending" };
-type RenderState = { readonly source: string; readonly result: DiagramState };
 
 function isDiagramResult(value: unknown): value is DiagramResult {
   if (typeof value !== "object" || value === null || !("kind" in value)) return false;
@@ -89,33 +90,38 @@ function isRenderResponse(
   );
 }
 
+/**
+ * Render one diagram in a dedicated worker. The protocol's `id` field is moot
+ * when the worker serves a single request, but the request shape still
+ * requires it. A worker failure resolves as `source` — the fence fallback — so
+ * the query has no error state.
+ */
+function renderMermaid(source: string): Promise<DiagramResult> {
+  return new Promise((resolve) => {
+    const worker = new Worker(new URL("./mermaid-worker.ts", import.meta.url), { type: "module" });
+    const settle = (result: DiagramResult): void => {
+      worker.terminate();
+      resolve(result);
+    };
+    worker.addEventListener("message", (event: MessageEvent<unknown>) => {
+      if (isRenderResponse(event.data)) settle(event.data.result);
+    });
+    worker.addEventListener("error", () => settle({ kind: "source" }), { once: true });
+    worker.postMessage({ id: "render", source });
+  });
+}
+
 /** A Mermaid fence is a diagram first, with its source available on demand. */
 export function MermaidDiagram({ source }: { readonly source: string }): ReactElement {
-  const id = useId();
-  const [renderState, setRenderState] = useState<RenderState>({
-    source,
-    result: { kind: "pending" },
+  const render = useQuery({
+    queryKey: keys.mermaid(source),
+    queryFn: () => renderMermaid(source),
+    // Same source always renders the same svg, and the cache dedupes identical
+    // fences across mounts.
+    staleTime: Infinity,
   });
   const [sourceVisible, setSourceVisible] = useState(false);
-  const rendered =
-    renderState.source === source ? renderState.result : ({ kind: "pending" } as const);
-
-  useEffect(() => {
-    const worker = new Worker(new URL("./mermaid-worker.ts", import.meta.url), { type: "module" });
-    const receive = (event: MessageEvent<unknown>): void => {
-      if (!isRenderResponse(event.data) || event.data.id !== id) return;
-      setRenderState({ source, result: event.data.result });
-      worker.terminate();
-    };
-    const fail = (): void => {
-      setRenderState({ source, result: { kind: "source" } });
-      worker.terminate();
-    };
-    worker.addEventListener("message", receive);
-    worker.addEventListener("error", fail, { once: true });
-    worker.postMessage({ id, source });
-    return () => worker.terminate();
-  }, [id, source]);
+  const rendered: DiagramState = render.data ?? { kind: "pending" };
 
   if (rendered.kind === "source") return <CodeBlock code={source} lang="mermaid" />;
 
