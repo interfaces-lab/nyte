@@ -1,5 +1,0 @@
-{"first":{"kind":"queued","change":"44c1051562482adfaa53c0532375573a7fa2ed25ddcfc957f85c8e247a9df190"},"retry":{"kind":"queued","change":"fb8418479f06d3c03a33ad6efe6541083b72727a603bd964d1d5f9be2fb99fc7"},"queued":[{"agent":"agent-a","kind":"config"},{"agent":"agent-b","kind":"config"},{"kind":"message","message":{"content":"prompt-a","role":"user","timestamp":1788557299915}},{"kind":"message","message":{"content":"prompt-b","role":"user","timestamp":1788557299915}}]}
-{"landed":[{"agent":"agent-a","kind":"config"},{"agent":"agent-b","kind":"config"},{"kind":"message","message":{"content":"prompt-a","role":"user","timestamp":1788557299915}}]}
-{"firstRun":{"attempts":0,"config":{"agent":"agent-b"},"head":"main","id":"run_2ed92e70-c7b","kind":"run","phase":{"kind":"respond"},"startedAt":1788557299917}}
-{"beforeClose":{"opened":2,"closed":[]}}
-{"afterClose":{"opened":2,"closed":[2]}}

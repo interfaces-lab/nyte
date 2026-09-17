@@ -1,1 +1,0 @@
-Production TUI under Bun in a real PTY with isolated NYTE_HOME and workspace. Accepted trust for temporary workspace. Exercised /usage, PageUp/PageDown, resize 90x24 -> 44x16 -> 110x32, /help menu up/down, Escape, /quit. Exit code 0. No runtime errors found. No provider prompt submitted. Temporary workspace and app data removed.

@@ -1,1 +1,0 @@
-packages/desktop/src/renderer/src/chrome/sidebar-view.ts:217:51: error anti-slop(no-unknown-parameters): Parameter `value` leaves input unparsed. Accept a named domain type; run the expected schema or parser at the I/O boundary before calling this function.

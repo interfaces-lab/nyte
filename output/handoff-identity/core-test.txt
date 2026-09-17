@@ -1,7 +1,0 @@
-$ tsc --noEmit
-   Duration  7.33s (tests 54%, import 36%, transform 10%)
-
-    Isolate  72 workers spawned · ~85ms startup each (spawn + environment, per file)
-             at least ~473ms faster with isolate: false — reuses workers across files instead of one per file
-
-[ELIFECYCLE] Test failed. See above for more details.
