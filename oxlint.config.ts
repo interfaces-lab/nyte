@@ -135,6 +135,16 @@ export default defineConfig({
       },
     },
     {
+      // The restriction above keeps Node-only core code out of the shipped
+      // renderer bundle. A Node-run unit test is not part of that bundle, so it
+      // may import the full surface; `*.browser-test.tsx` still loads in a real
+      // browser and stays restricted.
+      files: ["packages/desktop/src/renderer/**/*.test.{ts,tsx}"],
+      rules: {
+        "eslint/no-restricted-imports": "off",
+      },
+    },
+    {
       // The tint preview paints the raw hue the user is choosing, and the QR
       // code needs a white quiet zone a camera can read; neither resolves
       // through the palette.
