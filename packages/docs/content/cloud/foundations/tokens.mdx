@@ -8,7 +8,7 @@ Tokens are the only values a primitive is allowed to paint with. They are declar
 literal `--nyte-*` name so the same token can be read from StyleX, from Tailwind, and from plain CSS.
 
 ```
-platform-tokens.stylex.ts    typed StyleX handles     tokens.color["--nyte-color-primary"]
+platform-tokens.stylex.ts    colorVars["--nyte-color-primary"]
   └─ sync-platform-tokens.mjs
        └─ platform-tokens.css   :root declarations     var(--nyte-color-primary)
             └─ tailwind.css     @theme inline mapping   bg-primary, text-body, rounded-lg
@@ -19,7 +19,9 @@ this page are read from the generated CSS at build time, so they cannot disagree
 
 ## Rules
 
-- A primitive **must** read colors, radii, sizes, and motion through `tokens.*`. Literal colors in
+- A primitive **must** import `colorVars` (and the other `*Vars` groups) from
+  `@nyte-ai/ui/platform-tokens.stylex`. StyleX only keeps `--nyte-*` names through a
+  direct `defineVars` import. Reading through `tokens.color` hashes them. Literal colors in
   `packages/ui/src/components` are a defect.
 - Colors are `light-dark()` pairs. The theme follows `color-scheme` on an ancestor, not a class.
   A host that wants dark mode sets `color-scheme: dark`; it does not restyle tokens.

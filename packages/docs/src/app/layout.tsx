@@ -1,6 +1,8 @@
 import "./global.css";
+import * as stylex from "@stylexjs/stylex";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Newsreader } from "next/font/google";
+import { shell } from "~/shell.stylex";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -53,7 +55,7 @@ export default function Layout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${newsreader.variable} ${inter.className}`}
       suppressHydrationWarning
     >
-      <body className="flex min-h-screen flex-col">{children}</body>
+      <body {...stylex.props(shell.page)}>{children}</body>
     </html>
   );
 }

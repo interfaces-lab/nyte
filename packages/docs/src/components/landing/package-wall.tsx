@@ -56,7 +56,7 @@ const parts: readonly Part[] = [
 
 const DIAGRAMS = path.join(process.cwd(), "src", "diagrams");
 
-/* Inlined rather than <img>, which is what lets the figure paint in the page's tokens. */
+/* Inlined, so the figure reads the page's --nyte-color-* tokens. */
 function figure(name: string): string {
   return readFileSync(path.join(DIAGRAMS, `${name}.svg`), "utf8");
 }

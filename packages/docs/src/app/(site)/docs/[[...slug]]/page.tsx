@@ -1,48 +1,39 @@
-import { getPageImageUrl, getPageMarkdownUrl, source } from "~/lib/source";
-import {
-  DocsBody,
-  DocsDescription,
-  DocsPage,
-  DocsTitle,
-  MarkdownCopyButton,
-  ViewOptionsPopover,
-} from "fumadocs-ui/layouts/docs/page";
-import { notFound } from "next/navigation";
-import { getMDXComponents } from "~/components/mdx";
+import { findNeighbour } from "fumadocs-core/page-tree";
 import type { Metadata } from "next";
-import { createRelativeLink } from "fumadocs-ui/mdx";
-import { gitConfig } from "~/lib/shared";
+import { notFound, redirect } from "next/navigation";
+import { docsMdxComponents } from "~/components/mdx";
+import { ShellMain } from "~/components/shell/column";
+import { ShellHead } from "~/components/shell/head";
+import { ShellPager } from "~/components/shell/pager";
+import { docsSectionFor } from "~/lib/docs-nav";
+import { docsRoute } from "~/lib/shared";
+import { getPageImageUrl, source } from "~/lib/source";
 
 export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const params = await props.params;
+  if (!params.slug || params.slug.length === 0) redirect(`${docsRoute}/design`);
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
   const MDX = page.data.body;
-  const markdownUrl = getPageMarkdownUrl(page).url;
+  const section = docsSectionFor(page.url);
+  const { previous, next } = findNeighbour(source.getPageTree(), page.url);
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle className="text-xl">{page.data.title}</DocsTitle>
-      <DocsDescription className="mb-0 text-[0.9375rem] leading-snug">
-        {page.data.description}
-      </DocsDescription>
-      <div className="flex flex-row items-center gap-2 border-b pb-6">
-        <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover
-          markdownUrl={markdownUrl}
-          githubUrl={`https://github.com/${gitConfig.user}/${gitConfig.repo}/blob/${gitConfig.branch}/content/docs/${page.path}`}
+    <ShellMain skin="docs">
+      <article className="docs-article">
+        <ShellHead
+          skin="docs"
+          eyebrow={section}
+          title={page.data.title}
+          lede={page.data.description}
         />
-      </div>
-      <DocsBody>
-        <MDX
-          components={getMDXComponents({
-            // this allows you to link to other pages with relative file paths
-            a: createRelativeLink(source, page),
-          })}
-        />
-      </DocsBody>
-    </DocsPage>
+        <div className="docs-prose">
+          <MDX components={docsMdxComponents()} />
+        </div>
+        <ShellPager skin="docs" previous={previous} next={next} />
+      </article>
+    </ShellMain>
   );
 }
 
@@ -52,6 +43,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata(props: PageProps<"/docs/[[...slug]]">): Promise<Metadata> {
   const params = await props.params;
+  if (!params.slug || params.slug.length === 0) return { title: "Docs" };
   const page = source.getPage(params.slug);
   if (!page) notFound();
 

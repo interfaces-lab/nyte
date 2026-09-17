@@ -1,12 +1,15 @@
-import Link from "next/link";
 import { findNeighbour } from "fumadocs-core/page-tree";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cloudMdxComponents } from "~/components/cloud/mdx";
-import { CloudToc } from "~/components/cloud/shell/toc";
+import { ShellMain } from "~/components/shell/column";
+import { ShellHead } from "~/components/shell/head";
+import { ShellPager } from "~/components/shell/pager";
+import { ShellToc } from "~/components/shell/toc";
 import { cloudSectionFor } from "~/lib/cloud-nav";
 import { cloudRoute } from "~/lib/shared";
-import { cloudSource, getCloudPageMarkdownUrl } from "~/lib/source";
+import { cloudSource } from "~/lib/source";
 
 export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
   const params = await props.params;
@@ -16,7 +19,7 @@ export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
   if (!page) notFound();
 
   const MDX = page.data.body;
-  const markdownUrl = getCloudPageMarkdownUrl(page).url;
+  const landing = page.url === `${cloudRoute}/introduction`;
   const section = cloudSectionFor(page.url);
   const { previous, next } = findNeighbour(cloudSource.getPageTree(), page.url);
   // Heading titles arrive as rendered elements (inline code survives), so they
@@ -27,40 +30,33 @@ export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
 
   return (
     <>
-      <main className="cloud-main">
+      <ShellMain skin="cloud">
         <article className="cloud-article">
-          <header className="cloud-head">
-            {section && <span className="cloud-eyebrow">{section}</span>}
-            <h1 className="cloud-title">{page.data.title}</h1>
-            {page.data.description && <p className="cloud-lede">{page.data.description}</p>}
-            <div className="cloud-head-actions">
-              <a className="cloud-pill" href={markdownUrl}>
-                View as Markdown
-              </a>
-            </div>
-          </header>
+          <ShellHead
+            skin="cloud"
+            eyebrow={section}
+            title={landing ? "Cloud" : page.data.title}
+            lede={page.data.description}
+          >
+            {landing ? (
+              <div className="cloud-cta">
+                <Link className="cloud-cta-primary" href={`${cloudRoute}/foundations/tokens`}>
+                  Get started
+                  <span aria-hidden>→</span>
+                </Link>
+                <Link className="cloud-cta-secondary" href={`${cloudRoute}/primitives/button`}>
+                  Try it out
+                </Link>
+              </div>
+            ) : null}
+          </ShellHead>
           <div className="cloud-prose">
             <MDX components={cloudMdxComponents()} />
           </div>
-          {(previous || next) && (
-            <nav className="cloud-pager" aria-label="Pages">
-              {previous && typeof previous.name === "string" && (
-                <Link href={previous.url} data-dir="previous">
-                  <span className="cloud-eyebrow">Previous</span>
-                  <strong>{previous.name}</strong>
-                </Link>
-              )}
-              {next && typeof next.name === "string" && (
-                <Link href={next.url} data-dir="next">
-                  <span className="cloud-eyebrow">Next</span>
-                  <strong>{next.name}</strong>
-                </Link>
-              )}
-            </nav>
-          )}
+          <ShellPager skin="cloud" previous={previous} next={next} />
         </article>
-      </main>
-      <CloudToc entries={toc} />
+      </ShellMain>
+      <ShellToc skin="cloud" entries={toc} />
     </>
   );
 }
@@ -74,6 +70,13 @@ export async function generateMetadata(props: PageProps<"/cloud/[[...slug]]">): 
   if (!params.slug || params.slug.length === 0) return { title: "Cloud" };
   const page = cloudSource.getPage(params.slug);
   if (!page) notFound();
+
+  if (page.url === `${cloudRoute}/introduction`) {
+    return {
+      title: "Cloud",
+      description: page.data.description,
+    };
+  }
 
   return {
     title: `${page.data.title} — Cloud`,

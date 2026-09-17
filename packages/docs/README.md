@@ -18,12 +18,16 @@ Open http://localhost:3000. The desktop client uses root `pnpm dev:desktop`.
 ## Explore
 
 - `src/lib/source.ts`: Content collections and source adapters.
-- `src/lib/layout.shared.tsx`: Shared layout options.
+- `src/lib/docs-nav.ts` / `src/lib/cloud-nav.ts`: Page trees for the docs and Cloud sidebars.
+- `src/lib/site-sections.ts`: Featured Docs and Cloud destinations in the site nav.
+
+Fumadocs is kept for MDX collections, the page tree, and search indexing (`fumadocs-mdx`, `fumadocs-core`). The default Fumadocs UI theme is not loaded.
 
 | Route                     | Description                                            |
 | ------------------------- | ------------------------------------------------------ |
 | `src/app/(site)/(landing)` | Landing page. |
-| `src/app/(site)/docs` | Documentation layout and pages. |
+| `src/app/(site)/docs` | Core docs shell: site nav, sidebar, and MDX map. |
+| `src/app/cloud` | Cloud design system. Same site nav, own sidebar and article. |
 | `src/app/api/search/route.ts` | Search handler. |
 
 ### Fumadocs MDX

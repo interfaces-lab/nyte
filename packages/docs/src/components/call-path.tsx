@@ -1,13 +1,11 @@
+import * as stylex from "@stylexjs/stylex";
 import Link from "next/link";
+import { colorVars, motionVars } from "@nyte-ai/ui/platform-tokens.stylex";
 
 /*
- * The call path, drawn the way the docs already draw it — a vertical stack with
- * dotted leaders. It is the site's signature element because it is Nyte's own
- * artefact, and it does a job: built rows link to the design section that covers
- * them, and the last hop is dashed because the wire is named and unwritten.
- *
- * Colour carries state here. Meadow means built. Reserved rows get graphite and
- * a hollow marker, and never the accent.
+ * Built rows link to the design section that covers them. The last connector is
+ * dashed because @nyte-ai/protocol is named and not built. Accent means built.
+ * Reserved rows stay muted, with a hollow marker.
  */
 
 interface Stage {
@@ -56,12 +54,58 @@ const stages: Stage[] = [
   },
   {
     name: "@nyte-ai/protocol",
-    note: "the wire a browser client would attach to — reserved, not built",
+    note: "the wire a browser client would attach to. Reserved, not built",
     built: false,
   },
 ];
 
-export function SeamDiagram() {
+const styles = stylex.create({
+  hop: {
+    borderLeftColor: colorVars["--nyte-color-border"],
+  },
+  hopDashed: {
+    borderLeftStyle: "dashed",
+  },
+  markerBuilt: {
+    backgroundColor: colorVars["--nyte-color-accent"],
+  },
+  markerReserved: {
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colorVars["--nyte-color-muted-foreground"],
+    backgroundColor: colorVars["--nyte-color-background"],
+  },
+  nameBuilt: {
+    color: colorVars["--nyte-color-foreground"],
+    textDecorationLine: "underline",
+    textDecorationColor: {
+      default: "transparent",
+      ":hover": colorVars["--nyte-color-accent"],
+    },
+    textDecorationThickness: "1px",
+    textUnderlineOffset: "4px",
+    transitionProperty: "text-decoration-color",
+    transitionDuration: motionVars["--nyte-motion-fast"],
+  },
+  nameReserved: {
+    color: colorVars["--nyte-color-muted-foreground"],
+  },
+  note: {
+    color: colorVars["--nyte-color-muted-foreground"],
+  },
+  leader: {
+    borderBottomColor: colorVars["--nyte-color-border"],
+  },
+});
+
+function withStylex(className: string, props: ReturnType<typeof stylex.props>) {
+  return {
+    className: [className, props.className].filter(Boolean).join(" "),
+    style: props.style,
+  };
+}
+
+export function CallPath() {
   return (
     <ol className="nyte-mono max-w-184 text-[13px] leading-none">
       {stages.map((stage, index) => (
@@ -69,17 +113,19 @@ export function SeamDiagram() {
           {stage.hop ? (
             <span
               aria-hidden
-              className={`absolute left-[5px] top-[14px] bottom-0 w-0 border-l ${
-                stage.hop === "dashed" ? "border-dashed" : "border-solid"
-              } border-nyte-muted/30`}
+              {...withStylex(
+                "absolute top-[14px] bottom-0 left-[5px] w-0 border-l",
+                stylex.props(styles.hop, stage.hop === "dashed" && styles.hopDashed),
+              )}
             />
           ) : null}
 
           <span
             aria-hidden
-            className={`absolute left-[2px] top-[9px] size-1.5 ${
-              stage.built ? "bg-nyte-signal" : "border border-nyte-muted bg-nyte-paper"
-            }`}
+            {...withStylex(
+              "absolute top-[9px] left-[2px] size-1.5",
+              stylex.props(stage.built ? styles.markerBuilt : styles.markerReserved),
+            )}
           />
 
           <StageRow stage={stage} isLast={index === stages.length - 1} />
@@ -96,28 +142,32 @@ function StageRow({ stage, isLast }: { stage: Stage; isLast: boolean }) {
     <>
       <span className="flex items-baseline gap-3">
         <span
-          className={`shrink-0 ${
-            stage.built
-              ? "text-nyte-ink underline decoration-transparent decoration-1 underline-offset-4 transition-[text-decoration-color] duration-150 group-hover:decoration-nyte-signal"
-              : "text-nyte-muted"
-          }`}
+          {...withStylex(
+            "shrink-0",
+            stylex.props(stage.built ? styles.nameBuilt : styles.nameReserved),
+          )}
         >
           {stage.name}
         </span>
         <span
           aria-hidden
-          className="min-w-6 flex-1 translate-y-[-3px] border-b border-dotted border-nyte-muted/35"
+          {...withStylex(
+            "min-w-6 flex-1 translate-y-[-3px] border-b border-dotted",
+            stylex.props(styles.leader),
+          )}
         />
-        <span className="hidden shrink-0 text-nyte-muted sm:inline">{stage.note}</span>
+        <span {...withStylex("hidden shrink-0 sm:inline", stylex.props(styles.note))}>
+          {stage.note}
+        </span>
       </span>
-      <span className="mt-2 block text-nyte-muted sm:hidden">{stage.note}</span>
+      <span {...withStylex("mt-2 block sm:hidden", stylex.props(styles.note))}>{stage.note}</span>
     </>
   );
 
   if (!stage.href) return <div className={padding}>{body}</div>;
 
   return (
-    <Link href={stage.href} className={`group rounded-sm ${padding}`}>
+    <Link href={stage.href} className={padding}>
       {body}
     </Link>
   );
