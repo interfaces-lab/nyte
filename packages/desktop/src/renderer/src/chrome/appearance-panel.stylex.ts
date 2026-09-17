@@ -70,7 +70,6 @@ export const appearancePanelStyles = stylex.create({
   tintValue: {
     color: t.textSecondary,
     fontSize: t.fontXs,
-    fontVariantNumeric: "tabular-nums",
     lineHeight: t.leadingSm,
     textAlign: "center",
   },

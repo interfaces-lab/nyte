@@ -29,6 +29,7 @@
     line-height: var(--nyte-line-height-base);
     font-weight: 400;
     font-optical-sizing: auto;
+    font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: var(--nyte-font-smoothing, antialiased);
     -moz-osx-font-smoothing: var(--nyte-moz-font-smoothing, grayscale);
     user-select: none;
