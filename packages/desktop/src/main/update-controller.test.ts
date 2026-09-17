@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { createUpdateController, type UpdateDependencies } from "./update-controller.ts";
+import type { DesktopUpdateActivity } from "./host.ts";
 
 function setup(responses: number[] = [0, 1]) {
+  let activity: DesktopUpdateActivity = { kind: "idle" };
   const messages: string[] = [];
   const statuses: string[] = [];
   const errors: string[] = [];
@@ -29,6 +31,7 @@ function setup(responses: number[] = [0, 1]) {
         installs++;
       },
     },
+    activity: async () => activity,
     message: async (options) => {
       messages.push(options.message);
       return { response: responses.shift() ?? 1, checkboxChecked: false };
@@ -43,6 +46,9 @@ function setup(responses: number[] = [0, 1]) {
     unavailable: undefined,
   };
   return {
+    setActivity: (next: DesktopUpdateActivity) => {
+      activity = next;
+    },
     dependencies,
     messages,
     statuses,
@@ -65,6 +71,19 @@ describe("desktop updates", () => {
     await controller.check(true);
     expect(harness.counts()).toEqual({ checks: 1, downloads: 1, installs: 0 });
     expect(harness.statuses.at(-1)).toBe("Restart to Update…");
+    await controller.check(true);
+    expect(harness.counts()).toEqual({ checks: 1, downloads: 1, installs: 1 });
+  });
+
+  test("running work blocks the install until it finishes", async () => {
+    const harness = setup([0, 0, 0]);
+    harness.setActivity({ kind: "busy", taskCount: 1, terminalCommandCount: 0 });
+    const controller = createUpdateController(harness.dependencies);
+    await controller.check(true);
+    expect(harness.counts()).toEqual({ checks: 1, downloads: 1, installs: 0 });
+    expect(harness.messages.at(-1)).toBe("Nyte can't install an update while work is running");
+    expect(harness.statuses.at(-1)).toBe("Restart to Update…");
+    harness.setActivity({ kind: "idle" });
     await controller.check(true);
     expect(harness.counts()).toEqual({ checks: 1, downloads: 1, installs: 1 });
   });
