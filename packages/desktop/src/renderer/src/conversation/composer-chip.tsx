@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
 import type { IconName } from "../components/icons.tsx";
-import { focus } from "../components/ui.tsx";
+import { focus, HoverPreview } from "../components/ui.tsx";
 import { isFolder, referenceLabel, referenceTitle } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
@@ -16,6 +16,8 @@ function referenceIcon(reference: MessageReference): IconName {
       return "skills";
     case "mention":
       return "more";
+    case "clipboard":
+      return "copy";
     default: {
       const exhaustive: never = reference;
       return exhaustive;
@@ -35,12 +37,12 @@ export function ComposerChipView({
   const label = referenceLabel(reference);
   const open = useReferenceOpener()?.(reference);
   const inEditor = onRemove !== undefined;
-  return (
+  const chip = (
     <span
       data-composer-chip={reference.kind}
       data-has-remove-button={inEditor}
       data-openable={open !== undefined}
-      title={referenceTitle(reference)}
+      title={reference.kind === "clipboard" ? undefined : referenceTitle(reference)}
       role={open === undefined ? undefined : "link"}
       // The editor moves through chips with its own selection; only read-only
       // surfaces need a tab stop.
@@ -90,4 +92,6 @@ export function ComposerChipView({
       {label}
     </span>
   );
+  if (reference.kind !== "clipboard") return chip;
+  return <HoverPreview content={reference.body} trigger={chip} side="top" />;
 }
