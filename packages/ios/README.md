@@ -349,7 +349,17 @@ and touch targets stay in the iOS theme rather than inheriting desktop density.
 Legend List owns message virtualization and sent-message anchoring. Keyboard
 Controller coordinates the composer and list insets. Enriched Markdown renders
 replies natively and respects iOS Reduce Motion. Expo supplies the native build,
-streaming fetch, and Keychain integration.
+streaming fetch, and Keychain integration. A fenced code block reads as mono on
+the theme fill with no border, matching the desktop client's treatment, and
+tree-sitter highlighting carries the same GitHub light/dark palettes the
+desktop's Shiki worker loads. While a reply streams, `remend` closes its
+dangling inline markers and the renderer's `codeBlockMode` defers highlighting
+until the closing fence arrives. Transient host failures (rename, pin, delete,
+opening a link) surface as toasts above the composer rather than alert dialogs,
+and loading lists draw skeleton rows instead of a lone spinner. Both patterns
+were reviewed against [Reacticx](https://github.com/rit3zh/reacticx)'s Toast and
+Shimmer at `58479704f1f831913970aa5e78e3691bcb9fa3f7` and reimplemented on the
+app's existing Reanimated/Gesture Handler stack.
 
 ## Package choices
 
@@ -369,6 +379,7 @@ streaming fetch, and Keychain integration.
 | `@legendapp/list` | Virtualized chat and sent-message anchoring |
 | `react-native-keyboard-controller` | Native keyboard coordination |
 | `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |
+| `remend` | Repairs incomplete streamed Markdown (same library react-native-streamdown uses) |
 | `expo-symbols`, `expo-clipboard` | SF Symbols and local message copying |
 | `expo-glass-effect`, `expo-blur` | Liquid Glass composer card and the thinking-slider track |
 | `react-native-gesture-handler` | Pan on the thinking slider |
