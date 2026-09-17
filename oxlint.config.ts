@@ -147,6 +147,27 @@ export default defineConfig({
       },
     },
     {
+      // Effects exist to synchronize with an external system; derived state,
+      // fetching (TanStack Query), event relays, and per-prop resets each have
+      // a better primitive. Legitimate survivors carry an inline disable.
+      files: ["packages/ios/src/**/*.{ts,tsx}"],
+      rules: {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            paths: [
+              {
+                name: "react",
+                importNames: ["useEffect"],
+                message:
+                  "No direct useEffect: derive inline, fetch with useQuery, act in the event handler, remount via key, or useMountEffect for mount-time external sync.",
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
       files: ["packages/core/src/plugins/builtin/**"],
       rules: {
         "eslint/no-restricted-imports": [
