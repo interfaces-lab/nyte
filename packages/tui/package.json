@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun scripts/build-binary.ts",
+    "verify:targets": "bun scripts/verify-targets.ts",
     "package": "sh ../../scripts/package.sh",
     "clean": "rm -rf node_modules .turbo ../../bin",
     "dev": "bun --watch src/binary.ts",
