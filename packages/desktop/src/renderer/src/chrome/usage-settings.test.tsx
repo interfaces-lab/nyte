@@ -150,16 +150,21 @@ function render(seed?: {
   }
 }
 
-test("the page leads with Nyte spend by model, then plan limits", () => {
+test("one tab per question, each summarised on the strip", () => {
   const html = render({ report: spent, limits });
 
-  assert.match(html, /\$4\.50/);
-  assert.match(html, /API estimate · 1.1K tokens · 3 requests · 60% of context from cache/);
+  assert.match(html, /1.1K tokens<\/span>/);
+  assert.match(
+    html,
+    /\$4\.50 · API estimate · 1.1K tokens · 3 requests · 60% of context from cache/,
+  );
   assert.match(html, /claude-opus-5/);
   assert.match(html, /anthropic · 1.1K tokens · 3 requests/);
-  // The lists in order: models first, then the plan limits, then where it went.
-  assert.ok(html.indexOf("Nyte spend by model") < html.indexOf("Plan limits"));
-  assert.ok(html.indexOf("Plan limits") < html.indexOf("Nyte spend by folder"));
+  // The strip carries each tab's answer, in the order the questions get asked.
+  assert.match(html, /Spend<span[^>]*>\$4\.50/);
+  assert.match(html, /Limits<span[^>]*>Claude 91%/);
+  assert.ok(html.indexOf("Nyte spend by model") < html.indexOf("Claude · Max"));
+  assert.ok(html.indexOf("Claude · Max") < html.indexOf("Nyte spend by folder"));
   assert.match(html, /Claude · Max/);
   assert.match(html, /aria-valuenow="91"/);
   assert.match(html, /91% used/);
