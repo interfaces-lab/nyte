@@ -232,17 +232,25 @@ export function BackgroundWork({
   });
   const orderedJobs = (jobs.data ?? []).toSorted((left, right) => right.updatedAt - left.updatedAt);
   const agents = taskSections(orderedJobs.filter((job) => job.kind === "subagent"));
-  const terminals = taskSections(orderedJobs.filter((job) => job.kind === "command"));
-  const sections = open === "terminals" ? terminals : agents;
-  const preview = [...sections.active, ...sections.finished].find((job) => job.id === previewId);
+  const liveTerminals = orderedJobs.filter(
+    (job) => job.kind === "command" && job.mode === "background" && job.state === "running",
+  );
   const hasAgents = agents.active.length + agents.finished.length > 0;
-  const hasTerminals = terminals.active.length + terminals.finished.length > 0;
+  const hasTerminals = liveTerminals.length > 0;
+  const trayOpen =
+    open === "terminals" && hasTerminals ? "terminals" : open === "agents" ? "agents" : undefined;
+  const sections = trayOpen === "terminals" ? { active: liveTerminals, finished: [] } : agents;
+  const preview = [...sections.active, ...sections.finished].find((job) => job.id === previewId);
   const stopAll = useMutation({
     mutationFn: (jobIds: readonly JobInfo["id"][]) =>
       Promise.all(jobIds.map((jobId) => nyte.jobs.cancel({ sessionId, jobId }))),
     onSettled: () => client.invalidateQueries({ queryKey: keys.jobs(sessionId) }),
   });
   const pendingAction = action.isPending || stopAll.isPending;
+
+  useLayoutEffect(() => {
+    if (open === "terminals" && !hasTerminals) onOpenChange(undefined);
+  }, [hasTerminals, onOpenChange, open]);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -264,7 +272,9 @@ export function BackgroundWork({
   const close = () => {
     onOpenChange(undefined);
     setPreviewId(undefined);
-    requestAnimationFrame(() => (open === "terminals" ? terminalsRef : agentsRef).current?.focus());
+    requestAnimationFrame(() =>
+      (trayOpen === "terminals" ? terminalsRef : agentsRef).current?.focus(),
+    );
   };
   const back = () => {
     if (previewId === undefined) return;
@@ -281,10 +291,8 @@ export function BackgroundWork({
     onOpenChange(open === section ? undefined : section);
   };
   const title =
-    open === "terminals"
-      ? terminals.active.length > 0
-        ? `${String(terminals.active.length)} ${terminals.active.length === 1 ? "Terminal" : "Terminals"} Running`
-        : "Recent terminals"
+    trayOpen === "terminals"
+      ? `${String(liveTerminals.length)} ${liveTerminals.length === 1 ? "Terminal" : "Terminals"} Running`
       : agents.active.length > 0
         ? "Working"
         : "Agents";
@@ -307,7 +315,7 @@ export function BackgroundWork({
           </button>
         </div>
       )}
-      {open === undefined && (
+      {trayOpen === undefined && (
         <div {...props(styles.pills)}>
           {hasAgents && (
             <button
@@ -336,26 +344,23 @@ export function BackgroundWork({
               ref={terminalsRef}
               type="button"
               {...props(styles.pill, focus.ring)}
-              aria-label={
-                terminals.active.length > 0
-                  ? `Open terminals, ${String(terminals.active.length)} running`
-                  : "Recent terminals"
-              }
+              aria-label={`Open terminals (${String(liveTerminals.length)})`}
               aria-expanded={false}
               onClick={() => toggle("terminals")}
             >
-              <span>{terminals.active.length === 1 ? "Terminal" : "Terminals"}</span>
-              {terminals.active.length > 1 && (
-                <span aria-hidden="true">{terminals.active.length}</span>
-              )}
+              <span {...props(styles.leading)}>
+                <Spinner />
+              </span>
+              <span aria-hidden="true">{liveTerminals.length}</span>
+              <span>{liveTerminals.length === 1 ? "Terminal" : "Terminals"}</span>
             </button>
           )}
         </div>
       )}
-      {open !== undefined && (
+      {trayOpen !== undefined && (
         <section
           id={trayId}
-          aria-label={open === "agents" ? "Agents" : "Terminals"}
+          aria-label={trayOpen === "agents" ? "Agents" : "Terminals"}
           {...props(
             trayStyles.surface,
             preview !== undefined && styles.previewTray,
@@ -406,8 +411,8 @@ export function BackgroundWork({
                 type="button"
                 aria-label={
                   stopCandidates !== undefined
-                    ? `Confirm stopping ${String(stopCandidates.length)} running ${open}`
-                    : `Stop all running ${open}`
+                    ? `Confirm stopping ${String(stopCandidates.length)} running ${trayOpen}`
+                    : `Stop all running ${trayOpen}`
                 }
                 {...props(styles.action, focus.ringInset)}
                 disabled={pendingAction}

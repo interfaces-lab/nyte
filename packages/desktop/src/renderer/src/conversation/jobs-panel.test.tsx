@@ -74,19 +74,26 @@ describe("composer background work", () => {
   test("counts foreground and background agents without counting terminals as agents", () => {
     const html = render([agent, { ...agent, id: "second", mode: "background" }, command]);
     expect(html).toContain('aria-label="Agents, Working 2"');
-    expect(html).toContain('aria-label="Open terminals, 1 running"');
+    expect(html).toContain('aria-label="Open terminals (1)"');
     expect(html).toContain(">Terminal</span>");
     expect(html).not.toContain("Review styling");
     expect(html).not.toContain("Run tests");
   });
 
-  test("pluralizes running terminals and retains completed output in recent terminals", () => {
+  test("shows the terminal chip only while a terminal is running", () => {
     const html = render([command, { ...command, id: "second" }]);
-    expect(html).toContain('aria-label="Open terminals, 2 running"');
+    expect(html).toContain('aria-label="Open terminals (2)"');
     expect(html).toContain(">Terminals</span>");
-    const finished = render([{ ...command, state: "completed" }], "terminals");
-    expect(finished).toContain("Recent terminals");
-    expect(finished).toContain('aria-label="Open terminal for Run tests"');
+    expect(html).toContain(">2</span>");
+    expect(render([{ ...command, state: "completed" }])).toBe("");
+    expect(render([{ ...command, state: "completed" }], "terminals")).toBe("");
+    const withAgents = render([
+      { ...command, state: "completed" },
+      { ...agent, state: "completed" },
+    ]);
+    expect(withAgents).toContain('aria-label="Agents"');
+    expect(withAgents).not.toContain("Open terminals");
+    expect(withAgents).not.toContain("Recent terminals");
   });
 
   test("the active tray only lists its own kind of background work", () => {
@@ -99,6 +106,18 @@ describe("composer background work", () => {
     expect(terminals).toContain("1 Terminal Running");
   });
 
+  test("the terminal tray lists live shells only", () => {
+    const html = render(
+      [command, { ...command, id: "done", state: "completed", title: "Finished tests" }],
+      "terminals",
+    );
+    expect(html).toContain("1 Terminal Running");
+    expect(html).toContain('aria-label="Open terminal for Run tests"');
+    expect(html).toContain('aria-label="Stop Run tests"');
+    expect(html).not.toContain("Finished tests");
+    expect(html).not.toContain("Recent");
+  });
+
   test("each running row has its own stop action; closing the tray is separate", () => {
     const html = render([agent], "agents");
     expect(html).toContain('aria-label="Stop Review styling"');
@@ -106,6 +125,9 @@ describe("composer background work", () => {
     expect(html).not.toContain('aria-label="Agents, Working 1"');
     expect(html).toContain("<section");
     expect(render([agent])).toContain('aria-expanded="false"');
+    const terminals = render([command], "terminals");
+    expect(terminals).toContain('aria-label="Stop Run tests"');
+    expect(terminals).toContain('aria-label="Close background work"');
   });
 
   test.each(["completed", "failed", "cancelled", "interrupted"] as const)(
