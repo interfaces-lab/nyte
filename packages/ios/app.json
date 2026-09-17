@@ -3,11 +3,13 @@
     "name": "Nyte",
     "slug": "nyte-ios",
     "version": "0.1.0",
-    "icon": "../desktop/build/icon.png",
+    "icon": "../desktop/build/icon-ios.png",
     "orientation": "portrait",
     "scheme": "nyte",
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios"
+    ],
     "ios": {
       "bundleIdentifier": "dev.nyte.ios",
       "supportsTablet": false,
@@ -21,7 +23,9 @@
         "NSSpeechRecognitionUsageDescription": "Use speech recognition to transcribe a Nyte task.",
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["nyte"]
+            "CFBundleURLSchemes": [
+              "nyte"
+            ]
           }
         ],
         "ITSAppUsesNonExemptEncryption": false
@@ -74,7 +78,9 @@
                   "targetName": "NyteLiveActivity",
                   "bundleIdentifier": "dev.nyte.ios.NyteLiveActivity",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.dev.nyte.ios"]
+                    "com.apple.security.application-groups": [
+                      "group.dev.nyte.ios"
+                    ]
                   }
                 }
               ]

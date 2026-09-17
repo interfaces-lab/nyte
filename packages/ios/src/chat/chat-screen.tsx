@@ -211,7 +211,7 @@ export function ChatScreen({
           }
         />
       </View>
-      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
+      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 1 }}>
         {!atEnd ? (
           <html.div style={styles.jumpRow}>
             <GlassButton
@@ -244,6 +244,7 @@ export function ChatScreen({
               sessionId: state.info.sessionId,
               head: state.head,
               heads: state.info.heads.map((entry) => entry.head),
+              config: state.config,
               sending,
               running,
               stopping,

@@ -183,7 +183,7 @@ export function InboxScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           paddingTop: spacing.xs,
-          paddingBottom: controls.composerHeight + insets.bottom + spacing.xl,
+          paddingBottom: controls.composerBar + insets.bottom + spacing.xl,
         }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
@@ -305,12 +305,13 @@ export function InboxScreen() {
           </html.p>
         )}
       </ScrollView>
-      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}>
+      <KeyboardStickyView style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 1 }}>
         <Composer
           target={{ kind: "new" }}
           placeholder="Ask anything"
           backdrop="background"
           gutters={{ left: insets.left + spacing.gutter, right: insets.right + spacing.gutter }}
+          onWorkspaceChange={reload}
         />
       </KeyboardStickyView>
     </View>
