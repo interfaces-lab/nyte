@@ -1,9 +1,12 @@
 import type { AppUpdater } from "electron-updater";
 import type { MessageBoxOptions, MessageBoxReturnValue } from "electron";
+import { installBlockedDialog } from "./update-relaunch.ts";
+import type { DesktopUpdateActivity } from "./host.ts";
 
 export interface UpdateDependencies {
   updater: Pick<AppUpdater, "checkForUpdates" | "downloadUpdate" | "quitAndInstall">;
   message: (options: MessageBoxOptions) => Promise<MessageBoxReturnValue>;
+  activity: () => Promise<DesktopUpdateActivity>;
   status: (label: string, enabled: boolean) => void;
   logError: (message: string) => void;
   version: string;
@@ -17,6 +20,11 @@ export function createUpdateController(dependencies: UpdateDependencies) {
   let downloaded: string | undefined;
 
   async function offerRestart(version: string): Promise<void> {
+    const current = await dependencies.activity();
+    if (current.kind === "busy") {
+      await message(installBlockedDialog(current));
+      return;
+    }
     const answer = await message({
       type: "info",
       message: `Nyte ${version} is ready to install`,
