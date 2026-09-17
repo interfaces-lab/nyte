@@ -33,7 +33,7 @@ export function HostProvider({ session, children }: { session: HostSession; chil
   return <HostContext.Provider value={session}>{children}</HostContext.Provider>;
 }
 
-/** Owns the saved-connection lifecycle above the router: restore, verify, forget. */
+/** Owns the saved-connection lifecycle above the router: restore and forget. */
 export function useHostConnection() {
   const [host, setHost] = useState<HostConnectionState>({ kind: "loading" });
   useEffect(() => {

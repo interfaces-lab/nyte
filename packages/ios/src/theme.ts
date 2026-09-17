@@ -101,6 +101,7 @@ export const radii = {
   control: 12,
   card: 16,
   bubble: 20,
+  composer: 23,
   sheet: 28,
   pill: 999,
 };
@@ -133,6 +134,10 @@ export const controls = {
   chipHeight: 36,
   composerHeight: 52,
   composerButton: 32,
+  // Prompt block when a screen still needs a fixed field height.
+  composerField: 52,
+  // Resting morphing pill plus a little air; screens add the home-indicator inset.
+  composerBar: 64,
   iconXs: 12,
   iconSm: 15,
   icon: 17,
@@ -190,7 +195,7 @@ export const typography = {
  */
 export const surfaces = css.create({
   panel: {
-    borderRadius: radii.bubble,
+    borderRadius: radii.composer,
     borderWidth: controls.hairline,
     borderStyle: "solid",
     borderColor: tokens.border,

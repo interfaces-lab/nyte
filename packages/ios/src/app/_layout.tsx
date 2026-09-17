@@ -1,4 +1,5 @@
-import { ActivityIndicator, StatusBar, useColorScheme } from "react-native";
+import { ActivityIndicator, StatusBar, StyleSheet, useColorScheme } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
@@ -30,6 +31,7 @@ export default function RootLayout() {
   };
   return (
     <SafeAreaProvider>
+      <GestureHandlerRootView style={layoutRoot.fill}>
       <KeyboardProvider>
         <ThemeProvider value={navigationTheme}>
           <StatusBar barStyle={dark ? "light-content" : "dark-content"} />
@@ -101,9 +103,14 @@ export default function RootLayout() {
           )}
         </ThemeProvider>
       </KeyboardProvider>
+      </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }
+
+const layoutRoot = StyleSheet.create({
+  fill: { flex: 1 },
+});
 
 const styles = css.create({
   // The screen's own box: its parent is the native root, not a flex container,
