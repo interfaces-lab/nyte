@@ -1,10 +1,15 @@
 import type { SessionId } from "@nyte-ai/core";
+import { schemas, sessionId } from "@nyte-ai/protocol";
 import type { Rect, VirtualItem } from "@tanstack/react-virtual";
-import type { ToolCallDensity } from "../theme/boot.ts";
+import type { Static } from "typebox";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import type { DesktopCatalog } from "../../../shared/ipc.ts";
+import type { ToolCallDensity } from "../theme/boot.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;
+const strict = { additionalProperties: false };
 
 export interface ComposerViewState {
   readonly draft: string;
@@ -88,14 +93,148 @@ type LocatedDraft =
   | { readonly kind: "active"; readonly paneId: PaneId; readonly draft: ChatDraft }
   | { readonly kind: "parked"; readonly paneId: PaneId; readonly draft: ChatDraft };
 
+interface Persistence {
+  readonly storage: Pick<Storage, "getItem" | "setItem">;
+  readonly storageKey: string;
+}
+
+const composerSchema = Type.Object(
+  {
+    draft: Type.String(),
+    selectionStart: Type.Integer({ minimum: 0 }),
+    selectionEnd: Type.Integer({ minimum: 0 }),
+  },
+  strict,
+);
+const chatDraftSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    updatedAt: Type.Number(),
+    composer: composerSchema,
+    configuration: Type.Optional(
+      Type.Object(
+        {
+          model: Type.Object(
+            { provider: Type.String({ minLength: 1 }), id: Type.String({ minLength: 1 }) },
+            strict,
+          ),
+          thinkingLevel: schemas.ThinkingLevel,
+        },
+        strict,
+      ),
+    ),
+    fastSettings: Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true }),
+  },
+  strict,
+);
+const paneDraftsSchema = Type.Object(
+  { active: chatDraftSchema, parked: Type.Array(chatDraftSchema) },
+  strict,
+);
+const persistedSnapshotSchema = Type.Object(
+  {
+    version: Type.Literal(1),
+    panes: Type.Object(
+      {
+        primary: Type.Optional(paneDraftsSchema),
+        secondary: Type.Optional(paneDraftsSchema),
+      },
+      strict,
+    ),
+    sessions: Type.Record(Type.String({ minLength: 1 }), composerSchema),
+  },
+  strict,
+);
+
+type PersistedComposer = Static<typeof composerSchema>;
+type PersistedChatDraft = Static<typeof chatDraftSchema>;
+type PersistedSnapshot = Static<typeof persistedSnapshotSchema>;
+
+function composerView(composer: PersistedComposer): ComposerViewState {
+  const length = composer.draft.length;
+  return {
+    draft: composer.draft,
+    selectionStart: Math.min(composer.selectionStart, length),
+    selectionEnd: Math.min(composer.selectionEnd, length),
+    focused: false,
+  };
+}
+
+function persistableComposer(composer: ComposerViewState): PersistedComposer {
+  return {
+    draft: composer.draft,
+    selectionStart: composer.selectionStart,
+    selectionEnd: composer.selectionEnd,
+  };
+}
+
+function persistableDraft(draft: ChatDraft): PersistedChatDraft {
+  return {
+    id: draft.id,
+    updatedAt: draft.updatedAt,
+    composer: persistableComposer(draft.composer),
+    ...(draft.configuration === undefined
+      ? {}
+      : {
+          configuration: {
+            model: {
+              provider: draft.configuration.model.provider,
+              id: draft.configuration.model.id,
+            },
+            thinkingLevel: draft.configuration.thinkingLevel,
+          },
+        }),
+    fastSettings: [...draft.fastSettings],
+  };
+}
+
+function hydrateDraft(draft: PersistedChatDraft): ChatDraft {
+  return {
+    id: draft.id,
+    updatedAt: draft.updatedAt,
+    composer: composerView(draft.composer),
+    configuration: draft.configuration,
+    fastSettings: new Set(draft.fastSettings),
+  };
+}
+
+function persistablePane(state: PaneDraftState): Static<typeof paneDraftsSchema> {
+  const parked: PersistedChatDraft[] = [];
+  for (const draft of state.parked.values()) {
+    if (draftHasContent(draft)) parked.push(persistableDraft(draft));
+  }
+  return { active: persistableDraft(state.active), parked };
+}
+
+function composerTextChanged(left: ComposerViewState, right: ComposerViewState): boolean {
+  return (
+    left.draft !== right.draft ||
+    left.selectionStart !== right.selectionStart ||
+    left.selectionEnd !== right.selectionEnd
+  );
+}
+
+function parsePersistedSnapshot(value: string | null): PersistedSnapshot | undefined {
+  if (value === null) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Value.Check(persistedSnapshotSchema, parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class SessionViewStateStore {
   readonly #sessions = new Map<SessionId, SessionViewState>();
   readonly #drafts = new Map<PaneId, PaneDraftState>();
   readonly #listeners = new Set<() => void>();
+  readonly #persistence: Persistence | undefined;
   #publishTimer: ReturnType<typeof setTimeout> | undefined;
   #revision = 0;
 
-  constructor() {
+  constructor(persistence?: Persistence) {
+    this.#persistence = persistence;
+    this.#restore();
     this.#draftState("primary");
     this.#draftState("secondary");
   }
@@ -112,7 +251,9 @@ export class SessionViewStateStore {
   }
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
+    const previous = this.#sessions.get(sessionId)?.composer ?? DEFAULT_COMPOSER_VIEW_STATE;
     this.#sessions.set(sessionId, state);
+    if (composerTextChanged(previous, state.composer)) this.#persist();
   }
 
   updateSession(
@@ -141,6 +282,13 @@ export class SessionViewStateStore {
     };
     drafts.active = next;
     if (contentChanged) this.#schedulePublish();
+    if (
+      composerTextChanged(current.composer, next.composer) ||
+      current.configuration !== next.configuration ||
+      current.fastSettings !== next.fastSettings
+    ) {
+      this.#persist();
+    }
   }
 
   drafts(): readonly ChatDraft[] {
@@ -257,9 +405,64 @@ export class SessionViewStateStore {
     };
   }
 
+  #restore(): void {
+    const persistence = this.#persistence;
+    if (persistence === undefined) return;
+    let raw: string | null = null;
+    try {
+      raw = persistence.storage.getItem(persistence.storageKey);
+    } catch {
+      return;
+    }
+    const persisted = parsePersistedSnapshot(raw);
+    if (persisted === undefined) return;
+    for (const paneId of ["primary", "secondary"] as const) {
+      const stored = persisted.panes[paneId];
+      if (stored === undefined) continue;
+      const parked = new Map<string, ChatDraft>();
+      for (const storedDraft of stored.parked) {
+        const draft = hydrateDraft(storedDraft);
+        if (draftHasContent(draft) && draft.id !== stored.active.id) {
+          parked.set(draft.id, draft);
+        }
+      }
+      this.#drafts.set(paneId, { active: hydrateDraft(stored.active), parked });
+    }
+    for (const [id, composer] of Object.entries(persisted.sessions)) {
+      if (composer.draft.trim() === "") continue;
+      this.#sessions.set(sessionId(id), {
+        ...defaultSessionViewState("primary"),
+        composer: composerView(composer),
+      });
+    }
+  }
+
   #schedulePublish(): void {
     if (this.#publishTimer !== undefined) clearTimeout(this.#publishTimer);
     this.#publishTimer = setTimeout(() => this.#emit(), DRAFT_LIST_DEBOUNCE_MS);
+  }
+
+  #persist(): void {
+    const persistence = this.#persistence;
+    if (persistence === undefined) return;
+    const panes: PersistedSnapshot["panes"] = {};
+    const primary = this.#drafts.get("primary");
+    const secondary = this.#drafts.get("secondary");
+    if (primary !== undefined) panes.primary = persistablePane(primary);
+    if (secondary !== undefined) panes.secondary = persistablePane(secondary);
+    const sessions: PersistedSnapshot["sessions"] = {};
+    for (const [id, state] of this.#sessions) {
+      if (state.composer.draft.trim() === "") continue;
+      sessions[id] = persistableComposer(state.composer);
+    }
+    try {
+      persistence.storage.setItem(
+        persistence.storageKey,
+        JSON.stringify({ version: 1, panes, sessions } satisfies PersistedSnapshot),
+      );
+    } catch {
+      // A denied or full local store must not drop the in-memory draft.
+    }
   }
 
   #emit(): void {
@@ -267,6 +470,7 @@ export class SessionViewStateStore {
       clearTimeout(this.#publishTimer);
       this.#publishTimer = undefined;
     }
+    this.#persist();
     this.#revision += 1;
     for (const listener of this.#listeners) listener();
   }
