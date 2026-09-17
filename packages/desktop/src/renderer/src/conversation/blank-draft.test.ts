@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
 import { PaneController } from "../layout/pane-controller.ts";
 import type { PaneId } from "../layout/pane-layout.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../../../shared/ipc.ts";
@@ -234,4 +235,75 @@ test("workspaces and split panes keep independent drafts", () => {
   assert.equal(firstWorkspace.viewState.readBlank("primary").composer.draft, "Primary");
   assert.equal(firstWorkspace.viewState.readBlank("secondary").composer.draft, "Secondary");
   assert.equal(secondWorkspace.viewState.readBlank("primary").composer.draft, "");
+});
+
+function memoryStorage(): {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+} {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+}
+
+test("reload restores parked drafts, model picks, and follow-up text", () => {
+  const storage = memoryStorage();
+  const first = new PaneController({ storage, storageKey: "panes-reload" });
+  const opened = first.viewState.readBlank("primary");
+  first.viewState.writeBlank("primary", {
+    ...opened,
+    configuration: {
+      model: { provider: "provider", id: "model" },
+      thinkingLevel: "high",
+    },
+    fastSettings: new Set(["fast"]),
+  });
+  writeDraft(first, "First idea");
+  first.newChat();
+  writeDraft(first, "Second idea");
+  const chat = sessionId("chat-1");
+  first.viewState.updateSession(chat, "primary", (current) => ({
+    ...current,
+    composer: {
+      draft: "Follow-up after reload",
+      selectionStart: 8,
+      selectionEnd: 8,
+      focused: true,
+    },
+  }));
+
+  const reloaded = new PaneController({ storage, storageKey: "panes-reload" });
+  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "Second idea");
+  reloaded.selectDraft(opened.id);
+  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "First idea");
+  assert.equal(reloaded.viewState.readBlank("primary").configuration?.model.id, "model");
+  assert.equal(reloaded.viewState.readBlank("primary").configuration?.thinkingLevel, "high");
+  assert.ok(reloaded.viewState.readBlank("primary").fastSettings.has("fast"));
+  const followUp = reloaded.viewState.readSession(chat, "primary").composer;
+  assert.equal(followUp.draft, "Follow-up after reload");
+  assert.equal(followUp.selectionStart, 8);
+  assert.equal(followUp.focused, false);
+});
+
+test("corrupt stored drafts are ignored", () => {
+  const storage = memoryStorage();
+  storage.setItem("panes-corrupt:composer-drafts", "{not-json");
+  const controller = new PaneController({ storage, storageKey: "panes-corrupt" });
+  assert.equal(controller.viewState.readBlank("primary").composer.draft, "");
+  assert.deepEqual(controller.viewState.drafts(), []);
+});
+
+test("sending a draft writes the empty composer before the window reloads", () => {
+  const storage = memoryStorage();
+  const first = new PaneController({ storage, storageKey: "panes-send" });
+  writeDraft(first, "Send me");
+  first.viewState.takeBlank("primary", first.viewState.readBlank("primary").composer);
+
+  const reloaded = new PaneController({ storage, storageKey: "panes-send" });
+  assert.equal(reloaded.viewState.readBlank("primary").composer.draft, "");
+  assert.deepEqual(reloaded.viewState.drafts(), []);
 });
