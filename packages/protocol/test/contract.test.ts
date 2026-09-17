@@ -217,6 +217,35 @@ test("a reply carries any JSON value and names its exact wait; an outcome is one
   assert.ok(Value.Check(OPERATIONS["plugins.status.list"].output, ["a", "b"]));
 });
 
+test("workspace select input is strict and outcomes are named kinds", () => {
+  const input = OPERATIONS["workspace.select"].input;
+  assert.ok(Value.Check(input, { kind: "home" }));
+  assert.ok(Value.Check(input, { kind: "project", path: "/repo" }));
+  assert.ok(!Value.Check(input, { kind: "home", path: "/repo" }));
+  assert.ok(!Value.Check(input, { kind: "project" }));
+  assert.ok(!Value.Check(input, { kind: "project", path: "/repo", extra: 1 }));
+  const output = OPERATIONS["workspace.select"].output;
+  assert.ok(Value.Check(output, { kind: "opened", selection: { kind: "home" } }));
+  assert.ok(
+    Value.Check(output, {
+      kind: "opened",
+      selection: {
+        kind: "project",
+        workspace: { path: "/repo", name: "repo", lastOpenedAt: 0 },
+      },
+    }),
+  );
+  assert.ok(Value.Check(output, { kind: "unavailable", path: "/repo" }));
+  assert.ok(Value.Check(output, { kind: "untrusted", path: "/repo" }));
+  assert.ok(Value.Check(output, { kind: "failed", message: "This host serves one workspace" }));
+  assert.ok(!Value.Check(output, { kind: "opened" }));
+  assert.ok(
+    !Value.Check(output, { kind: "opened", selection: { kind: "project" } }),
+  );
+  assert.ok(Value.Check(OPERATIONS["workspace.current"].input, undefined));
+  assert.ok(Value.Check(OPERATIONS["workspace.current"].output, { kind: "home" }));
+});
+
 test("operation lookup never walks the prototype chain", () => {
   assert.equal(parseOperation("constructor"), undefined);
   assert.equal(parseOperation("__proto__"), undefined);
