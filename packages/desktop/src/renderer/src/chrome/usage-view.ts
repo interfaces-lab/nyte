@@ -49,10 +49,13 @@ const WEEKLY_ABOVE_DAYS = 120;
 
 type UsageGrain = "day" | "week";
 
-/** One bucket of the trend: when it is, and what it cost. */
-interface UsagePoint {
+/** One bucket of the trend: when it is, what it cost, and the tokens behind it. */
+export interface UsagePoint {
   readonly label: string;
   readonly cost: number;
+  readonly input: number;
+  readonly output: number;
+  readonly cached: number;
 }
 
 /**
@@ -320,7 +323,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
   const days = daySpan(from, to);
   const grain: UsageGrain = days.length > WEEKLY_ABOVE_DAYS ? "week" : "day";
 
-  const perDay = new Map<string, number>();
+  const perDay = new Map<string, UsageTotals>();
   const perModel = new Map<string, ModelSpend>();
   const perFolder = new Map<string, FolderSpend>();
   const perChat = new Map<SessionId, Spend>();
@@ -338,7 +341,7 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     if (entry.day < from || entry.day > to) continue;
 
     totals = addTotals(totals, entry.totals);
-    perDay.set(entry.day, (perDay.get(entry.day) ?? 0) + entry.totals.cost);
+    perDay.set(entry.day, addTotals(perDay.get(entry.day) ?? EMPTY_TOTALS, entry.totals));
     bump(
       perFolder,
       entry.workspacePath ?? "",
@@ -379,9 +382,16 @@ export function deriveUsage(report: UsageReport, window: UsageWindow): UsageDeri
     const first = bucket[0];
     const last = bucket.at(-1);
     if (first === undefined || last === undefined) continue;
+    const sum = bucket.reduce(
+      (running, day) => addTotals(running, perDay.get(day) ?? EMPTY_TOTALS),
+      EMPTY_TOTALS,
+    );
     points.push({
       label: bucketLabel(first, last, grain),
-      cost: bucket.reduce((running, day) => running + (perDay.get(day) ?? 0), 0),
+      cost: sum.cost,
+      input: sum.input,
+      output: sum.output,
+      cached: sum.cacheRead + sum.cacheWrite,
     });
   }
 
