@@ -6,7 +6,7 @@ import { useSyncExternalStore } from "react";
 
 const noop = () => () => {};
 
-export function ThemeToggle() {
+export function ThemeToggle({ className = "cloud-icon-button" }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme();
   // The resolved theme is unknown until the client reads storage; render the
   // moon on the server and let hydration correct it.
@@ -20,7 +20,7 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="cloud-icon-button"
+      className={className}
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
       onClick={() => setTheme(dark ? "light" : "dark")}
     >

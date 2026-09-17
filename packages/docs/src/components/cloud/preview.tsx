@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 
 /*
- * A framed canvas for live Cloud examples. `.cloud` sets color-scheme, so the
- * `light-dark()` tokens follow the site theme without overrides.
+ * A framed canvas for live Cloud examples. Document color-scheme (set from
+ * the theme class) drives the `light-dark()` Cloud tokens; the preview does
+ * not restyle them.
  */
 export function Preview({
   children,

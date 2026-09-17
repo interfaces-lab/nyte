@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
+import * as stylex from "@stylexjs/stylex";
 import {
   IconArrowUp,
   IconBlocks,
@@ -12,12 +13,13 @@ import {
   IconPlusSmall,
   IconSettingsGear2,
 } from "central-icons-desktop";
+import { landing } from "./landing.stylex";
 
 /*
  * One run, two hosts. The terminal and the Electron client draw the same
- * transcript from one timeline: every row exists in both windows under the
- * same key, and a tick flips the row's state in both at once. Neither host
- * is told about the other, which is the point.
+ * transcript from one timeline. Every row exists in both windows under the
+ * same key. A tick flips the row's state in both at once. Neither host is
+ * told about the other.
  *
  * Vocabulary, glyphs, sizes, and colours are the hosts' own:
  *   packages/tui/src/constants.ts, theme.ts, format.ts
@@ -28,18 +30,31 @@ import {
 type RowState = "running" | "done" | "failed";
 type Phase = "thinking" | "working" | "settled";
 
+/* packages/desktop/src/renderer/src/conversation/tool-detail.ts VERBS */
+const VERBS = {
+  bash: { running: "Running", done: "Ran", failed: "Command failed" },
+  read: { running: "Reading", done: "Read", failed: "Read failed" },
+  edit: { running: "Editing", done: "Edited", failed: "Edit failed" },
+} satisfies Record<string, Record<RowState, string>>;
+
+/*
+ * One row is the tool call itself, not a host's rendering of it: the desktop
+ * resolves `verb` from the name (VERBS above) and draws `title`, `added`, and
+ * `removed` like ToolPresentation; the terminal heads it `tool title` and
+ * tails it with `summary`.
+ */
 interface ToolRow {
   key: string;
-  /** desktop verbs (tool-detail.ts VERBS) */
-  verb: { running: string; done: string; failed?: string };
-  /** desktop detail column */
-  detail: string;
-  /** terminal heading: `<tool> <title>` */
-  term: string;
-  /** terminal result summary, dim, after the heading */
-  summary: string;
-  /** desktop diff stats */
-  stats?: { added: number; removed: number };
+  tool: keyof typeof VERBS;
+  title: string;
+  /** The terminal's dim result tail — a resultSummary, a shell outcome, an inline preview. */
+  summary?: string;
+  /** Present when the result is a patch; both hosts draw the diff stats. */
+  added?: number;
+  removed?: number;
+  /** When the row settles, in ms from the start of the run, and how. */
+  end: number;
+  outcome: "done" | "failed";
 }
 
 const PROMPT =
@@ -48,39 +63,44 @@ const PROMPT =
 const TOOLS: readonly ToolRow[] = [
   {
     key: "t1",
-    verb: { running: "Running", done: "Ran" },
-    detail: "git log --oneline -3 -- src/auth src/routes",
-    term: "bash git log --oneline -3 -- src/auth src/routes",
+    tool: "bash",
+    title: "git log --oneline -3 -- src/auth src/routes",
     summary: "3 lines",
+    end: 3000,
+    outcome: "done",
   },
   {
     key: "t2",
-    verb: { running: "Reading", done: "Read" },
-    detail: "auth/reset.ts",
-    term: "read auth/reset.ts",
+    tool: "read",
+    title: "auth/reset.ts",
     summary: "38 lines · ctrl+o expand",
+    end: 4000,
+    outcome: "done",
   },
   {
     key: "t3",
-    verb: { running: "Running", done: "Ran", failed: "Command failed" },
-    detail: "pnpm test --filter auth",
-    term: "bash pnpm test --filter auth",
+    tool: "bash",
+    title: "pnpm test --filter auth",
     summary: "exit 1",
+    end: 6600,
+    outcome: "failed",
   },
   {
     key: "t4",
-    verb: { running: "Editing", done: "Edited" },
-    detail: "auth/reset.ts",
-    term: "edit auth/reset.ts",
-    summary: "+1 -1",
-    stats: { added: 1, removed: 1 },
+    tool: "edit",
+    title: "auth/reset.ts",
+    added: 1,
+    removed: 1,
+    end: 7800,
+    outcome: "done",
   },
   {
     key: "t5",
-    verb: { running: "Running", done: "Ran" },
-    detail: "pnpm test --filter auth",
-    term: "bash pnpm test --filter auth",
+    tool: "bash",
+    title: "pnpm test --filter auth",
     summary: "12 passed",
+    end: 10400,
+    outcome: "done",
   },
 ];
 
@@ -90,21 +110,34 @@ const ANSWER_WORDS = ANSWER.split(" ");
 
 /* When each row changes state, in ms from the start of the run. */
 const THINK_MS = 1400;
-const TOOL_ENDS = [3000, 4000, 6600, 7800, 10400] as const;
-const TOOL_OUTCOME: readonly RowState[] = ["done", "done", "failed", "done", "done"];
+const LAST_TOOL_END = TOOLS.map((tool) => tool.end).at(-1) ?? 0;
 const WORD_MS = 70;
-const SETTLE_MS = TOOL_ENDS[4] + ANSWER_WORDS.length * WORD_MS + 300;
+const SETTLE_MS = LAST_TOOL_END + ANSWER_WORDS.length * WORD_MS + 300;
 const LOOP_MS = SETTLE_MS + 4200;
 
 /* packages/tui/src/constants.ts */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"] as const;
 const SPINNER_INTERVAL_MS = 130;
+const COMPOSER_PLACEHOLDER = "Plan, search, build anything";
+const BUSY_COMPOSER_PLACEHOLDER = "Steer the run";
+
+/* packages/desktop .../composer.tsx and screens/thread.tsx */
+const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
+const NEW_CHAT_PLACEHOLDER = "Plan, Build, / for skills, @ for context";
 
 /* packages/tui/src/format.ts */
 function formatDuration(ms: number): string {
   const seconds = ms / 1000;
   if (seconds < 10) return `${seconds.toFixed(1)}s`;
-  return `${String(Math.floor(seconds))}s`;
+  if (seconds < 60) return `${String(Math.floor(seconds))}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${String(minutes)}m${String(Math.floor(seconds % 60))}s`;
+  return `${String(Math.floor(minutes / 60))}h${String(minutes % 60)}m`;
+}
+
+/** One heading per tool call: the tool's own title after its name. */
+function toolHeading(toolName: string, title: string): string {
+  return `${toolName} ${title}`;
 }
 
 interface Frame {
@@ -117,14 +150,16 @@ interface Frame {
 
 function frameAt(t: number): Frame {
   const think: RowState = t < THINK_MS ? "running" : "done";
-  const tools = TOOL_ENDS.map((end, i): RowState | undefined => {
-    const start = i === 0 ? THINK_MS : TOOL_ENDS[i - 1];
+  const tools = TOOLS.map((tool, i): RowState | undefined => {
+    const start = i === 0 ? THINK_MS : (TOOLS[i - 1]?.end ?? 0);
     if (t < start) return undefined;
-    if (t < end) return "running";
-    return TOOL_OUTCOME[i];
+    if (t < tool.end) return "running";
+    return tool.outcome;
   });
   const words =
-    t < TOOL_ENDS[4] ? 0 : Math.min(ANSWER_WORDS.length, Math.floor((t - TOOL_ENDS[4]) / WORD_MS));
+    t < LAST_TOOL_END
+      ? 0
+      : Math.min(ANSWER_WORDS.length, Math.floor((t - LAST_TOOL_END) / WORD_MS));
   const phase: Phase = t < THINK_MS ? "thinking" : t < SETTLE_MS ? "working" : "settled";
   return { t: Math.min(t, SETTLE_MS), think, tools, words, phase };
 }
@@ -173,12 +208,10 @@ export function TwoHosts() {
   }, [frame]);
 
   return (
-    <>
-      <div className="twin" ref={rootRef}>
-        <Terminal frame={frame} />
-        <Desktop frame={frame} />
-      </div>
-    </>
+    <div ref={rootRef} {...stylex.props(landing.flexCol, landing.hostsRow)}>
+      <Terminal frame={frame} />
+      <Desktop frame={frame} />
+    </div>
   );
 }
 
@@ -226,14 +259,21 @@ function Terminal({ frame }: { frame: Frame }) {
           {TOOLS.map((tool, i) => {
             const state = frame.tools[i];
             if (state === undefined) return null;
+            const summary =
+              tool.summary ??
+              (tool.added !== undefined || tool.removed !== undefined
+                ? `+${tool.added ?? 0} -${tool.removed ?? 0}`
+                : undefined);
             return (
               <div key={tool.key}>
                 <div className="row" data-state={state}>
                   <span className="g">{TERM_GLYPH[state]}</span>
-                  <span className="n">{tool.term}</span>
-                  {state !== "running" && <span className="s">{`  ${tool.summary}`}</span>}
+                  <span className="n">{toolHeading(tool.tool, tool.title)}</span>
+                  {state !== "running" && summary !== undefined && (
+                    <span className="s">{`  ${summary}`}</span>
+                  )}
                 </div>
-                {tool.stats && state === "done" && (
+                {tool.added !== undefined && state === "done" && (
                   <div className="diff">
                     <span className="ln-no">10</span>
                     <span className="del">{'-  const path = "/reset-password";'}</span>
@@ -263,7 +303,7 @@ function Terminal({ frame }: { frame: Frame }) {
         </div>
         <div className="term-composer">
           <span className="p">❯</span>
-          <span>{settled ? "Plan, search, build anything" : "Add a follow-up"}</span>
+          <span>{settled ? COMPOSER_PLACEHOLDER : BUSY_COMPOSER_PLACEHOLDER}</span>
           <div className="term-status">
             <span className="ws">nyte-sandbox</span>
             <span className="sep"> │ </span>
@@ -273,8 +313,7 @@ function Terminal({ frame }: { frame: Frame }) {
           </div>
         </div>
         <div className="term-hints">
-          <b>ctrl+k</b> commands · <b>ctrl+p</b> model · <b>shift+tab</b> thinking · <b>ctrl+g</b>{" "}
-          editor
+          <b>ctrl+k</b> help · <b>shift+tab</b> thinking · <b>ctrl+p</b> model
         </div>
       </div>
     </figure>
@@ -361,16 +400,14 @@ function Desktop({ frame }: { frame: Frame }) {
             {TOOLS.map((tool, i) => {
               const state = frame.tools[i];
               if (state === undefined) return null;
-              const verb =
-                state === "failed" ? (tool.verb.failed ?? tool.verb.done) : tool.verb[state];
               return (
                 <div key={tool.key} className="ln" data-state={state}>
-                  <span className="v">{verb}</span>
-                  <span className="d">{tool.detail}</span>
-                  {tool.stats && state === "done" && (
+                  <span className="v">{VERBS[tool.tool][state]}</span>
+                  <span className="d">{tool.title}</span>
+                  {state === "done" && (tool.added !== undefined || tool.removed !== undefined) && (
                     <span className="st">
-                      <span className="add">+{tool.stats.added}</span>
-                      <span className="rem">-{tool.stats.removed}</span>
+                      {tool.added !== undefined && <span className="add">+{tool.added}</span>}
+                      {tool.removed !== undefined && <span className="rem">-{tool.removed}</span>}
                     </span>
                   )}
                   {state !== "running" && <Chevron />}
@@ -390,9 +427,7 @@ function Desktop({ frame }: { frame: Frame }) {
               <i>
                 <AppIcon glyph={IconPlusSmall} size={17} />
               </i>
-              <span className="ph">
-                {settled ? "Plan, Build, / for skills, @ for context" : "Add a follow-up"}
-              </span>
+              <span className="ph">{settled ? NEW_CHAT_PLACEHOLDER : FOLLOW_UP_PLACEHOLDER}</span>
               <i className="send">
                 <AppIcon glyph={IconArrowUp} size={15} />
               </i>

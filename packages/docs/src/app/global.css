@@ -1,39 +1,32 @@
 @import "tailwindcss";
 @import "@nyte-ai/ui/platform-tokens.css";
 @stylex;
-@import "fumadocs-ui/css/neutral.css";
-@import "fumadocs-ui/css/preset.css";
 
 /*
- * One palette for the whole site. The Nyte scale is declared in @theme and
- * .dark below; every Fumadocs --color-fd-* token is then remapped onto it, the
- * way @vercel/geistdocs points fd tokens at the Geist scale. neutral.css is
- * imported for its structure only. Its greys never reach the page.
+ * Site chrome reads @nyte-ai/ui platform tokens. Those are light-dark() pairs,
+ * so appearance follows color-scheme. Landing figures use --nyte-color-*
+ * directly. Components that need tokens in JS import colorVars from
+ * @nyte-ai/ui/platform-tokens.stylex. Fumadocs UI theme CSS is not loaded;
+ * docs and Cloud paint with their own sheets.
+ *
+ * /hero-2 keeps its own cut tokens. It is a fixed dark editorial surface, not
+ * the product theme.
+ *
+ * Landing hosts: StyleX owns stack/row/sticky.
  */
 
+:root {
+  color-scheme: light;
+  --nyte-font-family-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
 @theme {
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--nyte-font-family-ui);
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
-
-  --color-nyte-paper: #fcfcfc;
-  --color-nyte-surface: #f7f7f7;
-  --color-nyte-elevated: #fcfcfc;
-  --color-nyte-fill: #77777717;
-  --color-nyte-selection: #7777772b;
-  --color-nyte-rule: #14141426;
-  --color-nyte-faint: #14141466;
-  --color-nyte-muted: #14141499;
-  --color-nyte-ink: #141414;
-  --color-nyte-signal: #0c64c1;
-  --color-nyte-signal-fill: #1084fe;
-
-  /* landing figures (scripts/diagrams/_canvas.py) paint with these */
-  --color-fig-accent: #0c64c1;
-  --color-fig-green: #378e23;
-  --color-fig-amber: #c3691e;
-  --color-fig-violet: #7d4bc6;
-  --color-fig-cyan: #0082aa;
-  --color-fig-gold: #a27612;
 
   /*
    * /hero-2. A fixed dark surface, no theme switch. Two signal colours only:
@@ -55,80 +48,13 @@
   --font-cut-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
 }
 
-.dark {
-  --color-nyte-paper: #070707;
-  --color-nyte-surface: #111111;
-  --color-nyte-elevated: #181818;
-  --color-nyte-fill: #7777772c;
-  --color-nyte-selection: #77777752;
-  --color-nyte-rule: #fcfcfc26;
-  --color-nyte-faint: #fcfcfc66;
-  --color-nyte-muted: #fcfcfc99;
-  --color-nyte-ink: #fcfcfc;
-  --color-nyte-signal: #80befe;
-  --color-nyte-signal-fill: #1084fe;
-
-  --color-fig-accent: #80befe;
-  --color-fig-green: #9ece6a;
-  --color-fig-amber: #ff9e64;
-  --color-fig-violet: #bb9af7;
-  --color-fig-cyan: #7dcfff;
-  --color-fig-gold: #e0af68;
-}
-
-/* ------------------------------------------------ fumadocs tokens --- */
-
-/*
- * Fumadocs utilities (bg-fd-card, text-fd-muted-foreground, …) read these
- * variables, so remapping them here restyles the docs chrome without touching
- * the layout. Listed for :root and .dark together so the rule wins over
- * neutral.css in both modes by source order at equal specificity.
- */
-:root,
-.dark {
-  --color-fd-background: var(--color-nyte-paper);
-  --color-fd-foreground: var(--color-nyte-ink);
-  --color-fd-muted: var(--color-nyte-fill);
-  --color-fd-muted-foreground: var(--color-nyte-muted);
-  --color-fd-popover: var(--color-nyte-elevated);
-  --color-fd-popover-foreground: var(--color-nyte-ink);
-  --color-fd-card: var(--color-nyte-elevated);
-  --color-fd-card-foreground: var(--color-nyte-ink);
-  --color-fd-border: var(--color-nyte-rule);
-  --color-fd-primary: var(--color-nyte-ink);
-  --color-fd-primary-foreground: var(--color-nyte-paper);
-  --color-fd-secondary: var(--color-nyte-fill);
-  --color-fd-secondary-foreground: var(--color-nyte-ink);
-  --color-fd-accent: var(--color-nyte-selection);
-  --color-fd-accent-foreground: var(--color-nyte-ink);
-  --color-fd-ring: var(--color-nyte-signal);
-}
-
-/*
- * neutral.css gives the dark sidebar its own muted, secondary, and
- * muted-foreground values, so the sidebar drifted from the page. Pin every
- * token the sidebar reads back to the shared scale and sit it on the surface
- * tone, one step below the paper the page uses. The `.dark #nd-sidebar` form
- * is needed to match the specificity of the rule it replaces.
- */
-#nd-sidebar,
-.dark #nd-sidebar {
-  --color-fd-muted: var(--color-nyte-fill);
-  --color-fd-secondary: var(--color-nyte-fill);
-  --color-fd-muted-foreground: var(--color-nyte-muted);
-  --color-fd-accent: var(--color-nyte-selection);
-  --color-fd-accent-foreground: var(--color-nyte-ink);
-  --color-fd-primary-foreground: var(--color-nyte-surface);
-  color: var(--color-nyte-ink);
-  background-color: var(--color-nyte-surface);
-  border-color: var(--color-nyte-rule);
-}
-
 html {
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
 body {
+  min-width: 0;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -152,133 +78,263 @@ html > body[data-scroll-locked] {
   font-variant-ligatures: none;
 }
 
-.fd-mermaid svg {
+.docs-mermaid {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.docs-mermaid svg {
   display: block;
   margin-inline: auto;
   height: auto;
   max-width: 100%;
 }
 
-/*
- * Docs type is a step smaller than stock Fumadocs. Landing is outside
- * #nd-docs-layout and is not affected.
- */
-#nd-docs-layout .prose {
-  font-size: 0.9375rem;
-  line-height: 1.65;
-}
-
-#nd-docs-layout .prose :where(h2) {
-  font-size: 1.125rem;
-}
-
-#nd-docs-layout .prose :where(h3) {
-  font-size: 1.05rem;
-}
-
-#nd-docs-layout .prose :where(h4) {
-  font-size: 1rem;
-}
-
-#nd-docs-layout .prose figure:has(img[src^="/tui/"]) {
-  margin-block: 1.25rem 1.5rem;
-}
-
-#nd-docs-layout .prose img[src^="/tui/"] {
-  border-radius: 0.375rem;
-  border: 1px solid var(--color-fd-border);
-  background: #0a0a0a;
-}
-
-#nd-docs-layout .prose figure:has(img[src^="/tui/"]) figcaption {
-  margin-top: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--color-fd-muted-foreground);
-}
-
 /* ---------------------------------------------------------- site nav --- */
 
-/*
- * The one navbar, from app/layout.tsx. Fumadocs reads --fd-banner-height as
- * the offset for its sticky sidebar and TOC, so the bar's height is declared
- * once here and the docs layout follows it.
- */
 :root {
-  --fd-banner-height: 56px;
+  --site-inner: 1072px;
+  --site-pad: 24px;
+  --site-nav-height: 94px;
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --site-nav-height: 70px;
+    --site-pad: 20px;
+  }
 }
 
 .site-nav {
   position: sticky;
   top: 0;
-  z-index: 40;
-  height: var(--fd-banner-height);
-  background-color: color-mix(in srgb, var(--color-fd-background) 80%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  z-index: 60;
+  width: 100%;
+  min-width: 0;
+  height: var(--site-nav-height);
+  background: var(--nyte-color-background);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 .site-nav-inner {
+  position: relative;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
+  gap: 20px;
   height: 100%;
-  width: 100%;
-  max-width: 96rem;
+  width: min(100%, var(--site-inner));
+  min-width: 0;
   margin-inline: auto;
-  padding-inline: 1.5rem;
+  padding-inline: var(--site-pad);
 }
 
 .site-nav-brand {
-  justify-self: start;
-  color: var(--color-fd-foreground);
-  transition: opacity 150ms;
+  display: inline-flex;
+  align-items: center;
+  color: var(--nyte-color-foreground);
 }
 
 .site-nav-brand:hover {
   opacity: 0.6;
 }
 
-.site-nav-links {
+.site-sections {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
 }
 
-.site-nav-links a {
+.site-section {
+  position: relative;
+}
+
+.site-sections-item {
   display: inline-flex;
   align-items: center;
-  height: 32px;
-  padding-inline: 10px;
+  height: 33px;
+  padding: 11px 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--nyte-color-foreground);
+}
+
+.site-sections-item:hover {
+  opacity: 0.6;
+}
+
+.site-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 51;
+  display: none;
+  padding-top: 8px;
+  width: max-content;
+  max-width: min(316px, calc(100vw - 48px));
+}
+
+@media (hover: hover) {
+  .site-section:hover .site-panel,
+  .site-section:focus-within .site-panel {
+    display: block;
+  }
+}
+
+.site-panel-card {
+  width: 316px;
+  max-width: 100%;
+  padding: 4px;
+  background: var(--nyte-color-background);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--nyte-color-foreground) 10%, transparent);
+}
+
+.site-feature {
+  display: flex;
+  gap: 12px;
+  padding: 8px;
   border-radius: 6px;
+}
+
+.site-feature:hover {
+  background-color: color-mix(in srgb, var(--nyte-color-foreground) 5%, transparent);
+}
+
+.site-feature-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--nyte-color-muted-hover);
+  color: var(--nyte-color-foreground);
+}
+
+.site-feature-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.site-feature-title {
   font-size: 14px;
-  color: var(--color-fd-muted-foreground);
-  transition:
-    color 150ms,
-    background-color 150ms;
+  font-weight: 600;
+  line-height: 20px;
 }
 
-.site-nav-links a:hover {
-  color: var(--color-fd-accent-foreground);
-  background-color: var(--color-fd-accent);
-}
-
-.site-nav-links a[aria-current="page"] {
-  color: var(--color-fd-primary);
+.site-feature-lede {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--nyte-color-muted-foreground);
 }
 
 .site-nav-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   justify-self: end;
 }
 
-/* Fumadocs' full search trigger is sidebar-shaped; here it is a pill. */
 .site-nav .site-nav-search {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: auto;
   height: 32px;
-  border-radius: 9999px;
-  padding-inline: 12px 6px;
-  gap: 8px;
+  border: 0;
+  background: var(--nyte-color-muted-hover);
+  border-radius: 32px;
+  padding: 0 14px;
+  gap: 0;
+  color: var(--nyte-color-foreground);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.44px;
+}
+
+.site-nav .site-nav-search svg,
+.site-nav .site-nav-search .cloud-kbd {
+  display: none;
+}
+
+.docs-search-input {
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid var(--nyte-color-border) !important;
+  box-shadow: none !important;
+  padding-inline: 16px !important;
+  min-height: 48px !important;
+  font-size: 15px !important;
+  background: transparent !important;
+}
+
+.docs-search-list {
+  max-height: 360px;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.docs-search-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.docs-search-list a:hover,
+.docs-search-list a[data-active="true"] {
+  background: var(--nyte-color-muted-hover);
+}
+
+.docs-search-list a[data-type="page"] {
+  font-weight: 500;
+}
+
+.docs-search-list a[data-type="heading"],
+.docs-search-list a[data-type="text"] {
+  padding-left: 24px;
+  color: var(--nyte-color-muted-foreground);
+}
+
+.docs-search-list small {
+  color: var(--nyte-color-muted-foreground);
+  font-size: 12px;
+}
+
+.docs-search-empty {
+  padding: 24px 16px;
+  color: var(--nyte-color-muted-foreground);
+  font-size: 14px;
+  text-align: center;
+}
+
+.cloud-kbd {
+  display: inline-flex;
+  gap: 3px;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.cloud-kbd kbd {
+  min-width: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--nyte-color-border);
+  border-radius: 5px;
+  font: inherit;
+  text-align: center;
+  line-height: 18px;
 }
 
 .site-nav-icon {
@@ -287,45 +343,206 @@ html > body[data-scroll-locked] {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: 6px;
-  color: var(--color-fd-muted-foreground);
-  transition:
-    color 150ms,
-    background-color 150ms;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nyte-color-foreground);
+  cursor: pointer;
 }
 
 .site-nav-icon:hover {
-  color: var(--color-fd-accent-foreground);
-  background-color: var(--color-fd-accent);
+  opacity: 0.6;
 }
 
-@media (max-width: 767px) {
-  .site-nav-links,
+.site-nav-menu {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--nyte-color-muted-hover);
+}
+
+.site-nav-icon.site-nav-menu:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--nyte-color-foreground) 10%, transparent);
+}
+
+.site-nav-menu-close {
+  display: none;
+}
+
+.site-nav-menu[data-popup-open] .site-nav-menu-bars {
+  display: none;
+}
+
+.site-nav-menu[data-popup-open] .site-nav-menu-close {
+  display: inline-flex;
+}
+
+.site-nav-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.site-nav-backdrop {
+  position: fixed;
+  top: var(--site-nav-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  background: transparent;
+}
+
+.site-nav-viewport {
+  position: fixed;
+  inset: 0;
+  top: var(--site-nav-height);
+  z-index: 50;
+  box-sizing: border-box;
+  padding: 8px var(--site-pad) 24px;
+  pointer-events: none;
+}
+
+.site-nav-popup {
+  width: 100%;
+  max-height: 100%;
+  outline: none;
+  pointer-events: none;
+  transform-origin: top center;
+  opacity: 1;
+  translate: 0 0;
+  scale: calc(1 - 0.04 * var(--nested-dialogs, 0));
+  transition:
+    opacity var(--nyte-motion-normal) var(--nyte-motion-ease-out),
+    translate var(--nyte-motion-normal) var(--nyte-motion-ease-out),
+    scale var(--nyte-motion-normal) var(--nyte-motion-ease-out);
+}
+
+.site-nav-popup[data-starting-style],
+.site-nav-popup[data-ending-style] {
+  opacity: 0;
+  translate: 0 -8px;
+  scale: 0.98;
+}
+
+.site-nav-popup[data-nested][data-starting-style],
+.site-nav-popup[data-nested][data-ending-style] {
+  opacity: 0;
+  translate: 16px 0;
+  scale: 1;
+}
+
+.site-nav-popup[data-nested-dialog-open] {
+  opacity: 0;
+}
+
+.site-nav-card {
+  pointer-events: auto;
+  box-sizing: border-box;
+  max-height: min(72dvh, calc(100dvh - var(--site-nav-height) - 32px));
+  padding: 8px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--nyte-color-popover);
+  color: var(--nyte-color-popover-foreground);
+  border-radius: var(--nyte-radius-dialog);
+  box-shadow: 0 8px 40px color-mix(in srgb, var(--nyte-color-foreground) 12%, transparent);
+}
+
+.site-nav-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.site-nav-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 56px;
+  padding: 16px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--nyte-color-foreground);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.site-nav-row:hover,
+.site-nav-row[data-popup-open] {
+  background: color-mix(in srgb, var(--nyte-color-foreground) 5%, transparent);
+}
+
+.site-nav-chevron {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--nyte-color-muted-foreground);
+}
+
+.site-nav-nested-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 8px 4px;
+}
+
+.site-nav-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--nyte-color-foreground);
+  cursor: pointer;
+}
+
+.site-nav-nested-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-nav-popup {
+    transition-duration: 0s;
+  }
+}
+
+@media (max-width: 1023px) {
+  .site-sections,
   .site-nav .site-nav-search {
     display: none;
+  }
+
+  .site-nav-menu {
+    display: inline-flex;
   }
 }
 
 /* ------------------------------------------------------- landing page --- */
 
 /*
- * The landing runs on Fumadocs' neutral palette with one accent, the brand
- * signal. Inter is used throughout, except for the monospace terminal demo.
- *
- * Screenshot palettes below are the hosts' own tokens
- * (packages/desktop theme/tokens.css, packages/tui theme.ts) and do not
- * follow the site theme where the host has none: the terminal is always dark.
+ * The landing reads --nyte-* tokens. Inter is the one identity override, set
+ * on :root as --nyte-font-family-ui. The terminal screenshot is the TUI's own
+ * palette and stays dark.
  */
 .landing {
-  --app-chrome: #ebebed;
-  --app-sidebar: #f3f3f3;
-  --app-editor: #fcfcfc;
-  --app-base: #f4f4f5;
-  --app-ink: #141414;
-  --app-fail: #c21d2e;
-  --app-add: #00804a;
-  --app-rem: #c21d2e;
-
+  min-width: 0;
   --tui-bg: #0a0a0a;
   --tui-terminal: #171717;
   --tui-fg: #fafafa;
@@ -343,8 +560,8 @@ html > body[data-scroll-locked] {
   --tui-diff-add: #273628;
   --tui-diff-del: #402725;
 
-  background-color: var(--color-fd-background);
-  color: var(--color-fd-foreground);
+  background-color: var(--nyte-color-background);
+  color: var(--nyte-color-foreground);
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -354,22 +571,12 @@ html > body[data-scroll-locked] {
   font-family: var(--font-sans);
 }
 
-.dark .landing {
-  --app-chrome: #111111;
-  --app-sidebar: #141414;
-  --app-editor: #141414;
-  --app-base: #131417;
-  --app-ink: #fcfcfc;
-  --app-fail: #ff5667;
-  --app-add: #38d591;
-  --app-rem: #ff5667;
-}
-
 .site-container {
   width: 100%;
-  max-width: 96rem;
+  max-width: var(--site-inner);
+  min-width: 0;
   margin-inline: auto;
-  padding-inline: 1.5rem;
+  padding-inline: var(--site-pad);
 }
 
 .section {
@@ -388,11 +595,11 @@ html > body[data-scroll-locked] {
 
 .t-display {
   margin: 0;
-  max-width: 22ch;
+  max-width: 18em;
   font-size: clamp(32px, 1.5rem + 1.5vw, 48px);
   line-height: 1.12;
-  font-weight: 400;
-  letter-spacing: -0.024em;
+  font-weight: 500;
+  letter-spacing: -0.045em;
   text-wrap: balance;
 }
 
@@ -406,9 +613,10 @@ html > body[data-scroll-locked] {
 
 .t-prose {
   margin: 0;
-  font-family: var(--font-sans);
-  font-size: 17px;
-  line-height: 1.65;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--nyte-color-muted-foreground);
 }
 
 .t-label {
@@ -418,7 +626,7 @@ html > body[data-scroll-locked] {
   line-height: 1;
   letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--color-fd-muted-foreground);
+  color: var(--nyte-color-muted-foreground);
   font-variant-ligatures: none;
   font-variant-numeric: tabular-nums;
 }
@@ -434,11 +642,11 @@ html > body[data-scroll-locked] {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
-  transition: color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: color var(--nyte-motion-normal) var(--nyte-motion-ease-out);
 }
 
 .cite:hover {
-  color: var(--color-nyte-signal);
+  color: var(--nyte-color-accent);
 }
 
 /* square, 1px, no radius */
@@ -453,28 +661,28 @@ html > body[data-scroll-locked] {
   line-height: 1.3;
   user-select: none;
   transition:
-    background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    background-color var(--nyte-motion-normal) var(--nyte-motion-ease-out),
+    color var(--nyte-motion-normal) var(--nyte-motion-ease-out);
 }
 
 .btn:hover {
-  background-color: var(--color-fd-foreground);
-  color: var(--color-fd-background);
+  background-color: var(--nyte-color-foreground);
+  color: var(--nyte-color-background);
 }
 
 .btn-solid {
-  border-color: var(--color-fd-foreground);
-  background-color: var(--color-fd-foreground);
-  color: var(--color-fd-background);
+  border-color: var(--nyte-color-foreground);
+  background-color: var(--nyte-color-foreground);
+  color: var(--nyte-color-background);
 }
 
 .btn-solid:hover {
   background-color: transparent;
-  color: var(--color-fd-foreground);
+  color: var(--nyte-color-foreground);
 }
 
 .landing :focus-visible {
-  outline: 2px solid var(--color-nyte-signal);
+  outline: 2px solid var(--nyte-color-accent);
   outline-offset: 2px;
 }
 
@@ -491,30 +699,15 @@ html > body[data-scroll-locked] {
   margin-top: 8px;
 }
 
-/* 02: two hosts, one run. Same height, same timeline. */
-.twin {
-  display: grid;
-  gap: 8px;
-}
-
-@media (min-width: 900px) {
-  .twin {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
+/* Host windows. Layout (stack / row / sticky) lives in landing.stylex.ts. */
 .host {
   position: relative;
   overflow: hidden;
   margin: 0;
-  height: clamp(400px, 34vw, 480px);
-  border: 1px solid var(--color-fd-border);
-}
-
-@media (max-width: 899px) {
-  .host {
-    height: 440px;
-  }
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 320px;
+  border: 1px solid var(--nyte-color-border);
 }
 
 .twin-cap {
@@ -522,7 +715,7 @@ html > body[data-scroll-locked] {
   max-width: 62ch;
   font-size: 13px;
   line-height: 1.55;
-  color: var(--color-fd-muted-foreground);
+  color: var(--nyte-color-muted-foreground);
 }
 
 .lights {
@@ -539,8 +732,8 @@ html > body[data-scroll-locked] {
 
 /* desktop client */
 .shot {
-  background-color: var(--app-base);
-  color: var(--app-ink);
+  background-color: var(--nyte-color-chrome);
+  color: var(--nyte-color-base);
   font-size: 13px;
   line-height: 18px;
   letter-spacing: -0.08px;
@@ -557,13 +750,13 @@ html > body[data-scroll-locked] {
   gap: 8px;
   height: 35px;
   padding-inline: 12px;
-  background-color: var(--app-chrome);
-  border-bottom: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
-  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+  background-color: var(--nyte-color-chrome);
+  border-bottom: 1px solid color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
 }
 
 .app-titlebar .lights i {
-  background-color: color-mix(in srgb, var(--app-ink) 14%, transparent);
+  background-color: color-mix(in srgb, var(--nyte-color-base) 14%, transparent);
 }
 
 .app-titlebar .t {
@@ -579,16 +772,12 @@ html > body[data-scroll-locked] {
  */
 .app-body {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   height: calc(100% - 35px);
 }
 
 .app-sidebar {
-  display: flex;
-  flex-direction: column;
-  padding: 0 8px 8px;
-  background-color: var(--app-sidebar);
-  border-right: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
+  display: none;
 }
 
 .app-sidebar .primary,
@@ -609,7 +798,7 @@ html > body[data-scroll-locked] {
   gap: 6px;
   min-height: 28px;
   padding-inline: 4px;
-  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
 }
 
 .app-sidebar .nav {
@@ -626,7 +815,7 @@ html > body[data-scroll-locked] {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
 }
 
 .app-sidebar .nav .ic {
@@ -645,13 +834,13 @@ html > body[data-scroll-locked] {
   min-width: 44px;
   text-align: right;
   font-size: 11px;
-  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
   font-variant-numeric: tabular-nums;
 }
 
 .app-sidebar .row.on {
-  background-color: color-mix(in srgb, var(--app-ink) 7%, transparent);
-  color: var(--app-ink);
+  background-color: color-mix(in srgb, var(--nyte-color-base) 7%, transparent);
+  color: var(--nyte-color-base);
 }
 
 /* sectionHeader: 28 tall, tertiary, base size; chevron hidden until hover */
@@ -660,7 +849,7 @@ html > body[data-scroll-locked] {
   align-items: center;
   height: 28px;
   padding-inline-start: 4px;
-  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
 }
 
 /* components/ui.tsx StatusDot: 8px, fill accent, 1.6s ease-in-out pulse */
@@ -669,7 +858,7 @@ html > body[data-scroll-locked] {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #1084fe;
+  background-color: var(--nyte-color-accent-base);
   animation: status-working 1.6s ease-in-out infinite;
 }
 
@@ -689,7 +878,7 @@ html > body[data-scroll-locked] {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
 }
 
 /* the desktop thickens Central Icons to 1.875 units (theme/global.css) */
@@ -707,8 +896,10 @@ html > body[data-scroll-locked] {
 .app-main {
   display: flex;
   flex-direction: column;
+  align-items: center;
   min-width: 0;
   min-height: 0;
+  padding-inline: 24px;
 }
 
 /* both transcripts scroll and are pinned to the newest row, like the hosts */
@@ -733,8 +924,8 @@ html > body[data-scroll-locked] {
 }
 
 .tx {
-  width: 100%;
-  padding: 16px 16px 8px;
+  width: min(100%, 40rem);
+  padding: 20px 20px 8px;
   gap: 10px;
   font-size: 14px;
   line-height: 22px;
@@ -751,16 +942,24 @@ html > body[data-scroll-locked] {
   font-size: 12px;
   padding: 1.5px 2px;
   border-radius: 5px;
-  background-color: color-mix(in srgb, var(--app-ink) 8%, transparent);
+  background-color: color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
   font-variant-ligatures: none;
 }
 
-.ucard {
-  padding: 8px 10px;
-  margin-bottom: 4px;
-  border: 1px solid color-mix(in srgb, var(--app-ink) 12%, transparent);
-  border-radius: 12px;
-  background-color: color-mix(in srgb, var(--app-editor) 90%, var(--app-sidebar));
+.tx .ucard {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--nyte-color-base) 12%, transparent);
+  border-radius: 14px;
+  background-color: color-mix(in srgb, var(--nyte-color-editor) 90%, var(--nyte-color-sidebar));
+}
+
+.term-tx .u {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .ln {
@@ -772,13 +971,13 @@ html > body[data-scroll-locked] {
 
 .ln .v {
   flex-shrink: 0;
-  color: color-mix(in srgb, var(--app-ink) 74%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 74%, transparent);
 }
 
 .ln .d {
   overflow: hidden;
   text-overflow: ellipsis;
-  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
 }
 
 .ln .st {
@@ -791,20 +990,20 @@ html > body[data-scroll-locked] {
   display: inline-flex;
   align-items: center;
   width: 16px;
-  color: color-mix(in srgb, var(--app-ink) 52%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 52%, transparent);
 }
 
 .ln[data-state="failed"] .v,
 .ln[data-state="failed"] .d {
-  color: var(--app-fail);
+  color: var(--nyte-color-destructive);
 }
 
 .add {
-  color: var(--app-add);
+  color: var(--nyte-color-success);
 }
 
 .rem {
-  color: var(--app-rem);
+  color: var(--nyte-color-destructive);
 }
 
 /* running verbs shimmer (conversation/styles.stylex.ts activityStyles.shimmer) */
@@ -814,11 +1013,11 @@ html > body[data-scroll-locked] {
   -webkit-background-clip: text;
   background-image: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--app-ink) 45%, transparent) 0%,
-    color-mix(in srgb, var(--app-ink) 45%, transparent) 28%,
-    var(--app-ink) 58%,
-    color-mix(in srgb, var(--app-ink) 45%, transparent) 76%,
-    color-mix(in srgb, var(--app-ink) 45%, transparent) 100%
+    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 0%,
+    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 28%,
+    var(--nyte-color-base) 58%,
+    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 76%,
+    color-mix(in srgb, var(--nyte-color-base) 45%, transparent) 100%
   );
   background-size: 200% 100%;
   animation: activity-shine 2.4s linear infinite;
@@ -834,12 +1033,12 @@ html > body[data-scroll-locked] {
 }
 
 .meta {
-  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
 }
 
 /* composer: 28px round controls, plus at 17, arrow-up at 15 (composer.tsx) */
 .composer {
-  width: 100%;
+  width: min(100%, 40rem);
   padding: 8px 16px 14px;
 }
 
@@ -850,10 +1049,10 @@ html > body[data-scroll-locked] {
   align-items: center;
   min-height: 40px;
   padding: 5px 8px 5px 10px;
-  border: 1px solid color-mix(in srgb, var(--app-ink) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nyte-color-base) 8%, transparent);
   border-radius: 9999px;
-  background-color: var(--app-editor);
-  color: color-mix(in srgb, var(--app-ink) 60%, transparent);
+  background-color: var(--nyte-color-editor);
+  color: color-mix(in srgb, var(--nyte-color-base) 60%, transparent);
   font-size: 14px;
 }
 
@@ -870,13 +1069,13 @@ html > body[data-scroll-locked] {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background-color: color-mix(in srgb, var(--app-ink) 4%, transparent);
-  color: color-mix(in srgb, var(--app-ink) 66%, transparent);
+  background-color: color-mix(in srgb, var(--nyte-color-base) 4%, transparent);
+  color: color-mix(in srgb, var(--nyte-color-base) 66%, transparent);
 }
 
 .composer .frame i.send {
-  background-color: var(--app-ink);
-  color: var(--app-editor);
+  background-color: var(--nyte-color-base);
+  color: var(--nyte-color-editor);
 }
 
 @media (max-width: 1100px) {
@@ -910,7 +1109,7 @@ html > body[data-scroll-locked] {
   background-color: var(--tui-terminal);
   border-bottom: 1px solid #222;
   color: var(--tui-dim);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--nyte-font-family-ui);
   font-size: 13px;
 }
 
@@ -1087,7 +1286,7 @@ html > body[data-scroll-locked] {
   font-family: inherit;
 }
 
-/* 03: the package wall — a small generated figure beside a name and a role */
+/* 03: the package wall. A generated figure beside a name and a role. */
 .two {
   display: grid;
   gap: 24px 64px;
@@ -1106,8 +1305,8 @@ html > body[data-scroll-locked] {
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--color-fd-border);
-  background-color: var(--color-fd-popover);
+  border: 1px solid var(--nyte-color-border);
+  background-color: var(--nyte-color-popover);
 }
 
 @media (min-width: 640px) {
@@ -1123,7 +1322,7 @@ html > body[data-scroll-locked] {
   align-items: center;
   min-width: 0;
   padding: 18px 22px;
-  outline: 1px solid var(--color-fd-border);
+  outline: 1px solid var(--nyte-color-border);
   outline-offset: -0.5px;
 }
 
@@ -1131,7 +1330,7 @@ html > body[data-scroll-locked] {
 .wall .fig {
   width: 112px;
   aspect-ratio: 180 / 156;
-  color: var(--color-fig-accent);
+  color: var(--nyte-color-accent);
 }
 
 .wall .fig svg {
@@ -1156,7 +1355,7 @@ html > body[data-scroll-locked] {
   margin-top: 3px;
   font-size: 13px;
   line-height: 1.45;
-  color: var(--color-fd-muted-foreground);
+  color: var(--nyte-color-muted-foreground);
   text-wrap: pretty;
 }
 
@@ -1171,9 +1370,9 @@ html > body[data-scroll-locked] {
 
 /* footer */
 .foot {
-  border-top: 1px solid var(--color-fd-border);
+  border-top: 1px solid var(--nyte-color-border);
   padding-block: 40px;
-  color: var(--color-fd-muted-foreground);
+  color: var(--nyte-color-muted-foreground);
 }
 
 .foot-inner {
@@ -1196,7 +1395,7 @@ html > body[data-scroll-locked] {
   margin: 0 0 4px;
   font-size: inherit;
   font-weight: 400;
-  color: var(--color-fd-foreground);
+  color: var(--nyte-color-foreground);
 }
 
 .foot-col a {
@@ -1204,12 +1403,19 @@ html > body[data-scroll-locked] {
 }
 
 .foot-col a:hover {
-  color: var(--color-fd-foreground);
+  color: var(--nyte-color-foreground);
 }
 
 .foot-brand {
   margin-left: auto;
-  color: var(--color-fd-foreground);
+  color: var(--nyte-color-foreground);
+}
+
+@media (max-width: 767px) {
+  .foot-brand {
+    margin-left: 0;
+    width: 100%;
+  }
 }
 
 /* ------------------------------------------------------------ /hero-2 --- */
