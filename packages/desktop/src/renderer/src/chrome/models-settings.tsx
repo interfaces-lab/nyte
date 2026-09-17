@@ -449,8 +449,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
             />
             <span {...stylex.props(styles.groupTitle)}>{provider.name}</span>
             <span {...stylex.props(styles.groupMeta)}>
-              <span {...stylex.props(settingsPatterns.numeral)}>{shown}</span> of{" "}
-              <span {...stylex.props(settingsPatterns.numeral)}>{all.length}</span> shown
+              <span>{shown}</span> of <span>{all.length}</span> shown
               {provider.connection.kind === "disconnected" && " · Not connected"}
             </span>
           </>
@@ -502,10 +501,7 @@ function PickerModelsSection({ catalog }: { catalog: DesktopCatalog }): ReactEle
                 <Row key={option.key} xstyle={styles.modelRow}>
                   <Row.Body>
                     <Row.Label>{option.name}</Row.Label>
-                    <Row.Description
-                      title="Context window · price per million tokens, input / output"
-                      xstyle={settingsPatterns.numeral}
-                    >
+                    <Row.Description title="Context window · price per million tokens, input / output">
                       {formatContextWindow(option.contextWindow)} · {formatPricing(option.cost)}
                     </Row.Description>
                   </Row.Body>
