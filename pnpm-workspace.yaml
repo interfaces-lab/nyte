@@ -5,6 +5,14 @@ packages:
 overrides:
   "opentui-spinner@0.0.7>@opentui/core": "0.5.11"
   "opentui-spinner@0.0.7>typescript": "7.0.2"
+# The TUI bundle resolves @opentui/core's native module per libc, and a bundle
+# built for the wrong one cannot fall back at runtime. Installing both variants
+# for this machine's platform keeps the musl target buildable and lets
+# `verify:targets` check it without a release.
+supportedArchitectures:
+  libc:
+    - current
+    - musl
 allowBuilds:
   cbor-extract: false
   "@central-icons-react/round-filled-radius-2-stroke-1.5": true
