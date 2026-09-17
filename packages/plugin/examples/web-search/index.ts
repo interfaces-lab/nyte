@@ -324,10 +324,10 @@ export function webSearchPlugin(options: WebSearchPluginOptions = {}) {
           if (!Value.Check(webSearchParameters, waiting.args))
             throw new Error("Invalid web search arguments");
           const providers = webSearchProviders(api.tools.list());
-          const selection = webSearchConsent(waiting.args.query, providers);
+          const consent = webSearchConsent(waiting.args.query, providers);
           const structured = selectionReply(context.reply);
           const chosen =
-            structured !== undefined && acceptsSelectionReply(selection, structured)
+            structured !== undefined && acceptsSelectionReply(consent, structured)
               ? structured.choices[0]
               : typeof context.reply === "string"
                 ? context.reply
