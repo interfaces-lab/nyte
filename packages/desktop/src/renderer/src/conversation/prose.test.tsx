@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 import { afterAll, expect, test, vi } from "vitest";
 import { Prose } from "./prose.tsx";
 import { renderDiagram } from "./mermaid-render.ts";
@@ -9,8 +11,15 @@ vi.hoisted(() => {
 });
 afterAll(() => vi.unstubAllGlobals());
 
+/** Prose leaves read the query cache; the app always provides a client. */
+function markup(element: ReactElement): string {
+  return renderToStaticMarkup(
+    <QueryClientProvider client={new QueryClient()}>{element}</QueryClientProvider>,
+  );
+}
+
 test("Nyte keeps code controls and image labels while disabling HTML", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     <Prose
       markdown={
         '```ts\nconst x = "<tag>";\n```\n\n![preview](https://example.com/private.png)\n\n<script>alert(1)</script>'
@@ -27,7 +36,7 @@ test("Nyte keeps code controls and image labels while disabling HTML", () => {
 });
 
 test("Mermaid fences mount a diagram instead of a code block", () => {
-  const html = renderToStaticMarkup(<Prose markdown={"```mermaid\ngraph LR\nA --> B\n```"} />);
+  const html = markup(<Prose markdown={"```mermaid\ngraph LR\nA --> B\n```"} />);
 
   expect(html).toContain('aria-label="Mermaid diagram"');
   expect(html).toContain("Rendering diagram…");

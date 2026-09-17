@@ -6,7 +6,6 @@ import { create, props } from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import {
   useCallback,
-  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
@@ -237,7 +236,20 @@ function TextFileEditor({
     },
   ]);
 
+  const save = (): Promise<void> =>
+    buffer.save({
+      write: saveFile.mutateAsync,
+      format: preferences.formatOnSave ? (input) => nyte.host.files.format(input) : undefined,
+    });
+  // The autosave timer is armed inside the buffer subscription, which is bound
+  // once per buffer; it reads the current save and the preference at fire time.
+  const autosave = useRef({ enabled: preferences.autoSave, save });
   useLayoutEffect(() => {
+    autosave.current = { enabled: preferences.autoSave, save };
+  });
+
+  useLayoutEffect(() => {
+    let timer: number | undefined;
     const synchronize = (): void => {
       const current = buffer.getSnapshot();
       fileActions.setSaving(viewKey, file.path, current.status.kind === "saving");
@@ -252,9 +264,28 @@ function TextFileEditor({
               version: current.version,
             },
       );
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
+      if (
+        current.contents !== current.savedContents &&
+        (current.status.kind === "idle" || current.status.kind === "saved")
+      ) {
+        timer = window.setTimeout(() => {
+          timer = undefined;
+          const pending = autosave.current;
+          // Read at fire time: turning Auto Save off also drops a pending save.
+          if (pending.enabled) void pending.save();
+        }, 1000);
+      }
     };
     synchronize();
-    return buffer.subscribe(synchronize);
+    const unsubscribe = buffer.subscribe(synchronize);
+    return () => {
+      unsubscribe();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [buffer, file.path, viewKey]);
 
   useLayoutEffect(() => {
@@ -324,11 +355,6 @@ function TextFileEditor({
     if (editor !== undefined) attachEditor(editor);
   });
 
-  const save = (): Promise<void> =>
-    buffer.save({
-      write: saveFile.mutateAsync,
-      format: preferences.formatOnSave ? (input) => nyte.host.files.format(input) : undefined,
-    });
   const discard = async (): Promise<void> => {
     if (buffer.getSnapshot().status.kind === "saving")
       throw new Error("Wait for the current save to finish.");
@@ -384,30 +410,6 @@ function TextFileEditor({
       },
     ]);
   };
-
-  useEffect(() => {
-    if (
-      !preferences.autoSave ||
-      !dirty ||
-      (snapshot.status.kind !== "idle" && snapshot.status.kind !== "saved")
-    )
-      return;
-    const timer = setTimeout(() => {
-      void buffer.save({
-        write: saveFile.mutateAsync,
-        format: preferences.formatOnSave ? (input) => nyte.host.files.format(input) : undefined,
-      });
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [
-    buffer,
-    dirty,
-    preferences.autoSave,
-    preferences.formatOnSave,
-    saveFile.mutateAsync,
-    snapshot.revision,
-    snapshot.status.kind,
-  ]);
 
   const blameLine =
     blame.data?.kind === "blame"

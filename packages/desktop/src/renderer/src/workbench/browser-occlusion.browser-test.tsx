@@ -6,12 +6,14 @@
  * `window.nyte` is installed by the setup script below, before this module's
  * imports run, because the renderer reads the bridge at import time.
  */
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { ReactElement } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Menu, MenuItem } from "../components/menu.tsx";
 import { BrowserPanel } from "./browser-panel.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import "../theme/tokens.css";
 
 const URL_UNDER_TEST = "https://example.com/";
@@ -66,9 +68,9 @@ let setMenuOpen: ((open: boolean) => void) | undefined;
 /** A menu anchored at the centre of the viewport, so its popup lands on the page. */
 function Harness(): ReactElement {
   const [menuOpen, setOpen] = useState(false);
-  useEffect(() => {
+  useMountEffect(() => {
     setMenuOpen = setOpen;
-  }, []);
+  });
   return (
     <>
       <BrowserPanel
@@ -99,7 +101,13 @@ export async function run(): Promise<string> {
   const container = document.createElement("div");
   container.style.cssText = "display:flex;height:600px;width:900px";
   document.body.append(container);
-  flushSync(() => createRoot(container).render(<Harness />));
+  flushSync(() =>
+    createRoot(container).render(
+      <QueryClientProvider client={new QueryClient()}>
+        <Harness />
+      </QueryClientProvider>,
+    ),
+  );
 
   await until(() => recordedBounds().length > 0 && last().visible, "the page to be shown");
   const shown = last();

@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, FormEvent, ReactElement, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
@@ -11,6 +12,7 @@ import { focus, IconButton } from "../components/ui";
 import { workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import { nyte } from "../nyte";
+import { keys } from "../queries.ts";
 import { displayAddress, resolveBrowserAddress } from "./browser-address.ts";
 import {
   applyBrowserEvent,
@@ -327,21 +329,14 @@ function useSurfaceBounds(
  * it was taken from; after a navigation the old one is not shown again.
  */
 function usePageFrame(surface: string, url: string, covered: boolean): string | undefined {
-  const [frame, setFrame] = useState<{ url: string; image: string } | undefined>(undefined);
-  useEffect(() => {
-    if (url === "" || !covered) return;
-    let live = true;
-    void nyte.host.browser
-      .captureFrame({ surface })
-      .then((image) => {
-        if (live && image !== undefined) setFrame({ url, image });
-      })
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, [surface, url, covered]);
-  return frame?.url === url ? frame.image : undefined;
+  const frame = useQuery({
+    queryKey: keys.browserFrame(surface, url),
+    queryFn: () => nyte.host.browser.captureFrame({ surface }),
+    enabled: covered && url !== "",
+    // A page re-covered later needs a fresh capture.
+    staleTime: 0,
+  });
+  return frame.data;
 }
 
 interface BrowserPanelProps {

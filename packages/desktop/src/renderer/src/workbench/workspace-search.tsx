@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { hashKey } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { ReactElement } from "react";
 import type {
   WorkspaceSearchInput,
@@ -11,6 +11,7 @@ import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
 import { useWorkspaceSearch } from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
+import { useDebouncedValue } from "../use-debounced-value.ts";
 
 type SearchLocation = Pick<WorkspaceSearchResult["files"][number], "path" | "displayPath"> &
   Pick<WorkspaceSearchMatch, "line" | "column" | "length">;
@@ -221,13 +222,8 @@ export function WorkspaceSearch({
     }),
     [query, caseSensitive, wholeWord, regex, include, exclude, drafts],
   );
-  const [debouncedInput, setDebouncedInput] = useState(input);
+  const debouncedInput = useDebouncedValue(input, 250);
   const waiting = hashKey([input]) !== hashKey([debouncedInput]);
-  useEffect(() => {
-    if (!waiting) return;
-    const timer = setTimeout(() => setDebouncedInput(input), 250);
-    return () => clearTimeout(timer);
-  }, [input, waiting]);
   const search = useWorkspaceSearch(
     !active || query === "" || waiting ? undefined : debouncedInput,
   );

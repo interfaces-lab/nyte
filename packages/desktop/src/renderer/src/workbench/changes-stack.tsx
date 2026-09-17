@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
@@ -43,6 +43,7 @@ import {
   type StackedOffset,
 } from "./stacked-diff.ts";
 import { useClientBox } from "./use-client-box.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 type ChangesStackItem =
   | (Extract<ChangeStackSection, { kind: "diff" }> & {
@@ -220,12 +221,7 @@ export function ChangesStack({
       },
     }),
   );
-  useEffect(
-    () => () => {
-      measurer.disconnect();
-    },
-    [measurer],
-  );
+  useMountEffect(() => () => measurer.disconnect());
   const geometry = useMemo(() => {
     const gutter = stackedGutterWidth(paneWidth === 0 ? 6 : pretextNaturalWidth("0", fonts.code));
     const contentWidth = Math.max(0, paneWidth - gutter);

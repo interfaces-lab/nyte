@@ -34,4 +34,7 @@ export const keys = {
   ) => ["files", "search", workspacePath, input] as const,
   vcsDiffs: (repositoryId: string, revision: string, pathsKey: string) =>
     ["vcs", "diffs", repositoryId, revision, pathsKey] as const,
+  browserFrame: (surface: string, url: string) => ["browser", "frame", surface, url] as const,
+  mermaid: (source: string) => ["mermaid", source] as const,
+  highlight: (language: string, code: string) => ["highlight", language, code] as const,
 };
