@@ -61,6 +61,9 @@ import type {
   VcsStatus,
   WaitOutcome,
   WorkspaceInfo,
+  WorkspaceSelectInput,
+  WorkspaceSelectOutcome,
+  WorkspaceSelection,
 } from "@nyte-ai/protocol";
 import type {
   Disposer,
@@ -136,6 +139,9 @@ export {
   type VcsStatus,
   type WaitOutcome,
   type WorkspaceInfo,
+  type WorkspaceSelectInput,
+  type WorkspaceSelectOutcome,
+  type WorkspaceSelection,
 } from "@nyte-ai/protocol";
 export type { WorkspaceRegistryBackend } from "../../workspace-registry.ts";
 
@@ -285,6 +291,8 @@ export interface VcsBackend {
 
 export interface Workspace {
   list(): Promise<readonly WorkspaceInfo[]>;
+  current(): Promise<WorkspaceSelection>;
+  select(input: WorkspaceSelectInput): Promise<WorkspaceSelectOutcome>;
   forget(input: { readonly path: string }): Promise<void>;
   /**
    * Files and folders `@` can name, narrowed on the host. `sessionId` picks the
