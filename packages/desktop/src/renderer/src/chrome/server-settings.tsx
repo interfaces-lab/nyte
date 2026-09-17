@@ -420,7 +420,7 @@ function MobileShareSettings(): ReactElement {
             <ConnectionRow
               glyph={<Icon name="phone" size={16} />}
               title="Simulator on this Mac"
-              detail="Loopback only. Keeps serving the folder selected now, even after you switch folders."
+              detail="Loopback only. The share keeps its own folder selection: the phone moves it, switching folders here does not."
               actions={
                 <Button
                   variant="ghost"

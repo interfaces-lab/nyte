@@ -80,6 +80,10 @@ export async function startMobileShare(options: MobileShareOptions): Promise<Mob
       },
     },
     version: options.version,
+    describe: () => ({
+      capabilities: { workspace: true },
+      persistence: "durable",
+    }),
     auth: { kind: "token", token },
   });
   const listener = createServer(
