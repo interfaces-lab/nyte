@@ -33,7 +33,7 @@ import type {
 } from "lexical";
 import { completionTrigger } from "@nyte-ai/core/views";
 import type { CompletionTrigger, MentionFile } from "@nyte-ai/core/views";
-import { messageParts, referenceText } from "./message-references.ts";
+import { messageParts, referencePromptText, referenceText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
 /** Marks an update whose text came from outside the editor: a restored draft, a pane switch, a clear. */
@@ -142,7 +142,7 @@ export function $composerReferences(): readonly MessageReference[] {
   );
 }
 
-/** Instructions come from their nodes; a typed lookalike is text and stays text. */
+/** A typed lookalike is text and stays text. */
 export function $composerSubmission(): ComposerSubmission {
   const text = $getRoot()
     .getChildren()
@@ -151,9 +151,8 @@ export function $composerSubmission(): ComposerSubmission {
       return block
         .getChildren()
         .map((node) =>
-          node instanceof ComposerReferenceNode &&
-          (node.getReference().kind === "skill" || node.getReference().kind === "mention")
-            ? ""
+          node instanceof ComposerReferenceNode
+            ? referencePromptText(node.getReference())
             : node.getTextContent(),
         )
         .join("");

@@ -336,24 +336,26 @@
   /** Must equal `STACKED_DIFF_LINE_HEIGHT`, which sizes the stack's estimate. */
   --nyte-diff-line-height: 20px;
   --nyte-diff-preview-max-height: min(480px, 60vh);
+  --nyte-clipboard-preview-max-width: 360px;
+  --nyte-clipboard-preview-max-height: 240px;
 }
 
 /*
- * ── the kit palette, re-pointed at this one ──
+ * ── Cloud palette, re-pointed at this one ──
  *
  * `@nyte-ai/ui` ships `platform-tokens.css` with its own anchors and its own
- * ramp under `--nyte-color-*`. The renderer imports that file before this one
- * (`main.tsx`), so the desktop app ran two palettes at once: kit components —
+ * ramp under `--nyte-*`. The renderer imports that file before this one
+ * (`main.tsx`), so the desktop app ran two palettes at once: Cloud primitives —
  * sonner, dialog, tooltip, button — painted from anchors that ignore the
  * desktop's mode and its workspace tint.
  *
  * These declarations win on cascade order, being the later of two `:root`
- * rules at equal specificity, and bind the kit's names to the steps above.
- * The kit's own values stay the standalone default for the docs site and the
+ * rules at equal specificity, and bind Cloud's names to the steps above.
+ * Cloud's own values stay the standalone default for the docs site and the
  * demos, which load `platform-tokens.css` alone.
  *
- * Overriding an anchor carries the kit's derived steps with it: anything the
- * kit mixes from `--nyte-color-base` or a hue re-tints here without being
+ * Overriding an anchor carries Cloud's derived steps with it: anything Cloud
+ * mixes from `--nyte-color-base` or a hue re-tints here without being
  * named again. Tokens listed as untouched below are exactly that case.
  */
 :root {
@@ -371,14 +373,14 @@
   --nyte-color-hue-orange: var(--nyte-orange);
   --nyte-color-hue-violet: var(--nyte-purple);
   --nyte-color-hue-green: var(--nyte-green);
-  /* `--nyte-color-hue-neutral` and `--nyte-color-scrim-base` keep the kit
+  /* `--nyte-color-hue-neutral` and `--nyte-color-scrim-base` keep the Cloud
      values: this palette names no neutral hue, and its scrim is a finished
      color rather than an anchor, mapped below. */
 
   /* surfaces */
   --nyte-color-background: var(--nyte-bg-editor);
   --nyte-color-popover: var(--nyte-bg-elevated);
-  /* `--nyte-color-field-background` keeps the kit value; a field here takes the
+  /* `--nyte-color-field-background` keeps the Cloud value; a field here takes the
      raised tone through the anchor above rather than a named step. */
 
   /* text */
@@ -400,7 +402,7 @@
   --nyte-color-muted-hover: var(--nyte-bg-secondary);
   --nyte-color-destructive-muted: var(--nyte-bg-danger-subtle);
   --nyte-color-scrim: var(--nyte-bg-scrim);
-  /* `--nyte-color-destructive-hover` keeps the kit formula: this palette holds
+  /* `--nyte-color-destructive-hover` keeps the Cloud formula: this palette holds
      one danger wash, not a second hover step. It re-tints from the red anchor. */
 
   /* strokes */
@@ -408,14 +410,14 @@
   --nyte-color-border-weak: var(--nyte-stroke-tertiary);
   --nyte-color-border: var(--nyte-stroke-secondary);
   --nyte-color-border-strong: var(--nyte-stroke-primary);
-  /* The kit rings on the base at 40%; this palette rings on the accent. */
+  /* Cloud rings on the base at 40%; this palette rings on the accent. */
   --nyte-color-ring: var(--nyte-stroke-focused);
   --nyte-color-focus-ring: var(--nyte-focus-ring);
 
   /*
    * Untouched, for want of an equivalent here: the fifteen `--nyte-color-avatar-*`
    * steps and the three `--nyte-color-bubble-*` steps. Avatars and chat bubbles
-   * are kit anatomy the desktop does not render, and inventing a step for each
+   * are Cloud anatomy the desktop does not render, and inventing a step for each
    * would put a value in this file that nothing on this side reads. Both groups
    * still follow the anchors above wherever they mix from one.
    */
@@ -445,6 +447,6 @@
 
 /* Ring for keyboard navigation only; a click into a field is not a request for one. */
 :root[data-nyte-focus-modality="pointer"] {
-  /* The kit's ring follows, being bound to this one above. */
+  /* Cloud's ring follows, being bound to this one above. */
   --nyte-focus-ring: transparent;
 }

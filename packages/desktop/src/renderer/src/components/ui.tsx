@@ -6,7 +6,7 @@ import * as stylex from "@stylexjs/stylex";
 import { isValidElement } from "react";
 import type { JSX, ReactElement, ReactNode } from "react";
 import { overlayRef } from "./overlay-occlusion.ts";
-import { glyph, layer } from "../theme/schema.stylex.ts";
+import { glyph, layer, clipboardPreview } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { SessionMark } from "@nyte-ai/core/client";
 import { Icon, type IconName } from "./icons";
@@ -183,6 +183,14 @@ const styles = stylex.create({
     },
     transitionTimingFunction: t.easeOut,
   },
+  hoverPreviewPopup: {
+    maxWidth: clipboardPreview.maxWidth,
+    maxHeight: clipboardPreview.maxHeight,
+    overflowY: "auto",
+    overflowWrap: "anywhere",
+    fontFamily: t.fontMono,
+    whiteSpace: "pre-wrap",
+  },
 });
 
 type HintSide = Tooltip.Positioner.Props["side"];
@@ -212,6 +220,39 @@ export function Hint({
           {...stylex.props(styles.tooltipPositioner)}
         >
           <Tooltip.Popup ref={overlayRef} {...stylex.props(styles.tooltipPopup)}>
+            {content}
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
+
+export function HoverPreview({
+  content,
+  trigger,
+  side = "bottom",
+}: {
+  readonly content: ReactNode;
+  readonly trigger: ReactElement;
+  readonly side?: HintSide;
+}): ReactElement {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger render={trigger} />
+      <Tooltip.Portal>
+        <Tooltip.Positioner
+          positionMethod="fixed"
+          side={side}
+          align="center"
+          sideOffset={6}
+          collisionPadding={8}
+          {...stylex.props(styles.tooltipPositioner)}
+        >
+          <Tooltip.Popup
+            ref={overlayRef}
+            {...stylex.props(styles.tooltipPopup, styles.hoverPreviewPopup)}
+          >
             {content}
           </Tooltip.Popup>
         </Tooltip.Positioner>
