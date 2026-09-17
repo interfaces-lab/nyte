@@ -48,7 +48,5 @@ export function taskSections(jobs: readonly JobInfo[]) {
   return {
     active: eligible.filter((job) => job.state === "running"),
     finished: eligible.filter((job) => job.state !== "running"),
-    background: eligible.filter((job) => job.state === "running" && job.mode === "background")
-      .length,
   };
 }
