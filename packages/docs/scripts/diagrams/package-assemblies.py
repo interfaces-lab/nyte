@@ -7,7 +7,7 @@ Run from any directory to update both inline and downloadable SVGs.
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-INK = 'var(--color-fig-accent, #0c64c1)'
+INK = "var(--nyte-color-accent)"
 parts = []
 
 

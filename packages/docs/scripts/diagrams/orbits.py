@@ -49,8 +49,8 @@ def build() -> Canvas:
             ellipse_d(radius, radius * SQUASH),
             stroke=colour,
             opacity=0.3 if not outermost else 0.22,
-            # The client shell is dashed: it is the one seam Nyte names but has
-            # not written a wire for yet.
+            # The client shell is dashed because Nyte has not written that wire
+            # yet.
             dash="3 4" if outermost else None,
         )
 

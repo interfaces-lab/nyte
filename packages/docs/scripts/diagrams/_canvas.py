@@ -9,10 +9,10 @@ that is the generator's job.
 
 Two conventions make the set read as one system:
 
-  * Colour is never literal. Strokes are `currentColor` or a `var(--color-fig-*)`
-    token (declared in src/app/global.css), so a figure inverts with the theme
-    and picks up the accent the rest of the page uses. The SVG is inlined into the page rather than loaded
-    through <img>, which is what makes that work.
+  * Colour is never literal. Strokes are `currentColor` or a Cloud token
+    (`var(--nyte-color-accent)` and the other `--nyte-color-*` roles). The SVG
+    is inlined into the page rather than loaded through <img>, which is what
+    makes theme inversion work.
   * Motion is slow, linear, and endless. These are ambient figures beside a
     paragraph, not animations a reader is meant to watch finish. Every script
     emits a reduced-motion block that stops them outright.
@@ -34,12 +34,12 @@ OUT_DIR = Path(__file__).resolve().parents[2] / "src" / "diagrams"
 # The roles a figure may paint with. `ink` is the page's text colour, so a
 # figure is legible in both themes without a second palette.
 INK = "currentColor"
-ACCENT = "var(--color-fig-accent)"
-GREEN = "var(--color-fig-green)"
-AMBER = "var(--color-fig-amber)"
-VIOLET = "var(--color-fig-violet)"
-CYAN = "var(--color-fig-cyan)"
-GOLD = "var(--color-fig-gold)"
+ACCENT = "var(--nyte-color-accent)"
+GREEN = "var(--nyte-color-success)"
+AMBER = "var(--nyte-color-warning)"
+VIOLET = "var(--nyte-color-avatar-violet-foreground)"
+CYAN = "var(--nyte-color-accent)"
+GOLD = "var(--nyte-color-warning)"
 
 # Literal values, for figures that keep one appearance wherever they are shown.
 BLACK = "#000000"
@@ -181,7 +181,7 @@ class Canvas:
         """Trace a path on, hold, and start again — growth, not a loop."""
         self.css(
             f".{cls}{{stroke-dasharray:{fmt(length)};stroke-dashoffset:{fmt(length)};"
-            f"animation:{cls}-draw {fmt(seconds)}s var(--ease-nyte, ease-out) {fmt(delay)}s infinite}}"
+            f"animation:{cls}-draw {fmt(seconds)}s var(--nyte-motion-ease-out, ease-out) {fmt(delay)}s infinite}}"
             f"@keyframes {cls}-draw{{0%{{stroke-dashoffset:{fmt(length)}}}"
             f"55%,100%{{stroke-dashoffset:0}}}}"
         )
