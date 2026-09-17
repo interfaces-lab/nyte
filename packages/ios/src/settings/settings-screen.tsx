@@ -1,13 +1,13 @@
 import Constants from "expo-constants";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Alert, ScrollView } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { WorkspaceInfo } from "@nyte-ai/protocol";
 import { useHost } from "../connection/host-context.tsx";
 import { displayAddress } from "../connection/connection.ts";
 import { Group, GroupRow } from "../ui/group.tsx";
-import { IconTile } from "../ui/icon-tile.tsx";
+import { IconRing } from "../ui/icon-tile.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
 import { ChoiceRow, SwitchRow } from "./setting-rows.tsx";
 import {
@@ -25,9 +25,6 @@ export function SettingsScreen() {
   const theme = useTheme();
   const { client, connection, edit, disconnect } = useHost();
   const insets = useSafeAreaInsets();
-  // Results are keyed by revision, so a stale reply never masks a newer check.
-  const [result, setResult] = useState<{ revision: number; status: HostStatus }>();
-  const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const appearance = useAppearance();
@@ -35,35 +32,25 @@ export function SettingsScreen() {
   const [filterCards, setFilterCards] = useFilterCards();
   const [dateSections, setDateSections] = useDateSections();
   const [twoLinePreview, setTwoLinePreview] = useTwoLinePreview();
-  const [workspaces, setWorkspaces] = useState<
-    { kind: "loading" } | { kind: "failed" } | { kind: "ready"; list: readonly WorkspaceInfo[] }
-  >({ kind: "loading" });
+  const check = useQuery({
+    queryKey: ["host-check"],
+    retry: false,
+    queryFn: async () => {
+      await client.info();
+      return null;
+    },
+  });
+  const workspacesQuery = useQuery({
+    queryKey: ["workspace-list"],
+    retry: false,
+    queryFn: () => client.workspace.list(),
+  });
   const version = Constants.expoConfig?.version ?? "0.0.0";
-  const status: HostStatus = result?.revision === revision ? result.status : "checking";
-
-  useEffect(() => {
-    let active = true;
-    const attempt = revision;
-    void client
-      .info()
-      .then(() => {
-        if (active) setResult({ revision: attempt, status: "connected" });
-      })
-      .catch(() => {
-        if (active) setResult({ revision: attempt, status: "unreachable" });
-      });
-    void client.workspace
-      .list()
-      .then((items) => {
-        if (active) setWorkspaces({ kind: "ready", list: items });
-      })
-      .catch(() => {
-        if (active) setWorkspaces({ kind: "failed" });
-      });
-    return () => {
-      active = false;
-    };
-  }, [client, revision]);
+  const status: HostStatus = check.isFetching
+    ? "checking"
+    : check.isError
+      ? "unreachable"
+      : "connected";
 
   // Disconnecting deletes the saved token, so reconnecting means copying it from the Mac again.
   function confirmDisconnect() {
@@ -91,7 +78,7 @@ export function SettingsScreen() {
     status === "checking" ? "Checking…" : status === "connected" ? "Connected" : "Unreachable";
   const statusColor =
     status === "checking" ? theme.muted : status === "connected" ? theme.success : theme.danger;
-  const workspaceList = workspaces.kind === "ready" ? workspaces.list : undefined;
+  const workspaceList = workspacesQuery.data;
 
   return (
     <ScrollView
@@ -100,15 +87,15 @@ export function SettingsScreen() {
       // would be a flex child of a native parent, which cannot grow it.
       contentContainerStyle={{
         flexGrow: 1,
-        gap: spacing.md,
-        paddingTop: spacing.md,
+        paddingTop: spacing.sm,
         paddingBottom: insets.bottom + spacing.lg,
       }}
       contentInsetAdjustmentBehavior="automatic"
     >
-      <Group>
+      <SectionHeader label="Connection" first />
+      <Group variant="flat">
         <GroupRow>
-          <IconTile name="laptopcomputer" color={theme.foreground} />
+          <IconRing name="laptopcomputer" color={theme.foreground} />
           <html.div style={styles.rowText}>
             <html.span style={textStyles.body}>{connection.name}</html.span>
             <html.span style={textStyles.caption}>{displayAddress(connection)}</html.span>
@@ -120,15 +107,18 @@ export function SettingsScreen() {
         </GroupRow>
         <GroupRow
           disabled={status === "checking"}
-          onClick={() => setRevision((value) => value + 1)}
+          onClick={() => {
+            void check.refetch();
+            void workspacesQuery.refetch();
+          }}
         >
-          <IconTile name="arrow.clockwise" />
+          <IconRing name="arrow.clockwise" />
           <html.span style={textStyles.body}>
             {status === "unreachable" ? "Try again" : "Check connection"}
           </html.span>
         </GroupRow>
-        <GroupRow onClick={edit} pushes>
-          <IconTile name="pencil" />
+        <GroupRow onClick={edit} trail="push">
+          <IconRing name="pencil" />
           <html.div style={styles.rowText}>
             <html.span style={textStyles.body}>Edit address and token</html.span>
             <html.span style={textStyles.caption}>
@@ -138,28 +128,43 @@ export function SettingsScreen() {
         </GroupRow>
       </Group>
       {error !== undefined && (
-        <html.p role="alert" style={textStyles.error}>
+        <html.p role="alert" style={[textStyles.error, styles.error]}>
           {error}
         </html.p>
       )}
       <SectionHeader label="Style" />
-      <Group separator="label">
-        <ChoiceRow label="Appearance" setting={appearance} />
-        <ChoiceRow label="Transcript font" setting={transcriptFont} />
+      <Group variant="flat">
+        <ChoiceRow label="Appearance" icon="circle.lefthalf.filled" setting={appearance} />
+        <ChoiceRow label="Transcript font" icon="textformat" setting={transcriptFont} />
       </Group>
       <SectionHeader label="List" />
-      <Group separator="label">
-        <SwitchRow label="Show filters" value={filterCards} onChange={setFilterCards} />
-        <SwitchRow label="Sections by date" value={dateSections} onChange={setDateSections} />
-        <SwitchRow label="Two-line preview" value={twoLinePreview} onChange={setTwoLinePreview} />
+      <Group variant="flat">
+        <SwitchRow
+          label="Show filters"
+          icon="line.3.horizontal.decrease"
+          value={filterCards}
+          onChange={setFilterCards}
+        />
+        <SwitchRow
+          label="Sections by date"
+          icon="calendar"
+          value={dateSections}
+          onChange={setDateSections}
+        />
+        <SwitchRow
+          label="Two-line preview"
+          icon="text.alignleft"
+          value={twoLinePreview}
+          onChange={setTwoLinePreview}
+        />
       </Group>
       {workspaceList !== undefined && workspaceList.length > 0 ? (
         <>
           <SectionHeader label="Workspaces" />
-          <Group>
+          <Group variant="flat">
             {workspaceList.map((workspace) => (
               <GroupRow key={workspace.path}>
-                <IconTile name="folder" />
+                <IconRing name="folder" />
                 <html.div style={styles.rowText}>
                   <html.span style={textStyles.body}>{workspace.name}</html.span>
                   <html.span style={[textStyles.caption, styles.path]}>{workspace.path}</html.span>
@@ -169,15 +174,15 @@ export function SettingsScreen() {
           </Group>
         </>
       ) : null}
-      <html.div style={styles.signOut}>
-        <Group>
-          <GroupRow align="center" disabled={busy} onClick={confirmDisconnect}>
-            <html.span style={[textStyles.body, styles.danger]}>
-              {busy ? "Disconnecting…" : "Disconnect"}
-            </html.span>
-          </GroupRow>
-        </Group>
-      </html.div>
+      <SectionHeader label="Danger Zone" tone="danger" />
+      <Group variant="flat">
+        <GroupRow disabled={busy} onClick={confirmDisconnect}>
+          <IconRing name="rectangle.portrait.and.arrow.right" color={theme.danger} />
+          <html.span style={[textStyles.body, styles.danger]}>
+            {busy ? "Disconnecting…" : "Disconnect"}
+          </html.span>
+        </GroupRow>
+      </Group>
       <html.div style={styles.colophon}>
         <html.span style={styles.mark}>Nyte</html.span>
         <html.div style={styles.versionPill}>
@@ -213,7 +218,7 @@ const styles = css.create({
     backgroundColor: color,
   }),
   danger: { color: tokens.danger },
-  signOut: { paddingTop: list.sectionGap - spacing.md },
+  error: { paddingInline: list.gutter },
   colophon: {
     display: "flex",
     flexDirection: "column",
