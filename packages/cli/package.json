@@ -9,6 +9,11 @@
     "coding-agent",
     "headless"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/interfaces-lab/nyte.git",
+    "directory": "packages/cli"
+  },
   "bin": {
     "nyte": "bin/nyte.js"
   },
