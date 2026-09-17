@@ -88,10 +88,14 @@ test("mention discovery preserves cancellation and filesystem failures for the T
   const root = await mkdtemp(join(tmpdir(), "nyte-tui-mentions-"));
   try {
     const reason = new Error("mention request replaced");
+    // bun:test types its async matchers as void; the assertions are promises and
+    // dropping the await would pass this test before either rejection settles.
+    /* oxlint-disable typescript/await-thenable */
     await expect(discoverMentionFiles(root, AbortSignal.abort(reason))).rejects.toBe(reason);
     await expect(discoverMentionFiles(join(root, "missing"))).rejects.toMatchObject({
       code: "ENOENT",
     });
+    /* oxlint-enable typescript/await-thenable */
   } finally {
     await rm(root, { recursive: true, force: true });
   }
