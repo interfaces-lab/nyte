@@ -11,6 +11,23 @@ export interface WorkspaceInfo {
   readonly available?: boolean;
 }
 
+/** Where new chats and pathless `@` files go on this host. */
+export type WorkspaceSelection =
+  | { readonly kind: "home" }
+  | { readonly kind: "project"; readonly workspace: WorkspaceInfo };
+
+/** Ask the host to serve Home or a listed project path. */
+export type WorkspaceSelectInput =
+  | { readonly kind: "home" }
+  | { readonly kind: "project"; readonly path: string };
+
+/** What `workspace.select` did: the cursor moved, or why it did not. */
+export type WorkspaceSelectOutcome =
+  | { readonly kind: "opened"; readonly selection: WorkspaceSelection }
+  | { readonly kind: "unavailable"; readonly path: string }
+  | { readonly kind: "untrusted"; readonly path: string }
+  | { readonly kind: "failed"; readonly message: string };
+
 export interface VcsStatus {
   readonly branch?: string;
   readonly files: readonly {

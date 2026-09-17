@@ -82,7 +82,9 @@ The client reports that as a failure, not as completion.
 
 ## Operations
 
-The set the desktop already carries over Electron IPC, plus `landing`:
+The set the desktop already carries over Electron IPC, plus `landing` and the
+wire-only `workspace.current`/`workspace.select` pair that retargets a mobile
+share:
 
 ```text
 landing
@@ -91,7 +93,7 @@ sessions.rename  sessions.setPinned  sessions.setArchived  sessions.delete  sess
 messages.send  messages.cancel  messages.redeliver
 runs.current  runs.abort  runs.reply  runs.changes
 heads.move
-workspace.list  workspace.forget  workspace.files  workspace.vcs.diff
+workspace.list  workspace.current  workspace.select  workspace.forget  workspace.files  workspace.vcs.diff
 provider.models.list  provider.models.default
 plugins.catalog  plugins.list  plugins.commands.list  plugins.commands.run
 plugins.settings.list  plugins.settings.apply  plugins.resources.list  plugins.status.list
