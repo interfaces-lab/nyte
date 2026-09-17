@@ -1,5 +1,6 @@
 import { Voltra } from "@use-voltra/ios";
 import { useLiveActivity } from "@use-voltra/ios-client";
+// oxlint-disable-next-line no-restricted-imports -- the Live Activity follows session state
 import { useEffect } from "react";
 import type { SessionInfo } from "@nyte-ai/protocol";
 
@@ -116,6 +117,7 @@ export function useWorkLiveActivitySync(
   const live = working.length + attention.length;
   const activeKey = [...attention, ...working].map((session) => session.sessionId).join(",");
 
+  // The Live Activity is a native system that follows session state.
   useEffect(() => {
     if (live === 0) {
       if (liveActive) void end().catch(() => undefined);

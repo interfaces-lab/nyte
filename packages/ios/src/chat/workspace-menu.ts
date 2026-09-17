@@ -8,13 +8,11 @@ import type {
 
 export type WorkspaceMenu =
   | { kind: "hidden" }
-  | { kind: "loading" }
   | { kind: "failed"; message: string }
   | {
       kind: "ready";
       items: readonly WorkspaceInfo[];
       selection: WorkspaceSelection;
-      switching?: WorkspaceSelectInput;
     };
 
 export function workspaceMenuAvailable(info: ServerInfo): boolean {
@@ -22,7 +20,8 @@ export function workspaceMenuAvailable(info: ServerInfo): boolean {
 }
 
 export function listedWorkspaces(items: readonly WorkspaceInfo[]): readonly WorkspaceInfo[] {
-  return items.filter((item) => item.available !== false);
+  // The host refuses anything but an explicit true; list only what it can open.
+  return items.filter((item) => item.available === true);
 }
 
 export function workspaceChipLabel(selection: WorkspaceSelection): string {
@@ -52,29 +51,4 @@ export function selectionMatches(
 ): boolean {
   if (input.kind === "home") return selection.kind === "home";
   return selection.kind === "project" && selection.workspace.path === input.path;
-}
-
-export function sameSelectInput(
-  left: WorkspaceSelectInput,
-  right: WorkspaceSelectInput,
-): boolean {
-  if (left.kind === "home") return right.kind === "home";
-  return right.kind === "project" && left.path === right.path;
-}
-
-export function applyWorkspaceSelect(
-  menu: Extract<WorkspaceMenu, { kind: "ready" }>,
-  outcome: WorkspaceSelectOutcome,
-): {
-  readonly menu: Extract<WorkspaceMenu, { kind: "ready" }>;
-  readonly caption: string | undefined;
-} {
-  return {
-    menu: {
-      kind: "ready",
-      items: menu.items,
-      selection: outcome.kind === "opened" ? outcome.selection : menu.selection,
-    },
-    caption: workspaceSelectCaption(outcome),
-  };
 }

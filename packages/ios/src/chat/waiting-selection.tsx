@@ -1,6 +1,7 @@
 import type { WaitingCall } from "@nyte-ai/core/client";
 import { acceptsSelectionReply, type ReplyOutcome, type SelectionReply } from "@nyte-ai/protocol";
 import { SymbolView } from "expo-symbols";
+// oxlint-disable-next-line no-restricted-imports -- the expiry timer follows the deadline prop
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { TextInput } from "react-native";
@@ -41,6 +42,7 @@ function SelectionForm({ waiting, onReply }: WaitingSelectionProps): ReactElemen
   const expired = until !== undefined && until <= now;
   const multiple = selection.multiple === true;
 
+  // One wake per deadline; the target time arrives as a prop.
   useEffect(() => {
     if (until === undefined || until <= now) return;
     // Long-lived waits exceed the timer's signed 32-bit delay; recheck on each wake.

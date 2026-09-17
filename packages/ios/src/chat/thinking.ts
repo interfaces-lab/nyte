@@ -6,7 +6,7 @@ export type ThinkingLevel = NonNullable<RunConfig["thinkingLevel"]>;
  * Low → high, same order the host catalog uses. A model's list is the subset
  * it supports, so the slider filters instead of assuming a fixed set of stops.
  */
-export const THINKING_ORDER = [
+const THINKING_ORDER = [
   "off",
   "minimal",
   "low",

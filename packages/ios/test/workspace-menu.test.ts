@@ -1,19 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { WIRE_VERSION, type WorkspaceInfo } from "@nyte-ai/protocol";
 import {
-  applyWorkspaceSelect,
   listedWorkspaces,
+  selectionMatches,
   workspaceChipLabel,
   workspaceMenuAvailable,
   workspaceSelectCaption,
 } from "../src/chat/workspace-menu.ts";
 
-const nyte: WorkspaceInfo = { path: "/Users/me/nyte", name: "nyte", lastOpenedAt: 1 };
+const nyte: WorkspaceInfo = {
+  path: "/Users/me/nyte",
+  name: "nyte",
+  lastOpenedAt: 1,
+  available: true,
+};
 const missing: WorkspaceInfo = {
   path: "/Users/me/gone",
   name: "gone",
   lastOpenedAt: 2,
   available: false,
+};
+const unknown: WorkspaceInfo = {
+  path: "/Users/me/unstated",
+  name: "unstated",
+  lastOpenedAt: 2,
 };
 const present: WorkspaceInfo = {
   path: "/Users/me/app",
@@ -63,11 +73,25 @@ describe("workspaceMenuAvailable", () => {
 });
 
 describe("listedWorkspaces", () => {
-  it("omits folders the host marked unavailable and keeps the rest", () => {
-    expect(listedWorkspaces([nyte, missing, present]).map((item) => item.path)).toEqual([
+  it("keeps only folders the host can open, matching its select refusal", () => {
+    expect(listedWorkspaces([nyte, missing, unknown, present]).map((item) => item.path)).toEqual([
       "/Users/me/nyte",
       "/Users/me/app",
     ]);
+  });
+});
+
+describe("selectionMatches", () => {
+  it("matches home against home only", () => {
+    expect(selectionMatches({ kind: "home" }, { kind: "home" })).toBe(true);
+    expect(selectionMatches({ kind: "project", workspace: nyte }, { kind: "home" })).toBe(false);
+  });
+
+  it("matches a project by its listed path", () => {
+    const selection = { kind: "project" as const, workspace: nyte };
+    expect(selectionMatches(selection, { kind: "project", path: nyte.path })).toBe(true);
+    expect(selectionMatches(selection, { kind: "project", path: present.path })).toBe(false);
+    expect(selectionMatches({ kind: "home" }, { kind: "project", path: nyte.path })).toBe(false);
   });
 });
 
@@ -80,9 +104,7 @@ describe("workspaceChipLabel", () => {
 
 describe("workspaceSelectCaption", () => {
   it("has no caption after a successful open", () => {
-    expect(
-      workspaceSelectCaption({ kind: "opened", selection: { kind: "home" } }),
-    ).toBeUndefined();
+    expect(workspaceSelectCaption({ kind: "opened", selection: { kind: "home" } })).toBeUndefined();
   });
 
   it("tells the user to trust an untrusted folder on the Mac", () => {
@@ -101,33 +123,5 @@ describe("workspaceSelectCaption", () => {
     expect(workspaceSelectCaption({ kind: "failed", message: "Disk locked." })).toBe(
       "Disk locked.",
     );
-  });
-});
-
-describe("applyWorkspaceSelect", () => {
-  const home = {
-    kind: "ready" as const,
-    items: [nyte],
-    selection: { kind: "home" as const },
-    switching: { kind: "project" as const, path: nyte.path },
-  };
-
-  it("adopts the opened folder and clears the in-flight pick", () => {
-    expect(
-      applyWorkspaceSelect(home, {
-        kind: "opened",
-        selection: { kind: "project", workspace: nyte },
-      }),
-    ).toEqual({
-      menu: { kind: "ready", items: [nyte], selection: { kind: "project", workspace: nyte } },
-      caption: undefined,
-    });
-  });
-
-  it("keeps Home when the new folder is untrusted", () => {
-    expect(applyWorkspaceSelect(home, { kind: "untrusted", path: nyte.path })).toEqual({
-      menu: { kind: "ready", items: [nyte], selection: { kind: "home" } },
-      caption: "Trust this folder on your Mac, then pick it again.",
-    });
   });
 });

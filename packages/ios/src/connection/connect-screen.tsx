@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useMountEffect } from "../use-mount-effect.ts";
 import type { ReactNode } from "react";
 import { ActivityIndicator, TextInput } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -56,13 +57,10 @@ export function ConnectScreen({
   const addressInput = useRef<TextInput>(null);
   const tokenInput = useRef<TextInput>(null);
   const complete = name.trim().length > 0 && url.trim().length > 0 && token.trim().length > 0;
-  useEffect(
-    () => () => {
-      attempt.current?.abort();
-      attempt.current = undefined;
-    },
-    [],
-  );
+  useMountEffect(() => () => {
+    attempt.current?.abort();
+    attempt.current = undefined;
+  });
 
   async function connect(scanned?: Connection) {
     if (attempt.current !== undefined) return;

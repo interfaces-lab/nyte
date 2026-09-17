@@ -4,9 +4,9 @@
  * instead of travelling over the wire. MMKV reads synchronously, so the first
  * paint already has the stored value and no screen flashes a default first.
  */
-import { useEffect } from "react";
 import { Appearance } from "react-native";
 import { createMMKV, useMMKVBoolean, useMMKVString } from "react-native-mmkv";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { resolveChoice, type Choice, type Choices } from "./choice.ts";
 import type { TranscriptFont } from "../theme.ts";
 
@@ -52,7 +52,16 @@ function useFlag(key: string, fallback: boolean): [boolean, (value: boolean) => 
 }
 
 export function useAppearance() {
-  return useChoice("appearance", appearanceChoices);
+  const setting = useChoice("appearance", appearanceChoices);
+  // Choosing is the only way the value changes, so the OS scheme moves with
+  // the tap rather than a render pass behind it.
+  return {
+    ...setting,
+    select: (value: AppearancePreference) => {
+      setting.select(value);
+      Appearance.setColorScheme(value);
+    },
+  };
 }
 
 export function useTranscriptFont() {
@@ -72,13 +81,14 @@ export function useTwoLinePreview() {
 }
 
 /**
- * Applies the stored appearance to the whole app. `Appearance.setColorScheme`
- * moves `useColorScheme` and React Strict DOM's `prefers-color-scheme` together,
- * so the tokens, the navigation theme, and native controls never disagree.
+ * Applies the stored appearance at startup. `Appearance.setColorScheme` moves
+ * `useColorScheme` and React Strict DOM's `prefers-color-scheme` together, so
+ * the tokens, the navigation theme, and native controls never disagree; later
+ * changes land in `select`, where the tap happens.
  */
 export function useAppliedAppearance(): void {
   const appearance = useAppearance();
-  useEffect(() => {
+  useMountEffect(() => {
     Appearance.setColorScheme(appearance.value);
-  }, [appearance.value]);
+  });
 }

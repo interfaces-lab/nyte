@@ -8,8 +8,8 @@
  * exists. Accepting writes the exact text the desktop writes, so a message sent
  * from a phone reads back there as the same chip.
  */
-import { useEffect, useRef, useState } from "react";
 import { completionTrigger } from "@nyte-ai/core/views";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { CompletionTrigger } from "@nyte-ai/core/views";
 import type { CommandInfo, PluginCatalog, SessionId } from "@nyte-ai/protocol";
 import type { NyteClient } from "@nyte-ai/client";
@@ -43,6 +43,16 @@ export interface Completions {
 const MAX_SUGGESTIONS = 30;
 /** Each keystroke inside an `@` token would otherwise be one host request. */
 const FILE_DEBOUNCE_MS = 180;
+
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new Error("file search aborted", { cause: signal.reason }));
+    });
+  });
+}
 
 export function suggestionKey(suggestion: Suggestion): string {
   return suggestion.kind === "file" ? suggestion.url : `${suggestion.kind}:${suggestion.name}`;
@@ -105,8 +115,8 @@ function slashChoices(catalog: Pick<PluginCatalog, "commands" | "skills">): read
 
 /**
  * The menu for the token under the caret. Commands and skills are read once per
- * conversation; files are read per query, because the host holds the tree and
- * narrows it rather than sending a repository to a phone.
+ * conversation and workspace; files are read per query, because the host holds
+ * the tree and narrows it rather than sending a repository to a phone.
  */
 export function useCompletions(
   client: NyteClient,
@@ -114,93 +124,63 @@ export function useCompletions(
   draft: string,
   caret: number,
   enabled: boolean,
+  epoch: number,
 ): Completions {
   const trigger = enabled ? completionTrigger(draft, Math.min(caret, draft.length)) : undefined;
   const kind = trigger?.kind;
   const query = trigger?.query ?? "";
-  // Each answer carries the request it belongs to, so a reply for the previous
-  // conversation or the previous query is never shown as this one's.
-  const [slashRead, setSlashRead] = useState<{
-    of: SessionId | undefined;
-    source: Loaded<Pick<PluginCatalog, "commands" | "skills">>;
-  }>();
-  const [fileRead, setFileRead] = useState<{
-    of: string;
-    source: Loaded<readonly Suggestion[]>;
-  }>();
-  const asked = useRef<SessionId | undefined | null>(null);
-  const slash: Loaded<Pick<PluginCatalog, "commands" | "skills">> =
-    slashRead !== undefined && slashRead.of === sessionId ? slashRead.source : { kind: "loading" };
-  const fileKey = `${sessionId ?? ""}\u0000${query}`;
-  const files: Loaded<readonly Suggestion[]> =
-    fileRead?.of === fileKey ? fileRead.source : { kind: "loading" };
-
-  useEffect(() => {
-    if (kind !== "/" || asked.current === sessionId) return;
-    asked.current = sessionId;
-    let live = true;
-    const read = async (): Promise<Pick<PluginCatalog, "commands" | "skills">> => {
+  // The keys carry the conversation and the workspace epoch, so an answer for
+  // the previous chat or the previous folder can never appear as this one's.
+  const slashQuery = useQuery({
+    queryKey: ["slash-completion", sessionId ?? null, epoch],
+    enabled: kind === "/",
+    queryFn: async (): Promise<Pick<PluginCatalog, "commands" | "skills">> => {
       if (sessionId === undefined) return client.plugins.catalog();
       const [commands, skills] = await Promise.all([
         client.plugins.commands.list({ sessionId }),
         client.plugins.resources.list({ sessionId }),
       ]);
       return { commands, skills };
-    };
-    void read()
-      .then((value) => {
-        if (live) setSlashRead({ of: sessionId, source: { kind: "ready", value } });
-      })
-      .catch((cause: unknown) => {
-        // A failed read must be askable again, or the menu stays broken for the session.
-        asked.current = null;
-        if (live)
-          setSlashRead({
-            of: sessionId,
-            source: { kind: "failed", message: describeHostError(cause) },
-          });
+    },
+  });
+  const filesQuery = useQuery({
+    queryKey: ["file-completion", sessionId ?? null, epoch, query],
+    enabled: kind === "@",
+    // The previous key's rows stay up while the debounced read lands, so a
+    // keystroke narrows the menu instead of flashing the loading notice.
+    placeholderData: keepPreviousData,
+    queryFn: async ({ signal }): Promise<readonly Suggestion[]> => {
+      // Reading `signal` marks the fetch cancelable: the next keystroke moves the
+      // observer to a new key, the old query loses its last observer, and the
+      // aborted delay ends before the request fires — debounce without a timer.
+      await delay(FILE_DEBOUNCE_MS, signal);
+      const found = await client.workspace.files({
+        ...(sessionId === undefined ? {} : { sessionId }),
+        query,
       });
-    return () => {
-      live = false;
-    };
-  }, [client, kind, sessionId]);
+      return found.map((file): Suggestion => ({
+        kind: "file",
+        url: file.url,
+        label: file.label,
+        detail: file.displayPath,
+      }));
+    },
+  });
 
-  useEffect(() => {
-    if (kind !== "@") return;
-    let live = true;
-    const timer = setTimeout(() => {
-      void client.workspace
-        .files({ ...(sessionId === undefined ? {} : { sessionId }), query })
-        .then((found) => {
-          if (!live) return;
-          setFileRead({
-            of: fileKey,
-            source: {
-              kind: "ready",
-              value: found.map((file) => ({
-                kind: "file",
-                url: file.url,
-                label: file.label,
-                detail: file.displayPath,
-              })),
-            },
-          });
-        })
-        .catch((cause: unknown) => {
-          if (live)
-            setFileRead({
-              of: fileKey,
-              source: { kind: "failed", message: describeHostError(cause) },
-            });
-        });
-    }, FILE_DEBOUNCE_MS);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [client, fileKey, kind, query, sessionId]);
+  const slash: Loaded<Pick<PluginCatalog, "commands" | "skills">> =
+    slashQuery.status === "pending"
+      ? { kind: "loading" }
+      : slashQuery.status === "error"
+        ? { kind: "failed", message: describeHostError(slashQuery.error) }
+        : { kind: "ready", value: slashQuery.data };
+  const files: Loaded<readonly Suggestion[]> =
+    filesQuery.status === "pending"
+      ? { kind: "loading" }
+      : filesQuery.status === "error"
+        ? { kind: "failed", message: describeHostError(filesQuery.error) }
+        : { kind: "ready", value: filesQuery.data };
 
-  const commands = slash.kind === "ready" ? slash.value.commands : [];
+  const commands = slashQuery.data?.commands ?? [];
   if (trigger === undefined) return { completion: undefined, commands };
   if (trigger.kind === "@") return { commands, completion: { trigger, list: files } };
   return {
