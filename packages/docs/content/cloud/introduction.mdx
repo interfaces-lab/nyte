@@ -3,12 +3,11 @@ title: Introduction
 description: "Cloud is Nyte's design system: the tokens, primitives, and application surfaces shared by the web, desktop, and terminal hosts"
 ---
 
-Cloud is the design system for Nyte. It names the tokens, the primitives, and the application
-surfaces that every host renders, and it says which file implements each one. The pages under it are
-written to be read by an agent before it touches a component, and by a person who wants to know why
-the component looks and behaves the way it does.
+## Features
 
-## What this covers
+The same system, named in the tier it actually lives in.
+
+<CloudFeatures />
 
 Nyte ships the same product in three hosts. Each host renders the same concerns with different
 materials, and Cloud documents them in the tier they actually live in.
@@ -20,14 +19,6 @@ materials, and Cloud documents them in the tier they actually live in.
             └─ desktop surfaces  ModelPicker, SearchPalette, Sidebar, DiffView, Composer…
 @opentui/core               terminal (documented later; not in this pass)
 ```
-
-| Section     | What it holds                                                                                                         | Source of truth                                 |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Foundations | Tokens, theming channels, focus modality, icons                                                                       | `packages/ui/src/platform-tokens.stylex.ts`     |
-| Primitives  | The styled wrappers exported from `@nyte-ai/ui`: Button, Avatar, Input, Textarea, Dialog, Alert dialog, Dropdown menu | `packages/ui/src/components/ui/*.tsx`           |
-| Headless    | The Base UI namespaces `@nyte-ai/ui/<name>` re-exports without styling, with Base UI's documentation verbatim         | `packages/ui/src/<name>.ts`, Base UI docs (MIT) |
-| Desktop     | The desktop app's own component tier and the application surfaces built on it                                         | `packages/desktop/src/renderer/src/**`          |
-| Surfaces    | One page per product concern, saying which component implements it in each host                                       | this section                                    |
 
 ## How to read a component page
 
@@ -73,54 +64,3 @@ Geist documentation. The wording is Nyte's.
 - Twelve of the eighteen headless subpaths have no Nyte styling anywhere yet. Their pages exist so
   the accessibility contract is on record before a wrapper is written.
 - Terminal components are out of scope for this pass.
-
-## Index
-
-### Foundations
-
-- [Tokens](/cloud/foundations/tokens)
-- [Theming and styling channels](/cloud/foundations/theming)
-- [Focus and keyboard](/cloud/foundations/focus)
-- [Icons](/cloud/foundations/icons)
-
-### Primitives
-
-- [Button](/cloud/primitives/button)
-- [Avatar](/cloud/primitives/avatar)
-- [Input](/cloud/primitives/input)
-- [Textarea](/cloud/primitives/textarea)
-- [Dialog](/cloud/primitives/dialog)
-- [Alert dialog](/cloud/primitives/alert-dialog)
-- [Dropdown menu](/cloud/primitives/dropdown-menu)
-
-### Headless
-
-[Overview](/cloud/headless) and one page per subpath: alert-dialog, autocomplete, button,
-collapsible, context-menu, dialog, menu, number-field, popover, preview-card, select, slider,
-switch, tabs, toggle, toggle-group, toolbar, tooltip.
-
-### Desktop
-
-- [Overview](/cloud/desktop)
-- [Theme variables](/cloud/desktop/theme)
-- [Button and focus](/cloud/desktop/button)
-- [Menu](/cloud/desktop/menu)
-- [Confirm dialog](/cloud/desktop/confirm-dialog)
-- [Toaster](/cloud/desktop/toaster)
-- [Spinner and animated number](/cloud/desktop/feedback)
-- [Icons](/cloud/desktop/icons)
-- [Settings controls](/cloud/desktop/settings-controls)
-
-### Surfaces
-
-- [Model and subagent picker](/cloud/surfaces/model-picker)
-- [Settings](/cloud/surfaces/settings)
-- [Command palette and search](/cloud/surfaces/command-palette)
-- [Session list and sidebar](/cloud/surfaces/sidebar)
-- [Transcript and tool calls](/cloud/surfaces/transcript)
-- [Diff view](/cloud/surfaces/diff-view)
-- [Composer](/cloud/surfaces/composer)
-- [Permission and consent prompts](/cloud/surfaces/consent)
-- [Tasks and jobs](/cloud/surfaces/jobs)
-- [Workbench](/cloud/surfaces/workbench)
-- [Toasts and notices](/cloud/surfaces/toasts)

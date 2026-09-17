@@ -3,37 +3,39 @@
 import { IconCheckmark1Small, IconClipboard } from "central-icons";
 import { useRef, useState } from "react";
 import type { ComponentProps } from "react";
+import type { ShellSkin } from "~/shell.stylex";
+
+export type ShellCodeFrameProps = ComponentProps<"pre"> & {
+  skin: ShellSkin;
+  title?: string;
+  icon?: unknown;
+};
 
 /*
- * The `pre` renderer for Cloud pages. fumadocs-mdx hands us Shiki's output
- * plus `title` from the fence meta; the frame adds the header and a copy
- * button that reads the rendered text so it never disagrees with what is on
- * screen.
+ * The `pre` renderer for doc pages. fumadocs-mdx hands us Shiki's output
+ * plus unused fence meta. The copy button reads the rendered text so it
+ * never disagrees with what is on screen.
  */
-export function CodeFrame({
-  title,
+export function ShellCodeFrame({
+  skin,
+  title: _title,
   icon: _icon,
   children,
   className,
   ...props
-}: ComponentProps<"pre"> & { title?: string; icon?: unknown }) {
+}: ShellCodeFrameProps) {
   const body = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
   return (
-    <figure className="cloud-code">
-      {title && (
-        <figcaption className="cloud-code-head">
-          <span>{title}</span>
-        </figcaption>
-      )}
-      <div className="cloud-code-body">
+    <figure className={`${skin}-code`}>
+      <div className={`${skin}-code-body`}>
         <pre ref={body} className={className} {...props}>
           {children}
         </pre>
         <button
           type="button"
-          className="cloud-icon-button"
+          className={`${skin}-code-copy`}
           aria-label={copied ? "Copied" : "Copy code"}
           onClick={async () => {
             await navigator.clipboard.writeText(body.current?.textContent ?? "");

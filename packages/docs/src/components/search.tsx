@@ -27,11 +27,11 @@ function parseResults(value: unknown): Result[] {
 }
 
 /*
- * ⌘K over the shared /api/search index, drawn with Cloud's own Dialog and
- * Input. Results outside /cloud are kept: an agent searching "subagent" should
- * find the core docs too.
+ * ⌘K over the shared /api/search index, drawn with the shared Dialog and
+ * Input. Results outside the current section are kept: an agent searching
+ * "subagent" should find the core docs too.
  */
-export function CloudSearch() {
+export function SiteSearch({ className }: { className: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[]>([]);
@@ -88,7 +88,7 @@ export function CloudSearch() {
 
   return (
     <>
-      <button type="button" className="cloud-search-trigger" onClick={() => setOpen(true)}>
+      <button type="button" className={className} onClick={() => setOpen(true)} aria-label="Search">
         <IconMagnifyingGlass size={14} />
         <span>Search</span>
         <span className="cloud-kbd">
@@ -111,7 +111,7 @@ export function CloudSearch() {
           </DialogTitle>
           <Input
             autoFocus
-            className="cloud-search-input"
+            className="docs-search-input"
             placeholder="Search Cloud and the docs"
             aria-label="Search"
             aria-controls={listId}
@@ -120,7 +120,7 @@ export function CloudSearch() {
             onValueChange={setQuery}
           />
           {results.length > 0 ? (
-            <ul id={listId} className="cloud-search-list" role="listbox">
+            <ul id={listId} className="docs-search-list" role="listbox">
               {results.map((result, index) => (
                 <li key={result.id} role="option" aria-selected={index === active}>
                   <Link
@@ -137,7 +137,7 @@ export function CloudSearch() {
               ))}
             </ul>
           ) : (
-            <div className="cloud-search-empty">
+            <div className="docs-search-empty">
               {query.trim() === "" ? "Type to search" : "No results"}
             </div>
           )}

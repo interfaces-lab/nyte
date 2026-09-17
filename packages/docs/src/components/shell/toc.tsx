@@ -1,7 +1,10 @@
 "use client";
 
+import * as stylex from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { shell, withShell, type ShellSkin } from "~/shell.stylex";
+import { ShellColumnBody } from "./column";
 
 export interface TocEntry {
   title: ReactNode;
@@ -14,7 +17,7 @@ export interface TocEntry {
  * crossed the top third of the viewport, so the mark moves as you read, not
  * only when a heading enters view.
  */
-export function CloudToc({ entries }: { entries: TocEntry[] }) {
+export function ShellToc({ skin, entries }: { skin: ShellSkin; entries: TocEntry[] }) {
   const [current, setCurrent] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,24 +43,32 @@ export function CloudToc({ entries }: { entries: TocEntry[] }) {
     };
   }, [entries]);
 
-  if (entries.length === 0) return <div className="cloud-toc" />;
+  if (entries.length === 0) {
+    return (
+      <div {...withShell(`${skin}-toc`, stylex.props(shell.columnWrap))}>
+        <ShellColumnBody>{null}</ShellColumnBody>
+      </div>
+    );
+  }
 
   return (
-    <aside className="cloud-toc" aria-label="On this page">
-      <span className="cloud-eyebrow">On this page</span>
-      <ol>
-        {entries.map((entry) => (
-          <li key={entry.url}>
-            <a
-              href={entry.url}
-              data-depth={entry.depth}
-              aria-current={current === entry.url.slice(1) ? "true" : undefined}
-            >
-              {entry.title}
-            </a>
-          </li>
-        ))}
-      </ol>
+    <aside {...withShell(`${skin}-toc`, stylex.props(shell.columnWrap))} aria-label="On this page">
+      <ShellColumnBody>
+        <span className={`${skin}-eyebrow`}>On this page</span>
+        <ol>
+          {entries.map((entry) => (
+            <li key={entry.url}>
+              <a
+                href={entry.url}
+                data-depth={entry.depth}
+                aria-current={current === entry.url.slice(1) ? "true" : undefined}
+              >
+                {entry.title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </ShellColumnBody>
     </aside>
   );
 }

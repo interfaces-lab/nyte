@@ -1,16 +1,22 @@
-import { RootProvider } from "fumadocs-ui/provider/next";
+import * as stylex from "@stylexjs/stylex";
+import { NextProvider } from "fumadocs-core/framework/next";
+import { ThemeProvider } from "next-themes";
 import { SiteNav } from "~/components/site-nav";
+import { shell } from "~/shell.stylex";
 
 /*
- * The marketing pages and the core docs share Fumadocs' provider (theme,
- * search dialog) and one navbar. Cloud lives outside this group with its own
- * chrome, so nothing Fumadocs draws reaches /cloud.
+ * Marketing and core docs share one navbar. Search is a client island.
+ * Cloud mounts the same SiteNav in its own layout so the bar does not
+ * change between products. The fill region is the leftover 100svh under
+ * the bar; landing scrolls here, docs locks and scrolls the article.
  */
 export default function Layout({ children }: LayoutProps<"/">) {
   return (
-    <RootProvider>
-      <SiteNav />
-      {children}
-    </RootProvider>
+    <NextProvider>
+      <ThemeProvider attribute="class" disableTransitionOnChange enableColorScheme>
+        <SiteNav />
+        <div {...stylex.props(shell.fillScroll)}>{children}</div>
+      </ThemeProvider>
+    </NextProvider>
   );
 }
