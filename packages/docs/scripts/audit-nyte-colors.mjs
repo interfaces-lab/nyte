@@ -3,9 +3,9 @@
 /**
  * Validates the product palette in src/lib/brand.ts.
  *
- * Site chrome is native Fumadocs (`--color-fd-*`). This script does not
- * require `--color-nyte-*` CSS variables or fd→nyte remaps. brand.ts is the
- * source of swatch hexes the /branding page renders.
+ * Site chrome reads Cloud `--nyte-*` tokens. This script does not require
+ * docs-local aliases. brand.ts is the source of swatch hexes the /branding
+ * page renders.
  */
 
 import fs from "node:fs";

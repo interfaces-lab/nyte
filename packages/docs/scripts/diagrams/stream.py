@@ -9,7 +9,7 @@ between two marks that stand for the boundary.
 Every lane is the same wave offset in phase, so the band shears rather than
 wobbles — which is what makes it read as one flow instead of seven lines. Each
 lane is drawn a full wavelength wider than the frame and translated by exactly
-one wavelength, so the motion has no seam and nothing ever visibly restarts.
+one wavelength, so nothing ever visibly restarts.
 """
 
 from __future__ import annotations

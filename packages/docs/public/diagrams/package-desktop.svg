@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 8 180 156" fill="none" stroke="var(--color-fig-accent, #0c64c1)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 8 180 156" fill="none" stroke="var(--nyte-color-accent)" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 <path d="M43.00,35.00 L177.00,35.00 L177.00,123.00 L43.00,123.00 L43.00,35.00" fill="none" stroke-width="1.25" opacity="1"/>
 <path d="M43.00,111.00 L177.00,111.00" fill="none" stroke-width="1.25" opacity="0.5"/>
 <path d="M80.00,51.00 L156.00,51.00 L156.00,97.00 L80.00,97.00 L80.00,51.00" fill="none" stroke-width="1.25" opacity="0.65"/>
