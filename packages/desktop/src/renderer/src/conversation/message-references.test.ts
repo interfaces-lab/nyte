@@ -139,10 +139,7 @@ describe("clipboard chips", () => {
     });
     assert.equal(clipboardReferenceFromPaste("https://example.com/a/b"), undefined);
     assert.equal(clipboardReferenceFromPaste("http://example.com/a/b"), undefined);
-    assert.equal(
-      clipboardReferenceFromPaste(`https://example.com/${"a".repeat(500)}`),
-      undefined,
-    );
+    assert.equal(clipboardReferenceFromPaste(`https://example.com/${"a".repeat(500)}`), undefined);
     assert.equal(clipboardReferenceFromPaste("www.example.com"), undefined);
     assert.equal(clipboardReferenceFromPaste(""), undefined);
   });
@@ -185,10 +182,7 @@ describe("clipboard chips", () => {
     assert.equal(parts[1].reference.kind, "clipboard");
     if (parts[1].reference.kind !== "clipboard") return;
     assert.equal(parts[1].reference.body, special);
-    assert.equal(
-      messageParts(token, { form: "draft", complete: false })[0]?.kind,
-      "reference",
-    );
+    assert.equal(messageParts(token, { form: "draft", complete: false })[0]?.kind, "reference");
   });
 
   test("a token-shaped string in a sent message stays text", () => {
@@ -200,11 +194,11 @@ describe("clipboard chips", () => {
     assert.deepEqual(messageParts("@clipboard/2:{}", { form: "draft", complete: true }), [
       { kind: "text", text: "@clipboard/2:{}" },
     ]);
-    assert.deepEqual(messageParts("@clipboard/2:\"\"", { form: "draft", complete: true }), [
-      { kind: "text", text: "@clipboard/2:\"\"" },
+    assert.deepEqual(messageParts('@clipboard/2:""', { form: "draft", complete: true }), [
+      { kind: "text", text: '@clipboard/2:""' },
     ]);
-    assert.deepEqual(messageParts("@clipboard/12:\"short\"", { form: "draft", complete: true }), [
-      { kind: "text", text: "@clipboard/12:\"short\"" },
+    assert.deepEqual(messageParts('@clipboard/12:"short"', { form: "draft", complete: true }), [
+      { kind: "text", text: '@clipboard/12:"short"' },
     ]);
   });
 });

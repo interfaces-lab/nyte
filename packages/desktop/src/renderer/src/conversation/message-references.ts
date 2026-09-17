@@ -108,9 +108,7 @@ function isSingleUrlPaste(text: string): boolean {
   const trimmed = text.trim();
   if (clipboardLineCount(trimmed) !== 1) return false;
   return (
-    trimmed.startsWith("http://") ||
-    trimmed.startsWith("https://") ||
-    trimmed.startsWith("www.")
+    trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("www.")
   );
 }
 

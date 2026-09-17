@@ -59,7 +59,9 @@ export default function LandingPage() {
         <div className="two">
           <div>
             <h2 className="t-section">The libraries</h2>
-            <p className="t-prose">The apps you looked at are built from these. You can use them too.</p>
+            <p className="t-prose">
+              The apps you looked at are built from these. You can use them too.
+            </p>
           </div>
           <PackageWall />
         </div>
