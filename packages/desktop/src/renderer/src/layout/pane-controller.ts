@@ -43,13 +43,16 @@ function selectedSession(action: PaneLayoutAction): SessionId | undefined {
 export class PaneController {
   readonly #storage: LayoutStorage | undefined;
   readonly #storageKey: string;
-  readonly #viewState = new SessionViewStateStore();
+  readonly #viewState: SessionViewStateStore;
   readonly #listeners = new Set<() => void>();
   #snapshot: PaneControllerSnapshot;
 
   constructor({ storage, storageKey }: { storage?: LayoutStorage; storageKey: string }) {
     this.#storage = storage;
     this.#storageKey = storageKey;
+    this.#viewState = new SessionViewStateStore(
+      storage === undefined ? undefined : { storage, storageKey: `${storageKey}:composer-drafts` },
+    );
     let persisted: string | null = null;
     try {
       persisted = storage?.getItem(storageKey) ?? null;
