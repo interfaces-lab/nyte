@@ -53,9 +53,10 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK SPARKLE_PRIVATE_KEY; do
+          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK NPM_TOKEN SPARKLE_PRIVATE_KEY; do
             if [[ -z "${!name}" ]]; then
               echo "Required release secret $name is not configured." >&2
               exit 1
@@ -197,6 +198,31 @@ jobs:
           else
             gh release create "${{ github.ref_name }}" "${files[@]}" --repo "${{ github.repository }}" --verify-tag --generate-notes --title "Nyte ${{ github.ref_name }}"
           fi
+
+  npm:
+    needs: publish
+    if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+      - name: Publish the launcher
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if npm view "nyte-ai@$version" version >/dev/null 2>&1; then
+            echo "nyte-ai@$version is already published."
+            exit 0
+          fi
+          npm publish --provenance
 
   appcast:
     needs: publish
