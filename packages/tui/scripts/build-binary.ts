@@ -15,6 +15,19 @@ const destination = fileURLToPath(new URL("../../../bin/", import.meta.url));
 const packages = fileURLToPath(new URL("../../", import.meta.url));
 const name = process.platform === "win32" ? "nyte.exe" : "nyte";
 const started = performance.now();
+
+/**
+ * `Bun.build` reports a failed bundle by throwing an `AggregateError` whose
+ * `errors` hold the diagnostics. Printing only the top-level `message` reduces
+ * every failure to "Bundle failed", so recurse into the aggregate.
+ */
+function describe(cause: unknown): string {
+  if (cause instanceof AggregateError) {
+    return [cause.message, ...cause.errors.map((error: unknown) => describe(error))].join("\n");
+  }
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 let directory: string | undefined;
 try {
   await mkdir(destination, { recursive: true });
@@ -32,7 +45,7 @@ try {
   });
   if (!result.success) {
     throw new Error(
-      result.logs.map((log) => String(log)).join("\n") || "Bundle failed with empty logs",
+      result.logs.map((log) => log.message).join("\n") || "Bundle failed with empty logs",
     );
   }
   if (process.platform === "darwin") {
@@ -48,7 +61,7 @@ try {
     `Built bin/${name} in ${((performance.now() - started) / 1000).toFixed(1)}s\n`,
   );
 } catch (cause) {
-  process.stderr.write(`Build failed: ${cause instanceof Error ? cause.message : String(cause)}\n`);
+  process.stderr.write(`Build failed: ${describe(cause)}\n`);
   if (directory)
     process.stderr.write(await readFile(join(directory, "build.log"), "utf8").catch(() => ""));
   process.exitCode = 1;
