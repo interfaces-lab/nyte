@@ -153,7 +153,6 @@ export const modelsSettingsStyles = stylex.create({
     fontSize: t.fontLg,
     lineHeight: t.leadingLg,
     letterSpacing: "0.12em",
-    fontVariantNumeric: "tabular-nums",
     userSelect: "all",
     whiteSpace: "nowrap",
   },

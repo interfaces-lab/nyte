@@ -411,7 +411,6 @@ export const settingsPatterns = stylex.create({
     color: t.textSecondary,
     fontFamily: "inherit",
     fontSize: t.fontSm,
-    fontVariantNumeric: "tabular-nums",
     lineHeight: t.leadingSm,
     textAlign: "center",
     // Global ::selection mixes --nyte-accent and would tint the value.
@@ -420,6 +419,4 @@ export const settingsPatterns = stylex.create({
       color: t.textSecondary,
     },
   },
-  // Numbers inside settings copy: fixed-width digits so counts don't jitter.
-  numeral: { fontVariantNumeric: "tabular-nums" },
 });

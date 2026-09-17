@@ -39,7 +39,6 @@ export const trayStyles = create({
     whiteSpace: "nowrap",
     fontWeight: 400,
     lineHeight: "20px",
-    fontVariantNumeric: "tabular-nums",
     color: t.textSecondary,
   },
   list: {
