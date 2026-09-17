@@ -7,20 +7,25 @@ import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
 import { buttonStyle, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
 import { Switch } from "react-native";
 import { css, html } from "react-strict-dom";
+import type { SFSymbol } from "expo-symbols";
 import { GroupRow } from "../ui/group.tsx";
+import { IconRing } from "../ui/icon-tile.tsx";
 import type { Setting } from "./preferences.ts";
 import { controls, spacing, textStyles, typography, useTheme } from "../theme.ts";
 
 export function ChoiceRow<Value extends string>({
   label,
+  icon,
   setting,
 }: {
   label: string;
+  icon?: SFSymbol;
   setting: Setting<Value>;
 }) {
   const theme = useTheme();
   return (
     <GroupRow>
+      {icon === undefined ? null : <IconRing name={icon} />}
       <html.span style={[textStyles.body, styles.label]}>{label}</html.span>
       <html.div style={styles.trailing}>
         <Host matchContents={{ horizontal: true }} style={menuHost} ignoreSafeArea="all">
@@ -56,16 +61,19 @@ export function ChoiceRow<Value extends string>({
 
 export function SwitchRow({
   label,
+  icon,
   value,
   onChange,
 }: {
   label: string;
+  icon?: SFSymbol;
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
   const theme = useTheme();
   return (
     <GroupRow>
+      {icon === undefined ? null : <IconRing name={icon} />}
       <html.span style={[textStyles.body, styles.label]}>{label}</html.span>
       <html.div style={styles.trailing}>
         <Switch
