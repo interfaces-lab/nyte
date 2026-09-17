@@ -242,9 +242,10 @@ export type TailnetAvailability =
   | { readonly kind: "missing" };
 
 /**
- * The local store this desktop is serving to the iOS app, frozen at the target
- * selected when sharing started. The token lives for this share alone;
- * stopping discards it.
+ * The local store this desktop is serving to the iOS app. The share starts on
+ * the target selected when sharing began; the phone's `workspace.select` moves
+ * it afterwards without touching the Mac's own selection. The token lives for
+ * this share alone; stopping discards it.
  */
 export type MobileShareState =
   | { readonly kind: "off"; readonly tailnet: TailnetAvailability }
@@ -1072,94 +1073,19 @@ export interface NyteBridge {
   readonly host: HostBridge;
 }
 
+/** Walk `sessions.create` / `host.vcs.diff` to the matching NyteBridge method. */
+type BridgeMethod<T, P extends string> = P extends `${infer Head}.${infer Rest}`
+  ? Head extends keyof T
+    ? BridgeMethod<T[Head], Rest>
+    : never
+  : P extends keyof T
+    ? T[P]
+    : never;
+
 /** The authoritative path-to-method relationship carried by Electron IPC. */
-export interface CallMethodByPath {
-  readonly "sessions.create": NyteBridge["sessions"]["create"];
-  readonly "sessions.get": NyteBridge["sessions"]["get"];
-  readonly "sessions.snapshot": NyteBridge["sessions"]["snapshot"];
-  readonly "sessions.metadata": NyteBridge["sessions"]["metadata"];
-  readonly "sessions.list": NyteBridge["sessions"]["list"];
-  readonly "sessions.rename": NyteBridge["sessions"]["rename"];
-  readonly "sessions.setPinned": NyteBridge["sessions"]["setPinned"];
-  readonly "sessions.setArchived": NyteBridge["sessions"]["setArchived"];
-  readonly "sessions.delete": NyteBridge["sessions"]["delete"];
-  readonly "sessions.configure": NyteBridge["sessions"]["configure"];
-  readonly "messages.send": NyteBridge["messages"]["send"];
-  readonly "messages.cancel": NyteBridge["messages"]["cancel"];
-  readonly "messages.redeliver": NyteBridge["messages"]["redeliver"];
-  readonly "jobs.list": NyteBridge["jobs"]["list"];
-  readonly "jobs.start": NyteBridge["jobs"]["start"];
-  readonly "jobs.background": NyteBridge["jobs"]["background"];
-  readonly "jobs.cancel": NyteBridge["jobs"]["cancel"];
-  readonly "runs.abort": NyteBridge["runs"]["abort"];
-  readonly "runs.reply": NyteBridge["runs"]["reply"];
-  readonly "heads.move": NyteBridge["heads"]["move"];
-  readonly "workspace.list": NyteBridge["workspace"]["list"];
-  readonly "workspace.forget": NyteBridge["workspace"]["forget"];
-  readonly "workspace.vcs.diff": NyteBridge["workspace"]["vcs"]["diff"];
-  readonly "provider.models.default": NyteBridge["provider"]["models"]["default"];
-  readonly "plugins.catalog": NyteBridge["plugins"]["catalog"];
-  readonly "plugins.list": NyteBridge["plugins"]["list"];
-  readonly "plugins.commands.list": NyteBridge["plugins"]["commands"]["list"];
-  readonly "plugins.commands.run": NyteBridge["plugins"]["commands"]["run"];
-  readonly "plugins.settings.list": NyteBridge["plugins"]["settings"]["list"];
-  readonly "plugins.settings.apply": NyteBridge["plugins"]["settings"]["apply"];
-  readonly "plugins.resources.list": NyteBridge["plugins"]["resources"]["list"];
-  readonly "host.state": NyteBridge["host"]["state"];
-  readonly "host.sessionDirectory": NyteBridge["host"]["sessionDirectory"];
-  readonly "host.fonts": NyteBridge["host"]["fonts"];
-  readonly "host.openWorkspace": NyteBridge["host"]["openWorkspace"];
-  readonly "host.pickWorkspace": NyteBridge["host"]["pickWorkspace"];
-  readonly "host.trustWorkspace": NyteBridge["host"]["trustWorkspace"];
-  readonly "host.closeWorkspace": NyteBridge["host"]["closeWorkspace"];
-  readonly "host.catalog": NyteBridge["host"]["catalog"];
-  readonly "host.usage": NyteBridge["host"]["usage"];
-  readonly "host.accountLimits": NyteBridge["host"]["accountLimits"];
-  readonly "host.login": NyteBridge["host"]["login"];
-  readonly "host.cancelLogin": NyteBridge["host"]["cancelLogin"];
-  readonly "host.logout": NyteBridge["host"]["logout"];
-  readonly "host.setPreference": NyteBridge["host"]["setPreference"];
-  readonly "host.vcs.snapshot": NyteBridge["host"]["vcs"]["snapshot"];
-  readonly "host.vcs.contents": NyteBridge["host"]["vcs"]["contents"];
-  readonly "host.vcs.diff": NyteBridge["host"]["vcs"]["diff"];
-  readonly "host.vcs.log": NyteBridge["host"]["vcs"]["log"];
-  readonly "host.vcs.refs": NyteBridge["host"]["vcs"]["refs"];
-  readonly "host.vcs.revert": NyteBridge["host"]["vcs"]["revert"];
-  readonly "host.vcs.stage": NyteBridge["host"]["vcs"]["stage"];
-  readonly "host.vcs.commit": NyteBridge["host"]["vcs"]["commit"];
-  readonly "host.vcs.createBranch": NyteBridge["host"]["vcs"]["createBranch"];
-  readonly "host.vcs.push": NyteBridge["host"]["vcs"]["push"];
-  readonly "host.vcs.createPullRequest": NyteBridge["host"]["vcs"]["createPullRequest"];
-  readonly "host.files.list": NyteBridge["host"]["files"]["list"];
-  readonly "host.files.cancelList": NyteBridge["host"]["files"]["cancelList"];
-  readonly "host.files.read": NyteBridge["host"]["files"]["read"];
-  readonly "host.files.save": NyteBridge["host"]["files"]["save"];
-  readonly "host.github.state": NyteBridge["host"]["github"]["state"];
-  readonly "host.github.signIn": NyteBridge["host"]["github"]["signIn"];
-  readonly "host.github.signOut": NyteBridge["host"]["github"]["signOut"];
-  readonly "host.server.state": NyteBridge["host"]["server"]["state"];
-  readonly "host.server.connect": NyteBridge["host"]["server"]["connect"];
-  readonly "host.server.disconnect": NyteBridge["host"]["server"]["disconnect"];
-  readonly "host.server.createSession": NyteBridge["host"]["server"]["createSession"];
-  readonly "host.mobile.state": NyteBridge["host"]["mobile"]["state"];
-  readonly "host.mobile.start": NyteBridge["host"]["mobile"]["start"];
-  readonly "host.mobile.stop": NyteBridge["host"]["mobile"]["stop"];
-  readonly "host.openExternal": NyteBridge["host"]["openExternal"];
-  readonly "host.revealPath": NyteBridge["host"]["revealPath"];
-  readonly "host.contextMenu": NyteBridge["host"]["contextMenu"];
-  readonly "host.browser.open": NyteBridge["host"]["browser"]["open"];
-  readonly "host.browser.navigate": NyteBridge["host"]["browser"]["navigate"];
-  readonly "host.browser.menu": NyteBridge["host"]["browser"]["menu"];
-  readonly "host.browser.perform": NyteBridge["host"]["browser"]["perform"];
-  readonly "host.browser.close": NyteBridge["host"]["browser"]["close"];
-  readonly "host.browser.captureFrame": NyteBridge["host"]["browser"]["captureFrame"];
-  readonly "host.terminal.create": NyteBridge["host"]["terminal"]["create"];
-  readonly "host.terminal.write": NyteBridge["host"]["terminal"]["write"];
-  readonly "host.terminal.resize": NyteBridge["host"]["terminal"]["resize"];
-  readonly "host.terminal.acknowledge": NyteBridge["host"]["terminal"]["acknowledge"];
-  readonly "host.terminal.idle": NyteBridge["host"]["terminal"]["idle"];
-  readonly "host.terminal.close": NyteBridge["host"]["terminal"]["close"];
-}
+export type CallMethodByPath = {
+  readonly [P in CallPath]: BridgeMethod<NyteBridge, P>;
+};
 
 export type CallInput<P extends CallPath> =
   Parameters<CallMethodByPath[P]> extends [] ? undefined : Parameters<CallMethodByPath[P]>[0];
