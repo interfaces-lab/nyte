@@ -3,6 +3,8 @@
  * operations; this file composes the session pool, runners, subagents,
  * relocation, and summaries, and exposes them as the `Nyte` namespaces.
  */
+import { realpath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isTerminalPhase, OPERATIONS, validateHeadName } from "@nyte-ai/protocol";
 import { getSupportedThinkingLevels } from "@nyte-ai/ai";
 import { Value } from "typebox/value";
@@ -17,6 +19,7 @@ import { toJsonValue } from "../json.ts";
 import { normalizeImageContent } from "../../utils/image.ts";
 import { discoverMentionFiles, rankMentionFiles } from "../../mention-files.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
+import { workspaceName } from "../../workspace-registry.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
 import { createRelocation } from "./relocate.ts";
@@ -66,10 +69,36 @@ import {
   type SessionEvent,
   type SessionId,
   type WaitOutcome,
+  type WorkspaceRegistryBackend,
+  type WorkspaceSelection,
 } from "./types.ts";
 
 interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
+}
+
+async function selectionAt(
+  workspaces: WorkspaceRegistryBackend | undefined,
+  cwd: string,
+): Promise<WorkspaceSelection> {
+  const path = await realpath(cwd).catch(() => cwd);
+  const home = await realpath(homedir()).catch(() => homedir());
+  if (path === home) return { kind: "home" };
+  // A registered cwd answers with the registry's own row: real recency, not 0.
+  const listed = (await workspaces?.list())?.find((entry) => entry.path === path);
+  if (listed !== undefined) return { kind: "project", workspace: listed };
+  return {
+    kind: "project",
+    workspace: {
+      path,
+      name: workspaceName(path),
+      lastOpenedAt: 0,
+      available: await stat(path).then(
+        (info) => info.isDirectory(),
+        () => false,
+      ),
+    },
+  };
 }
 
 function toModelInfo(model: NyteOptions["model"]): ModelInfo {
@@ -578,6 +607,30 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       async list() {
         pool.alive();
         return (await options.workspaces?.list()) ?? [];
+      },
+      async current() {
+        pool.alive();
+        const cwd = await pool.cwdForNewSession();
+        if (cwd === undefined) return { kind: "home" };
+        return selectionAt(options.workspaces, cwd);
+      },
+      async select(input) {
+        pool.alive();
+        const cwd = await pool.cwdForNewSession();
+        // No resolved activation means nothing is served; claiming home would lie.
+        if (cwd === undefined) {
+          return { kind: "failed", message: "No workspace is active on this host" };
+        }
+        const current = await selectionAt(options.workspaces, cwd);
+        if (input.kind === "home") {
+          if (current.kind === "home") return { kind: "opened", selection: current };
+          return { kind: "failed", message: "This host serves one workspace" };
+        }
+        const path = await realpath(input.path).catch(() => input.path);
+        if (current.kind === "project" && current.workspace.path === path) {
+          return { kind: "opened", selection: current };
+        }
+        return { kind: "failed", message: "This host serves one workspace" };
       },
       async forget(input) {
         pool.alive();

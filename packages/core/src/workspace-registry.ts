@@ -50,7 +50,7 @@ function parseRegistryFile(text: string) {
   return entries;
 }
 
-function workspaceName(path: string): string {
+export function workspaceName(path: string): string {
   const segments = path.split(/[\\/]/).filter((segment) => segment !== "");
   return segments.at(-1) ?? path;
 }
