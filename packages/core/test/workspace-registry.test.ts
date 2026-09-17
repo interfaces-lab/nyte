@@ -316,10 +316,7 @@ describe("workspace operations", () => {
         kind: "project",
         workspace: { path, name: basename(path), lastOpenedAt: 0, available: true },
       });
-      assert.equal(
-        (await uji.workspace.select({ kind: "project", path: cwd })).kind,
-        "opened",
-      );
+      assert.equal((await uji.workspace.select({ kind: "project", path: cwd })).kind, "opened");
     } finally {
       await uji.close();
       await store.close();

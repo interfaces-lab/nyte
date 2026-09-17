@@ -24,11 +24,7 @@ export function ContextRow({
         label={
           <HStack spacing={4}>
             <Text modifiers={[font(chipFont), foregroundStyle(theme.muted)]}>{head}</Text>
-            <Image
-              systemName="chevron.down"
-              size={10}
-              modifiers={[foregroundStyle(theme.muted)]}
-            />
+            <Image systemName="chevron.down" size={10} modifiers={[foregroundStyle(theme.muted)]} />
           </HStack>
         }
         modifiers={[buttonStyle("plain")]}
