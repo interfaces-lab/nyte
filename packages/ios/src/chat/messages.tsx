@@ -1,9 +1,16 @@
 import { memo, useState } from "react";
 import type { ReactNode } from "react";
-import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Pressable } from "react-native";
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  Linking,
+  Pressable,
+  useColorScheme,
+} from "react-native";
 import { setStringAsync } from "expo-clipboard";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
+import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
 import type { TurnPart } from "@nyte-ai/protocol";
 import type { SessionState } from "@nyte-ai/core/client";
@@ -22,6 +29,7 @@ import {
 } from "../theme.ts";
 import type { ConversationLayout } from "./conversation-layout.ts";
 import { useTranscriptFont } from "../settings/preferences.ts";
+import { toast } from "../ui/toast.tsx";
 import { elapsed } from "./sessions.ts";
 import { fileStatus, formatDuration, type ConversationTurn } from "./turn-changes.ts";
 
@@ -42,11 +50,15 @@ export function Markdown({
   streaming?: boolean;
 }) {
   const theme = useTheme();
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
   const transcriptFont = useTranscriptFont();
+  const style = markdownStyle(theme, transcriptFont.value, scheme);
   return (
     <EnrichedMarkdownText
-      markdown={text}
-      markdownStyle={markdownStyle(theme, transcriptFont.value)}
+      // remend closes the stream's dangling fences and markers so the tail
+      // never renders as literal `**` or an unstyled code dump.
+      markdown={streaming ? remend(text) : text}
+      markdownStyle={style}
       flavor="github"
       streamingAnimation={streaming}
       enableTaskListItemToggle={false}
@@ -54,7 +66,7 @@ export function Markdown({
       containerStyle={{ width }}
       onLinkPress={({ url }) => {
         if (!/^https?:\/\//i.test(url)) return;
-        void Linking.openURL(url).catch(() => Alert.alert("Couldn't open link", url));
+        void Linking.openURL(url).catch(() => toast.error("Couldn't open link", url));
       }}
     />
   );
