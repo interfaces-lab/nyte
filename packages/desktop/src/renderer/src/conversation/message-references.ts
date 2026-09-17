@@ -2,17 +2,21 @@
  * What a composer chip stands for, and the one text spelling each kind has.
  *
  * A draft is plain text: every chip owns an exact token in it (`@file://…`,
- * `[$skill](path)`, `@current-conversation`), so a draft string restores its
- * chips without a second document. A sent message keeps the provider contract
- * (text and images): skill chips become the instruction sentences at its head,
- * and those sentences read back as chips.
+ * `[$skill](path)`, `@current-conversation`, `@clipboard/<n>:…`), so a draft
+ * string restores its chips without a second document. A sent message keeps
+ * the provider contract (text and images): skill chips become the instruction
+ * sentences at its head, clipboard chips unwrap to their body, and those
+ * sentences read back as chips.
  */
 import type { MentionFile } from "@nyte-ai/core/views";
 
 export type MessageReference =
   | { readonly kind: "file"; readonly file: MentionFile }
   | { readonly kind: "skill"; readonly name: string; readonly path: string }
-  | { readonly kind: "mention"; readonly id: "current-conversation" };
+  | { readonly kind: "mention"; readonly id: "current-conversation" }
+  | { readonly kind: "clipboard"; readonly body: string };
+
+type ClipboardReference = Extract<MessageReference, { readonly kind: "clipboard" }>;
 
 type MessagePart =
   | { readonly kind: "text"; readonly text: string }
@@ -23,6 +27,9 @@ export const CONVERSATION_MENTION: MessageReference = {
   id: "current-conversation",
 };
 const CONVERSATION_MENTION_TEXT = "@current-conversation";
+const CLIPBOARD_PASTE_MIN_LINES = 4;
+const CLIPBOARD_PASTE_MIN_CHARS = 512;
+const CLIPBOARD_TOKEN_PREFIX = "@clipboard/";
 
 /** `[$name](path)`: the persisted skill link the transcript already hides. */
 const SKILL_LINK_PATTERN = /\[\$(?<name>[^\]\r\n]+)\]\((?<path>[^)\r\n]*)\)/gu;
@@ -45,6 +52,80 @@ export function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
 }
 
+/** Trailing newline is not a line. */
+export function clipboardLineCount(body: string): number {
+  if (body === "") return 0;
+  return body.replace(/\r?\n$/u, "").split(/\r?\n/u).length;
+}
+
+/** Length-prefixed JSON so a body with newlines stays one TextNode. */
+function encodeClipboardToken(body: string): string {
+  const payload = JSON.stringify(body);
+  return `${CLIPBOARD_TOKEN_PREFIX}${String(payload.length)}:${payload}`;
+}
+
+function decodeClipboardToken(
+  text: string,
+  start: number,
+): { readonly end: number; readonly body: string } | undefined {
+  if (!text.startsWith(CLIPBOARD_TOKEN_PREFIX, start)) return undefined;
+  const lengthStart = start + CLIPBOARD_TOKEN_PREFIX.length;
+  const colon = text.indexOf(":", lengthStart);
+  if (colon <= lengthStart) return undefined;
+  const lengthText = text.slice(lengthStart, colon);
+  if (!/^[0-9]+$/u.test(lengthText)) return undefined;
+  const length = Number(lengthText);
+  const payloadStart = colon + 1;
+  const payloadEnd = payloadStart + length;
+  if (payloadEnd > text.length) return undefined;
+  const payload = text.slice(payloadStart, payloadEnd);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "string" || parsed === "") return undefined;
+  return { end: payloadEnd, body: parsed };
+}
+
+function nextClipboardToken(
+  text: string,
+  from: number,
+): { readonly start: number; readonly end: number; readonly body: string } | undefined {
+  let search = from;
+  while (search < text.length) {
+    const start = text.indexOf(CLIPBOARD_TOKEN_PREFIX, search);
+    if (start === -1) return undefined;
+    const decoded = decodeClipboardToken(text, start);
+    if (decoded !== undefined) return { start, end: decoded.end, body: decoded.body };
+    search = start + 1;
+  }
+  return undefined;
+}
+
+function isSingleUrlPaste(text: string): boolean {
+  const trimmed = text.trim();
+  if (clipboardLineCount(trimmed) !== 1) return false;
+  return (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("www.")
+  );
+}
+
+export function clipboardReferenceFromPaste(text: string): ClipboardReference | undefined {
+  if (text === "") return undefined;
+  if (isSingleUrlPaste(text)) return undefined;
+  if (
+    clipboardLineCount(text) < CLIPBOARD_PASTE_MIN_LINES &&
+    text.length < CLIPBOARD_PASTE_MIN_CHARS
+  ) {
+    return undefined;
+  }
+  return { kind: "clipboard", body: text };
+}
+
 /** The token a reference occupies in a draft. */
 export function referenceText(reference: MessageReference): string {
   switch (reference.kind) {
@@ -54,6 +135,8 @@ export function referenceText(reference: MessageReference): string {
       return `[$${reference.name}](${reference.path})`;
     case "mention":
       return CONVERSATION_MENTION_TEXT;
+    case "clipboard":
+      return encodeClipboardToken(reference.body);
     default: {
       const exhaustive: never = reference;
       return exhaustive;
@@ -69,6 +152,10 @@ export function referenceLabel(reference: MessageReference): string {
       return `/${reference.name}`;
     case "mention":
       return "Current conversation";
+    case "clipboard": {
+      const lines = clipboardLineCount(reference.body);
+      return `Clipboard (${String(lines)} ${lines === 1 ? "line" : "lines"})`;
+    }
     default: {
       const exhaustive: never = reference;
       return exhaustive;
@@ -85,6 +172,8 @@ export function referenceTitle(reference: MessageReference): string {
       return reference.path === "" ? skillInstruction(reference.name) : reference.path;
     case "mention":
       return "Use this conversation as context";
+    case "clipboard":
+      return "Pasted text";
     default: {
       const exhaustive: never = reference;
       return exhaustive;
@@ -92,14 +181,31 @@ export function referenceTitle(reference: MessageReference): string {
   }
 }
 
-/** The sentence a sent message carries for the reference; files and mentions carry none. */
+/** The sentence a sent message carries for the reference; only skills contribute one. */
 export function referenceInstruction(reference: MessageReference): string | undefined {
   switch (reference.kind) {
     case "skill":
       return skillInstruction(reference.name);
     case "file":
     case "mention":
+    case "clipboard":
       return undefined;
+    default: {
+      const exhaustive: never = reference;
+      return exhaustive;
+    }
+  }
+}
+
+export function referencePromptText(reference: MessageReference): string {
+  switch (reference.kind) {
+    case "file":
+      return referenceText(reference);
+    case "clipboard":
+      return reference.body;
+    case "skill":
+    case "mention":
+      return "";
     default: {
       const exhaustive: never = reference;
       return exhaustive;
@@ -115,6 +221,8 @@ export function sameReference(left: MessageReference, right: MessageReference): 
       return right.kind === "skill" && right.name === left.name;
     case "mention":
       return right.kind === "mention" && right.id === left.id;
+    case "clipboard":
+      return right.kind === "clipboard" && right.body === left.body;
     default: {
       const exhaustive: never = left;
       return exhaustive;
@@ -195,19 +303,54 @@ function draftReference(
 function draftParts(text: string, options: DraftParseOptions): readonly MessagePart[] {
   const parts: MessagePart[] = [];
   let cursor = 0;
-  for (const match of text.matchAll(DRAFT_TOKEN_PATTERN)) {
-    const reference = draftReference(match, options);
-    if (reference === undefined) continue;
-    const end = match.index + match[0].length;
+  const tokens = [...text.matchAll(DRAFT_TOKEN_PATTERN)];
+  let tokenIndex = 0;
+  while (cursor < text.length) {
+    const clipboard = nextClipboardToken(text, cursor);
+    while (tokenIndex < tokens.length && (tokens[tokenIndex]?.index ?? 0) < cursor) {
+      tokenIndex += 1;
+    }
+    const token = tokens[tokenIndex];
+    const clipboardStart = clipboard?.start;
+    const tokenStart = token?.index;
+    if (
+      clipboard !== undefined &&
+      clipboardStart !== undefined &&
+      (tokenStart === undefined || clipboardStart <= tokenStart)
+    ) {
+      if (clipboard.start > cursor) {
+        parts.push({ kind: "text", text: text.slice(cursor, clipboard.start) });
+      }
+      parts.push({
+        kind: "reference",
+        reference: { kind: "clipboard", body: clipboard.body },
+        source: text.slice(clipboard.start, clipboard.end),
+      });
+      cursor = clipboard.end;
+      continue;
+    }
+    if (token === undefined || tokenStart === undefined) {
+      parts.push({ kind: "text", text: text.slice(cursor) });
+      return parts;
+    }
+    const reference = draftReference(token, options);
+    if (reference === undefined) {
+      tokenIndex += 1;
+      continue;
+    }
+    const end = token.index + token[0].length;
     // A skill link closes itself; the other tokens only end at a delimiter.
     const open = reference.kind !== "skill" && end === text.length;
     const known = reference.kind === "file" && options.files?.has(reference.file.url) === true;
-    if (open && options.complete === false && !known) continue;
-    if (match.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, match.index) });
-    parts.push({ kind: "reference", reference, source: match[0] });
+    if (open && options.complete === false && !known) {
+      tokenIndex += 1;
+      continue;
+    }
+    if (token.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, token.index) });
+    parts.push({ kind: "reference", reference, source: token[0] });
     cursor = end;
+    tokenIndex += 1;
   }
-  if (cursor < text.length) parts.push({ kind: "text", text: text.slice(cursor) });
   return parts;
 }
 

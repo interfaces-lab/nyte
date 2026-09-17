@@ -30,7 +30,12 @@ import {
   ComposerReferenceNode,
   registerComposerReferences,
 } from "./composer-document.ts";
-import { CONVERSATION_MENTION, referenceLabel } from "./message-references.ts";
+import {
+  CONVERSATION_MENTION,
+  clipboardReferenceFromPaste,
+  referenceLabel,
+  referenceText,
+} from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
 const file: MentionFile = {
@@ -373,6 +378,24 @@ describe("composer document", () => {
       .read(() =>
         expect($composerSelection()).toEqual({ start: prefix.length, end: prefix.length }),
       );
+  });
+
+  it("unwraps a restored clipboard chip to its body on submit", () => {
+    const body = "one\ntwo\nthree\nfour";
+    const clipboard = clipboardReferenceFromPaste(body);
+    expect(clipboard).toEqual({ kind: "clipboard", body });
+    if (clipboard === undefined) return;
+    const token = referenceText(clipboard);
+    const { editor, labels, restore } = composer();
+    restore(token);
+    expect(labels()).toEqual(["Clipboard (4 lines)"]);
+    editor.getEditorState().read(() => {
+      expect($getRoot().getTextContent()).toBe(token);
+      expect($composerSubmission()).toEqual({
+        text: body,
+        references: [clipboard],
+      });
+    });
   });
 
   it("opens a completion for a trigger at the caret and never for a file URL", () => {

@@ -164,6 +164,29 @@ export async function run(): Promise<string> {
     flushSync(() => handle.focus());
     await paint();
     check(document.activeElement === area, "editor refocuses after inactive changes");
+    flushSync(() => handle.replaceText(0, handle.readDocument().text.length, ""));
+    await paint();
+    flushSync(() => handle.replaceText(0, 0, "https://example.com/foo"));
+    await paint();
+    check(
+      handle.readDocument().text === "https://example.com/foo",
+      "typed URL stays the draft text",
+    );
+    const link = area.querySelector("a");
+    check(link?.textContent === "https://example.com/foo", "AutoLink wraps the typed URL");
+    check(
+      area.querySelector("[data-composer-reference]") === null,
+      "typed URL is not a composer chip",
+    );
+    const urlSelection = document.getSelection();
+    check(
+      urlSelection !== null &&
+        urlSelection.isCollapsed &&
+        link !== null &&
+        urlSelection.anchorNode instanceof Node &&
+        link.contains(urlSelection.anchorNode),
+      "caret sits in the AutoLink path",
+    );
     return "passed";
   } finally {
     flushSync(() => root.unmount());
