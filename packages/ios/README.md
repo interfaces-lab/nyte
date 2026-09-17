@@ -23,7 +23,9 @@ writes the same text the desktop composer writes, so a message sent from a phone
 reads back there as the same chip: `@file:///…` for a file, `/name ` for a
 command, and the skill's instruction sentence at the head of the draft. A draft
 that is only a command line runs the command through `plugins.commands.run`
-instead of being sent as text.
+instead of being sent as text. The Agents list composer can pick Home or a
+recent folder through `workspace.select` before the first message. Settings
+lists those folders as read-only. The phone has no Open folder control.
 
 The app supports a saved host connection, chat status, streamed replies,
 follow-up messages while a run works, a separate Stop action, answers to waiting
@@ -63,8 +65,9 @@ The connect screen can also read a pairing code: `nyte://connect?name=…&url=�
 scanned with the back camera through VisionCamera's `useObjectOutput`, which
 reads QR codes through AVFoundation without an ML dependency. A scanned address
 goes through the same `parseConnection` policy as a typed one, so a public HTTP
-host is refused either way. The Mac does not publish such a code yet, and a
-simulator has no camera, so the scan button only appears on a device with one.
+host is refused either way. Desktop Settings › Server › iOS app shows that
+pairing QR. A simulator has no camera, so the scan button only appears on a
+device with one.
 
 A loopback share reaches only the iOS Simulator on the same Mac. A Tailscale share
 reaches a physical iPhone signed in to the same tailnet, on any network, and
@@ -101,6 +104,9 @@ for the current terminal without changing the system Xcode setting:
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer
 ```
+
+The home-screen icon is `../desktop/build/icon-ios.png`: the same artwork on a
+square plate. The Dock-padded desktop PNG shows a white strip under iOS's mask.
 
 From the repository root:
 
@@ -218,23 +224,27 @@ and render the owning feature's screen body.
 | --- | --- |
 | `src/app/` | Expo Router route tree: root layout and thin route files |
 | `src/connection/` | Connection form, pairing-code scanner, address validation, Keychain, host client creation, and the host context behind the gate |
-| `src/chat/` | Conversation screens, list rows and grouping, composer, compose sheet, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
+| `src/chat/` | Conversation screens, list rows and grouping, composer, new-chat workspace menu, compose sheet, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
 | `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
 | `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
 | `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
-| `src/settings/` | Settings page: host row, workspaces, connection status, disconnect, and the stored display preferences |
+| `src/settings/` | Settings page: host row, read-only workspaces, connection status, disconnect, and the stored display preferences |
 | `src/annotate/` | Photo markup editor: numbered points, drawn marks, and comments |
-| `src/media/` | Photo picking, local image preparation, camera capture, annotation notes, and the shared attachment thumbnail |
+| `src/media/` | Photo picking, local image preparation, annotation notes, and the shared attachment thumbnail |
 | `src/ui/` | Shared native glass buttons and empty states |
 | `src/theme.ts` | Shared colors, typography, spacing, and control dimensions |
 | `plugins/` | Source-controlled Expo native configuration |
 | `test/` | Behavior checks without native modules |
 
-`chat/composer.tsx` owns drafts, attachment staging, Send/Stop controls, and the
-one opaque bar the transcript scrolls under. It also owns the bottom inset: the
-composer sits on the keyboard's top edge while it is open and clears the home
-indicator while it is closed, so the screens around it pass no keyboard offsets
-of their own. `chat/completions.ts` and `chat/suggestion-menu.tsx` own the `@`
+`chat/composer.tsx` owns drafts, attachment staging, Send/Stop, model and
+thinking choice, the new-chat workspace menu, and the glass pill the transcript
+scrolls under. Resting it is one row; focus grows a model menu and a thinking
+gauge that morphs into the host's effort slider. A new chat shows a workspace
+chip above the glass, Home then recents, calling `workspace.select`. Plus morphs
+into Camera and Photos over the keyboard, then a library grid or live camera; a
+session head chip appears only when there is more than one head to send on. It also owns the bottom inset: the composer sits on the
+keyboard's top edge while it is open and clears the home indicator while it is
+closed, so the screens around it pass no keyboard offsets of their own. `chat/completions.ts` and `chat/suggestion-menu.tsx` own the `@`
 and `/` menus.
 `settings/preferences.ts` owns the device's own settings — appearance,
 transcript font, and what the Agents list shows — in one MMKV instance. They
@@ -307,12 +317,20 @@ the disclosure chevron. A preference resolves on the row instead: a pull-down
 menu shows its value beside `chevron.up.chevron.down`, and a switch toggles in
 place, so choosing one never leaves the page. Grouped cards separate from the
 page by their surface alone; the hairlines between rows start under the leading
-tile, or under the label in groups that have none. The home and chat capsule is a
-`glassEffect` behind the React Native field; the effect paints an empty
-container, since a filled SwiftUI shape would draw over it. Plus and mic are
-glass circle controls. Send and stop stay solid discs so the send spinner can
-sit on an opaque fill. Nyte's accent token colors primary actions; neutral controls
-use the foreground token. Message content stays on solid surfaces.
+tile, or under the label in groups that have none. The home and chat composer is
+a Liquid Glass pill: plus, prompt, and mic or send on one row until the field is
+focused, then the prompt lifts and a model menu plus thinking gauge join the
+icon row. On the Agents list, a workspace chip for Home or a recent folder sits
+above that pill. Tapping the gauge stretches it into the reasoning-effort slider above
+the keyboard, using the selected model's `thinkingLevels` rather than a fixed
+Instant/Medium/High set. Geometry and springs follow Mehdi Davoodi's MIT
+ChatGPT model-selector demo (`@mehdi_made`); the app wires those stops to
+`sessions.configure`. Tapping plus morphs it into Camera and Photos, then a
+library grid or live camera, from the same author's MIT attachments-menu demo;
+photos come from the on-device library and VisionCamera. A session head is
+shown only when there is more than one to send on. Plus, mic, send, and stop are symbols on that card rather
+than nested glass buttons, so the material stays one surface. The empty field
+keeps one dictate control. Message content stays on solid surfaces.
 
 React Strict DOM supplies the StyleX-compatible `css` API for native layout,
 with no WebView bridge. All screens consume colors, typography, spacing, radii,
@@ -352,6 +370,8 @@ streaming fetch, and Keychain integration.
 | `react-native-keyboard-controller` | Native keyboard coordination |
 | `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |
 | `expo-symbols`, `expo-clipboard` | SF Symbols and local message copying |
+| `expo-glass-effect`, `expo-blur` | Liquid Glass composer card and the thinking-slider track |
+| `react-native-gesture-handler` | Pan on the thinking slider |
 | `react-native-mmkv` 4 | Synchronous storage for display preferences |
 | `react-native-vision-camera` 5.2 | Native still-photo capture |
 | `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
@@ -359,7 +379,7 @@ streaming fetch, and Keychain integration.
 | `expo-secure-store`, `expo-crypto` | Saved host token and message retry IDs |
 | `expo-constants`, `expo-linking`, `expo-status-bar` | Router runtime peers, deep links, and status bar |
 | `react-native-safe-area-context` | Device and modal insets |
-| `react-native-reanimated`, `react-native-worklets` | Required native keyboard/list peers |
+| `react-native-reanimated`, `react-native-worklets` | Keyboard peers and the composer/thinking morph |
 | `typebox` | Parse the saved connection at its boundary |
 
 React DOM remains a peer of React Strict DOM. `expo-dev-client` supports local
@@ -376,7 +396,11 @@ history are not part of this app. Model work stays on the Nyte host.
 
 T3's [composer layout](https://github.com/pingdotgg/t3code/blob/68c2277f500bbbb299396bcdcd0aec60dcb5db9d/apps/web/src/components/chat/ChatComposer.tsx#L5925)
 informs the shared 768pt maximum chat/composer width, compact mobile gutters,
-and model control below the text input. Its mobile
+and model control below the text input. The resting chrome — plus, model pill,
+mic, and a filled disc under the prompt — follows the input in
+[Reacticx's BorderBeam showcase](https://github.com/rit3zh/reacticx/blob/4e11fcfe04e0bd7054574acc1557320911d70e4c/app/components/border-beam/index.tsx),
+not the beam shader, and is implemented with Nyte tokens rather than that
+demo's source. T3's mobile
 [thread feed](https://github.com/pingdotgg/t3code/blob/0c5771d60a8ef2db34dfbbc142f7524badc829e0/apps/mobile/src/features/threads/ThreadFeed.tsx)
 informs `chat/conversation-layout.ts`: the screen measures the list viewport
 once, centers one content column inside the horizontal safe area, and hands
@@ -390,11 +414,9 @@ a SwiftUI host measured text without a width bound. Software Mansion's
 inform native text rendering and keyboard coordination. The camera follows
 [Margelo's current skills](https://github.com/margelo/react-native-skills/tree/main/skills)
 and VisionCamera v5 API; it does not use deprecated v4 camera methods.
-The [morphing menu reference](https://github.com/rit3zh/expo-morphing-menu)
-informs the composer's own menus: the attachment choices and the `@`/`/` list
-grow out of the capsule on one spring, on the capsule's surface, inside the
-composer's opaque bar, rather than arriving as a sheet or floating over the
-transcript. System SwiftUI menus still provide the model and head choices.
+The `@`/`/` lists still grow out of the composer rather than arriving as a
+sheet. Model choice stays a SwiftUI menu on the focused card. Thinking level is
+the gauge-to-slider morph above, not a second menu.
 
 ## Runtime ownership and remaining work
 

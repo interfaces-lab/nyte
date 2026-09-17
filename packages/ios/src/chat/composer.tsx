@@ -1,20 +1,37 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import { randomUUID } from "expo-crypto";
-import { ActivityIndicator, Keyboard, ScrollView, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useColorScheme,
+  useWindowDimensions,
+} from "react-native";
 import type { NativeSyntheticEvent, TextInputSelectionChangeEventData } from "react-native";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useReanimatedKeyboardAnimation } from "react-native-keyboard-controller";
-import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
+import { scheduleOnRN } from "react-native-worklets";
+import { Button, Host, Menu, Text } from "@expo/ui/swift-ui";
 import {
   buttonBorderShape,
   buttonStyle,
   controlSize,
-  disabled,
   font,
   foregroundStyle,
-  labelStyle,
-  tint,
+  menuIndicator,
 } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
@@ -30,7 +47,7 @@ import {
   typography,
 } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
-import type { ModelInfo, SessionId } from "@nyte-ai/protocol";
+import type { ModelInfo, ModelRef, RunConfig, SessionId } from "@nyte-ai/protocol";
 import { describeHostError } from "../connection/connection.ts";
 import { MAX_ATTACHMENTS, type StagedImage } from "../media/attachments.ts";
 import {
@@ -42,20 +59,30 @@ import {
 } from "../media/recent-photos.ts";
 import { clearAnnotation, resolveAttachment } from "../media/annotations.ts";
 import { AttachmentThumb } from "../media/attachment-thumb.tsx";
-import { CameraSheet } from "../media/camera-sheet.tsx";
-import { AttachPanel } from "./attach-panel.tsx";
+import { AttachmentsMenu } from "./attachments-menu.tsx";
 import { SuggestionMenu } from "./suggestion-menu.tsx";
 import { acceptSuggestion, parseCommandLine, useCompletions } from "./completions.ts";
 import type { CommandLine, Suggestion } from "./completions.ts";
 import { useModelCatalog } from "./remote-models.ts";
 import { ContextRow } from "./context-row.tsx";
+import { WorkspacePicker } from "./workspace-menu.tsx";
 import type { UserContent } from "./remote-chat.ts";
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
+import { AnimatedGlass, HAS_GLASS } from "./composer-glass.tsx";
+import { COMPOSER, ICON_ROW_BOTTOM, SELECTOR, SPRING } from "./composer-geometry.ts";
+import { GaugeIcon } from "./gauge-icon.tsx";
+import {
+  supportedThinkingLevel,
+  thinkingIndex,
+  thinkingLevelsFor,
+  type ThinkingLevel,
+} from "./thinking.ts";
+import { ThinkingSelector } from "./thinking-selector.tsx";
 
-/** Enough rows to scroll without asking the library for the whole roll. */
 const PHOTO_PAGE = 24;
-/** The capsule's inner padding, shared by the controls and the chips above it. */
-const CAPSULE_PAD = 10;
+const MODEL_FONT = { size: typography.caption.fontSize, weight: "medium" } as const;
+const modelHost = { height: COMPOSER.hit } as const;
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 type NewTarget = { kind: "new" };
 type SessionTarget = {
@@ -63,6 +90,7 @@ type SessionTarget = {
   sessionId: SessionId;
   head: string;
   heads: readonly string[];
+  config: RunConfig;
   sending: boolean;
   running: boolean;
   stopping: boolean;
@@ -72,10 +100,12 @@ type SessionTarget = {
 };
 
 /**
- * The one composer, on the list and in a conversation. The capsule holds the
- * plus, the field, and a right-hand disc that is mic or send; stop keeps its
- * own control. The plus grows the attachment choices above the capsule rather
- * than opening a picker over the screen, so the draft and the keyboard stay put.
+ * The one composer, on the list and in a conversation. Resting it is a single
+ * glass pill. Focus grows it into a two-row card: the prompt lifts, and the
+ * model menu plus thinking gauge appear in the icon row. The gauge morphs into
+ * the host's thinking-level slider without dismissing the keyboard. Plus morphs
+ * into Camera / Photos, then a library grid or live camera, over the keyboard.
+ * A new chat shows a workspace chip above the glass; a follow-up does not.
  */
 export const Composer = memo(function Composer({
   target,
@@ -83,36 +113,43 @@ export const Composer = memo(function Composer({
   prefill,
   backdrop,
   gutters,
+  onWorkspaceChange,
 }: {
   target: NewTarget | SessionTarget;
   placeholder: string;
   prefill?: { text: string; nonce: number };
-  /** What the screen behind the bar paints, so the opaque bar matches it. */
+  /** What the screen behind the bar paints, so a non-glass bar matches it. */
   backdrop: "background" | "canvas";
-  /**
-   * The screen's content column, safe area included. The capsule lines up with
-   * the rows above it rather than keeping a gutter of its own.
-   */
   gutters: { left: number; right: number };
+  onWorkspaceChange?: () => void;
 }) {
   const theme = useTheme();
+  const dark = useColorScheme() === "dark";
   const { client } = useHost();
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [images, setImages] = useState<StagedImage[]>([]);
-  const [camera, setCamera] = useState(false);
-  const [attaching, setAttaching] = useState(false);
+  const [attachVisible, setAttachVisible] = useState(false);
   const [access, setAccess] = useState<PhotoAccess>();
   const [staging, setStaging] = useState(false);
   const [starting, setStarting] = useState(false);
   const [localError, setLocalError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [model, setModel] = useState<ModelInfo>();
+  const [thinking, setThinking] = useState<ThinkingLevel>();
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const { catalog } = useModelCatalog(client, true);
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const fieldRef = useRef<TextInput>(null);
   const keyboard = useReanimatedKeyboardAnimation();
+  const focusDrive = useSharedValue(0);
+  const selector = useSharedValue(0);
+  const opening = useSharedValue(false);
+  const thinkingAt = useSharedValue(0);
+  const attachProgress = useSharedValue(0);
+  const attachExtend = useSharedValue(0);
   const sessionId = target.kind === "session" ? target.sessionId : undefined;
   const { completion, commands } = useCompletions(client, sessionId, draft, caret, focused);
   const dictationBase = useRef("");
@@ -134,8 +171,72 @@ export const Composer = memo(function Composer({
   const error =
     localError ?? dictation.error ?? (target.kind === "session" ? target.error : undefined);
   const hasContent = draft.trim() !== "" || images.length > 0;
-  const chosenModel = model ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
-  const busy = sending || camera || staging;
+  const sessionModel = target.kind === "session" ? target.config.model : undefined;
+  const sessionThinking = target.kind === "session" ? target.config.thinkingLevel : undefined;
+  const catalogModel = matchCatalogModel(catalog.kind === "ready" ? catalog.models : [], sessionModel);
+  const chosenModel =
+    model ?? catalogModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
+  const thinkingStops = thinkingLevelsFor(chosenModel);
+  const chosenThinking = supportedThinkingLevel(chosenModel, thinking ?? sessionThinking);
+  const canThink = thinkingStops.length > 1;
+  const busy = sending || staging;
+  const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
+  const gaugeFromRight = running && !dictation.recording ? 109 : 68.5;
+
+  const focus = useDerivedValue(() => Math.max(keyboard.progress.get(), focusDrive.get()));
+  // Distance from the window bottom to the card's bottom edge. OverKeyboardView
+  // is a full-screen window, so both overlays park against this instead of
+  // measuring — KeyboardStickyView's translate does not show up in layout Y.
+  const cardDock = useDerivedValue(() => {
+    const lifted = -keyboard.height.get();
+    const pad = insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get();
+    const gap = interpolate(focus.get(), [0, 1], [COMPOSER.collapsed.gap, COMPOSER.expanded.gap]);
+    return lifted + pad + gap;
+  });
+  const plusLeft = useDerivedValue(() => {
+    const inset = interpolate(focus.get(), [0, 1], [COMPOSER.collapsed.inset, COMPOSER.expanded.inset]);
+    return gutters.left + inset + 24 - COMPOSER.hit / 2;
+  });
+  const gaugeCenterX = windowWidth - gutters.right - gaugeFromRight;
+
+  useEffect(() => {
+    if (sessionThinking === undefined) return;
+    setThinking(sessionThinking);
+  }, [sessionThinking]);
+
+  useEffect(() => {
+    if (selectorOpen) return;
+    thinkingAt.set(thinkingIndex(thinkingLevelsFor(chosenModel), chosenThinking));
+  }, [chosenThinking, chosenModel, selectorOpen, thinkingAt]);
+
+  useEffect(() => {
+    if (!selectorOpen) return;
+    const frame = requestAnimationFrame(() => {
+      if (opening.get()) selector.set(withSpring(1, SPRING.open));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectorOpen, opening, selector]);
+
+  useAnimatedReaction(
+    () => !opening.get() && selector.get() < SELECTOR.handoff,
+    (landed, wasLanded) => {
+      if (landed && !wasLanded) scheduleOnRN(setSelectorOpen, false);
+    },
+  );
+
+  useEffect(() => {
+    if (completion === undefined) return;
+    attachExtend.set(withSpring(0, SPRING.open));
+    attachProgress.set(
+      withSpring(0, SPRING.open, (finished) => {
+        "worklet";
+        if (finished) {
+          attachExtend.set(0);
+          scheduleOnRN(setAttachVisible, false);
+        }
+      }),
+    );
+  }, [completion, attachExtend, attachProgress]);
 
   function buildContent(): UserContent {
     const text = draft.trim();
@@ -156,12 +257,6 @@ export const Composer = memo(function Composer({
     for (const image of submittedImages) clearAnnotation(image.id);
   };
 
-  /**
-   * One send, whichever target it lands on. A draft that is only a command line
-   * runs the command the way the desktop composer does; anything else is a
-   * message. The host says what a command did: output to show, a prompt to send
-   * as the user, or a name it does not know, which travels as the text it reads as.
-   */
   const deliver = async (input: {
     sessionId: SessionId;
     content: UserContent;
@@ -191,28 +286,39 @@ export const Composer = memo(function Composer({
     }
   };
 
+  const configureSession = (
+    sessionId: SessionId,
+    next: {
+      model?: ModelInfo;
+      thinkingLevel?: ThinkingLevel;
+    },
+  ) =>
+    client.sessions.configure({
+      sessionId,
+      ...(next.model === undefined
+        ? {}
+        : { model: { provider: next.model.provider, id: next.model.id } }),
+      ...(next.thinkingLevel === undefined ? {} : { thinkingLevel: next.thinkingLevel }),
+    });
+
   const submit = async () => {
     if (busy || !hasContent || dictation.recording) return;
     const submitted = draft;
     const submittedImages = images;
     const content = buildContent();
-    // Photos make the draft a message even when its text names a command.
     const line = images.length === 0 ? parseCommandLine(draft, commands) : undefined;
     setNotice(undefined);
     if (target.kind === "new") {
       setStarting(true);
       setLocalError(undefined);
       try {
-        // A command line is not a title; the command names the conversation it starts.
         const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
         const name = line?.name ?? (typed === "" ? "New conversation" : typed);
         const session = await client.sessions.create({ name });
-        if (model !== undefined) {
-          await client.sessions.configure({
-            sessionId: session.sessionId,
-            model: { provider: model.provider, id: model.id },
-          });
-        }
+        await configureSession(session.sessionId, {
+          model: chosenModel,
+          thinkingLevel: chosenThinking,
+        });
         const accepted = await deliver({
           sessionId: session.sessionId,
           content,
@@ -245,7 +351,6 @@ export const Composer = memo(function Composer({
     }
   };
 
-  /** Accepting a choice rewrites the token and leaves the caret after it. */
   const accept = (suggestion: Suggestion) => {
     if (completion === undefined) return;
     const next = acceptSuggestion(draft, completion.trigger, suggestion);
@@ -260,18 +365,44 @@ export const Composer = memo(function Composer({
       .catch(() => setAccess({ kind: "denied" }));
   };
 
-  /** Opening the choices is the moment to ask for photo access, not app launch. */
-  const toggleAttaching = () => {
-    const next = !attaching;
-    setAttaching(next);
-    if (!next) return;
+  const closeSelector = () => {
+    opening.set(false);
+    selector.set(withSpring(0, SPRING.close));
+  };
+
+  const closeAttach = () => {
+    attachExtend.set(withSpring(0, SPRING.open));
+    attachProgress.set(
+      withSpring(0, SPRING.open, (finished) => {
+        "worklet";
+        if (finished) {
+          attachExtend.set(0);
+          scheduleOnRN(setAttachVisible, false);
+        }
+      }),
+    );
+  };
+
+  const openAttach = () => {
+    if (attachDisabled) return;
+    if (selectorOpen) closeSelector();
+    setAttachVisible(true);
+    attachProgress.set(withSpring(1, SPRING.open));
     setLocalError(undefined);
     loadPhotos();
   };
 
+  const openSelector = () => {
+    if (!canThink) return;
+    if (attachVisible) closeAttach();
+    opening.set(true);
+    if (selectorOpen) selector.set(withSpring(1, SPRING.open));
+    else setSelectorOpen(true);
+  };
+
   const attachPhoto = async (photo: RecentPhoto) => {
     if (busy || images.length >= MAX_ATTACHMENTS) return;
-    setAttaching(false);
+    closeAttach();
     setStaging(true);
     setLocalError(undefined);
     try {
@@ -292,17 +423,22 @@ export const Composer = memo(function Composer({
   };
 
   const chooseModel = (choice: ModelInfo) => {
+    const nextThinking = supportedThinkingLevel(choice, chosenThinking);
     setModel(choice);
-    // A conversation already exists, so the change lands now instead of waiting
-    // for the next send.
-    if (target.kind === "session") {
-      void client.sessions
-        .configure({
-          sessionId: target.sessionId,
-          model: { provider: choice.provider, id: choice.id },
-        })
-        .catch((cause: unknown) => setLocalError(describeHostError(cause)));
-    }
+    setThinking(nextThinking);
+    if (thinkingLevelsFor(choice).length < 2) closeSelector();
+    if (target.kind !== "session") return;
+    void configureSession(target.sessionId, { model: choice, thinkingLevel: nextThinking }).catch(
+      (cause: unknown) => setLocalError(describeHostError(cause)),
+    );
+  };
+
+  const chooseThinking = (choice: ThinkingLevel) => {
+    setThinking(choice);
+    if (target.kind !== "session") return;
+    void configureSession(target.sessionId, { thinkingLevel: choice }).catch((cause: unknown) =>
+      setLocalError(describeHostError(cause)),
+    );
   };
 
   const startDictation = async () => {
@@ -310,17 +446,54 @@ export const Composer = memo(function Composer({
     await dictation.start();
   };
 
-  // The sticky view lands the composer on the keyboard's top edge; this keeps a
-  // resting gap above the home indicator without leaving one over the keyboard.
+  const { collapsed, expanded } = COMPOSER;
   const keyboardInset = useAnimatedStyle(() => ({
-    paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.value,
+    paddingBottom: insets.bottom + (spacing.sm - insets.bottom) * keyboard.progress.get(),
   }));
+  const cardStyle = useAnimatedStyle(() => {
+    const amount = focus.get();
+    return {
+      marginHorizontal: interpolate(amount, [0, 1], [collapsed.inset, expanded.inset]),
+      marginBottom: interpolate(amount, [0, 1], [collapsed.gap, expanded.gap]),
+      height: interpolate(amount, [0, 1], [collapsed.height, expanded.height]),
+      borderRadius: interpolate(amount, [0, 1], [collapsed.radius, expanded.radius]),
+    };
+  });
+  const inputStyle = useAnimatedStyle(() => {
+    const amount = focus.get();
+    return {
+      left: interpolate(amount, [0, 1], [50, 16]),
+      right: interpolate(amount, [0, 1], [80, 16]),
+      bottom: interpolate(amount, [0, 1], [24, 66]) - 11,
+    };
+  });
+  const revealStyle = useAnimatedStyle(() => ({
+    opacity:
+      interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP) *
+      interpolate(
+        selector.get(),
+        [SELECTOR.handoff, SELECTOR.handoff * 4],
+        [1, 0],
+        Extrapolation.CLAMP,
+      ),
+    transform: [{ scale: interpolate(focus.get(), [0.35, 1], [0.6, 1], Extrapolation.CLAMP) }],
+  }));
+  const modelStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(focus.get(), [0.35, 1], [0, 1], Extrapolation.CLAMP),
+  }));
+
+  const models = catalog.kind === "ready" ? catalog.models : [];
 
   return (
     <Animated.View
-      // A native view, so the bar's fill is a raw color rather than an RSD rule.
       style={[
-        { backgroundColor: backdrop === "canvas" ? theme.canvas : theme.background },
+        {
+          backgroundColor: HAS_GLASS
+            ? "transparent"
+            : backdrop === "canvas"
+              ? theme.canvas
+              : theme.background,
+        },
         keyboardInset,
       ]}
     >
@@ -387,41 +560,28 @@ export const Composer = memo(function Composer({
             {notice}
           </html.p>
         )}
-        <AttachPanel
-          // The token under the caret takes the space over the capsule, so the
-          // choices fold away rather than stacking a second panel on top.
-          open={attaching && completion === undefined}
-          disabled={busy || images.length >= MAX_ATTACHMENTS}
-          access={access}
-          onPick={(photo) => void attachPhoto(photo)}
-          onManageAccess={() => {
-            void chooseSharedPhotos().then(loadPhotos);
-          }}
-          onTakePhoto={() => {
-            setAttaching(false);
-            setLocalError(undefined);
-            Keyboard.dismiss();
-            setCamera(true);
-          }}
-        />
-        {/* Closest to the capsule, because the menu belongs to the token under the caret. */}
         {completion === undefined ? null : (
           <SuggestionMenu completion={completion} onAccept={accept} />
         )}
-        <html.div style={styles.card}>
-          <ContextRow
-            head={target.kind === "session" ? target.head : undefined}
-            heads={target.kind === "session" ? target.heads : []}
-            onChooseHead={chooseHead}
-          />
-          <TextInput
+        {target.kind === "new" ? (
+          <WorkspacePicker client={client} onWorkspaceChange={onWorkspaceChange} />
+        ) : null}
+        <ContextRow
+          head={target.kind === "session" ? target.head : undefined}
+          heads={target.kind === "session" ? target.heads : []}
+          onChooseHead={chooseHead}
+        />
+        <AnimatedGlass isInteractive style={[field.card, cardStyle]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => fieldRef.current?.focus()} />
+          <AnimatedTextInput
             ref={fieldRef}
-            accessibilityLabel={placeholder}
+            style={[
+              field.input,
+              inputStyle,
+              { color: dictation.recording ? theme.accent : theme.foreground },
+            ]}
             value={draft}
             onChangeText={(text) => {
-              // The selection event arrives after this one; keeping the caret at
-              // the end while typing there means `@` opens its menu on the same
-              // keystroke rather than the next.
               setCaret((current) =>
                 current >= draft.length ? text.length : Math.min(current, text.length),
               );
@@ -430,76 +590,67 @@ export const Composer = memo(function Composer({
             onSelectionChange={(event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
               setCaret(event.nativeEvent.selection.end);
             }}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onFocus={() => {
+              setFocused(true);
+              focusDrive.set(withSpring(1, SPRING.focus));
+            }}
+            onBlur={() => {
+              setFocused(false);
+              focusDrive.set(withSpring(0, SPRING.focus));
+            }}
             placeholder={placeholder}
             placeholderTextColor={theme.muted}
             selectionColor={theme.accent}
-            // Each transcript rewrites the field, so hand editing waits for the stop.
             editable={!sending && !dictation.recording}
             multiline
             submitBehavior="blurAndSubmit"
             returnKeyType="send"
             onSubmitEditing={() => void submit()}
-            style={{
-              flexGrow: 1,
-              flexShrink: 1,
-              color: dictation.recording ? theme.accent : theme.foreground,
-              ...typography.body,
-              paddingVertical: 5,
-              paddingHorizontal: spacing.xs,
-              maxHeight: controls.composerMaxHeight,
-              minHeight: controls.composerButton,
-              backgroundColor: "transparent",
-            }}
+            keyboardAppearance={dark ? "dark" : "light"}
+            accessibilityLabel={placeholder}
           />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-            <Host
-              style={{ width: controls.composerButton, height: controls.composerButton }}
-              ignoreSafeArea="all"
+          <View style={[field.hit, field.plus]} pointerEvents="box-none">
+            <Pressable
+              accessibilityLabel="Add attachment"
+              disabled={attachDisabled}
+              onPress={openAttach}
+              hitSlop={8}
+              style={[StyleSheet.absoluteFill, field.center, attachDisabled && field.disabled]}
             >
-              <Button
-                label={attaching ? "Close attachment choices" : "Add attachment"}
-                systemImage={attaching ? "xmark" : "plus"}
-                onPress={toggleAttaching}
-                modifiers={[
-                  buttonStyle("glass"),
-                  buttonBorderShape("circle"),
-                  controlSize("small"),
-                  labelStyle("iconOnly"),
-                  font({ size: typography.body.fontSize, weight: "medium" }),
-                  tint(theme.foreground),
-                  disabled(busy || images.length >= MAX_ATTACHMENTS),
-                ]}
-              />
-            </Host>
-            {catalog.kind === "ready" ? (
-              <Host
-                matchContents={{ horizontal: true }}
-                style={{ height: controls.metaTarget }}
-                ignoreSafeArea="all"
-              >
+              {attachVisible ? null : (
+                <SymbolView
+                  name="plus"
+                  size={20}
+                  tintColor={theme.foreground}
+                  weight="regular"
+                />
+              )}
+            </Pressable>
+          </View>
+          {catalog.kind === "ready" ? (
+            <Animated.View
+              style={[
+                field.model,
+                modelStyle,
+                { right: (canThink ? gaugeFromRight : 24) + COMPOSER.hit / 2 + 8 },
+              ]}
+              pointerEvents="box-none"
+            >
+              <Host matchContents={{ horizontal: true }} style={modelHost} ignoreSafeArea="all">
                 <Menu
                   label={
-                    <HStack spacing={4}>
-                      <Text
-                        modifiers={[
-                          font({ size: typography.caption.fontSize, weight: "medium" }),
-                          foregroundStyle(theme.muted),
-                        ]}
-                      >
-                        {chosenModel?.name ?? "Model"}
-                      </Text>
-                      <Image
-                        systemName="chevron.down"
-                        size={10}
-                        modifiers={[foregroundStyle(theme.muted)]}
-                      />
-                    </HStack>
+                    <Text modifiers={[font(MODEL_FONT), foregroundStyle(theme.muted)]}>
+                      {chosenModel?.name ?? "Model"}
+                    </Text>
                   }
-                  modifiers={[buttonStyle("plain")]}
+                  modifiers={[
+                    buttonStyle("plain"),
+                    buttonBorderShape("capsule"),
+                    controlSize("mini"),
+                    menuIndicator("hidden"),
+                  ]}
                 >
-                  {catalog.models.map((item) => (
+                  {models.map((item) => (
                     <Button
                       key={`${item.provider}/${item.id}`}
                       label={item.name}
@@ -515,106 +666,225 @@ export const Composer = memo(function Composer({
                   ))}
                 </Menu>
               </Host>
-            ) : null}
-            <View style={{ flexGrow: 1 }} />
-            {running && !dictation.recording ? (
-              <html.button
-                aria-label={stopping ? "Stopping" : "Stop"}
-                disabled={stopping}
-                onClick={target.kind === "session" ? target.onStop : undefined}
-                style={[styles.disc, styles.discStop, stopping && styles.discDisabled]}
+            </Animated.View>
+          ) : null}
+          {canThink ? (
+            <Animated.View
+              style={[field.hit, { right: gaugeFromRight - COMPOSER.hit / 2 }, revealStyle]}
+              pointerEvents="box-none"
+            >
+              <Pressable
+                accessibilityLabel="Thinking level"
+                onPress={openSelector}
+                hitSlop={10}
+                style={field.center}
               >
-                <SymbolView name="stop.fill" size={13} tintColor={theme.foreground} />
-              </html.button>
-            ) : null}
-            {dictation.recording ? (
-              <html.button
-                aria-label={`Stop dictation, ${formatElapsed(dictation.elapsed)}`}
-                onClick={dictation.stop}
-                style={styles.recorder}
-              >
-                <SymbolView
-                  name="stop.circle.fill"
-                  size={controls.badge}
-                  tintColor={theme.foreground}
+                <GaugeIcon
+                  level={thinkingAt}
+                  stopCount={thinkingStops.length}
+                  accent={theme.accent}
+                  track={theme.muted}
+                  needle={theme.foreground}
                 />
-                <html.span style={[textStyles.secondary, styles.recorderTime]}>
-                  {formatElapsed(dictation.elapsed)}
-                </html.span>
-                <html.div style={styles.waveform} aria-hidden>
-                  {dictation.levels.map((level, index) => (
-                    <html.div key={index} style={[styles.waveBar, styles.waveBarHeight(level)]} />
-                  ))}
-                </html.div>
-              </html.button>
-            ) : hasContent ? (
-              <html.button
-                aria-label={sending ? "Sending" : "Send"}
-                disabled={busy}
-                onClick={() => {
-                  void submit();
-                }}
-                style={[styles.disc, styles.discPrimary]}
-              >
-                {sending ? (
-                  <ActivityIndicator color={theme.onPrimary} />
-                ) : (
-                  <SymbolView
-                    name="arrow.up"
-                    size={controls.iconSm}
-                    weight="semibold"
-                    tintColor={theme.onPrimary}
+              </Pressable>
+            </Animated.View>
+          ) : null}
+          {running && !dictation.recording ? (
+            <Pressable
+              accessibilityLabel={stopping ? "Stopping" : "Stop"}
+              disabled={stopping}
+              onPress={() => {
+                if (target.kind === "session") target.onStop();
+              }}
+              hitSlop={8}
+              style={[field.hit, field.stop, stopping && field.disabled]}
+            >
+              <SymbolView name="stop.fill" size={18} tintColor={theme.foreground} />
+            </Pressable>
+          ) : null}
+          {dictation.recording ? (
+            <Pressable
+              accessibilityLabel={`Stop dictation, ${formatElapsed(dictation.elapsed)}`}
+              onPress={dictation.stop}
+              style={field.recorder}
+            >
+              <SymbolView
+                name="stop.circle.fill"
+                size={controls.badge}
+                tintColor={theme.foreground}
+              />
+              <Animated.Text style={[field.recorderTime, { color: theme.foreground }]}>
+                {formatElapsed(dictation.elapsed)}
+              </Animated.Text>
+              <View style={field.waveform} pointerEvents="none">
+                {dictation.levels.map((sample, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      field.waveBar,
+                      { height: waveHeight(sample), backgroundColor: theme.muted },
+                    ]}
                   />
-                )}
-              </html.button>
-            ) : (
-              <Host
-                style={{ width: controls.composerButton, height: controls.composerButton }}
-                ignoreSafeArea="all"
-              >
-                <Button
-                  label="Dictate"
-                  systemImage="mic.fill"
-                  onPress={() => {
-                    void startDictation();
-                  }}
-                  modifiers={[
-                    buttonStyle("glass"),
-                    buttonBorderShape("circle"),
-                    controlSize("small"),
-                    labelStyle("iconOnly"),
-                    font({ size: typography.body.fontSize, weight: "medium" }),
-                    tint(theme.foreground),
-                  ]}
-                />
-              </Host>
-            )}
-          </View>
-        </html.div>
+                ))}
+              </View>
+            </Pressable>
+          ) : hasContent ? (
+            <Pressable
+              accessibilityLabel={sending ? "Sending" : "Send"}
+              disabled={busy}
+              onPress={() => {
+                void submit();
+              }}
+              style={[field.send, { backgroundColor: theme.accent }, busy && field.disabled]}
+            >
+              <SymbolView name="arrow.up" size={16} tintColor={theme.onAccent} weight="semibold" />
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityLabel="Dictate"
+              disabled={busy}
+              onPress={() => {
+                void startDictation();
+              }}
+              hitSlop={8}
+              style={[field.hit, field.primary, busy && field.disabled]}
+            >
+              <SymbolView name="mic.fill" size={22} tintColor={theme.foreground} />
+            </Pressable>
+          )}
+        </AnimatedGlass>
       </html.div>
-      <CameraSheet
-        visible={camera}
-        onClose={() => setCamera(false)}
-        onCapture={(image) => setImages((current) => [...current, image].slice(0, MAX_ATTACHMENTS))}
+      {selectorOpen ? (
+      <ThinkingSelector
+        visible={selectorOpen}
+        progress={selector}
+        level={thinkingAt}
+        cardDock={cardDock}
+        gaugeCenterX={gaugeCenterX}
+        levels={thinkingStops}
+        modelName={chosenModel?.name ?? "Model"}
+        colors={{
+          text: theme.foreground,
+          accent: theme.accent,
+          track: dark ? "rgba(44, 44, 46, 0.86)" : "rgba(250, 250, 250, 0.86)",
+          tickOnTrack: dark ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.24)",
+          tickOnFill: "rgba(255, 255, 255, 0.2)",
+          knob: "#FFFFFF",
+          gaugeTrack: theme.muted,
+          needle: theme.foreground,
+          scrim: dark ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.55)",
+        }}
+        onClose={closeSelector}
+        onCommit={(index) => {
+          const next = thinkingStops[index];
+          if (next !== undefined) chooseThinking(next);
+        }}
       />
+      ) : null}
+      {attachVisible ? (
+        <AttachmentsMenu
+          visible={attachVisible}
+          progress={attachProgress}
+          extendProgress={attachExtend}
+          keyboardHeight={keyboard.height}
+          cardDock={cardDock}
+          plusLeft={plusLeft}
+          access={access}
+          disabled={attachDisabled}
+          onClose={closeAttach}
+          onPick={(photo) => void attachPhoto(photo)}
+          onManageAccess={() => {
+            void chooseSharedPhotos().then(loadPhotos);
+          }}
+          onCapture={(image) => {
+            setImages((current) => [...current, image].slice(0, MAX_ATTACHMENTS));
+            closeAttach();
+          }}
+        />
+      ) : null}
     </Animated.View>
   );
 });
 
-const styles = css.create({
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    gap: spacing.xs,
-    padding: CAPSULE_PAD,
-    borderRadius: radii.bubble,
-    // The same hairline the panels above it draw, so the capsule and its menus
-    // read as one object rather than two weights of edge.
-    borderWidth: controls.hairline,
-    borderStyle: "solid",
-    borderColor: tokens.border,
-    backgroundColor: tokens.surface,
+function matchCatalogModel(
+  models: readonly ModelInfo[],
+  ref: ModelRef | undefined,
+): ModelInfo | undefined {
+  if (ref === undefined) return undefined;
+  return models.find(
+    (item) =>
+      item.id === ref.id && (ref.provider === undefined || item.provider === ref.provider),
+  );
+}
+
+const hit = { width: COMPOSER.hit, height: COMPOSER.hit };
+
+const field = StyleSheet.create({
+  card: { borderCurve: "continuous" },
+  input: {
+    position: "absolute",
+    height: 22,
+    fontSize: COMPOSER.fontSize,
+    padding: 0,
   },
+  hit: {
+    ...hit,
+    position: "absolute",
+    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  center: { alignItems: "center", justifyContent: "center", ...hit },
+  plus: { left: 24 - COMPOSER.hit / 2, zIndex: 1 },
+  model: {
+    position: "absolute",
+    left: 24 + COMPOSER.hit / 2 + 8,
+    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    height: COMPOSER.hit,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    overflow: "hidden",
+  },
+  stop: { right: 68.5 - COMPOSER.hit / 2 },
+  primary: { right: 24 - COMPOSER.hit / 2 },
+  send: {
+    position: "absolute",
+    right: 24 - COMPOSER.sendSize / 2,
+    bottom: ICON_ROW_BOTTOM - COMPOSER.sendSize / 2,
+    width: COMPOSER.sendSize,
+    height: COMPOSER.sendSize,
+    borderRadius: COMPOSER.sendSize / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  disabled: { opacity: controls.disabledOpacity },
+  recorder: {
+    position: "absolute",
+    right: 8,
+    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    height: COMPOSER.hit,
+    paddingHorizontal: 8,
+    borderRadius: COMPOSER.hit / 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  recorderTime: {
+    fontSize: typography.caption.fontSize,
+    fontVariant: ["tabular-nums"],
+  },
+  waveform: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 2,
+    height: 16,
+    overflow: "hidden",
+  },
+  waveBar: { width: 3, borderRadius: 99 },
+});
+
+const styles = css.create({
   composer: {
     display: "flex",
     flexDirection: "column",
@@ -647,43 +917,6 @@ const styles = css.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  disc: {
-    width: controls.composerButton,
-    height: controls.composerButton,
-    borderRadius: radii.pill,
-    borderWidth: 0,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    opacity: { default: 1, ":active": controls.pressedOpacity },
-  },
-  discPrimary: { backgroundColor: tokens.primary },
-  discStop: { backgroundColor: tokens.fill },
-  discDisabled: { opacity: controls.disabledOpacity },
-  recorder: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "center",
-    gap: spacing.sm,
-    height: controls.chipHeight,
-    paddingInline: spacing.sm,
-    borderRadius: radii.pill,
-    borderWidth: 0,
-  },
-  recorderTime: { color: tokens.foreground, fontVariant: "tabular-nums" },
-  waveform: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 2,
-    height: 16,
-    overflow: "hidden",
-  },
-  waveBar: { width: 3, borderRadius: radii.pill, backgroundColor: tokens.muted },
-  waveBarHeight: (level: number) => ({ height: waveHeight(level) }),
   insets: (left: number, right: number) => ({
     paddingLeft: left,
     paddingRight: right,
