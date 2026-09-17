@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-  useColorScheme,
-} from "react-native";
+import { useState } from "react";
+import { useMountEffect } from "../use-mount-effect.ts";
+import { StyleSheet, Text, useWindowDimensions, View, useColorScheme } from "react-native";
 import { BlurView } from "expo-blur";
 import { OverKeyboardView } from "react-native-keyboard-controller";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
@@ -16,12 +11,11 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useDerivedValue,
-  useSharedValue,
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { SELECTOR, SPRING, ICON_ROW_BOTTOM } from "./composer-geometry.ts";
+import { SELECTOR, SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { GaugeIcon } from "./gauge-icon.tsx";
 import { THINKING_LABELS, type ThinkingLevel } from "./thinking.ts";
 
@@ -38,8 +32,8 @@ export type ThinkingSelectorColors = {
 };
 
 export function ThinkingSelector({
-  visible,
   progress,
+  opening,
   level,
   gaugeCenterX,
   cardDock,
@@ -49,8 +43,8 @@ export function ThinkingSelector({
   onClose,
   onCommit,
 }: {
-  visible: boolean;
   progress: SharedValue<number>;
+  opening: SharedValue<boolean>;
   level: SharedValue<number>;
   gaugeCenterX: number;
   cardDock: SharedValue<number>;
@@ -62,21 +56,21 @@ export function ThinkingSelector({
 }) {
   const { width: screenWidth } = useWindowDimensions();
   const scheme = useColorScheme();
-  const lastStop = useSharedValue(Math.max(levels.length - 1, 0));
-  const titlesRef = useRef(levels.map((entry) => `${modelName} ${THINKING_LABELS[entry]}`));
-  titlesRef.current = levels.map((entry) => `${modelName} ${THINKING_LABELS[entry]}`);
-  const [title, setTitle] = useState(titlesRef.current[0] ?? "");
-
-  const publishTitle = useCallback((index: number) => {
-    const next = titlesRef.current[index];
-    if (next !== undefined) setTitle(next);
-  }, []);
-
-  const levelKey = levels.join(",");
-  useEffect(() => {
-    lastStop.set(Math.max(levels.length - 1, 0));
-    publishTitle(Math.round(clamp(level.get(), 0, Math.max(levels.length - 1, 0))));
-  }, [levelKey, modelName, lastStop, level, publishTitle]);
+  // Mount owns the entrance: one frame for the closed position to exist, then
+  // the spring to open. A close that beats the frame leaves `opening` false.
+  useMountEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (opening.get()) progress.set(withSpring(1, SPRING.open));
+    });
+    return () => cancelAnimationFrame(frame);
+  });
+  const span = Math.max(levels.length - 1, 0);
+  const titles = levels.map((entry) => `${modelName} ${THINKING_LABELS[entry]}`);
+  const [title, setTitle] = useState(() => titles[Math.round(level.get())] ?? "");
+  // Prop changes (a new model's stops, a renamed model) adjust the label here;
+  // mid-gesture changes never re-render and are published by the reaction below.
+  const wanted = titles[Math.round(clamp(level.get(), 0, span))];
+  if (wanted !== undefined && wanted !== title) setTitle(wanted);
 
   const openLeft = SELECTOR.trackInset;
   const openRight = screenWidth - SELECTOR.trackInset;
@@ -100,9 +94,12 @@ export function ThinkingSelector({
   const travel = useDerivedValue(() => trackWidth.get() - stop0.get() * 2);
 
   const knobX = useDerivedValue(() => {
-    const span = lastStop.get();
     const t = span === 0 ? 0 : level.get() / span;
-    return interpolate(progress.get(), [0, 1], [trackWidth.get() / 2, stop0.get() + travel.get() * t]);
+    return interpolate(
+      progress.get(),
+      [0, 1],
+      [trackWidth.get() / 2, stop0.get() + travel.get() * t],
+    );
   });
 
   const trackStyle = useAnimatedStyle(() => ({
@@ -111,7 +108,7 @@ export function ThinkingSelector({
     height: trackHeight.get(),
     borderRadius: trackHeight.get() / 2,
     // Icon-row centre, not the keyboard. This composer sits above extra padding.
-    bottom: cardDock.get() + ICON_ROW_BOTTOM - trackHeight.get() / 2,
+    bottom: cardDock.get() + ICON_ROW_INSET - trackHeight.get() / 2,
     shadowOpacity: interpolate(progress.get(), [0, 1], [0, 0.1]),
   }));
 
@@ -152,17 +149,18 @@ export function ThinkingSelector({
   }));
 
   useAnimatedReaction(
-    () => Math.round(clamp(level.get(), 0, lastStop.get())),
+    () => Math.round(clamp(level.get(), 0, span)),
     (index, previous) => {
       if (index === previous) return;
-      scheduleOnRN(publishTitle, index);
+      const next = titles[index];
+      if (next !== undefined) scheduleOnRN(setTitle, next);
     },
   );
 
   const labelStyle = useAnimatedStyle(() => {
     const p = progress.get();
     return {
-      bottom: cardDock.get() + ICON_ROW_BOTTOM + SELECTOR.trackHeight / 2 + SELECTOR.labelGap,
+      bottom: cardDock.get() + ICON_ROW_INSET + SELECTOR.trackHeight / 2 + SELECTOR.labelGap,
       opacity:
         interpolate(p, [0.2, 0.8], [0, 1], Extrapolation.CLAMP) *
         interpolate(p, [SELECTOR.handoff, SELECTOR.handoff * 4], [0, 1], Extrapolation.CLAMP),
@@ -176,16 +174,14 @@ export function ThinkingSelector({
   const pan = Gesture.Pan()
     .minDistance(0)
     .onBegin((event) => {
-      const span = lastStop.get();
       const t = clamp((event.x - stop0.get()) / travel.get(), 0, 1) * span;
       level.set(withSpring(Math.round(t), SPRING.knob));
     })
     .onUpdate((event) => {
-      const span = lastStop.get();
       level.set(clamp((event.x - stop0.get()) / travel.get(), 0, 1) * span);
     })
     .onFinalize(() => {
-      const snapped = Math.round(clamp(level.get(), 0, lastStop.get()));
+      const snapped = Math.round(clamp(level.get(), 0, span));
       level.set(withSpring(snapped, SPRING.knob));
       scheduleOnRN(onCommit, snapped);
     });
@@ -193,15 +189,11 @@ export function ThinkingSelector({
   const backdrop = Gesture.Tap().onEnd(() => scheduleOnRN(onClose));
 
   return (
-    <OverKeyboardView visible={visible}>
+    <OverKeyboardView visible>
       <GestureHandlerRootView style={styles.fill}>
         <GestureDetector gesture={backdrop}>
           <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              scrimStyle,
-              { backgroundColor: colors.scrim },
-            ]}
+            style={[StyleSheet.absoluteFill, scrimStyle, { backgroundColor: colors.scrim }]}
           />
         </GestureDetector>
 
@@ -224,7 +216,7 @@ export function ThinkingSelector({
                 color={colors.tickOnTrack}
                 stop0={stop0}
                 travel={travel}
-                lastStop={lastStop}
+                span={span}
                 offset={0}
               />
             </Animated.View>
@@ -239,7 +231,7 @@ export function ThinkingSelector({
                   color={colors.tickOnFill}
                   stop0={stop0}
                   travel={travel}
-                  lastStop={lastStop}
+                  span={span}
                   offset={inset}
                 />
               </Animated.View>
@@ -275,14 +267,14 @@ function Ticks({
   color,
   stop0,
   travel,
-  lastStop,
+  span,
   offset,
 }: {
   levels: readonly ThinkingLevel[];
   color: string;
   stop0: SharedValue<number>;
   travel: SharedValue<number>;
-  lastStop: SharedValue<number>;
+  span: number;
   offset: SharedValue<number> | 0;
 }) {
   return (
@@ -294,7 +286,7 @@ function Ticks({
           color={color}
           stop0={stop0}
           travel={travel}
-          lastStop={lastStop}
+          span={span}
           offset={offset}
         />
       ))}
@@ -307,18 +299,17 @@ function Tick({
   color,
   stop0,
   travel,
-  lastStop,
+  span,
   offset,
 }: {
   index: number;
   color: string;
   stop0: SharedValue<number>;
   travel: SharedValue<number>;
-  lastStop: SharedValue<number>;
+  span: number;
   offset: SharedValue<number> | 0;
 }) {
   const style = useAnimatedStyle(() => {
-    const span = lastStop.get();
     const shift = typeof offset === "number" ? offset : offset.get();
     const x = span === 0 ? stop0.get() : stop0.get() + (travel.get() * index) / span;
     return { left: x - shift - SELECTOR.tickSize / 2 };

@@ -10,6 +10,7 @@ import {
   type SessionId,
 } from "@nyte-ai/protocol";
 import { randomUUID } from "expo-crypto";
+// oxlint-disable-next-line no-restricted-imports -- the session observer lifecycle follows its target
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { describeHostError } from "../connection/connection.ts";
@@ -54,6 +55,8 @@ export function useRemoteChat(client: NyteClient, activeSessionId: SessionId | u
     | undefined
   >(undefined);
 
+  // The observer subscribes to a specific target; a retarget tears it down and
+  // rebuilds it.
   useEffect(() => {
     activeTarget.current = target;
     submission.current = undefined;

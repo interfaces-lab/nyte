@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import type { RefreshControlProps } from "react-native";
 import { ActivityIndicator, RefreshControl, SectionList } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -98,37 +99,27 @@ export function ChangesScreen({
   // Sections past three start collapsed; taps move one file between views.
   const [views, setViews] = useState<ReadonlyMap<string, FileView>>(new Map());
   const [pulling, setPulling] = useState(false);
-  const [macRevision, setMacRevision] = useState(0);
-  const [macDiffs, setMacDiffs] = useState<
-    | { kind: "loading" }
-    | { kind: "failed"; message: string }
-    | { kind: "ready"; diffs: readonly VcsDiff[] }
-  >({ kind: "loading" });
   const chat = useRemoteChat(client, sessionId);
   const edits = useMemo(() => recordedEdits(chat.state?.transcript.items ?? []), [chat.state]);
   const conversationPaths = useMemo(() => [...edits.keys()], [edits]);
 
-  useEffect(() => {
-    if (source !== "mac") return;
-    let active = true;
-    void client.workspace.vcs
-      .diff({ paths: conversationPaths.length === 0 ? undefined : conversationPaths })
-      .then((diffs) => {
-        if (active) {
-          setMacDiffs({ kind: "ready", diffs });
-          setPulling(false);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (active) {
-          setMacDiffs({ kind: "failed", message: describeHostError(cause) });
-          setPulling(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [client, source, macRevision, conversationPaths]);
+  const macDiffsQuery = useQuery({
+    queryKey: ["mac-diffs", conversationPaths],
+    enabled: source === "mac",
+    queryFn: () =>
+      client.workspace.vcs.diff({
+        paths: conversationPaths.length === 0 ? undefined : conversationPaths,
+      }),
+  });
+  const macDiffs:
+    | { kind: "loading" }
+    | { kind: "failed"; message: string }
+    | { kind: "ready"; diffs: readonly VcsDiff[] } =
+    macDiffsQuery.status === "pending"
+      ? { kind: "loading" }
+      : macDiffsQuery.status === "error"
+        ? { kind: "failed", message: describeHostError(macDiffsQuery.error) }
+        : { kind: "ready", diffs: macDiffsQuery.data };
 
   const sections = useMemo<FileSection[]>(() => {
     if (source === "agent") {
@@ -146,9 +137,9 @@ export function ChangesScreen({
       }
       return out;
     }
-    if (macDiffs.kind !== "ready") return [];
+    if (macDiffsQuery.data === undefined) return [];
     const out: FileSection[] = [];
-    for (const diff of macDiffs.diffs) {
+    for (const diff of macDiffsQuery.data) {
       const facts = parsePatchFacts(diff.patch);
       if (facts === undefined) continue;
       for (const file of facts.files) {
@@ -157,7 +148,7 @@ export function ChangesScreen({
       }
     }
     return out;
-  }, [source, edits, macDiffs]);
+  }, [source, edits, macDiffsQuery.data]);
 
   // Past three files, only the one the user arrived on starts open.
   const viewOf = (section: FileSection): FileView =>
@@ -210,7 +201,7 @@ export function ChangesScreen({
           <html.p role="alert" style={textStyles.error}>
             {macDiffs.message}
           </html.p>
-          <GlassButton label="Try again" fill onPress={() => setMacRevision((v) => v + 1)} />
+          <GlassButton label="Try again" fill onPress={() => void macDiffsQuery.refetch()} />
         </html.div>
       ) : sections.length === 0 ? (
         <EmptyState
@@ -228,8 +219,7 @@ export function ChangesScreen({
               refreshing={pulling}
               onRefresh={() => {
                 setPulling(true);
-                setMacDiffs({ kind: "loading" });
-                setMacRevision((v) => v + 1);
+                void macDiffsQuery.refetch().finally(() => setPulling(false));
               }}
             />
           }

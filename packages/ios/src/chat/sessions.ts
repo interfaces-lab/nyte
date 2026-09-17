@@ -1,8 +1,8 @@
 import { sessionMark, type SessionMark } from "@nyte-ai/core/client";
 import type { NyteClient } from "@nyte-ai/client";
 import type { SessionInfo } from "@nyte-ai/protocol";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { useCallback } from "react";
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { describeHostError } from "../connection/connection.ts";
 import type { Theme } from "../theme.ts";
 
@@ -95,94 +95,64 @@ export function markTone(mark: SessionMark, theme: Theme): { color: string; fill
 }
 
 /**
- * The shared sessions read for the root list. The list is only as fresh as its
- * last fetch, so returning to the app rechecks the host; `search` filters
- * server-side. `refresh` resets to loading; `reload` keeps the rows up.
+ * The shared sessions read for the root list. The query polls quietly while a
+ * run is live so rows move from Working to Finished on their own, and the app
+ * foreground wiring refetches after a share moves underneath. `refresh` resets
+ * to loading for a pull; `reload` keeps the rows up.
  */
 export function useSessionList(client: NyteClient, search = "") {
-  const [list, setList] = useState<SessionListState>({ kind: "loading" });
-  const [revision, setRevision] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
-  const activeClient = useRef<NyteClient | undefined>(undefined);
-  const listVersion = useRef(0);
+  const queryClient = useQueryClient();
+  const key = ["sessions", search] as const;
+  const query = useInfiniteQuery({
+    queryKey: key,
+    queryFn: ({ pageParam }) =>
+      client.sessions.list({
+        parent: null,
+        limit: 50,
+        ...(pageParam === undefined ? {} : { cursor: pageParam }),
+        ...(search === "" ? {} : { search }),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.next,
+    // A debounced search change shows the last list while the new one lands.
+    placeholderData: keepPreviousData,
+    refetchInterval: (entry) =>
+      entry.state.data?.pages.some((page) => page.items.some(isActive)) === true ? 10_000 : false,
+  });
+
+  const list: SessionListState = query.isPending
+    ? { kind: "loading" }
+    : query.data === undefined
+      ? { kind: "failed", message: describeHostError(query.error) }
+      : {
+          kind: "ready",
+          sessions: query.data.pages.flatMap((page) => page.items),
+          next: query.data.pages.at(-1)?.next,
+        };
+
+  // A next-page failure keeps the loaded rows; only the banner knows.
+  const error =
+    query.error !== null && query.data !== undefined ? describeHostError(query.error) : undefined;
 
   const refresh = useCallback(() => {
-    listVersion.current += 1;
-    setList({ kind: "loading" });
-    setError(undefined);
-    setRevision((value) => value + 1);
-  }, []);
-
+    void queryClient.resetQueries({ queryKey: ["sessions", search] });
+  }, [queryClient, search]);
+  const { refetch, fetchNextPage } = query;
   const reload = useCallback(() => {
-    listVersion.current += 1;
-    setError(undefined);
-    setRevision((value) => value + 1);
-  }, []);
+    void refetch();
+  }, [refetch]);
+  const more = useCallback(() => {
+    void fetchNextPage();
+  }, [fetchNextPage]);
 
-  useEffect(() => {
-    let current = true;
-    const version = listVersion.current;
-    void client.sessions
-      .list({
-        parent: null,
-        limit: 50,
-        ...(search === "" ? {} : { search }),
-      })
-      .then((page) => {
-        if (current && listVersion.current === version)
-          setList({ kind: "ready", sessions: page.items, next: page.next });
-      })
-      .catch((cause: unknown) => {
-        if (current && listVersion.current === version)
-          setList((existing) =>
-            existing.kind === "ready"
-              ? existing
-              : { kind: "failed", message: describeHostError(cause) },
-          );
-      });
-    return () => {
-      current = false;
-    };
-  }, [client, revision, search]);
-
-  useEffect(() => {
-    activeClient.current = client;
-    // Returning to the app rechecks the host; the rows stay up so the list
-    // never blanks and loses its scroll position.
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") reload();
-    });
-    return () => {
-      activeClient.current = undefined;
-      subscription.remove();
-    };
-  }, [client, reload]);
-
-  async function more() {
-    if (busy || list.kind !== "ready" || list.next === undefined) return;
-    const version = listVersion.current;
-    setBusy(true);
-    try {
-      const page = await client.sessions.list({
-        parent: null,
-        cursor: list.next,
-        limit: 50,
-        ...(search === "" ? {} : { search }),
-      });
-      if (activeClient.current !== client || listVersion.current !== version) return;
-      setList({
-        kind: "ready",
-        sessions: [...list.sessions, ...page.items],
-        next: page.next,
-      });
-    } catch (cause) {
-      if (activeClient.current === client && listVersion.current === version)
-        setError(describeHostError(cause));
-    } finally {
-      if (activeClient.current === client) setBusy(false);
-    }
-  }
-
-  return { list, busy, error, refresh, reload, more };
+  return {
+    list,
+    // A placeholder page set still answers to the previous key's cursor, so
+    // "Show more" waits for the real page to land.
+    busy: query.isFetchingNextPage || query.isPlaceholderData,
+    error,
+    refresh,
+    reload,
+    more,
+  };
 }

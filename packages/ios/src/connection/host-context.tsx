@@ -1,5 +1,6 @@
-import { createContext, use, useEffect, useState } from "react";
+import { createContext, use, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NyteClient } from "@nyte-ai/client";
 import type { Connection } from "./connection.ts";
 import type { ConnectFailure } from "./connect-copy.ts";
@@ -35,26 +36,39 @@ export function HostProvider({ session, children }: { session: HostSession; chil
 
 /** Owns the saved-connection lifecycle above the router: restore and forget. */
 export function useHostConnection() {
-  const [host, setHost] = useState<HostConnectionState>({ kind: "loading" });
-  useEffect(() => {
-    let mounted = true;
-    void readConnection()
-      .then((connection) => {
-        if (mounted)
-          setHost(
-            connection
-              ? { kind: "connected", connection, client: createHostClient(connection) }
-              : { kind: "setup" },
-          );
-      })
-      .catch(() => {
-        if (mounted)
-          setHost({ kind: "setup", notice: "Connect your Mac again to restore access." });
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const queryClient = useQueryClient();
+  // The Keychain read is the app's only boot fetch; nothing else writes it.
+  // `null` stands in for "not saved" because setQueryData treats `undefined` as a bail-out.
+  const saved = useQuery({
+    queryKey: ["connection"],
+    queryFn: async () => (await readConnection()) ?? null,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  const [form, setForm] = useState<{ notice?: string; editing?: Connection } | undefined>(
+    undefined,
+  );
+  const client = useMemo(
+    () => (saved.data == null ? undefined : createHostClient(saved.data)),
+    [saved.data],
+  );
+  const host: HostConnectionState =
+    form !== undefined
+      ? {
+          kind: "setup",
+          notice: form.notice,
+          editing:
+            form.editing !== undefined && client !== undefined
+              ? { connection: form.editing, client }
+              : undefined,
+        }
+      : saved.isPending
+        ? { kind: "loading" }
+        : saved.isError
+          ? { kind: "setup", notice: "Connect your Mac again to restore access." }
+          : saved.data != null && client !== undefined
+            ? { kind: "connected", connection: saved.data, client }
+            : { kind: "setup" };
 
   /** Undefined means connected. A failure stays itself, so no `catch` can rename it. */
   async function connect(
@@ -63,30 +77,24 @@ export function useHostConnection() {
   ): Promise<ConnectFailure | undefined> {
     const result = await connectHost(connection, signal);
     if (result.kind !== "connected") return result;
-    setHost({ kind: "connected", connection, client: createHostClient(connection) });
+    queryClient.setQueryData(["connection"], connection);
+    setForm(undefined);
     return undefined;
   }
 
   /** Re-opens the form on the saved details. The token stays until one replaces it. */
   function edit() {
-    setHost((current) =>
-      current.kind === "connected"
-        ? { kind: "setup", editing: { connection: current.connection, client: current.client } }
-        : current,
-    );
+    setForm(saved.data == null ? undefined : { editing: saved.data });
   }
 
   function cancelEdit() {
-    setHost((current) =>
-      current.kind === "setup" && current.editing !== undefined
-        ? { kind: "connected", ...current.editing }
-        : current,
-    );
+    setForm(undefined);
   }
 
   async function disconnect() {
     await forgetConnection();
-    setHost({ kind: "setup" });
+    queryClient.setQueryData(["connection"], null);
+    setForm(undefined);
   }
 
   return { host, connect, edit, cancelEdit, disconnect };
