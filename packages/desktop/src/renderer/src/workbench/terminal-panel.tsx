@@ -1,7 +1,7 @@
 import type { JobInfo, SessionId } from "@nyte-ai/core";
 import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../../shared/errors";
 import { Icon } from "../components/icons";
@@ -136,20 +136,16 @@ export function TerminalPanel({
     tabs.some((tab) => isJobTerminal(tab) && tab.source.sessionId === sessionId);
   const jobs = useQuery({
     queryKey: keys.jobs(sessionId),
-    queryFn: (): Promise<readonly JobInfo[]> => {
-      if (sessionId === undefined) return Promise.resolve([]);
-      return nyte.jobs.list({ sessionId });
+    queryFn: async (): Promise<readonly JobInfo[]> => {
+      const list = sessionId === undefined ? [] : await nyte.jobs.list({ sessionId });
+      if (sessionId !== undefined) terminalActions.syncJobs(owner, sessionId, list);
+      return list;
     },
     enabled: observesJobs,
     refetchInterval: observesJobs ? 2_000 : false,
   });
   const selected = tabs.find((tab) => tab.id === activeId);
   const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    if (sessionId === undefined || jobs.data === undefined) return;
-    terminalActions.syncJobs(owner, sessionId, jobs.data);
-  }, [jobs.data, owner, sessionId]);
 
   const restart = async (tab: TerminalTab): Promise<void> => {
     setError(undefined);

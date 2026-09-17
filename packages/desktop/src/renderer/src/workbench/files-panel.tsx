@@ -1,7 +1,7 @@
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../../shared/errors.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
@@ -222,12 +222,10 @@ export function FilesPanel({
     [tabs.tabs],
   );
 
-  useLayoutEffect(() => {
-    model.resetPaths(paths);
-  }, [model, paths]);
   const revealed = useRef(0);
   // The file list may arrive after the reveal; retry until the entry exists.
-  useEffect(() => {
+  useLayoutEffect(() => {
+    model.resetPaths(paths);
     if (tabs.revealPath === undefined || revealed.current === tabs.revealRevision) return;
     const item = model.getItem(tabs.revealPath);
     if (item === null) return;

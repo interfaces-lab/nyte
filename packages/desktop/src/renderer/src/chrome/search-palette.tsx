@@ -177,11 +177,13 @@ export function SearchPalette({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (resolveClientAction(event, mac, "workspace")?.id !== "search") return;
       event.preventDefault();
-      changeOpen(!open);
+      if (open) setQuery("");
+      else setTab("all");
+      onOpenChange(!open);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  });
+  }, [mac, open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return undefined;

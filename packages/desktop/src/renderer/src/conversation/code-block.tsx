@@ -5,10 +5,13 @@ import { Value } from "typebox/value";
 // in a bundled worker, keeping grammars and syntax work off the UI thread.
 import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
-import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
+import { keys } from "../query-keys.ts";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { codeBlockStyles } from "./styles.stylex.ts";
 
 const HIGHLIGHTABLE = new Set([
@@ -117,22 +120,34 @@ function rememberHighlight(value: HighlightedCode): void {
   }
 }
 
+// The reply also fills the module cache, so a remounted row paints from
+// `cachedHighlight` instead of asking the worker again.
+function requestHighlight(code: string, language: string): Promise<HighlightedCode> {
+  return new Promise((resolve) => {
+    enqueueHighlight(code, language, (html) => {
+      const value = { code, language, html };
+      rememberHighlight(value);
+      resolve(value);
+    });
+  });
+}
+
 export function CodeBlock({ code, lang }: { code: string; lang: string }): ReactElement {
   const language = lang.trim().toLowerCase().split(/\s+/u)[0] ?? "";
   const figure = useRef<HTMLElement>(null);
   const [nearViewport, setNearViewport] = useState(false);
-  const [highlighted, setHighlighted] = useState<HighlightedCode | undefined>(() =>
-    cachedHighlight(code, language),
-  );
   const [copiedCode, setCopiedCode] = useState<string>();
   const copied = copiedCode === code;
   const cached = cachedHighlight(code, language);
-  const html =
-    highlighted?.code === code && highlighted.language === language
-      ? highlighted.html
-      : cached?.html;
+  const { data } = useQuery({
+    queryKey: keys.highlight(language, code),
+    queryFn: () => requestHighlight(code, language),
+    enabled: nearViewport && HIGHLIGHTABLE.has(language) && cached === undefined,
+    staleTime: Infinity,
+  });
+  const html = data?.html ?? cached?.html;
 
-  useEffect(() => {
+  useMountEffect(() => {
     const element = figure.current;
     if (element === null) return;
     const observer = new IntersectionObserver(
@@ -145,17 +160,7 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
     );
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!nearViewport || !HIGHLIGHTABLE.has(language)) return;
-    if (cachedHighlight(code, language) !== undefined) return;
-    return enqueueHighlight(code, language, (html) => {
-      const value = { code, language, html };
-      rememberHighlight(value);
-      setHighlighted(value);
-    });
-  }, [code, language, nearViewport]);
+  });
 
   return (
     <figure ref={figure} {...stylex.props(codeBlockStyles.figure)}>
