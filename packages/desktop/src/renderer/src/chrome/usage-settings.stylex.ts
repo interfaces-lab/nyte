@@ -1,6 +1,6 @@
 /**
  * Settings › Usage. The page is the settings surface it lives on: a total in
- * plain text, a trend, and lists in the same divided group every other settings
+ * plain text, a curve, and lists in the same divided group every other settings
  * page uses. No nested cards, and no colour read off the document, so a theme
  * change repaints without measuring anything.
  */
@@ -8,32 +8,28 @@ import * as stylex from "@stylexjs/stylex";
 import { settings } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
-/** Tall enough to read a shape, short enough to stay under the numbers it serves. */
-const TREND_HEIGHT = 44;
+/** Tall enough for three lines to separate, short enough to stay under the total. */
+const CHART_HEIGHT = 160;
 
 /** The rail every line on the page starts from, matching the settings rows. */
 const RAIL = 12;
 
 export const usageStyles = stylex.create({
-  page: { display: "flex", flexDirection: "column", gap: settings.sectionGap },
-  section: { display: "flex", flexDirection: "column", gap: settings.cardGap },
+  page: { display: "flex", flexDirection: "column", gap: 12 },
   heading: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     flexWrap: "wrap",
     gap: 8,
-    minHeight: settings.headingHeight,
+    minHeight: settings.controlHeight,
     paddingInline: 8,
   },
-  headingCopy: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
-  headingTitle: { textWrap: "balance" },
   headingActions: { display: "flex", alignItems: "center", gap: 6 },
   hint: {
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     textWrap: "pretty",
   },
   /** The name above a group, on the same rail as the rows inside it. */
@@ -92,14 +88,12 @@ export const usageStyles = stylex.create({
     fontWeight: 500,
     lineHeight: t.leadingLg,
     letterSpacing: t.letterLg,
-    fontVariantNumeric: "tabular-nums",
   },
   meta: {
     margin: 0,
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     textWrap: "pretty",
   },
   note: {
@@ -108,7 +102,6 @@ export const usageStyles = stylex.create({
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     textWrap: "pretty",
   },
   changeUp: { color: t.textWarning },
@@ -116,35 +109,125 @@ export const usageStyles = stylex.create({
   /** A number the history could not price reads as absent, never as free. */
   absent: { color: t.textQuaternary, fontWeight: 400 },
 
-  /** Spend per bucket. The caption carries the numbers the bars only shape. */
-  trend: { display: "flex", flexDirection: "column", gap: 6, paddingInline: 8 },
-  trendBars: {
+  /** One question per tab. The strip is the same chip group the range uses. */
+  tabList: {
     display: "flex",
-    alignItems: "flex-end",
-    gap: 2,
-    height: TREND_HEIGHT,
+    alignItems: "center",
+    gap: 1,
+    padding: 2,
+    borderRadius: t.radiusLg,
+    backgroundColor: t.fillSecondary,
+    boxShadow: `inset 0 0 0 1px ${t.strokeSecondary}`,
   },
-  trendBar: {
+  tab: {
     flex: "1 1 0",
-    minWidth: 2,
-    minHeight: 2,
-    borderRadius: 2,
-    // Idle days stay on the fill ramp so a zero does not read as a sliver of spend.
-    backgroundColor: t.fillGhostHover,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minWidth: 0,
+    height: settings.controlHeight,
+    paddingInline: 8,
+    borderStyle: "none",
+    borderRadius: t.radiusBase,
+    backgroundColor: {
+      default: "transparent",
+      ":hover:not([data-active])": t.fillGhostHover,
+      "[data-active]": t.bgElevated,
+    },
+    boxShadow: { default: "none", "[data-active]": t.shadowControlColor },
+    color: { default: t.textTertiary, "[data-active]": t.textPrimary },
+    fontFamily: t.fontSans,
+    fontSize: t.fontSm,
+    fontWeight: 500,
+    lineHeight: t.leadingSm,
+    cursor: "pointer",
+    userSelect: "none",
+    whiteSpace: "nowrap",
+    scale: { default: "1", ":active": "0.96" },
+    transitionProperty: "background-color, color, scale",
+    transitionDuration: t.durationFast,
+    transitionTimingFunction: t.easeOut,
+    "@media (prefers-reduced-motion: reduce)": { scale: "1" },
   },
-  trendSpent: { backgroundColor: t.fillAccentSubtle },
-  /** The tallest bucket keeps the full accent, so the peak is visible, not hovered. */
-  trendPeak: { backgroundColor: t.accent },
-  trendCaption: {
+  /** What the tab would say if opened, so a glance at the strip is enough. */
+  tabSummary: {
+    color: { default: t.textQuaternary, ":is([data-active] *)": t.textTertiary },
+    fontWeight: 400,
+  },
+  tabPanel: {
+    display: { default: "flex", ":is([hidden])": "none" },
+    flexDirection: "column",
+    gap: settings.cardGap,
+  },
+
+  /** A strip inside a tab: underlined, on the rail, so it reads as nested. */
+  subRoot: { display: "flex", flexDirection: "column", gap: settings.cardGap, minWidth: 0 },
+  subList: {
+    display: "flex",
+    gap: 16,
+    paddingInline: 8,
+    boxShadow: `inset 0 -1px 0 ${t.strokeQuaternary}`,
+  },
+  subTab: {
+    position: "relative",
+    paddingBlock: "4px 8px",
+    paddingInline: 0,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    color: { default: t.textTertiary, ":hover": t.textSecondary, "[data-active]": t.textPrimary },
+    fontFamily: t.fontSans,
+    fontSize: t.fontSm,
+    fontWeight: 500,
+    lineHeight: t.leadingSm,
+    cursor: "pointer",
+    userSelect: "none",
+    transitionProperty: "color",
+    transitionDuration: t.durationFast,
+    transitionTimingFunction: t.easeOut,
+    "::after": {
+      position: "absolute",
+      insetInline: 0,
+      insetBlockEnd: 0,
+      height: 1.5,
+      backgroundColor: { default: "transparent", ":is([data-active])": t.textPrimary },
+      content: '""',
+    },
+  },
+  subPanel: {
+    display: { default: "flex", ":is([hidden])": "none" },
+    flexDirection: "column",
+    gap: settings.cardGap,
+  },
+
+  /** Tokens per bucket. The legend names the lines; the axis carries the scale. */
+  chart: { display: "flex", flexDirection: "column", gap: 6, paddingInline: 8 },
+  chartLegend: {
     display: "flex",
     flexWrap: "wrap",
-    justifyContent: "space-between",
-    gap: "0 12px",
+    gap: "0 16px",
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
-    fontVariantNumeric: "tabular-nums",
   },
+  chartKey: { display: "inline-flex", alignItems: "center", gap: 6 },
+  chartSwatch: { width: 10, height: 2, borderRadius: t.radiusFull },
+  chartPlot: { height: CHART_HEIGHT, minWidth: 0 },
+  chartTip: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: "6px 8px",
+    borderRadius: t.radiusLg,
+    backgroundColor: t.bgElevated,
+    boxShadow: t.shadowControlColor,
+    color: t.textPrimary,
+    fontSize: t.fontXs,
+    lineHeight: t.leadingXs,
+    whiteSpace: "nowrap",
+  },
+  chartTipLabel: { color: t.textTertiary },
+  chartTipRow: { display: "flex", justifyContent: "space-between", gap: 12 },
 
   /** A ranked list: one stacked bar, then the rows naming its segments. */
   group: {
@@ -233,7 +316,6 @@ export const usageStyles = stylex.create({
     color: t.textTertiary,
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
-    fontVariantNumeric: "tabular-nums",
     overflowWrap: "anywhere",
   },
   /** The dot's width and gap, so a second line starts under the name, not the swatch. */
@@ -245,7 +327,6 @@ export const usageStyles = stylex.create({
     fontSize: t.fontSm,
     fontWeight: 500,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     textAlign: "end",
     whiteSpace: "nowrap",
   },
@@ -255,7 +336,6 @@ export const usageStyles = stylex.create({
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     textAlign: "end",
     whiteSpace: "nowrap",
   },
@@ -268,7 +348,6 @@ export const usageStyles = stylex.create({
     color: t.textTertiary,
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
-    fontVariantNumeric: "tabular-nums",
     "::before": {
       position: "absolute",
       insetInline: RAIL,
@@ -288,7 +367,8 @@ export const usageStyles = stylex.create({
   /** A subscription window: how much is gone, and when it comes back. */
   meter: { display: "flex", flexDirection: "column", gap: 4 },
   meterHead: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 },
-  meterHigh: { color: t.textWarning },
+  warm: { color: t.textWarning },
+  hot: { color: t.textDanger },
   meterTrack: {
     height: 6,
     borderRadius: t.radiusFull,
@@ -300,13 +380,14 @@ export const usageStyles = stylex.create({
     height: "100%",
     borderRadius: t.radiusFull,
     backgroundColor: t.accent,
-    transitionProperty: "width",
+    transitionProperty: "width, background-color",
     transitionDuration: t.durationFast,
     transitionTimingFunction: t.easeOut,
     "@media (prefers-reduced-motion: reduce)": { transitionProperty: "none" },
   },
   /** Near the ceiling the bar changes colour, and so does the number beside it. */
-  meterFillHigh: { backgroundColor: t.textWarning },
+  meterFillWarm: { backgroundColor: t.orange },
+  meterFillHot: { backgroundColor: t.fillDanger },
 
   /** A read that failed or found nothing, said once, where its numbers would be. */
   panel: {
