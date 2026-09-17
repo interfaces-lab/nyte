@@ -60,13 +60,7 @@ function NavShell({ backdrop, children }: { backdrop?: boolean; children: ReactN
   );
 }
 
-function NavLinkRow({
-  node,
-  onNavigate,
-}: {
-  node: NavLink;
-  onNavigate: () => void;
-}) {
+function NavLinkRow({ node, onNavigate }: { node: NavLink; onNavigate: () => void }) {
   if (node.external) {
     return (
       <a
@@ -87,13 +81,7 @@ function NavLinkRow({
   );
 }
 
-function NavFolderRow({
-  node,
-  onNavigate,
-}: {
-  node: NavFolder;
-  onNavigate: () => void;
-}) {
+function NavFolderRow({ node, onNavigate }: { node: NavFolder; onNavigate: () => void }) {
   return (
     <Dialog.Root modal={false}>
       <Dialog.Trigger className="site-nav-row">

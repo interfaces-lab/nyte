@@ -239,9 +239,7 @@ test("workspace select input is strict and outcomes are named kinds", () => {
   assert.ok(Value.Check(output, { kind: "untrusted", path: "/repo" }));
   assert.ok(Value.Check(output, { kind: "failed", message: "This host serves one workspace" }));
   assert.ok(!Value.Check(output, { kind: "opened" }));
-  assert.ok(
-    !Value.Check(output, { kind: "opened", selection: { kind: "project" } }),
-  );
+  assert.ok(!Value.Check(output, { kind: "opened", selection: { kind: "project" } }));
   assert.ok(Value.Check(OPERATIONS["workspace.current"].input, undefined));
   assert.ok(Value.Check(OPERATIONS["workspace.current"].output, { kind: "home" }));
 });

@@ -71,9 +71,8 @@ export function useComposerSurface(editable: boolean) {
       nodes: [ComposerReferenceNode, LinkNode, AutoLinkNode],
       theme: {
         paragraph: props(composerStyles.editorParagraph).className,
-        link: props(
-          editable ? composerStyles.composerUrlPill : composerStyles.messageLink,
-        ).className,
+        link: props(editable ? composerStyles.composerUrlPill : composerStyles.messageLink)
+          .className,
       },
       onError: (error) => {
         throw error;
