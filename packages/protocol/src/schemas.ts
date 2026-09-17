@@ -96,6 +96,9 @@ import type {
   VcsDiff as VcsDiffType,
   VcsStatus as VcsStatusType,
   WorkspaceInfo as WorkspaceInfoType,
+  WorkspaceSelectInput as WorkspaceSelectInputType,
+  WorkspaceSelectOutcome as WorkspaceSelectOutcomeType,
+  WorkspaceSelection as WorkspaceSelectionType,
 } from "./workspace.ts";
 
 // ---------------------------------------------------------------------------
@@ -870,6 +873,29 @@ export const WorkspaceInfo = typed<WorkspaceInfoType>()(
     lastOpenedAt: Type.Number(),
     available: Type.Optional(Type.Boolean()),
   }),
+);
+
+export const WorkspaceSelection = typed<WorkspaceSelectionType>()(
+  Type.Union([
+    open({ kind: Type.Literal("home") }),
+    open({ kind: Type.Literal("project"), workspace: WorkspaceInfo }),
+  ]),
+);
+
+export const WorkspaceSelectInput = typed<WorkspaceSelectInputType>()(
+  Type.Union([
+    strict({ kind: Type.Literal("home") }),
+    strict({ kind: Type.Literal("project"), path: Type.String() }),
+  ]),
+);
+
+export const WorkspaceSelectOutcome = typed<WorkspaceSelectOutcomeType>()(
+  Type.Union([
+    open({ kind: Type.Literal("opened"), selection: WorkspaceSelection }),
+    open({ kind: Type.Literal("unavailable"), path: Type.String() }),
+    open({ kind: Type.Literal("untrusted"), path: Type.String() }),
+    open({ kind: Type.Literal("failed"), message: Type.String() }),
+  ]),
 );
 
 export const VcsStatus = typed<VcsStatusType>()(

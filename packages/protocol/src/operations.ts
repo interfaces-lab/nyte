@@ -4,7 +4,8 @@
  * missing here is refused by both, not silently passed through.
  *
  * The set is the one the desktop already carries over Electron IPC, plus
- * `landing`, `runs.current`, `runs.reply`, and `plugins.status.list`. Omitted
+ * `landing`, `runs.current`, `runs.reply`, `plugins.status.list`, and the
+ * share-cursor pair `workspace.current`/`workspace.select`. Omitted
  * on purpose: `runs.wait` and `runs.compact` take an `AbortSignal` and hold a
  * request open for the length of a model call; a remote client waits by
  * watching `run` events instead, and compaction stays off the wire until
@@ -51,6 +52,9 @@ import {
   UserContent,
   VcsDiff,
   WorkspaceInfo,
+  WorkspaceSelectInput,
+  WorkspaceSelectOutcome,
+  WorkspaceSelection,
   list,
   optional,
   strict,
@@ -206,6 +210,8 @@ export const OPERATIONS = Object.freeze({
   ),
 
   "workspace.list": operation(none, list(WorkspaceInfo)),
+  "workspace.current": operation(none, WorkspaceSelection),
+  "workspace.select": operation(WorkspaceSelectInput, WorkspaceSelectOutcome),
   "workspace.forget": operation(strict({ path: Type.String() }), Type.Void()),
   "workspace.vcs.diff": operation(
     optional(strict({ paths: Type.Optional(Type.Array(Type.String())) })),
