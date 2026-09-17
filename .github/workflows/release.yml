@@ -201,7 +201,10 @@ jobs:
   npm:
     needs: publish
     if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Trusted publishing always attaches provenance, and npm rejects a provenance
+    # bundle built anywhere but a GitHub-hosted runner. This job only packs a few
+    # kilobytes of JavaScript, so it does not need the larger self-hosted pool.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
