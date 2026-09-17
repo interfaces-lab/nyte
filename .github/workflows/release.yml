@@ -53,10 +53,9 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK NPM_TOKEN SPARKLE_PRIVATE_KEY; do
+          for name in APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER CSC_KEY_PASSWORD CSC_LINK SPARKLE_PRIVATE_KEY; do
             if [[ -z "${!name}" ]]; then
               echo "Required release secret $name is not configured." >&2
               exit 1
@@ -211,18 +210,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 26
-          registry-url: https://registry.npmjs.org
       - name: Publish the launcher
         working-directory: packages/cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           if npm view "nyte-ai@$version" version >/dev/null 2>&1; then
             echo "nyte-ai@$version is already published."
             exit 0
           fi
-          npm publish --provenance
+          npm install -g npm@latest
+          npm publish
 
   appcast:
     needs: publish
