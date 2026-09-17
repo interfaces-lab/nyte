@@ -26,6 +26,7 @@
     "./toolbar": "./src/toolbar.ts",
     "./tooltip": "./src/tooltip.ts",
     "./platform-colors": "./src/platform-colors.ts",
+    "./platform-tokens.stylex": "./src/platform-tokens.stylex.ts",
     "./platform-tokens.css": "./src/platform-tokens.css",
     "./tailwind.css": "./src/tailwind.css",
     "./styles.css": "./src/index.css"
