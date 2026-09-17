@@ -118,6 +118,8 @@ export const list = {
   sectionGap: 28,
   headerGap: 6,
   tile: 28,
+  // Flat rows lead with a hairline ring instead of the filled tile.
+  ring: 24,
 };
 
 export const controls = {
@@ -133,15 +135,11 @@ export const controls = {
   fillHeight: 50,
   chipHeight: 36,
   composerHeight: 52,
-  composerButton: 32,
-  // Prompt block when a screen still needs a fixed field height.
-  composerField: 52,
   // Resting morphing pill plus a little air; screens add the home-indicator inset.
   composerBar: 64,
   iconXs: 12,
   iconSm: 15,
   icon: 17,
-  composerMaxHeight: 176,
   badge: 20,
   diffGutter: 40,
   disabledOpacity: 0.4,
@@ -257,7 +255,42 @@ export const textStyles = css.create({
 /** The face the transcript's prose is set in. */
 export type TranscriptFont = "system" | "monospaced";
 
-export function markdownStyle(theme: Theme, transcriptFont: TranscriptFont): MarkdownStyle {
+// The GitHub light/dark palettes desktop's Shiki highlighter loads, mapped to
+// the native highlighter's token roles; unset roles inherit the base color.
+const syntaxPalettes = {
+  light: {
+    keyword: "#d73a49",
+    string: "#032f62",
+    number: "#005cc5",
+    constant: "#005cc5",
+    comment: "#6a737d",
+    function: "#6f42c1",
+    type: "#6f42c1",
+    variable: "#e36209",
+    property: "#005cc5",
+    tag: "#22863a",
+    attribute: "#005cc5",
+  },
+  dark: {
+    keyword: "#f97583",
+    string: "#9ecbff",
+    number: "#79b8ff",
+    constant: "#79b8ff",
+    comment: "#6a737d",
+    function: "#b392f0",
+    type: "#b392f0",
+    variable: "#ffab70",
+    property: "#79b8ff",
+    tag: "#85e89d",
+    attribute: "#79b8ff",
+  },
+} as const;
+
+export function markdownStyle(
+  theme: Theme,
+  transcriptFont: TranscriptFont,
+  scheme: keyof typeof schemes,
+): MarkdownStyle {
   // A monospaced transcript borrows the face the code blocks already use, so a
   // reply reads as one font rather than two.
   const prose =
@@ -316,22 +349,37 @@ export function markdownStyle(theme: Theme, transcriptFont: TranscriptFont): Mar
       fontWeight: String(typography.body.fontWeight),
       color: theme.muted,
       borderColor: theme.separator,
+      backgroundColor: "transparent",
     },
     code: {
       fontSize: typography.code.fontSize,
       fontFamily: typography.code.fontFamily,
       color: theme.foreground,
       backgroundColor: theme.fill,
+      borderColor: "transparent",
     },
     codeBlock: {
       ...typography.code,
       fontWeight: String(typography.code.fontWeight),
       color: theme.foreground,
-      backgroundColor: theme.raised,
-      borderColor: "transparent",
-      borderRadius: radii.sm,
+      backgroundColor: theme.fill,
+      borderWidth: 0,
+      borderRadius: radii.control,
       padding: spacing.md,
+      syntaxColors: syntaxPalettes[scheme],
     },
+    taskList: {
+      checkedColor: theme.accent,
+      checkmarkColor: theme.onAccent,
+      borderColor: theme.tertiary,
+    },
+    math: {
+      color: theme.foreground,
+      backgroundColor: theme.fill,
+      padding: spacing.sm,
+    },
+    inlineMath: { color: theme.foreground },
+    highlight: { backgroundColor: theme.warningFill },
     thematicBreak: { color: theme.separator },
     table: {
       ...typography.body,
@@ -343,6 +391,7 @@ export function markdownStyle(theme: Theme, transcriptFont: TranscriptFont): Mar
       headerTextColor: theme.foreground,
       rowEvenBackgroundColor: theme.surface,
       rowOddBackgroundColor: theme.canvas,
+      horizontalOverflow: conversation.textInset,
     },
   };
 }
