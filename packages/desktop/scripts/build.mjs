@@ -95,15 +95,20 @@ function node(script, ...rest) {
 
 function pnpm(...rest) {
   // spawn() does not resolve `.cmd` shims; npm_execpath is a native binary, not JS.
-  return run(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", ...rest]);
+  // Windows additionally refuses to launch a `.cmd` without a shell, so ask for
+  // one there. Every argument below is a bare flag, so shell quoting is moot.
+  return process.platform === "win32"
+    ? run("pnpm.cmd", ["exec", ...rest], { shell: true })
+    : run("pnpm", ["exec", ...rest]);
 }
 
-function run(command, commandArgs) {
+function run(command, commandArgs, options) {
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
       cwd: desktopRoot,
       stdio: panel === undefined ? "inherit" : ["inherit", "pipe", "pipe"],
       env: { ...process.env, FORCE_COLOR: live ? "1" : process.env.FORCE_COLOR },
+      ...options,
     });
     const push = (chunk) => panel?.push(chunk.toString());
     child.stdout?.on("data", push);
