@@ -7,8 +7,8 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { afterEach, describe, test } from "vitest";
 import type { Model, Usage } from "@nyte-ai/ai";
 import { createAssistantMessageEventStream } from "@nyte-ai/ai";
@@ -203,6 +203,144 @@ describe("workspace operations", () => {
     try {
       assert.deepEqual(await uji.workspace.list(), []);
       await uji.workspace.forget({ path: cwd });
+    } finally {
+      await uji.close();
+      await store.close();
+    }
+  });
+
+  test("current is the hosted cwd and select of another target fails without relocating", async () => {
+    const cwd = scratch();
+    const elsewhere = scratch();
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
+      store,
+      streamFn: idleStream,
+      models: catalog,
+      model,
+      plugins: [],
+      env: { cwd },
+    });
+    try {
+      const path = await realpath(cwd);
+      assert.deepEqual(await uji.workspace.current(), {
+        kind: "project",
+        workspace: { path, name: basename(path), lastOpenedAt: 0, available: true },
+      });
+      assert.deepEqual(await uji.workspace.select({ kind: "project", path: cwd }), {
+        kind: "opened",
+        selection: {
+          kind: "project",
+          workspace: { path, name: basename(path), lastOpenedAt: 0, available: true },
+        },
+      });
+      const home = await uji.workspace.select({ kind: "home" });
+      assert.equal(home.kind, "failed");
+      if (home.kind === "failed") assert.match(home.message, /one workspace/);
+      const other = await uji.workspace.select({ kind: "project", path: elsewhere });
+      assert.equal(other.kind, "failed");
+      assert.deepEqual(await uji.workspace.current(), {
+        kind: "project",
+        workspace: { path, name: basename(path), lastOpenedAt: 0, available: true },
+      });
+    } finally {
+      await uji.close();
+      await store.close();
+    }
+  });
+
+  test("current is home when env.cwd is the home directory", async () => {
+    const cwd = scratch();
+    const home = await realpath(homedir());
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
+      store,
+      streamFn: idleStream,
+      models: catalog,
+      model,
+      plugins: [],
+      env: { cwd: home },
+    });
+    try {
+      assert.deepEqual(await uji.workspace.current(), { kind: "home" });
+      assert.deepEqual(await uji.workspace.select({ kind: "home" }), {
+        kind: "opened",
+        selection: { kind: "home" },
+      });
+    } finally {
+      await uji.close();
+      await store.close();
+    }
+  });
+
+  test("a registry-backed current answers with the registry's own row", async () => {
+    const cwd = scratch();
+    const registry = new WorkspaceRegistry(join(cwd, "registry", "workspaces.json"));
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
+      store,
+      streamFn: idleStream,
+      models: catalog,
+      model,
+      plugins: [],
+      env: { cwd },
+      workspaces: registry,
+    });
+    try {
+      const [listed] = await uji.workspace.list();
+      assert.ok(listed !== undefined);
+      assert.ok(listed.lastOpenedAt > 0);
+      assert.deepEqual(await uji.workspace.current(), {
+        kind: "project",
+        workspace: listed,
+      });
+    } finally {
+      await uji.close();
+      await store.close();
+    }
+  });
+
+  test("a lazy host answers selection from the resolved activation", async () => {
+    const cwd = scratch();
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
+      store,
+      streamFn: idleStream,
+      models: catalog,
+      model,
+      resolveActivation: () => ({ kind: "active", plugins: [], env: { cwd } }),
+    });
+    try {
+      const path = await realpath(cwd);
+      assert.deepEqual(await uji.workspace.current(), {
+        kind: "project",
+        workspace: { path, name: basename(path), lastOpenedAt: 0, available: true },
+      });
+      assert.equal(
+        (await uji.workspace.select({ kind: "project", path: cwd })).kind,
+        "opened",
+      );
+    } finally {
+      await uji.close();
+      await store.close();
+    }
+  });
+
+  test("an unresolved activation fails select instead of claiming home", async () => {
+    const cwd = scratch();
+    const store = new SqliteStore(join(cwd, "sessions.db"));
+    const uji = await createNyte({
+      store,
+      streamFn: idleStream,
+      models: catalog,
+      model,
+      resolveActivation: () => ({ kind: "inactive" }),
+    });
+    try {
+      assert.deepEqual(await uji.workspace.current(), { kind: "home" });
+      const home = await uji.workspace.select({ kind: "home" });
+      assert.equal(home.kind, "failed");
+      if (home.kind === "failed") assert.match(home.message, /no workspace/i);
     } finally {
       await uji.close();
       await store.close();
