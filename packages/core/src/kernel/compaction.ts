@@ -1181,6 +1181,10 @@ export async function writeCheckpoint(
       cleanupFailures.push(cause);
     }
     if (cleanupFailures.length > 0) {
+      // Throwing here is deliberate: the aggregate carries `failures` too, so the
+      // original error survives, and a compaction whose cleanup failed must not
+      // report success from the try block.
+      // oxlint-disable-next-line no-unsafe-finally
       throw new AggregateError([...failures, ...cleanupFailures], "Compaction cleanup failed");
     }
   }
