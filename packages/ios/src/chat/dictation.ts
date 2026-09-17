@@ -1,6 +1,8 @@
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 import type { ExpoSpeechRecognitionErrorCode } from "expo-speech-recognition";
+// oxlint-disable-next-line no-restricted-imports -- the elapsed clock runs only while recording
 import { useEffect, useRef, useState } from "react";
+import { useMountEffect } from "../use-mount-effect.ts";
 
 const WAVEFORM_LEVELS = 8;
 
@@ -46,13 +48,10 @@ export function useDictation(onTranscript: (transcript: string) => void) {
   const [levels, setLevels] = useState<number[]>([]);
   const [error, setError] = useState<string>();
   const recordingRef = useRef(false);
-  const onTranscriptRef = useRef(onTranscript);
-  useEffect(() => {
-    onTranscriptRef.current = onTranscript;
-  }, [onTranscript]);
 
+  // useEventListener already calls the latest listener; no ref needed here.
   useSpeechRecognitionEvent("result", (event) => {
-    onTranscriptRef.current(event.results[0]?.transcript ?? "");
+    onTranscript(event.results[0]?.transcript ?? "");
   });
   useSpeechRecognitionEvent("volumechange", (event) => {
     setLevels((current) => [...current.slice(-(WAVEFORM_LEVELS - 1)), event.value]);
@@ -66,12 +65,10 @@ export function useDictation(onTranscript: (transcript: string) => void) {
     setRecording(false);
     setError(dictationFailure(event.error));
   });
-  useEffect(
-    () => () => {
-      if (recordingRef.current) ExpoSpeechRecognitionModule.abort();
-    },
-    [],
-  );
+  useMountEffect(() => () => {
+    if (recordingRef.current) ExpoSpeechRecognitionModule.abort();
+  });
+  // The clock runs only while the speech session does.
   useEffect(() => {
     if (!recording) return;
     const timer = setInterval(() => setElapsed((value) => value + 1), 1000);

@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Button, HStack, Host, Image, Menu, Text } from "@expo/ui/swift-ui";
 import { buttonStyle, font, foregroundStyle } from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
-import type { WorkspaceSelectInput } from "@nyte-ai/protocol";
+import type { WorkspaceInfo, WorkspaceSelectInput, WorkspaceSelection } from "@nyte-ai/protocol";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { css, html } from "react-strict-dom";
 import { describeHostError } from "../connection/connection.ts";
 import { controls, spacing, textStyles, typography, useTheme } from "../theme.ts";
 import {
-  applyWorkspaceSelect,
   listedWorkspaces,
-  sameSelectInput,
   selectionMatches,
   workspaceChipLabel,
   workspaceMenuAvailable,
+  workspaceSelectCaption,
   type WorkspaceMenu,
 } from "./workspace-menu.ts";
 
@@ -23,82 +23,71 @@ import {
  */
 export function WorkspacePicker({
   client,
+  onSelecting,
   onWorkspaceChange,
 }: {
   client: NyteClient;
+  /** Handed the in-flight select so a caller can wait out the host's retarget. */
+  onSelecting?: (pending: Promise<void>) => void;
   onWorkspaceChange?: () => void;
 }) {
   const theme = useTheme();
-  const [menu, setMenu] = useState<WorkspaceMenu>({ kind: "hidden" });
+  const queryClient = useQueryClient();
+  const menuQuery = useQuery({
+    queryKey: ["workspace-picker"],
+    queryFn: async (): Promise<{
+      selection: WorkspaceSelection;
+      items: readonly WorkspaceInfo[];
+    } | null> => {
+      const info = await client.info();
+      if (!workspaceMenuAvailable(info)) return null;
+      const [selection, items] = await Promise.all([
+        client.workspace.current(),
+        client.workspace.list(),
+      ]);
+      return { selection, items: listedWorkspaces(items) };
+    },
+  });
+  const switching = useRef(false);
   const [caption, setCaption] = useState<string>();
-  const menuRef = useRef(menu);
-  menuRef.current = menu;
 
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const info = await client.info();
-        if (!active) return;
-        if (!workspaceMenuAvailable(info)) {
-          menuRef.current = { kind: "hidden" };
-          setMenu({ kind: "hidden" });
-          setCaption(undefined);
-          return;
-        }
-        menuRef.current = { kind: "loading" };
-        setMenu({ kind: "loading" });
-        const [selection, items] = await Promise.all([
-          client.workspace.current(),
-          client.workspace.list(),
-        ]);
-        if (!active) return;
-        const next = { kind: "ready" as const, items: listedWorkspaces(items), selection };
-        menuRef.current = next;
-        setMenu(next);
-      } catch (cause: unknown) {
-        if (!active) return;
-        const next = { kind: "failed" as const, message: describeHostError(cause) };
-        menuRef.current = next;
-        setMenu(next);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
+  const menu: WorkspaceMenu =
+    menuQuery.isPending || menuQuery.data === null
+      ? { kind: "hidden" }
+      : menuQuery.isError
+        ? { kind: "failed", message: describeHostError(menuQuery.error) }
+        : {
+            kind: "ready",
+            items: menuQuery.data.items,
+            selection: menuQuery.data.selection,
+          };
 
   const choose = (input: WorkspaceSelectInput) => {
-    const current = menuRef.current;
-    if (current.kind !== "ready" || current.switching !== undefined) return;
-    if (selectionMatches(current.selection, input)) return;
-    const next = { ...current, switching: input };
-    menuRef.current = next;
+    const data = menuQuery.data;
+    if (data == null || switching.current) return;
+    if (selectionMatches(data.selection, input)) return;
+    // One flight at a time: the ref latches before the host call starts, so a
+    // second tap can never enter while a select is in flight.
+    switching.current = true;
     setCaption(undefined);
-    setMenu(next);
-    void client.workspace
-      .select(input)
+    const flight = client.workspace.select(input);
+    onSelecting?.(flight.then(() => undefined));
+    void flight
       .then((outcome) => {
-        const latest = menuRef.current;
-        if (latest.kind !== "ready" || latest.switching === undefined) return;
-        if (!sameSelectInput(latest.switching, input)) return;
-        const applied = applyWorkspaceSelect(latest, outcome);
-        menuRef.current = applied.menu;
-        setMenu(applied.menu);
-        setCaption(applied.caption);
-        if (outcome.kind === "opened") onWorkspaceChange?.();
+        switching.current = false;
+        if (outcome.kind === "opened") {
+          queryClient.setQueryData(
+            ["workspace-picker"],
+            (old: { selection: WorkspaceSelection; items: readonly WorkspaceInfo[] } | null) =>
+              old == null ? old : { ...old, selection: outcome.selection },
+          );
+          onWorkspaceChange?.();
+        } else {
+          setCaption(workspaceSelectCaption(outcome));
+        }
       })
       .catch((cause: unknown) => {
-        const latest = menuRef.current;
-        if (latest.kind !== "ready" || latest.switching === undefined) return;
-        if (!sameSelectInput(latest.switching, input)) return;
-        const restored = {
-          kind: "ready" as const,
-          items: latest.items,
-          selection: latest.selection,
-        };
-        menuRef.current = restored;
-        setMenu(restored);
+        switching.current = false;
         setCaption(describeHostError(cause));
       });
   };
@@ -111,14 +100,6 @@ export function WorkspacePicker({
       </html.p>
     );
   }
-  if (menu.kind === "loading") {
-    return (
-      <Host matchContents={{ horizontal: true }} style={chipHost} ignoreSafeArea="all">
-        <Text modifiers={[font(chipFont), foregroundStyle(theme.muted)]}>Workspace</Text>
-      </Host>
-    );
-  }
-
   const selected = menu.selection;
   return (
     <html.div style={styles.row}>

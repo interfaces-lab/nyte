@@ -1,3 +1,4 @@
+// oxlint-disable-next-line no-restricted-imports -- gesture-owned shared values are pushed, not derived
 import { memo, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import { randomUUID } from "expo-crypto";
@@ -36,16 +37,7 @@ import {
 import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  controls,
-  media,
-  useTheme,
-  radii,
-  spacing,
-  textStyles,
-  tokens,
-  typography,
-} from "../theme.ts";
+import { controls, media, useTheme, radii, spacing, textStyles, typography } from "../theme.ts";
 import { useHost } from "../connection/host-context.tsx";
 import type { ModelInfo, ModelRef, RunConfig, SessionId } from "@nyte-ai/protocol";
 import { describeHostError } from "../connection/connection.ts";
@@ -69,7 +61,14 @@ import { WorkspacePicker } from "./workspace-menu.tsx";
 import type { UserContent } from "./remote-chat.ts";
 import { formatElapsed, useDictation, waveHeight } from "./dictation.ts";
 import { AnimatedGlass, HAS_GLASS } from "./composer-glass.tsx";
-import { COMPOSER, ICON_ROW_BOTTOM, SELECTOR, SPRING } from "./composer-geometry.ts";
+import {
+  COMPOSER,
+  GAUGE_RIGHT,
+  GAUGE_RIGHT_RUNNING,
+  ICON_ROW_INSET,
+  SELECTOR,
+  SPRING,
+} from "./composer-geometry.ts";
 import { GaugeIcon } from "./gauge-icon.tsx";
 import {
   supportedThinkingLevel,
@@ -126,8 +125,8 @@ export const Composer = memo(function Composer({
   const theme = useTheme();
   const dark = useColorScheme() === "dark";
   const { client } = useHost();
-  const [draft, setDraft] = useState("");
-  const [caret, setCaret] = useState(0);
+  const [draft, setDraft] = useState(prefill?.text ?? "");
+  const [caret, setCaret] = useState(prefill?.text.length ?? 0);
   const [focused, setFocused] = useState(false);
   const [images, setImages] = useState<StagedImage[]>([]);
   const [attachVisible, setAttachVisible] = useState(false);
@@ -139,7 +138,7 @@ export const Composer = memo(function Composer({
   const [model, setModel] = useState<ModelInfo>();
   const [thinking, setThinking] = useState<ThinkingLevel>();
   const [selectorOpen, setSelectorOpen] = useState(false);
-  const { catalog } = useModelCatalog(client, true);
+  const { catalog } = useModelCatalog(client);
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const fieldRef = useRef<TextInput>(null);
@@ -151,19 +150,32 @@ export const Composer = memo(function Composer({
   const attachProgress = useSharedValue(0);
   const attachExtend = useSharedValue(0);
   const sessionId = target.kind === "session" ? target.sessionId : undefined;
-  const { completion, commands } = useCompletions(client, sessionId, draft, caret, focused);
+  // Bumped when the share's workspace moves: new-chat completion reads are
+  // cursor-scoped on the host, so answers must not outlive the switch.
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const workspacePending = useRef<Promise<void> | undefined>(undefined);
+  const { completion, commands } = useCompletions(
+    client,
+    sessionId,
+    draft,
+    caret,
+    focused,
+    workspaceEpoch,
+  );
   const dictationBase = useRef("");
   const dictation = useDictation((transcript) => {
     const base = dictationBase.current;
     setDraft(base === "" || transcript === "" ? base + transcript : `${base} ${transcript}`);
   });
 
-  const lastPrefill = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (prefill === undefined || prefill.nonce === lastPrefill.current) return;
-    lastPrefill.current = prefill.nonce;
+  // A prefill lands once per nonce; adjusting during render keeps the draft and
+  // the seen-mark atomic instead of two passes through the field.
+  const [seenPrefill, setSeenPrefill] = useState(prefill?.nonce);
+  if (prefill !== undefined && prefill.nonce !== seenPrefill) {
+    setSeenPrefill(prefill.nonce);
     setDraft(prefill.text);
-  }, [prefill]);
+    setCaret(prefill.text.length);
+  }
 
   const sending = target.kind === "session" ? target.sending : starting;
   const running = target.kind === "session" ? target.running : false;
@@ -173,7 +185,10 @@ export const Composer = memo(function Composer({
   const hasContent = draft.trim() !== "" || images.length > 0;
   const sessionModel = target.kind === "session" ? target.config.model : undefined;
   const sessionThinking = target.kind === "session" ? target.config.thinkingLevel : undefined;
-  const catalogModel = matchCatalogModel(catalog.kind === "ready" ? catalog.models : [], sessionModel);
+  const catalogModel = matchCatalogModel(
+    catalog.kind === "ready" ? catalog.models : [],
+    sessionModel,
+  );
   const chosenModel =
     model ?? catalogModel ?? (catalog.kind === "ready" ? catalog.defaultModel : undefined);
   const thinkingStops = thinkingLevelsFor(chosenModel);
@@ -181,7 +196,7 @@ export const Composer = memo(function Composer({
   const canThink = thinkingStops.length > 1;
   const busy = sending || staging;
   const attachDisabled = busy || images.length >= MAX_ATTACHMENTS;
-  const gaugeFromRight = running && !dictation.recording ? 109 : 68.5;
+  const gaugeFromRight = running && !dictation.recording ? GAUGE_RIGHT_RUNNING : GAUGE_RIGHT;
 
   const focus = useDerivedValue(() => Math.max(keyboard.progress.get(), focusDrive.get()));
   // Distance from the window bottom to the card's bottom edge. OverKeyboardView
@@ -194,28 +209,37 @@ export const Composer = memo(function Composer({
     return lifted + pad + gap;
   });
   const plusLeft = useDerivedValue(() => {
-    const inset = interpolate(focus.get(), [0, 1], [COMPOSER.collapsed.inset, COMPOSER.expanded.inset]);
-    return gutters.left + inset + 24 - COMPOSER.hit / 2;
+    const inset = interpolate(
+      focus.get(),
+      [0, 1],
+      [COMPOSER.collapsed.inset, COMPOSER.expanded.inset],
+    );
+    return gutters.left + inset + ICON_ROW_INSET - COMPOSER.hit / 2;
   });
   const gaugeCenterX = windowWidth - gutters.right - gaugeFromRight;
 
-  useEffect(() => {
-    if (sessionThinking === undefined) return;
-    setThinking(sessionThinking);
-  }, [sessionThinking]);
+  // A toolbar pick or host-side change lands on target.config; the chips track
+  // it. The comparison keys on provider+id because a catalog refetch returns
+  // fresh objects for the same model and must not clobber an in-flight pick.
+  const catalogModelKey =
+    catalogModel === undefined ? undefined : `${catalogModel.provider}:${catalogModel.id}`;
+  const [seenModelKey, setSeenModelKey] = useState(catalogModelKey);
+  if (seenModelKey !== catalogModelKey) {
+    setSeenModelKey(catalogModelKey);
+    if (catalogModel !== undefined) setModel(catalogModel);
+  }
+  const [seenThinking, setSeenThinking] = useState(sessionThinking);
+  if (seenThinking !== sessionThinking) {
+    setSeenThinking(sessionThinking);
+    if (sessionThinking !== undefined) setThinking(sessionThinking);
+  }
 
+  // The pan gesture writes this shared value, so the chosen level is pushed
+  // into it rather than derived.
   useEffect(() => {
     if (selectorOpen) return;
     thinkingAt.set(thinkingIndex(thinkingLevelsFor(chosenModel), chosenThinking));
   }, [chosenThinking, chosenModel, selectorOpen, thinkingAt]);
-
-  useEffect(() => {
-    if (!selectorOpen) return;
-    const frame = requestAnimationFrame(() => {
-      if (opening.get()) selector.set(withSpring(1, SPRING.open));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [selectorOpen, opening, selector]);
 
   useAnimatedReaction(
     () => !opening.get() && selector.get() < SELECTOR.handoff,
@@ -224,8 +248,11 @@ export const Composer = memo(function Composer({
     },
   );
 
+  // A completion appearing while the sheet is open springs it shut. The dep is
+  // the boolean, not the object: `completion` is a fresh literal each render.
+  const completionOpen = completion !== undefined;
   useEffect(() => {
-    if (completion === undefined) return;
+    if (!completionOpen) return;
     attachExtend.set(withSpring(0, SPRING.open));
     attachProgress.set(
       withSpring(0, SPRING.open, (finished) => {
@@ -236,7 +263,7 @@ export const Composer = memo(function Composer({
         }
       }),
     );
-  }, [completion, attachExtend, attachProgress]);
+  }, [completionOpen, attachExtend, attachProgress]);
 
   function buildContent(): UserContent {
     const text = draft.trim();
@@ -286,20 +313,40 @@ export const Composer = memo(function Composer({
     }
   };
 
-  const configureSession = (
+  const configureSession = async (
     sessionId: SessionId,
     next: {
       model?: ModelInfo;
       thinkingLevel?: ThinkingLevel;
     },
-  ) =>
-    client.sessions.configure({
-      sessionId,
-      ...(next.model === undefined
-        ? {}
-        : { model: { provider: next.model.provider, id: next.model.id } }),
-      ...(next.thinkingLevel === undefined ? {} : { thinkingLevel: next.thinkingLevel }),
-    });
+  ): Promise<boolean> => {
+    try {
+      const outcome = await client.sessions.configure({
+        sessionId,
+        ...(next.model === undefined
+          ? {}
+          : { model: { provider: next.model.provider, id: next.model.id } }),
+        ...(next.thinkingLevel === undefined ? {} : { thinkingLevel: next.thinkingLevel }),
+      });
+      switch (outcome.kind) {
+        case "queued":
+          return true;
+        case "unknown_model":
+          setLocalError("The host doesn't offer that model.");
+          return false;
+        case "unknown_agent":
+          setLocalError("The host doesn't offer that agent.");
+          return false;
+        default: {
+          const exhaustive: never = outcome;
+          return exhaustive;
+        }
+      }
+    } catch (cause: unknown) {
+      setLocalError(describeHostError(cause));
+      return false;
+    }
+  };
 
   const submit = async () => {
     if (busy || !hasContent || dictation.recording) return;
@@ -312,13 +359,19 @@ export const Composer = memo(function Composer({
       setStarting(true);
       setLocalError(undefined);
       try {
+        // A workspace pick still composing on the host must land first, or the
+        // session opens under the share's previous folder.
+        await workspacePending.current;
         const typed = draft.trim().split("\n")[0]?.slice(0, 48) ?? "";
         const name = line?.name ?? (typed === "" ? "New conversation" : typed);
         const session = await client.sessions.create({ name });
-        await configureSession(session.sessionId, {
-          model: chosenModel,
-          thinkingLevel: chosenThinking,
-        });
+        // Only what the user picked is sent; untouched fields keep the host's
+        // configured defaults rather than pinning the catalog fallback.
+        if (
+          (model !== undefined || thinking !== undefined) &&
+          !(await configureSession(session.sessionId, { model, thinkingLevel: thinking }))
+        )
+          return;
         const accepted = await deliver({
           sessionId: session.sessionId,
           content,
@@ -423,22 +476,25 @@ export const Composer = memo(function Composer({
   };
 
   const chooseModel = (choice: ModelInfo) => {
-    const nextThinking = supportedThinkingLevel(choice, chosenThinking);
     setModel(choice);
-    setThinking(nextThinking);
     if (thinkingLevelsFor(choice).length < 2) closeSelector();
     if (target.kind !== "session") return;
-    void configureSession(target.sessionId, { model: choice, thinkingLevel: nextThinking }).catch(
-      (cause: unknown) => setLocalError(describeHostError(cause)),
-    );
+    void configureSession(target.sessionId, {
+      model: choice,
+      thinkingLevel: supportedThinkingLevel(choice, chosenThinking),
+    }).then((applied) => {
+      if (applied) return;
+      setModel(catalogModel);
+      setThinking(sessionThinking);
+    });
   };
 
   const chooseThinking = (choice: ThinkingLevel) => {
     setThinking(choice);
     if (target.kind !== "session") return;
-    void configureSession(target.sessionId, { thinkingLevel: choice }).catch((cause: unknown) =>
-      setLocalError(describeHostError(cause)),
-    );
+    void configureSession(target.sessionId, { thinkingLevel: choice }).then((applied) => {
+      if (!applied) setThinking(sessionThinking);
+    });
   };
 
   const startDictation = async () => {
@@ -564,7 +620,16 @@ export const Composer = memo(function Composer({
           <SuggestionMenu completion={completion} onAccept={accept} />
         )}
         {target.kind === "new" ? (
-          <WorkspacePicker client={client} onWorkspaceChange={onWorkspaceChange} />
+          <WorkspacePicker
+            client={client}
+            onSelecting={(pending) => {
+              workspacePending.current = pending;
+            }}
+            onWorkspaceChange={() => {
+              setWorkspaceEpoch((epoch) => epoch + 1);
+              onWorkspaceChange?.();
+            }}
+          />
         ) : null}
         <ContextRow
           head={target.kind === "session" ? target.head : undefined}
@@ -618,12 +683,7 @@ export const Composer = memo(function Composer({
               style={[StyleSheet.absoluteFill, field.center, attachDisabled && field.disabled]}
             >
               {attachVisible ? null : (
-                <SymbolView
-                  name="plus"
-                  size={20}
-                  tintColor={theme.foreground}
-                  weight="regular"
-                />
+                <SymbolView name="plus" size={20} tintColor={theme.foreground} weight="regular" />
               )}
             </Pressable>
           </View>
@@ -632,7 +692,7 @@ export const Composer = memo(function Composer({
               style={[
                 field.model,
                 modelStyle,
-                { right: (canThink ? gaugeFromRight : 24) + COMPOSER.hit / 2 + 8 },
+                { right: (canThink ? gaugeFromRight : ICON_ROW_INSET) + COMPOSER.hit / 2 + 8 },
               ]}
               pointerEvents="box-none"
             >
@@ -755,35 +815,34 @@ export const Composer = memo(function Composer({
         </AnimatedGlass>
       </html.div>
       {selectorOpen ? (
-      <ThinkingSelector
-        visible={selectorOpen}
-        progress={selector}
-        level={thinkingAt}
-        cardDock={cardDock}
-        gaugeCenterX={gaugeCenterX}
-        levels={thinkingStops}
-        modelName={chosenModel?.name ?? "Model"}
-        colors={{
-          text: theme.foreground,
-          accent: theme.accent,
-          track: dark ? "rgba(44, 44, 46, 0.86)" : "rgba(250, 250, 250, 0.86)",
-          tickOnTrack: dark ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.24)",
-          tickOnFill: "rgba(255, 255, 255, 0.2)",
-          knob: "#FFFFFF",
-          gaugeTrack: theme.muted,
-          needle: theme.foreground,
-          scrim: dark ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.55)",
-        }}
-        onClose={closeSelector}
-        onCommit={(index) => {
-          const next = thinkingStops[index];
-          if (next !== undefined) chooseThinking(next);
-        }}
-      />
+        <ThinkingSelector
+          progress={selector}
+          opening={opening}
+          level={thinkingAt}
+          cardDock={cardDock}
+          gaugeCenterX={gaugeCenterX}
+          levels={thinkingStops}
+          modelName={chosenModel?.name ?? "Model"}
+          colors={{
+            text: theme.foreground,
+            accent: theme.accent,
+            track: dark ? "rgba(44, 44, 46, 0.86)" : "rgba(250, 250, 250, 0.86)",
+            tickOnTrack: dark ? "rgba(255, 255, 255, 0.28)" : "rgba(0, 0, 0, 0.24)",
+            tickOnFill: "rgba(255, 255, 255, 0.2)",
+            knob: "#FFFFFF",
+            gaugeTrack: theme.muted,
+            needle: theme.foreground,
+            scrim: dark ? "rgba(0, 0, 0, 0.45)" : "rgba(255, 255, 255, 0.55)",
+          }}
+          onClose={closeSelector}
+          onCommit={(index) => {
+            const next = thinkingStops[index];
+            if (next !== undefined) chooseThinking(next);
+          }}
+        />
       ) : null}
       {attachVisible ? (
         <AttachmentsMenu
-          visible={attachVisible}
           progress={attachProgress}
           extendProgress={attachExtend}
           keyboardHeight={keyboard.height}
@@ -812,8 +871,7 @@ function matchCatalogModel(
 ): ModelInfo | undefined {
   if (ref === undefined) return undefined;
   return models.find(
-    (item) =>
-      item.id === ref.id && (ref.provider === undefined || item.provider === ref.provider),
+    (item) => item.id === ref.id && (ref.provider === undefined || item.provider === ref.provider),
   );
 }
 
@@ -830,27 +888,27 @@ const field = StyleSheet.create({
   hit: {
     ...hit,
     position: "absolute",
-    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
     alignItems: "center",
     justifyContent: "center",
   },
   center: { alignItems: "center", justifyContent: "center", ...hit },
-  plus: { left: 24 - COMPOSER.hit / 2, zIndex: 1 },
+  plus: { left: ICON_ROW_INSET - COMPOSER.hit / 2, zIndex: 1 },
   model: {
     position: "absolute",
-    left: 24 + COMPOSER.hit / 2 + 8,
-    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    left: ICON_ROW_INSET + COMPOSER.hit / 2 + 8,
+    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
     height: COMPOSER.hit,
     justifyContent: "center",
     alignItems: "flex-start",
     overflow: "hidden",
   },
-  stop: { right: 68.5 - COMPOSER.hit / 2 },
-  primary: { right: 24 - COMPOSER.hit / 2 },
+  stop: { right: GAUGE_RIGHT - COMPOSER.hit / 2 },
+  primary: { right: ICON_ROW_INSET - COMPOSER.hit / 2 },
   send: {
     position: "absolute",
-    right: 24 - COMPOSER.sendSize / 2,
-    bottom: ICON_ROW_BOTTOM - COMPOSER.sendSize / 2,
+    right: ICON_ROW_INSET - COMPOSER.sendSize / 2,
+    bottom: ICON_ROW_INSET - COMPOSER.sendSize / 2,
     width: COMPOSER.sendSize,
     height: COMPOSER.sendSize,
     borderRadius: COMPOSER.sendSize / 2,
@@ -861,7 +919,7 @@ const field = StyleSheet.create({
   recorder: {
     position: "absolute",
     right: 8,
-    bottom: ICON_ROW_BOTTOM - COMPOSER.hit / 2,
+    bottom: ICON_ROW_INSET - COMPOSER.hit / 2,
     height: COMPOSER.hit,
     paddingHorizontal: 8,
     borderRadius: COMPOSER.hit / 2,

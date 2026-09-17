@@ -59,5 +59,11 @@ export const SPRING = {
   focus: { mass: 1, stiffness: 220, damping: 26 },
 } as const;
 
-/** Icon-row centre, from the card's bottom. Same in both composer states. */
-export const ICON_ROW_BOTTOM = 24;
+/** Icon-row centre, measured in from a card edge — bottom and sides alike. */
+export const ICON_ROW_INSET = 24;
+
+/** The gauge's anchor from the card's right edge; Stop claims it while running. */
+export const GAUGE_RIGHT = 68.5;
+
+/** Where the gauge anchors while Stop holds its spot. */
+export const GAUGE_RIGHT_RUNNING = 109;

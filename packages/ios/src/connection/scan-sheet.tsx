@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { AppState, Linking, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -75,12 +76,12 @@ function ScanSession({ onClose, onScan }: Omit<ScanSheetProps, "visible">) {
   const output = useObjectOutput({ types: SCANNED_TYPES, onObjectsScanned });
 
   // The camera session is an external system: it follows the app's foreground.
-  useEffect(() => {
+  useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) =>
       setForeground(state === "active"),
     );
     return () => subscription.remove();
-  }, []);
+  });
 
   const scanning = hasPermission && device !== undefined;
   return (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Keyboard } from "react-native";
+import { Alert, Keyboard } from "react-native";
 import { css, html } from "react-strict-dom";
 import { router } from "expo-router";
 import { Stack } from "expo-router/stack";
@@ -9,7 +9,9 @@ import type { SessionId } from "@nyte-ai/protocol";
 import { waitingCall } from "@nyte-ai/core/client";
 import { useHost } from "../connection/host-context.tsx";
 import { describeHostError } from "../connection/connection.ts";
-import { useTheme, spacing, textStyles, tokens } from "../theme.ts";
+import { toast } from "../ui/toast.tsx";
+import { TranscriptSkeleton } from "../ui/skeleton.tsx";
+import { spacing, textStyles, tokens } from "../theme.ts";
 import { useRemoteChat } from "./remote-chat.ts";
 import { conversationChanges } from "./turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
@@ -17,7 +19,6 @@ import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
-  const theme = useTheme();
   const { client } = useHost();
   const insets = useSafeAreaInsets();
   const chat = useRemoteChat(client, sessionId);
@@ -38,7 +39,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   };
 
   const report = (title: string) => (cause: unknown) => {
-    Alert.alert(title, describeHostError(cause));
+    toast.error(title, describeHostError(cause));
   };
 
   const name = info?.name?.trim() ?? "";
@@ -166,15 +167,19 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
     );
   }
 
-  return (
-    <html.div style={[styles.centered, styles.topInset(insets.top)]}>
-      {chat.error !== undefined ? (
+  if (chat.error !== undefined) {
+    return (
+      <html.div style={[styles.centered, styles.topInset(insets.top)]}>
         <html.p role="alert" style={[textStyles.error, styles.centeredText]}>
           {chat.error}
         </html.p>
-      ) : (
-        <ActivityIndicator color={theme.muted} />
-      )}
+      </html.div>
+    );
+  }
+
+  return (
+    <html.div style={[styles.loading, styles.topInset(insets.top)]}>
+      <TranscriptSkeleton />
     </html.div>
   );
 }
@@ -192,4 +197,9 @@ const styles = css.create({
   },
   topInset: (top: number) => ({ paddingTop: top + spacing.xl }),
   centeredText: { margin: 0, textAlign: "center" },
+  loading: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: tokens.canvas,
+  },
 });

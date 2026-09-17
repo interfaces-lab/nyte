@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from "expo-router";
 import { Stack } from "expo-router/stack";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, View } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import { RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardStickyView } from "react-native-keyboard-controller";
 import { css, html } from "react-strict-dom";
@@ -17,9 +17,11 @@ import {
   useSessionList,
 } from "../chat/sessions.ts";
 import { useWorkLiveActivitySync } from "../activity/live-activity.tsx";
+import { useMountEffect } from "../use-mount-effect.ts";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { SectionHeader } from "../ui/section-header.tsx";
+import { SessionRowsSkeleton } from "../ui/skeleton.tsx";
 import { FilterGrid } from "./filter-grid.tsx";
 import { useDateSections, useFilterCards, useTwoLinePreview } from "../settings/preferences.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
@@ -146,16 +148,11 @@ export function InboxScreen() {
     }, [reload]),
   );
 
-  // Rows must move from Working to Finished; poll quietly while any run is live.
-  const workingCount = working.length;
-  useEffect(() => {
-    if (workingCount === 0) return;
-    const timer = setInterval(() => {
-      setNow(Date.now());
-      reload();
-    }, 10_000);
+  // Relative times age on their own; the query polls for data changes itself.
+  useMountEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10_000);
     return () => clearInterval(timer);
-  }, [workingCount, reload]);
+  });
 
   return (
     <View style={{ flex: 1 }}>
@@ -236,11 +233,7 @@ export function InboxScreen() {
             onSelect={setFilter}
           />
         ) : null}
-        {list.kind === "loading" && !pulled && (
-          <html.div style={styles.state}>
-            <ActivityIndicator color={theme.muted} />
-          </html.div>
-        )}
+        {list.kind === "loading" && !pulled && <SessionRowsSkeleton />}
         {list.kind === "failed" && (
           <EmptyState
             title="Couldn't load agents"
@@ -295,7 +288,7 @@ export function InboxScreen() {
             ))
           ))}
         {list.kind === "ready" && list.next !== undefined && (
-          <html.button onClick={() => void more()} disabled={busy} style={styles.showMore}>
+          <html.button onClick={more} disabled={busy} style={styles.showMore}>
             <html.span style={textStyles.secondary}>{busy ? "Loading…" : "Show more"}</html.span>
           </html.button>
         )}

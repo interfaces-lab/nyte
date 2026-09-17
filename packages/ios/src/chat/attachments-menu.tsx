@@ -1,4 +1,6 @@
+// oxlint-disable-next-line no-restricted-imports -- camera permission follows its async resolution
 import { useEffect, useState } from "react";
+import { useMountEffect } from "../use-mount-effect.ts";
 import {
   AppState,
   Image,
@@ -30,7 +32,7 @@ import {
   usePhotoOutput,
 } from "react-native-vision-camera";
 import { GlassSurface, HAS_GLASS } from "./composer-glass.tsx";
-import { SPRING, ICON_ROW_BOTTOM } from "./composer-geometry.ts";
+import { SPRING, ICON_ROW_INSET } from "./composer-geometry.ts";
 import { prepareImage, type StagedImage } from "../media/attachments.ts";
 import type { PhotoAccess, RecentPhoto } from "../media/recent-photos.ts";
 import { overCamera, spacing, typography, useTheme } from "../theme.ts";
@@ -47,7 +49,8 @@ const OPEN_WIDTH = 220;
 const ITEM_ICON = 40;
 const OPEN_PAD = spacing.lg;
 const OPEN_GAP = spacing.md;
-const OPEN_HEIGHT = OPEN_PAD * 2 + ITEM_ICON * MENU_ITEMS.length + OPEN_GAP * (MENU_ITEMS.length - 1);
+const OPEN_HEIGHT =
+  OPEN_PAD * 2 + ITEM_ICON * MENU_ITEMS.length + OPEN_GAP * (MENU_ITEMS.length - 1);
 
 type ExtendMode = (typeof MENU_ITEMS)[number]["mode"];
 
@@ -57,7 +60,6 @@ type ExtendMode = (typeof MENU_ITEMS)[number]["mode"];
  * back to the plus.
  */
 export function AttachmentsMenu({
-  visible,
   progress,
   extendProgress,
   keyboardHeight,
@@ -70,7 +72,6 @@ export function AttachmentsMenu({
   onManageAccess,
   onCapture,
 }: {
-  visible: boolean;
   progress: SharedValue<number>;
   extendProgress: SharedValue<number>;
   keyboardHeight: SharedValue<number>;
@@ -104,13 +105,9 @@ export function AttachmentsMenu({
     );
   };
 
-  useEffect(() => {
-    if (!visible) setExtended(false);
-  }, [visible]);
-
   const bottom = useDerivedValue(() => {
     const x = extendProgress.get();
-    const closed = cardDock.get() + ICON_ROW_BOTTOM - CLOSED / 2;
+    const closed = cardDock.get() + ICON_ROW_INSET - CLOSED / 2;
     const next = 8;
     return closed + (next - closed) * x;
   });
@@ -251,7 +248,7 @@ export function AttachmentsMenu({
   );
 
   return (
-    <OverKeyboardView visible={visible}>
+    <OverKeyboardView visible>
       <GestureHandlerRootView style={styles.fullScreen}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.fullScreen} pointerEvents="box-none">
@@ -322,16 +319,17 @@ function AttachCamera({
     ],
   }));
 
+  // Permission status resolves asynchronously after mount; the request follows.
   useEffect(() => {
     if (!hasPermission) void requestPermission();
   }, [hasPermission, requestPermission]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const subscription = AppState.addEventListener("change", (state) =>
       setActive(state === "active"),
     );
     return () => subscription.remove();
-  }, []);
+  });
 
   const capture = () => {
     if (disabled || !ready || busy || !active || !hasPermission || device === undefined) return;
