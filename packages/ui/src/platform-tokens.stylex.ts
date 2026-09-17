@@ -1,7 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 
 /*
- * The kit palette, in two layers, matching the desktop renderer's model:
+ * The Cloud palette, in two layers, matching the desktop renderer's model:
  *
  * - Anchors, declared per appearance with `light-dark()`: base, editor, chrome,
  *   sidebar, raised, the primary fill, and the named hues.
@@ -11,10 +11,10 @@ import * as stylex from "@stylexjs/stylex";
  *
  * Steps carry the desktop ratios, so a step reads the same against every
  * surface: text 60/36 of the base, strokes 30/12/8/4, and a hue wash at 9% in
- * light and 17% in dark, 17/32 on hover. The kit names no icon or background
+ * light and 17% in dark, 17/32 on hover. Cloud names no icon or background
  * step; those tiers gain ratios here when a component needs one.
  *
- * The kit holds its own anchor values rather than importing the desktop ones:
+ * Cloud holds its own anchor values rather than importing the desktop ones:
  * the docs site and the demos load this file alone.
  *
  * A literal belongs in an anchor. Anything else derives, which is what keeps a

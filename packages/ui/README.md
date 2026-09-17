@@ -33,7 +33,13 @@ Primitives use inherited `--nyte-*` custom properties. Override only the tokens 
 }
 ```
 
-The generated CSS variables and the typed StyleX map come from `platform-tokens.stylex.ts`. Use `className` for consumer layout, including Tailwind utilities, and `xstyle` for a deliberate StyleX override. Reuse Base UI parts before creating a new wrapper, and keep domain adapters in the app.
+The generated CSS variables and the typed StyleX map come from `platform-tokens.stylex.ts`. Apps that author StyleX import the groups from that file:
+
+```ts
+import { colorVars } from "@nyte-ai/ui/platform-tokens.stylex";
+```
+
+StyleX only keeps `--nyte-*` names through a direct `defineVars` import. Do not read `tokens.color` inside `stylex.create`. Use `className` for layout, including Tailwind, and `xstyle` when you need a StyleX override. Reuse Base UI parts before creating a new wrapper, and keep domain adapters in the app.
 
 Native apps import `platformColors` from `@nyte-ai/ui/platform-colors`. Its `light` and `dark` palettes contain raw colors with camelCase names, such as `platformColors.dark.foreground`. This entrypoint has no runtime dependencies. Apps map those colors to their own native theme and keep platform typography and touch geometry locally. The CSS-only `focus-ring` alias is omitted; native controls can use `ring` directly.
 

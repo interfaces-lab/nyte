@@ -21,7 +21,7 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Kit components restate this; the base rule keeps ad-hoc focusables on the same ring. */
+  /* Cloud primitives restate this; the base rule keeps ad-hoc focusables on the same ring. */
   :focus-visible {
     outline: var(--nyte-control-focus-width) solid var(--nyte-color-focus-ring);
     outline-offset: var(--nyte-control-focus-offset);
