@@ -34,10 +34,12 @@ const UNICODE_FORGERY = /[\u2028\u2029\u202a-\u202e]/g;
 /** Page text kept as a block: newlines and tabs survive, cursor control does not. */
 function stripControls(text: string): string {
   // Matching control characters is the point: page text must not move a cursor.
-  // oxlint-disable-next-line no-control-regex
-  return text
-    .replace(/[\x00-\x08\x0b\x0c\x0d\x0e-\x1f\x7f-\x9f]/g, "")
-    .replace(UNICODE_FORGERY, "");
+  return (
+    text
+      // oxlint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0b\x0c\x0d\x0e-\x1f\x7f-\x9f]/g, "")
+      .replace(UNICODE_FORGERY, "")
+  );
 }
 
 /**
