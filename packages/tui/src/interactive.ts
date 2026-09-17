@@ -2902,11 +2902,7 @@ class Interactive {
     const release = await checkForUpdate();
     if (release === undefined || this.disposed) return;
     if (!this.settings.autoUpdate) {
-      notice(
-        this.shell,
-        `Update available: ${release.version} · /update to install`,
-        this.shell.theme.warning,
-      );
+      notice(this.shell, `Update available: ${release.version} · /update to install`);
       return;
     }
     const outcome = await selfUpdate();
