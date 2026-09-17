@@ -1013,8 +1013,8 @@
       "id": "gpt-6-astra",
       "name": "GPT-6 Astra",
       "api": "openai-responses",
-      "baseUrl": "https://api.openai.com/v1",
       "provider": "openai",
+      "baseUrl": "https://api.openai.com/v1",
       "reasoning": true,
       "input": [
         "text",
