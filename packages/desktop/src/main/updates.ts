@@ -5,16 +5,11 @@ import type { MenuItem } from "electron";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createUpdateController } from "./update-controller.ts";
-import {
-  preflightUpdateCheck,
-  runRelaunchCleanup,
-  updateActivityDetail,
-} from "./update-relaunch.ts";
+import { installBlockedDialog, runRelaunchCleanup } from "./update-relaunch.ts";
 import type { DesktopUpdateActivity } from "./host.ts";
 
 const CHECK_LABEL = "Check for Updates…";
 const UPDATE_INTERVAL_MS = 6 * 60 * 60_000;
-const ACTIVE_WORK_RETRY_MS = 15 * 60_000;
 
 type UpdateLogValue = boolean | number | string;
 type UpdateLogDetails = Readonly<Record<string, UpdateLogValue>>;
@@ -43,9 +38,24 @@ export function registerUpdates({
         ? "Install the AppImage build to receive desktop updates."
         : undefined;
 
-  let activeWorkRetry: NodeJS.Timeout | undefined;
+  let resumeInstall: (() => void) | undefined;
   if (process.platform === "darwin" && unavailable === undefined) {
     updater.setBeforeRelaunchHandler(async (update) => {
+      const current = await activity();
+      if (current.kind === "busy") {
+        log("install-blocked", {
+          tasks: current.taskCount,
+          terminalCommands: current.terminalCommandCount,
+        });
+        item.label = "Restart to Update…";
+        item.enabled = true;
+        await dialog.showMessageBox(installBlockedDialog(current));
+        // Sparkle relaunches once this handler settles, so the install waits here
+        // until the menu item releases it on an idle app.
+        await new Promise<void>((resolve) => {
+          resumeInstall = resolve;
+        });
+      }
       item.label = "Preparing to Restart…";
       item.enabled = false;
       log("relaunch-requested", {
@@ -106,6 +116,7 @@ export function registerUpdates({
     return createUpdateController({
       updater: autoUpdater,
       message: (options) => dialog.showMessageBox(options),
+      activity,
       status: (label, enabled) => {
         item.label = label;
         item.enabled = enabled;
@@ -118,6 +129,19 @@ export function registerUpdates({
   async function check(manual: boolean): Promise<void> {
     try {
       if (process.platform === "darwin") {
+        if (resumeInstall !== undefined) {
+          if (!manual) return;
+          const current = await activity();
+          if (current.kind === "busy") {
+            await dialog.showMessageBox(installBlockedDialog(current));
+            return;
+          }
+          const resume = resumeInstall;
+          resumeInstall = undefined;
+          log("install-resumed");
+          resume();
+          return;
+        }
         if (unavailable !== undefined) {
           if (manual)
             await dialog.showMessageBox({
@@ -132,39 +156,6 @@ export function registerUpdates({
         updater.setAutomaticallyChecksForUpdates(false);
         updater.setAutomaticallyDownloadsUpdates(false);
         if (!updater.getState().canCheckForUpdates) return;
-        const preflight = await preflightUpdateCheck({
-          activity,
-          manual,
-          confirm: async (current) => {
-            const { response } = await dialog.showMessageBox({
-              type: "warning",
-              message: "Work is still in progress",
-              detail: updateActivityDetail(current),
-              buttons: ["Not Now", "Check Anyway"],
-              defaultId: 0,
-              cancelId: 0,
-            });
-            return response === 1;
-          },
-        });
-        if (preflight.kind === "defer") {
-          log(manual ? "manual-check-deferred" : "check-deferred-for-active-work", {
-            tasks: preflight.activity.taskCount,
-            terminalCommands: preflight.activity.terminalCommandCount,
-          });
-          if (!manual) {
-            activeWorkRetry ??= setTimeout(() => {
-              activeWorkRetry = undefined;
-              void check(false);
-            }, ACTIVE_WORK_RETRY_MS);
-            activeWorkRetry.unref();
-          }
-          return;
-        }
-        if (activeWorkRetry !== undefined) {
-          clearTimeout(activeWorkRetry);
-          activeWorkRetry = undefined;
-        }
         item.label = "Checking for Updates…";
         item.enabled = false;
         log("check-started", { manual });
@@ -201,7 +192,6 @@ export function registerUpdates({
   app.once("before-quit", () => {
     clearTimeout(startup);
     clearInterval(periodic);
-    if (activeWorkRetry !== undefined) clearTimeout(activeWorkRetry);
   });
 }
 

@@ -1,12 +1,9 @@
+import type { MessageBoxOptions } from "electron";
 import type { DesktopUpdateActivity } from "./host.ts";
 
 const RELAUNCH_CLEANUP_TIMEOUT_MS = 10_000;
 
-type BusyUpdateActivity = Extract<DesktopUpdateActivity, { readonly kind: "busy" }>;
-
-type UpdateCheckPreflight =
-  | { readonly kind: "check" }
-  | { readonly kind: "defer"; readonly activity: BusyUpdateActivity };
+export type BusyUpdateActivity = Extract<DesktopUpdateActivity, { readonly kind: "busy" }>;
 
 type RelaunchCleanupResult =
   | { readonly kind: "completed" }
@@ -39,22 +36,8 @@ export async function runRelaunchCleanup({
   }
 }
 
-export async function preflightUpdateCheck({
-  activity,
-  confirm,
-  manual,
-}: {
-  readonly activity: () => Promise<DesktopUpdateActivity>;
-  readonly confirm: (activity: BusyUpdateActivity) => Promise<boolean>;
-  readonly manual: boolean;
-}): Promise<UpdateCheckPreflight> {
-  const current = await activity();
-  if (current.kind === "idle") return { kind: "check" };
-  if (manual && (await confirm(current))) return { kind: "check" };
-  return { kind: "defer", activity: current };
-}
-
-export function updateActivityDetail(activity: BusyUpdateActivity): string {
+/** An install may only start on an idle app, so busy work blocks it instead of prompting. */
+export function installBlockedDialog(activity: BusyUpdateActivity): MessageBoxOptions {
   const descriptions: string[] = [];
   if (activity.taskCount > 0) {
     descriptions.push(`${activity.taskCount} ${activity.taskCount === 1 ? "task" : "tasks"}`);
@@ -67,9 +50,14 @@ export function updateActivityDetail(activity: BusyUpdateActivity): string {
     );
   }
   const total = activity.taskCount + activity.terminalCommandCount;
-  return `${descriptions.join(" and ")} ${total === 1 ? "is" : "are"} still running. Installing an update will stop ${
-    total === 1 ? "it" : "them"
-  }.`;
+  return {
+    type: "warning",
+    message: "Nyte can't install an update while work is running",
+    detail: `${descriptions.join(" and ")} ${
+      total === 1 ? "is" : "are"
+    } still running. Choose Restart to Update once ${total === 1 ? "it finishes" : "they finish"}.`,
+    buttons: ["OK"],
+  };
 }
 
 function errorMessage(cause: unknown): string {
