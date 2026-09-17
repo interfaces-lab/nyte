@@ -25,6 +25,9 @@ import type {
   SessionInfo,
   Nyte,
   WorkspaceInfo,
+  WorkspaceSelectInput,
+  WorkspaceSelectOutcome,
+  WorkspaceSelection,
 } from "@nyte-ai/core";
 import { discoverMentionFiles, readWorkspaceFile, saveWorkspaceFile } from "@nyte-ai/core/files";
 import { createNyteClient } from "@nyte-ai/client";
@@ -227,10 +230,15 @@ function serverTarget(settings: ServerSettings): OpenServerTarget {
  */
 const DIRECTORY_SERVER_BUDGET_MS = 1_500;
 
-/** The share and the local target it was frozen to; selection may move on without it. */
-interface ActiveMobileShare {
+/** The share's own cursor; Mac `this.open` may move without it. */
+interface ShareCursor {
+  open: OpenLocalTarget;
+  readonly sessionOwners: Map<SessionId, OpenLocalTarget>;
+}
+
+/** The share listener and the local target it currently serves. */
+interface ActiveMobileShare extends ShareCursor {
   readonly share: MobileShare;
-  readonly open: OpenLocalTarget;
   readonly reach: MobileShareReach;
 }
 
@@ -874,6 +882,10 @@ export class DesktopHost {
   }): Promise<OpenProjectTarget>;
   private compose(target: WorkspaceTarget): Promise<OpenLocalTarget>;
   private async compose(target: WorkspaceTarget): Promise<OpenLocalTarget> {
+    // Nothing composes after teardown: a caller queued on the lifecycle lock
+    // would otherwise build a store into the cleared map that nothing closes.
+    if (this.closed)
+      throw new ExpectedHostError({ code: "closed", message: "The window is closed" });
     const key = target.kind === "home" ? null : target.workspace.path;
     const existing = this.openTargets.get(key);
     if (existing !== undefined) return existing;
@@ -1173,12 +1185,209 @@ export class DesktopHost {
     }
   }
 
+  private shareSelection(cursor: ShareCursor): WorkspaceSelection {
+    return cursor.open.kind === "home"
+      ? { kind: "home" }
+      : { kind: "project", workspace: cursor.open.workspace };
+  }
+
+  private async retargetShare(
+    cursor: ShareCursor,
+    input: WorkspaceSelectInput,
+  ): Promise<WorkspaceSelectOutcome> {
+    // A select queued behind close() must not compose into a torn-down host.
+    if (this.closed) return { kind: "failed", message: "The window closed" };
+    if (input.kind === "home") {
+      if (cursor.open.kind === "home") {
+        return { kind: "opened", selection: { kind: "home" } };
+      }
+      cursor.open = await this.compose({ kind: "home" });
+      this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+      return { kind: "opened", selection: { kind: "home" } };
+    }
+    const cwd = await realpath(resolve(input.path)).catch(() => resolve(input.path));
+    if (cursor.open.kind === "project" && cursor.open.workspace.path === cwd) {
+      return {
+        kind: "opened",
+        selection: { kind: "project", workspace: cursor.open.workspace },
+      };
+    }
+    const workspace = (await this.registry.list()).find(
+      (entry) => entry.path === cwd || entry.path === input.path,
+    );
+    if (workspace === undefined) {
+      return { kind: "failed", message: "Workspace is not in the recents list" };
+    }
+    if (workspace.available !== true) {
+      return { kind: "unavailable", path: workspace.path };
+    }
+    try {
+      await this.requireTrust(workspace.path);
+    } catch (cause) {
+      if (cause instanceof WorkspaceTrustRequired) {
+        return { kind: "untrusted", path: workspace.path };
+      }
+      throw cause;
+    }
+    cursor.open = await this.compose({ kind: "project", workspace });
+    this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    return {
+      kind: "opened",
+      selection: { kind: "project", workspace: cursor.open.workspace },
+    };
+  }
+
+  /** The phone's forget is the Mac's; a cursor on the forgotten folder re-seats on Home. */
+  private async forgetShareWorkspace(
+    cursor: ShareCursor,
+    input: { readonly path: string },
+  ): Promise<void> {
+    const target = await realpath(resolve(input.path)).catch(() => resolve(input.path));
+    await this.forgetWorkspace(input.path);
+    await this.serialize(async () => {
+      if (this.closed) return;
+      if (cursor.open.kind !== "project" || cursor.open.workspace.path !== target) return;
+      cursor.open = await this.compose({ kind: "home" });
+      this.dependencies.emitHostEvent({ kind: "mobile_share_changed" });
+    });
+  }
+
+  /** Live SDK over the share cursor so `workspace.select` retargets later RPCs. */
+  private shareCursor(cursor: ShareCursor): Nyte {
+    const owner = (sessionId?: SessionId): OpenLocalTarget =>
+      sessionId === undefined ? cursor.open : (cursor.sessionOwners.get(sessionId) ?? cursor.open);
+    const sdk = (sessionId?: SessionId) => owner(sessionId).sdk;
+    const remember = (sessionId: SessionId, open: OpenLocalTarget): void => {
+      cursor.sessionOwners.set(sessionId, open);
+      this.sessionOwners.set(sessionId, open);
+    };
+    return {
+      get landing() {
+        return cursor.open.sdk.landing;
+      },
+      sessions: {
+        create: async (input) => {
+          const open =
+            input?.parent === undefined
+              ? cursor.open
+              : (cursor.sessionOwners.get(input.parent.sessionId) ?? cursor.open);
+          const session = await open.sdk.sessions.create(input);
+          remember(session.sessionId, open);
+          return session;
+        },
+        get: (input) => sdk(input.sessionId).sessions.get(input),
+        snapshot: (input) => sdk(input.sessionId).sessions.snapshot(input),
+        metadata: (input) => sdk(input.sessionId).sessions.metadata(input),
+        list: async (input) => {
+          const parent = input?.parent ?? undefined;
+          const open =
+            parent === undefined ? cursor.open : (cursor.sessionOwners.get(parent) ?? cursor.open);
+          const page = await open.sdk.sessions.list(input);
+          for (const session of page.items) remember(session.sessionId, open);
+          return page;
+        },
+        rename: (input) => sdk(input.sessionId).sessions.rename(input),
+        setPinned: (input) => sdk(input.sessionId).sessions.setPinned(input),
+        setArchived: (input) => sdk(input.sessionId).sessions.setArchived(input),
+        delete: (input) => sdk(input.sessionId).sessions.delete(input),
+        configure: (input) => sdk(input.sessionId).sessions.configure(input),
+      },
+      messages: {
+        send: (input) => sdk(input.sessionId).messages.send(input),
+        cancel: (input) => sdk(input.sessionId).messages.cancel(input),
+        redeliver: (input) => sdk(input.sessionId).messages.redeliver(input),
+        list: (input) => sdk(input.sessionId).messages.list(input),
+        pending: (input) => sdk(input.sessionId).messages.pending(input),
+      },
+      runs: {
+        current: (input) => sdk(input.sessionId).runs.current(input),
+        abort: (input) => sdk(input.sessionId).runs.abort(input),
+        wait: (input) => sdk(input.sessionId).runs.wait(input),
+        reply: (input) => sdk(input.sessionId).runs.reply(input),
+        compact: (input) => sdk(input.sessionId).runs.compact(input),
+        context: (input) => sdk(input.sessionId).runs.context(input),
+        changes: (input) => sdk(input.sessionId).runs.changes(input),
+      },
+      jobs: {
+        list: (input) => sdk(input.sessionId).jobs.list(input),
+        start: (input) => sdk(input.sessionId).jobs.start(input),
+        background: (input) => sdk(input.sessionId).jobs.background(input),
+        cancel: (input) => sdk(input.sessionId).jobs.cancel(input),
+      },
+      heads: {
+        list: (input) => sdk(input.sessionId).heads.list(input),
+        create: (input) => sdk(input.sessionId).heads.create(input),
+        move: (input) => sdk(input.sessionId).heads.move(input),
+        delete: (input) => sdk(input.sessionId).heads.delete(input),
+        merge: (input) => sdk(input.sessionId).heads.merge(input),
+      },
+      workspace: {
+        list: () => cursor.open.sdk.workspace.list(),
+        current: () => Promise.resolve(this.shareSelection(cursor)),
+        select: (input) =>
+          this.serialize(() => this.retargetShare(cursor, input)).catch(
+            (cause): WorkspaceSelectOutcome => ({
+              kind: "failed",
+              message: ipcFailure(cause).message,
+            }),
+          ),
+        forget: (input) => this.forgetShareWorkspace(cursor, input),
+        files: (input) => sdk(input?.sessionId).workspace.files(input),
+        vcs: {
+          status: () => cursor.open.sdk.workspace.vcs.status(),
+          diff: (input) => cursor.open.sdk.workspace.vcs.diff(input),
+        },
+      },
+      provider: {
+        models: {
+          list: async () => {
+            const [{ catalog }, models] = await Promise.all([
+              this.catalog(),
+              cursor.open.sdk.provider.models.list(),
+            ]);
+            const listed = new Set(
+              catalog.models.filter((model) => model.listed).map((model) => model.key),
+            );
+            return models.filter((model) => listed.has(`${model.provider}/${model.id}`));
+          },
+          default: () => cursor.open.sdk.provider.models.default(),
+        },
+      },
+      plugins: {
+        catalog: () => cursor.open.sdk.plugins.catalog(),
+        list: (input) => sdk(input.sessionId).plugins.list(input),
+        commands: {
+          list: (input) => sdk(input.sessionId).plugins.commands.list(input),
+          run: (input) => sdk(input.sessionId).plugins.commands.run(input),
+        },
+        settings: {
+          list: (input) => sdk(input.sessionId).plugins.settings.list(input),
+          apply: (input) => sdk(input.sessionId).plugins.settings.apply(input),
+        },
+        resources: {
+          list: (input) => sdk(input.sessionId).plugins.resources.list(input),
+        },
+        status: {
+          list: (input) => sdk(input.sessionId).plugins.status.list(input),
+        },
+      },
+      watch: (input) => sdk(input.sessionId).watch(input),
+      attach: (input) => cursor.open.sdk.attach(input),
+      advance: (input) => sdk(input.sessionId).advance(input),
+      reactivate: () => cursor.open.sdk.reactivate(),
+      sessionCwd: (input) => sdk(input.sessionId).sessionCwd(input),
+      relocate: (input) => sdk(input.sessionId).relocate(input),
+      setPlugins: (plugins, input) => sdk(input?.sessionId).setPlugins(plugins, input),
+      holdPlugins: () => cursor.open.sdk.holdPlugins(),
+      close: () => cursor.open.sdk.close(),
+    };
+  }
+
   /**
-   * Serve the selected local target as it stands now. The share keeps this
-   * SDK even after the desktop selects another folder: what the phone sees
-   * changes only when the user stops and starts again. A folder is served
-   * only once trusted; the server target is never a candidate because
-   * selection is always local.
+   * Serve the selected local target as it stands now. Mac selection may move
+   * later; the share cursor stays until the phone calls `workspace.select`.
+   * A folder is served only once trusted; the server target is never a
+   * candidate because selection is always local.
    */
   private async startMobileShare(reach: MobileShareReach): Promise<MobileShareState> {
     if (this.closed)
@@ -1186,6 +1395,13 @@ export class DesktopHost {
     if (this.mobileShare === undefined) {
       const pending = (async (): Promise<ActiveMobileShare> => {
         const host = reach === "tailnet" ? await this.requireTailnetHost() : undefined;
+        // Bail before prepare, not after it: teardown waits on this pending,
+        // so a prepare queued behind teardown would deadlock the close.
+        if (this.closed)
+          throw new ExpectedHostError({
+            code: "closed",
+            message: "The window closed before sharing",
+          });
         const open = await this.prepare();
         if (open.kind === "project") await this.requireTrust(open.workspace.path);
         if (this.closed)
@@ -1193,30 +1409,16 @@ export class DesktopHost {
             code: "closed",
             message: "The window closed before sharing",
           });
+        const cursor: ShareCursor = { open, sessionOwners: new Map() };
         const share = await startMobileShare({
           host,
-          sdk: {
-            ...open.sdk,
-            provider: {
-              models: {
-                ...open.sdk.provider.models,
-                list: async () => {
-                  const [{ catalog }, models] = await Promise.all([
-                    this.catalog(),
-                    open.sdk.provider.models.list(),
-                  ]);
-                  const listed = new Set(
-                    catalog.models.filter((model) => model.listed).map((model) => model.key),
-                  );
-                  return models.filter((model) => listed.has(`${model.provider}/${model.id}`));
-                },
-              },
-            },
-          },
+          sdk: this.shareCursor(cursor),
           version: this.dependencies.appVersion ?? "dev",
-          attach: (sessionId) => this.attachSession(open, sessionId),
+          attach: (sessionId) => {
+            this.attachSession(cursor.sessionOwners.get(sessionId) ?? cursor.open, sessionId);
+          },
         });
-        return { share, open, reach };
+        return Object.assign(cursor, { share, reach });
       })();
       this.mobileShare = pending;
       try {
