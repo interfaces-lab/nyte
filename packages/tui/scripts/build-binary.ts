@@ -41,6 +41,12 @@ try {
     root: packages,
     target: "bun",
     plugins: [solidPlugin],
+    // `@opentui/core` selects its native module by reading OPENTUI_LIBC, and pnpm
+    // installs only the host's libc variant. Left dynamic, the bundler has to
+    // resolve both branches and fails on the absent one; pinning the value lets
+    // dead code elimination drop the branch this binary cannot use. Set
+    // OPENTUI_LIBC=musl in the environment to compile against musl instead.
+    define: { "process.env.OPENTUI_LIBC": JSON.stringify(process.env["OPENTUI_LIBC"] ?? "glibc") },
     compile: { outfile: executable, autoloadBunfig: false, autoloadDotenv: false },
   });
   if (!result.success) {
