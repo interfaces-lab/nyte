@@ -1,6 +1,6 @@
 {
   "name": "@nyte-ai/desktop",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": true,
   "description": "The Nyte desktop app: an Electron host over @nyte-ai/core's SDK.",
   "type": "module",
