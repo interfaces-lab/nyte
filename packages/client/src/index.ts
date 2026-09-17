@@ -304,6 +304,8 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
     },
     workspace: {
       list: operation("workspace.list"),
+      current: operation("workspace.current"),
+      select: operation("workspace.select"),
       forget: operation("workspace.forget"),
       files: operation("workspace.files"),
       vcs: { diff: operation("workspace.vcs.diff") },
