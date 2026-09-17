@@ -37,4 +37,5 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+      - run: pnpm --dir packages/tui verify:targets
       - run: pnpm exec turbo test
