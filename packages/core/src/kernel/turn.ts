@@ -54,7 +54,7 @@ import {
   validateCompactionSettings,
 } from "./compaction.ts";
 import type { CompactionSettings, ProviderCompaction } from "./compaction.ts";
-import { contextMessages, modelContext } from "./context.ts";
+import { contextMessages, modelContext } from "@nyte-ai/client";
 import {
   decideRecovery,
   expireEffect,
@@ -63,8 +63,8 @@ import {
   settleEffect,
   type EffectView,
 } from "./effects.ts";
-import { toJsonValue } from "./json.ts";
-import type { JsonValue } from "./json.ts";
+import { toJsonValue } from "@nyte-ai/client";
+import type { JsonValue } from "@nyte-ai/client";
 import type {
   Choice,
   Commit,
@@ -78,8 +78,8 @@ import type {
 } from "./model.ts";
 import type { Session } from "./store.ts";
 import { startSpan } from "./telemetry.ts";
-import { estimateModelContextTokens, lastAssistantUsageInfo } from "./views/context.ts";
-import { usageTokens } from "./views/usage.ts";
+import { estimateModelContextTokens, lastAssistantUsageInfo } from "@nyte-ai/client";
+import { usageTokens } from "@nyte-ai/client";
 
 /** Based on https://github.com/earendil-works/pi/blob/dev/packages/agent/src/harness/config.ts */
 const DEFAULT_RETRY_POLICY: RetryPolicy = {

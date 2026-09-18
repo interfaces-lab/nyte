@@ -16,7 +16,7 @@ import {
   REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 import {
   $composerCompletion,
   $composerReferences,

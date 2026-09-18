@@ -1,5 +1,5 @@
 import { isJsonObject, type JsonValue } from "../json.ts";
-import type { CommitBody, Oid } from "../model.ts";
+import type { CommitBody, Oid } from "@nyte-ai/protocol";
 import { readPatch } from "./changes.ts";
 import { parsePatchFacts, type ParsedPatch } from "./patch.ts";
 import type { ToolTurnPart } from "./transcript.ts";

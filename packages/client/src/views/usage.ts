@@ -1,6 +1,6 @@
 /** Usage totals folded from immutable commits. */
 import type { Usage } from "@nyte-ai/schema";
-import type { Commit } from "../model.ts";
+import type { Commit } from "@nyte-ai/protocol";
 
 export type UsageSubject =
   | { readonly kind: "model"; readonly provider: string; readonly model: string }

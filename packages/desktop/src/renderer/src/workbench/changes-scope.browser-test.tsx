@@ -12,7 +12,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { ReactElement } from "react";
-import type { SessionSnapshot } from "@nyte-ai/core";
+import type { SessionSnapshot } from "@nyte-ai/protocol";
 import { keys, queryClient } from "../queries.ts";
 import { ChangesPanel } from "./changes-panel.tsx";
 import {

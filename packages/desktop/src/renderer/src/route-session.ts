@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import { keys } from "./query-keys.ts";
 
 /** Share session existence reads between route preloads and the navigation they precede. */

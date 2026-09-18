@@ -56,7 +56,7 @@ export type {
   AgentToolUpdateCallback,
   ToolExecutionContext,
 } from "../types.ts";
-export { toJsonValue } from "../kernel/json.ts";
+export { toJsonValue } from "@nyte-ai/client";
 
 /** Skills are plugin contributions; the built-in `skills` plugin reads them. */
 export { formatSkillInvocation } from "../skills.ts";

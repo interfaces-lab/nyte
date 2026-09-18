@@ -1,5 +1,5 @@
 import type { AssistantMessage, UserMessage } from "@nyte-ai/schema";
-import type { Commit, CommitBody } from "../model.ts";
+import type { Commit, CommitBody } from "@nyte-ai/protocol";
 
 export interface SessionDirectoryEntry {
   readonly id: string;

@@ -1,7 +1,7 @@
 import { mutationOptions } from "@tanstack/react-query";
 import type { MutationState, QueryClient } from "@tanstack/react-query";
-import { isTerminalPhase } from "@nyte-ai/core/views";
-import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/core";
+import { isTerminalPhase } from "@nyte-ai/client";
+import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import type { SessionsBridge } from "../../shared/ipc.ts";
 import { keys } from "./query-keys.ts";
 import type { SessionPage } from "./session-directory.ts";

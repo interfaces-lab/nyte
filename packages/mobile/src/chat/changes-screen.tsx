@@ -9,7 +9,7 @@ import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
 import type { SessionId, VcsDiff } from "@nyte-ai/protocol";
-import { parsePatchFacts, type PatchFile } from "@nyte-ai/core/views";
+import { parsePatchFacts, type PatchFile } from "@nyte-ai/client";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
 import { describeHostError } from "../connection/connection.ts";

@@ -5,8 +5,8 @@ import {
   runActivityLabel,
   subagentToolKind,
   type ParsedPatch,
-} from "@nyte-ai/core/views";
-import type { SessionId, ToolProgress, ToolTurnPart } from "@nyte-ai/core";
+} from "@nyte-ai/client";
+import type { SessionId, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { sessionId } from "@nyte-ai/protocol";
 

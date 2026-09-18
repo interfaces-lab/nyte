@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { AssistantMessage, Message } from "@nyte-ai/schema";
 import type { Landing } from "@nyte-ai/protocol";
-import { contextMessages } from "../../src/kernel/context.ts";
+import { contextMessages } from "@nyte-ai/client";
 import {
   listEffects,
   openEffect,

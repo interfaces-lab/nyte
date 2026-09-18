@@ -11,7 +11,7 @@ import { useState } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
 import { Row } from "@nyte-ai/ui/row";
-import type { ThinkingLevel } from "@nyte-ai/core";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { Button, focus } from "../components/ui.tsx";
 import {
@@ -94,7 +94,7 @@ function DefaultsSection({ catalog }: { catalog: DesktopCatalog }): ReactElement
           />
         </SettingsRow>
         <SettingsRow title="Reasoning" description="How long the model thinks before it answers">
-          <SettingsSelect<ThinkingLevel>
+          <SettingsSelect<ModelThinkingLevel>
             label="Default reasoning"
             value={catalog.defaults.thinkingLevel}
             disabled={levels.length <= 1 || setPreference.isPending}

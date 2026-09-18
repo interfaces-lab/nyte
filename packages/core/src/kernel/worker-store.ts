@@ -7,7 +7,7 @@
 import { Worker } from "node:worker_threads";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { CursorExpired } from "./model.ts";
+import { CursorExpired } from "@nyte-ai/protocol";
 import type {
   Commit,
   Event,

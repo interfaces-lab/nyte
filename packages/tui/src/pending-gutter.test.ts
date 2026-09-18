@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_LANDING, MAIN, sessionId } from "@nyte-ai/core";
 import type { RunInfo } from "@nyte-ai/core";
-import type { SessionState } from "@nyte-ai/core/client";
+import type { SessionState } from "@nyte-ai/client";
 import { CliRenderEvents } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import type { TestRendererSetup } from "@opentui/core/testing";

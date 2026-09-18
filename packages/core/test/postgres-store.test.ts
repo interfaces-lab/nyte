@@ -7,7 +7,8 @@ import { setTimeout } from "node:timers/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, test } from "vitest";
 import { hashObject } from "../src/kernel/hash.ts";
-import { CursorExpired, type Commit, type Event, type EventBody } from "../src/kernel/model.ts";
+import { CursorExpired } from "@nyte-ai/protocol";
+import { type Commit, type Event, type EventBody } from "../src/kernel/model.ts";
 import { UnknownSession } from "../src/kernel/store.ts";
 import { PostgresStore, type PostgresDatabase } from "../src/postgres.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { DEFAULT_LANDING } from "@nyte-ai/core";
+import { DEFAULT_LANDING } from "@nyte-ai/protocol";
 import { composerEnterAction, laneRoles, submissionLane } from "./composer-keys.ts";
 
 const enter = (modifiers: Partial<Parameters<typeof composerEnterAction>[0]> = {}) => ({

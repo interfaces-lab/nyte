@@ -4,7 +4,7 @@
  * local row leaves and the gutter never blinks.
  */
 import { useSyncExternalStore } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import {
   createOutbox,
   HOME_WORKSPACE_PARTITION,

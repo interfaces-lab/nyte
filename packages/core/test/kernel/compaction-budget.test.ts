@@ -10,8 +10,8 @@ import {
 } from "../../src/kernel/compaction.ts";
 import { hashObject } from "../../src/kernel/hash.ts";
 import type { Commit, CommitBody, Oid } from "../../src/kernel/model.ts";
-import { contextMessages } from "../../src/kernel/context.ts";
-import { estimateTokens, projectContextStatus } from "../../src/kernel/views/context.ts";
+import { contextMessages } from "@nyte-ai/client";
+import { estimateTokens, projectContextStatus } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import type { StreamFn } from "../../src/types.ts";

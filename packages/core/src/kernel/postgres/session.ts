@@ -1,14 +1,8 @@
 import { setTimeout } from "node:timers/promises";
 import { hashCanonicalJson, hashObject } from "../hash.ts";
-import { canonicalJson } from "../json.ts";
-import {
-  CursorExpired,
-  type Commit,
-  type Event,
-  type EventBody,
-  type Lease,
-  type Obj,
-} from "../model.ts";
+import { canonicalJson } from "@nyte-ai/client";
+import { CursorExpired } from "@nyte-ai/protocol";
+import { type Commit, type Event, type EventBody, type Lease, type Obj } from "../model.ts";
 import { isRefName, newOwnerId } from "../names.ts";
 import { checkEventBody, checkObject } from "../store-schemas.ts";
 import {

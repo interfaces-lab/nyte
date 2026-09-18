@@ -1,4 +1,4 @@
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 import { isFolder } from "./message-references.ts";
 
 /** The context entry does not count toward the workspace result limit. */

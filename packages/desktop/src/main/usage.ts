@@ -13,9 +13,10 @@
  * Days are the host's local days, and the renderer runs on the same machine,
  * so both sides agree on where a day starts without carrying a time zone.
  */
-import { commitUsage, usageTokens } from "@nyte-ai/core/views";
+import { commitUsage, usageTokens } from "@nyte-ai/client";
 import type { IpcFailure } from "../shared/errors.ts";
-import type { SessionId, UsageSubject } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/core";
+import type { UsageSubject } from "@nyte-ai/client";
 import type { Commit } from "@nyte-ai/protocol";
 import type { Usage } from "@nyte-ai/schema";
 import type {

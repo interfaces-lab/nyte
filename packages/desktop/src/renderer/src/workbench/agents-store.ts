@@ -3,7 +3,7 @@
  * subagents itself comes from the parent session's jobs; only the selection
  * is window state, so it is not persisted.
  */
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { useSyncExternalStore } from "react";
 
 let selected: ReadonlyMap<string, SessionId> = new Map();

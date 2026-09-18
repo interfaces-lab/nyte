@@ -26,8 +26,8 @@
  */
 import type { Context, JsonValue, Message, Usage } from "@nyte-ai/schema";
 import type { ProviderCompaction } from "../kernel/compaction.ts";
-import { isJsonObject, toJsonValue, type JsonObject } from "../kernel/json.ts";
-import { addUsage } from "../kernel/views/usage.ts";
+import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
+import { addUsage } from "@nyte-ai/client";
 import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../types.ts";
 
 /**

@@ -6,7 +6,7 @@ import { Stack } from "expo-router/stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { SessionId } from "@nyte-ai/protocol";
-import { waitingCall } from "@nyte-ai/core/client";
+import { waitingCall } from "@nyte-ai/client";
 import { useHost } from "../connection/host-context.tsx";
 import { describeHostError } from "../connection/connection.ts";
 import { toast } from "../ui/toast.tsx";

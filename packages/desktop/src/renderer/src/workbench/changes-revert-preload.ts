@@ -1,6 +1,6 @@
 // Standalone browser-test preload for the changes panel's revert route.
 // Import before any renderer module reads window.nyte.
-import type { VcsStatus } from "@nyte-ai/core";
+import type { VcsStatus } from "@nyte-ai/protocol";
 import type {
   DesktopVcsLog,
   DesktopVcsRefs,

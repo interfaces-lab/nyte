@@ -1,4 +1,4 @@
-import { sessionMark } from "@nyte-ai/core/client";
+import { sessionMark } from "@nyte-ai/client";
 /**
  * The rail: new chat, search, customize, and cloud on top, then a persistent
  * workspace collection. Every folder expands independently over its cached
@@ -28,7 +28,7 @@ import { LayoutGroup, motion, MotionConfig } from "motion/react";
 import type { Transition } from "motion/react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode, RefObject } from "react";
-import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo, WorkspaceInfo } from "@nyte-ai/protocol";
 import type { ChatDraft } from "../layout/session-view-state.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { Icon } from "../components/icons.tsx";

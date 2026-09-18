@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@nyte-ai/core";
+import type { SessionInfo } from "@nyte-ai/protocol";
 import { useSyncExternalStore } from "react";
 import { Type } from "typebox";
 import type { Static } from "typebox";

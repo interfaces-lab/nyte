@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { HeadName, SessionInfo } from "@nyte-ai/core";
+import type { HeadName, SessionInfo } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import {
   DEFAULT_SESSION_VIEW,

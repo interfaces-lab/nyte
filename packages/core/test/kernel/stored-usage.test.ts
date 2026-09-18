@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { headRef } from "../../src/kernel/names.ts";
-import { projectUsage } from "../../src/kernel/views/usage.ts";
+import { projectUsage } from "@nyte-ai/client";
 import { assistant, commit, message, openStore, storePath, usage } from "./helpers.ts";
 
 test("recorded usage survives rewind and reopen, including loose compaction usage", async () => {

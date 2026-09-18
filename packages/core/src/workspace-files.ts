@@ -4,6 +4,7 @@ import { lstat, open, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { TextDecoder } from "node:util";
+import type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "@nyte-ai/protocol";
 
 const fileErrors = {
   outside_workspace: "File is outside the open workspace",
@@ -23,20 +24,7 @@ export class WorkspaceFileError extends Error {
   }
 }
 
-export type WorkspaceFileDocument =
-  | {
-      readonly kind: "text";
-      readonly path: string;
-      readonly contents: string;
-      /** Hash of the bytes read; save refuses to replace a different version. */
-      readonly version: string;
-    }
-  | { readonly kind: "binary"; readonly path: string; readonly size: number }
-  | { readonly kind: "too_large"; readonly path: string; readonly size: number };
-
-export type WorkspaceFileSaveOutcome =
-  | { readonly kind: "saved"; readonly version: string }
-  | { readonly kind: "conflict" };
+export type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "@nyte-ai/protocol";
 
 export const MAX_WORKSPACE_FILE_BYTES = 2_000_000;
 const pendingFileWrites = new Map<string, Promise<WorkspaceFileSaveOutcome>>();

@@ -1,6 +1,6 @@
-import { parsePatchFacts, readPatch } from "@nyte-ai/core/views";
+import { parsePatchFacts, readPatch } from "@nyte-ai/client";
 import { formatPatch } from "diff";
-import type { FileChange, Turn, VcsDiff, VcsStatus } from "@nyte-ai/core";
+import type { FileChange, Turn, VcsDiff, VcsStatus } from "@nyte-ai/protocol";
 import type {
   DesktopVcsCommit,
   DesktopVcsDiffInput,

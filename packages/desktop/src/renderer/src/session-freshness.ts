@@ -4,7 +4,7 @@
  * a short run, so it may finish carrying state older than a run event that
  * arrived while it was in flight. The newer observation wins, per session.
  */
-import type { SessionId, SessionInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 
 export class SessionObservations {
   readonly #observedAt = new Map<SessionId, number>();

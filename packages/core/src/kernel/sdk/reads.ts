@@ -9,7 +9,7 @@ import { branch } from "../graph.ts";
 import type { Commit, Oid } from "../model.ts";
 import { headRef } from "../names.ts";
 import { pending } from "../queue.ts";
-import { changesFromTurns, projectContextStatus, transcriptFromCommits } from "../views/index.ts";
+import { changesFromTurns, projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
 import type { Pooled, SessionPool } from "./session-pool.ts";
 import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
 import {

@@ -1,5 +1,5 @@
-import { sessionMark } from "@nyte-ai/core/client";
-import type { SessionInfo } from "@nyte-ai/core";
+import { sessionMark } from "@nyte-ai/client";
+import type { SessionInfo } from "@nyte-ai/protocol";
 import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read-state.ts";
 import type { ReadSessions } from "../session-read-state.ts";
 

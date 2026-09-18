@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { SendInput, SendReceipt, SessionId } from "@nyte-ai/core";
+import type { SendInput, SendReceipt, SessionId } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import {
   createOutbox,

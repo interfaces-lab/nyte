@@ -8,15 +8,10 @@
  * span more than a branch, the session tree and the usage panel, are host
  * reads over the store entry's documented contract (design record, "Roles").
  */
-import { emptyUsageSummary, mergeUsageSummaries, projectUsage, sessionId } from "@nyte-ai/core";
-import type {
-  Disposer,
-  LoadedPlugin,
-  Nyte,
-  SessionId,
-  TrustedWorkspace,
-  UsageSummary,
-} from "@nyte-ai/core";
+import { emptyUsageSummary, mergeUsageSummaries, projectUsage } from "@nyte-ai/client";
+import type { UsageSummary } from "@nyte-ai/client";
+import { sessionId } from "@nyte-ai/core";
+import type { Disposer, LoadedPlugin, Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";

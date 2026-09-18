@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { CommandInfo } from "@nyte-ai/core";
+import type { CommandInfo } from "@nyte-ai/protocol";
 import { DEFAULT_LANDING, sessionId } from "@nyte-ai/protocol";
 import { laneRoles, submissionLane } from "./composer-keys.ts";
 import { composerSendInput, composerSendPlan } from "./composer-send.ts";

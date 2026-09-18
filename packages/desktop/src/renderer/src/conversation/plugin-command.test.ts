@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { CommandInfo } from "@nyte-ai/core";
+import type { CommandInfo } from "@nyte-ai/protocol";
 import { parsePluginCommand } from "./plugin-command.ts";
 
 const commands = [

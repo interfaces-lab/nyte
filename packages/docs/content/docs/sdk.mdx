@@ -11,13 +11,12 @@ Send does not start a run. It admits a message into a lane. A host that called `
 that volunteers to run. Without an attached runner, `runs.wait` can sit forever on a message that is
 already stored.
 
-## Three entries
+## Two entries
 
-| Entry                 | Imports                                                                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nyte-ai/core`       | `createNyte`, the wire data types, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose. The operation table, envelopes, and SSE codec stay in `@nyte-ai/protocol`. |
-| `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here; clients never import it. |
-| `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                                                                                              |
+| Entry                 | Imports                                                                                                                                                                                                                                |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@nyte-ai/core`       | `createNyte`, the wire data types, `MAIN`, `DEFAULT_LANDING`, and what a host needs to compose. The operation table, envelopes, SSE codec, and `CursorExpired` stay in `@nyte-ai/protocol`; the projections live in `@nyte-ai/client`. |
+| `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here; clients never import it.                                 |
 
 Plugin authoring is `@nyte-ai/core/plugins`; `@nyte-ai/plugin` re-exports it and adds `define`
 for local TUI plugins. `SqliteStore`
