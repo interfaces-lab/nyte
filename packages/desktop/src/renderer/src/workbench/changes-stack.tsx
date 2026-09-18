@@ -5,9 +5,9 @@ import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon";
 import { Icon } from "../components/icons.tsx";
 import { DiffView } from "../conversation/diff-view";
+import type { DiffFacts } from "../conversation/diff-view";
 import type { DiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { diffStyles } from "../conversation/styles.stylex.ts";
-import type { ParsedDiff } from "../conversation/tool-detail.ts";
 import { IconButton } from "../components/ui";
 import { ReviewCheckbox } from "./changes-sidebar.tsx";
 import type { ViewedState } from "./changes-viewed.ts";
@@ -47,7 +47,7 @@ import { useMountEffect } from "../use-mount-effect.ts";
 
 type ChangesStackItem =
   | (Extract<ChangeStackSection, { kind: "diff" }> & {
-      readonly parsed: ParsedDiff;
+      readonly parsed: DiffFacts;
       readonly added: number;
       readonly removed: number;
     })
@@ -59,7 +59,7 @@ type ChangesStackItem =
 export function changesStackItem(
   section: ChangeStackSection,
   stats: { readonly added: number; readonly removed: number },
-  parsed: ParsedDiff | undefined,
+  parsed: DiffFacts | undefined,
 ): ChangesStackItem {
   if (section.kind !== "diff") return { ...section, ...stats };
   if (parsed !== undefined) return { ...section, parsed, ...stats };

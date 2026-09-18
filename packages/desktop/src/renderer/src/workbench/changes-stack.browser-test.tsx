@@ -6,7 +6,7 @@
  */
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { parseUnifiedPatch } from "../conversation/tool-detail.ts";
+import { parsePatchFacts } from "@nyte-ai/client";
 import { ChangesStack, changesStackItem } from "./changes-stack.tsx";
 import { STACKED_HEADER_HEIGHT } from "./stacked-diff.ts";
 import "../theme/tokens.css";
@@ -52,7 +52,7 @@ export async function run(): Promise<string> {
     return changesStackItem(
       { kind: "diff", path, patch },
       { added: 6 + index * 2, removed: 0 },
-      parseUnifiedPatch(patch),
+      parsePatchFacts(patch),
     );
   });
 

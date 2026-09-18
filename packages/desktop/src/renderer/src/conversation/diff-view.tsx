@@ -10,10 +10,10 @@ import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
+import type { ParsedPatch } from "@nyte-ai/client";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
-import type { ParsedDiff } from "./tool-detail.ts";
 
 type DiffViewVariant = "inline" | "workbench" | "stack";
 
@@ -261,6 +261,9 @@ function renderablePatch(patch: string): RenderablePatch {
   }
 }
 
+/** The bytes a diff draws and the counts beside them; the counts are the record's, not a reparse. */
+export type DiffFacts = Pick<ParsedPatch, "patch" | "added" | "removed">;
+
 export const DiffView = memo(function DiffView({
   path,
   label,
@@ -273,7 +276,7 @@ export const DiffView = memo(function DiffView({
 }: {
   readonly path: string;
   readonly label?: string;
-  readonly diff: ParsedDiff;
+  readonly diff: DiffFacts;
   readonly variant: DiffViewVariant;
   readonly layout?: "unified" | "split";
   /** Defaults to the variant's own behavior: the stack wraps, the rest scroll. */

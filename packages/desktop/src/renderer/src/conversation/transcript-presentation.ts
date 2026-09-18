@@ -1,6 +1,6 @@
-import type { TurnPart } from "@nyte-ai/protocol";
-import { subagentToolKind } from "@nyte-ai/client";
+import type { ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import { messageParts } from "./message-references.ts";
+import type { ToolPhase } from "./tool-copy.ts";
 
 type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;
 export type WorkTurnPart = Extract<TurnPart, { readonly kind: "thinking" | "tool" }>;
@@ -13,8 +13,14 @@ type TranscriptDisplayPart =
 function isWorkPart(part: TurnPart): part is WorkTurnPart {
   // A delegation owns a child session and outlives the call, so it is not a
   // step inside someone else's episode.
-  if (part.kind === "tool") return subagentToolKind(part.toolName) === undefined;
+  if (part.kind === "tool") return part.class.kind !== "delegate";
   return part.kind === "thinking";
+}
+
+/** A call with no result is still running only while its run is; otherwise the run left it behind. */
+export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
+  if (part.result !== undefined) return part.result.isError ? "failed" : "done";
+  return running ? "running" : "interrupted";
 }
 
 /**
@@ -108,99 +114,6 @@ export function userDisplayText(source: string): string {
   return userTextSegments(source)
     .map((segment) => (segment.kind === "text" ? segment.text : segment.label))
     .join("");
-}
-
-type TranscriptNoticeTone = "neutral" | "danger";
-
-interface TranscriptNotice {
-  readonly text: string;
-  readonly tone: TranscriptNoticeTone;
-  /** Original provider output for a tooltip or diagnostic surface. */
-  readonly detail?: string;
-}
-
-function nestedMessage(value: unknown): string | undefined {
-  if (typeof value !== "object" || value === null) return undefined;
-  if ("message" in value && typeof value.message === "string") return value.message;
-  return (
-    ("error" in value ? nestedMessage(value.error) : undefined) ??
-    ("cause" in value ? nestedMessage(value.cause) : undefined)
-  );
-}
-
-function jsonMessage(text: string): string | undefined {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return undefined;
-  try {
-    return nestedMessage(JSON.parse(text.slice(start, end + 1)));
-  } catch {
-    return undefined;
-  }
-}
-
-function compactMessage(text: string): string | undefined {
-  const message = (jsonMessage(text) ?? text)
-    .replace(/^\s*(?:error\s*:\s*)+/iu, "")
-    .replace(/\s*\(?request(?:_|\s)id\s*[:=].*$/iu, "")
-    .replaceAll(/\s+/gu, " ")
-    .trim();
-  if (message === "" || message.startsWith("{")) return undefined;
-  return message.length <= 180 ? message : `${message.slice(0, 177).trimEnd()}…`;
-}
-
-export function isFailureNotice(text: string): boolean {
-  return /^\s*error\s*:/iu.test(text);
-}
-
-export function presentTranscriptNotice(source: string): TranscriptNotice {
-  const raw = source.trim();
-  if (!isFailureNotice(raw)) return { text: raw, tone: "neutral" };
-
-  const lower = raw.toLocaleLowerCase();
-  if (/abort(?:ed|error)|operation was aborted|run interrupted/u.test(lower)) {
-    return { text: "Run stopped.", tone: "neutral", detail: raw };
-  }
-  if (/rate[_ -]?limit|\b429\b/u.test(lower)) {
-    return { text: "Rate limit reached. Try again shortly.", tone: "danger", detail: raw };
-  }
-  if (/context[_ -]?(?:length|window)|maximum context|too many tokens/u.test(lower)) {
-    return { text: "This chat exceeded the model's context window.", tone: "danger", detail: raw };
-  }
-  if (/insufficient[_ -]?quota|quota exceeded|billing limit/u.test(lower)) {
-    return {
-      text: "Provider quota reached. Try another model or account.",
-      tone: "danger",
-      detail: raw,
-    };
-  }
-  if (/unauthori[sz]ed|authentication|invalid api key|\b401\b/u.test(lower)) {
-    return {
-      text: "Authentication failed. Check the provider account.",
-      tone: "danger",
-      detail: raw,
-    };
-  }
-  if (/overload|temporarily unavailable|\b529\b/u.test(lower)) {
-    return {
-      text: "The model is temporarily unavailable. Try again shortly.",
-      tone: "danger",
-      detail: raw,
-    };
-  }
-  if (/network|fetch failed|connection (?:lost|refused|reset)|\beconn/u.test(lower)) {
-    return {
-      text: "Connection lost. Check your network and try again.",
-      tone: "danger",
-      detail: raw,
-    };
-  }
-
-  return {
-    text: compactMessage(raw) ?? "Request failed.",
-    tone: "danger",
-    detail: raw,
-  };
 }
 
 export function formatRunDuration(durationMs: number): string | undefined {

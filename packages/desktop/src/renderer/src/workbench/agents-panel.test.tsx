@@ -70,7 +70,6 @@ const childSnapshot: SessionSnapshot = {
       id: "turn-1",
       startedAt: 1,
       durationMs: 0,
-      outcome: "completed",
       parts: [
         { kind: "user", commit: "u", parent: null, content: "Map the workbench" },
         { kind: "assistant", commit: "a", contentIndex: 0, text: "Three panels found." },

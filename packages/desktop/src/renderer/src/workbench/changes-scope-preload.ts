@@ -13,38 +13,39 @@ export const changesSession = sessionId("changes-scope-session");
 
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 
-/** Same fabricator shape as changes-panel.test.ts: one tool result per patch. */
-function changedTurn(id: string, patches: readonly string[]): ConversationTurn {
+const patchOf = (path: string, line: string): string =>
+  [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,2 @@", " old", `+${line}`, ""].join("\n");
+
+/** Same fabricator shape as changes-panel.test.ts: one settled file_patch per path. */
+function changedTurn(id: string, paths: readonly string[]): ConversationTurn {
   return {
     kind: "turn",
     id,
-    outcome: "completed",
     startedAt: 1,
     durationMs: 1,
-    parts: patches.map((patch, index) => ({
+    parts: paths.map((path, index) => ({
       kind: "tool",
       callId: `${id}-call-${String(index)}`,
-      toolName: "edit",
-      result: {
-        commit: `${id}-result-${String(index)}`,
-        output: "",
-        isError: false,
-        details: { patch },
+      class: {
+        kind: "file_patch",
+        op: "edit",
+        path,
+        added: 1,
+        removed: 0,
+        patch: patchOf(path, id),
       },
+      result: { commit: `${id}-result-${String(index)}`, output: "", isError: false },
     })),
   };
 }
-
-const patchOf = (path: string, line: string): string =>
-  [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,2 @@", " old", `+${line}`, ""].join("\n");
 
 export const FIRST_TURN = "turn-first";
 export const SECOND_TURN = "turn-second";
 export const THIRD_TURN = "turn-third";
 
-export const firstTurn = changedTurn(FIRST_TURN, [patchOf("src/first.ts", "first")]);
-export const secondTurn = changedTurn(SECOND_TURN, [patchOf("src/second.ts", "second")]);
-export const thirdTurn = changedTurn(THIRD_TURN, [patchOf("src/third.ts", "third")]);
+export const firstTurn = changedTurn(FIRST_TURN, ["src/first.ts"]);
+export const secondTurn = changedTurn(SECOND_TURN, ["src/second.ts"]);
+export const thirdTurn = changedTurn(THIRD_TURN, ["src/third.ts"]);
 
 const session: SessionSnapshot["session"] = {
   sessionId: changesSession,

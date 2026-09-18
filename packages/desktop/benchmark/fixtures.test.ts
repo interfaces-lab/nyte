@@ -93,7 +93,7 @@ test("seeds named SQLite sessions with deterministic rich transcripts", async ()
         assert.equal(transcript.length, seeded.turnCount);
         for (const [turnIndex, turn] of transcript.entries()) {
           if (turn.kind !== "turn") assert.fail("Expected a conversation turn");
-          assert.equal(turn.outcome, "completed");
+          assert.equal(turn.failure, undefined);
           assert.equal(turn.parts.length, 2);
           const user = turn.parts[0];
           const assistant = turn.parts[1];
