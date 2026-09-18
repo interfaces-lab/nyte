@@ -9,7 +9,7 @@
  */
 import { DEFAULT_LANDING } from "@nyte-ai/core";
 import type { SessionEvent } from "@nyte-ai/core";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
 import type { AppMenuCommand } from "../shared/app-menu.ts";
 import {
@@ -248,6 +248,7 @@ const bridge = {
     },
     openExternal: object("host.openExternal"),
     revealPath: object("host.revealPath"),
+    pathForFile: (file: File) => webUtils.getPathForFile(file),
     contextMenu: object("host.contextMenu"),
     terminal: {
       create: object("host.terminal.create"),

@@ -1007,6 +1007,8 @@ export interface HostBridge {
   openExternal(input: { url: string }): Promise<void>;
   /** Show a file or folder in the system file manager. */
   revealPath(input: { path: string }): Promise<void>;
+  /** The absolute path behind a dropped or picked `File`; empty when nothing on disk backs it. */
+  pathForFile(file: File): string;
   /**
    * Pop a native context menu at the cursor and resolve the chosen item's index
    * in `items`, or undefined when it is dismissed. Native menus float above the

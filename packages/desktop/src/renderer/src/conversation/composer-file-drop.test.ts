@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { acceptedImageFiles, carriesFiles, dropHandlers } from "./composer-file-drop.ts";
+import { carriesFiles, dropHandlers } from "./composer-file-drop.ts";
 
 function file(name: string, type: string): File {
   return new File(["x"], name, { type });
@@ -37,22 +37,7 @@ describe("composer file drop", () => {
     );
   });
 
-  test("acceptedImageFiles keeps gif jpeg png webp", () => {
-    assert.deepEqual(
-      acceptedImageFiles({
-        files: [
-          file("a.png", "image/png"),
-          file("b.pdf", "application/pdf"),
-          file("c.webp", "image/webp"),
-          file("d.gif", "image/gif"),
-          file("e.jpg", "image/jpeg"),
-        ],
-      }).map((item) => item.name),
-      ["a.png", "c.webp", "d.gif", "e.jpg"],
-    );
-  });
-
-  test("dropHandlers ignore tab drags and disabled drops", () => {
+  test("dropHandlers suppress the default for tab drags and disabled drops without taking files", () => {
     const received: string[] = [];
     const handlers = dropHandlers({
       onFiles: (files) => {
@@ -62,7 +47,8 @@ describe("composer file drop", () => {
     const tab = dragEvent({ types: ["text/plain"] });
     handlers.onDragOver(tab);
     handlers.onDrop(tab);
-    assert.equal(tab.prevented(), false);
+    assert.equal(tab.prevented(), true);
+    assert.equal(tab.dataTransfer.dropEffect, "none");
     assert.equal(received.length, 0);
 
     const disabled = dropHandlers({
@@ -73,11 +59,11 @@ describe("composer file drop", () => {
     });
     const blocked = dragEvent({ types: ["Files"], files: [file("a.png", "image/png")] });
     disabled.onDrop(blocked);
-    assert.equal(blocked.prevented(), false);
+    assert.equal(blocked.prevented(), true);
     assert.equal(received.length, 0);
   });
 
-  test("dropHandlers prevent navigation and pass accepted images", () => {
+  test("dropHandlers prevent navigation and pass every dropped file", () => {
     const received: string[] = [];
     const handlers = dropHandlers({
       onFiles: (files) => {
@@ -86,13 +72,13 @@ describe("composer file drop", () => {
     });
     const event = dragEvent({
       types: ["Files"],
-      files: [file("shot.png", "image/png"), file("notes.txt", "text/plain")],
+      files: [file("shot.png", "image/png"), file("clip.mp4", "video/mp4")],
     });
     handlers.onDragOver(event);
     handlers.onDrop(event);
     assert.equal(event.prevented(), true);
     assert.equal(event.stopped(), true);
     assert.equal(event.dataTransfer.dropEffect, "copy");
-    assert.deepEqual(received, ["shot.png"]);
+    assert.deepEqual(received, ["shot.png", "clip.mp4"]);
   });
 });

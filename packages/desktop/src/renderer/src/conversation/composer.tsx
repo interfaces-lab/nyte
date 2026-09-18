@@ -19,7 +19,6 @@ import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { Lane, PendingItem, SessionId } from "@nyte-ai/protocol";
-import type { ImageContent } from "@nyte-ai/schema";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
@@ -50,7 +49,9 @@ import type { ComposerDocumentState, ComposerSubmission } from "./composer-docum
 import { ComposerEditor, type ComposerEditorHandle } from "./composer-editor.tsx";
 import { composerSource, useComposerSuggestions } from "./composer-suggestions.tsx";
 import type { ComposerMentionFiles, ComposerSuggestionCatalog } from "./composer-suggestions.tsx";
-import { acceptedImageFiles, bindComposerFileDrop, carriesFiles } from "./composer-file-drop.ts";
+import { bindComposerFileDrop, carriesFiles } from "./composer-file-drop.ts";
+import { attachComposerFiles } from "./composer-files.ts";
+import type { ComposerImageAttachment } from "./composer-files.ts";
 import {
   composerEnterAction,
   laneRoles,
@@ -72,85 +73,6 @@ const COMPACT_FRAME_WIDTH = 320;
 
 type ComposerSurface = "new-chat" | "follow-up";
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
-
-export interface ComposerImageAttachment {
-  readonly id: string;
-  readonly name: string;
-  readonly previewUrl: string;
-  readonly content: ImageContent;
-}
-
-function isTextFileReaderResult(result: FileReader["result"]): result is string {
-  return typeof result === "string";
-}
-
-function readImageAttachment(file: File): Promise<ComposerImageAttachment> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener(
-      "load",
-      () => {
-        const result = reader.result;
-        if (!isTextFileReaderResult(result)) {
-          reject(new Error(`Could not read ${file.name}`));
-          return;
-        }
-        const marker = ";base64,";
-        const markerIndex = result.indexOf(marker);
-        if (!result.startsWith("data:") || markerIndex === -1) {
-          reject(new Error(`Could not encode ${file.name}`));
-          return;
-        }
-        resolve({
-          id: crypto.randomUUID(),
-          name: file.name,
-          previewUrl: result,
-          content: {
-            type: "image",
-            data: result.slice(markerIndex + marker.length),
-            mimeType: file.type,
-          },
-        });
-      },
-      { once: true },
-    );
-    reader.addEventListener("error", () => reject(new Error(`Could not read ${file.name}`)), {
-      once: true,
-    });
-    reader.addEventListener(
-      "abort",
-      () => reject(new Error(`Reading ${file.name} was cancelled`)),
-      {
-        once: true,
-      },
-    );
-    reader.readAsDataURL(file);
-  });
-}
-
-export async function readComposerImageAttachments(files: readonly File[]): Promise<{
-  readonly attachments: readonly ComposerImageAttachment[];
-  readonly error: string | undefined;
-}> {
-  const imageFiles = acceptedImageFiles({ files });
-  if (imageFiles.length === 0) {
-    return {
-      attachments: [],
-      error: "Nyte accepts PNG, JPEG, WebP, GIF, and BMP images.",
-    };
-  }
-  const results = await Promise.allSettled(imageFiles.map(readImageAttachment));
-  const attachments = results.flatMap((result) =>
-    result.status === "fulfilled" ? [result.value] : [],
-  );
-  const error =
-    attachments.length !== imageFiles.length
-      ? "Some images could not be read."
-      : imageFiles.length !== files.length
-        ? "Nyte accepts PNG, JPEG, WebP, GIF, and BMP images."
-        : undefined;
-  return { attachments, error };
-}
 
 /**
  * Session-bound chip: shows the selected inputs for the next message, even
@@ -504,17 +426,14 @@ export function ComposerFrame({
           void submit("submit");
         }}
         onDragEnter={(event) => {
-          if (!disabled && canAttach && carriesFiles(event)) {
-            event.preventDefault();
-            setDragging(true);
-          }
+          event.preventDefault();
+          if (!disabled && canAttach && carriesFiles(event)) setDragging(true);
         }}
         onDragOver={(event) => {
-          if (!disabled && canAttach && carriesFiles(event)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "copy";
-            setDragging(true);
-          }
+          event.preventDefault();
+          const accepted = !disabled && canAttach && carriesFiles(event);
+          event.dataTransfer.dropEffect = accepted ? "copy" : "none";
+          if (accepted) setDragging(true);
         }}
         onDragLeave={(event) => {
           const nextTarget = event.relatedTarget;
@@ -522,11 +441,12 @@ export function ComposerFrame({
           setDragging(false);
         }}
         onDrop={(event) => {
+          // The default would navigate the window to the dropped file; a parent
+          // transcript may also bind addFiles, so don't enqueue twice either.
+          event.preventDefault();
+          event.stopPropagation();
           setDragging(false);
           if (disabled || !canAttach || !carriesFiles(event)) return;
-          event.preventDefault();
-          // A parent transcript may also bind addFiles; don't enqueue twice.
-          event.stopPropagation();
           onFilesSelected(Array.from(event.dataTransfer.files));
         }}
         onDragEnd={() => setDragging(false)}
@@ -543,7 +463,6 @@ export function ComposerFrame({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/bmp,image/gif,image/jpeg,image/png,image/webp"
             multiple
             disabled={disabled}
             tabIndex={-1}
@@ -882,7 +801,7 @@ export function Composer({
 
   const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
-    return readComposerImageAttachments(files)
+    return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         if (result.attachments.length > 0) {
           setAttachments((current) => [...current, ...result.attachments]);

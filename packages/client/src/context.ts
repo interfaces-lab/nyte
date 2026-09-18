@@ -154,7 +154,6 @@ export function contextMessages(commits: readonly Commit[]): Message[] {
         if (body.text !== "") messages.push(createBranchSummaryMessage(body.text, commit.at));
         break;
       case "config":
-      case "note":
         break;
       default: {
         const _exhaustive: never = body;
@@ -208,7 +207,6 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchCo
       case "completion":
       case "checkpoint":
       case "summary":
-      case "note":
         break;
       default: {
         const _exhaustive: never = body;

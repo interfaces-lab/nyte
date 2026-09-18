@@ -100,17 +100,17 @@ test("the commit that lands a change removes it from pending; its landed frame t
 
 test("a commit that landed no change, or one this fold never queued, leaves pending alone", () => {
   const start = stateFromSnapshot(snapshot([item("a", 1)]));
-  const note = applied(start, {
+  const configured = applied(start, {
     seq: 2,
     kind: "commit",
     head: MAIN,
     item: {
       oid: "n1",
-      commit: { kind: "commit", parent: null, body: { kind: "note", type: "hello" }, at: 2 },
+      commit: { kind: "commit", parent: null, body: { kind: "config", agent: "hello" }, at: 2 },
     },
   });
-  assert.deepEqual(note.pending, start.pending);
-  const elsewhere = applied(note, landing("c2", "n1", "z"));
+  assert.deepEqual(configured.pending, start.pending);
+  const elsewhere = applied(configured, landing("c2", "n1", "z"));
   assert.deepEqual(elsewhere.pending, start.pending);
   assert.deepEqual(userParts(elsewhere), [["c2", "key-z"]]);
 });

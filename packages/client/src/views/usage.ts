@@ -76,7 +76,6 @@ export function commitUsage(
         : { subject: { kind: "compaction" }, usage: body.usage };
     case "completion":
     case "config":
-    case "note":
       return undefined;
     default: {
       const _exhaustive: never = body;

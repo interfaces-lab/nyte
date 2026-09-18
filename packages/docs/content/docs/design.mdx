@@ -154,7 +154,7 @@ is the `Failure` the `ai` classifier decided when an assistant message stopped w
 They exist so a client can ask which files one run touched, or which commit a receipt turned into,
 without guessing from timestamps.
 
-A commit body is one of six kinds:
+A commit body is one of five kinds:
 
 | Commit body  | Meaning                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
@@ -163,7 +163,6 @@ A commit body is one of six kinds:
 | `checkpoint` | A context checkpoint with a summary, retained tail, token count, optional provider material, and optional usage. |
 | `summary`    | What a path being carried forward was about. It does not cut context.                                            |
 | `config`     | A model, thinking level, or agent declaration. The latest value of each field wins.                              |
-| `note`       | Product-defined JSON, replayed by core and unseen by the model.                                                  |
 
 Objects **must** be written before the ref update that makes them reachable. A failed update may
 leave loose objects. That is safe, because no ref names them, and retention collects them after
@@ -488,7 +487,7 @@ the epoch deadline, including when it exceeds the platform's maximum timer delay
 
 `Choice`, `Selection`, and `SelectionReply` are protocol's first UI shapes: vocabulary a plugin
 fills, core carries, and any client draws. They deliberately do not grow toward a widget language. A plugin
-that needs a richer rendering than a list gets it from a client-side presenter keyed by tool name,
+that needs a richer rendering than a list draws it from the typed `ToolClass` the commit carries,
 the same way tool results do, never from a bigger shape in core.
 
 ### Retries
@@ -563,7 +562,7 @@ first. The store holds no pending array. Concurrent submissions form one chain b
 move compares its predecessor.
 
 The policy's `drain` says how much lands at once. `"one"` lands through the first message in the
-selected lane, including any config or note changes ahead of it, so the model answers one message
+selected lane, including any config changes ahead of it, so the model answers one message
 at a time. `"all"` lands the whole lane. With `"one"`, a boundary lane mid-run waits until the last
 landed message has its answer. Otherwise a steering message could land on top of an unanswered one
 and the model would see two questions for one reply. A response-phase step considers only
@@ -600,7 +599,7 @@ in the same conversation; it never clears the stopped run's flag.
 Only explicit user input starts model work. Background completions can join an active run at
 its next response boundary, but cannot start a run when the head is idle, completed, failed, or
 stopped. They remain queued across reopen and join the next user input's context before its
-answer. Configuration and notes can still land without starting model work.
+answer. Configuration can still land without starting model work.
 A head with no active run and only deferred completions is `idle` to `runs.wait`.
 Compaction can continue an already-authorized run, but cannot revive a cancelled one.
 
@@ -746,20 +745,21 @@ bake a guess into the kernel.
 
 Projections in `@nyte-ai/client` are pure reads:
 
-| Projection area | Exports                                                                                                        |
-| --------------- | -------------------------------------------------------------------------------------------------------------- |
-| changes         | `appendTurnChanges`, `changesFromTurns`, `diffStat`, `patchedPath`, `readPatch`, and `EMPTY_CHANGES`           |
-| context         | `projectContextStatus`                                                                                         |
-| directory       | `sessionDirectoryEntry`                                                                                        |
-| live parts      | `foldLiveParts`, `livePartKey`, and `EMPTY_LIVE_PARTS`                                                         |
-| presentation    | `createPresenter`, `presentNote`, `presentTool`, `projectToolView`, `runActivityLabel`, and `subagentToolKind` |
-| transcript      | `appendTranscriptCommit`, `transcriptFromCommits`, `turnPartId`, and `EMPTY_TRANSCRIPT`                        |
-| tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                                                      |
-| usage           | `commitUsage`, `usageTokens`, `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage`                   |
+| Projection area | Exports                                                                                      |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| changes         | `appendTurnChanges`, `changesFromTurns`, and `EMPTY_CHANGES`                                 |
+| context         | `projectContextStatus`                                                                       |
+| directory       | `sessionDirectoryEntry`                                                                      |
+| live parts      | `foldLiveParts`, `livePartKey`, and `EMPTY_LIVE_PARTS`                                       |
+| patch           | `parsePatchFacts`, for a client that draws hunks; counts come stamped on the commit          |
+| transcript      | `appendTranscriptCommit`, `transcriptFromCommits`, `turnPartId`, and `EMPTY_TRANSCRIPT`      |
+| tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                                    |
+| usage           | `commitUsage`, `usageTokens`, `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage` |
 
-Projections **must not** write. The transcript must render complete settled messages without a
-plugin. Presentation refiners may improve a tool or note, but an unknown tool or note still has a
-base presentation. A client should never see a blank row because a plugin is missing.
+Projections **must not** write, and never classify. A tool part carries the `ToolClass` its commit
+stamped and a turn carries the `Failure` its assistant commit stamped; an unknown tool is `custom`
+under its label, so the transcript renders every settled message without a plugin. A client should
+never see a blank row because a plugin is missing.
 
 ## Plugins
 
@@ -986,7 +986,7 @@ Storage and session:
 3. **Superseded.** Heads and facts are not the only mutable state. Every domain register is a ref,
    including queues, runs, effects, stacks, keys, cancellation, and deletion.
 4. **Superseded.** The object store canonicalizes typed objects directly. `toJsonValue` remains a
-   boundary for unknown effect, note, and progress payloads, not every durable write.
+   boundary for unknown effect and progress payloads, not every durable write.
 5. **Superseded.** Admission no longer chooses placed or queued by reading a claim. Every submit
    appends a change to a lane chain without taking a lease.
 6. Concurrent participant writes linearize through ref CAS. A head advances only from its expected
@@ -1058,8 +1058,8 @@ Agents:
 
 Presentation:
 
-31. A settled tool result is self-contained. Core transcript and base presentation remain total
-    for unknown tools and note types and do not depend on ephemeral progress.
+31. A settled tool result is self-contained. The transcript's tool part is the commit's
+    `ToolClass`, `custom` for an unknown tool, and does not depend on ephemeral progress.
 
 Heads and pending input:
 
