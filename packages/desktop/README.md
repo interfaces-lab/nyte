@@ -211,7 +211,7 @@ manager, Search Files, the path actions, and Refresh Explorer.
 
 ## Workspace search
 
-The workbench calls `searchWorkspaceFiles` from `@nyte-ai/core/files`. Desktop does not resolve or install its own search binary. The first search downloads ripgrep if neither the system nor Nyte's cache has a compatible executable.
+The workbench calls `searchWorkspaceFiles` from `@nyte-ai/host`. Desktop does not resolve or install its own search binary. The first search downloads ripgrep if neither the system nor Nyte's cache has a compatible executable.
 
 Regex mode uses ripgrep's default engine, not JavaScript regex. Lookaround and backreferences are unsupported. Literal search, case sensitivity, whole-word matching, and workspace-relative include/exclude filters remain available. Ignore rules still apply when an include filter matches an ignored file.
 

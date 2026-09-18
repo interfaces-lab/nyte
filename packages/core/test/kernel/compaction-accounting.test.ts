@@ -14,7 +14,7 @@ import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
 import { projectUsage } from "@nyte-ai/client";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   landing,

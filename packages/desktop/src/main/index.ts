@@ -1,7 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from "electron";
 import { createNyteModels } from "@nyte-ai/ai";
-import { createTrustStore, nyteHome } from "@nyte-ai/host";
-import { WorkspaceTrustRequired } from "@nyte-ai/core";
+import { createWorkspaceStore, nyteHome, WorkspaceTrustRequired } from "@nyte-ai/host";
 import { createWorkspaceEditor } from "./workspace-files.ts";
 import { registerBunOAuthFlows } from "@nyte-ai/ai/bun-oauth";
 import { join } from "node:path";
@@ -155,7 +154,7 @@ const workspaceEditor = createWorkspaceEditor({
   },
   requireTrust: async (path) => {
     try {
-      await createTrustStore().require(path);
+      await createWorkspaceStore().require(path);
     } catch (cause) {
       if (cause instanceof WorkspaceTrustRequired) {
         send(HOST_EVENT_CHANNEL, { kind: "workspace_trust_required", path: cause.cwd });

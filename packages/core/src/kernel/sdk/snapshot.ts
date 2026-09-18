@@ -1,7 +1,7 @@
 import type { JsonValue } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { isThinkingLevel } from "../../types.ts";
+import { isThinkingLevel } from "../loop/types.ts";
 import { branchConfig } from "@nyte-ai/client";
 import type { Commit, Lease, Oid, Run } from "../model.ts";
 import type { PendingChange } from "../queue.ts";

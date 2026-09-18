@@ -7,8 +7,8 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { Type, type Static } from "typebox";
-import type { AgentTool } from "../types.ts";
-import { toolResultContent } from "../utils/tool-result.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
+import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import { argumentParser } from "./support/arguments.ts";
 import { pathExists, resolveToCwd } from "./support/path-utils.ts";
 import {

@@ -79,7 +79,8 @@ export async function createWorkspace(options: {
         theme: "dark",
         compaction: { enabled: false },
       },
-      "trust.json": options.trusted === false ? {} : { [cwd]: true },
+      "workspaces.json":
+        options.trusted === false ? {} : { [cwd]: { trusted: true, lastOpenedAt: Date.now() } },
     };
     for (const [name, value] of Object.entries(files)) {
       await writeFile(join(nyteHome, name), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });

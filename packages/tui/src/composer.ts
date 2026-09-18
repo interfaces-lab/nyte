@@ -30,15 +30,11 @@ import type {
 } from "@opentui/core";
 import type { CliTheme } from "./theme.ts";
 import { completionTrigger } from "@nyte-ai/client";
-import { discoverMentionFiles } from "@nyte-ai/core/files";
-import type { MentionFile } from "@nyte-ai/core/files";
+import type { MentionFile } from "@nyte-ai/protocol";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import fuzzysort from "fuzzysort";
 import { cellOffset } from "./width.ts";
 import { promptDraft } from "./slash.ts";
-
-export { discoverMentionFiles };
-export type { MentionFile };
 
 const MAX_MENTION_RESULTS = 10;
 const IMAGE_EXTENSIONS = new Set([".gif", ".jpeg", ".jpg", ".png", ".webp"]);

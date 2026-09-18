@@ -3,13 +3,13 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "vitest";
 import { createToolArgumentParser } from "@nyte-ai/ai/utils/validation";
-import { executeToolCalls } from "../src/agent-loop.ts";
+import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
 import { bindTool } from "../src/plugins/index.ts";
 import { createAllTools } from "../src/tools/index.ts";
 import { createLsTool } from "../src/tools/ls.ts";
 import { createRegistries } from "../src/plugins/host.ts";
-import { toolResultText } from "../src/utils/tool-result.ts";
-import type { AgentLoopConfig } from "../src/types.ts";
+import { toolResultText } from "../src/kernel/loop/tool-result.ts";
+import type { AgentLoopConfig } from "../src/kernel/loop/types.ts";
 import { assistant, call, storePath } from "./kernel/helpers.ts";
 
 const config: AgentLoopConfig = {

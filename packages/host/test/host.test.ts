@@ -15,7 +15,7 @@ import type { Nyte } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model } from "@nyte-ai/schema";
 import { InMemoryTelemetryContext } from "@nyte-ai/telemetry";
-import { createHost, createTrustStore, resolveModel } from "../src/index.ts";
+import { createHost, createWorkspaceStore, resolveModel } from "../src/index.ts";
 
 const model: Model<Api> = {
   id: "echo/model",
@@ -204,7 +204,7 @@ test("a provider/id restores its persisted catalog offline and splits only the f
 
 test("deferred target caches only active composition", async () => {
   const f = await fixture();
-  const workspace = await createTrustStore().trust(f.cwd);
+  const workspace = await createWorkspaceStore().trust(f.cwd);
   let calls = 0;
   let active = false;
   const host = await createHost({
@@ -282,7 +282,7 @@ test("deferred target returns requires without loading project code", async () =
 
 test("plugin discovery failures stay on onFailure", async () => {
   const f = await fixture();
-  const workspace = await createTrustStore().trust(f.cwd);
+  const workspace = await createWorkspaceStore().trust(f.cwd);
   await mkdir(join(f.cwd, ".nyte", "plugins"), { recursive: true });
   await writeFile(
     join(f.cwd, ".nyte", "plugins", "broken.mjs"),

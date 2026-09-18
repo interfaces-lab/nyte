@@ -33,11 +33,5 @@ export {
 export type { LoadedPlugin, PluginInfo, SettingInfo } from "./plugins/types.ts";
 
 /** The remaining `NyteOptions` fields a host names when it composes a `Nyte`. */
-export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./types.ts";
+export { isThinkingLevel, type StreamFn, type ThinkingLevel } from "./kernel/loop/types.ts";
 export { DEFAULT_COMPACTION_SETTINGS, type CompactionSettings } from "./kernel/compaction.ts";
-export {
-  WorkspaceTrustRequired,
-  WorkspaceTrustStore,
-  type TrustedWorkspace,
-} from "./workspace-trust.ts";
-export { WorkspaceRegistry } from "./workspace-registry.ts";

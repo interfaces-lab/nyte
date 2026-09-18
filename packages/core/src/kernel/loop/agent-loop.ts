@@ -19,7 +19,7 @@ import type {
   AgentToolUpdateCallback,
   StreamFn,
 } from "./types.ts";
-import { toolErrorResult } from "./utils/tool-result.ts";
+import { toolErrorResult } from "./tool-result.ts";
 
 export type AgentEventSink = (event: AgentEvent) => Promise<void> | void;
 

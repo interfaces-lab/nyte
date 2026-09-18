@@ -16,10 +16,8 @@ import { cancel, pending, redeliver, submit } from "../queue.ts";
 import { createHead, deleteHead, fastForward, moveHead } from "../stacks.ts";
 import { navigationTarget, transcriptFromCommits } from "@nyte-ai/client";
 import { toJsonValue } from "@nyte-ai/client";
-import { normalizeImageContent } from "../../utils/image.ts";
-import { discoverMentionFiles, rankMentionFiles } from "../../mention-files.ts";
+import { normalizeImageContent } from "../loop/image.ts";
 import { isCommandPrompt } from "../../plugins/types.ts";
-import { workspaceName } from "../../workspace-registry.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
 import { createRelocation } from "./relocate.ts";
@@ -69,7 +67,7 @@ import {
   type SessionEvent,
   type SessionId,
   type WaitOutcome,
-  type WorkspaceRegistryBackend,
+  type WorkspaceBackend,
   type WorkspaceSelection,
 } from "./types.ts";
 
@@ -77,15 +75,20 @@ interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
 }
 
+function workspaceName(path: string): string {
+  const segments = path.split(/[\\/]/).filter((segment) => segment !== "");
+  return segments.at(-1) ?? path;
+}
+
 async function selectionAt(
-  workspaces: WorkspaceRegistryBackend | undefined,
+  workspace: WorkspaceBackend | undefined,
   cwd: string,
 ): Promise<WorkspaceSelection> {
   const path = await realpath(cwd).catch(() => cwd);
   const home = await realpath(homedir()).catch(() => homedir());
   if (path === home) return { kind: "home" };
-  // A registered cwd answers with the registry's own row: real recency, not 0.
-  const listed = (await workspaces?.list())?.find((entry) => entry.path === path);
+  // A registered cwd answers with the backend's own row: real recency, not 0.
+  const listed = (await workspace?.list())?.find((entry) => entry.path === path);
   if (listed !== undefined) return { kind: "project", workspace: listed };
   return {
     kind: "project",
@@ -203,7 +206,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });
 
   if (options.resolveActivation === undefined) {
-    await options.workspaces?.touch(options.env.cwd);
+    await options.workspace?.touch(options.env.cwd);
   }
 
   return {
@@ -606,13 +609,13 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     workspace: {
       async list() {
         pool.alive();
-        return (await options.workspaces?.list()) ?? [];
+        return (await options.workspace?.list()) ?? [];
       },
       async current() {
         pool.alive();
         const cwd = await pool.cwdForNewSession();
         if (cwd === undefined) return { kind: "home" };
-        return selectionAt(options.workspaces, cwd);
+        return selectionAt(options.workspace, cwd);
       },
       async select(input) {
         pool.alive();
@@ -621,7 +624,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         if (cwd === undefined) {
           return { kind: "failed", message: "No workspace is active on this host" };
         }
-        const current = await selectionAt(options.workspaces, cwd);
+        const current = await selectionAt(options.workspace, cwd);
         if (input.kind === "home") {
           if (current.kind === "home") return { kind: "opened", selection: current };
           return { kind: "failed", message: "This host serves one workspace" };
@@ -634,7 +637,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       },
       async forget(input) {
         pool.alive();
-        await options.workspaces?.forget(input.path);
+        await options.workspace?.forget(input.path);
       },
       /**
        * Discovery runs where the files are. One session names its own
@@ -648,16 +651,16 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
             ? await pool.cwdForNewSession()
             : await relocation.sessionCwd({ sessionId: input.sessionId });
         if (cwd === undefined) return [];
-        return rankMentionFiles(await discoverMentionFiles(cwd), input?.query ?? "");
+        return (await options.workspace?.files({ cwd, query: input?.query })) ?? [];
       },
       vcs: {
         async status() {
           pool.alive();
-          return options.vcs?.status();
+          return options.workspace?.vcs?.status();
         },
         async diff(input) {
           pool.alive();
-          return (await options.vcs?.diff(input)) ?? [];
+          return (await options.workspace?.vcs?.diff(input)) ?? [];
         },
       },
     },

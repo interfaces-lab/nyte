@@ -28,7 +28,7 @@ import {
   type StreamFn,
   type StreamOptions,
   type ThinkingLevel,
-} from "../../types.ts";
+} from "../loop/types.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import type { Blob, ModelRef, Obj, Run, RunConfig } from "../model.ts";

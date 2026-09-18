@@ -8,7 +8,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte, NyteOptions } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
-import { ToolWait, type StreamFn } from "../../src/types.ts";
+import { ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, storePath, within } from "./helpers.ts";
 
 const model: Model<Api> = {

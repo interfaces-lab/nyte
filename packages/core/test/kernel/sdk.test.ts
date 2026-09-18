@@ -25,7 +25,7 @@ import {
 } from "../../src/plugins/index.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import type { Store } from "../../src/kernel/store.ts";
-import { ToolWait, type StreamFn } from "../../src/types.ts";
+import { ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, sleep, usage, within } from "./helpers.ts";
 
 const model: Model<Api> = {

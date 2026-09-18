@@ -5,7 +5,7 @@ import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId, type NyteOptions } from "../../src/kernel/sdk/types.ts";
 import { runRef } from "../../src/kernel/names.ts";
 import type { Run } from "../../src/kernel/model.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   message,

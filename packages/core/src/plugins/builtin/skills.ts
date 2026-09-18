@@ -3,8 +3,8 @@
  * bodies on demand. Discovery belongs to whoever composes the plugin, so an
  * unchanged catalog keeps the same plugin version and never reactivates.
  */
-import { formatSkillsForPrompt } from "../../skills.ts";
-import type { LoadedSkills } from "../../skills.ts";
+import { formatSkillsForPrompt } from "./skills-index.ts";
+import type { LoadedSkills } from "./skills-index.ts";
 import { definePlugin } from "../types.ts";
 
 export const SKILLS_PLUGIN_ID = "skills";

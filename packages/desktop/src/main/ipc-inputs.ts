@@ -10,7 +10,7 @@ import {
   SDK_OPERATION_PATHS,
 } from "../shared/ipc.ts";
 import { Type } from "typebox";
-import { WorkspaceSearchSchema } from "@nyte-ai/core/files";
+import { WorkspaceSearchSchema } from "@nyte-ai/protocol";
 import type { Static, TProperties, TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 import { ParseError } from "typebox/value";

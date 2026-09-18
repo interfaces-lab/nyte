@@ -14,7 +14,7 @@ import { contextMessages } from "@nyte-ai/client";
 import { estimateTokens, projectContextStatus } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, commit, message, openStore, seedHead, usage, user } from "./helpers.ts";
 
 const model: Model<Api> = {

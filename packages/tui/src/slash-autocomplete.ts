@@ -11,8 +11,9 @@ import { isComposerTextKey } from "./keymap.ts";
 import { CHAT_KEYBINDS, COMPLETION_METHODS } from "./constants.ts";
 import type { Shell } from "./app/ui.ts";
 import { completionTrigger } from "@nyte-ai/client";
+import type { MentionFile } from "@nyte-ai/protocol";
 import { explicitMentionFile, fileMentionSuggestions } from "./composer.ts";
-import type { FileMentionSuggestions, MentionFile } from "./composer.ts";
+import type { FileMentionSuggestions } from "./composer.ts";
 import {
   DirectoryListing,
   directoryCompletionQuery,

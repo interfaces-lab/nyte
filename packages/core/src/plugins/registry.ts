@@ -5,7 +5,7 @@
  */
 import type { TSchema } from "typebox";
 import { bindTool } from "../tools/bind-tool.ts";
-import type { AgentTool } from "../types.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
 import type { Disposer, Draft, RegistryDiff, ToolDraft } from "./types.ts";
 
 interface Contribution<D> {

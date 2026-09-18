@@ -1,8 +1,8 @@
 import { createToolArgumentParser } from "@nyte-ai/ai/utils/validation";
 import type { TSchema } from "typebox";
-import type { AgentTool, AgentToolResult } from "../types.ts";
-import { normalizeImageContent } from "../utils/image.ts";
-import { ToolError } from "../utils/tool-result.ts";
+import type { AgentTool, AgentToolResult } from "../kernel/loop/types.ts";
+import { normalizeImageContent } from "../kernel/loop/image.ts";
+import { ToolError } from "../kernel/loop/tool-result.ts";
 
 /**
  * A tool result enters session history and then every later provider request,

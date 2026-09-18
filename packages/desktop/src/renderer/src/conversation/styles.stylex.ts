@@ -518,6 +518,7 @@ export const composerStyles = stylex.create({
     minHeight: t.leadingLg,
     maxHeight: 200,
     overflowY: "auto",
+    overscrollBehavior: "contain",
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     caretColor: { default: t.textPrimary, "[data-custom-caret='true']": "transparent" },

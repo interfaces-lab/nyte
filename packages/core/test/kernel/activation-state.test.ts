@@ -14,7 +14,7 @@ import {
   type SessionEvent,
 } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../src/plugins/index.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, message, openStore, seedHead, usage, user, within } from "./helpers.ts";
 
 const model: Model<Api> = {

@@ -17,7 +17,12 @@ import {
 } from "@opentui/core";
 import type { ClipboardService, CliRenderer, KeyEvent } from "@opentui/core";
 import { formatSkillInvocation } from "@nyte-ai/core/plugins";
-import { createTrustStore, pluginWatchTargets, resolveHostPlugins } from "@nyte-ai/host";
+import {
+  createWorkspaceStore,
+  discoverMentionFiles,
+  pluginWatchTargets,
+  resolveHostPlugins,
+} from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { createUsageScanCaches, readAccountUsage, readLocalUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
@@ -50,14 +55,14 @@ import {
   ComposerParts,
   createClipboardAdapter,
   createTuiClipboard,
-  discoverMentionFiles,
   PASTE_COLLAPSE_LINES,
   pasteLineCount,
   resolveComposerImagePaste,
   resolveComposerPaste,
   SessionDrafts,
 } from "./composer.ts";
-import type { ComposerDraft, MentionFile } from "./composer.ts";
+import type { ComposerDraft } from "./composer.ts";
+import type { MentionFile } from "@nyte-ai/protocol";
 import { ComposerDocument } from "./composer-document.ts";
 import { startLocalShell } from "./local-shell.ts";
 import type { ShellExecution, ShellProcess } from "./local-shell.ts";
@@ -164,7 +169,7 @@ import { UsagePanel } from "./usage-panel.ts";
 import { usageCard } from "./usage.ts";
 import { checkForUpdate } from "./version.ts";
 import { readWorkspaceStatus } from "./workspace.ts";
-import { requestWorkspaceTrust } from "./workspace-trust.ts";
+import { requestWorkspaceTrust } from "./trust-dialog.ts";
 
 type TuiExit =
   | { readonly kind: "quit" }
@@ -422,7 +427,7 @@ export async function runTui(
   let app: Interactive | undefined;
   const disposers: (() => void)[] = [];
   const boot = async (): Promise<void> => {
-    const trustStore = createTrustStore();
+    const trustStore = createWorkspaceStore();
     const resolution = await trustStore.resolve(process.cwd());
     if (startupAbort.signal.aborted) return;
     let workspace: TrustedWorkspace;
@@ -2746,7 +2751,7 @@ class Interactive {
   }
 
   private async trustDirectory(cwd: string): Promise<TrustedWorkspace> {
-    const trustStore = createTrustStore();
+    const trustStore = createWorkspaceStore();
     const resolution = await trustStore.resolve(cwd);
     this.stopped.signal.throwIfAborted();
     if (resolution.kind === "trusted") return resolution.workspace;

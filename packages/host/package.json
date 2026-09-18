@@ -18,6 +18,7 @@
     "@nyte-ai/client": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/telemetry": "workspace:*",
     "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",

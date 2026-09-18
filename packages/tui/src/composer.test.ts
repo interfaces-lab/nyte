@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { createClipboard } from "@opentui/core";
-import { ComposerParts, createClipboardAdapter, discoverMentionFiles } from "./composer.ts";
+import { discoverMentionFiles } from "@nyte-ai/host";
+import { ComposerParts, createClipboardAdapter } from "./composer.ts";
 import { parseComposerSubmission } from "./slash.ts";
 
 describe("shell context", () => {

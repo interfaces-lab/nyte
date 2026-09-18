@@ -3,8 +3,8 @@ import { MODEL_THINKING_LEVELS, type Api, type Model } from "@nyte-ai/schema";
 import type { JobActionOutcome, JobInfo } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { AgentTool } from "../../types.ts";
-import { ToolError, toolResultContent } from "../../utils/tool-result.ts";
+import type { AgentTool } from "../../kernel/loop/types.ts";
+import { ToolError, toolResultContent } from "../../kernel/loop/tool-result.ts";
 import { definePlugin } from "../types.ts";
 
 export const SUBAGENTS_PLUGIN_ID = "subagents";

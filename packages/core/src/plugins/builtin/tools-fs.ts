@@ -3,7 +3,7 @@
  * implementations; this is the only place that puts them in front of the model.
  */
 import { createAllTools } from "../../tools/index.ts";
-import type { AgentTool } from "../../types.ts";
+import type { AgentTool } from "../../kernel/loop/types.ts";
 import { definePlugin } from "../types.ts";
 
 /** Tools that can re-run safely after a crash. Everything else settles as an error on resume. */
