@@ -224,9 +224,6 @@ function estimateTurnSize(turn: Turn, density: ToolCallDensity): number {
       case "tool":
         work = true;
         break;
-      case "note":
-        prose += part.text.length;
-        break;
       default: {
         const _exhaustive: never = part;
         return _exhaustive;

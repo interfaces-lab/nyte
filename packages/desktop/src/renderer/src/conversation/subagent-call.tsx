@@ -1,16 +1,18 @@
 /**
- * One task call: the subagent's title over its status, with the model beside
- * the title once the child session exists. The status comes from the chat's
- * jobs, since a backgrounded call settles while its subagent keeps working;
- * until the job is listed the tool's own state stands in. Same law as other
- * tool calls: no status icon, the shimmer is the running state.
+ * One delegation. A spawn is the subagent's card: its title over its status,
+ * with the model beside the title once the child session exists. The status
+ * comes from the chat's jobs, since a backgrounded call settles while its
+ * subagent keeps working; until the job is listed the tool's own phase stands
+ * in. An await of that job is one compact line that links to the same child,
+ * never a second card. Same law as other tool calls: no status icon, the
+ * shimmer is the running state.
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import type { ReactElement } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
-import { focus } from "../components/ui.tsx";
+import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useCatalog, useJobs, useSession } from "../queries.ts";
 import { jobStateLabel } from "./jobs-view.ts";
@@ -18,14 +20,15 @@ import type { SubagentJob } from "./jobs-view.ts";
 import { modelDisplayName } from "./model-picker-state.ts";
 import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
 import { useSubagentInspector } from "./subagent-inspector.ts";
-import type { SubagentCall, ToolPresentation } from "./tool-detail.ts";
+import { toolVerb } from "./tool-copy.ts";
+import type { ToolPhase } from "./tool-copy.ts";
 
-const TOOL_STATE_LABEL = {
+const PHASE_STATUS = {
   running: "Working",
   done: "Completed",
   failed: "Failed",
-  stopped: "Stopped",
-} satisfies Readonly<Record<ToolPresentation["state"], string>>;
+  interrupted: "Stopped",
+} satisfies Readonly<Record<ToolPhase, string>>;
 
 /** The model a subagent runs on, in muted text; nothing until the child session answers. */
 export function SubagentModel({
@@ -50,37 +53,57 @@ export function SubagentModel({
   );
 }
 
+function OpenAgentButton({
+  title,
+  childSessionId,
+}: {
+  title: string;
+  childSessionId: SessionId | undefined;
+}): ReactElement | null {
+  const inspector = useSubagentInspector();
+  if (inspector === undefined || childSessionId === undefined) return null;
+  return (
+    <button
+      type="button"
+      aria-label={`Open ${title} in the Agents panel`}
+      title="Open in Agents panel"
+      {...stylex.props(toolCallStyles.openAgent, focus.ring)}
+      onClick={() => inspector.inspect(childSessionId)}
+    >
+      <Icon name="expand" size={12} />
+    </button>
+  );
+}
+
 export function SubagentCallView({
-  call,
-  presentation,
+  title,
+  child,
+  phase,
+  output,
   density,
 }: {
-  call: SubagentCall;
-  presentation: ToolPresentation;
+  title: string;
+  child: SessionId | undefined;
+  phase: ToolPhase;
+  output: string | undefined;
   density: ToolCallDensity;
 }): ReactElement {
   const inspector = useSubagentInspector();
   const jobs = useJobs(inspector?.sessionId);
-  // A spawn knows its child and the job catches up; an await knows only the
-  // job, which is where its title and child come from.
-  const job = jobs.data?.find((candidate): candidate is SubagentJob => {
-    if (candidate.kind !== "subagent") return false;
-    return call.kind === "spawn"
-      ? candidate.childSessionId === call.childSessionId
-      : candidate.id === call.jobId;
-  });
-  const title = call.kind === "spawn" ? call.title : (job?.title ?? "Subagent");
-  const running = job === undefined ? presentation.state === "running" : job.state === "running";
-  const failed = job === undefined ? presentation.state === "failed" : job.state === "failed";
-  const status = job === undefined ? TOOL_STATE_LABEL[presentation.state] : jobStateLabel(job);
-  const expandable = presentation.body.kind === "output";
-  const childSessionId = call.kind === "spawn" ? call.childSessionId : job?.childSessionId;
+  const job = jobs.data?.find(
+    (candidate): candidate is SubagentJob =>
+      candidate.kind === "subagent" && child !== undefined && candidate.childSessionId === child,
+  );
+  const running = job === undefined ? phase === "running" : job.state === "running";
+  const failed = job === undefined ? phase === "failed" : job.state === "failed";
+  const status = job === undefined ? PHASE_STATUS[phase] : jobStateLabel(job);
+  const expandable = output !== undefined;
   const content = (open: boolean): ReactElement => (
     <>
       <span {...stylex.props(subagentCallStyles.head)}>
         <span {...stylex.props(toolCallStyles.verb)}>{title}</span>
-        {childSessionId !== undefined && (
-          <SubagentModel childSessionId={childSessionId} style={toolCallStyles.detail} />
+        {child !== undefined && (
+          <SubagentModel childSessionId={child} style={toolCallStyles.detail} />
         )}
         {expandable && (
           <span {...stylex.props(toolCallStyles.chevron, open && toolCallStyles.chevronOpen)}>
@@ -113,28 +136,59 @@ export function SubagentCallView({
     <Collapsible.Root disabled={!expandable} {...stylex.props(toolCallStyles.root)}>
       <div {...stylex.props(toolCallStyles.row)}>
         {line}
-        {inspector !== undefined && childSessionId !== undefined && (
-          <button
-            type="button"
-            aria-label={`Open ${title} in the Agents panel`}
-            title="Open in Agents panel"
-            {...stylex.props(toolCallStyles.openAgent, focus.ring)}
-            onClick={() => inspector.inspect(childSessionId)}
-          >
-            <Icon name="expand" size={12} />
-          </button>
-        )}
+        <OpenAgentButton title={title} childSessionId={child} />
       </div>
-      {presentation.body.kind === "output" && (
+      {output !== undefined && (
         <Collapsible.Panel
           role="region"
           aria-label={`${title} report`}
           data-nyte-scrollport
           {...stylex.props(toolCallStyles.output)}
         >
-          {presentation.body.text}
+          {output}
         </Collapsible.Panel>
       )}
     </Collapsible.Root>
+  );
+}
+
+/** The job names the subagent; until it is listed the line names the job id. */
+export function SubagentAwaitView({
+  jobId,
+  phase,
+  density,
+}: {
+  jobId: string;
+  phase: ToolPhase;
+  density: ToolCallDensity;
+}): ReactElement {
+  const inspector = useSubagentInspector();
+  const jobs = useJobs(inspector?.sessionId);
+  const job = jobs.data?.find(
+    (candidate): candidate is SubagentJob =>
+      candidate.kind === "subagent" && candidate.id === jobId,
+  );
+  const title = job?.title ?? jobId;
+  return (
+    <div {...stylex.props(toolCallStyles.row)}>
+      <div
+        data-tool-status={phase}
+        {...stylex.props(
+          toolCallStyles.line,
+          density === "detailed" && toolCallStyles.lineDetailed,
+          toolCallStyles.lineStatic,
+          phase === "failed" && toolCallStyles.failed,
+        )}
+      >
+        <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
+          {toolVerb({ kind: "delegate", role: "await", jobId }, phase)}
+        </span>
+        {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_STATUS[phase]}</span>}
+        <span title={title} {...stylex.props(toolCallStyles.detail)}>
+          {title}
+        </span>
+      </div>
+      <OpenAgentButton title={title} childSessionId={job?.childSessionId} />
+    </div>
   );
 }

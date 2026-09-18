@@ -23,7 +23,6 @@ import {
 import { livePartKey } from "./live-fold.ts";
 import { keys, queryClient } from "./queries.ts";
 import type { SessionPage } from "./session-directory.ts";
-import { presentTool } from "./conversation/tool-detail.ts";
 import { displayTranscriptParts } from "./conversation/transcript-presentation.ts";
 
 // Only the external preload and browser clock boundaries are scripted.
@@ -283,12 +282,11 @@ async function open(initial: SessionSnapshot) {
             .join(""),
         tools: parts.flatMap((part) => {
           if (part.kind !== "tool") return [];
-          const presented = presentTool(
-            part,
-            displayed.tools.get(part.callId)?.progress,
-            undefined,
-          );
-          return [presented.body.kind === "output" ? presented.body.text : ""];
+          return [
+            part.result === undefined
+              ? (displayed.tools.get(part.callId)?.progress.text ?? "")
+              : part.result.output,
+          ];
         }),
       };
     },

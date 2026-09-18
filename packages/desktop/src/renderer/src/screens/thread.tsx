@@ -18,7 +18,6 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { changesFromTurns } from "@nyte-ai/client";
 import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
@@ -770,11 +769,15 @@ function SessionConversation({
   const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
   const unsent = useOutboxRows(sessionId);
-  const messages = conversationMessages({
-    snapshot: snapshot.data,
-    unsent,
-    steerLane: laneRoles(nyte.landing).steer,
-  });
+  const messages = useMemo(
+    () =>
+      conversationMessages({
+        snapshot: snapshot.data,
+        unsent,
+        steerLane: laneRoles(nyte.landing).steer,
+      }),
+    [snapshot.data, unsent],
+  );
   const working =
     navigating || live.runState !== "idle" || messages.running || messages.landing.length > 0;
   const cwd = host.data?.workspace?.path;
@@ -813,29 +816,51 @@ function SessionConversation({
     thinkingLevel: snapshot.data?.config.thinkingLevel,
     fastEnabled,
   };
+  // These walk the transcript, so they are keyed on the durable inputs: a
+  // streaming frame re-renders this component and must not repeat them.
   // The indicator belongs under the last turn the transcript draws, which is
   // not always the last turn in the snapshot.
-  const lastTurn = turns.findLast(rendersInTranscript);
+  const lastTurn = useMemo(() => turns.findLast(rendersInTranscript), [turns]);
   // The card belongs to the newest turn that actually wrote files. Keying it
   // to the newest turn instead took the review away whenever the next message
   // settled without changes, which is most follow-ups.
-  const latestChangedTurn = turns.findLast(
-    (turn) => turn.kind === "turn" && changesFromTurns([turn]).length > 0,
+  const latestChangedTurn = useMemo(
+    () =>
+      turns.findLast(
+        (turn) =>
+          turn.kind === "turn" &&
+          turn.parts.some(
+            (part) =>
+              part.kind === "tool" &&
+              part.class.kind === "file_patch" &&
+              part.result?.isError === false,
+          ),
+      ),
+    [turns],
   );
   // A turn that ends in a work group already draws the run's indicator there.
   // One that ends in prose needs it below the prose, or the model looks idle
   // while it prepares its next step.
-  const settledWork =
-    lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work";
-  const rows = transcriptRows({
-    loading: snapshot.isLoading,
-    failed: snapshot.isError,
-    turns,
-    landing: messages.landing,
-    retrying: live.runState === "retrying" ? live.retry.message : undefined,
-    working,
-    selections: parkedSelections(snapshot.data?.parked).length,
-  });
+  const settledWork = useMemo(
+    () =>
+      lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work",
+    [lastTurn],
+  );
+  const retrying = live.runState === "retrying" ? live.retry.message : undefined;
+  const selections = parkedSelections(snapshot.data?.parked).length;
+  const rows = useMemo(
+    () =>
+      transcriptRows({
+        loading: snapshot.isLoading,
+        failed: snapshot.isError,
+        turns,
+        landing: messages.landing,
+        retrying,
+        working,
+        selections,
+      }),
+    [snapshot.isLoading, snapshot.isError, turns, messages.landing, retrying, working, selections],
+  );
 
   const title =
     snapshot.data?.session.name ??

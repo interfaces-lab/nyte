@@ -1,6 +1,5 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Turn } from "@nyte-ai/protocol";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 
@@ -45,12 +44,11 @@ function render(turn: RenderedTurn): string {
   );
 }
 
-const continuation: Turn = {
+const continuation: RenderedTurn = {
   kind: "turn",
   id: "completion",
   startedAt: 1,
   durationMs: 0,
-  outcome: "completed",
   parts: [],
 };
 
@@ -59,7 +57,9 @@ test("a completion's continuation turn renders nothing before its response", () 
 });
 
 test("a stopped continuation turn reports the stop instead of a blank row", () => {
-  expect(render({ ...continuation, outcome: "aborted" })).toContain("Run stopped.");
+  expect(
+    render({ ...continuation, failure: { class: "aborted", message: "Run interrupted" } }),
+  ).toContain("Run stopped.");
 });
 
 test("the response attached to a continuation turn renders without a user bubble", () => {

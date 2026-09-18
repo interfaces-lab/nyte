@@ -8,7 +8,7 @@ import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parsePatchFiles } from "@pierre/diffs";
 import { DiffView } from "./diff-view.tsx";
-import { parseUnifiedPatch } from "./tool-detail.ts";
+import { parsePatchFacts } from "@nyte-ai/client";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -47,7 +47,7 @@ test("one patch holding two diffs of the same path parses as two files", () => {
 });
 
 test("a file edited twice in one turn renders both edits instead of throwing", () => {
-  const parsed = parseUnifiedPatch(repeatedFile);
+  const parsed = parsePatchFacts(repeatedFile);
   expect(parsed).toBeDefined();
   const markup = renderToStaticMarkup(
     <DiffView

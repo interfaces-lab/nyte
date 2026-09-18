@@ -10,6 +10,7 @@
  */
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { parsePatchFacts } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/protocol";
 import type { Turn } from "@nyte-ai/protocol";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
@@ -67,20 +68,24 @@ function changedTurn(id: string, patches: readonly string[]): Turn {
   return {
     kind: "turn",
     id,
-    outcome: "completed",
     startedAt: 0,
     durationMs: 0,
-    parts: patches.map((patch, index) => ({
-      kind: "tool",
-      callId: `${id}-call-${String(index)}`,
-      toolName: "edit",
-      result: {
-        commit: `${id}-result-${String(index)}`,
-        output: "",
-        isError: false,
-        details: { patch },
-      },
-    })),
+    parts: patches.map((patch, index) => {
+      const facts = parsePatchFacts(patch);
+      return {
+        kind: "tool",
+        callId: `${id}-call-${String(index)}`,
+        class: {
+          kind: "file_patch",
+          op: "edit",
+          path: facts?.files[0]?.path ?? "",
+          added: facts?.added ?? 0,
+          removed: facts?.removed ?? 0,
+          patch,
+        },
+        result: { commit: `${id}-result-${String(index)}`, output: "", isError: false },
+      };
+    }),
   };
 }
 

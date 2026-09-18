@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { test } from "vitest";
+import { failureNotice, toolVerb } from "./tool-copy.ts";
+
+test("a verb names the class and its phase", () => {
+  assert.equal(toolVerb({ kind: "file_read", path: "a" }, "running"), "Reading");
+  assert.equal(toolVerb({ kind: "shell", command: "ls" }, "done"), "Ran");
+  assert.equal(toolVerb({ kind: "shell", command: "ls" }, "failed"), "Command failed");
+  assert.equal(toolVerb({ kind: "file_edit", path: "a" }, "interrupted"), "Edit stopped");
+  assert.equal(
+    toolVerb(
+      { kind: "file_patch", op: "write", path: "a", added: 1, removed: 0, patch: "" },
+      "done",
+    ),
+    "Wrote",
+  );
+  assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "done"), "Web search");
+  assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "failed"), "Web search failed");
+  assert.equal(toolVerb({ kind: "delegate", role: "await", jobId: "j" }, "done"), "Waited for");
+});
+
+test("a failure reads as product copy by class; only provider text reaches the reader", () => {
+  assert.deepEqual(failureNotice({ class: "aborted", message: "The operation was aborted." }), {
+    text: "Run stopped.",
+    tone: "neutral",
+  });
+  assert.deepEqual(failureNotice({ class: "rate_limit", message: "429 rate_limit_error" }), {
+    text: "Rate limit reached. Try again shortly.",
+    tone: "danger",
+  });
+  assert.deepEqual(failureNotice({ class: "provider", message: "  Model\n  rejected it " }), {
+    text: "Model rejected it",
+    tone: "danger",
+  });
+  assert.deepEqual(failureNotice({ class: "runner", message: " \n" }), {
+    text: "Request failed.",
+    tone: "danger",
+  });
+  const long = failureNotice({ class: "provider", message: "x".repeat(400) }).text;
+  assert.equal(long.length, 178);
+  assert.ok(long.endsWith("…"));
+});

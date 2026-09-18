@@ -1,6 +1,5 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Turn } from "@nyte-ai/protocol";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
@@ -61,19 +60,17 @@ const patch = [
   " same",
 ].join("\n");
 
-const editing: Turn = {
+const editing: RenderedTurn = {
   kind: "turn",
   id: "editing",
   startedAt: 1,
   durationMs: 0,
-  outcome: "completed",
   parts: [
     {
       kind: "tool",
       callId: "edit-1",
-      toolName: "edit",
-      args: { path: "src/app.ts" },
-      result: { commit: "result-1", output: "ok", isError: false, details: { patch } },
+      class: { kind: "file_patch", op: "edit", path: "src/app.ts", added: 1, removed: 1, patch },
+      result: { commit: "result-1", output: "ok", isError: false },
     },
   ],
 };
@@ -102,8 +99,7 @@ test("a command failure stays on the tool row without failing the work group", (
         {
           kind: "tool",
           callId: "test",
-          toolName: "bash",
-          args: { command: "pnpm test" },
+          class: { kind: "shell", command: "pnpm test" },
           result: { commit: "test-result", output: "One test failed", isError: true },
         },
       ]}
@@ -126,7 +122,7 @@ test("reopening an interrupted tool group does not restart its indicator", () =>
   const html = renderToStaticMarkup(
     <WorkGroupView
       parts={[
-        { kind: "tool", callId: "unfinished", toolName: "read", args: { path: "README.md" } },
+        { kind: "tool", callId: "unfinished", class: { kind: "file_read", path: "README.md" } },
       ]}
       liveTools={new Map()}
       cwd={undefined}
@@ -142,8 +138,11 @@ test("reopening an interrupted tool group does not restart its indicator", () =>
 });
 
 test("a failed run still reports the failure and retains successful edits for review", () => {
-  const html = render({ ...editing, outcome: "failed" }, false);
-  expect(html).toContain("Run failed.");
+  const html = render(
+    { ...editing, failure: { class: "provider", message: "The model went away" } },
+    false,
+  );
+  expect(html).toContain("The model went away");
   expect(html).toContain("Open src/app.ts in Changes");
   expect(html).not.toContain("Work failed");
 });

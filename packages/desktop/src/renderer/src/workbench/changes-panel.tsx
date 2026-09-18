@@ -3,11 +3,10 @@ import * as stylex from "@stylexjs/stylex";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/protocol";
-import { changesFromTurns } from "@nyte-ai/client";
+import { changesFromTurns, parsePatchFacts } from "@nyte-ai/client";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
-import { parseUnifiedPatch } from "../conversation/tool-detail.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
 import { refreshVcs, useSessionSnapshot, useVcsScopedDiffs, useVcsSnapshot } from "../queries.ts";
@@ -304,7 +303,7 @@ function ChangesPanelView({
   const diffRevision = `${revision ?? ""}\u0000${activeScopeValue}\u0000${options.ignoreWhitespace ? "ignore-ws" : "raw"}`;
   const parseDiff = (path: string, patch: string) =>
     repositoryId === undefined
-      ? parseUnifiedPatch(patch)
+      ? parsePatchFacts(patch)
       : parseCachedDiff({ repositoryId, revision: diffRevision, path }, patch);
 
   const patchRows: readonly PatchChangeRow[] =
