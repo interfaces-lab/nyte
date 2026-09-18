@@ -28,13 +28,13 @@ To start a client yourself, run `pnpm dev:tui` or `pnpm dev:desktop`. The docume
 | [cli](packages/cli/README.md) | npm distribution and installer for the Nyte binary |
 | [tui](packages/tui/README.md) | Terminal client and native binary |
 | [desktop](packages/desktop/README.md) | Electron desktop client |
-| [ios](packages/ios/README.md) | Native iOS companion for a remote host |
+| [mobile](packages/mobile/README.md) | Native iOS companion for a remote host |
 | [ui](packages/ui/README.md) | Shared UI components and design tokens |
 | [telemetry](packages/telemetry/README.md) | Runtime telemetry |
 | [docs](packages/docs/README.md) | Documentation website and design system reference |
 | [demo](packages/demo) | Website and server deployment examples |
 
-Read the [design record](packages/docs/content/docs/design.mdx) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), and [docs](packages/docs/AGENTS.md).
+Read the [design record](packages/docs/content/docs/design.mdx) for architecture and the affected package's README for details. Read root and ancestor `AGENTS.md` files before editing. Package instructions currently live in [core](packages/core/AGENTS.md), [desktop](packages/desktop/AGENTS.md), [tui](packages/tui/AGENTS.md), [mobile](packages/mobile/AGENTS.md), and [docs](packages/docs/AGENTS.md).
 
 ## Verification
 
