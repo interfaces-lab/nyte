@@ -19,16 +19,18 @@ timings on the development machine:
 
 Those timings are historical rather than a measure of the current startup shell or first React frame.
 
-The current production build emits:
+The build guard budgets these entries:
 
-| Entry | Size |
+| Entry | Budget |
 | --- | ---: |
-| Electron main | 3.3 KiB |
-| Preload | 2.6 KiB |
-| Renderer entry | 791.9 KiB |
+| Electron main | 700 KiB |
+| Preload | 16 KiB |
+| Renderer entry | 4,200 KiB |
 
-These numbers are a dated result, not a promise across machines. The temporary timing harness was
-removed after the measurements. `scripts/check-startup-bundle.mjs` remains because it is a build
+The budgets are the promise; the sizes on a given day are not. Run
+`pnpm --dir packages/desktop build` and read the table
+`scripts/check-startup-bundle.mjs` prints for current figures. The temporary timing harness was
+removed after the measurements. That script remains because it is a build
 guard, not a benchmark. It fails a normal desktop build if a startup entry crosses its size budget.
 
 ## Startup path
@@ -47,10 +49,10 @@ the first React frame is the finished one. The chat warm is bounded to 1.5 s so 
 large transcript paints behind the mounted screen instead of holding it.
 
 `src/renderer/index.html` carries a draggable titlebar strip and an ASCII moon with no visible loading
-copy or wordmark. A visually hidden "Loading" provides screen-reader status. Twelve frames share one
-CSS grid cell and switch every 100 ms, waxing from crescent to full and back without an empty phase.
+copy or wordmark. A visually hidden "Loading" provides screen-reader status. Fourteen frames share one
+CSS grid cell and switch every 120 ms, waxing from crescent to full and back without an empty phase.
 The 23-column by 12-row disc uses 12 px system monospace at 1.15 line-height. Reduced motion pins the
-first, near-quarter frame. The moon is amber `#a35f00` in light mode and yellow `#ffc663` in dark mode.
+first, near-quarter frame. The moon is amber `#ff9800` in light mode and yellow `#ffc663` in dark mode.
 Inline CSS supplies fallback app colors until the theme tokens load; the OS color scheme applies
 until the boot module reads the stored preference. No shell scripts, fonts, or external assets are
 needed for this first paint.
@@ -66,10 +68,11 @@ New Chat paints its real textarea and controls without another module load. Host
 input disabled until the workspace identity is known. The model trigger remains mounted and disabled
 while its catalog loads.
 
-The Electron entry also stays narrow. `src/main/index.ts` creates the window and registers IPC, but
-it imports the desktop host and IPC decoders only when the renderer makes its first call. Opening the
-window therefore does not open a workspace, compose plugins, initialize the SDK, or load input
-validation code.
+The Electron entry also stays narrow. `src/main/index.ts` creates the window and registers IPC. Every
+import is static, because `scripts/check-startup-bundle.mjs` fails the build on a deferred one;
+the entry stays small by what it pulls in, not by when. Opening the
+window therefore does not open a workspace, compose plugins, initialize the SDK, or run input
+validation.
 
 The preload exposes the typed SDK bridge and writes the platform marker used by first-frame chrome.
 Startup profiling, measurement events, and benchmark-only environment switches are not shipped.

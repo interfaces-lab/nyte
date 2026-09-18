@@ -2,8 +2,10 @@
 
 Git's object database with messages in place of files. This directory is the
 durable core of `@nyte-ai/core`: it decides what survives, who may write, and
-in what order everyone sees it. It imports `@nyte-ai/schema` (the pi-derived
-message types), `@nyte-ai/telemetry` (the span contract), `node:crypto`, and
+in what order everyone sees it. It imports `@nyte-ai/protocol` (the SDK data
+types and the ref-name rules), `@nyte-ai/schema` (the pi-derived
+message types), `@nyte-ai/ai` (the provider stream), `@nyte-ai/telemetry` (the
+span contract), `typebox`, `diff`, `node:crypto`, and
 `node:sqlite` for local storage. The separate `@nyte-ai/core/postgres` entrypoint
 loads the `pg` driver for hosted PostgreSQL storage.
 
@@ -61,6 +63,10 @@ refs/deleted                   Blob: the session is being deleted
 | `json.ts`     | Canonical JSON and the JSON boundary (`toJsonValue`).                  |
 | `hash.ts`     | `hashObject(object)`.                                                       |
 | `sqlite.ts`   | The SQLite backend: five tables, `BEGIN IMMEDIATE`, one seq per session. |
+| `sql.ts`      | The shared statement text both backends build on.                      |
+| `store-worker.ts`, `worker-store.ts`, `store-rpc.ts`, `store-schemas.ts` | The same store behind a worker thread, for hosts that also render. |
+| `queue-order.ts` | Sorting pending items across lanes into one visible list.           |
+| `result.ts`   | The outcome helpers the kernel returns instead of throwing.            |
 | `postgres/`  | Shared PostgreSQL storage: session row locks, atomic CAS and events, database-clock leases, cursor polling across hosts. |
 | `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint. Pages `objects.chain`, never one read per commit. |
 | `context.ts`  | Commits to model messages, and the branch's declared config.           |
@@ -75,7 +81,7 @@ refs/deleted                   Blob: the session is being deleted
 | `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
-| `views/`      | Projections a client draws: transcript, tree, changes, usage, gauge.   |
+| `views/`      | Projections a client draws: transcript, tree, changes, usage, context status, directory entries, live parts, patches, and tool and note presentation. |
 | `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, changes). |
 
 Host schedulers can call `sdk.advance` for one kernel `step`, using the same turn
@@ -92,7 +98,7 @@ only while the matching head lease is still held. SDK `compaction` events carry
 that activity or `null` when it ends. Successful publication clears the activity
 in the same update as the checkpoint; failure and cancellation clear it without
 a checkpoint. A successor clears abandoned activity before resuming work.
-The `before_compaction` hook can provide native context. TUI and desktop install `@nyte-ai/plugin/openai-compaction` for
+The `before_compaction` hook can provide native context. `@nyte-ai/host` installs `@nyte-ai/plugin/openai-compaction` for every composition, so TUI and desktop both get it for
 OpenAI and OpenAI Codex. Codex uses streaming compaction V2 on the Responses
 endpoint and stores an encrypted checkpoint with bounded retained user input;
 OpenAI API compaction stores the complete returned window. Neither successful
@@ -142,7 +148,7 @@ model failure answers `failed` and leaves the head where it was.
 
 ## The step
 
-`step(session, turn, head)` reads three refs and does one thing:
+`step(session, turn, options)` settles any live compaction, reads the head, run, and deletion refs, and does one thing:
 
 | Run phase        | Pending change | Step does                                                          | Publish CAS (all in one)                          |
 | ---------------- | -------------- | ------------------------------------------------------------------ | ------------------------------------------------- |

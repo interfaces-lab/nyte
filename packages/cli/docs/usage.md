@@ -29,9 +29,8 @@ These requests use your configured provider and may incur charges. Run `nyte log
 interactively before using scripts. A script must also run in a trusted workspace.
 
 Use `nyte --resume` in a terminal to continue the latest conversation.
-Installed copies can update with `nyte update`.
-That command currently updates only the executable; it does not install the new
-release's docs. Run the installer for that version to install its matching docs.
+Installed copies can update with `nyte update`. That command installs the new
+release's docs beside the executable when the release archive carries them.
 
 ## Delegated tasks
 

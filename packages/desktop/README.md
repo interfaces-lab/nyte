@@ -104,8 +104,8 @@ pnpm --dir packages/desktop exec vitest run src/main/host-server.test.ts
 ## Mobile connection
 
 Settings › Server has two connections that point opposite ways. **Server** is
-outbound: a deployed Nyte host whose chats appear under Cloud. **Share with
-iOS** is inbound: the desktop serves one of its own local stores to the Nyte
+outbound: a deployed Nyte host whose chats appear under Cloud. **iOS app** is
+inbound: the desktop serves one of its own local stores to the Nyte
 iOS app over the v1 wire, using `@nyte-ai/server` on a Node listener in the
 Electron main process.
 
@@ -115,13 +115,18 @@ does not move it, and the row names what is being served. A project must be
 trusted first. The Cloud server is never a candidate; only local targets are
 served.
 
-The listener binds `127.0.0.1` on an ephemeral port and the row shows the
-exact address. It reaches the iOS Simulator on this Mac and nothing else: no
-LAN or public bind, no tunnel, no TLS. Each share generates a random 256-bit
-bearer token, shown masked with **Reveal**, **Copy token**, and **Copy
-address**. The token is never written to disk or logged. **Stop sharing**
-closes the listener, drops its connections, and ends open watches with a
-`closed` frame; starting again generates a new token and address.
+A share has one of two reaches, picked when it starts. **Simulator on this Mac**
+binds `127.0.0.1` on an ephemeral port, so it reaches the iOS Simulator on this
+machine and nothing else. **Over Tailscale** binds this machine's tailnet
+address, so a physical phone signed into the same tailnet can reach it from any
+network and nothing off the tailnet can route to it; it needs the Tailscale CLI
+installed and the backend running. Neither reach binds the local network
+broadly, opens a tunnel, or terminates TLS. The row shows the exact address.
+Each share generates a random 256-bit bearer token, shown masked with
+**Reveal**, **Copy token**, and **Copy address**. The token is never written to
+disk or logged. **Stop sharing** closes the listener, drops its connections, and
+ends open watches with a `closed` frame; starting again generates a new token
+and address.
 
 The phone and the desktop read and write the same SDK and store, so root
 conversations and updates match on both. Runs still execute on the desktop:
