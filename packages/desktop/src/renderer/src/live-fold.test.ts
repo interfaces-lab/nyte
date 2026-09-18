@@ -119,7 +119,10 @@ describe("live projection: run phases", () => {
     assert.equal(liveRun(run({ kind: "waiting" })).runState, "idle");
     assert.equal(liveRun(run({ kind: "done" })).runState, "idle");
     assert.equal(liveRun(run({ kind: "aborted" })).runState, "idle");
-    assert.equal(liveRun(run({ kind: "failed", error: "boom" })).runState, "idle");
+    assert.equal(
+      liveRun(run({ kind: "failed", failure: { class: "provider", message: "boom" } })).runState,
+      "idle",
+    );
     assert.equal(liveRun(undefined).runState, "idle");
   });
 
@@ -132,7 +135,7 @@ describe("live projection: run phases", () => {
     const retrying = projectLive(
       streaming,
       streaming.parts,
-      run({ kind: "retry", at: 5_000, error: "429" }),
+      run({ kind: "retry", at: 5_000, failure: { class: "rate_limit", message: "429" } }),
     );
     assert.notEqual(retrying, streaming);
     assert.equal(retrying.runState, "retrying");

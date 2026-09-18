@@ -23,8 +23,10 @@ export function bindTool<T extends TSchema, Details>(
   tool: AgentTool<T, Details>,
 ): AgentTool<TSchema, Details> {
   const parse = createToolArgumentParser(tool);
+  const present = tool.present;
   return {
     ...tool,
+    present: present === undefined ? undefined : (args, result) => present(parse(args), result),
     execute: async (callId, args, signal, onUpdate, context) => {
       try {
         return await boundImages(

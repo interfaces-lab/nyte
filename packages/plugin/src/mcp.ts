@@ -320,6 +320,7 @@ function bridgeTool(client: Client, server: string, tool: Tool): AgentTool {
   const name = bridgedToolName(server, tool.name);
   return {
     name,
+    label: `${server}: ${tool.name}`,
     description: tool.description ?? "",
     parameters: Unsafe<Record<string, JsonValue>>({ ...tool.inputSchema }),
     replay: "never",

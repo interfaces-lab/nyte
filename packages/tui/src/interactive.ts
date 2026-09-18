@@ -1038,7 +1038,7 @@ class Interactive {
         if (event.run.phase.kind === "retry") {
           notice(
             this.shell,
-            `${retryCause(event.run.phase.error)} Retrying in ${clockDuration(Math.max(0, event.run.phase.at - Date.now()))} (attempt ${String(event.run.attempts)})`,
+            `${retryCause(event.run.phase.failure.message)} Retrying in ${clockDuration(Math.max(0, event.run.phase.at - Date.now()))} (attempt ${String(event.run.attempts)})`,
             this.shell.theme.warning,
           );
         }
@@ -1170,7 +1170,7 @@ class Interactive {
 
   private onRunEnded(session: FollowedSession, run: RunInfo): void {
     if (run.phase.kind === "failed")
-      notice(this.shell, `Error: ${run.phase.error}`, this.shell.theme.error);
+      notice(this.shell, `Error: ${run.phase.failure.message}`, this.shell.theme.error);
     this.refreshWorkspace();
     // A run stopped before it answered hands its message back to the composer,
     // the same round trip double-escape makes, minus the picker.

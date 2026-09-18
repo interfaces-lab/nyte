@@ -123,7 +123,7 @@ export function createSubagents(input: {
       case "failed":
         return {
           kind: "failed",
-          error: stored.run.phase.error,
+          error: stored.run.phase.failure.message,
         };
       case "aborted":
         return { kind: "aborted" };

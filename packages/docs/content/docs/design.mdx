@@ -145,8 +145,12 @@ There are six object kinds:
 | `stack`  | The parent head and base commit for a stacked head.                                                       |
 | `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker. |
 
-A commit's provenance is three optional fields. `change` names the submitted change it landed,
-`key` repeats that change's submission key, and `run` names the run that wrote it. None is context.
+A commit's provenance is five optional fields. `change` names the submitted change it landed,
+`key` repeats that change's submission key, and `run` names the run that wrote it. `calls` maps each
+tool call id to its `ToolClass`, stamped by the runner from the tool's own typed arguments when the
+call commits and from its result when it settles, so no reader classifies a call by name. `failure`
+is the `Failure` the `ai` classifier decided when an assistant message stopped with `error` or
+`aborted`, so no reader classifies by error text. None is context, and the model never sees them.
 They exist so a client can ask which files one run touched, or which commit a receipt turned into,
 without guessing from timestamps.
 
@@ -490,12 +494,12 @@ the same way tool results do, never from a bigger shape in core.
 ### Retries
 
 A retryable provider failure produces a complete assistant error message and a `retry` outcome.
-The step commits that assistant message, increments `attempts`, and writes the run phase as
-`retry { at, error }`. Before `at`, a step returns the durable deadline. At or after `at`, it calls
-`respond` again. `drive` waits in process. A step-at-a-time host schedules another entry.
+The step commits that assistant message with its `failure`, increments `attempts`, and writes the run
+phase as `retry { at, failure }`. Before `at`, a step returns the durable deadline. At or after `at`,
+it calls `respond` again. `drive` waits in process. A step-at-a-time host schedules another entry.
 
-The retry policy decides whether an assistant error is retryable and computes the delay, including
-any provider-requested minimum. Retries are a run phase. They are not timers in runner memory,
+Whether a failure is retryable, and any provider-requested minimum delay, are functions of the
+failure's class; the retry policy adds the backoff. Retries are a run phase. They are not timers in runner memory,
 because runner memory is exactly the thing this design refuses to depend on.
 
 ### Checkpoints

@@ -58,7 +58,10 @@ export function liveRun(run: RunInfo | undefined): LiveRun {
     case "tools":
       return { runState: "working" };
     case "retry":
-      return { runState: "retrying", retry: { at: run.phase.at, message: run.phase.error } };
+      return {
+        runState: "retrying",
+        retry: { at: run.phase.at, message: run.phase.failure.message },
+      };
     case "waiting":
     case "done":
     case "aborted":

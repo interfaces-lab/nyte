@@ -162,7 +162,10 @@ test("every row state looks different from the others", () => {
 
 test("failed threads stay under Needs attention after opening, and parked ones stay under Working", () => {
   const state = new SessionReadState();
-  const failed = session({ kind: "failed", error: "Provider failed" });
+  const failed = session({
+    kind: "failed",
+    failure: { class: "provider", message: "Provider failed" },
+  });
   const parked = { ...session({ kind: "waiting" }), sessionId: sessionId("parked") };
   state.markRead(failed);
   state.markRead(parked);

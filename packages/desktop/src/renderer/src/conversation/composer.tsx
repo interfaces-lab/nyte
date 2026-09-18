@@ -67,6 +67,8 @@ import { composerStyles } from "./styles.stylex.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 const DROP_PLACEHOLDER = "Drop here to attach…";
+/** Below the layout's minimum pane width the follow-up row has no room to grow. */
+const COMPACT_FRAME_WIDTH = 320;
 
 type ComposerSurface = "new-chat" | "follow-up";
 type ComposerGeometry = "new-chat" | "follow-up-compact" | "follow-up-expanded";
@@ -324,6 +326,8 @@ export function ComposerFrame({
   const host = useHostState();
   const [dragging, setDragging] = useState(false);
   const [editorNeedsExpansion, setEditorNeedsExpansion] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [references, setReferences] = useState<readonly MessageReference[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const suggestionMenu = useComposerSuggestions({
@@ -343,10 +347,11 @@ export function ComposerFrame({
     !submitting &&
     !attachmentBusy &&
     (document.text.trim() !== "" || attachments.length > 0 || hasInstructionChip);
+  const collapsed = surface === "follow-up" && narrow && !focused;
   const geometry: ComposerGeometry =
     surface === "new-chat"
       ? "new-chat"
-      : editorNeedsExpansion
+      : editorNeedsExpansion && !collapsed
         ? "follow-up-expanded"
         : "follow-up-compact";
   const compact = geometry === "follow-up-compact";
@@ -397,10 +402,15 @@ export function ComposerFrame({
 
   useLayoutEffect(() => {
     const area = areaRef.current?.element;
-    if (area === null || area === undefined) return undefined;
+    const frame = frameRef.current;
+    if (area === null || area === undefined || frame === null) return undefined;
     resize();
-    const observer = new ResizeObserver(() => resize());
+    const observer = new ResizeObserver(() => {
+      setNarrow(frame.getBoundingClientRect().width < COMPACT_FRAME_WIDTH);
+      resize();
+    });
     observer.observe(area);
+    observer.observe(frame);
     return () => observer.disconnect();
   }, [resize]);
 
@@ -426,7 +436,7 @@ export function ComposerFrame({
   };
 
   const attachmentList =
-    attachments.length === 0 ? undefined : (
+    collapsed || attachments.length === 0 ? undefined : (
       <ul
         aria-label="Image attachments"
         {...stylex.props(
@@ -455,7 +465,7 @@ export function ComposerFrame({
       </ul>
     );
   const attachmentAlert =
-    attachmentError === undefined ? undefined : (
+    collapsed || attachmentError === undefined ? undefined : (
       <div
         role="alert"
         {...stylex.props(
@@ -474,6 +484,8 @@ export function ComposerFrame({
         data-composer-frame
         ref={frameRef}
         aria-label="Message composer"
+        onFocus={() => setFocused(true)}
+        onBlur={(event) => setFocused(event.currentTarget.contains(event.relatedTarget))}
         onKeyDown={(event) => {
           if (
             event.key !== "Escape" ||
@@ -550,12 +562,14 @@ export function ComposerFrame({
             composerStyles.layout,
             geometry === "new-chat" && composerStyles.layoutNewChat,
             compact && composerStyles.layoutCompact,
+            collapsed && composerStyles.layoutCollapsed,
           )}
         >
           <div
             {...stylex.props(
               composerStyles.editor,
               compact && composerStyles.editorCompact,
+              collapsed && composerStyles.editorCollapsed,
               followUpExpanded && composerStyles.editorExpanded,
             )}
           >

@@ -568,7 +568,7 @@ test("a child without an explicit model fails execution rather than inheriting t
     await untilIdle(nyte, child.sessionId);
     const run = await nyte.runs.current({ sessionId: child.sessionId });
     assert.ok(run?.phase.kind === "failed");
-    assert.match(run.phase.error, /requires an exact model/i);
+    assert.match(run.phase.failure.message, /requires an exact model/i);
     assert.equal(scripted.selected.has(CHILD_PROMPT), false);
   } finally {
     await nyte.close();

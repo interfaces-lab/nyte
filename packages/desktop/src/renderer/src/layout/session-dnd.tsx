@@ -26,7 +26,7 @@ import { sessionId as sessionIdSchema } from "../../../shared/schemas.ts";
 import { overlayRef } from "../components/overlay-occlusion.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { usePaneActions, usePaneControllerSnapshot } from "./pane-context.tsx";
-import { orderedPanes, paneById } from "./pane-layout.ts";
+import { orderedPanes } from "./pane-layout.ts";
 import type { DropPlacement, PaneId, PaneLayout } from "./pane-layout.ts";
 import { placementInRect, SESSION_DRAG_ACTIVATION_DISTANCE } from "./session-dnd-geometry.ts";
 import type { SessionDragPoint } from "./session-dnd-geometry.ts";
@@ -132,11 +132,7 @@ function collisionDetector(layout: PaneLayout): CollisionDetection {
       if (paneContainer === undefined) continue;
       const rect = droppableRects.get(paneContainer.id);
       if (rect === undefined || !contains(rect, point)) continue;
-      const currentPane = paneById(layout, pane.id);
-      if (
-        currentPane?.selection.kind === "session" &&
-        currentPane.selection.sessionId === dragged.sessionId
-      ) {
+      if (pane.selection.kind === "session" && pane.selection.sessionId === dragged.sessionId) {
         return [];
       }
       const placement = placementInRect(rect, point, layout.kind === "split");

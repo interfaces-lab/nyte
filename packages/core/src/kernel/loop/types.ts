@@ -25,7 +25,7 @@ import type {
 } from "@nyte-ai/ai";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
-import type { Selection } from "@nyte-ai/protocol";
+import type { Selection, ToolClass } from "@nyte-ai/protocol";
 import type { JsonObject } from "@nyte-ai/client";
 import type { Static, TSchema } from "typebox";
 
@@ -369,6 +369,19 @@ export interface AgentTool<
   ) => Promise<AgentToolResult<TDetails>>;
   /** Available only while the session is foreground work with a participant present. */
   availability?: "foreground";
+  /**
+   * What this call is, for the record. Called with the parsed args when the
+   * call is committed, and again with the result when it settles without error.
+   * A method, so its parameters are bivariant: a typed tool still erases to
+   * `AgentTool` for the registry, which hands it back its own result.
+   */
+  present?(
+    this: void,
+    args: TSchema extends TParameters ? unknown : Static<TParameters>,
+    result?: AgentToolResult<TDetails>,
+  ): ToolClass;
+  /** Human label for a tool without `present`; the default is the tool name. */
+  label?: string;
   /** Recovery policy for an effect whose durable intent exists but whose outcome is unknown. */
   replay?: "never" | "safe";
   /** Settles this tool's waiting calls on wake (design record: "Wait and wake"). */

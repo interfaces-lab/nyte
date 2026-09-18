@@ -107,5 +107,5 @@ test("new chat leaves Customize and selects the blank pane through the shared pa
   expect(render()).toBe("<span>workspace:single</span>");
   const layout = controller.getSnapshot().layout;
   assert.equal(layout.kind, "single");
-  expect(layout.pane.selection).toEqual({ kind: "blank" });
+  expect(layout.selection).toEqual({ kind: "blank" });
 });

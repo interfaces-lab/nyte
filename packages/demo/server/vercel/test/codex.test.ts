@@ -149,7 +149,7 @@ for (const access of [undefined, "", 123]) {
         sdk.messages.send({ sessionId, content: "Hello" }),
       ]);
       assert.ok(phase.kind === "failed");
-      assert.equal(phase.error, "Provider is not configured: openai-codex");
+      assert.equal(phase.failure.message, "Provider is not configured: openai-codex");
       assert.equal(network.mock.calls.length, 0);
     },
   );

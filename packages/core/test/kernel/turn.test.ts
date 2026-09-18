@@ -224,7 +224,7 @@ test("a response with tool calls asks for the tool phase; a failed provider retr
   if (first.kind === "retry") assert.ok(first.at > Date.now() - 1);
   const second = await turn.respond(b.input({ attempts: 1 }));
   assert.equal(second.kind, "failed");
-  if (second.kind === "failed") assert.match(second.error, /rate limited/u);
+  if (second.kind === "failed") assert.match(second.failure.message, /rate limited/u);
 
   const aborted = await turnWith(scripted([assistant("", { stop: "aborted" })]).streamFn).respond(
     b.input(),

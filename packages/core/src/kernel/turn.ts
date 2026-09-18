@@ -11,7 +11,7 @@
  * `bindTurn` builds a `Turn` over `agent-loop.ts`, the pi-derived loop; tests
  * hand `step` a fake.
  */
-import { isRetryableAssistantError, retryDelayMs } from "@nyte-ai/ai";
+import { classifyAssistantFailure, isRetryableFailureClass, retryDelayMs } from "@nyte-ai/ai";
 import type { Api, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import { schemas } from "@nyte-ai/protocol";
@@ -19,6 +19,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type {
   AssistantMessage,
+  Failure,
   ImageContent,
   TextContent,
   ToolResultMessage,
@@ -35,6 +36,7 @@ import type {
   AgentEvent,
   AgentLoopConfig,
   AgentTool,
+  AgentToolCall,
   AgentToolResult,
   StreamFn,
   ThinkingLevel,
@@ -74,6 +76,7 @@ import type {
   Oid,
   Run,
   Selection,
+  ToolClass,
   ToolProgress,
 } from "./model.ts";
 import type { Session } from "./store.ts";
@@ -88,7 +91,6 @@ const DEFAULT_RETRY_POLICY: RetryPolicy = {
   baseDelayMs: 1_000,
 };
 
-const NonNegativeNumber = Type.Number({ minimum: 0 });
 const ProgressPayloadSchema = Type.Object({
   content: Type.Optional(
     Type.Array(
@@ -135,32 +137,41 @@ export type RespondOutcome =
       readonly body: Extract<CommitBody, { kind: "checkpoint" }>;
     }
   | { readonly kind: "complete"; readonly message: AssistantMessage }
-  /** The message carries tool calls; the step commits it and calls `tools` next. */
-  | { readonly kind: "tools"; readonly message: AssistantMessage }
+  /** The message carries tool calls, classified by id; the step commits it and calls `tools` next. */
+  | {
+      readonly kind: "tools";
+      readonly message: AssistantMessage;
+      readonly calls: Readonly<Record<string, ToolClass>>;
+    }
   /** A transient provider failure; the message is the failed attempt, kept as history. */
   | {
       readonly kind: "retry";
       readonly message: AssistantMessage;
       readonly at: number;
-      readonly error: string;
+      readonly failure: Failure;
     }
-  | { readonly kind: "failed"; readonly message: AssistantMessage; readonly error: string }
-  | { readonly kind: "aborted"; readonly message: AssistantMessage };
+  | { readonly kind: "failed"; readonly message: AssistantMessage; readonly failure: Failure }
+  | { readonly kind: "aborted"; readonly message: AssistantMessage; readonly failure: Failure };
+
+/** Settled results in the assistant message's call order, with the settled class of each call whose tool presents one. */
+export interface ToolBatchResults {
+  readonly messages: readonly ToolResultMessage[];
+  readonly calls: Readonly<Record<string, ToolClass>>;
+}
 
 export type ToolBatchOutcome =
   | { readonly kind: "fenced" }
   | { readonly kind: "conflict" }
-  /** Every call settled; one result per call, in the assistant message's call order. */
-  | { readonly kind: "complete"; readonly messages: readonly ToolResultMessage[] }
+  /** Every call settled; one result per call. */
+  | ({ readonly kind: "complete" } & ToolBatchResults)
   /** Some calls are parked on their effect refs. Nothing is committed until they settle. */
   | { readonly kind: "waiting"; readonly calls: readonly string[] }
   /** Every call settled, and the run must end: a policy could not decide, or the batch is unusable. */
-  | {
+  | ({
       readonly kind: "failed";
-      readonly messages: readonly ToolResultMessage[];
       readonly error: string;
       readonly cause?: unknown;
-    };
+    } & ToolBatchResults);
 
 export interface Turn {
   respond(input: TurnInput): Promise<RespondOutcome>;
@@ -255,9 +266,9 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
 
   switch (message.stopReason) {
     case "aborted":
-      return { kind: "aborted", message };
+      return { kind: "aborted", message, failure: classifyAssistantFailure(message) };
     case "error": {
-      const error = message.errorMessage ?? "Unknown error";
+      const failure = classifyAssistantFailure(message, options.model);
       if (settings.enabled && isOverflow(message, options.model) && !newestIsRunCheckpoint(input)) {
         const checkpoint = await checkpointOutcome(options, input, settings, "overflow");
         if (checkpoint !== undefined) {
@@ -278,20 +289,34 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
       const at = retryAt({
         policy: options.retry ?? DEFAULT_RETRY_POLICY,
         run: input.run,
-        message,
+        failure,
       });
       return at === undefined
-        ? { kind: "failed", message, error }
-        : { kind: "retry", message, at, error };
+        ? { kind: "failed", message, failure }
+        : { kind: "retry", message, at, failure };
     }
     case "toolUse":
     case "stop":
     case "length":
     case "pending":
-    case "deferred":
-      return message.content.some((part) => part.type === "toolCall")
-        ? { kind: "tools", message }
+    case "deferred": {
+      const toolCalls = message.content.filter((part) => part.type === "toolCall");
+      return toolCalls.length > 0
+        ? {
+            kind: "tools",
+            message,
+            calls: Object.fromEntries(
+              toolCalls.map((part) => [
+                part.id,
+                presentCall(
+                  options.tools.find((tool) => tool.name === part.name),
+                  part,
+                ),
+              ]),
+            ),
+          }
         : { kind: "complete", message };
+    }
     default: {
       const _exhaustive: never = message.stopReason;
       return _exhaustive;
@@ -379,10 +404,24 @@ async function runTools(
   input: TurnInput & { readonly assistant: AssistantMessage },
 ): Promise<ToolBatchOutcome> {
   const toolCalls = input.assistant.content.filter((part) => part.type === "toolCall");
+  const settled = (messages: readonly ToolResultMessage[]): ToolBatchResults => ({
+    messages,
+    calls: Object.fromEntries(
+      messages.flatMap((message) => {
+        const call = toolCalls.find((part) => part.id === message.toolCallId);
+        const tool = options.tools.find((candidate) => candidate.name === message.toolName);
+        if (call === undefined || tool?.present === undefined) return [];
+        const result = message.isError
+          ? undefined
+          : { content: message.content, details: message.details };
+        return [[message.toolCallId, presentCall(tool, call, result)]];
+      }),
+    ),
+  });
   if (input.assistant.stopReason === "length") {
     return {
       kind: "complete",
-      messages: await failToolCallsFromTruncatedMessage(toolCalls, () => undefined),
+      ...settled(await failToolCallsFromTruncatedMessage(toolCalls, () => undefined)),
     };
   }
 
@@ -429,15 +468,37 @@ async function runTools(
         calls: toolCalls.flatMap((call) => (parked.has(call.id) ? [call.id] : [])),
       };
     }
-    return { kind: "complete", messages };
+    return { kind: "complete", ...settled(messages) };
   } catch (error) {
     if (state.stopped !== undefined) return state.stopped;
     return {
       kind: "failed",
       cause: error,
       messages: [],
+      calls: {},
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+/**
+ * What a call is, from the tool's own typed view of its arguments (and result,
+ * once it settled without error). A tool without `present`, an unknown tool,
+ * or arguments the tool's parse refuses answer `custom` under the tool's label.
+ */
+function presentCall(
+  tool: AgentTool | undefined,
+  call: AgentToolCall,
+  result?: AgentToolResult<unknown>,
+): ToolClass {
+  const custom: ToolClass = { kind: "custom", label: tool?.label ?? call.name };
+  if (tool?.present === undefined) return custom;
+  try {
+    const args =
+      tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
+    return tool.present(args, result);
+  } catch {
+    return custom;
   }
 }
 
@@ -518,31 +579,18 @@ function emitToolProgress(input: TurnInput, event: AgentEvent): void {
 function retryAt(options: {
   readonly policy: RetryPolicy;
   readonly run: Run;
-  readonly message: AssistantMessage;
+  readonly failure: Failure;
 }): number | undefined {
   if (!options.policy.enabled || options.run.attempts >= options.policy.maxRetries) {
     return undefined;
   }
-  if (!isRetryableAssistantError(options.message)) return undefined;
+  if (!isRetryableFailureClass(options.failure.class)) return undefined;
   const retryAttempt = options.run.attempts + 1;
-  const providerDelay = providerRetryDelayMs(options.message);
-  const delay = Math.max(retryDelayMs(options.policy, retryAttempt), providerDelay ?? 0);
+  const delay = Math.max(
+    retryDelayMs(options.policy, retryAttempt),
+    options.failure.retryAfterMs ?? 0,
+  );
   return Date.now() + delay;
-}
-
-function providerRetryDelayMs(message: AssistantMessage): number | undefined {
-  for (const diagnostic of message.diagnostics ?? []) {
-    const details = diagnostic.details;
-    if (details === undefined) continue;
-    for (const key of ["retryAfterMs", "retryDelayMs"]) {
-      const value = details[key];
-      if (Value.Check(NonNegativeNumber, value)) return value;
-    }
-  }
-  const match = message.errorMessage?.match(/server requested ([0-9]+(?:\.[0-9]+)?)s retry delay/i);
-  if (match === null || match === undefined) return undefined;
-  const seconds = Number(match[1]);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1_000 : undefined;
 }
 
 function durableTools(options: {
@@ -570,6 +618,7 @@ function durableTools(options: {
         stopBatch(options.state, {
           kind: "failed",
           messages: [],
+          calls: {},
           cause,
           error: cause instanceof Error ? cause.message : String(cause),
         });
@@ -762,6 +811,7 @@ async function settleCall(options: {
     stopBatch(options.state, {
       kind: "failed",
       messages: [],
+      calls: {},
       cause,
       error: cause instanceof Error ? cause.message : String(cause),
     });
@@ -851,6 +901,7 @@ async function parkCall(options: {
     stopBatch(options.state, {
       kind: "failed",
       messages: [],
+      calls: {},
       cause,
       error: cause instanceof Error ? cause.message : String(cause),
     });

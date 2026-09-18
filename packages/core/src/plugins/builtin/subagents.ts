@@ -1,6 +1,6 @@
 /** Shared task tool. The SDK owns child sessions and job lifecycle. */
 import { MODEL_THINKING_LEVELS, type Api, type Model } from "@nyte-ai/schema";
-import type { JobActionOutcome, JobInfo } from "@nyte-ai/protocol";
+import type { JobActionOutcome, JobInfo, SessionId } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import type { AgentTool } from "../../kernel/loop/types.ts";
@@ -17,7 +17,7 @@ const DEFAULT_TASK_THINKING_LEVEL = "high";
 
 export interface TaskDetails {
   readonly model: string;
-  readonly childSessionId: string;
+  readonly childSessionId: SessionId;
   readonly state: "running" | SubagentResult["kind"];
 }
 
@@ -55,7 +55,7 @@ export interface SubagentHost {
       readonly head: string;
       readonly signal?: AbortSignal;
     },
-  ): Promise<string>;
+  ): Promise<SessionId>;
   wait(input: {
     readonly childSessionId: string;
     readonly signal?: AbortSignal;
@@ -135,6 +135,12 @@ Waits for the final report by default. If the user sends something while you wai
 Never poll, sleep, or relaunch a task to check progress. Use stop_task with the returned job id to cancel it.`,
     parameters: taskParameters,
     replay: "never",
+    present: (input, result) => {
+      const title = input.title ?? input.model ?? DEFAULT_TASK_MODEL;
+      return result === undefined
+        ? { kind: "delegate", role: "spawn", title }
+        : { kind: "delegate", role: "spawn", title, child: result.details.childSessionId };
+    },
     prepareArguments(value) {
       if (!Value.Check(taskParameters, value)) {
         throw new Error(
@@ -214,6 +220,7 @@ Never poll, sleep, or relaunch a task to check progress. Use stop_task with the 
       'Wait for a task this session already started and return its report, by job id. The wait is durable and never re-runs the task. It returns with the task still running if the user sends something meanwhile; the report still reaches you as a "Background" message, so answer the user rather than waiting again. Cancelling only this wait leaves the task running; stop_task cancels the task itself. Aborting a run still cancels that run\'s own tasks.',
     parameters: taskJobParameters,
     replay: "never",
+    present: ({ jobId }) => ({ kind: "delegate", role: "await", jobId }),
     prepareArguments(value) {
       if (!Value.Check(taskJobParameters, value)) {
         throw new Error("Wait task arguments are invalid. Provide a nonempty jobId.");

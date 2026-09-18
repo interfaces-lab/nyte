@@ -42,7 +42,7 @@ for (;;) {
   const current = await client.sessions.snapshot({ sessionId });
   const phase = current?.run?.phase;
   if (phase?.kind === "done") break;
-  if (phase?.kind === "failed") throw new Error(phase.error);
+  if (phase?.kind === "failed") throw new Error(phase.failure.message);
   assert.notEqual(phase?.kind, "aborted");
   await setTimeout(250, undefined, { signal });
 }
@@ -55,7 +55,7 @@ try {
     signal: AbortSignal.any([controller.signal, signal]),
   })) {
     if (event.kind !== "run") continue;
-    if (event.run.phase.kind === "failed") throw new Error(event.run.phase.error);
+    if (event.run.phase.kind === "failed") throw new Error(event.run.phase.failure.message);
     assert.notEqual(event.run.phase.kind, "aborted");
     if (event.run.phase.kind === "done") {
       completed = true;
