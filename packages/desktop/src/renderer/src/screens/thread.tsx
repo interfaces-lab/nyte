@@ -1383,7 +1383,7 @@ function panePreviewRect(
   layout: Extract<PaneLayout, { kind: "split" }>,
   paneId: PaneId,
 ): CSSProperties {
-  const leading = layout.order[0] === paneId;
+  const leading = layout.leading === paneId;
   const leadingSize = `${String(layout.ratio * 100)}%`;
   const trailingSize = `${String((1 - layout.ratio) * 100)}%`;
   if (layout.direction === "right") {
@@ -1619,7 +1619,7 @@ export function ThreadScreen({
   const [dragRatio, setDragRatio] = useState<number | undefined>();
   const panes = orderedPanes(layout);
   const leading = panes[0] ?? activePane(layout);
-  const trailing = layout.kind === "split" ? (panes[1] ?? layout.secondary) : undefined;
+  const trailing = layout.kind === "split" ? panes[1] : undefined;
   const activeSelection = activePane(layout).selection;
   const workspacePath = host.data?.workspace?.path;
   const workbenchTarget: WorkbenchTarget =

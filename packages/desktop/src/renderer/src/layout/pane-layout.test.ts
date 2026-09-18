@@ -7,7 +7,9 @@ import {
   activePane,
   createSinglePane,
   orderedPanes,
+  parsePersistedPaneLayout,
   reducePaneLayout,
+  serializePaneLayout,
 } from "./pane-layout.ts";
 import type {
   DropPlacement,
@@ -26,14 +28,14 @@ const GAMMA = sessionId("gamma");
 const TARGET_PANE_IDS = ["primary", "secondary"] satisfies readonly PaneId[];
 
 const EDGE_CASES = [
-  { placement: "left", direction: "right", draggedFirst: true },
-  { placement: "right", direction: "right", draggedFirst: false },
-  { placement: "top", direction: "down", draggedFirst: true },
-  { placement: "bottom", direction: "down", draggedFirst: false },
+  { placement: "left", direction: "right", draggedLeads: true },
+  { placement: "right", direction: "right", draggedLeads: false },
+  { placement: "top", direction: "down", draggedLeads: true },
+  { placement: "bottom", direction: "down", draggedLeads: false },
 ] satisfies readonly {
   readonly placement: EdgePlacement;
   readonly direction: SplitDirection;
-  readonly draggedFirst: boolean;
+  readonly draggedLeads: boolean;
 }[];
 
 function session(sessionId: SessionId): PaneSelection {
@@ -42,14 +44,14 @@ function session(sessionId: SessionId): PaneSelection {
 
 function splitLayout({
   direction,
-  order,
+  leading,
   primary,
   secondary,
   activePaneId,
   ratio = 0.37,
 }: {
   readonly direction: SplitDirection;
-  readonly order: readonly [PaneId, PaneId];
+  readonly leading: PaneId;
   readonly primary: SessionId;
   readonly secondary: SessionId;
   readonly activePaneId: PaneId;
@@ -59,9 +61,9 @@ function splitLayout({
     kind: "split",
     direction,
     ratio,
-    order,
-    primary: { id: "primary", selection: session(primary) },
-    secondary: { id: "secondary", selection: session(secondary) },
+    leading,
+    primary: session(primary),
+    secondary: session(secondary),
     activePaneId,
   };
 }
@@ -105,7 +107,7 @@ describe("pane drop semantics", () => {
   test("a center drop of a third session replaces only the target and activates it", () => {
     const initial = splitLayout({
       direction: "right",
-      order: ["primary", "secondary"],
+      leading: "primary",
       primary: ALPHA,
       secondary: BETA,
       activePaneId: "secondary",
@@ -121,7 +123,7 @@ describe("pane drop semantics", () => {
 
     assert.deepEqual(result, {
       ...initial,
-      primary: { id: "primary", selection: session(GAMMA) },
+      primary: session(GAMMA),
       activePaneId: "primary",
     });
   });
@@ -129,7 +131,7 @@ describe("pane drop semantics", () => {
   test("a center drop of an already-visible session swaps panes and activates the destination", () => {
     const initial = splitLayout({
       direction: "right",
-      order: ["primary", "secondary"],
+      leading: "primary",
       primary: ALPHA,
       secondary: BETA,
       activePaneId: "secondary",
@@ -145,14 +147,14 @@ describe("pane drop semantics", () => {
 
     assert.deepEqual(result, {
       ...initial,
-      primary: { id: "primary", selection: session(BETA) },
-      secondary: { id: "secondary", selection: session(ALPHA) },
+      primary: session(BETA),
+      secondary: session(ALPHA),
       activePaneId: "primary",
     });
   });
 
   test("each edge splits a single pane with the dragged session on the requested side", () => {
-    for (const { placement, direction, draggedFirst } of EDGE_CASES) {
+    for (const { placement, direction, draggedLeads } of EDGE_CASES) {
       const result = expectSplit(
         drop({
           layout: createSinglePane("primary", session(ALPHA)),
@@ -161,15 +163,12 @@ describe("pane drop semantics", () => {
           placement,
         }),
       );
-      const expectedOrder: readonly [PaneId, PaneId] = draggedFirst
-        ? ["secondary", "primary"]
-        : ["primary", "secondary"];
 
       assert.equal(result.direction, direction, placement);
       assert.equal(result.ratio, DEFAULT_SPLIT_RATIO, placement);
-      assert.deepEqual(result.order, expectedOrder, placement);
-      assert.deepEqual(result.primary.selection, session(ALPHA), placement);
-      assert.deepEqual(result.secondary.selection, session(BETA), placement);
+      assert.equal(result.leading, draggedLeads ? "secondary" : "primary", placement);
+      assert.deepEqual(result.primary, session(ALPHA), placement);
+      assert.deepEqual(result.secondary, session(BETA), placement);
       assert.equal(activePane(result).id, "secondary", placement);
     }
   });
@@ -177,7 +176,7 @@ describe("pane drop semantics", () => {
   test("an edge drop moves an already-visible session without replacing either selection", () => {
     const initial = splitLayout({
       direction: "right",
-      order: ["primary", "secondary"],
+      leading: "primary",
       primary: ALPHA,
       secondary: BETA,
       activePaneId: "secondary",
@@ -192,9 +191,9 @@ describe("pane drop semantics", () => {
     );
 
     assert.equal(result.direction, "down");
-    assert.deepEqual(result.order, ["secondary", "primary"]);
-    assert.deepEqual(result.primary.selection, session(ALPHA));
-    assert.deepEqual(result.secondary.selection, session(BETA));
+    assert.equal(result.leading, "secondary");
+    assert.deepEqual(result.primary, session(ALPHA));
+    assert.deepEqual(result.secondary, session(BETA));
     assert.equal(result.ratio, initial.ratio);
     assert.equal(activePane(result).id, "primary");
   });
@@ -202,7 +201,7 @@ describe("pane drop semantics", () => {
   test("an already-positioned edge drop still activates the dragged session", () => {
     const initial = splitLayout({
       direction: "right",
-      order: ["primary", "secondary"],
+      leading: "primary",
       primary: ALPHA,
       secondary: BETA,
       activePaneId: "secondary",
@@ -226,7 +225,7 @@ describe("pane drop semantics", () => {
   test("dropping a session onto itself is a no-op for center and every edge", () => {
     const initial = splitLayout({
       direction: "right",
-      order: ["primary", "secondary"],
+      leading: "primary",
       primary: ALPHA,
       secondary: BETA,
       activePaneId: "secondary",
@@ -246,18 +245,15 @@ describe("pane drop semantics", () => {
 
   test("edge-dropping a third session into a split replaces the non-target pane", () => {
     for (const targetPaneId of TARGET_PANE_IDS) {
-      for (const { placement, direction, draggedFirst } of EDGE_CASES) {
+      for (const { placement, direction, draggedLeads } of EDGE_CASES) {
         const initial = splitLayout({
           direction: "right",
-          order: ["primary", "secondary"],
+          leading: "primary",
           primary: ALPHA,
           secondary: BETA,
           activePaneId: targetPaneId,
         });
         const draggedPaneId: PaneId = targetPaneId === "primary" ? "secondary" : "primary";
-        const expectedOrder: readonly [PaneId, PaneId] = draggedFirst
-          ? [draggedPaneId, targetPaneId]
-          : [targetPaneId, draggedPaneId];
         const result = expectSplit(
           drop({
             layout: initial,
@@ -268,20 +264,90 @@ describe("pane drop semantics", () => {
         );
 
         assert.equal(result.direction, direction, `${targetPaneId}:${placement}`);
-        assert.deepEqual(result.order, expectedOrder, `${targetPaneId}:${placement}`);
+        assert.equal(
+          result.leading,
+          draggedLeads ? draggedPaneId : targetPaneId,
+          `${targetPaneId}:${placement}`,
+        );
         assert.deepEqual(
-          result.primary.selection,
+          result.primary,
           session(targetPaneId === "primary" ? ALPHA : GAMMA),
           `${targetPaneId}:${placement}`,
         );
         assert.deepEqual(
-          result.secondary.selection,
+          result.secondary,
           session(targetPaneId === "secondary" ? BETA : GAMMA),
           `${targetPaneId}:${placement}`,
         );
         assert.equal(activePane(result).id, draggedPaneId, `${targetPaneId}:${placement}`);
         assert.equal(result.ratio, initial.ratio, `${targetPaneId}:${placement}`);
       }
+    }
+  });
+});
+
+describe("pane layout persistence", () => {
+  test("a serialized layout restores exactly", () => {
+    const layouts: readonly PaneLayout[] = [
+      createSinglePane("secondary", session(ALPHA)),
+      splitLayout({
+        direction: "down",
+        leading: "secondary",
+        primary: ALPHA,
+        secondary: BETA,
+        activePaneId: "secondary",
+      }),
+    ];
+    for (const layout of layouts) {
+      assert.deepEqual(parsePersistedPaneLayout(serializePaneLayout(layout)), layout);
+    }
+  });
+
+  test("a version 1 layout string still restores, including a swapped order", () => {
+    const single = JSON.stringify({
+      version: 1,
+      kind: "single",
+      pane: { id: "secondary", selection: { kind: "session", sessionId: ALPHA } },
+    });
+    assert.deepEqual(
+      parsePersistedPaneLayout(single),
+      createSinglePane("secondary", session(ALPHA)),
+    );
+
+    const split = JSON.stringify({
+      version: 1,
+      kind: "split",
+      direction: "down",
+      ratio: 0.4,
+      order: ["secondary", "primary"],
+      primary: { id: "primary", selection: { kind: "session", sessionId: ALPHA } },
+      secondary: { id: "secondary", selection: { kind: "blank" } },
+      activePaneId: "secondary",
+    });
+    assert.deepEqual(parsePersistedPaneLayout(split), {
+      kind: "split",
+      direction: "down",
+      ratio: 0.4,
+      leading: "secondary",
+      primary: session(ALPHA),
+      secondary: { kind: "blank" },
+      activePaneId: "secondary",
+    });
+  });
+
+  test("a corrupt or duplicated layout string resets to a blank single pane", () => {
+    const duplicated = JSON.stringify({
+      version: 2,
+      kind: "split",
+      direction: "right",
+      ratio: 0.5,
+      leading: "primary",
+      primary: { kind: "session", sessionId: ALPHA },
+      secondary: { kind: "session", sessionId: ALPHA },
+      activePaneId: "primary",
+    });
+    for (const value of [null, "not json", "{}", duplicated]) {
+      assert.deepEqual(parsePersistedPaneLayout(value), createSinglePane());
     }
   });
 });

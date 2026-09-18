@@ -20,9 +20,9 @@ import {
 import { createOutbox } from "./outbox.ts";
 import { pendingIn } from "./queue.ts";
 import type { PendingChange } from "./queue.ts";
-import type { Commit, Lease, Obj, RefUpdate, Run, RunConfig, RunPhase } from "./model.ts";
+import type { Commit, Failure, Lease, Obj, RefUpdate, Run, RunConfig, RunPhase } from "./model.ts";
 import type { Session } from "./store.ts";
-import type { ToolBatchOutcome, Turn } from "./turn.ts";
+import type { RespondOutcome, ToolBatchOutcome, Turn } from "./turn.ts";
 import { startSpan } from "./telemetry.ts";
 
 const DEFAULT_TTL_MS = 30_000;
@@ -92,6 +92,11 @@ function lanesThatLand(landing: Landing, when: "boundary" | "idle"): readonly st
     .map((policy) => policy.lane);
 }
 
+/** A failure of the run itself, not of the provider. */
+function runnerFailure(message: string): Failure {
+  return { class: "runner", message };
+}
+
 function isCommit(object: Obj): object is Commit {
   return object.kind === "commit";
 }
@@ -142,7 +147,7 @@ async function noteOverriddenFailure(context: StepContext, phase: RunPhase): Pro
         kind: "notice",
         level: "error",
         owner: "runner",
-        message: `Run ${context.run.id} was stopped while failing: ${phase.error}`,
+        message: `Run ${context.run.id} was stopped while failing: ${phase.failure.message}`,
       },
     ],
     { lease: context.lease },
@@ -418,11 +423,31 @@ function responsePhase(
     case "tools":
       return { kind: "tools" };
     case "retry":
-      return { kind: "retry", at: outcome.at, error: outcome.error };
+      return { kind: "retry", at: outcome.at, failure: outcome.failure };
     case "failed":
-      return { kind: "failed", error: outcome.error };
+      return { kind: "failed", failure: outcome.failure };
     case "aborted":
       return { kind: "aborted" };
+    default: {
+      const _exhaustive: never = outcome;
+      return _exhaustive;
+    }
+  }
+}
+
+/** What the response's commit records beside its message: its calls, or why it failed. */
+function responseProvenance(
+  outcome: Exclude<RespondOutcome, { readonly kind: "checkpoint" }>,
+): Pick<Commit, "calls" | "failure"> {
+  switch (outcome.kind) {
+    case "complete":
+      return {};
+    case "tools":
+      return { calls: outcome.calls };
+    case "retry":
+    case "failed":
+    case "aborted":
+      return { failure: outcome.failure };
     default: {
       const _exhaustive: never = outcome;
       return _exhaustive;
@@ -510,7 +535,7 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     ? context.options.steps(context.run)
     : context.options.steps;
   if (ceiling !== undefined && context.run.attempts >= ceiling) {
-    return endRun(context, { kind: "failed", error: "step ceiling" }, "fail");
+    return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
   }
 
   const commits = await contextCommits(context.session.objects, context.tip);
@@ -555,6 +580,7 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     body: { kind: "message", message: turnOutcome.message },
     run: context.run.id,
     at: context.now(),
+    ...responseProvenance(turnOutcome),
   };
   const commitOid = hashObject(commit);
   const next = withPhase(context.run, responsePhase(turnOutcome), context.run.attempts + 1);
@@ -594,20 +620,22 @@ async function respond(context: StepContext): Promise<StepOutcome> {
 }
 
 function toolCommits(
-  messages: Extract<ToolBatchOutcome, { readonly kind: "complete" | "failed" }>["messages"],
+  results: Extract<ToolBatchOutcome, { readonly kind: "complete" | "failed" }>,
   parent: string | null,
   runId: string,
   now: () => number,
 ): Commit[] {
   const commits: Commit[] = [];
   let previous = parent;
-  for (const message of messages) {
+  for (const message of results.messages) {
+    const settled = results.calls[message.toolCallId];
     const commit: Commit = {
       kind: "commit",
       parent: previous,
       body: { kind: "message", message },
       run: runId,
       at: now(),
+      ...(settled === undefined ? {} : { calls: { [message.toolCallId]: settled } }),
     };
     previous = hashObject(commit);
     commits.push(commit);
@@ -623,7 +651,7 @@ async function publishTools(
     readonly reason: "tools" | "fail";
   },
 ): Promise<StepOutcome> {
-  const commits = toolCommits(options.outcome.messages, context.tip, context.run.id, context.now);
+  const commits = toolCommits(options.outcome, context.tip, context.run.id, context.now);
   const finalCommit = commits.at(-1);
   const outputTip = finalCommit === undefined ? context.tip : hashObject(finalCommit);
   await noteOverriddenFailure(context, options.phase);
@@ -657,7 +685,7 @@ async function tools(context: StepContext): Promise<StepOutcome> {
   if (context.tip === null) {
     return endRun(
       context,
-      { kind: "failed", error: "tools phase has no assistant message" },
+      { kind: "failed", failure: runnerFailure("tools phase has no assistant message") },
       "fail",
     );
   }
@@ -670,7 +698,7 @@ async function tools(context: StepContext): Promise<StepOutcome> {
   ) {
     return endRun(
       context,
-      { kind: "failed", error: "tools phase has no assistant message" },
+      { kind: "failed", failure: runnerFailure("tools phase has no assistant message") },
       "fail",
     );
   }
@@ -718,7 +746,7 @@ async function tools(context: StepContext): Promise<StepOutcome> {
     case "failed":
       return publishTools(context, {
         outcome,
-        phase: { kind: "failed", error: outcome.error },
+        phase: { kind: "failed", failure: runnerFailure(outcome.error) },
         reason: "fail",
       });
     default: {

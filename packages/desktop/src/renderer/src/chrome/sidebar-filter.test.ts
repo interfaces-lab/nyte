@@ -57,7 +57,11 @@ function session({
           ? {
               runId: `run-${id}`,
               head: MAIN_HEAD,
-              phase: { kind: "retry", at: updatedAt + 1_000, error: "rate limit" },
+              phase: {
+                kind: "retry",
+                at: updatedAt + 1_000,
+                failure: { class: "rate_limit", message: "rate limit" },
+              },
               startedAt: updatedAt,
               attempts: 2,
               config: {},
@@ -66,7 +70,10 @@ function session({
             ? {
                 runId: `run-${id}`,
                 head: MAIN_HEAD,
-                phase: { kind: "failed", error: "provider error" },
+                phase: {
+                  kind: "failed",
+                  failure: { class: "provider", message: "provider error" },
+                },
                 startedAt: updatedAt,
                 attempts: 1,
                 config: {},

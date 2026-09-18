@@ -181,7 +181,10 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       await expect(unread).toBeVisible({ timeout: 15_000 });
       await openBenchmarkSession(desktop, 0);
       await expect(unread).toHaveCount(0, { timeout: 15_000 });
-      await writeRun({ kind: "failed", error: "Fixture provider failure" }, 400);
+      await writeRun(
+        { kind: "failed", failure: { class: "provider", message: "Fixture provider failure" } },
+        400,
+      );
       await expect(row.getByRole("img", { name: "Failed" })).toBeVisible({ timeout: 15_000 });
       await row.click();
       await expect(row.getByRole("img", { name: "Failed" })).toBeVisible({ timeout: 15_000 });

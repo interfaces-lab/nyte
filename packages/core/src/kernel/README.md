@@ -152,10 +152,17 @@ model failure answers `failed` and leaves the head where it was.
 | none / terminal  | some admitted  | land the first policy lane whose batch the head admits; a batch with user input starts a new run in `respond`; configuration and notes land under the terminal run, or start a run already `done` when there is none | head, queue base, run                             |
 | `respond`, flagged | any          | end the run `aborted`; nothing lands into a stopping run           | run                                               |
 | `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only completed work while the last landed input still awaits its answer | head, queue base, run (asserted) |
-| `respond`        | none           | `turn.respond` over the branch context                             | head (assistant commit), run -> tools / done / retry / failed / aborted |
-| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results             | head (result commits), run -> respond / waiting / failed |
+| `respond`        | none           | `turn.respond` over the branch context; the commit carries `calls` (each call's `ToolClass` from its tool's `present`) or `failure` (the `Failure` the `ai` classifier decided) | head (assistant commit), run -> tools / done / retry `{ at, failure }` / failed `{ failure }` / aborted |
+| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results, each with the settled `ToolClass` under `calls` | head (result commits), run -> respond / waiting / failed |
 | `waiting`        | any            | after a signal, expiry, completed result batch, or abort: `turn.tools` again; otherwise `waiting` | as `tools`                                        |
 | `retry`          | any            | before `at`: `retry`; after, or once an abort is flagged: as `respond` |                                                   |
+
+`calls` and `failure` are provenance, not context: the runner stamps them once,
+from the tool's typed arguments and the classifier's closed union, and the
+model never sees them. A tool without `present`, an unknown tool, or arguments
+its parse refuses is `custom` under the tool's label; a failed call keeps its
+call class. A `failed` phase the run itself produced (a tool batch, a step
+ceiling) carries `class: "runner"`.
 
 Every publish also expects `refs/deleted` absent and carries the lease. A head
 moved by a participant or a deletion makes the publish fail; the runner re-reads

@@ -234,7 +234,7 @@ export function createRunners(input: {
           const selected = input.run.config.model;
           return {
             kind: "failed",
-            error,
+            failure: { class: "runner", message: error },
             message: failedAssistant(
               {
                 api: options.model.api,
@@ -252,7 +252,7 @@ export function createRunners(input: {
         await pool.pluginsSettled();
         await requireRunnerLocation();
         const error = missingChildModel(input.run.config);
-        if (error !== undefined) return { kind: "failed", messages: [], error };
+        if (error !== undefined) return { kind: "failed", messages: [], calls: {}, error };
         return bound.turn.tools(input);
       },
     };

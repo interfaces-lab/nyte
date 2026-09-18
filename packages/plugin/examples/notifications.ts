@@ -35,7 +35,7 @@ export function runEndMessage(phase: RunPhase): string | undefined {
     case "aborted":
       return "Turn stopped";
     case "failed": {
-      const detail = summarize(phase.error);
+      const detail = summarize(phase.failure.message);
       return detail === "" ? "Turn failed" : `Turn failed: ${detail}`;
     }
     case "respond":

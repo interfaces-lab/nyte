@@ -19,6 +19,8 @@ import type {
   AssistantMessageDiagnostic as AssistantMessageDiagnosticType,
   DeferredHandle as DeferredHandleType,
   DiagnosticErrorInfo as DiagnosticErrorInfoType,
+  Failure as FailureType,
+  FailureClass as FailureClassType,
   ImageContent as ImageContentType,
   JsonValue as JsonValueType,
   Message as MessageType,
@@ -46,6 +48,7 @@ import type {
   CommitBody as CommitBodyType,
   ModelRef as ModelRefType,
   RunPhase as RunPhaseType,
+  ToolClass as ToolClassType,
   ToolProgress as ToolProgressType,
 } from "./kernel.ts";
 import type {
@@ -442,6 +445,54 @@ export const CommitBody = typed<CommitBodyType>()(
   ]),
 );
 
+export const FailureClass = typed<FailureClassType>()(
+  Type.Union([
+    Type.Literal("rate_limit"),
+    Type.Literal("auth"),
+    Type.Literal("quota"),
+    Type.Literal("context_window"),
+    Type.Literal("overloaded"),
+    Type.Literal("network"),
+    Type.Literal("aborted"),
+    Type.Literal("provider"),
+    Type.Literal("runner"),
+  ]),
+);
+
+export const Failure = typed<FailureType>()(
+  open({
+    class: FailureClass,
+    message: Type.String(),
+    retryAfterMs: Type.Optional(Type.Number()),
+  }),
+);
+
+export const ToolClass = typed<ToolClassType>()(
+  Type.Union([
+    open({ kind: Type.Literal("file_edit"), path: Type.String() }),
+    open({ kind: Type.Literal("file_write"), path: Type.String() }),
+    open({
+      kind: Type.Literal("file_patch"),
+      op: Type.Union([Type.Literal("edit"), Type.Literal("write")]),
+      path: Type.String(),
+      added: Type.Number(),
+      removed: Type.Number(),
+      patch: Type.String(),
+    }),
+    open({ kind: Type.Literal("file_read"), path: Type.String() }),
+    open({ kind: Type.Literal("list"), path: Type.String() }),
+    open({ kind: Type.Literal("shell"), command: Type.String() }),
+    open({
+      kind: Type.Literal("delegate"),
+      role: Type.Literal("spawn"),
+      title: Type.String(),
+      child: Type.Optional(SessionId),
+    }),
+    open({ kind: Type.Literal("delegate"), role: Type.Literal("await"), jobId: Type.String() }),
+    open({ kind: Type.Literal("custom"), label: Type.String() }),
+  ]),
+);
+
 export const Commit = typed<CommitType>()(
   open({
     kind: Type.Literal("commit"),
@@ -450,6 +501,8 @@ export const Commit = typed<CommitType>()(
     change: Type.Optional(Oid),
     key: Type.Optional(Type.String()),
     run: Type.Optional(Type.String()),
+    calls: Type.Optional(Type.Record(Type.String(), ToolClass)),
+    failure: Type.Optional(Failure),
     body: CommitBody,
     at: Type.Number(),
     author: Type.Optional(Actor),
@@ -461,10 +514,10 @@ export const RunPhase = typed<RunPhaseType>()(
     open({ kind: Type.Literal("respond") }),
     open({ kind: Type.Literal("tools") }),
     open({ kind: Type.Literal("waiting") }),
-    open({ kind: Type.Literal("retry"), at: Type.Number(), error: Type.String() }),
+    open({ kind: Type.Literal("retry"), at: Type.Number(), failure: Failure }),
     open({ kind: Type.Literal("done") }),
     open({ kind: Type.Literal("aborted") }),
-    open({ kind: Type.Literal("failed"), error: Type.String() }),
+    open({ kind: Type.Literal("failed"), failure: Failure }),
   ]),
 );
 
