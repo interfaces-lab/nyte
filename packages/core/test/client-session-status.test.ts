@@ -16,13 +16,26 @@ test("clients derive execution state without treating background waits as a repl
   expect(sessionMark({ heads: [head({ kind: "waiting" }, true)] })).toBe("waiting");
   // A call parked on a timer or on background work asks nothing of a reader.
   expect(sessionMark({ heads: [head({ kind: "waiting" })] })).toBe("working");
-  expect(sessionMark({ heads: [head({ kind: "retry", at: 10, error: "retry" })] })).toBe("retry");
-  expect(sessionMark({ heads: [head({ kind: "failed", error: "failed" })] })).toBe("failed");
+  expect(
+    sessionMark({
+      heads: [head({ kind: "retry", at: 10, failure: { class: "provider", message: "retry" } })],
+    }),
+  ).toBe("retry");
+  expect(
+    sessionMark({
+      heads: [head({ kind: "failed", failure: { class: "provider", message: "failed" } })],
+    }),
+  ).toBe("failed");
 });
 
 test("an active head takes priority over earlier failures", () => {
   expect(
-    sessionMark({ heads: [head({ kind: "failed", error: "failed" }), head({ kind: "tools" })] }),
+    sessionMark({
+      heads: [
+        head({ kind: "failed", failure: { class: "provider", message: "failed" } }),
+        head({ kind: "tools" }),
+      ],
+    }),
   ).toBe("working");
   expect(sessionMark({ heads: [head({ kind: "done" }), head({ kind: "aborted" })] })).toBe("idle");
 });

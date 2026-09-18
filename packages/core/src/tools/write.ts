@@ -41,6 +41,10 @@ export function createWriteTool(
       "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
     parameters: writeParameters,
     prepareArguments: argumentParser(writeParameters),
+    present: ({ path }, result) =>
+      result === undefined
+        ? { kind: "file_write", path }
+        : { kind: "file_patch", op: "write", path, ...result.details },
     async execute(_toolCallId, { path, content }, signal?, _onUpdate?) {
       const absolutePath = resolveToCwd(path, cwd);
       return withFileMutationQueue(absolutePath, async () => {

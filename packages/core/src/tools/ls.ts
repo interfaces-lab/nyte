@@ -72,6 +72,7 @@ export function createLsTool(
     description: `List directory contents. Returns entries sorted alphabetically, with '/' suffix for directories. Includes dotfiles. Output is truncated to ${DEFAULT_LIMIT} entries or ${DEFAULT_MAX_BYTES / 1024}KB (whichever is hit first).`,
     parameters: lsParameters,
     prepareArguments: argumentParser(lsParameters),
+    present: ({ path }) => ({ kind: "list", path: path || "." }),
     async execute(_toolCallId, { path, limit }, signal?, _onUpdate?) {
       const throwIfAborted = (): void => {
         if (signal?.aborted) throw new Error("Operation aborted");

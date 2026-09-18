@@ -85,7 +85,7 @@ The deployment needs credentials for its default model. Times out after 90 secon
     const completion = (async () => {
       for await (const event of client.watch({ sessionId, afterSeq: before.seq, signal })) {
         if (event.kind !== "run") continue;
-        if (event.run.phase.kind === "failed") throw new Error(event.run.phase.error);
+        if (event.run.phase.kind === "failed") throw new Error(event.run.phase.failure.message);
         if (event.run.phase.kind === "aborted") throw new Error("The test run was aborted.");
         if (event.run.phase.kind === "done") return;
       }

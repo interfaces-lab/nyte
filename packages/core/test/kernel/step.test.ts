@@ -78,10 +78,12 @@ const complete = (text: string): RespondOutcome => ({ kind: "complete", message:
 const asks = (...ids: string[]): RespondOutcome => ({
   kind: "tools",
   message: assistant("", { calls: ids.map((id) => call(id, "read", { id })) }),
+  calls: Object.fromEntries(ids.map((id) => [id, { kind: "file_read", path: id }])),
 });
 const results = (...ids: string[]): ToolBatchOutcome => ({
   kind: "complete",
   messages: ids.map((id) => toolResult(id, "read", `out ${id}`)),
+  calls: {},
 });
 
 async function currentRun(session: Session): Promise<Run | undefined> {
@@ -321,7 +323,11 @@ test("an abort ends the run even with a boundary-lane message waiting; that mess
   const turn = new Script([
     async (input) => {
       await flagAbort(input.session, input.run);
-      return { kind: "aborted", message: assistant("half", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("half", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
     async (input) => {
       seen.push(...contextMessages(input.commits.map((entry) => entry.commit)).map(roleText));
@@ -402,7 +408,7 @@ test("an abort during a retry backoff ends the run without waiting it out", asyn
       kind: "retry",
       message: assistant("", { stop: "error", error: "429" }),
       at: start + 1_000,
-      error: "429",
+      failure: { class: "rate_limit", message: "429" },
     },
   ]);
   await submit(session, { head: "main", lane: "now", body: say("hi") });
@@ -459,7 +465,11 @@ test("a completion racing an abort cannot restart the stopped run; it joins the 
         lane: "results",
         body: completion("job", "cancelled"),
       });
-      return { kind: "aborted", message: assistant("half", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("half", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
     async (input) => {
       seen.push(contextMessages(input.commits.map((entry) => entry.commit)).map(roleText));
@@ -523,6 +533,7 @@ test("a stopped run whose tool batch fails still ends aborted; its failure outpu
       {
         kind: "failed",
         messages: [toolResult("a", "read", "read blew up", { isError: true })],
+        calls: {},
         error: "read blew up",
       },
     ],
@@ -613,7 +624,10 @@ test("a flagged run that an older runner left failed is still stopped: completio
     kind: "run",
     id: "old",
     head: "main",
-    phase: { kind: "failed", error: "tool batch failed while stopping" },
+    phase: {
+      kind: "failed",
+      failure: { class: "runner", message: "tool batch failed while stopping" },
+    },
     startedAt: 0,
     attempts: 1,
     config: {},
@@ -649,7 +663,11 @@ test("a waiter judges the batch the runner would land: a stray non-user message 
   const turn = new Script([
     async (input) => {
       await flagAbort(input.session, input.run);
-      return { kind: "aborted", message: assistant("", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
     complete("answered"),
   ]);
@@ -691,7 +709,11 @@ test("a completion queued behind a stop survives closing the store; after reopen
   const turn = new Script([
     async (input) => {
       await flagAbort(input.session, input.run);
-      return { kind: "aborted", message: assistant("", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
   ]);
   await submit(session, { head: "main", lane: "now", body: say("hi") });
@@ -742,7 +764,11 @@ test("configuration after a stop applies without resuming, and the next message 
   const turn = new Script([
     async (input) => {
       await flagAbort(input.session, input.run);
-      return { kind: "aborted", message: assistant("", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
     complete("configured answer"),
   ]);
@@ -796,7 +822,11 @@ test("a repeated abort changes nothing, before or after the run ends", async () 
     async (input) => {
       await flagAbort(input.session, input.run);
       await flagAbort(input.session, { ...input.run, abortRequested: true });
-      return { kind: "aborted", message: assistant("", { stop: "aborted" }) };
+      return {
+        kind: "aborted",
+        message: assistant("", { stop: "aborted" }),
+        failure: { class: "aborted", message: "Aborted" },
+      };
     },
     complete("fresh"),
   ]);
@@ -1071,7 +1101,7 @@ test("a transient failure waits out its backoff durably, then tries again", asyn
       kind: "retry",
       message: assistant("", { stop: "error", error: "429" }),
       at: start + 1_000,
-      error: "429",
+      failure: { class: "rate_limit", message: "429" },
     },
     complete("recovered"),
   ]);

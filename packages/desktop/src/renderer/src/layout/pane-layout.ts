@@ -3,6 +3,11 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { sessionId } from "../../../shared/schemas.ts";
 
+/**
+ * A pane's identity, not its position: drafts, mounted components, and the
+ * focus request follow a pane across reorders, and the survivor of a close
+ * keeps its identity, so a single layout can legitimately be "secondary".
+ */
 export type PaneId = "primary" | "secondary";
 export type SplitDirection = "right" | "down";
 export type DropPlacement = "center" | "top" | "bottom" | "left" | "right";
@@ -12,22 +17,25 @@ export type PaneSelection =
   | { readonly kind: "blank" }
   | { readonly kind: "session"; readonly sessionId: SessionId };
 
+/** A derived pairing for iteration; the layout stores selections directly. */
 export interface PaneState {
   readonly id: PaneId;
   readonly selection: PaneSelection;
 }
 
+type SplitLayout = {
+  readonly kind: "split";
+  readonly direction: SplitDirection;
+  readonly ratio: number;
+  readonly leading: PaneId;
+  readonly primary: PaneSelection;
+  readonly secondary: PaneSelection;
+  readonly activePaneId: PaneId;
+};
+
 export type PaneLayout =
-  | { readonly kind: "single"; readonly pane: PaneState }
-  | {
-      readonly kind: "split";
-      readonly direction: SplitDirection;
-      readonly ratio: number;
-      readonly order: readonly [PaneId, PaneId];
-      readonly primary: PaneState;
-      readonly secondary: PaneState;
-      readonly activePaneId: PaneId;
-    };
+  | { readonly kind: "single"; readonly paneId: PaneId; readonly selection: PaneSelection }
+  | SplitLayout;
 
 export type PaneLayoutAction =
   | { readonly kind: "select"; readonly selection: PaneSelection }
@@ -63,22 +71,27 @@ export function createSinglePane(
   paneId: PaneId = "primary",
   selection: PaneSelection = BLANK_SELECTION,
 ): PaneLayout {
-  return { kind: "single", pane: { id: paneId, selection } };
+  return { kind: "single", paneId, selection };
 }
 
-export function activePane(layout: PaneLayout): PaneState {
-  if (layout.kind === "single") return layout.pane;
-  return layout.activePaneId === "primary" ? layout.primary : layout.secondary;
-}
-
-export function paneById(layout: PaneLayout, paneId: PaneId): PaneState | undefined {
-  if (layout.kind === "single") return layout.pane.id === paneId ? layout.pane : undefined;
+export function paneSelection(layout: PaneLayout, paneId: PaneId): PaneSelection | undefined {
+  if (layout.kind === "single") return layout.paneId === paneId ? layout.selection : undefined;
   return paneId === "primary" ? layout.primary : layout.secondary;
 }
 
+export function activePane(layout: PaneLayout): PaneState {
+  if (layout.kind === "single") return { id: layout.paneId, selection: layout.selection };
+  const id = layout.activePaneId;
+  return { id, selection: id === "primary" ? layout.primary : layout.secondary };
+}
+
 export function orderedPanes(layout: PaneLayout): readonly PaneState[] {
-  if (layout.kind === "single") return [layout.pane];
-  return layout.order.map((paneId) => (paneId === "primary" ? layout.primary : layout.secondary));
+  if (layout.kind === "single") return [{ id: layout.paneId, selection: layout.selection }];
+  const panes: readonly PaneState[] = [
+    { id: "primary", selection: layout.primary },
+    { id: "secondary", selection: layout.secondary },
+  ];
+  return layout.leading === "primary" ? panes : panes.toReversed();
 }
 
 export function visibleSessionIds(layout: PaneLayout): ReadonlySet<SessionId> {
@@ -89,10 +102,10 @@ export function visibleSessionIds(layout: PaneLayout): ReadonlySet<SessionId> {
   return sessionIds;
 }
 
-export function paneForSession(layout: PaneLayout, sessionId: SessionId): PaneState | undefined {
+export function paneForSession(layout: PaneLayout, sessionId: SessionId): PaneId | undefined {
   return orderedPanes(layout).find(
     (pane) => pane.selection.kind === "session" && pane.selection.sessionId === sessionId,
-  );
+  )?.id;
 }
 
 export function activeSelection(layout: PaneLayout): PaneSelection {
@@ -126,82 +139,69 @@ function sameSelection(left: PaneSelection, right: PaneSelection): boolean {
 }
 
 function withPaneSelection(
-  layout: Extract<PaneLayout, { kind: "split" }>,
+  layout: SplitLayout,
   paneId: PaneId,
   selection: PaneSelection,
-): Extract<PaneLayout, { kind: "split" }> {
+): SplitLayout {
   const current = paneId === "primary" ? layout.primary : layout.secondary;
-  if (sameSelection(current.selection, selection)) return layout;
-  const nextPane = { ...current, selection };
+  if (sameSelection(current, selection)) return layout;
   return paneId === "primary"
-    ? { ...layout, primary: nextPane }
-    : { ...layout, secondary: nextPane };
+    ? { ...layout, primary: selection }
+    : { ...layout, secondary: selection };
 }
 
-function withActivePane(
-  layout: Extract<PaneLayout, { kind: "split" }>,
-  paneId: PaneId,
-): Extract<PaneLayout, { kind: "split" }> {
+function withActivePane(layout: SplitLayout, paneId: PaneId): SplitLayout {
   return layout.activePaneId === paneId ? layout : { ...layout, activePaneId: paneId };
 }
 
 function selectInActivePane(layout: PaneLayout, selection: PaneSelection): PaneLayout {
   if (selection.kind === "session") {
     const visible = paneForSession(layout, selection.sessionId);
-    if (visible !== undefined) return focusPane(layout, visible.id);
+    if (visible !== undefined) return focusPane(layout, visible);
   }
   return selectInPane(layout, activePane(layout).id, selection);
 }
 
 function selectInPane(layout: PaneLayout, paneId: PaneId, selection: PaneSelection): PaneLayout {
-  const target = paneById(layout, paneId);
-  if (target === undefined) return layout;
+  if (paneSelection(layout, paneId) === undefined) return layout;
   if (selection.kind === "session") {
     const visible = paneForSession(layout, selection.sessionId);
-    if (visible !== undefined && visible.id !== paneId) return focusPane(layout, visible.id);
+    if (visible !== undefined && visible !== paneId) return focusPane(layout, visible);
   }
   if (layout.kind === "single") {
-    return sameSelection(layout.pane.selection, selection)
-      ? layout
-      : { kind: "single", pane: { ...layout.pane, selection } };
+    return sameSelection(layout.selection, selection) ? layout : { ...layout, selection };
   }
   return withActivePane(withPaneSelection(layout, paneId, selection), paneId);
 }
 
 function splitPane(layout: PaneLayout, direction: SplitDirection): PaneLayout {
   if (layout.kind === "split") return layout;
-  const secondId = otherPaneId(layout.pane.id);
-  const primary: PaneState =
-    layout.pane.id === "primary" ? layout.pane : { id: "primary", selection: BLANK_SELECTION };
-  const secondary: PaneState =
-    layout.pane.id === "secondary" ? layout.pane : { id: "secondary", selection: BLANK_SELECTION };
   return {
     kind: "split",
     direction,
     ratio: DEFAULT_SPLIT_RATIO,
-    order: [layout.pane.id, secondId],
-    primary,
-    secondary,
-    activePaneId: secondId,
+    leading: layout.paneId,
+    primary: layout.paneId === "primary" ? layout.selection : BLANK_SELECTION,
+    secondary: layout.paneId === "secondary" ? layout.selection : BLANK_SELECTION,
+    activePaneId: otherPaneId(layout.paneId),
   };
 }
 
 function closePane(layout: PaneLayout, paneId: PaneId): PaneLayout {
-  const target = paneById(layout, paneId);
-  if (target === undefined) return layout;
   if (layout.kind === "single") {
-    return target.selection.kind === "blank"
-      ? layout
-      : { kind: "single", pane: { ...target, selection: BLANK_SELECTION } };
+    if (layout.paneId !== paneId || layout.selection.kind === "blank") return layout;
+    return { ...layout, selection: BLANK_SELECTION };
   }
-  const survivorId = otherPaneId(paneId);
-  const survivor = survivorId === "primary" ? layout.primary : layout.secondary;
-  return { kind: "single", pane: survivor };
+  const survivor = otherPaneId(paneId);
+  return {
+    kind: "single",
+    paneId: survivor,
+    selection: survivor === "primary" ? layout.primary : layout.secondary,
+  };
 }
 
 function focusPane(layout: PaneLayout, paneId: PaneId): PaneLayout {
-  if (paneById(layout, paneId) === undefined || layout.kind === "single") return layout;
-  return withActivePane(layout, paneId);
+  return layout.kind === "single" ? layout : withActivePane(layout, paneId);
 }
 
 function resizePane(layout: PaneLayout, ratio: number): PaneLayout {
@@ -210,49 +210,29 @@ function resizePane(layout: PaneLayout, ratio: number): PaneLayout {
   return layout.ratio === nextRatio ? layout : { ...layout, ratio: nextRatio };
 }
 
-function swapSelections(
-  layout: Extract<PaneLayout, { kind: "split" }>,
-  firstId: PaneId,
-  secondId: PaneId,
-): Extract<PaneLayout, { kind: "split" }> {
-  const first = firstId === "primary" ? layout.primary : layout.secondary;
-  const second = secondId === "primary" ? layout.primary : layout.secondary;
-  const firstReplacement = { ...first, selection: second.selection };
-  const secondReplacement = { ...second, selection: first.selection };
-  return firstId === "primary"
-    ? { ...layout, primary: firstReplacement, secondary: secondReplacement }
-    : { ...layout, primary: secondReplacement, secondary: firstReplacement };
-}
-
 function dropInCenter(layout: PaneLayout, sessionId: SessionId, targetPaneId: PaneId): PaneLayout {
-  const target = paneById(layout, targetPaneId);
+  const target = paneSelection(layout, targetPaneId);
   if (target === undefined) return layout;
-  if (target.selection.kind === "session" && target.selection.sessionId === sessionId)
-    return layout;
+  if (target.kind === "session" && target.sessionId === sessionId) return layout;
   const source = paneForSession(layout, sessionId);
   if (layout.kind === "split" && source !== undefined) {
-    return withActivePane(swapSelections(layout, source.id, targetPaneId), targetPaneId);
+    return withActivePane(
+      { ...layout, primary: layout.secondary, secondary: layout.primary },
+      targetPaneId,
+    );
   }
   return selectInPane(layout, targetPaneId, { kind: "session", sessionId });
 }
 
 const EDGE_GEOMETRY = {
-  left: { direction: "right", draggedFirst: true },
-  right: { direction: "right", draggedFirst: false },
-  top: { direction: "down", draggedFirst: true },
-  bottom: { direction: "down", draggedFirst: false },
+  left: { direction: "right", draggedLeads: true },
+  right: { direction: "right", draggedLeads: false },
+  top: { direction: "down", draggedLeads: true },
+  bottom: { direction: "down", draggedLeads: false },
 } satisfies Record<
   EdgeDropPlacement,
-  { readonly direction: SplitDirection; readonly draggedFirst: boolean }
+  { readonly direction: SplitDirection; readonly draggedLeads: boolean }
 >;
-
-function edgeGeometry(placement: EdgeDropPlacement) {
-  return EDGE_GEOMETRY[placement];
-}
-
-function sameOrder(current: readonly [PaneId, PaneId], next: readonly [PaneId, PaneId]): boolean {
-  return current[0] === next[0] && current[1] === next[1];
-}
 
 function dropOnEdge(
   layout: PaneLayout,
@@ -260,47 +240,35 @@ function dropOnEdge(
   targetPaneId: PaneId,
   placement: EdgeDropPlacement,
 ): PaneLayout {
-  const target = paneById(layout, targetPaneId);
+  const target = paneSelection(layout, targetPaneId);
   if (target === undefined) return layout;
-  if (target.selection.kind === "session" && target.selection.sessionId === sessionId)
-    return layout;
-  const geometry = edgeGeometry(placement);
+  if (target.kind === "session" && target.sessionId === sessionId) return layout;
+  const { direction, draggedLeads } = EDGE_GEOMETRY[placement];
   if (layout.kind === "single") {
-    const split = splitPane(layout, geometry.direction);
-    if (split.kind === "single") return split;
     const draggedPaneId = otherPaneId(targetPaneId);
-    const order: readonly [PaneId, PaneId] = geometry.draggedFirst
-      ? [draggedPaneId, targetPaneId]
-      : [targetPaneId, draggedPaneId];
+    const dragged: PaneSelection = { kind: "session", sessionId };
     return {
-      ...withPaneSelection(split, draggedPaneId, { kind: "session", sessionId }),
-      order,
+      kind: "split",
+      direction,
+      ratio: DEFAULT_SPLIT_RATIO,
+      leading: draggedLeads ? draggedPaneId : targetPaneId,
+      primary: targetPaneId === "primary" ? layout.selection : dragged,
+      secondary: targetPaneId === "secondary" ? layout.selection : dragged,
       activePaneId: draggedPaneId,
     };
   }
 
   const source = paneForSession(layout, sessionId);
-  const draggedPaneId = source?.id ?? otherPaneId(targetPaneId);
-  const order: readonly [PaneId, PaneId] = geometry.draggedFirst
-    ? [draggedPaneId, targetPaneId]
-    : [targetPaneId, draggedPaneId];
-  if (
-    source !== undefined &&
-    layout.direction === geometry.direction &&
-    sameOrder(layout.order, order)
-  ) {
+  const draggedPaneId = source ?? otherPaneId(targetPaneId);
+  const leading = draggedLeads ? draggedPaneId : targetPaneId;
+  if (source !== undefined && layout.direction === direction && layout.leading === leading) {
     return withActivePane(layout, draggedPaneId);
   }
   const next =
     source === undefined
       ? withPaneSelection(layout, draggedPaneId, { kind: "session", sessionId })
       : layout;
-  return {
-    ...next,
-    direction: geometry.direction,
-    order,
-    activePaneId: draggedPaneId,
-  };
+  return { ...next, direction, leading, activePaneId: draggedPaneId };
 }
 
 function dropSession(
@@ -315,9 +283,9 @@ function dropSession(
 }
 
 function removeSession(layout: PaneLayout, sessionId: SessionId): PaneLayout {
-  const pane = paneForSession(layout, sessionId);
-  if (pane === undefined) return layout;
-  return selectInPane(layout, pane.id, BLANK_SELECTION);
+  const paneId = paneForSession(layout, sessionId);
+  if (paneId === undefined) return layout;
+  return selectInPane(layout, paneId, BLANK_SELECTION);
 }
 
 export function reducePaneLayout(layout: PaneLayout, action: PaneLayoutAction): PaneLayout {
@@ -347,62 +315,108 @@ export function reducePaneLayout(layout: PaneLayout, action: PaneLayoutAction): 
 
 const strict = { additionalProperties: false };
 const paneIdSchema = Type.Enum(["primary", "secondary"]);
+const directionSchema = Type.Enum(["right", "down"]);
+const ratioSchema = Type.Number({ minimum: MIN_SPLIT_RATIO, maximum: MAX_SPLIT_RATIO });
 const paneSelectionSchema = Type.Union([
   Type.Object({ kind: Type.Literal("blank") }, strict),
   Type.Object({ kind: Type.Literal("session"), sessionId }, strict),
 ]);
-const paneStateSchema = Type.Object({ id: paneIdSchema, selection: paneSelectionSchema }, strict);
 const persistedPaneLayoutSchema = Type.Union([
   Type.Object(
-    { version: Type.Literal(1), kind: Type.Literal("single"), pane: paneStateSchema },
+    {
+      version: Type.Literal(2),
+      kind: Type.Literal("single"),
+      paneId: paneIdSchema,
+      selection: paneSelectionSchema,
+    },
     strict,
   ),
   Type.Object(
     {
-      version: Type.Literal(1),
+      version: Type.Literal(2),
       kind: Type.Literal("split"),
-      direction: Type.Enum(["right", "down"]),
-      ratio: Type.Number({ minimum: MIN_SPLIT_RATIO, maximum: MAX_SPLIT_RATIO }),
-      order: Type.Tuple([paneIdSchema, paneIdSchema]),
-      primary: paneStateSchema,
-      secondary: paneStateSchema,
+      direction: directionSchema,
+      ratio: ratioSchema,
+      leading: paneIdSchema,
+      primary: paneSelectionSchema,
+      secondary: paneSelectionSchema,
       activePaneId: paneIdSchema,
     },
     strict,
   ),
 ]);
 
+/** The version 1 shape, frozen: stored pane objects carried their own ids and a pane order. */
+const legacyPaneSchema = Type.Object({ id: paneIdSchema, selection: paneSelectionSchema }, strict);
+const legacyPaneLayoutSchema = Type.Union([
+  Type.Object(
+    { version: Type.Literal(1), kind: Type.Literal("single"), pane: legacyPaneSchema },
+    strict,
+  ),
+  Type.Object(
+    {
+      version: Type.Literal(1),
+      kind: Type.Literal("split"),
+      direction: directionSchema,
+      ratio: ratioSchema,
+      order: Type.Tuple([paneIdSchema, paneIdSchema]),
+      primary: legacyPaneSchema,
+      secondary: legacyPaneSchema,
+      activePaneId: paneIdSchema,
+    },
+    strict,
+  ),
+]);
+
+function duplicatedSession(primary: PaneSelection, secondary: PaneSelection): boolean {
+  return (
+    primary.kind === "session" &&
+    secondary.kind === "session" &&
+    primary.sessionId === secondary.sessionId
+  );
+}
+
 export function parsePersistedPaneLayout(value: string | null): PaneLayout {
   if (value === null) return createSinglePane();
   try {
     const persisted: unknown = JSON.parse(value);
-    if (!Value.Check(persistedPaneLayoutSchema, persisted)) return createSinglePane();
-    if (persisted.kind === "single") return { kind: "single", pane: persisted.pane };
-    const { primary, secondary, order, activePaneId, direction, ratio } = persisted;
-    if (primary.id !== "primary" || secondary.id !== "secondary" || order[0] === order[1]) {
-      return createSinglePane();
+    if (Value.Check(persistedPaneLayoutSchema, persisted)) {
+      if (persisted.kind === "single") {
+        return { kind: "single", paneId: persisted.paneId, selection: persisted.selection };
+      }
+      const { direction, ratio, leading, primary, secondary, activePaneId } = persisted;
+      if (duplicatedSession(primary, secondary)) return createSinglePane();
+      return { kind: "split", direction, ratio, leading, primary, secondary, activePaneId };
     }
-    if (
-      primary.selection.kind === "session" &&
-      secondary.selection.kind === "session" &&
-      primary.selection.sessionId === secondary.selection.sessionId
-    ) {
-      return createSinglePane();
+    if (Value.Check(legacyPaneLayoutSchema, persisted)) {
+      if (persisted.kind === "single") {
+        return { kind: "single", paneId: persisted.pane.id, selection: persisted.pane.selection };
+      }
+      const { direction, ratio, order, primary, secondary, activePaneId } = persisted;
+      if (
+        primary.id !== "primary" ||
+        secondary.id !== "secondary" ||
+        order[0] === order[1] ||
+        duplicatedSession(primary.selection, secondary.selection)
+      ) {
+        return createSinglePane();
+      }
+      return {
+        kind: "split",
+        direction,
+        ratio,
+        leading: order[0],
+        primary: primary.selection,
+        secondary: secondary.selection,
+        activePaneId,
+      };
     }
-    return {
-      kind: "split",
-      direction,
-      ratio,
-      order,
-      primary,
-      secondary,
-      activePaneId,
-    };
+    return createSinglePane();
   } catch {
     return createSinglePane();
   }
 }
 
 export function serializePaneLayout(layout: PaneLayout): string {
-  return JSON.stringify({ version: 1, ...layout });
+  return JSON.stringify({ version: 2, ...layout });
 }

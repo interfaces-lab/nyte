@@ -135,7 +135,7 @@ function oneLine(text: string): string {
 export function taskActivity(task: Task): string {
   if (task.kind === "job") return oneLine(task.job.output);
   const phase = task.state.run?.phase;
-  if (phase?.kind === "failed" || phase?.kind === "retry") return phase.error;
+  if (phase?.kind === "failed" || phase?.kind === "retry") return phase.failure.message;
   return taskSteps(task.state).at(-1)?.text ?? "";
 }
 

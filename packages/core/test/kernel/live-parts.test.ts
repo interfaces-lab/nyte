@@ -84,10 +84,10 @@ test("retry and terminal phases clear only their run", () => {
   ];
   const parts = events.reduce(foldLiveParts, EMPTY_LIVE_PARTS);
   for (const phase of [
-    { kind: "retry", at: 99, error: "retry" },
+    { kind: "retry", at: 99, failure: { class: "provider", message: "retry" } },
     { kind: "done" },
     { kind: "aborted" },
-    { kind: "failed", error: "failed" },
+    { kind: "failed", failure: { class: "provider", message: "failed" } },
   ] as const) {
     const after = foldLiveParts(parts, {
       seq: 3,

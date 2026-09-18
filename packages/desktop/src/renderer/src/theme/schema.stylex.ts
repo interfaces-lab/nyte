@@ -75,6 +75,13 @@ export const settings = stylex.defineConsts({
 });
 
 export const workbench = stylex.defineConsts({
+  railWidth: "var(--nyte-workbench-rail-width)",
+  /**
+   * How far the compact bar holds its first button off the host's edge: a 4px
+   * margin, a 1px border and 2px of padding. The floating panel matches it so
+   * the collapse control keeps its place when one surface replaces the other.
+   */
+  railInset: "var(--nyte-workbench-rail-inset)",
   panelWidth: "var(--nyte-workbench-panel-width)",
   headerHeight: "var(--nyte-workbench-header-height)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",

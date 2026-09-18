@@ -402,7 +402,7 @@ test("failed tool results and terminal runs still refresh files they may have wr
   for (const phase of [
     { kind: "done" },
     { kind: "aborted" },
-    { kind: "failed", error: "process failed" },
+    { kind: "failed", failure: { class: "runner", message: "process failed" } },
   ] as const) {
     seq += 1;
     await view.emit(running(phase, seq));

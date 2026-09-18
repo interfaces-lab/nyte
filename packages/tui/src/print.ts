@@ -44,7 +44,7 @@ function outcomeOf(run: RunInfo | undefined): PrintOutcome {
     case "aborted":
       return { kind: "aborted" };
     case "failed":
-      return { kind: "failed", message: run.phase.error };
+      return { kind: "failed", message: run.phase.failure.message };
     case "respond":
     case "tools":
     case "waiting":

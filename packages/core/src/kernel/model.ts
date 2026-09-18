@@ -33,11 +33,14 @@ export type {
   Choice,
   Commit,
   CommitBody,
+  Failure,
+  FailureClass,
   ModelRef,
   Oid,
   RunPhase,
   Selection,
   Seq,
+  ToolClass,
   ToolProgress,
 } from "@nyte-ai/protocol";
 

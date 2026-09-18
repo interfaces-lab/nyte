@@ -90,7 +90,11 @@ test("stopping the response to a landed completion keeps it out of the request t
     respond: async (input) => {
       requests.push(contextMessages(input.commits.map((item) => item.commit)));
       return outcome === "aborted"
-        ? { kind: "aborted", message: assistant("", { stop: "aborted" }) }
+        ? {
+            kind: "aborted",
+            message: assistant("", { stop: "aborted" }),
+            failure: { class: "aborted", message: "Aborted" },
+          }
         : { kind: "complete", message: assistant("Answered") };
     },
     tools: async () => {

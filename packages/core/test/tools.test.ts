@@ -108,12 +108,11 @@ describe("file mutation tools", () => {
       const created = await tool.execute("call_1", { path, content: "first\nkept\n" });
       assert.equal(toolResultText(created.content), `Wrote ${path}.`);
       assert.match(created.details.patch, /@@ -0,0 \+1,2 @@/u);
-      assert.match(created.details.diff, /\+1 first\n\+2 kept/u);
-      assert.equal(created.details.firstChangedLine, 1);
+      assert.deepEqual([created.details.added, created.details.removed], [2, 0]);
 
       const updated = await tool.execute("call_2", { path, content: "changed\nkept\n" });
       assert.match(updated.details.patch, /-first\n\+changed/u);
-      assert.match(updated.details.diff, /-1 first\n\+1 changed/u);
+      assert.deepEqual([updated.details.added, updated.details.removed], [1, 1]);
       assert.equal(await readFile(absolutePath, "utf8"), "changed\nkept\n");
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -132,8 +131,7 @@ describe("file mutation tools", () => {
       });
       assert.equal(toolResultText(result.content), `Replaced 1 block(s) in ${path}.`);
       assert.match(result.details.patch, /-before\n\+after/u);
-      assert.match(result.details.diff, /-1 before\n\+1 after/u);
-      assert.equal(result.details.firstChangedLine, 1);
+      assert.deepEqual([result.details.added, result.details.removed], [1, 1]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
