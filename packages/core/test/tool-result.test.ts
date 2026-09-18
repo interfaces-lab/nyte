@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { ToolError, toolErrorResult } from "../src/utils/tool-result.ts";
+import { ToolError, toolErrorResult } from "../src/kernel/loop/tool-result.ts";
 
 test("a failure keeps the partial content, details, and title the error left blank", () => {
   const result = toolErrorResult(new Error("aborted"), {

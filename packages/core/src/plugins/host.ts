@@ -9,7 +9,7 @@
  */
 import type { Skill } from "@nyte-ai/schema";
 import { Result } from "../kernel/result.ts";
-import type { AgentTool } from "../types.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
 import { bindSessionApi, type PluginSessionStorage } from "./api.ts";
 import type { Hooks } from "./hooks.ts";
 import { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";

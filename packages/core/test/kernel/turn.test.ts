@@ -24,7 +24,7 @@ import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
 import { effectPrefix, headRef } from "../../src/kernel/names.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn, type Turn, type TurnInput, type TurnOptions } from "../../src/kernel/turn.ts";
-import { ToolWait, type AgentTool, type StreamFn } from "../../src/types.ts";
+import { ToolWait, type AgentTool, type StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,

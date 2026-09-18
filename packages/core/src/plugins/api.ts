@@ -3,7 +3,7 @@
  * plugin's scope, so disposing the scope removes the plugin completely.
  */
 import type { JsonValue } from "@nyte-ai/schema";
-import type { AgentTool } from "../types.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
 import type { HookHandler, HookName } from "./hooks.ts";
 import type { PluginHostApiTarget } from "./host.ts";
 import type { ContributionRegistry, MapDraft, ToolMapDraft } from "./registry.ts";

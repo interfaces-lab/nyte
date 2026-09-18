@@ -11,9 +11,9 @@ import { Type } from "typebox";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
-import type { AgentTool } from "../src/types.ts";
-import { IMAGE_LIMITS, processImage } from "../src/utils/image.ts";
-import type { StreamFn } from "../src/types.ts";
+import type { AgentTool } from "../src/kernel/loop/types.ts";
+import { IMAGE_LIMITS, processImage } from "../src/kernel/loop/image.ts";
+import type { StreamFn } from "../src/kernel/loop/types.ts";
 import { assistant, openStore, sleep, within } from "./kernel/helpers.ts";
 
 function oversizedPng(): Buffer {

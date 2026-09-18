@@ -309,8 +309,8 @@ progress, not a second history.
 `createNyte` does not pick a provider, load plugins, or decide trust. You do that first.
 
 1. Build `Models`, register the providers this product supports, resolve a credential.
-2. Gate project plugins on workspace trust (`WorkspaceTrustStore`). The grant lives in
-   `~/.nyte/trust.json` and is inherited from a trusted ancestor. Print mode will not grant trust.
+2. Gate project plugins on workspace trust (`WorkspaceStore` from `@nyte-ai/host`). The grant lives in
+   `~/.nyte/workspaces.json` and is inherited from a trusted ancestor. Print mode will not grant trust.
 3. Resolve the plugin list with `resolvePlugins`: built-ins, then `~/.nyte/plugins`, then
    `<cwd>/.nyte/plugins`, filtered by the merged `nyte.json` manifests (`~/.nyte` and
    `<cwd>/.nyte`), which also name MCP servers. Watch those sources with

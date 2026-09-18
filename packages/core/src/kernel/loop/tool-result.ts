@@ -1,5 +1,5 @@
 import type { ImageContent, TextContent } from "@nyte-ai/schema";
-import type { AgentToolResult } from "../types.ts";
+import type { AgentToolResult } from "./types.ts";
 
 /** Wraps plain text as tool-result content. */
 export function toolResultContent(text: string): TextContent[] {

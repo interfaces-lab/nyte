@@ -3,7 +3,7 @@ import { FileModelsStore, createNyteModels } from "@nyte-ai/ai";
 import { branch, SqliteStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
 import { transcriptFromCommits } from "@nyte-ai/client";
-import { createTrustStore, createWorkspaceRegistry } from "@nyte-ai/host";
+import { createWorkspaceStore } from "@nyte-ai/host";
 import { afterEach, test } from "vitest";
 import { loadPersistedCatalog } from "../src/main/catalog.ts";
 import { readLastWorkspace } from "../src/main/workspaces.ts";
@@ -55,7 +55,7 @@ test("seeds named SQLite sessions with deterministic rich transcripts", async ()
     "desktop-benchmark-session-0001",
     "desktop-benchmark-session-0002",
   ]);
-  assert.deepEqual(await createWorkspaceRegistry().list(), [
+  assert.deepEqual(await createWorkspaceStore().list(), [
     {
       path: fixture.paths.workspace,
       name: "workspace",
@@ -63,7 +63,7 @@ test("seeds named SQLite sessions with deterministic rich transcripts", async ()
       available: true,
     },
   ]);
-  const trust = await createTrustStore().resolve(fixture.paths.workspace);
+  const trust = await createWorkspaceStore().resolve(fixture.paths.workspace);
   assert.equal(trust.kind, "trusted");
   if (trust.kind !== "trusted") assert.fail("Fixture workspace was not trusted");
   assert.equal(trust.workspace.cwd, fixture.paths.workspace);

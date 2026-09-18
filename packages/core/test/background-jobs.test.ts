@@ -15,9 +15,16 @@ import {
 } from "../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin } from "../src/plugins/index.ts";
 import { createBashTool } from "../src/tools/bash.ts";
-import { WorkspaceTrustStore } from "../src/workspace-trust.ts";
-import type { StreamFn } from "../src/types.ts";
-import { assistant, call, only, openStore, storePath, within } from "./kernel/helpers.ts";
+import type { StreamFn } from "../src/kernel/loop/types.ts";
+import {
+  assistant,
+  call,
+  only,
+  openStore,
+  storePath,
+  trustWorkspace,
+  within,
+} from "./kernel/helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -806,9 +813,7 @@ for (const kind of ["bash", "task"] as const) {
   test(`${kind}: an idle parent cannot relocate while background work is running`, async () => {
     const f = await fixture(kind, true);
     const destination = dirname(storePath());
-    const workspace = await new WorkspaceTrustStore(join(destination, "trust.json")).trust(
-      destination,
-    );
+    const workspace = await trustWorkspace(destination);
     try {
       const job = await f.start();
       f.parentGate.release();

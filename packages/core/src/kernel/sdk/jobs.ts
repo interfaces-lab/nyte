@@ -15,10 +15,10 @@ import type {
   AgentToolResult,
   AgentToolUpdateCallback,
   ToolWakeOutcome,
-} from "../../types.ts";
-import { ToolWait } from "../../types.ts";
-import { toolResultMessage } from "../../agent-loop.ts";
-import { toolErrorResult, toolResultContent, toolResultText } from "../../utils/tool-result.ts";
+} from "../loop/types.ts";
+import { ToolWait } from "../loop/types.ts";
+import { toolResultMessage } from "../loop/agent-loop.ts";
+import { toolErrorResult, toolResultContent, toolResultText } from "../loop/tool-result.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import { factRef, parseQueueRef, runRef } from "../names.ts";
 import { isUserInput } from "../admission.ts";

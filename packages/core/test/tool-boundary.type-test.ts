@@ -4,7 +4,7 @@ import { createLsTool, type LsToolInput } from "../src/tools/ls.ts";
 import { createWriteTool } from "../src/tools/write.ts";
 import { createAllTools } from "../src/tools/index.ts";
 import type { createJobs } from "../src/kernel/sdk/jobs.ts";
-import type { AgentTool } from "../src/types.ts";
+import type { AgentTool } from "../src/kernel/loop/types.ts";
 import { ToolMapDraft } from "../src/plugins/registry.ts";
 
 const countSchema = Type.Object({ count: Type.Number() });

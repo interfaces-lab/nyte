@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { Type } from "typebox";
-import { executeToolCalls } from "../src/agent-loop.ts";
+import { executeToolCalls } from "../src/kernel/loop/agent-loop.ts";
 import { bindTool } from "../src/tools/bind-tool.ts";
 import { ContributionRegistry, ToolMapDraft } from "../src/plugins/registry.ts";
 import type {
@@ -9,7 +9,7 @@ import type {
   AgentLoopConfig,
   AgentTool,
   AgentToolUpdateCallback,
-} from "../src/types.ts";
+} from "../src/kernel/loop/types.ts";
 import { assistant, call, within } from "./kernel/helpers.ts";
 
 const config: AgentLoopConfig = {

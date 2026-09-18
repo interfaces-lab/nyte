@@ -12,7 +12,7 @@ import {
   type SessionEvent,
   type SessionId,
 } from "../../src/kernel/sdk/types.ts";
-import type { StreamFn, ThinkingLevel } from "../../src/types.ts";
+import type { StreamFn, ThinkingLevel } from "../../src/kernel/loop/types.ts";
 import { assistant, message, openStore, seedHead, usage, user, within } from "./helpers.ts";
 
 function testModel(id: string, reasoning = false): Model<Api> {

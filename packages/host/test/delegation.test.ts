@@ -20,7 +20,7 @@ import type { Provider } from "@nyte-ai/ai";
 import type { Nyte, TrustedWorkspace } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
-import { createHost, createTrustStore } from "../src/index.ts";
+import { createHost, createWorkspaceStore } from "../src/index.ts";
 import type { HostPlugins } from "../src/index.ts";
 
 const CHILD_PROMPT = "Map the repository.";
@@ -166,7 +166,7 @@ async function fixture(
       },
     });
   }
-  const workspace = await createTrustStore().trust(cwd);
+  const workspace = await createWorkspaceStore().trust(cwd);
   const open = async (plugins: HostPlugins): Promise<Nyte> => {
     const store = new SqliteStore(join(cwd, "sessions.db"));
     stores.push(store);

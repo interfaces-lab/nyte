@@ -29,7 +29,7 @@ import {
   failToolCallsFromTruncatedMessage,
   generateAssistant,
   toolResultMessage,
-} from "../agent-loop.ts";
+} from "./loop/agent-loop.ts";
 import type {
   AgentContext,
   AgentEvent,
@@ -39,10 +39,10 @@ import type {
   StreamFn,
   ThinkingLevel,
   WaitingCall,
-} from "../types.ts";
-import { isToolWait } from "../types.ts";
-import type { ToolWaitOptions } from "../types.ts";
-import { ToolError, toolResultContent } from "../utils/tool-result.ts";
+} from "./loop/types.ts";
+import { isToolWait } from "./loop/types.ts";
+import type { ToolWaitOptions } from "./loop/types.ts";
+import { ToolError, toolResultContent } from "./loop/tool-result.ts";
 import {
   DEFAULT_COMPACTION_SETTINGS,
   finishCompaction,

@@ -13,7 +13,7 @@ import type { PluginSource, SelectionReply, SettingChoice } from "@nyte-ai/proto
 import { Value } from "typebox/value";
 import type { SessionEvent } from "../kernel/sdk/types.ts";
 import type { TSchema } from "typebox";
-import type { AgentTool } from "../types.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
 import type { HookHandler, HookName } from "./hooks.ts";
 
 export type Disposer = () => void;

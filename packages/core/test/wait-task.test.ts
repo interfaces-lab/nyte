@@ -9,7 +9,7 @@ import type { AssistantMessage, Context } from "@nyte-ai/schema";
 import { expect, test } from "vitest";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { Nyte, SessionId } from "../src/kernel/sdk/types.ts";
-import type { StreamFn } from "../src/types.ts";
+import type { StreamFn } from "../src/kernel/loop/types.ts";
 import { assistant, call, only, openStore, within } from "./kernel/helpers.ts";
 
 const model: Model<Api> = {

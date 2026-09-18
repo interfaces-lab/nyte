@@ -8,7 +8,7 @@ import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { Nyte, SessionId } from "../src/kernel/sdk/types.ts";
-import type { StreamFn } from "../src/types.ts";
+import type { StreamFn } from "../src/kernel/loop/types.ts";
 import { assistant, openStore, sleep, within } from "./kernel/helpers.ts";
 
 const fallback: Model<Api> = {

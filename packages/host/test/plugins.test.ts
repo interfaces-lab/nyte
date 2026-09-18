@@ -8,8 +8,7 @@ import type { MutableModels } from "@nyte-ai/ai";
 import type { Api, Model } from "@nyte-ai/schema";
 import { SKILLS_PLUGIN_ID } from "@nyte-ai/core/plugins";
 import {
-  createTrustStore,
-  createWorkspaceRegistry,
+  createWorkspaceStore,
   nyteHome,
   pluginDirectories,
   pluginWatchTargets,
@@ -31,7 +30,7 @@ async function fixture() {
   directories.push(cwd);
   const home = join(cwd, "home");
   vi.stubEnv("NYTE_HOME", home);
-  return { cwd, home, workspace: await createTrustStore().trust(cwd) };
+  return { cwd, home, workspace: await createWorkspaceStore().trust(cwd) };
 }
 
 test("home paths use only user directories; project paths preserve override order", async () => {
@@ -56,9 +55,9 @@ test("home paths use only user directories; project paths preserve override orde
     join(f.cwd, ".claude", "skills"),
     ...userSkills,
   ]);
-  await createWorkspaceRegistry().touch(f.cwd);
-  assert.equal((await createWorkspaceRegistry().list())[0]?.path, f.cwd);
-  assert.equal((await createTrustStore().require(f.cwd)).cwd, f.cwd);
+  await createWorkspaceStore().touch(f.cwd);
+  assert.equal((await createWorkspaceStore().list())[0]?.path, f.cwd);
+  assert.equal((await createWorkspaceStore().require(f.cwd)).cwd, f.cwd);
   vi.stubEnv("NYTE_HOME", undefined);
   assert.equal(nyteHome(), join(homedir(), ".nyte"));
 });

@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, vi } from "vitest";
 import { SqliteStore } from "@nyte-ai/core/store";
-import { WorkspaceRegistry } from "@nyte-ai/core";
-import { workspaceStorePath } from "@nyte-ai/host";
+import { WorkspaceStore, workspaceStorePath } from "@nyte-ai/host";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -73,10 +72,10 @@ test("missing and non-directory projects can have separate local histories witho
   await assert.rejects(access(missing));
 });
 
-test("the registry keeps unavailable workspaces and updates their availability after restoration", async () => {
+test("the store keeps unavailable workspaces and updates their availability after restoration", async () => {
   const root = await fixture();
   const cwd = join(root, "project");
-  const registry = new WorkspaceRegistry(join(root, "registry.json"));
+  const registry = new WorkspaceStore(join(root, "registry.json"));
   await registry.touch(cwd, 100);
   assert.deepEqual(await registry.list(), [
     { path: cwd, name: "project", lastOpenedAt: 100, available: false },

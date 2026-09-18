@@ -12,8 +12,8 @@ import {
 } from "node:fs/promises";
 import { dirname, relative } from "node:path";
 import { Type } from "typebox";
-import type { AgentTool } from "../types.ts";
-import { toolResultContent } from "../utils/tool-result.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
+import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import { type FileMutationDetails, generateFileMutationDetails } from "./edit-diff.ts";
 import { argumentParser } from "./support/arguments.ts";
 import { withFileMutationQueue } from "./support/file-mutation-queue.ts";

@@ -17,7 +17,7 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
 import { bindTurn, type TurnOptions } from "../../src/kernel/turn.ts";
-import { ToolWait, type AgentTool } from "../../src/types.ts";
+import { ToolWait, type AgentTool } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,

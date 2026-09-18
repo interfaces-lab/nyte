@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "vitest";
-import { NyteClosed, UnknownSession, WorkspaceTrustRequired } from "@nyte-ai/core";
+import { NyteClosed, UnknownSession } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
-import { WorkspaceFileError } from "@nyte-ai/core/files";
+import { WorkspaceFileError, WorkspaceTrustRequired } from "@nyte-ai/host";
 import { bridgeError, errorMessage } from "../shared/errors.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
 import { callIpc } from "./ipc-call.ts";
