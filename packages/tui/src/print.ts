@@ -1,11 +1,11 @@
-import { isTerminalPhase } from "@nyte-ai/core";
+import { isTerminalPhase } from "@nyte-ai/protocol";
 /**
  * Non-interactive mode: send one prompt, stream the answer to stdout, and
  * exit with the run's outcome. The same SDK operations the shell uses, over an
  * output the caller supplies, so a test drives it with a scripted provider.
  */
 import type { Nyte, RunInfo, SessionEvent, SessionId } from "@nyte-ai/core";
-import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/core/views";
+import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/client";
 import { sessionRecovery } from "./flags.ts";
 
 export interface PrintOutput {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 import { sessionId } from "@nyte-ai/protocol";
-import { emptyUsageSummary, mergeUsageSummaries } from "@nyte-ai/core/views";
-import type { SessionId } from "@nyte-ai/core";
+import { emptyUsageSummary, mergeUsageSummaries } from "@nyte-ai/client";
+import type { SessionId } from "@nyte-ai/protocol";
 import type { UsageSnapshot } from "../../../shared/ipc.ts";
 import type { UsageEntry, UsageReport, UsageSession, UsageTotals, UsageWindow } from "../nyte.ts";
 import {

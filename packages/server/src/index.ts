@@ -13,14 +13,8 @@
  * runner. `close()` refuses new work and ends its watches, leaving the SDK alone.
  */
 import { createHash, timingSafeEqual } from "node:crypto";
-import {
-  dispatch,
-  CursorExpired,
-  NyteClosed,
-  UnknownSession,
-  type Nyte,
-  type SessionEvent,
-} from "@nyte-ai/core";
+import { CursorExpired } from "@nyte-ai/protocol";
+import { dispatch, NyteClosed, UnknownSession, type Nyte, type SessionEvent } from "@nyte-ai/core";
 import {
   CALL_ROUTE_PREFIX,
   CallRequestSchema,

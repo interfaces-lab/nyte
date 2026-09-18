@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { RunInfo, RunPhase, SessionEvent } from "@nyte-ai/core";
-import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/core/views";
-import type { LiveParts } from "@nyte-ai/core/views";
+import type { RunInfo, RunPhase, SessionEvent } from "@nyte-ai/protocol";
+import { EMPTY_LIVE_PARTS, foldLiveParts } from "@nyte-ai/client";
+import type { LiveParts } from "@nyte-ai/client";
 import { IDLE, livePartKey, liveRun, projectLive } from "./live-fold.ts";
 
 const RUN = "run-1";

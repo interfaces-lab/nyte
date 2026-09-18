@@ -25,9 +25,9 @@ import type {
   SessionId,
   StaticNyteOptions,
   StreamFn,
-  ToolTurnPart,
   WaitOutcome,
 } from "@nyte-ai/core";
+import type { ToolTurnPart } from "@nyte-ai/protocol";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Model, ToolCall } from "@nyte-ai/schema";
 

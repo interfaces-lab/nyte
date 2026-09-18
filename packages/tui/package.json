@@ -16,9 +16,11 @@
   },
   "dependencies": {
     "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/client": "workspace:*",
     "@nyte-ai/core": "workspace:*",
     "@nyte-ai/host": "workspace:*",
     "@nyte-ai/plugin": "workspace:*",
+    "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/telemetry": "workspace:*",
     "@opentui/core": "^0.5.11",

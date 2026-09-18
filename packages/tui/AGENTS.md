@@ -1,6 +1,6 @@
 # TUI
 
-- Terminal rendering and keyboard interaction live here; session behavior belongs in core, including the client fold (`@nyte-ai/core/client`).
+- Terminal rendering and keyboard interaction live here; session behavior belongs in core, and the client fold in `@nyte-ai/client`.
 - The screen is a Solid component (`src/app/App.tsx`) painted from the UI store in `src/app/ui.ts`. Feature code changes state through `setUi`, `notice`, `setHints`, `patchStatus`, `openPanel`; it never sets a renderable's content. Leaf widgets that only draw (transcript view, pickers, gutter) stay renderables and are mounted where the store says.
 - `bun test src` renders the screen under OpenTUI's test renderer and asserts frames; `bun scripts/build-binary.ts` compiles with the Solid plugin through `Bun.build`; from source, `src/binary.ts` installs the same transform before loading the app.
 - Reusable shortcuts and displayed keycaps are defined in `src/constants.ts`; reference named actions from production and QA.

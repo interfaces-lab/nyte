@@ -13,8 +13,8 @@ import { css, html } from "react-strict-dom";
 import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
 import type { TurnPart } from "@nyte-ai/protocol";
-import type { SessionState } from "@nyte-ai/core/client";
-import { diffStat, presentTool, projectToolView, readPatch } from "@nyte-ai/core/views";
+import type { SessionState } from "@nyte-ai/client";
+import { diffStat, presentTool, projectToolView, readPatch } from "@nyte-ai/client";
 import {
   controls,
   conversation,

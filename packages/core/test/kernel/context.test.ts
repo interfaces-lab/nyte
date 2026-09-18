@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Message } from "@nyte-ai/schema";
-import { branchConfig, contextMessages, modelContext } from "../../src/kernel/context.ts";
+import { branchConfig, contextMessages, modelContext } from "@nyte-ai/client";
 import { branch, contextCommits, history, isAncestor } from "../../src/kernel/graph.ts";
 import type { Commit, CommitBody } from "../../src/kernel/model.ts";
 import {

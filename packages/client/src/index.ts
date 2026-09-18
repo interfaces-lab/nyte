@@ -1,5 +1,8 @@
 /**
- * `@nyte-ai/client`: the SDK namespaces over `fetch`. Each operation is one
+ * `@nyte-ai/client`: everything a client needs at any runtime: the fetch
+ * transport, the session fold and observer, and the projections.
+ *
+ * The transport is the SDK namespaces over `fetch`. Each operation is one
  * `POST /v1/call/{operation}` whose reply is checked against the operation's output
  * schema before it is returned; `watch` is `GET /v1/watch` read as
  * server-sent events and yielded as an `AsyncIterable<SessionEvent>`; `info`
@@ -10,7 +13,7 @@
  * the server's `ended` frame throws. The caller decides what to do next,
  * usually `sessions.snapshot` followed by a watch from the snapshot's `seq`.
  *
- * Depends on `@nyte-ai/protocol` and `typebox`: no core, no Node. Runs wherever
+ * Depends on `@nyte-ai/protocol` and `typebox`: no Node. Runs wherever
  * `fetch`, `Headers`, `ReadableStream`, and `TextDecoder` exist.
  */
 import {
@@ -350,6 +353,16 @@ type Outcome =
   | { readonly kind: "ended" }
   | { readonly kind: "failed"; readonly error: NyteWireError | NyteTransportError };
 
+type BodyReadResult =
+  | { readonly done: false; readonly value: Uint8Array }
+  | { readonly done: true; readonly value?: Uint8Array };
+
+/** The subset of a stream reader the watch uses. Structural, so a runtime's augmented reader also fits. */
+interface BodyReader {
+  read(): Promise<BodyReadResult>;
+  cancel(): Promise<unknown>;
+}
+
 function badFrame(detail: string, issues: readonly Issue[] = []): NyteTransportError {
   return new NyteTransportError({ kind: "bad_body", detail, issues });
 }
@@ -373,7 +386,7 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
   const controller = new AbortController();
   const parser = createSseParser({ maxFrameChars: dependencies.maxFrameChars });
   let queue: SessionEvent[] = [];
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let reader: BodyReader | undefined;
   let outcome: Outcome | undefined;
   /** Resources are released; no more reads happen. */
   let finished = false;
@@ -524,3 +537,143 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Session fold and observer
+// ---------------------------------------------------------------------------
+
+export {
+  foldEvent,
+  stateFromSnapshot,
+  stateWithMetadata,
+  tipMismatch,
+  waitingCall,
+  type FoldOutcome,
+  type SessionState,
+  type WaitingCall,
+} from "./session/session-state.ts";
+export {
+  SessionObserver,
+  type SessionObserverClient,
+  type SessionObserverOptions,
+  type SessionUpdate,
+} from "./session/session-follow.ts";
+export { sessionMark, type SessionMark } from "./session/session-status.ts";
+
+// ---------------------------------------------------------------------------
+// Projections
+// ---------------------------------------------------------------------------
+
+export {
+  appendTurnChanges,
+  changesFromTurns,
+  diffStat,
+  EMPTY_CHANGES,
+  patchedPath,
+  readPatch,
+  type ChangesState,
+  type FileChange,
+} from "./views/changes.ts";
+export {
+  estimateContextTokens,
+  estimateModelContextTokens,
+  estimateTokens,
+  lastAssistantUsageInfo,
+  projectContextStatus,
+  type AssistantUsageInfo,
+  type ContextStatus,
+  type ContextUsageEstimate,
+} from "./views/context.ts";
+export { sessionDirectoryEntry, type SessionDirectoryEntry } from "./views/directory.ts";
+export {
+  EMPTY_LIVE_PARTS,
+  foldLiveParts,
+  livePartKey,
+  type LivePart,
+  type LiveParts,
+} from "./views/live-parts.ts";
+export {
+  parsePatchFacts,
+  type ParsedPatch,
+  type PatchFile,
+  type PatchStat,
+} from "./views/patch.ts";
+export {
+  createPresenter,
+  presentNote,
+  presentTool,
+  projectToolView,
+  runActivityLabel,
+  subagentToolKind,
+  type NotePresentation,
+  type NoteRefiner,
+  type NoteView,
+  type Presenter,
+  type PresenterOptions,
+  type SubagentToolKind,
+  type ToolBody,
+  type ToolLive,
+  type ToolPresentation,
+  type ToolRefiner,
+  type ToolResultView,
+  type ToolStatus,
+  type ToolView,
+} from "./views/presentation.ts";
+export {
+  appendTranscriptCommit,
+  EMPTY_TRANSCRIPT,
+  transcriptFromCommits,
+  turnPartId,
+  type ToolTurnPart,
+  type TranscriptState,
+  type Turn,
+  type TurnOutcome,
+  type TurnPart,
+  type UserTurnPart,
+} from "./views/transcript.ts";
+export {
+  collectAbandoned,
+  navigationTarget,
+  projectTree,
+  type NavigationTarget,
+  type SessionTree,
+  type SessionTreeNode,
+} from "./views/tree.ts";
+export {
+  addUsage,
+  commitUsage,
+  emptyUsageSummary,
+  mergeUsageSummaries,
+  projectUsage,
+  usageTokens,
+  type ModelUsage,
+  type UsageSubject,
+  type UsageSummary,
+} from "./views/usage.ts";
+
+// ---------------------------------------------------------------------------
+// Shared pure helpers
+// ---------------------------------------------------------------------------
+
+export {
+  completionTrigger,
+  type CompletionTrigger,
+  type CompletionTriggerKind,
+} from "./completion-trigger.ts";
+export {
+  branchConfig,
+  completionText,
+  COMPACTION_SUMMARY_PREFIX,
+  contextMessages,
+  modelContext,
+  type ModelContext,
+} from "./context.ts";
+export {
+  canonicalJson,
+  isJsonObject,
+  toJsonValue,
+  type JsonObject,
+  type JsonValue,
+} from "./json.ts";
+export { mergeQueuedLanes } from "./queue-order.ts";
+export { isTerminalPhase, type MentionFile } from "@nyte-ai/protocol";

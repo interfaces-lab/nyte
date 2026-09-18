@@ -1,7 +1,7 @@
 /** The JSON boundary and content addressing, by value. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { canonicalJson, toJsonValue } from "../../src/kernel/json.ts";
+import { canonicalJson, toJsonValue } from "@nyte-ai/client";
 
 interface CyclicValue {
   self?: CyclicValue;

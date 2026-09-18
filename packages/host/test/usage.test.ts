@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 import { afterEach, test, vi } from "vitest";
 import type { Models } from "@nyte-ai/ai";
-import { emptyUsageSummary } from "@nyte-ai/core/views";
+import { emptyUsageSummary } from "@nyte-ai/client";
 import {
   createUsageScanCaches,
   decodeUsageScanCaches,

@@ -22,15 +22,9 @@ import { createOtelExport } from "@nyte-ai/host/otel";
 import { createUsageScanCaches, readAccountUsage, readLocalUsage } from "@nyte-ai/host/usage";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
-import {
-  collectAbandoned,
-  DEFAULT_LANDING,
-  MAIN,
-  projectTree,
-  sessionId,
-  watchPluginDirectories,
-  isTerminalPhase,
-} from "@nyte-ai/core";
+import { collectAbandoned, projectTree } from "@nyte-ai/client";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import { DEFAULT_LANDING, MAIN, sessionId, watchPluginDirectories } from "@nyte-ai/core";
 import type {
   CommandInfo,
   Oid,
@@ -121,9 +115,9 @@ import type { Runtime } from "./run.ts";
 import { TUI_RENDERER_CONFIG } from "./rendering.ts";
 import { SessionConfigurator } from "./session-config.ts";
 import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
-import { SessionObserver, waitingCall } from "@nyte-ai/core/client";
+import { SessionObserver, waitingCall } from "@nyte-ai/client";
 import { TaskBrowser } from "./task-browser.ts";
-import type { SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/core/client";
+import type { SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/client";
 import { FileSettingsStore } from "./settings.ts";
 import type { ResolvedSettings, SettingsPatch } from "./settings.ts";
 import { mountShell } from "./app/App.tsx";

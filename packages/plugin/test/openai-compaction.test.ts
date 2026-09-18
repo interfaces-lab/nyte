@@ -6,7 +6,7 @@ import { zstdDecompressSync } from "node:zlib";
 import { afterEach, test } from "vitest";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { projectUsage } from "@nyte-ai/core/views";
+import { projectUsage } from "@nyte-ai/client";
 import type { Nyte, SessionEvent, SessionId, StreamFn } from "@nyte-ai/core";
 import { openaiCodexProvider, openaiProvider, type AuthResult, type Models } from "@nyte-ai/ai";
 import { inlinePlugin, systemPromptPlugin } from "@nyte-ai/plugin";

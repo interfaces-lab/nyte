@@ -18,7 +18,7 @@
  * The host folds days in its own time zone; the renderer shares the machine,
  * so `localDay` here is the same calendar as the one that wrote the report.
  */
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import type { AccountUsage, UsageSnapshot } from "../../../shared/ipc.ts";
 import type { UsageReport, UsageTotals, UsageWindow } from "../nyte.ts";
 

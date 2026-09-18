@@ -18,6 +18,6 @@ export {
   type SessionInfo,
   type Store,
 } from "./kernel/store.ts";
-export { toJsonValue } from "./kernel/json.ts";
+export { toJsonValue } from "@nyte-ai/client";
 export { branch, contextCommits, history } from "./kernel/graph.ts";
-export { branchConfig, contextMessages, modelContext } from "./kernel/context.ts";
+export { branchConfig, contextMessages, modelContext } from "@nyte-ai/client";

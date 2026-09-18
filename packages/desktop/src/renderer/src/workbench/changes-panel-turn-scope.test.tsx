@@ -11,7 +11,7 @@
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { Turn } from "@nyte-ai/core";
+import type { Turn } from "@nyte-ai/protocol";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
 import { ChangesPanel } from "./changes-panel.tsx";
 import type { WorkbenchChangesScope } from "./controller.ts";

@@ -13,6 +13,16 @@ export type Oid = string;
 /** Position in a session's event stream. The first event is 1. */
 export type Seq = number;
 
+/** The cursor is older than the stream's floor: take a snapshot, then watch from its seq. */
+export class CursorExpired extends Error {
+  readonly floor: Seq;
+  constructor(floor: Seq) {
+    super(`Event cursor is older than the stream floor ${String(floor)}`);
+    this.name = "CursorExpired";
+    this.floor = floor;
+  }
+}
+
 /** Who did it, as the host defines identity. Attribution, not authorization. */
 export interface Actor {
   readonly clientId?: string;
@@ -75,6 +85,13 @@ export type CommitBody =
     }
   /** Product-defined. Stored and replayed by core, rendered by clients, unseen by the model. */
   | { readonly kind: "note"; readonly type: string; readonly data?: JsonValue };
+
+/** Run inputs as a branch declares them: the fold of its config commits, latest field wins. */
+export interface BranchConfig {
+  readonly model?: ModelRef;
+  readonly thinkingLevel?: string;
+  readonly agent?: string;
+}
 
 export type RunPhase =
   | { readonly kind: "respond" }

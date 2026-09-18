@@ -4,7 +4,7 @@
  * the text, file chips stay as their `@file://` spelling in the body, and the
  * conversation mention is context the host already has.
  */
-import type { CommandInfo, Lane, SendInput, SessionId } from "@nyte-ai/core";
+import type { CommandInfo, Lane, SendInput, SessionId } from "@nyte-ai/protocol";
 import type { ImageContent, TextContent, UserMessage } from "@nyte-ai/schema";
 import type { ComposerSubmission } from "./composer-document.ts";
 import { referenceInstruction, sameReference } from "./message-references.ts";

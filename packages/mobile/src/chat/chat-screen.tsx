@@ -13,8 +13,8 @@ import {
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { ReplyOutcome, SelectionReply } from "@nyte-ai/protocol";
-import { waitingCall, type SessionState } from "@nyte-ai/core/client";
-import type { FileChange } from "@nyte-ai/core/views";
+import { waitingCall, type SessionState } from "@nyte-ai/client";
+import type { FileChange } from "@nyte-ai/client";
 import type { UserContent } from "./remote-chat.ts";
 import { spacing, tokens, useTheme } from "../theme.ts";
 import { EmptyState } from "../ui/empty-state.tsx";

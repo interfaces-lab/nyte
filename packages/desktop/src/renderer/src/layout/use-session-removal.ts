@@ -1,7 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { keys, queryClient } from "../queries.ts";
 import type { HostState } from "../../../shared/ipc.ts";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { paneControllerForWorkspace } from "./pane-context.tsx";
 import { activeSelection } from "./pane-layout.ts";
 

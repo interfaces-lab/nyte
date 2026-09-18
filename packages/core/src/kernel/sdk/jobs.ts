@@ -19,7 +19,7 @@ import type {
 import { ToolWait } from "../../types.ts";
 import { toolResultMessage } from "../../agent-loop.ts";
 import { toolErrorResult, toolResultContent, toolResultText } from "../../utils/tool-result.ts";
-import { isJsonObject, toJsonValue } from "../json.ts";
+import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import { factRef, parseQueueRef, runRef } from "../names.ts";
 import { isUserInput } from "../admission.ts";
 import { pending } from "../queue.ts";

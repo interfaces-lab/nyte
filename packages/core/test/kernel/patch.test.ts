@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createPatch } from "diff";
-import { parsePatchFacts } from "../../src/views.ts";
+import { parsePatchFacts } from "@nyte-ai/client";
 import {
   appendTurnChanges,
   changesFromTurns,
@@ -9,9 +9,9 @@ import {
   EMPTY_CHANGES,
   patchedPath,
   readPatch,
-} from "../../src/kernel/views/changes.ts";
-import { createPresenter, presentTool } from "../../src/kernel/views/presentation.ts";
-import type { Turn } from "../../src/kernel/views/transcript.ts";
+} from "@nyte-ai/client";
+import { createPresenter, presentTool } from "@nyte-ai/client";
+import type { Turn } from "@nyte-ai/client";
 
 const headerLines = "--- a/example.txt\n+++ b/example.txt\n@@ -1 +1 @@\n---old\n+++new\n";
 const deletion = "--- a/gone.txt\n+++ /dev/null\n@@ -1,2 +0,0 @@\n-one\n-two\n";

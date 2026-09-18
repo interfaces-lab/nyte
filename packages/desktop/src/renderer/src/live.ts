@@ -9,10 +9,10 @@
  * does not model: jobs, changed files, plugin settings, trust.
  */
 import { useEffect, useSyncExternalStore } from "react";
-import type { Seq, SessionEvent, SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/core";
-import { SessionObserver } from "@nyte-ai/core/client";
-import type { SessionState, SessionUpdate } from "@nyte-ai/core/client";
-import { isTerminalPhase } from "@nyte-ai/core/views";
+import type { Seq, SessionEvent, SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
+import { SessionObserver } from "@nyte-ai/client";
+import type { SessionState, SessionUpdate } from "@nyte-ai/client";
+import { isTerminalPhase } from "@nyte-ai/client";
 import { IDLE, projectLive } from "./live-fold.ts";
 import type { LiveSnapshot } from "./live-fold.ts";
 import { cacheSessionInfo, keys, queryClient, refreshVcs, SNAPSHOT_WARM_MS } from "./queries.ts";

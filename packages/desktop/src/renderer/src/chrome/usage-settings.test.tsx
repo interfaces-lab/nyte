@@ -8,7 +8,7 @@ import {
   createRouter,
   RouterContextProvider,
 } from "@tanstack/react-router";
-import { emptyUsageSummary, mergeUsageSummaries } from "@nyte-ai/core/views";
+import { emptyUsageSummary, mergeUsageSummaries } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/protocol";
 import type { AccountUsage, UsageSnapshot } from "../../../shared/ipc.ts";
 import { keys } from "../query-keys.ts";

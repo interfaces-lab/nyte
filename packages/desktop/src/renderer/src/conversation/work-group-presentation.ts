@@ -1,4 +1,4 @@
-import type { ToolProgress, ToolTurnPart } from "@nyte-ai/core";
+import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import { activityVerb, presentTool } from "./tool-detail.ts";
 import type { ToolPresentation } from "./tool-detail.ts";

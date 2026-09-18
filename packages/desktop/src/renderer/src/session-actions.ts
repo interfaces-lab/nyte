@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { SessionsBridge, WorkspaceSessionDirectory } from "../../shared/ipc.ts";
 import { ActionToasts } from "./action-toasts.ts";

@@ -1,6 +1,6 @@
 // Standalone browser-test preload. Import before any renderer module reads window.nyte.
 import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { JobInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const visibilityParent = sessionId("visibility-parent");

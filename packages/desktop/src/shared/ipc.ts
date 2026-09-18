@@ -2,7 +2,7 @@ import type {
   MentionFile,
   WorkspaceFileDocument,
   WorkspaceFileSaveOutcome,
-} from "@nyte-ai/core/files";
+} from "@nyte-ai/protocol";
 /**
  * The wire between the Electron main host and the renderer client.
  *
@@ -13,23 +13,25 @@ import type {
  * start/stop pair around a push channel, cursor semantics unchanged.
  */
 import type {
-  Disposer,
-  Nyte,
+  Landing,
+  RemoteNyte,
   Seq,
   SessionEvent,
   SessionId,
   SessionInfo,
-  ThinkingLevel,
-  UsageSubject,
   WorkspaceInfo,
   VcsDiff,
   VcsStatus,
-} from "@nyte-ai/core";
+} from "@nyte-ai/protocol";
+import type { UsageSubject } from "@nyte-ai/client";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { AccountUsage, ClaudeCodeUsage, CodexUsage } from "@nyte-ai/host/usage";
 import type { ModelInfo, Operation, ServerInfo } from "@nyte-ai/protocol";
 import type { AppMenuCommand } from "./app-menu.ts";
 import type { WorkspaceEditorBridge } from "./workspace-editor.ts";
 import type { IpcFailure, IpcResult } from "./errors.ts";
+
+type Disposer = () => void;
 
 /** Editor work is cancellable and owned by the window, rather than a session host. */
 export const WORKSPACE_EDITOR_CHANNEL = "nyte:workspace-editor";
@@ -265,7 +267,7 @@ export interface HostState {
   readonly platform: NodeJS.Platform;
 }
 
-export type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "@nyte-ai/core/files";
+export type { WorkspaceFileDocument, WorkspaceFileSaveOutcome } from "@nyte-ai/protocol";
 
 /** CSS family names discovered by the native host; font-file paths never cross IPC. */
 export interface LocalFontCatalog {
@@ -624,7 +626,7 @@ export interface DesktopCatalog {
   /** What a new chat starts with. */
   readonly defaults: {
     readonly model: { readonly provider: string; readonly id: string };
-    readonly thinkingLevel: ThinkingLevel;
+    readonly thinkingLevel: ModelThinkingLevel;
   };
 }
 
@@ -639,7 +641,7 @@ export type PreferenceChange =
   | {
       readonly kind: "defaults";
       readonly model?: { readonly provider: string; readonly id: string };
-      readonly thinkingLevel?: ThinkingLevel;
+      readonly thinkingLevel?: ModelThinkingLevel;
     };
 
 // ---------------------------------------------------------------------------
@@ -664,7 +666,7 @@ export interface UsageTotals {
   readonly turns: number;
 }
 
-export type { UsageSubject } from "@nyte-ai/core";
+export type { UsageSubject } from "@nyte-ai/client";
 export type { AccountUsage } from "@nyte-ai/host/usage";
 
 /**
@@ -852,7 +854,7 @@ export type HostEvent =
 // ---------------------------------------------------------------------------
 
 export type SessionsBridge = Pick<
-  Nyte["sessions"],
+  RemoteNyte["sessions"],
   | "create"
   | "get"
   | "snapshot"
@@ -865,25 +867,25 @@ export type SessionsBridge = Pick<
   | "configure"
 >;
 
-export type MessagesBridge = Pick<Nyte["messages"], "send" | "cancel" | "redeliver">;
+export type MessagesBridge = Pick<RemoteNyte["messages"], "send" | "cancel" | "redeliver">;
 
-export type RunsBridge = Pick<Nyte["runs"], "abort" | "reply">;
+export type RunsBridge = Pick<RemoteNyte["runs"], "abort" | "reply">;
 
-export type HeadsBridge = Pick<Nyte["heads"], "move">;
+export type HeadsBridge = Pick<RemoteNyte["heads"], "move">;
 
 /** `workspace.list` and `workspace.forget` answer from the registry even when no workspace is open. */
-export type WorkspaceBridge = Pick<Nyte["workspace"], "list" | "forget"> & {
-  readonly vcs: Pick<Nyte["workspace"]["vcs"], "diff">;
+export type WorkspaceBridge = Pick<RemoteNyte["workspace"], "list" | "forget"> & {
+  readonly vcs: Pick<RemoteNyte["workspace"]["vcs"], "diff">;
 };
 
 export type ProviderBridge = {
-  readonly models: Pick<Nyte["provider"]["models"], "default">;
+  readonly models: Pick<RemoteNyte["provider"]["models"], "default">;
 };
 
-export type PluginsBridge = Pick<Nyte["plugins"], "catalog" | "list"> & {
-  readonly commands: Pick<Nyte["plugins"]["commands"], "list" | "run">;
-  readonly settings: Pick<Nyte["plugins"]["settings"], "list" | "apply">;
-  readonly resources: Pick<Nyte["plugins"]["resources"], "list">;
+export type PluginsBridge = Pick<RemoteNyte["plugins"], "catalog" | "list"> & {
+  readonly commands: Pick<RemoteNyte["plugins"]["commands"], "list" | "run">;
+  readonly settings: Pick<RemoteNyte["plugins"]["settings"], "list" | "apply">;
+  readonly resources: Pick<RemoteNyte["plugins"]["resources"], "list">;
 };
 
 export type WatchInput =
@@ -1051,10 +1053,10 @@ export interface HostBridge {
 
 /** What `window.nyte` is: the SDK verbatim, plus watch-over-push and the host. */
 export interface NyteBridge {
-  readonly landing: Nyte["landing"];
+  readonly landing: Landing;
   readonly sessions: SessionsBridge;
   readonly messages: MessagesBridge;
-  readonly jobs: Nyte["jobs"];
+  readonly jobs: RemoteNyte["jobs"];
   readonly runs: RunsBridge;
   readonly heads: HeadsBridge;
   readonly workspace: WorkspaceBridge;

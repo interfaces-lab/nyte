@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { SessionObserver } from "@nyte-ai/core/client";
-import type { SessionObserverClient, SessionState } from "@nyte-ai/core/client";
+import { SessionObserver } from "@nyte-ai/client";
+import type { SessionObserverClient, SessionState } from "@nyte-ai/client";
 import { MAIN, sessionId } from "@nyte-ai/core";
 import type { PendingItem, SendReceipt, SessionEvent, SessionSnapshot, Turn } from "@nyte-ai/core";
 import { Outbox } from "./outbox.ts";

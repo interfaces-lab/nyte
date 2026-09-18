@@ -4,7 +4,7 @@
  * find its job and child session without knowing about panes or the workbench.
  */
 import { createContext, useContext } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 
 interface SubagentInspector {
   readonly sessionId: SessionId;

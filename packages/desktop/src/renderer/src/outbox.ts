@@ -11,7 +11,7 @@
  * Every row is a persisted record. The rows on screen are the records of the
  * active workspace partition, oldest first, plus a transient state per key.
  */
-import type { Lane, Oid, SendInput, SendReceipt, SessionId } from "@nyte-ai/core";
+import type { Lane, Oid, SendInput, SendReceipt, SessionId } from "@nyte-ai/protocol";
 import type { UserMessage } from "@nyte-ai/schema";
 import type { OutboxStorage, PersistedOutboxRecordV1 } from "./outbox-storage.ts";
 import { errorMessage } from "../../shared/errors.ts";

@@ -6,7 +6,7 @@ import {
   mergeUsageSummaries,
   projectUsage,
   usageTokens,
-} from "../../src/kernel/views/index.ts";
+} from "@nyte-ai/client";
 import type { CommitBody } from "../../src/kernel/model.ts";
 import { assistant, commit, message, toolResult, usage, user } from "./helpers.ts";
 

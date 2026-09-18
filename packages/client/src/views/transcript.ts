@@ -1,6 +1,6 @@
 import { toJsonValue } from "../json.ts";
 import type { Turn, TurnOutcome, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
-import type { Commit, CommitBody, Oid } from "../model.ts";
+import type { Commit, CommitBody, Oid } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
 type UserMessage = Extract<MessageBody["message"], { role: "user" }>;

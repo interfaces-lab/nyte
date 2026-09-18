@@ -1,5 +1,5 @@
 import type { SessionInfo } from "@nyte-ai/protocol";
-import { sessionMark } from "@nyte-ai/core/client";
+import { sessionMark } from "@nyte-ai/client";
 import { SymbolView } from "expo-symbols";
 import { ActivityIndicator } from "react-native";
 import { css, html } from "react-strict-dom";

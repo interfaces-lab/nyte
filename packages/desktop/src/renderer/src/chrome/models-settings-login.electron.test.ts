@@ -25,7 +25,6 @@ import type {
 import type { HarnessFailures, RecordedHostCall } from "./fixtures/login-harness-bridge.ts";
 
 const fixtures = fileURLToPath(new URL("./fixtures/", import.meta.url));
-const rendererRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const gpt: DesktopModelOption = {
   key: "github-copilot/gpt",
@@ -113,7 +112,6 @@ async function buildHarness(outDir: string): Promise<void> {
     base: "./",
     plugins: [stylex.vite({ devMode: "off", runtimeInjection: false, useCSSLayers: true })],
     resolve: {
-      alias: { "node:crypto": join(rendererRoot, "browser-crypto.ts") },
       dedupe: ["react", "react-dom"],
     },
     build: {

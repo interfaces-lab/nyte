@@ -3,8 +3,8 @@
  * one element the thread screen used to render in flow; keys match the ones
  * those elements carried so React state (edits, folds) survives the move.
  */
-import type { Lane, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/core";
-import { isTerminalPhase } from "@nyte-ai/core/views";
+import type { Lane, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
+import { isTerminalPhase } from "@nyte-ai/client";
 import type { OutboxRow } from "../outbox.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 

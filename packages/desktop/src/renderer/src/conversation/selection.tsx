@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { SelectionReply, SessionId, SessionSnapshot } from "@nyte-ai/core";
+import type { SelectionReply, SessionId, SessionSnapshot } from "@nyte-ai/protocol";
 import { Button, focus } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
 import { loadThread } from "../live.ts";

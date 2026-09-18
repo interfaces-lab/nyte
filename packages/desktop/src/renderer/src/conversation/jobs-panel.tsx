@@ -1,6 +1,6 @@
 import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { JobInfo, SessionId } from "@nyte-ai/core";
+import type { JobInfo, SessionId } from "@nyte-ai/protocol";
 import { Row } from "@nyte-ai/ui/row";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { nyte } from "../nyte.ts";

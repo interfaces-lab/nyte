@@ -18,11 +18,11 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { changesFromTurns } from "@nyte-ai/core/views";
-import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/core";
+import { changesFromTurns } from "@nyte-ai/client";
+import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
-import type { Lane } from "@nyte-ai/core";
+import type { Lane } from "@nyte-ai/protocol";
 import {
   Composer,
   ComposerFrame,

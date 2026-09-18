@@ -5,12 +5,12 @@ import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-a
 import type { Context, ProviderCheckpointMaterial } from "@nyte-ai/schema";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId, type SessionEvent } from "../../src/kernel/sdk/types.ts";
-import { modelContext } from "../../src/kernel/context.ts";
+import { modelContext } from "@nyte-ai/client";
 import { writeCheckpoint } from "../../src/kernel/compaction.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import type { Session } from "../../src/kernel/store.ts";
-import { projectUsage } from "../../src/kernel/views/usage.ts";
+import { projectUsage } from "@nyte-ai/client";
 import { definePlugin, inlinePlugin } from "../../src/plugins/types.ts";
 import type { HookInvocation } from "../../src/plugins/hooks.ts";
 import {

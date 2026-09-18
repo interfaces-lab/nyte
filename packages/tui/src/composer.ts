@@ -29,7 +29,7 @@ import type {
   WidthMethod,
 } from "@opentui/core";
 import type { CliTheme } from "./theme.ts";
-import { completionTrigger } from "@nyte-ai/core";
+import { completionTrigger } from "@nyte-ai/client";
 import { discoverMentionFiles } from "@nyte-ai/core/files";
 import type { MentionFile } from "@nyte-ai/core/files";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";

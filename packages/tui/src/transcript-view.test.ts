@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_LANDING, MAIN, sessionId } from "@nyte-ai/core";
-import type { SessionState } from "@nyte-ai/core/client";
+import type { SessionState } from "@nyte-ai/client";
 import {
   BoxRenderable,
   CliRenderEvents,

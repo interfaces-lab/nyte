@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import type { WorkspaceSearchInput } from "../../shared/workspace-editor.ts";
 
 export const keys = {

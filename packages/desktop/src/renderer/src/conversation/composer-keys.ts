@@ -5,7 +5,7 @@
  * idle head is what the modifier sends (it queues a follow-up). Shift+Enter is
  * a newline, and a composition's Enter belongs to the IME.
  */
-import type { Landing, Lane, PendingItem } from "@nyte-ai/core";
+import type { Landing, Lane, PendingItem } from "@nyte-ai/protocol";
 
 interface LaneRoles {
   /** Lands before the next response: what Enter sends. */

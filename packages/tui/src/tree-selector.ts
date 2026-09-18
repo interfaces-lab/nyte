@@ -29,7 +29,8 @@ import type {
   RenderableOptions,
   RGBA,
 } from "@opentui/core";
-import type { Oid, SessionTree, SessionTreeNode } from "@nyte-ai/core";
+import type { Oid } from "@nyte-ai/core";
+import type { SessionTree, SessionTreeNode } from "@nyte-ai/client";
 import type { JsonValue } from "@nyte-ai/schema";
 import { GLYPHS, keycap } from "./constants.ts";
 import { userText } from "./format.ts";

@@ -1,5 +1,5 @@
 import { css, html } from "react-strict-dom";
-import type { FileChange } from "@nyte-ai/core/views";
+import type { FileChange } from "@nyte-ai/client";
 import { Chip } from "../ui/chip.tsx";
 import { spacing, tokens } from "../theme.ts";
 

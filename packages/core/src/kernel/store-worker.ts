@@ -6,7 +6,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
-import { CursorExpired } from "./model.ts";
+import { CursorExpired } from "@nyte-ai/protocol";
 import type { Event } from "./model.ts";
 import type { Session } from "./store.ts";
 import { UnknownSession } from "./store.ts";

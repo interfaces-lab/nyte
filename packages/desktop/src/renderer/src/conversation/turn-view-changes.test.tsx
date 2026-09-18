@@ -1,6 +1,6 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { Turn } from "@nyte-ai/core";
+import type { Turn } from "@nyte-ai/protocol";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 import { WorkGroupView } from "./tool-group.tsx";

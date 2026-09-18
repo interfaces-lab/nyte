@@ -19,7 +19,7 @@ import {
   projectToolView,
   transcriptFromCommits,
   type Turn,
-} from "../../src/kernel/views/index.ts";
+} from "@nyte-ai/client";
 import { assistant, call, commit, message, toolResult, usage, user } from "./helpers.ts";
 
 type Item = { readonly oid: Oid; readonly commit: Commit };

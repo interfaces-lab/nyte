@@ -1,15 +1,15 @@
 /**
  * Renderer lookups over the observer's live overlay, as pure functions.
  *
- * Core folds the stream (`@nyte-ai/core/client`); this file only derives what
+ * `@nyte-ai/client` folds the stream; this file only derives what
  * the transcript views index by: streaming text per part, tool progress per
  * call, arrival order, and what the run's phase means for the overlay.
  * Identities survive a frame that changed none of them, so settled turns do
  * not re-render per token.
  */
-import type { RunId, RunInfo, ToolProgress } from "@nyte-ai/core";
-import { EMPTY_LIVE_PARTS } from "@nyte-ai/core/views";
-import type { LivePart, LiveParts } from "@nyte-ai/core/views";
+import type { RunId, RunInfo, ToolProgress } from "@nyte-ai/protocol";
+import { EMPTY_LIVE_PARTS } from "@nyte-ai/client";
+import type { LivePart, LiveParts } from "@nyte-ai/client";
 
 export type LivePartRef = Omit<Exclude<LivePart, { kind: "tool" }>, "text">;
 

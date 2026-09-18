@@ -13,9 +13,9 @@
 import type { JsonValue, ToolResultMessage } from "@nyte-ai/schema";
 import type {
   Actor,
+  BranchConfig,
   Commit,
   CommitBody,
-  ModelRef,
   Oid,
   RunPhase,
   Selection,
@@ -66,11 +66,7 @@ export interface Change {
   readonly key?: string;
 }
 
-export interface RunConfig {
-  readonly model?: ModelRef;
-  readonly thinkingLevel?: string;
-  readonly agent?: string;
-}
+export type RunConfig = BranchConfig;
 
 /** One head being advanced. The run ref holds the current phase; every phase is a new object. */
 export interface Run {
@@ -221,13 +217,3 @@ export type EventBody =
     };
 
 export type Event = EventBody & { readonly seq: Seq; readonly at: number };
-
-/** The cursor is older than the stream's floor: take a snapshot, then watch from its seq. */
-export class CursorExpired extends Error {
-  readonly floor: Seq;
-  constructor(floor: Seq) {
-    super(`Event cursor is older than the stream floor ${String(floor)}`);
-    this.name = "CursorExpired";
-    this.floor = floor;
-  }
-}

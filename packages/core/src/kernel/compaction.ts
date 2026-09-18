@@ -19,19 +19,15 @@ import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { Result } from "./result.ts";
 import type { StreamFn, ThinkingLevel } from "../types.ts";
-import { contextMessages, modelContext } from "./context.ts";
+import { contextMessages, modelContext } from "@nyte-ai/client";
 import { contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";
 import { LeaseLost, withLeaseRenewal } from "./lease.ts";
 import type { Blob, Commit, CommitBody, Lease, Obj, Oid, RefUpdate } from "./model.ts";
 import { compactionRef, DELETED_REF, headRef, runRef } from "./names.ts";
 import type { Session } from "./store.ts";
-import {
-  estimateContextTokens,
-  estimateModelContextTokens,
-  estimateTokens,
-} from "./views/context.ts";
-import { addUsage } from "./views/usage.ts";
+import { estimateContextTokens, estimateModelContextTokens, estimateTokens } from "@nyte-ai/client";
+import { addUsage } from "@nyte-ai/client";
 
 type CompactionErrorCode = "aborted" | "nothing_to_compact" | "summarization_failed";
 

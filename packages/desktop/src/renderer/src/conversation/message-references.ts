@@ -8,7 +8,7 @@
  * sentences at its head, clipboard chips unwrap to their body, and those
  * sentences read back as chips.
  */
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 
 export type MessageReference =
   | { readonly kind: "file"; readonly file: MentionFile }

@@ -17,7 +17,7 @@
  */
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Selection } from "@nyte-ai/protocol";
-import { mergeQueuedLanes } from "../kernel/queue-order.ts";
+import { mergeQueuedLanes } from "../queue-order.ts";
 import type {
   ContextStatus,
   HeadName,
@@ -31,11 +31,11 @@ import type {
   SessionInfo,
   SessionMetadata,
   SessionSnapshot,
-} from "../kernel/sdk/types.ts";
-import { EMPTY_LIVE_PARTS, foldLiveParts } from "../kernel/views/live-parts.ts";
-import type { LiveParts } from "../kernel/views/live-parts.ts";
-import { appendTranscriptCommit } from "../kernel/views/transcript.ts";
-import type { TranscriptState } from "../kernel/views/transcript.ts";
+} from "@nyte-ai/protocol";
+import { EMPTY_LIVE_PARTS, foldLiveParts } from "../views/live-parts.ts";
+import type { LiveParts } from "../views/live-parts.ts";
+import { appendTranscriptCommit } from "../views/transcript.ts";
+import type { TranscriptState } from "../views/transcript.ts";
 
 /** A parked call only a participant can answer: the one whose wait carries a selection. */
 export type WaitingCall = Pick<ParkedCall, "runId" | "callId" | "waitId" | "until"> & {

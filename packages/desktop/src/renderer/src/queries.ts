@@ -21,7 +21,7 @@ import {
 import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
 export { keys } from "./query-keys.ts";
 import { toast } from "@nyte-ai/ui/sonner";
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 import type {
   JobInfo,
   PluginCatalog,
@@ -30,7 +30,7 @@ import type {
   SettingInfo,
   VcsDiff,
   WorkspaceInfo,
-} from "@nyte-ai/core";
+} from "@nyte-ai/protocol";
 import { localSessions } from "../../shared/ipc.ts";
 import type {
   DesktopCatalog,

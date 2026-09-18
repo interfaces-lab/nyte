@@ -3,7 +3,7 @@ import { afterAll, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionSnapshot } from "@nyte-ai/core";
+import type { SessionSnapshot } from "@nyte-ai/protocol";
 import { Selections } from "./selection.tsx";
 
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));

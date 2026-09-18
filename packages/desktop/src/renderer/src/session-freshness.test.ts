@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { SessionInfo } from "@nyte-ai/core";
-import { sessionId } from "@nyte-ai/core";
+import type { SessionInfo } from "@nyte-ai/protocol";
+import { sessionId } from "@nyte-ai/protocol";
 import { SessionObservations } from "./session-freshness.ts";
 
 const id = sessionId("s1");

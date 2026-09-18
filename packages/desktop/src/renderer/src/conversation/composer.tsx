@@ -18,7 +18,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Lane, PendingItem, SessionId } from "@nyte-ai/core";
+import type { Lane, PendingItem, SessionId } from "@nyte-ai/protocol";
 import type { ImageContent } from "@nyte-ai/schema";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons.tsx";

@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import type { AssistantMessage, Usage } from "@nyte-ai/schema";
 import { writeCheckpoint } from "../../src/kernel/compaction.ts";
-import { contextMessages } from "../../src/kernel/context.ts";
+import { contextMessages } from "@nyte-ai/client";
 import { contextCommits } from "../../src/kernel/graph.ts";
 import type { Commit } from "../../src/kernel/model.ts";
 import { headRef } from "../../src/kernel/names.ts";
@@ -13,7 +13,7 @@ import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
-import { projectUsage } from "../../src/kernel/views/usage.ts";
+import { projectUsage } from "@nyte-ai/client";
 import type { StreamFn } from "../../src/types.ts";
 import {
   assistant,

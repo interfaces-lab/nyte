@@ -21,7 +21,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { sessionId as sessionIdSchema } from "../../../shared/schemas.ts";
 import { overlayRef } from "../components/overlay-occlusion.ts";
 import { t } from "../theme/vars.stylex.ts";

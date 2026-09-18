@@ -8,9 +8,9 @@
  * exists. Accepting writes the exact text the desktop writes, so a message sent
  * from a phone reads back there as the same chip.
  */
-import { completionTrigger } from "@nyte-ai/core/views";
+import { completionTrigger } from "@nyte-ai/client";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { CompletionTrigger } from "@nyte-ai/core/views";
+import type { CompletionTrigger } from "@nyte-ai/client";
 import type { CommandInfo, PluginCatalog, SessionId } from "@nyte-ai/protocol";
 import type { NyteClient } from "@nyte-ai/client";
 import { describeHostError } from "../connection/connection.ts";

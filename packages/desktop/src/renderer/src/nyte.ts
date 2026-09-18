@@ -3,8 +3,8 @@
  * SDK interfaces verbatim, `watch` as a push subscription, plus the host
  * namespace. This client keeps no state beyond query caches and cursors.
  */
-import type { SessionEvent } from "@nyte-ai/core";
-import type { SessionObserverClient } from "@nyte-ai/core/client";
+import type { SessionEvent } from "@nyte-ai/protocol";
+import type { SessionObserverClient } from "@nyte-ai/client";
 import type { NyteBridge } from "../../shared/ipc.ts";
 
 declare global {

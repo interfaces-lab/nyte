@@ -26,7 +26,7 @@ import type {
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { JsonValue } from "@nyte-ai/schema";
 import type { Selection } from "@nyte-ai/protocol";
-import type { JsonObject } from "./kernel/json.ts";
+import type { JsonObject } from "@nyte-ai/client";
 import type { Static, TSchema } from "typebox";
 
 /**

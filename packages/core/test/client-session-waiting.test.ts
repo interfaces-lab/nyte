@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { foldEvent, stateFromSnapshot, waitingCall } from "../src/client/session-state.ts";
+import { foldEvent, stateFromSnapshot, waitingCall } from "@nyte-ai/client";
 import { MAIN, sessionId, type Selection, type SessionSnapshot } from "../src/kernel/sdk/types.ts";
 
 const SESSION = sessionId("waiting-test");

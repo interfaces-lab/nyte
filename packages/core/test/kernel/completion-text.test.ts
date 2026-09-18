@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { sessionId, type JobInfo } from "@nyte-ai/protocol";
-import { completionText } from "../../src/kernel/context.ts";
+import { completionText } from "@nyte-ai/client";
 
 const base = {
   id: "job_1",

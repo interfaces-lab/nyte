@@ -1,4 +1,4 @@
-import { completionTrigger } from "@nyte-ai/core/views";
+import { completionTrigger } from "@nyte-ai/client";
 import { describe, expect, it } from "vitest";
 import { acceptSuggestion, parseCommandLine, skillInstruction } from "../src/chat/completions.ts";
 

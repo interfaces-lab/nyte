@@ -87,7 +87,7 @@ The following details describe the Claude Code reader:
 
 ```ts
 import type { Models } from "@nyte-ai/ai";
-import type { UsageSummary } from "@nyte-ai/core/views";
+import type { UsageSummary } from "@nyte-ai/client";
 import { readClaudeCodeUsage } from "@nyte-ai/host/usage";
 
 // ClaudeCodeUsageOptions

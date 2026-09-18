@@ -1,4 +1,4 @@
-import type { WaitingCall } from "@nyte-ai/core/client";
+import type { WaitingCall } from "@nyte-ai/client";
 import { acceptsSelectionReply, type ReplyOutcome, type SelectionReply } from "@nyte-ai/protocol";
 import { SymbolView } from "expo-symbols";
 // oxlint-disable-next-line no-restricted-imports -- the expiry timer follows the deadline prop

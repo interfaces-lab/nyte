@@ -9,7 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vitest";
-import { CursorExpired, type Change, type Event, type Obj } from "../../src/kernel/model.ts";
+import { CursorExpired } from "@nyte-ai/protocol";
+import { type Change, type Event, type Obj } from "../../src/kernel/model.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { UnknownSession } from "../../src/kernel/store.ts";
 import {

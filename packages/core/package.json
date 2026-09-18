@@ -8,8 +8,6 @@
     "./store": "./src/store.ts",
     "./postgres": "./src/postgres.ts",
     "./store-worker": "./src/kernel/store-worker.ts",
-    "./views": "./src/views.ts",
-    "./client": "./src/client.ts",
     "./ripgrep": "./src/ripgrep.ts",
     "./files": "./src/files.ts"
   },
@@ -21,6 +19,7 @@
   "dependencies": {
     "@cf-wasm/photon": "0.4.0",
     "@nyte-ai/ai": "workspace:*",
+    "@nyte-ai/client": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/schema": "workspace:*",
     "@nyte-ai/telemetry": "workspace:*",
