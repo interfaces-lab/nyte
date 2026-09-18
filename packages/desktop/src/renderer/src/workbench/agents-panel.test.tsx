@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { JobInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import { AgentsPanel } from "./agents-panel.tsx";
 import { agentActions } from "./agents-store.ts";
 

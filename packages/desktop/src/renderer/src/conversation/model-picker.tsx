@@ -10,7 +10,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { ThinkingLevel } from "@nyte-ai/core";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { Icon } from "../components/icons.tsx";
 import {
   Menu,
@@ -37,9 +37,9 @@ export type ModelPickerChange =
   | {
       readonly kind: "model";
       readonly option: DesktopModelOption;
-      readonly thinkingLevel: ThinkingLevel;
+      readonly thinkingLevel: ModelThinkingLevel;
     }
-  | { readonly kind: "thinking"; readonly thinkingLevel: ThinkingLevel }
+  | { readonly kind: "thinking"; readonly thinkingLevel: ModelThinkingLevel }
   | {
       readonly kind: "fast";
       readonly settingId: string;
@@ -178,7 +178,7 @@ const styles = stylex.create({
 interface ModelPickerProps {
   catalog: DesktopCatalog | undefined;
   current: DesktopModelOption | undefined;
-  thinkingLevel: ThinkingLevel | undefined;
+  thinkingLevel: ModelThinkingLevel | undefined;
   /** Setting ids whose current choice is on. */
   fastEnabled: ReadonlySet<string>;
   disabled?: boolean;

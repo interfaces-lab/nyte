@@ -1,6 +1,8 @@
 # @nyte-ai/client
 
-The Nyte SDK namespaces over `fetch`, typed against `@nyte-ai/protocol`.
+Everything a client needs at any runtime, with no Node: the fetch transport, the session fold and observer, and the projections, typed against `@nyte-ai/protocol`.
+
+The transport is the SDK namespaces over `fetch`.
 Every operation is one `POST /v1/call/{operation}`; `watch` reads `GET /v1/watch` as
 server-sent events and yields an `AsyncIterable<SessionEvent>`; `info()` reads
 `GET /v1/info` for the host's release and optional capability and storage

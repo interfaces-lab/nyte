@@ -5,7 +5,7 @@ durable core of `@nyte-ai/core`: it decides what survives, who may write, and
 in what order everyone sees it. It imports `@nyte-ai/protocol` (the SDK data
 types and the ref-name rules), `@nyte-ai/schema` (the pi-derived
 message types), `@nyte-ai/ai` (the provider stream), `@nyte-ai/telemetry` (the
-span contract), `typebox`, `diff`, `node:crypto`, and
+span contract), `typebox`, `node:crypto`, and
 `node:sqlite` for local storage. The separate `@nyte-ai/core/postgres` entrypoint
 loads the `pg` driver for hosted PostgreSQL storage.
 
@@ -60,16 +60,13 @@ refs/deleted                   Blob: the session is being deleted
 | `model.ts`    | The types. Objects, ref updates, leases, events.                       |
 | `store.ts`    | The store contract a backend implements. `objects.chain` reads a parent chain in one query, git's commit-graph. |
 | `names.ts`    | Ref names and their rules.                                             |
-| `json.ts`     | Canonical JSON and the JSON boundary (`toJsonValue`).                  |
 | `hash.ts`     | `hashObject(object)`.                                                       |
 | `sqlite.ts`   | The SQLite backend: five tables, `BEGIN IMMEDIATE`, one seq per session. |
 | `sql.ts`      | The shared statement text both backends build on.                      |
 | `store-worker.ts`, `worker-store.ts`, `store-rpc.ts`, `store-schemas.ts` | The same store behind a worker thread, for hosts that also render. |
-| `queue-order.ts` | Sorting pending items across lanes into one visible list.           |
 | `result.ts`   | The outcome helpers the kernel returns instead of throwing.            |
 | `postgres/`  | Shared PostgreSQL storage: session row locks, atomic CAS and events, database-clock leases, cursor polling across hosts. |
 | `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint. Pages `objects.chain`, never one read per commit. |
-| `context.ts`  | Commits to model messages, and the branch's declared config.           |
 | `queue.ts`    | `submit`, `pending`, `cancel`: one change chain per lane, behind a tip and a base ref. |
 | `admission.ts` | What the head's latest run lets the queue land: live, settling a stop, or idle. Only user input starts model work. `step.ts` lands by it; `sdk/wait.ts` and `sdk/relocate.ts` read it. |
 | `effects.ts`  | The effect sandwich for one tool call, and recovery.                   |
@@ -81,7 +78,6 @@ refs/deleted                   Blob: the session is being deleted
 | `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
-| `views/`      | Projections a client draws: transcript, tree, changes, usage, context status, directory entries, live parts, patches, and tool and note presentation. |
 | `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, changes). |
 
 Host schedulers can call `sdk.advance` for one kernel `step`, using the same turn

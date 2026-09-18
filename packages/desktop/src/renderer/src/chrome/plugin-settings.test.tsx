@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { sessionId } from "@nyte-ai/protocol";
-import type { SettingInfo } from "@nyte-ai/core";
+import type { SettingInfo } from "@nyte-ai/protocol";
 import { PluginSettings } from "./customize.tsx";
 
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));

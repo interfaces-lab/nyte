@@ -7,7 +7,7 @@
  * (getTree) and https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts
  * (collectEntriesForBranchSummary).
  */
-import type { Commit, Oid } from "../model.ts";
+import type { Commit, Oid } from "@nyte-ai/protocol";
 
 export interface SessionTreeNode {
   readonly oid: Oid;

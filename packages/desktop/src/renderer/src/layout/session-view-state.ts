@@ -1,4 +1,4 @@
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { schemas, sessionId } from "@nyte-ai/protocol";
 import type { Rect, VirtualItem } from "@tanstack/react-virtual";
 import type { Static } from "typebox";

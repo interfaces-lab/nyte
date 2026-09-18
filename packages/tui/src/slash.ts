@@ -19,7 +19,7 @@
  * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/component/prompt/autocomplete.tsx
  */
 import fuzzysort from "fuzzysort";
-import { completionTrigger } from "@nyte-ai/core";
+import { completionTrigger } from "@nyte-ai/client";
 import { formatSkillInvocation } from "@nyte-ai/core/plugins";
 import type { Skill } from "@nyte-ai/schema";
 

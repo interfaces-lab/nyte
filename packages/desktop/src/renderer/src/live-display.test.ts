@@ -8,9 +8,9 @@ import type {
   SessionMetadata,
   SessionSnapshot,
   TurnPart,
-} from "@nyte-ai/core";
+} from "@nyte-ai/protocol";
 import type { AssistantMessage } from "@nyte-ai/schema";
-import { transcriptFromCommits } from "@nyte-ai/core/views";
+import { transcriptFromCommits } from "@nyte-ai/client";
 import type { NyteBridge, WorkspaceSessionDirectory } from "../../shared/ipc.ts";
 import {
   loadThread,

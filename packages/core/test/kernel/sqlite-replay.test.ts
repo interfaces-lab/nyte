@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vitest";
-import { CursorExpired, type Event, type EventBody } from "../../src/kernel/model.ts";
+import { CursorExpired } from "@nyte-ai/protocol";
+import { type Event, type EventBody } from "../../src/kernel/model.ts";
 import { nextEvent, openSession, openStore, sleep, storePath, within } from "./helpers.ts";
 
 function notices(first: number, count: number): EventBody[] {

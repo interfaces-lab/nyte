@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import { sessionId } from "@nyte-ai/protocol";
-import type { Selection, SelectionReply, SessionSnapshot } from "@nyte-ai/core";
+import type { Selection, SelectionReply, SessionSnapshot } from "@nyte-ai/protocol";
 import { acceptsReply, parkedSelections, selectionReplyOptions } from "./selection.ts";
 import type { NyteBridge } from "../../../shared/ipc.ts";
 

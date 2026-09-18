@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { test } from "vitest";
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionInfo } from "@nyte-ai/core";
+import type { SessionInfo } from "@nyte-ai/protocol";
 import { StatusDot } from "./components/ui.tsx";
 import { DEFAULT_SESSION_VIEW, sessionsForView } from "./chrome/sidebar-view.ts";
 import { SessionReadState, sessionHasUnreadCompletion } from "./session-read-state.ts";

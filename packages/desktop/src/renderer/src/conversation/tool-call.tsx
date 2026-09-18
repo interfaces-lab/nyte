@@ -13,7 +13,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useLayoutEffect, useRef } from "react";
 import type { ReactElement } from "react";
-import type { ToolProgress, ToolTurnPart } from "@nyte-ai/core";
+import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";

@@ -4,8 +4,8 @@ import { GLYPHS, keycap } from "./constants.ts";
 import { formatDuration } from "./format.ts";
 import { registerChatLayer } from "./keymap.ts";
 import type { InlineMenu, MenuScreen } from "./picker.ts";
-import { waitingCall } from "@nyte-ai/core/client";
-import type { SessionState } from "@nyte-ai/core/client";
+import { waitingCall } from "@nyte-ai/client";
+import type { SessionState } from "@nyte-ai/client";
 import { closePanel, notice, openInlineMenu, setHints } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
 

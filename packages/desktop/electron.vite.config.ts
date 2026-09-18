@@ -95,7 +95,6 @@ export default defineConfig(({ command }) => {
       ],
       optimizeDeps: { exclude: ["@nyte-ai/ui"], include: ["react", "react-dom/client"] },
       resolve: {
-        alias: { "node:crypto": resolve("src/renderer/src/browser-crypto.ts") },
         dedupe: ["react", "react-dom"],
       },
       build: {

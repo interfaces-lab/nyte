@@ -9,7 +9,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { JobInfo, SessionId, Turn } from "@nyte-ai/core";
+import type { JobInfo, SessionId, Turn } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "../components/menu.tsx";
 import { Spinner } from "../components/spinner.tsx";

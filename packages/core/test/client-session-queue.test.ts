@@ -6,8 +6,8 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { foldEvent, stateFromSnapshot } from "../src/client/session-state.ts";
-import type { SessionState } from "../src/client/session-state.ts";
+import { foldEvent, stateFromSnapshot } from "@nyte-ai/client";
+import type { SessionState } from "@nyte-ai/client";
 import {
   MAIN,
   sessionId,

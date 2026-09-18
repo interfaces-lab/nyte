@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { projectUsage } from "@nyte-ai/core/views";
+import { projectUsage } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/protocol";
 import type { Commit } from "@nyte-ai/protocol";
 import type { Usage } from "@nyte-ai/schema";

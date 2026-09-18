@@ -17,12 +17,12 @@ import {
   type SummarizeBranchInput,
   type WriteCheckpointInput,
 } from "../compaction.ts";
-import { branchConfig } from "../context.ts";
+import { branchConfig } from "@nyte-ai/client";
 import { branch } from "../graph.ts";
 import { hashObject } from "../hash.ts";
 import type { Commit, Oid } from "../model.ts";
 import { headRef } from "../names.ts";
-import { collectAbandoned } from "../views/index.ts";
+import { collectAbandoned } from "@nyte-ai/client";
 import { resolveTurnConfig, type Activation } from "./activation.ts";
 import { providerCompactionFor, requestStream } from "./requests.ts";
 import type { Pooled, SessionPool } from "./session-pool.ts";

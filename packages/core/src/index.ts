@@ -1,27 +1,15 @@
 /**
- * `@nyte-ai/core`: the kernel SDK, client projections, the small set of
+ * `@nyte-ai/core`: the kernel SDK, the small set of
  * host composition types needed to construct it, and `dispatch`, the one
  * table binding every protocol operation to the SDK method it names.
  *
  * Plugin authoring stays under `@nyte-ai/core/plugins`; host storage stays
- * under `@nyte-ai/core/store`; `@nyte-ai/core/views` is the browser-safe
- * projection-only route. None of those routes is folded into one barrel.
+ * under `@nyte-ai/core/store`. Neither route is folded into one barrel.
  */
 export { createNyte } from "./kernel/sdk/nyte.ts";
 export { dispatch } from "./kernel/sdk/dispatch.ts";
-export { mergeQueuedLanes } from "./kernel/queue-order.ts";
-export { acceptsSelectionReply, isTerminalPhase, isUserJob } from "@nyte-ai/protocol";
 export { bindTool } from "./tools/bind-tool.ts";
 export * from "./kernel/sdk/types.ts";
-/** Thrown by `watch` when a cursor is older than the event floor: take a snapshot and resume from its seq. */
-export { CursorExpired } from "./kernel/model.ts";
-export * from "./completion-trigger.ts";
-
-/**
- * Client projections over the log. Clients may import nothing but this entry,
- * so the read models they render ship from it (design record, "Views").
- */
-export * from "./kernel/views/index.ts";
 
 /**
  * Host composition, not internals: a host needs these to build

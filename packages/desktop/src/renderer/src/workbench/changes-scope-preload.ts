@@ -1,7 +1,7 @@
 // Standalone browser-test preload for the changes panel's data layer.
 // Import before any renderer module reads window.nyte.
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionSnapshot, Turn, VcsStatus } from "@nyte-ai/core";
+import type { SessionSnapshot, Turn, VcsStatus } from "@nyte-ai/protocol";
 import type {
   DesktopVcsLog,
   DesktopVcsRefs,

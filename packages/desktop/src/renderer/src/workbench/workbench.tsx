@@ -1,28 +1,23 @@
 /**
- * Eager workbench controller and rail. Open panels stay mounted while hidden;
- * closing a tab releases its panel. The window titlebar owns the tab strip.
+ * Eager workbench controller. Open panels stay mounted while hidden; closing a
+ * tab releases its panel. The window titlebar owns the tab strip and the only
+ * control that hides the panel, which frees the panel's width for the stage.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench.tsx
  */
 import { create, props } from "@stylexjs/stylex";
-import { Button } from "@nyte-ai/ui";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
-import type { SessionId } from "@nyte-ai/core";
-import { changesFromTurns } from "@nyte-ai/core/views";
-import { Icon, PanelToggleIcon } from "../components/icons";
-import type { IconName } from "../components/icons";
-import { focus, IconButton, ToggleIconButton } from "../components/ui";
-import { Menu, MenuItem } from "../components/menu.tsx";
-import { useHostState, useSessionSnapshot } from "../queries.ts";
-import { glyph, layer, workbench } from "../theme/schema.stylex";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
+import type { SessionId } from "@nyte-ai/protocol";
+import { PanelToggleIcon } from "../components/icons";
+import { ToggleIconButton } from "../components/ui";
+import { useHostState } from "../queries.ts";
+import { layer, workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import {
   clampWorkbenchWidthToBounds,
   workbenchTabAvailable,
   activeWorkbenchTab,
-  workbenchTabLabel,
-  workbenchTabs,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
@@ -41,11 +36,11 @@ import type {
   WorkbenchViewState,
 } from "./controller";
 
-import { terminalActions, useTerminals } from "./terminal-store";
+import { useTerminals } from "./terminal-store";
 
 import { BrowserPanel } from "./browser-panel";
 import { FilesPanel } from "./files-panel.tsx";
-import { fileActions, useFileTabs } from "./file-store.ts";
+import { useFileTabs } from "./file-store.ts";
 import { TerminalPanel } from "./terminal-panel";
 import { AgentsPanel } from "./agents-panel.tsx";
 import { ChangesPanel } from "./changes-panel";
@@ -63,18 +58,13 @@ const styles = create({
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    minHeight: 0,
-    backgroundColor: t.bgBase,
-  },
-  panelOpen: {
     minWidth: workbench.panelWidth,
+    minHeight: 0,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: t.strokeTertiary,
+    backgroundColor: t.bgBase,
   },
-  railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
-  /** The icon rail's 34px box plus its 6px margins. */
-  railHostIcon: { width: 46, minWidth: 46 },
   panelOverlay: {
     position: "absolute",
     zIndex: layer.workbench,
@@ -86,119 +76,6 @@ const styles = create({
   },
   panelHidden: { display: "none" },
   panelBody: { display: "flex", flex: 1, minWidth: 0, minHeight: 0, flexDirection: "column" },
-  rail: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    width: "100%",
-    minWidth: 0,
-    paddingBlock: 4,
-    paddingInline: 8,
-    color: t.textSecondary,
-  },
-  /**
-   * The icon-only rail, shown when the stage is too narrow for the full one.
-   * Its width holds one 28px icon button inside the 2px padding and hairline
-   * border; `rail` above is the wide rail that lists open tabs.
-   */
-  iconRail: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1,
-    boxSizing: "border-box",
-    width: 34,
-    marginBlockStart: 4,
-    marginInline: 6,
-    padding: 2,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: t.strokeTertiary,
-    borderRadius: t.radiusLg,
-    backgroundColor: t.bgElevated,
-    color: t.textSecondary,
-    boxShadow: `0 1px 2px ${t.shadowControlColor}`,
-  },
-  iconRailDivider: {
-    height: 1,
-    marginInline: 2,
-    backgroundColor: t.strokeTertiary,
-  },
-  railSection: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
-  railHeading: {
-    display: "flex",
-    alignItems: "center",
-    minHeight: 24,
-    paddingInline: 6,
-    color: t.textTertiary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-  },
-  railHeadingText: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  railCollapse: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 24,
-    height: 24,
-    marginInlineEnd: -4,
-    padding: 0,
-    borderStyle: "none",
-    borderRadius: t.radiusBase,
-    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
-    color: t.iconTertiary,
-    cursor: "pointer",
-  },
-  railCollapseGlyph: { display: "inline-flex", marginInlineStart: -4 },
-  railRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    width: "100%",
-    minWidth: 0,
-    minHeight: 28,
-    paddingBlock: 2,
-    paddingInline: 6,
-    borderStyle: "none",
-    borderRadius: t.radiusBase,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-      ":active": t.fillGhostSelected,
-    },
-    color: t.textSecondary,
-    fontSize: t.fontBase,
-    lineHeight: t.leadingBase,
-    textAlign: "start",
-    cursor: "pointer",
-  },
-  railIcon: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: glyph.box,
-    flexShrink: 0,
-    color: t.iconSecondary,
-  },
-  railLabel: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  railStats: {
-    display: "inline-flex",
-    gap: 6,
-    flexShrink: 0,
-    fontVariantNumeric: "tabular-nums",
-  },
-  railAdded: { color: t.textSuccess },
-  railRemoved: { color: t.textDanger },
   panelSlot: {
     display: "flex",
     flexDirection: "column",
@@ -227,14 +104,6 @@ const styles = create({
   sashActive: { backgroundColor: t.fillPrimary, opacity: 0.25 },
 });
 
-const tabIcons = {
-  files: "file",
-  changes: "git-branch",
-  browser: "globe",
-  terminal: "console",
-  agents: "robot",
-} satisfies Record<WorkbenchTabId, IconName>;
-
 interface ResizeState {
   readonly pointerId: number;
   readonly startX: number;
@@ -246,257 +115,6 @@ function setActiveWidth(width: number): void {
   document.documentElement.style.setProperty(WORKBENCH_ACTIVE_WIDTH_VARIABLE, `${String(width)}px`);
 }
 
-function RailRow({
-  icon,
-  children,
-  title,
-  onClick,
-}: {
-  readonly icon: IconName;
-  readonly children: ReactNode;
-  readonly title?: string;
-  readonly onClick: () => void;
-}): ReactElement {
-  return (
-    <Button
-      unstyled
-      type="button"
-      title={title}
-      {...props(styles.railRow, focus.ring)}
-      onClick={onClick}
-    >
-      <span {...props(styles.railIcon)}>
-        <Icon name={icon} size={14} />
-      </span>
-      {children}
-    </Button>
-  );
-}
-
-function IconWorkbenchRail({
-  viewKey,
-  scope,
-  workspacePath,
-}: {
-  readonly viewKey: WorkbenchViewKey;
-  readonly scope: WorkbenchScope;
-  readonly workspacePath: string | null;
-}): ReactElement {
-  const terminals = useTerminals(viewKey);
-  const directTab = scope.kind === "project" ? "files" : "agents";
-  const openTerminal = (): void => {
-    if (terminals.tabs.length === 0) void terminalActions.create(viewKey, workspacePath);
-    workbenchController.actions.openTab(viewKey, "terminal");
-  };
-
-  return (
-    <nav aria-label="Workbench navigation" {...props(styles.iconRail)}>
-      <Menu
-        label="Open workbench panel"
-        align="end"
-        trigger={<IconButton icon="plus" label="Open workbench panel" />}
-      >
-        {workbenchTabs(scope).map((tab) => (
-          <MenuItem
-            key={tab}
-            icon={tabIcons[tab]}
-            onSelect={() => {
-              if (tab === "terminal") {
-                openTerminal();
-                return;
-              }
-              workbenchController.actions.openTab(viewKey, tab);
-            }}
-          >
-            {workbenchTabLabel(tab)}
-          </MenuItem>
-        ))}
-      </Menu>
-      <span aria-hidden="true" {...props(styles.iconRailDivider)} />
-      <IconButton
-        icon="globe"
-        label="Open Browser"
-        onClick={() => workbenchController.actions.openTab(viewKey, "browser")}
-      />
-      <IconButton icon="console" label="Open Terminal" onClick={openTerminal} />
-      <IconButton
-        icon={tabIcons[directTab]}
-        label={`Open ${workbenchTabLabel(directTab)}`}
-        onClick={() => workbenchController.actions.openTab(viewKey, directTab)}
-      />
-    </nav>
-  );
-}
-
-/**
- * The declared line counts of one session, folded from the transcript the
- * chat in this pane is already observing. The rail always names the active
- * pane's session, so this shares that observation rather than opening a read
- * of its own.
- */
-function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
-  const snapshot = useSessionSnapshot(sessionId);
-  const transcript = snapshot.data?.transcript;
-  const stats = useMemo(
-    () =>
-      changesFromTurns(transcript ?? []).reduce(
-        (total, file) => ({
-          added: total.added + file.added,
-          removed: total.removed + file.removed,
-        }),
-        { added: 0, removed: 0 },
-      ),
-    [transcript],
-  );
-  if (stats.added === 0 && stats.removed === 0) return null;
-  return (
-    <span
-      aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
-      {...props(styles.railStats)}
-    >
-      {stats.added > 0 && <span {...props(styles.railAdded)}>+{stats.added}</span>}
-      {stats.removed > 0 && <span {...props(styles.railRemoved)}>-{stats.removed}</span>}
-    </span>
-  );
-}
-
-function WorkbenchRail({
-  viewKey,
-  view,
-  scope,
-  sessionId,
-  workspaceName,
-  workspacePath,
-}: {
-  readonly viewKey: WorkbenchViewKey;
-  readonly view: WorkbenchViewState;
-  readonly scope: WorkbenchScope;
-  readonly sessionId: SessionId | undefined;
-  readonly workspaceName: string | undefined;
-  readonly workspacePath: string | null;
-}): ReactElement {
-  const tabs = view.openTabs.filter(
-    (tab) => tab !== "terminal" && workbenchTabAvailable(scope, tab),
-  );
-  const terminals = useTerminals(viewKey);
-  const files = useFileTabs(viewKey);
-
-  return (
-    <nav aria-label="Workbench navigation" {...props(styles.rail)}>
-      <section {...props(styles.railSection)}>
-        <div {...props(styles.railHeading)}>
-          <span {...props(styles.railHeadingText)}>Open Tabs</span>
-          <Button
-            unstyled
-            type="button"
-            aria-label="Show workbench"
-            {...props(styles.railCollapse, focus.ring)}
-            onClick={() => workbenchController.actions.toggle(viewKey)}
-          >
-            <Icon name="chevron-right" size={11} />
-            <span {...props(styles.railCollapseGlyph)}>
-              <Icon name="chevron-right" size={11} />
-            </span>
-          </Button>
-        </div>
-        {tabs.flatMap((tab) =>
-          tab === "files" && files.tabs.length > 0
-            ? files.tabs.map((file) => (
-                <RailRow
-                  key={`file:${file.path}`}
-                  icon="file"
-                  title={`${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`}
-                  onClick={() => fileActions.select(viewKey, file.path)}
-                >
-                  <span {...props(styles.railLabel)}>{file.displayPath}</span>
-                </RailRow>
-              ))
-            : [
-                <RailRow
-                  key={tab}
-                  icon={tabIcons[tab]}
-                  onClick={() => workbenchController.actions.openTab(viewKey, tab)}
-                >
-                  <span {...props(styles.railLabel)}>{workbenchTabLabel(tab)}</span>
-                </RailRow>,
-              ],
-        )}
-        {view.openTabs.includes("terminal") && terminals.tabs.length === 0 && (
-          <RailRow
-            icon="console"
-            onClick={() => workbenchController.actions.openTab(viewKey, "terminal")}
-          >
-            <span {...props(styles.railLabel)}>Terminal</span>
-          </RailRow>
-        )}
-        {terminals.tabs.map((terminal) => (
-          <RailRow
-            key={terminal.id}
-            icon="console"
-            title={terminal.cwd}
-            onClick={() => {
-              terminalActions.select(viewKey, terminal.id);
-              workbenchController.actions.openTab(viewKey, "terminal");
-            }}
-          >
-            <span {...props(styles.railLabel)}>{terminal.title}</span>
-          </RailRow>
-        ))}
-      </section>
-
-      <section {...props(styles.railSection)}>
-        <div {...props(styles.railHeading)}>
-          <span {...props(styles.railHeadingText)}>
-            {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
-          </span>
-        </div>
-        {scope.kind === "project" && (
-          <RailRow
-            icon="file"
-            onClick={() => workbenchController.actions.openTab(viewKey, "files")}
-          >
-            <span {...props(styles.railLabel)}>Files</span>
-          </RailRow>
-        )}
-        {scope.kind === "project" && (
-          <RailRow
-            icon="git"
-            onClick={() => workbenchController.actions.openTab(viewKey, "changes")}
-          >
-            <span {...props(styles.railLabel)}>Changes</span>
-            {sessionId !== undefined && <RailChangeStats sessionId={sessionId} />}
-          </RailRow>
-        )}
-        <RailRow
-          icon="globe"
-          onClick={() => workbenchController.actions.openTab(viewKey, "browser")}
-        >
-          <span {...props(styles.railLabel)}>Browser</span>
-        </RailRow>
-        <RailRow
-          icon="console"
-          onClick={() => {
-            if (terminals.tabs.length === 0) void terminalActions.create(viewKey, workspacePath);
-            workbenchController.actions.openTab(viewKey, "terminal");
-          }}
-        >
-          <span {...props(styles.railLabel)}>
-            {terminals.tabs.length > 1 ? `${String(terminals.tabs.length)} Terminals` : "Terminal"}
-          </span>
-        </RailRow>
-        {sessionId !== undefined && (
-          <RailRow
-            icon="robot"
-            onClick={() => workbenchController.actions.openTab(viewKey, "agents")}
-          >
-            <span {...props(styles.railLabel)}>Agents</span>
-          </RailRow>
-        )}
-      </section>
-    </nav>
-  );
-}
-
 interface PanelContentProps {
   readonly tab: WorkbenchTabId;
   readonly viewKey: WorkbenchViewKey;
@@ -505,8 +123,9 @@ interface PanelContentProps {
   readonly visible: boolean;
   readonly workspaceActive: boolean;
   readonly workspacePath: string | null;
-  readonly sidebarVisible: boolean;
-  readonly onToggleSidebar: () => void;
+  /** The panel's own inner list: the Changes file tree, the Browser's visit history. */
+  readonly tabSidebarVisible: boolean;
+  readonly onToggleTabSidebar: () => void;
   readonly onSelectPath: (path: string | undefined) => void;
   readonly onRevealPath: (path: string) => void;
   readonly onChangesScroll: (scrollTop: number) => void;
@@ -521,8 +140,8 @@ function PanelContent({
   visible,
   workspacePath,
   workspaceActive,
-  sidebarVisible,
-  onToggleSidebar,
+  tabSidebarVisible,
+  onToggleTabSidebar,
   onSelectPath,
   onRevealPath,
   onChangesScroll,
@@ -539,9 +158,9 @@ function PanelContent({
           selectedPath={view.selectedPath}
           revealPathRevision={view.pathRevealRevision}
           scrollTop={view.scrollTop.changes}
-          fileTreeVisible={sidebarVisible}
+          fileTreeVisible={tabSidebarVisible}
           onScopeChange={(scope) => workbenchController.actions.selectChangesScope(viewKey, scope)}
-          onToggleFileTree={onToggleSidebar}
+          onToggleFileTree={onToggleTabSidebar}
           onSelectPath={onSelectPath}
           onRevealPath={onRevealPath}
           onScrollTop={onChangesScroll}
@@ -552,16 +171,16 @@ function PanelContent({
         <BrowserPanel
           surface={viewKey}
           visible={visible}
-          historyVisible={sidebarVisible}
+          historyVisible={tabSidebarVisible}
           url={view.browserUrl}
           onUrlChange={onBrowserUrl}
           workspacePath={workspacePath}
           toolbarActions={
             <ToggleIconButton
-              icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
-              label={sidebarVisible ? "Hide visit history" : "Show visit history"}
-              pressed={sidebarVisible}
-              onPressedChange={onToggleSidebar}
+              icon={<PanelToggleIcon side="right" visible={tabSidebarVisible} />}
+              label={tabSidebarVisible ? "Hide visit history" : "Show visit history"}
+              pressed={tabSidebarVisible}
+              onPressedChange={onToggleTabSidebar}
             />
           }
         />
@@ -591,7 +210,6 @@ function WorkbenchViewHost({
   current,
   scope,
   stageWidth,
-  workspaceName,
   workspacePath,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -600,13 +218,12 @@ function WorkbenchViewHost({
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
-  readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
 }): ReactElement {
   const [resizing, setResizing] = useState(false);
   const activeTerminalId = useTerminals(viewKey).activeId;
   const files = useFileTabs(viewKey);
-  const [sidebars, setSidebars] = useState<Record<WorkbenchTabId, boolean>>({
+  const [tabSidebars, setTabSidebars] = useState<Record<WorkbenchTabId, boolean>>({
     files: true,
     changes: true,
     browser: false,
@@ -616,7 +233,6 @@ function WorkbenchViewHost({
   const panelRef = useRef<HTMLElement>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
-  const iconRail = bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
   const selectPath = useCallback(
@@ -685,9 +301,8 @@ function WorkbenchViewHost({
     workbenchController.actions.setWidth(viewKey, clampWorkbenchWidthToBounds(width, bounds));
   };
 
-  const hostVisible = current;
   const activeTab = activeWorkbenchTab(view, scope);
-  const panelVisible = hostVisible && view.expanded && activeTab !== null;
+  const panelVisible = current && view.expanded && activeTab !== null;
 
   useLayoutEffect(() => {
     if (panelVisible) setActiveWidth(panelWidth);
@@ -700,33 +315,17 @@ function WorkbenchViewHost({
   return (
     <section
       ref={panelRef}
-      hidden={!hostVisible}
-      aria-hidden={!hostVisible}
-      inert={!hostVisible ? true : undefined}
+      hidden={!panelVisible}
+      aria-hidden={!panelVisible}
+      inert={panelVisible ? undefined : true}
       {...props(
         styles.panel,
-        panelVisible && styles.panelOpen,
-        !panelVisible && styles.railHost,
-        !panelVisible && iconRail && styles.railHostIcon,
         panelVisible && (view.maximized || bounds.kind === "overlay") && styles.panelOverlay,
-        !hostVisible && styles.panelHidden,
+        !panelVisible && styles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
-      {!panelVisible &&
-        (iconRail ? (
-          <IconWorkbenchRail viewKey={viewKey} scope={scope} workspacePath={workspacePath} />
-        ) : (
-          <WorkbenchRail
-            viewKey={viewKey}
-            view={view}
-            scope={scope}
-            sessionId={target.kind === "session" ? target.sessionId : undefined}
-            workspaceName={workspaceName}
-            workspacePath={workspacePath}
-          />
-        ))}
-      <div hidden={!panelVisible} {...props(styles.panelBody, !panelVisible && styles.panelHidden)}>
+      <div {...props(styles.panelBody)}>
         {panelVisible && !view.maximized && (
           <div
             role="separator"
@@ -773,9 +372,9 @@ function WorkbenchViewHost({
                 visible={tabVisible}
                 workspacePath={workspacePath}
                 workspaceActive={current}
-                sidebarVisible={sidebars[tab]}
-                onToggleSidebar={() =>
-                  setSidebars((current) => ({ ...current, [tab]: !current[tab] }))
+                tabSidebarVisible={tabSidebars[tab]}
+                onToggleTabSidebar={() =>
+                  setTabSidebars((current) => ({ ...current, [tab]: !current[tab] }))
                 }
                 onSelectPath={selectPath}
                 onRevealPath={revealPath}
@@ -849,7 +448,6 @@ export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
             current={current}
             scope={scope}
             stageWidth={stageWidth}
-            workspaceName={host.data?.workspace?.name}
             workspacePath={
               identity.target.kind === "home"
                 ? null

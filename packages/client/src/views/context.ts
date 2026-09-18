@@ -7,7 +7,7 @@
 import type { JsonValue, Message, ToolResultMessage, Usage, UserMessage } from "@nyte-ai/schema";
 import { contextMessages, modelContext } from "../context.ts";
 import type { ContextStatus } from "@nyte-ai/protocol";
-import type { Commit } from "../model.ts";
+import type { Commit } from "@nyte-ai/protocol";
 import { usageTokens } from "./usage.ts";
 
 export type { ContextStatus } from "@nyte-ai/protocol";

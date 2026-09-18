@@ -1,4 +1,4 @@
-import type { JobInfo, SessionId } from "@nyte-ai/core";
+import type { JobInfo, SessionId } from "@nyte-ai/protocol";
 import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";

@@ -20,7 +20,7 @@ import {
   mergeUsageSummaries,
   type ModelUsage,
   type UsageSummary,
-} from "@nyte-ai/core/views";
+} from "@nyte-ai/client";
 import type { Usage } from "@nyte-ai/schema";
 
 export interface ClaudeCodeUsageOptions {

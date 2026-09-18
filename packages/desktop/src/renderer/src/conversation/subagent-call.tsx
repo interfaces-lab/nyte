@@ -8,7 +8,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";

@@ -5,7 +5,7 @@ import {
   readPatch,
   type FileChange,
   type PatchFile,
-} from "@nyte-ai/core/views";
+} from "@nyte-ai/client";
 
 /** Change evidence from the transcript itself — live, with no second read. */
 export function conversationChanges(items: readonly Turn[]): readonly FileChange[] {

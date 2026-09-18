@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, test } from "vitest";
-import { SessionObserver, type SessionUpdate } from "../src/client/session-follow.ts";
+import { SessionObserver, type SessionUpdate } from "@nyte-ai/client";
 import {
   MAIN,
   sessionId,

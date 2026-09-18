@@ -1,8 +1,8 @@
 # @nyte-ai/ios
 
 Nyte's native iOS companion. The Mac host owns conversations, model credentials,
-and tool execution. This package uses `@nyte-ai/client` for HTTP/SSE and the
-Node-free `@nyte-ai/core/client` `SessionObserver` for transcript state and recovery.
+and tool execution. This package uses `@nyte-ai/client` for HTTP/SSE and its
+Node-free `SessionObserver` for transcript state and recovery.
 
 The app is organized as a single stack behind a saved host connection: a
 root Agents list with sections for needs-input, failed, working, pinned, and
@@ -373,8 +373,7 @@ app's existing Reanimated/Gesture Handler stack.
 | `@expo/ui` 57 / `swift-ui` | Native glass controls and menus |
 | `react-strict-dom` | StyleX-compatible native content layout |
 | `@nyte-ai/ui/platform-colors` | Generated shared Nyte colors |
-| `@nyte-ai/client`, `@nyte-ai/protocol` | Typed HTTP/SSE transport, boundary parsing, selection validation |
-| `@nyte-ai/core/client` | Session observer, transcript projection, shared execution status |
+| `@nyte-ai/client`, `@nyte-ai/protocol` | Typed HTTP/SSE transport, boundary parsing, selection validation, session observer, transcript projection, shared execution status |
 | `@legendapp/list` | Virtualized chat and sent-message anchoring |
 | `react-native-keyboard-controller` | Native keyboard coordination |
 | `react-native-enriched-markdown` | Native Markdown, code, lists, and tables |

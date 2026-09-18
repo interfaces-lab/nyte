@@ -1,5 +1,5 @@
-import type { TurnPart } from "@nyte-ai/core";
-import { subagentToolKind } from "@nyte-ai/core/views";
+import type { TurnPart } from "@nyte-ai/protocol";
+import { subagentToolKind } from "@nyte-ai/client";
 import { messageParts } from "./message-references.ts";
 
 type AssistantTurnPart = Extract<TurnPart, { readonly kind: "assistant" }>;

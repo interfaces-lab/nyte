@@ -6,7 +6,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useMatch, useRouter } from "@tanstack/react-router";
 import { useEffect } from "react";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { PanelToggleIcon } from "../components/icons.tsx";
 import { Menu, MenuItem } from "../components/menu.tsx";
 import { HintIconButton, HintToggleIconButton, IconButton } from "../components/ui.tsx";

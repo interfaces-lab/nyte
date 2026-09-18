@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import type { TurnPart } from "@nyte-ai/core";
+import type { TurnPart } from "@nyte-ai/protocol";
 import {
   displayTranscriptParts,
   formatRunDuration,

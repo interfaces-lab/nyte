@@ -1,6 +1,6 @@
 // Standalone browser-test preload for the Changes tab's commit surface.
 // Import before any renderer module reads window.nyte.
-import type { VcsStatus } from "@nyte-ai/core";
+import type { VcsStatus } from "@nyte-ai/protocol";
 import type {
   DesktopVcsCommitInput,
   DesktopVcsCommitResult,

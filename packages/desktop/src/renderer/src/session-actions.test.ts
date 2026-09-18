@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import { toast } from "@nyte-ai/ui/sonner";
-import type { SessionInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import type { WorkspaceSessionDirectory } from "../../shared/ipc.ts";
 import { ActionToasts } from "./action-toasts.ts";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { completionTrigger } from "../src/completion-trigger.ts";
+import { completionTrigger } from "@nyte-ai/client";
 
 test("a trigger at a word start yields the whole token, filtered at the caret; mid-word characters do not", () => {
   assert.deepEqual(completionTrigger("ask /grilling now", 8), {

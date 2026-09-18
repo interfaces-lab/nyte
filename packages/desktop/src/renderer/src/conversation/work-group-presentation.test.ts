@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ToolTurnPart } from "@nyte-ai/core";
+import type { ToolTurnPart } from "@nyte-ai/protocol";
 import { IDLE } from "../live-fold.ts";
 import type { LiveToolProgress } from "../live.ts";
 import { createWorkGroupPresentation } from "./work-group-presentation.ts";

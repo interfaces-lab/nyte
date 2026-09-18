@@ -1,4 +1,4 @@
-import { sessionMark, type SessionMark } from "@nyte-ai/core/client";
+import { sessionMark, type SessionMark } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 import type { SessionInfo } from "@nyte-ai/protocol";
 import { useCallback } from "react";

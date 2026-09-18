@@ -1,5 +1,5 @@
 import { NyteWireError, type NyteClient } from "@nyte-ai/client";
-import { SessionObserver, waitingCall, type SessionState } from "@nyte-ai/core/client";
+import { SessionObserver, waitingCall, type SessionState } from "@nyte-ai/client";
 import {
   acceptsSelectionReply,
   type ModelInfo,

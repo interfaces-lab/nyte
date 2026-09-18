@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { sessionMark } from "../src/client.ts";
+import { sessionMark } from "@nyte-ai/client";
 import type { HeadInfo, RunPhase } from "@nyte-ai/protocol";
 
 function head(phase: RunPhase, awaitingReply?: true): HeadInfo {

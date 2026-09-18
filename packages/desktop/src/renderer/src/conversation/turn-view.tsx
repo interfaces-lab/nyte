@@ -9,8 +9,9 @@ import { Button as BaseButton } from "@nyte-ai/ui";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { changesFromTurns, presentNote, turnPartId } from "@nyte-ai/core/views";
-import type { FileChange, ThinkingLevel, Turn, TurnPart, UserTurnPart } from "@nyte-ai/core";
+import { changesFromTurns, presentNote, turnPartId } from "@nyte-ai/client";
+import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { filesChangedLabel } from "../workbench/change-tree.ts";
 import { AnimatedNumber } from "../components/animated-number.tsx";
@@ -109,7 +110,7 @@ function UserMessageImages({ content }: { content: UserTurnPart["content"] }): R
 
 export interface BranchModelChoice {
   readonly model: DesktopModelOption | undefined;
-  readonly thinkingLevel: ThinkingLevel | undefined;
+  readonly thinkingLevel: ModelThinkingLevel | undefined;
   readonly fastEnabled: ReadonlySet<string>;
 }
 

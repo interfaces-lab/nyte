@@ -2,11 +2,11 @@ import type { JsonValue } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { isThinkingLevel } from "../../types.ts";
-import { branchConfig } from "../context.ts";
+import { branchConfig } from "@nyte-ai/client";
 import type { Commit, Lease, Oid, Run } from "../model.ts";
 import type { PendingChange } from "../queue.ts";
 import type { ListedHead } from "../stacks.ts";
-import { sessionDirectoryEntry } from "../views/directory.ts";
+import { sessionDirectoryEntry } from "@nyte-ai/client";
 import {
   sessionId,
   type HeadInfo,

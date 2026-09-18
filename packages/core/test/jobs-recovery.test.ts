@@ -3,7 +3,7 @@ import type { JobInfo } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
 import { openEffect, parkEffect, readEffect } from "../src/kernel/effects.ts";
-import { toJsonValue } from "../src/kernel/json.ts";
+import { toJsonValue } from "@nyte-ai/client";
 import type { Run } from "../src/kernel/model.ts";
 import { runRef } from "../src/kernel/names.ts";
 import { pending, submit } from "../src/kernel/queue.ts";

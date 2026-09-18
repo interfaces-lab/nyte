@@ -8,7 +8,7 @@ import type { JSX, ReactElement, ReactNode } from "react";
 import { overlayRef } from "./overlay-occlusion.ts";
 import { glyph, layer, clipboardPreview } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import type { SessionMark } from "@nyte-ai/core/client";
+import type { SessionMark } from "@nyte-ai/client";
 import { Icon, type IconName } from "./icons";
 import { Spinner } from "./spinner.tsx";
 

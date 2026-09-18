@@ -13,8 +13,7 @@ import type {
   ProviderId,
   UserMessage,
 } from "@nyte-ai/schema";
-import type { JobInfo } from "@nyte-ai/protocol";
-import type { Commit, ModelRef, RunConfig } from "./model.ts";
+import type { BranchConfig, Commit, JobInfo, ModelRef } from "@nyte-ai/protocol";
 
 export interface ModelContext {
   readonly messages: Message[];
@@ -190,7 +189,7 @@ export function modelContext(
  * Fold the run inputs declared across the whole branch. Each defined field in
  * a later config commit replaces the earlier value, including across checkpoints.
  */
-export function branchConfig(commits: readonly Pick<Commit, "body">[]): RunConfig {
+export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchConfig {
   let model: ModelRef | undefined;
   let thinkingLevel: string | undefined;
   let agent: string | undefined;
@@ -218,7 +217,7 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): RunConfi
     }
   }
 
-  let config: RunConfig = {};
+  let config: BranchConfig = {};
   if (model !== undefined) config = { ...config, model };
   if (thinkingLevel !== undefined) config = { ...config, thinkingLevel };
   if (agent !== undefined) config = { ...config, agent };

@@ -8,7 +8,7 @@ import { toast } from "@nyte-ai/ui/sonner";
 import * as stylex from "@stylexjs/stylex";
 import { useSyncExternalStore } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionActivationState } from "@nyte-ai/core";
+import type { SessionActivationState } from "@nyte-ai/protocol";
 import { overlayRef } from "../components/overlay-occlusion.ts";
 import { Button } from "../components/ui";
 import { keys, queryClient } from "../queries.ts";

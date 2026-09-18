@@ -12,12 +12,8 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import {
-  dispatch,
-  isTerminalPhase,
-  watchPluginDirectories,
-  WorkspaceTrustRequired,
-} from "@nyte-ai/core";
+import { dispatch, watchPluginDirectories, WorkspaceTrustRequired } from "@nyte-ai/core";
+import { isTerminalPhase } from "@nyte-ai/protocol";
 import type {
   Disposer,
   ResolvedPlugins,

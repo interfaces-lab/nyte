@@ -2,8 +2,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/core";
-import { changesFromTurns } from "@nyte-ai/core/views";
+import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/protocol";
+import { changesFromTurns } from "@nyte-ai/client";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";

@@ -1,13 +1,13 @@
 import { expect, test } from "vitest";
 import type { Message } from "@nyte-ai/schema";
-import { contextMessages } from "../../src/kernel/context.ts";
+import { contextMessages } from "@nyte-ai/client";
 import { branch } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { pending, submit } from "../../src/kernel/queue.ts";
 import { pendingItems } from "../../src/kernel/sdk/snapshot.ts";
 import { drive } from "../../src/kernel/step.ts";
 import type { Turn } from "../../src/kernel/turn.ts";
-import { transcriptFromCommits } from "../../src/kernel/views/transcript.ts";
+import { transcriptFromCommits } from "@nyte-ai/client";
 import { assistant, message, openSession, user } from "./helpers.ts";
 
 test("completion joins the next response without swallowing or impersonating queued user input", async () => {

@@ -10,7 +10,7 @@ import {
   EMPTY_LIVE_PARTS,
   foldLiveParts,
   livePartKey,
-} from "../../src/views.ts";
+} from "@nyte-ai/client";
 import {
   assistant,
   chain,

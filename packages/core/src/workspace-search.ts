@@ -1,7 +1,10 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, matchesGlob, relative, resolve, sep } from "node:path";
-import { Type } from "typebox";
-import type { Static } from "typebox";
+import type {
+  WorkspaceSearchInput,
+  WorkspaceSearchMatch,
+  WorkspaceSearchResult,
+} from "@nyte-ai/protocol";
 import { findRipgrepFiles, grepRipgrep, InvalidRipgrepPattern, resolveRipgrep } from "./ripgrep.ts";
 import {
   MAX_WORKSPACE_FILE_BYTES,
@@ -9,47 +12,12 @@ import {
   WorkspaceFileError,
 } from "./workspace-files.ts";
 
-const globPatterns = Type.Optional(
-  Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { maxItems: 20 }),
-);
-
-/** Hosts compose this schema with their own request/cancellation metadata. */
-export const WorkspaceSearchSchema = Type.Object(
-  {
-    query: Type.String({ minLength: 1, maxLength: 1000 }),
-    caseSensitive: Type.Optional(Type.Boolean()),
-    wholeWord: Type.Optional(Type.Boolean()),
-    regex: Type.Optional(Type.Boolean()),
-    include: globPatterns,
-    exclude: globPatterns,
-    maxMatches: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
-    drafts: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            path: Type.String({ minLength: 1 }),
-            contents: Type.String({ maxLength: 200_000 }),
-          },
-          { additionalProperties: false },
-        ),
-        { maxItems: 10 },
-      ),
-    ),
-  },
-  { additionalProperties: false },
-);
-
-export type WorkspaceSearchInput = Readonly<Static<typeof WorkspaceSearchSchema>>;
-
-export interface WorkspaceSearchMatch {
-  /** One-based line and column; column and length use UTF-16 code units. */
-  readonly line: number;
-  readonly column: number;
-  readonly length: number;
-  readonly snippet: string;
-  /** One-based column where the bounded snippet begins. */
-  readonly snippetColumn: number;
-}
+export {
+  WorkspaceSearchSchema,
+  type WorkspaceSearchInput,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchResult,
+} from "@nyte-ai/protocol";
 
 export class WorkspaceSearchError extends Error {
   readonly reason: "invalid_query" | "invalid_regex";
@@ -68,7 +36,7 @@ export async function searchWorkspaceFiles(
   workspacePath: string,
   input: WorkspaceSearchInput,
   signal: AbortSignal = new AbortController().signal,
-) {
+): Promise<WorkspaceSearchResult> {
   signal.throwIfAborted();
   if (input.query.includes("\0") || /[\r\n]/u.test(input.query))
     throw new WorkspaceSearchError(
@@ -203,5 +171,3 @@ export async function searchWorkspaceFiles(
     skipped: null,
   };
 }
-
-export type WorkspaceSearchResult = Awaited<ReturnType<typeof searchWorkspaceFiles>>;

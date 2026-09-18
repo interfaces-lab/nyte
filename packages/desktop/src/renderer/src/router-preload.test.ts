@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { QueryClient } from "@tanstack/react-query";
-import type { SessionId, SessionInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import { test } from "vitest";
 import { readRouteSession } from "./route-session.ts";

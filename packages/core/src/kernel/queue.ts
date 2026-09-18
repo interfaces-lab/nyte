@@ -4,7 +4,7 @@
  * of them lands when is the runner's policy (see `step.ts`), not this file's.
  */
 import { validateHeadName } from "@nyte-ai/protocol";
-import { mergeQueuedLanes } from "./queue-order.ts";
+import { mergeQueuedLanes } from "@nyte-ai/client";
 import {
   CANCELLED_PREFIX,
   cancelledRef,

@@ -5,7 +5,7 @@
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-controller.ts
  */
 import { useSyncExternalStore } from "react";
-import type { Oid, SessionId } from "@nyte-ai/core";
+import type { Oid, SessionId } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";

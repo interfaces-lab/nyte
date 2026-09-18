@@ -1,9 +1,9 @@
-import { sessionMark } from "@nyte-ai/core/client";
+import { sessionMark } from "@nyte-ai/client";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 import { CommandMenu, MenuItem } from "../components/menu.tsx";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { focus, formatTimeAgo, Kbd, srOnly, StatusDot } from "../components/ui.tsx";

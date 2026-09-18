@@ -1,4 +1,5 @@
 /** Task rows join session-owned jobs with their full child transcripts. */
+import { isTerminalPhase } from "@nyte-ai/protocol";
 import {
   sessionId,
   type JobInfo,
@@ -6,13 +7,12 @@ import {
   type RunInfo,
   type SessionEvent,
   type SessionId,
-  isTerminalPhase,
 } from "@nyte-ai/core";
 import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
-import { SessionObserver } from "@nyte-ai/core/client";
-import type { SessionState } from "@nyte-ai/core/client";
+import { SessionObserver } from "@nyte-ai/client";
+import type { SessionState } from "@nyte-ai/client";
 
 export type Task =
   | {

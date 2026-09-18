@@ -47,17 +47,12 @@ import {
   projectToolView,
   runActivityLabel,
   turnPartId,
-  isTerminalPhase,
-} from "@nyte-ai/core";
-import type {
-  RunInfo,
-  ToolLive,
-  ToolPresentation,
-  ToolTurnPart,
-  Turn,
-  TurnOutcome,
-  TurnPart,
-} from "@nyte-ai/core";
+  type ToolLive,
+  type ToolPresentation,
+} from "@nyte-ai/client";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { ToolTurnPart, TurnOutcome, TurnPart } from "@nyte-ai/protocol";
+import type { RunInfo, Turn } from "@nyte-ai/core";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import { diffChars, diffWordsWithSpace } from "diff";
 import { SpinnerRenderable } from "opentui-spinner";
@@ -107,9 +102,9 @@ import { diffFromOutput, type ChangedLinePair, type OutputDiff } from "./output-
 import { isJsonObject, isJsonString } from "./json.ts";
 import type { LabelSyntax } from "./label-syntax.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
-import { waitingCall } from "@nyte-ai/core/client";
-import type { SessionState } from "@nyte-ai/core/client";
-import { livePartKey, type LivePart } from "@nyte-ai/core/views";
+import { waitingCall } from "@nyte-ai/client";
+import type { SessionState } from "@nyte-ai/client";
+import { livePartKey, type LivePart } from "@nyte-ai/client";
 import { extractSkillInvocations } from "./slash.ts";
 import { runStatus, statusMark, taskSteps } from "./tasks.ts";
 import type { CliTheme } from "./theme.ts";

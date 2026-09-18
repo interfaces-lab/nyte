@@ -1,4 +1,4 @@
-import type { JobInfo, SessionId } from "@nyte-ai/core";
+import type { JobInfo, SessionId } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "../../../shared/errors.ts";

@@ -39,7 +39,7 @@ import { getStartupDestination, startupSession } from "./startup-preference.ts";
 import { WorkspaceStage } from "./shell/workspace-stage.tsx";
 import { t } from "./theme/vars.stylex.ts";
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionId } from "@nyte-ai/core";
+import type { SessionId } from "@nyte-ai/protocol";
 import { nyte } from "./nyte.ts";
 import { macPlatform } from "./platform.ts";
 import { activateOutbox } from "./use-outbox.ts";

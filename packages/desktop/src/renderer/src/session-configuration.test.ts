@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import type { SessionInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
 import type { SessionsBridge } from "../../shared/ipc.ts";
 import { keys } from "./query-keys.ts";

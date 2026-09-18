@@ -9,7 +9,7 @@
  */
 import { isJsonObject, type JsonValue } from "../json.ts";
 import type { FileChange } from "@nyte-ai/protocol";
-import type { Oid } from "../model.ts";
+import type { Oid } from "@nyte-ai/protocol";
 import type { Turn } from "./transcript.ts";
 import { parsePatchFacts, type PatchStat } from "./patch.ts";
 

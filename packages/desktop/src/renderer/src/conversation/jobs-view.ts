@@ -1,4 +1,4 @@
-import type { JobActionOutcome, JobInfo } from "@nyte-ai/core";
+import type { JobActionOutcome, JobInfo } from "@nyte-ai/protocol";
 
 /** A job that owns a child session, as the transcript and the Agents panel both read it. */
 export type SubagentJob = Extract<JobInfo, { readonly kind: "subagent" }>;

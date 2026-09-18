@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { FileModelsStore, createNyteModels } from "@nyte-ai/ai";
 import { branch, SqliteStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
-import { transcriptFromCommits } from "@nyte-ai/core/views";
+import { transcriptFromCommits } from "@nyte-ai/client";
 import { createTrustStore, createWorkspaceRegistry } from "@nyte-ai/host";
 import { afterEach, test } from "vitest";
 import { loadPersistedCatalog } from "../src/main/catalog.ts";

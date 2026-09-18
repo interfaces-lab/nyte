@@ -23,7 +23,6 @@
     "@expo/ui": "~57.0.18",
     "@legendapp/list": "3.3.11",
     "@nyte-ai/client": "workspace:*",
-    "@nyte-ai/core": "workspace:*",
     "@nyte-ai/protocol": "workspace:*",
     "@nyte-ai/ui": "workspace:*",
     "@tanstack/react-query": "5.102.5",

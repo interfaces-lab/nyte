@@ -10,7 +10,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import { turnPartId } from "@nyte-ai/core/views";
+import { turnPartId } from "@nyte-ai/client";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";

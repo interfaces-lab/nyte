@@ -83,7 +83,7 @@ offer a clear error instead of claiming the saved URL is connected.
 
 If the server's chat list fails, Cloud keeps its last loaded chats and displays
 the failure. An unavailable server does not look like an empty chat history.
-Core's shared `SessionObserver` (`@nyte-ai/core/client`) handles stream
+The shared `SessionObserver` (`@nyte-ai/client`) handles stream
 recovery for local and Cloud chats alike; the renderer's `live.ts` holds one
 observer per open chat and publishes its state into the snapshot query cache
 and the live overlay.

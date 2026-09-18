@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ToolTurnPart } from "@nyte-ai/core";
+import type { ToolTurnPart } from "@nyte-ai/protocol";
 import { activityVerb, parseUnifiedPatch, presentTool, subagentCall } from "./tool-detail.ts";
 
 const search: ToolTurnPart = {

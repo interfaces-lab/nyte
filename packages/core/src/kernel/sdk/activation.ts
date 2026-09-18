@@ -30,9 +30,9 @@ import {
   type ThinkingLevel,
 } from "../../types.ts";
 import type { CompactionSettings } from "../compaction.ts";
-import { isJsonObject, toJsonValue } from "../json.ts";
+import { isJsonObject, toJsonValue } from "@nyte-ai/client";
 import type { Blob, ModelRef, Obj, Run, RunConfig } from "../model.ts";
-import { contextMessages } from "../context.ts";
+import { contextMessages } from "@nyte-ai/client";
 import { contextCommits } from "../graph.ts";
 import { FACT_PREFIX, decodeFactKey, encodeFactKey, factRef, headRef } from "../names.ts";
 import type { Session } from "../store.ts";

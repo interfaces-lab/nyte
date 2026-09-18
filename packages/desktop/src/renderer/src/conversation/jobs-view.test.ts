@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import type { JobInfo, SessionSnapshot } from "@nyte-ai/core";
+import type { JobInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import { sessionId } from "@nyte-ai/protocol";
-import { foldEvent, stateFromSnapshot } from "@nyte-ai/core/client";
+import { foldEvent, stateFromSnapshot } from "@nyte-ai/client";
 import { jobActionMessage, jobControls } from "./jobs-view.ts";
 import { IDLE, projectLive } from "../live-fold.ts";
 

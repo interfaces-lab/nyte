@@ -4,9 +4,9 @@ Core owns durable session state and execution. Hosts compose it with models and 
 
 The [kernel guide](src/kernel/README.md) explains persistence and execution. The [design record](../docs/content/docs/design.mdx) describes the wider architecture, and [host](../host/README.md) shows how to compose a runtime.
 
-Public entrypoints are declared in [package.json](package.json): the SDK, plugin contracts, stores, views, and client state. Keep runtime behavior here when terminal, desktop, and remote clients must agree.
+Public entrypoints are declared in [package.json](package.json): the SDK, plugin contracts, stores, and workspace files. Keep runtime behavior here when terminal, desktop, and remote clients must agree.
 
-`@nyte-ai/core/client` contains the shared session observer and event fold without Node runtime imports. Native and browser clients can pass an `@nyte-ai/client` instance to `SessionObserver`; they must not import the root core entrypoint, which loads host code.
+`@nyte-ai/client` contains the shared session observer and event fold without Node runtime imports. Native and browser clients pass its transport to `SessionObserver`; they must not import the root core entrypoint, which loads host code.
 
 ## Session observer
 

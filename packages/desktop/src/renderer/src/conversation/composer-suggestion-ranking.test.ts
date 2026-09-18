@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 import { createMentionSuggestionRanking } from "./composer-suggestion-ranking.ts";
 
 function file(label: string, displayPath = `/project/${label}`): MentionFile {

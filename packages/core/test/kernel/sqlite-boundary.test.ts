@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "vitest";
-import { canonicalJson } from "../../src/kernel/json.ts";
+import { canonicalJson } from "@nyte-ai/client";
 import { openStore, storePath } from "./helpers.ts";
 
 test("a matching content hash does not make an incomplete stored object valid", async () => {

@@ -1,12 +1,12 @@
 import { acceptsSelectionReply } from "@nyte-ai/protocol";
-import { isTerminalPhase } from "@nyte-ai/core/views";
+import { isTerminalPhase } from "@nyte-ai/client";
 import type {
   ParkedCall,
   Selection,
   SelectionReply,
   SessionId,
   SessionSnapshot,
-} from "@nyte-ai/core";
+} from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { mutationOptions, queryOptions } from "@tanstack/react-query";
 import type { NyteBridge } from "../../../shared/ipc.ts";

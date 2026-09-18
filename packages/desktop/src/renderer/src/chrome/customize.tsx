@@ -4,7 +4,7 @@ import { Row } from "@nyte-ai/ui/row";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { ReactElement } from "react";
-import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/core";
+import type { PluginInfo, SessionId, SettingInfo } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus } from "../components/ui.tsx";
 import { isOption } from "./sidebar-view.ts";

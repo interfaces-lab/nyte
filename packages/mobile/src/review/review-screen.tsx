@@ -7,7 +7,7 @@ import { css, html } from "react-strict-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SessionId } from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import { sessionMark, waitingCall } from "@nyte-ai/core/client";
+import { sessionMark, waitingCall } from "@nyte-ai/client";
 import { useHost } from "../connection/host-context.tsx";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";

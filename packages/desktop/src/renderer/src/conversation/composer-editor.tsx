@@ -37,7 +37,7 @@ import {
   SKIP_DOM_SELECTION_TAG,
   SKIP_SCROLL_INTO_VIEW_TAG,
 } from "lexical";
-import type { MentionFile } from "@nyte-ai/core/views";
+import type { MentionFile } from "@nyte-ai/client";
 import {
   $composerCompletion,
   $composerReferences,

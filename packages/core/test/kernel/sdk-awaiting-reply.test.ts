@@ -9,7 +9,7 @@ import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-a
 import type { Selection } from "@nyte-ai/protocol";
 import { test } from "vitest";
 import { Type } from "typebox";
-import { sessionMark } from "../../src/client.ts";
+import { sessionMark } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";

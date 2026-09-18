@@ -75,7 +75,6 @@ export const settings = stylex.defineConsts({
 });
 
 export const workbench = stylex.defineConsts({
-  railWidth: "var(--nyte-workbench-rail-width)",
   panelWidth: "var(--nyte-workbench-panel-width)",
   headerHeight: "var(--nyte-workbench-header-height)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",

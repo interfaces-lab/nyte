@@ -3,7 +3,7 @@ import { isTerminalPhase, type Landing } from "@nyte-ai/protocol";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
 import { admissionFor, admits, isUserInput, nextBatch, startsResponse } from "./admission.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
-import { branchConfig, contextMessages } from "./context.ts";
+import { branchConfig, contextMessages } from "@nyte-ai/client";
 import { listEffects, waitingBatchReady } from "./effects.ts";
 import { branch, contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";

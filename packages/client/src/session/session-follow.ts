@@ -17,7 +17,7 @@
  * https://github.com/earendil-works/pi/blob/71dca871/packages/coding-agent/src/experimental/services/transcript-provider.ts
  * (rebase only on structural change). Synced with pi 71dca871.
  */
-import type { HeadName, Nyte, SessionEvent, SessionId } from "../kernel/sdk/types.ts";
+import type { HeadName, RemoteNyte, SessionEvent, SessionId } from "@nyte-ai/protocol";
 import {
   foldEvent,
   stateFromSnapshot,
@@ -41,8 +41,8 @@ export type SessionUpdate = {
 
 /** What the observer reads and watches: a bridge that carries only these still qualifies. */
 export interface SessionObserverClient {
-  readonly sessions: Pick<Nyte["sessions"], "snapshot" | "metadata">;
-  readonly watch: Nyte["watch"];
+  readonly sessions: Pick<RemoteNyte["sessions"], "snapshot" | "metadata">;
+  readonly watch: RemoteNyte["watch"];
 }
 
 export interface SessionObserverOptions {

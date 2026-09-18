@@ -3,17 +3,8 @@ import { test } from "vitest";
 import type { FileChange, ToolTurnPart, Turn, TurnPart } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import type { CommitBody } from "../../src/kernel/model.ts";
-import {
-  appendTurnChanges,
-  changesFromTurns,
-  EMPTY_CHANGES,
-  readPatch,
-} from "../../src/kernel/views/changes.ts";
-import {
-  appendTranscriptCommit,
-  EMPTY_TRANSCRIPT,
-  transcriptFromCommits,
-} from "../../src/kernel/views/transcript.ts";
+import { appendTurnChanges, changesFromTurns, EMPTY_CHANGES, readPatch } from "@nyte-ai/client";
+import { appendTranscriptCommit, EMPTY_TRANSCRIPT, transcriptFromCommits } from "@nyte-ai/client";
 import { assistant, call, commit, message, toolResult, user } from "./helpers.ts";
 
 const firstPatch =

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { SessionId, SessionInfo } from "@nyte-ai/core";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 
 const STARTUP_DESTINATION_KEY = "nyte:startup-destination:v1";
 

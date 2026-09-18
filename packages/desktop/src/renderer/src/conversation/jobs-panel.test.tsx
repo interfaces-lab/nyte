@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo } from "@nyte-ai/core";
+import type { JobInfo } from "@nyte-ai/protocol";
 import { BackgroundWork } from "./jobs-panel.tsx";
 import { jobStateLabel } from "./jobs-view.ts";
 import type { BackgroundWorkSection } from "./jobs-panel.tsx";

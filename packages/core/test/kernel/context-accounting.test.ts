@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { prepareCheckpoint } from "../../src/kernel/compaction.ts";
 import { contextCommits } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
-import { estimateContextTokens, projectContextStatus } from "../../src/kernel/views/context.ts";
+import { estimateContextTokens, projectContextStatus } from "@nyte-ai/client";
 import { assistant, message, openSession, seedHead, usage, user } from "./helpers.ts";
 
 const target = { provider: "openai", api: "openai-responses", model: "test-model" } as const;

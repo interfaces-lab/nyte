@@ -2,7 +2,8 @@
  * Pure rules the model picker and Settings › Models share. The host already
  * decided which models are listed; this file only formats and groups.
  */
-import type { RunConfig, ThinkingLevel } from "@nyte-ai/core";
+import type { RunConfig } from "@nyte-ai/protocol";
+import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import { MODEL_THINKING_LEVELS } from "@nyte-ai/schema";
 import type { DesktopCatalog, DesktopModelOption, ProviderStatus } from "../nyte.ts";
 
@@ -20,7 +21,7 @@ export function modelDisplayName(
   return option?.name ?? model.id;
 }
 
-export const THINKING_LABELS: Readonly<Record<ThinkingLevel, string>> = {
+export const THINKING_LABELS: Readonly<Record<ModelThinkingLevel, string>> = {
   off: "Off",
   minimal: "Minimal",
   low: "Low",
@@ -46,7 +47,7 @@ export function formatPricing(cost: DesktopModelOption["cost"]): string {
 
 export function thinkingLevelsFor(
   option: DesktopModelOption | undefined,
-): readonly ThinkingLevel[] {
+): readonly ModelThinkingLevel[] {
   const supported = option?.thinkingLevels ?? (["off"] as const);
   const ordered = MODEL_THINKING_LEVELS.filter((level) => supported.includes(level));
   return ordered.length === 0 ? ["off"] : ordered;
@@ -54,8 +55,8 @@ export function thinkingLevelsFor(
 
 export function supportedThinkingLevel(
   option: DesktopModelOption | undefined,
-  requested: ThinkingLevel | undefined,
-): ThinkingLevel {
+  requested: ModelThinkingLevel | undefined,
+): ModelThinkingLevel {
   const levels = thinkingLevelsFor(option);
   if (requested !== undefined && levels.includes(requested)) return requested;
   if (levels.includes("medium")) return "medium";
@@ -70,7 +71,7 @@ interface TriggerLabel {
 
 export function modelTriggerLabel(
   option: DesktopModelOption | undefined,
-  activeReasoning: ThinkingLevel | undefined,
+  activeReasoning: ModelThinkingLevel | undefined,
   fastOn = false,
 ): TriggerLabel {
   if (option === undefined) return { name: "Choose a model", detail: undefined };

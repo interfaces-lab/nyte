@@ -14,7 +14,7 @@ import {
   type SubagentHost,
   type SubagentResult,
 } from "../../plugins/builtin/subagents.ts";
-import { contextMessages } from "../context.ts";
+import { contextMessages } from "@nyte-ai/client";
 import { listEffects, signalEffect } from "../effects.ts";
 import { contextCommits } from "../graph.ts";
 import type { CommitBody } from "../model.ts";
