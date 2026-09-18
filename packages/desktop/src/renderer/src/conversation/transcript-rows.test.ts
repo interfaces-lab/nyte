@@ -5,7 +5,7 @@ import { estimateRowSize, transcriptRows } from "./transcript-rows.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 
 function turn(id: string, parts: TurnPart[]): RenderedTurn {
-  return { kind: "turn", id, parts, outcome: "completed", startedAt: 0, durationMs: 0 };
+  return { kind: "turn", id, parts, startedAt: 0, durationMs: 0 };
 }
 
 const user: TurnPart = { kind: "user", commit: "u1", parent: null, content: "hello" };
@@ -15,7 +15,7 @@ const prose = (text: string): TurnPart => ({
   contentIndex: 0,
   text,
 });
-const tool: TurnPart = { kind: "tool", callId: "c1", toolName: "read" };
+const tool: TurnPart = { kind: "tool", callId: "c1", class: { kind: "file_read", path: "a" } };
 
 describe("transcriptRows", () => {
   test("keeps the keys the flow layout used", () => {

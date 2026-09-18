@@ -9,7 +9,7 @@ import { Button as BaseButton } from "@nyte-ai/ui";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import { changesFromTurns, presentNote, turnPartId } from "@nyte-ai/client";
+import { changesFromTurns, turnPartId } from "@nyte-ai/client";
 import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
@@ -38,12 +38,8 @@ import type { ModelPickerChange } from "./model-picker.tsx";
 import { USER_MESSAGE_PREVIEW_LINES, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
-import {
-  displayTranscriptParts,
-  isFailureNotice,
-  presentTranscriptNotice,
-  userDisplayText,
-} from "./transcript-presentation.ts";
+import { failureNotice } from "./tool-copy.ts";
+import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
 
@@ -422,15 +418,13 @@ function HistoryDisclosure({
   );
 }
 
-function Notice({ text }: { text: string }): ReactElement {
-  const notice = presentTranscriptNotice(text);
+function Notice({ text, tone }: { text: string; tone: "neutral" | "danger" }): ReactElement {
   return (
     <div
-      role={notice.tone === "danger" ? "alert" : "status"}
-      title={notice.detail}
-      {...stylex.props(turnStyles.notice, notice.tone === "danger" && turnStyles.noticeError)}
+      role={tone === "danger" ? "alert" : "status"}
+      {...stylex.props(turnStyles.notice, tone === "danger" && turnStyles.noticeError)}
     >
-      {notice.text}
+      {text}
     </div>
   );
 }
@@ -547,8 +541,6 @@ function TurnPartView({
           density={toolCalls}
         />
       );
-    case "note":
-      return <Notice text={part.text} />;
     default: {
       const _exhaustive: never = part;
       return _exhaustive;
@@ -591,10 +583,7 @@ export const TurnView = memo(function TurnView({
     case "turn": {
       // A completion's continuation turn draws nothing until its response
       // lands; an empty completed turn must not leave a blank row behind.
-      if (turn.parts.length === 0 && turn.outcome === "completed") return null;
-      const hasFailureNote = turn.parts.some(
-        (part) => part.kind === "note" && isFailureNotice(part.text),
-      );
+      if (turn.parts.length === 0 && turn.failure === undefined) return null;
       return (
         <div
           data-sticky-turn={turn.parts.some((part) => part.kind === "user") || undefined}
@@ -643,8 +632,7 @@ export const TurnView = memo(function TurnView({
               />
             );
           })}
-          {turn.outcome === "aborted" && !hasFailureNote && <Notice text="Run stopped." />}
-          {turn.outcome === "failed" && !hasFailureNote && <Notice text="Error: Run failed." />}
+          {turn.failure !== undefined && <Notice {...failureNotice(turn.failure)} />}
           {!running && changes.length > 0 && onOpenChanges !== undefined && (
             <TurnChangesCard
               files={changes}
@@ -667,8 +655,6 @@ export const TurnView = memo(function TurnView({
           <Prose markdown={turn.body.text} />
         </HistoryDisclosure>
       );
-    case "note":
-      return <Notice text={presentNote(turn).text} />;
     default: {
       const _exhaustive: never = turn;
       return _exhaustive;

@@ -11,16 +11,70 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import type { ReactElement } from "react";
-import type { ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
+import { parsePatchFacts } from "@nyte-ai/client";
+import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { DiffView } from "./diff-view.tsx";
+import type { DiffFacts } from "./diff-view.tsx";
 import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
-import { SubagentCallView } from "./subagent-call.tsx";
-import { presentTool, subagentCall } from "./tool-detail.ts";
+import { SubagentAwaitView, SubagentCallView } from "./subagent-call.tsx";
+import { toolVerb } from "./tool-copy.ts";
+import type { ToolPhase } from "./tool-copy.ts";
+import { toolPhase } from "./transcript-presentation.ts";
+
+function tidyPath(path: string, cwd: string | undefined): string {
+  if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
+  return path;
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/u).at(-1) ?? path;
+}
+
+interface ToolDetail {
+  readonly text: string;
+  readonly title?: string;
+}
+
+function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail | undefined {
+  switch (toolClass.kind) {
+    case "file_edit":
+    case "file_write":
+    case "file_patch": {
+      const title = tidyPath(toolClass.path, cwd);
+      return { text: basename(title), title };
+    }
+    case "file_read":
+    case "list":
+      return { text: tidyPath(toolClass.path, cwd) };
+    case "shell":
+      return { text: toolClass.command };
+    case "delegate":
+      return toolClass.role === "spawn" ? { text: toolClass.title } : undefined;
+    case "custom":
+      return undefined;
+    default: {
+      const _exhaustive: never = toolClass;
+      return _exhaustive;
+    }
+  }
+}
+
+type ToolBody =
+  | { readonly kind: "none" }
+  | { readonly kind: "output"; readonly text: string }
+  | { readonly kind: "diff"; readonly path: string; readonly diff: DiffFacts };
+
+const PHASE_LABEL = {
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+  interrupted: "Stopped",
+} satisfies Readonly<Record<ToolPhase, string>>;
 
 // A second trigger: only rendered while closed, so pressing it always opens.
 function OutputPreview({ text }: { text: string }): ReactElement {
@@ -72,43 +126,60 @@ export const ToolCallView = memo(function ToolCallView({
   active?: boolean;
   density?: ToolCallDensity;
 }): ReactElement {
-  const presentation = presentTool(part, progress, cwd, active);
-  const subagent = subagentCall(part, progress);
-  if (subagent !== undefined) {
-    return <SubagentCallView call={subagent} presentation={presentation} density={density} />;
+  const phase = toolPhase(part, active);
+  // Hunks are parsed once per part; the counts beside them are the class's own.
+  const facts = useMemo(
+    () => (part.class.kind === "file_patch" ? parsePatchFacts(part.class.patch) : undefined),
+    [part],
+  );
+  const { class: toolClass, result } = part;
+  const text = result === undefined ? (progress?.text ?? "") : result.output;
+  const body: ToolBody =
+    toolClass.kind === "file_patch" && facts !== undefined
+      ? {
+          kind: "diff",
+          path: tidyPath(toolClass.path, cwd),
+          diff: { patch: facts.patch, added: toolClass.added, removed: toolClass.removed },
+        }
+      : text.trim() === ""
+        ? { kind: "none" }
+        : { kind: "output", text };
+  if (toolClass.kind === "delegate") {
+    const output = body.kind === "output" ? body.text : undefined;
+    return toolClass.role === "spawn" ? (
+      <SubagentCallView
+        title={toolClass.title}
+        child={toolClass.child}
+        phase={phase}
+        output={output}
+        density={density}
+      />
+    ) : (
+      <SubagentAwaitView jobId={toolClass.jobId} phase={phase} density={density} />
+    );
   }
-  const expandable = presentation.body.kind !== "none";
-  const editDiff = presentation.body.kind === "diff";
-  const running = presentation.state === "running";
+  const verb = toolVerb(toolClass, phase);
+  const detail = toolDetail(toolClass, cwd);
+  const expandable = body.kind !== "none";
+  const editDiff = body.kind === "diff";
   const lineContent = (
     <>
-      <span {...stylex.props(toolCallStyles.verb, running && activityStyles.shimmer)}>
-        {presentation.verb}
+      <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
+        {verb}
       </span>
-      {presentation.state !== "done" && (
-        <span {...stylex.props(srOnly)}>
-          {presentation.state === "failed"
-            ? "Failed"
-            : presentation.state === "stopped"
-              ? "Stopped"
-              : "Running"}
+      {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_LABEL[phase]}</span>}
+      {detail !== undefined && (
+        <span title={detail.title ?? detail.text} {...stylex.props(toolCallStyles.detail)}>
+          {detail.text}
         </span>
       )}
-      {presentation.detail !== undefined && (
-        <span
-          title={presentation.detailTitle ?? presentation.detail}
-          {...stylex.props(toolCallStyles.detail)}
-        >
-          {presentation.detail}
-        </span>
-      )}
-      {(presentation.added !== undefined || presentation.removed !== undefined) && (
+      {toolClass.kind === "file_patch" && (toolClass.added > 0 || toolClass.removed > 0) && (
         <span {...stylex.props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>
-          {presentation.added !== undefined && (
-            <span {...stylex.props(toolCallStyles.added)}>+{presentation.added}</span>
+          {toolClass.added > 0 && (
+            <span {...stylex.props(toolCallStyles.added)}>+{toolClass.added}</span>
           )}
-          {presentation.removed !== undefined && (
-            <span {...stylex.props(toolCallStyles.removed)}>-{presentation.removed}</span>
+          {toolClass.removed > 0 && (
+            <span {...stylex.props(toolCallStyles.removed)}>-{toolClass.removed}</span>
           )}
         </span>
       )}
@@ -117,13 +188,13 @@ export const ToolCallView = memo(function ToolCallView({
 
   const line = expandable ? (
     <Collapsible.Trigger
-      data-tool-status={presentation.state}
+      data-tool-status={phase}
       {...stylex.props(
         toolCallStyles.line,
         editDiff && toolCallStyles.editLine,
         density === "detailed" && toolCallStyles.lineDetailed,
         focus.ring,
-        presentation.state === "failed" && toolCallStyles.failed,
+        phase === "failed" && toolCallStyles.failed,
       )}
       render={(props, state) => (
         <button {...props}>
@@ -136,12 +207,12 @@ export const ToolCallView = memo(function ToolCallView({
     />
   ) : (
     <div
-      data-tool-status={presentation.state}
+      data-tool-status={phase}
       {...stylex.props(
         toolCallStyles.line,
         density === "detailed" && toolCallStyles.lineDetailed,
         toolCallStyles.lineStatic,
-        presentation.state === "failed" && toolCallStyles.failed,
+        phase === "failed" && toolCallStyles.failed,
       )}
     >
       {lineContent}
@@ -155,26 +226,20 @@ export const ToolCallView = memo(function ToolCallView({
       render={(props, state) => (
         <div {...props}>
           {line}
-          {presentation.body.kind === "output" && !state.open && (
-            <OutputPreview text={presentation.body.text} />
-          )}
-          {presentation.body.kind === "output" && (
+          {body.kind === "output" && !state.open && <OutputPreview text={body.text} />}
+          {body.kind === "output" && (
             <Collapsible.Panel
               role="region"
-              aria-label={`${presentation.verb} output`}
+              aria-label={`${verb} output`}
               data-nyte-scrollport
               {...stylex.props(toolCallStyles.output)}
             >
-              {presentation.body.text}
+              {body.text}
             </Collapsible.Panel>
           )}
-          {presentation.body.kind === "diff" && (
+          {body.kind === "diff" && (
             <Collapsible.Panel keepMounted>
-              <DiffView
-                path={presentation.body.path}
-                diff={presentation.body.diff}
-                variant="inline"
-              />
+              <DiffView path={body.path} diff={body.diff} variant="inline" />
             </Collapsible.Panel>
           )}
         </div>

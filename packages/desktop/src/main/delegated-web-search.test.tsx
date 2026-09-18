@@ -25,7 +25,6 @@ import {
   parkedSelections,
   selectionReplyOptions,
 } from "../renderer/src/conversation/selection.ts";
-import { presentTool } from "../renderer/src/conversation/tool-detail.ts";
 
 interface RendererFixture {
   sessions: Nyte["sessions"] | undefined;
@@ -269,14 +268,10 @@ test.each(["auto", "local-search", "off"])(
       const completed = await f.sdk.sessions.snapshot({ sessionId: child.sessionId });
       const result = completed?.transcript
         .flatMap((turn) => (turn.kind === "turn" ? turn.parts : []))
-        .find((part) => part.kind === "tool" && part.toolName === "websearch");
+        .find((part) => part.kind === "tool" && part.class.kind === "custom");
       assert.ok(result?.kind === "tool" && result.result);
-      const presentation = presentTool(result, undefined, undefined);
-      if (choice !== "off") {
-        assert.equal(presentation.detail, result.result.title);
-        assert.match(presentation.detail ?? "", /Local search.*anonymous.*current releases/);
-        assert.deepEqual(presentation.body, { kind: "output", text: result.result.output });
-      }
+      assert.deepEqual(result.class, { kind: "custom", label: "websearch" });
+      if (choice !== "off") assert.equal(result.result.isError, false);
     } finally {
       client.clear();
       await f.close();

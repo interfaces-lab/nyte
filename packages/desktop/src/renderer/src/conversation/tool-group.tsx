@@ -26,7 +26,7 @@ import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow
 import { WorkGroupWindow, opensWorkGroup, workGroupScrollport } from "./work-group-window.tsx";
 import { workGroupBody } from "./work-group-body.ts";
 import { createWorkGroupEntries } from "./work-group-entries.ts";
-import { createWorkGroupPresentation } from "./work-group-presentation.ts";
+import { presentWorkGroup } from "./work-group-presentation.ts";
 import type { WorkGroupReveal } from "./work-group-body.ts";
 
 /** One row of the episode, keyed by core's part identity so rows never remount as output settles. */
@@ -105,19 +105,10 @@ export function WorkGroupView({
   running: boolean;
   density: ToolCallDensity;
 }): ReactElement {
-  const [projectWork] = useState(createWorkGroupPresentation);
   // The timer marks the frame it saw; any newer live frame makes that mark stale.
   const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
   const stale = live !== undefined && staleFrame === live;
-  const { active, summary } = projectWork({
-    parts,
-    liveTools,
-    cwd,
-    durationMs,
-    running,
-    live,
-    stale,
-  });
+  const { active, summary } = presentWorkGroup({ parts, durationMs, running, live, stale });
   useEffect(() => {
     if (!active || live === undefined) return undefined;
     const timer = window.setTimeout(() => setStaleFrame(live), STALE_AFTER_MS);

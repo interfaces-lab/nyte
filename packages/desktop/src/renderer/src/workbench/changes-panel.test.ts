@@ -62,24 +62,30 @@ vi.mock("../queries.ts", () => ({
 
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 
+/** One settled file_patch per patch, stamped the way the runner stamps it. */
 function changedTurn(id: string, patches: readonly string[]): ConversationTurn {
   return {
     kind: "turn",
     id,
-    outcome: "completed",
     startedAt: 0,
     durationMs: 0,
-    parts: patches.map((patch, index) => ({
-      kind: "tool",
-      callId: `${id}-call-${String(index)}`,
-      toolName: "edit",
-      result: {
-        commit: `${id}-result-${String(index)}`,
-        output: "",
-        isError: false,
-        details: { patch },
-      },
-    })),
+    parts: patches.map((patch, index) => {
+      const facts = parsePatchFacts(patch);
+      const file = facts?.files[0];
+      return {
+        kind: "tool",
+        callId: `${id}-call-${String(index)}`,
+        class: {
+          kind: "file_patch",
+          op: "edit",
+          path: file?.path ?? "",
+          added: facts?.added ?? 0,
+          removed: facts?.removed ?? 0,
+          patch,
+        },
+        result: { commit: `${id}-result-${String(index)}`, output: "", isError: false },
+      };
+    }),
   };
 }
 
@@ -94,7 +100,6 @@ describe("turn change options", () => {
     const unchanged: ConversationTurn = {
       kind: "turn",
       id: "turn-2",
-      outcome: "completed",
       startedAt: 0,
       durationMs: 0,
       parts: [],
@@ -123,14 +128,7 @@ describe("turn change options", () => {
   test("hides empty turns unless they are selected or show-all is on", () => {
     const options = turnChangeOptions([
       changedTurn("turn-1", [addA]),
-      {
-        kind: "turn",
-        id: "turn-2",
-        outcome: "completed",
-        startedAt: 0,
-        durationMs: 0,
-        parts: [],
-      },
+      { kind: "turn", id: "turn-2", startedAt: 0, durationMs: 0, parts: [] },
       changedTurn("turn-3", [addB]),
     ]);
 
@@ -158,45 +156,22 @@ describe("file list labels", () => {
   });
 });
 
-test("multi-file rows isolate their patches and retain the original tool output", () => {
-  const deletion = "--- a/deleted.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone\n";
-  const rename =
-    "diff --git a/old.txt b/renamed.txt\nsimilarity index 100%\nrename from old.txt\nrename to renamed.txt\n--- a/old.txt\n+++ b/renamed.txt\n";
-  const unchanged = "--- a/unchanged.txt\n+++ b/unchanged.txt\n";
-  const raw = `${addA}${addB}${deletion}${rename}${unchanged}`;
-  const turn = changedTurn("multi", [raw]);
+test("a result seen twice on the branch counts once, and its files keep their own hunks", () => {
+  const turn = changedTurn("twice", [addA, addB]);
   const option = turnChangeOptions([{ ...turn, parts: [...turn.parts, ...turn.parts] }])[0];
   assert.ok(option);
-  assert.deepEqual(option.stats, { added: 2, removed: 1 });
+  assert.deepEqual(option.stats, { added: 2, removed: 0 });
   assert.deepEqual(
-    option.files.map((row) => row.change.path),
-    ["src/a.ts", "src/b.ts", "deleted.txt", "renamed.txt", "unchanged.txt"],
-  );
-  for (const row of option.files) {
-    assert.deepEqual(row.rawPatches, [raw]);
-    const facts = parsePatchFacts(row.patch);
-    assert.ok(facts);
-    assert.equal(facts.files.length, 1);
-    assert.equal(facts.files[0]?.path, row.change.path);
-    assert.equal(facts.added, row.change.added);
-    assert.equal(facts.removed, row.change.removed);
-    assert.equal(row.change.lastCommit, "multi-result-0");
-  }
-  assert.match(option.files[3]?.rawPatches[0] ?? "", /rename from old.txt\nrename to renamed.txt/);
-  const renamed = parsePatchFacts(option.files[3]?.patch ?? "")?.files[0];
-  assert.equal(renamed?.oldFileName, "a/old.txt");
-  assert.equal(renamed?.newFileName, "b/renamed.txt");
-  assert.deepEqual(
-    option.files.slice(3).map((row) => [row.change.added, row.change.removed]),
+    option.files.map((row) => [row.change.path, row.patch, row.change.lastCommit]),
     [
-      [0, 0],
-      [0, 0],
+      ["src/a.ts", addA, "twice-result-0"],
+      ["src/b.ts", addB, "twice-result-1"],
     ],
   );
 });
 
-test("invalid and failed patches contribute no rows while valid later results survive", () => {
-  const turn = changedTurn("mixed", ["--- a/bad\n+++ b/bad\n@@ -1 +1 @@\n-old\n", addB]);
+test("a failed edit contributes no row while a later settled one survives", () => {
+  const turn = changedTurn("mixed", [addB]);
   const failed = changedTurn("failed", [addA]);
   const option = turnChangeOptions([
     {

@@ -1,148 +1,117 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ToolTurnPart } from "@nyte-ai/protocol";
+import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
 import { IDLE } from "../live-fold.ts";
-import type { LiveToolProgress } from "../live.ts";
-import { createWorkGroupPresentation } from "./work-group-presentation.ts";
+import { presentWorkGroup } from "./work-group-presentation.ts";
 import type { WorkGroupPresentationInput } from "./work-group-presentation.ts";
 
 const defaults = {
   parts: [],
-  liveTools: new Map<string, LiveToolProgress>(),
-  cwd: "/project",
   durationMs: 1200,
   running: false,
   stale: false,
 } satisfies WorkGroupPresentationInput;
 
-function settled(callId: string, toolName: string, path = "/project/file.txt"): ToolTurnPart {
-  return {
-    kind: "tool",
-    callId,
-    toolName,
-    args: { path },
-    result: { commit: callId, output: "done", isError: false },
-  };
+const read: ToolClass = { kind: "file_read", path: "/project/src/a.ts" };
+const shell: ToolClass = { kind: "shell", command: "pwd" };
+const spawn: ToolClass = { kind: "delegate", role: "spawn", title: "Explore" };
+const patch: ToolClass = {
+  kind: "file_patch",
+  op: "edit",
+  path: "/project/file.txt",
+  added: 2,
+  removed: 1,
+  patch: "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n",
+};
+
+function pending(callId: string, toolClass: ToolClass): ToolTurnPart {
+  return { kind: "tool", callId, class: toolClass };
 }
 
-function progress(callId: string, title: string): Map<string, LiveToolProgress> {
-  return new Map([[callId, { runId: "run", progress: { text: title, title } }]]);
+function settled(callId: string, toolClass: ToolClass, isError = false): ToolTurnPart {
+  return { ...pending(callId, toolClass), result: { commit: callId, output: "done", isError } };
 }
 
-const patch = "--- a/file.txt\n+++ b/file.txt\n@@ -1 +1,2 @@\n-old\n+new\n+extra\n";
-
-test.each([10, 1000])(
-  "progress preserves diff totals without reparsing %i settled tools",
-  (size) => {
-    let historicalReads = 0;
-    const history = Array.from({ length: size }, (_, index): ToolTurnPart => ({
-      ...settled(String(index), "edit"),
-      get args() {
-        historicalReads++;
-        return { path: "/project/file.txt" };
-      },
-      result: { commit: String(index), output: "edited", isError: false, details: { patch } },
-    }));
-    const active: ToolTurnPart = {
-      kind: "tool",
-      callId: "active",
-      toolName: "bash",
-      args: { command: "pwd" },
-    };
-    const parts = [...history, active];
-    const project = createWorkGroupPresentation();
-    project({ ...defaults, parts, running: true });
-    historicalReads = 0;
-    for (let frame = 0; frame < 20; frame++) {
-      const view = project({
-        ...defaults,
-        parts,
-        running: true,
-        liveTools: progress("active", String(frame)),
-      });
-      assert.equal(view.active, true);
-      assert.equal(view.summary.added, size * 2);
-      assert.equal(view.summary.removed, size);
-    }
-    assert.equal(historicalReads, 0, "progress must not revisit historical tool inputs");
-    const finished = project({ ...defaults, parts: [...history, settled("active", "bash")] });
-    assert.equal(finished.active, false);
-    assert.equal(finished.summary.verb, "Worked");
-    assert.equal(finished.summary.detail, "for 1s");
-    assert.equal(finished.summary.added, size * 2);
-    assert.equal(historicalReads, 0, "new durable arrays reuse unchanged tool presentations");
-  },
-);
-
-test("changing branches replaces diff totals rather than retaining edits from the previous branch", () => {
-  const project = createWorkGroupPresentation();
-  const edit: ToolTurnPart = {
-    ...settled("edit", "edit"),
-    result: { commit: "edit", output: "", isError: false, details: { patch } },
-  };
-  const read = settled("read", "read", "/project/src/a.ts");
-  assert.equal(project({ ...defaults, parts: [edit, read] }).summary.added, 2);
-  assert.equal(project({ ...defaults, parts: [read] }).summary.added, 0);
-  assert.equal(project({ ...defaults, parts: [edit, read] }).summary.added, 2);
-  const refused: ToolTurnPart = {
-    ...edit,
-    result: { commit: "refused", output: "denied", isError: true },
-  };
-  assert.equal(project({ ...defaults, parts: [refused, read] }).summary.added, 0);
+test("diff totals are the settled patches' own counts", () => {
+  const edit = settled("edit", patch);
+  assert.equal(
+    presentWorkGroup({ ...defaults, parts: [edit, settled("read", read)] }).summary.added,
+    2,
+  );
+  assert.equal(presentWorkGroup({ ...defaults, parts: [settled("read", read)] }).summary.added, 0);
+  const refused = settled("refused", { kind: "file_edit", path: "/project/file.txt" }, true);
+  const totals = presentWorkGroup({ ...defaults, parts: [refused, edit] }).summary;
+  assert.equal(totals.added, 2);
+  assert.equal(totals.removed, 1);
 });
 
 test("a failed command does not turn the enclosing work summary into a failure", () => {
-  const project = createWorkGroupPresentation();
-  const failed: ToolTurnPart = {
-    ...settled("tests", "bash"),
-    result: { commit: "failed", output: "Tests failed", isError: true },
-  };
-  const parts = [failed, settled("read", "read")];
-  const active = project({ ...defaults, parts, running: true });
+  const parts = [settled("tests", shell, true), settled("read", read)];
+  const active = presentWorkGroup({ ...defaults, parts, running: true });
   assert.equal(active.active, true);
   assert.notEqual(active.summary.verb, "Work failed");
-  const completed = project({ ...defaults, parts });
+  const completed = presentWorkGroup({ ...defaults, parts });
   assert.equal(completed.active, false);
   assert.equal(completed.summary.verb, "Worked");
   assert.equal(completed.summary.detail, "for 1s");
 });
 
 test("a missing tool result cannot keep a stopped or reopened historical group active", () => {
-  const parts: ToolTurnPart[] = [{ kind: "tool", callId: "read", toolName: "read" }];
-  const project = createWorkGroupPresentation();
-  assert.equal(project({ ...defaults, parts, running: true }).active, true);
-  assert.equal(project({ ...defaults, parts }).active, false);
-  assert.equal(createWorkGroupPresentation()({ ...defaults, parts }).summary.verb, "Worked");
+  const parts = [pending("read", read)];
+  assert.equal(presentWorkGroup({ ...defaults, parts, running: true }).active, true);
+  const stopped = presentWorkGroup({ ...defaults, parts });
+  assert.equal(stopped.active, false);
+  assert.equal(stopped.summary.verb, "Worked");
 });
 
-test("live activity retains task precedence while a run is active", () => {
-  const project = createWorkGroupPresentation();
-  const bash: ToolTurnPart = { kind: "tool", callId: "bash", toolName: "bash" };
-  const read: ToolTurnPart = { kind: "tool", callId: "read", toolName: "read" };
-  const task: ToolTurnPart = { kind: "tool", callId: "task", toolName: "task" };
+test("live activity names the newest running call and lets delegations win", () => {
   const input = { ...defaults, running: true };
-  assert.equal(project({ ...input, parts: [bash, read] }).summary.verb, "Reading files");
-  assert.equal(project({ ...input, parts: [read, bash] }).summary.verb, "Running shell command");
-  assert.equal(project({ ...input, parts: [task, bash] }).summary.verb, "Waiting for subagent");
+  const bash = pending("bash", shell);
+  const reading = pending("read", read);
+  const task = pending("task", spawn);
   assert.equal(
-    project({ ...input, parts: [task, bash, { ...task, callId: "task2" }] }).summary.verb,
+    presentWorkGroup({ ...input, parts: [bash, reading] }).summary.verb,
+    "Reading files",
+  );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [reading, bash] }).summary.verb,
+    "Running shell command",
+  );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [settled("done", shell), reading] }).summary.verb,
+    "Reading files",
+  );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [task, bash] }).summary.verb,
+    "Waiting for subagent",
+  );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [task, bash, { ...task, callId: "task2" }] }).summary.verb,
     "Waiting for subagents",
+  );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [pending("web", { kind: "custom", label: "Web search" })] })
+      .summary.verb,
+    "Running Web search",
   );
 });
 
 test("between-step labels retain live order and the slow-response cue", () => {
-  const project = createWorkGroupPresentation();
   const input = { ...defaults, running: true };
-  assert.equal(project(input).summary.verb, "Preparing next move");
-  assert.equal(project({ ...input, stale: true }).summary.verb, "This is taking a bit longer");
+  assert.equal(presentWorkGroup(input).summary.verb, "Preparing next move");
+  assert.equal(
+    presentWorkGroup({ ...input, stale: true }).summary.verb,
+    "This is taking a bit longer",
+  );
   const thinking = { kind: "thinking", runId: "run", attempt: 0, index: 0 } as const;
   const text = { ...thinking, kind: "text" } as const;
   assert.equal(
-    project({ ...input, live: { ...IDLE, order: [text, thinking] }, stale: true }).summary.verb,
+    presentWorkGroup({ ...input, live: { ...IDLE, order: [text, thinking] }, stale: true }).summary
+      .verb,
     "Thinking",
   );
   assert.equal(
-    project({ ...input, live: { ...IDLE, order: [thinking, text] } }).summary.verb,
+    presentWorkGroup({ ...input, live: { ...IDLE, order: [thinking, text] } }).summary.verb,
     "Working",
   );
 });
