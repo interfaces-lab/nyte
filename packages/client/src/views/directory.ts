@@ -70,7 +70,6 @@ function messagePreview(body: CommitBody): string | undefined {
     case "checkpoint":
     case "summary":
     case "config":
-    case "note":
       return undefined;
     default: {
       const _exhaustive: never = body;

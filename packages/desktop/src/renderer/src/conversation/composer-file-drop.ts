@@ -1,13 +1,3 @@
-// BMP is accepted because the agent converts it to PNG before it reaches a
-// provider; Chromium renders it in the attachment preview meanwhile.
-const ACCEPTED_IMAGE_TYPES = new Set([
-  "image/bmp",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
 interface ComposerFileDropTransfer {
   readonly types: ArrayLike<string>;
   readonly files: FileList | readonly File[];
@@ -25,16 +15,16 @@ export function carriesFiles(event: ComposerFileDropEvent): boolean {
   return transfer !== null && Array.from(transfer.types).includes("Files");
 }
 
-export function acceptedImageFiles(args: { readonly files: FileList | readonly File[] }): File[] {
-  return Array.from(args.files).filter((file) => ACCEPTED_IMAGE_TYPES.has(file.type));
-}
-
 interface ComposerFileDropHandlers {
   readonly onDragEnter: (event: ComposerFileDropEvent) => void;
   readonly onDragOver: (event: ComposerFileDropEvent) => void;
   readonly onDrop: (event: ComposerFileDropEvent) => void;
 }
 
+/**
+ * The default is always suppressed: Chromium's default for a dropped file is
+ * to navigate the window to it. Whether the payload is taken is decided after.
+ */
 export function dropHandlers(args: {
   readonly onFiles: (files: readonly File[]) => void;
   readonly disabled?: boolean;
@@ -43,21 +33,18 @@ export function dropHandlers(args: {
     args.disabled !== true && carriesFiles(event);
   return {
     onDragEnter: (event) => {
-      if (!accept(event)) return;
       event.preventDefault();
     },
     onDragOver: (event) => {
-      if (!accept(event)) return;
       event.preventDefault();
-      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
+      if (event.dataTransfer !== null)
+        event.dataTransfer.dropEffect = accept(event) ? "copy" : "none";
     },
     onDrop: (event) => {
-      if (!accept(event)) return;
       event.preventDefault();
       event.stopPropagation();
-      const files = acceptedImageFiles({ files: event.dataTransfer?.files ?? [] });
-      if (files.length === 0) return;
-      args.onFiles(files);
+      if (!accept(event)) return;
+      args.onFiles(Array.from(event.dataTransfer?.files ?? []));
     },
   };
 }

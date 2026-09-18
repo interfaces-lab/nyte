@@ -165,16 +165,14 @@ export function message(value: Message): CommitBody {
 export function commit(
   parent: Oid | null,
   body: CommitBody,
-  options: { readonly at?: number; readonly run?: string; readonly change?: Oid } = {},
+  options: Partial<Pick<Commit, "at" | "run" | "change" | "calls" | "failure">> = {},
 ): Commit {
-  const base: Commit = {
-    kind: "commit",
-    parent,
-    body,
-    at: options.at ?? 1_000,
-  };
-  const withRun: Commit = options.run === undefined ? base : { ...base, run: options.run };
-  return options.change === undefined ? withRun : { ...withRun, change: options.change };
+  let value: Commit = { kind: "commit", parent, body, at: options.at ?? 1_000 };
+  if (options.run !== undefined) value = { ...value, run: options.run };
+  if (options.change !== undefined) value = { ...value, change: options.change };
+  if (options.calls !== undefined) value = { ...value, calls: options.calls };
+  if (options.failure !== undefined) value = { ...value, failure: options.failure };
+  return value;
 }
 
 /** Write a chain of commits, oldest first, on top of `parent`. Returns the oids oldest first. */

@@ -141,7 +141,7 @@ test("stopping the response to a landed completion keeps it out of the request t
   expect(stopped).toHaveLength(2);
   expect(stopped[0]?.parts.map((part) => part.kind)).toEqual(["user"]);
   expect(stopped[1]?.parts.some((part) => part.kind === "user")).toBe(false);
-  expect(stopped[1]?.outcome).toBe("aborted");
+  expect(stopped[1]?.failure?.class).toBe("aborted");
   outcome = "complete";
   await submit(session, { head: "main", lane: "input", body: message(user("again")) });
   await drive(session, turn, options);

@@ -18,7 +18,6 @@ test("usage classification distinguishes absent usage from reported zero", () =>
     { kind: "checkpoint", summary: "s", retainedTail: [], tokensBefore: 10 },
     { kind: "summary", text: "s" },
     { kind: "config", model: { id: "m" } },
-    { kind: "note", type: "test", data: null },
   ];
   for (const body of absent) assert.equal(commitUsage(commit(null, body)), undefined);
   const recorded = [

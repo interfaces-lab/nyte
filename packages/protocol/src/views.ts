@@ -3,8 +3,8 @@
  * per-file change totals. Core's projections build them; a client only
  * reads them, so their shapes live here.
  */
-import type { JsonValue, Message } from "@nyte-ai/schema";
-import type { CommitBody, Oid } from "./kernel.ts";
+import type { Message } from "@nyte-ai/schema";
+import type { CommitBody, Failure, Oid, ToolClass } from "./kernel.ts";
 
 type UserMessage = Extract<Message, { role: "user" }>;
 
@@ -18,35 +18,37 @@ export interface UserTurnPart {
 }
 
 export type ToolTurnPart = {
-  kind: "tool";
-  callId: string;
-  toolName: string;
-  /** Absent when the call itself is not on this branch and only its result is. */
-  args?: JsonValue;
-  result?: {
-    commit: Oid;
-    output: string;
-    details?: JsonValue;
-    title?: string;
-    isError: boolean;
-  };
+  readonly kind: "tool";
+  readonly callId: string;
+  /** The settled class once the result commit landed, else the call's. */
+  readonly class: ToolClass;
+  /** Absent while the call has not settled on this branch. */
+  readonly result?: { readonly commit: Oid; readonly output: string; readonly isError: boolean };
 };
 
 export type TurnPart =
   | UserTurnPart
-  | { kind: "assistant"; commit: Oid; contentIndex: number; text: string }
-  | { kind: "thinking"; commit: Oid; contentIndex: number; text: string }
-  | ToolTurnPart
-  | { kind: "note"; commit: Oid; text: string };
-
-export type TurnOutcome = "completed" | "aborted" | "failed";
+  | {
+      readonly kind: "assistant";
+      readonly commit: Oid;
+      readonly contentIndex: number;
+      readonly text: string;
+    }
+  | {
+      readonly kind: "thinking";
+      readonly commit: Oid;
+      readonly contentIndex: number;
+      readonly text: string;
+    }
+  | ToolTurnPart;
 
 export type Turn =
   | {
       kind: "turn";
       id: Oid;
       parts: TurnPart[];
-      outcome: TurnOutcome;
+      /** Why the turn's assistant message stopped, when it stopped with `error` or `aborted`. */
+      failure?: Failure;
       /** When the turn's first commit landed. */
       startedAt: number;
       /**
@@ -74,12 +76,6 @@ export type Turn =
       commit: Oid;
       at: number;
       body: Extract<CommitBody, { kind: "config" }>;
-    }
-  | {
-      kind: "note";
-      commit: Oid;
-      at: number;
-      body: Extract<CommitBody, { kind: "note" }>;
     };
 
 export interface ContextStatus {

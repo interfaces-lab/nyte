@@ -239,11 +239,12 @@ function createWindow(): void {
     void desktopHost?.closeTerminals().catch(() => undefined);
   };
   created.webContents.on("render-process-gone", releaseRendererWork);
-  created.webContents.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
-    if (isMainFrame && !inPlace) {
-      releaseRendererWork();
-      menuCommands.reset();
-    }
+  // Only a committed main-frame navigation has left the document behind. The
+  // start event fires before `will-navigate` can cancel, and would tear down
+  // under a renderer that stays.
+  created.webContents.on("did-navigate", () => {
+    releaseRendererWork();
+    menuCommands.reset();
   });
 
   const updateWindowBackground = (): void => {

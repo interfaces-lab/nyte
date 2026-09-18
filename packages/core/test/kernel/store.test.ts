@@ -337,7 +337,7 @@ test("one hundred concurrent compare-and-swap writers all land in one chain", as
         const change: Change = {
           kind: "change",
           previous: tip,
-          body: { kind: "note", type: "n", data: index },
+          body: { kind: "config", thinkingLevel: String(index) },
           at: index,
         };
         const [oid] = await session.objects.put([change]);

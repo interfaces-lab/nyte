@@ -1,5 +1,4 @@
-import { toJsonValue } from "../json.ts";
-import type { Turn, TurnOutcome, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { Commit, CommitBody, Oid } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
@@ -8,7 +7,7 @@ type AssistantMessage = Extract<MessageBody["message"], { role: "assistant" }>;
 type ToolResultMessage = Extract<MessageBody["message"], { role: "toolResult" }>;
 
 /** The turn shapes are wire types: a snapshot carries them. Declared in `@nyte-ai/protocol`. */
-export type { ToolTurnPart, Turn, TurnOutcome, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+export type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 type CommitItem = { readonly oid: Oid; readonly commit: Commit };
@@ -28,8 +27,6 @@ export function turnPartId(part: TurnPart): string {
       return `${part.kind}:${part.commit}:${String(part.contentIndex)}`;
     case "tool":
       return `tool:${part.callId}`;
-    case "note":
-      return `note:${part.commit}`;
     default: {
       const _exhaustive: never = part;
       return _exhaustive;
@@ -60,12 +57,6 @@ function toolResultText(message: ToolResultMessage): string {
       }
     })
     .join("");
-}
-
-function outcomeFrom(message: AssistantMessage): TurnOutcome {
-  if (message.stopReason === "aborted") return "aborted";
-  if (message.stopReason === "error" || message.errorMessage !== undefined) return "failed";
-  return "completed";
 }
 
 /**
@@ -106,7 +97,6 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
     kind: "turn",
     id: item.oid,
     parts: [],
-    outcome: "completed",
     startedAt: item.commit.at,
     durationMs: 0,
   };
@@ -125,7 +115,6 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
   items.push({
     kind: "turn",
     id: item.oid,
-    outcome: "completed",
     startedAt: item.commit.at,
     durationMs: 0,
     parts: [item.commit.key === undefined ? part : { ...part, key: item.commit.key }],
@@ -137,10 +126,10 @@ function appendAssistant(
   item: CommitItem,
   message: AssistantMessage,
 ): void {
-  const outcome = outcomeFrom(message);
-  if (!hasVisibleAssistantContent(message) && outcome === "completed") return;
+  const { failure } = item.commit;
+  if (!hasVisibleAssistantContent(message) && failure === undefined) return;
   const turn = landingTurn(builder, item);
-  turn.outcome = outcome;
+  if (failure !== undefined) turn.failure = failure;
   for (const [contentIndex, part] of message.content.entries()) {
     switch (part.type) {
       case "text":
@@ -162,8 +151,7 @@ function appendAssistant(
         turn.parts.push({
           kind: "tool",
           callId: part.id,
-          toolName: part.name,
-          args: toJsonValue(part.arguments),
+          class: item.commit.calls?.[part.id] ?? { kind: "custom", label: part.name },
         });
         break;
       default: {
@@ -171,9 +159,6 @@ function appendAssistant(
         return _exhaustive;
       }
     }
-  }
-  if (message.stopReason !== "aborted" && message.errorMessage !== undefined) {
-    turn.parts.push({ kind: "note", commit: item.oid, text: `Error: ${message.errorMessage}` });
   }
 }
 
@@ -184,28 +169,25 @@ function appendToolResult(
   message: ToolResultMessage,
 ): void {
   const turn = landingTurn(builder, item);
-  const result = {
+  const result: ToolTurnPart["result"] = {
     commit: item.oid,
     output: toolResultText(message),
     isError: message.isError,
   };
-  const withDetails =
-    message.details === undefined ? result : { ...result, details: toJsonValue(message.details) };
-  const completeResult =
-    message.title === undefined ? withDetails : { ...withDetails, title: message.title };
+  const settled = item.commit.calls?.[message.toolCallId];
   const index = turn.parts.findIndex(
     (part) => part.kind === "tool" && part.callId === message.toolCallId,
   );
   const call = turn.parts[index];
   if (call?.kind === "tool") {
-    turn.parts[index] = { ...call, result: completeResult };
+    turn.parts[index] = { ...call, class: settled ?? call.class, result };
     return;
   }
   turn.parts.push({
     kind: "tool",
     callId: message.toolCallId,
-    toolName: message.toolName,
-    result: completeResult,
+    class: settled ?? { kind: "custom", label: message.toolName },
+    result,
   });
 }
 
@@ -259,7 +241,6 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       items.push({
         kind: "turn",
         id: item.oid,
-        outcome: "completed",
         startedAt: item.commit.at,
         durationMs: 0,
         parts: [],
@@ -273,9 +254,6 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       break;
     case "config":
       items.push({ kind: "config", commit: item.oid, at: item.commit.at, body });
-      break;
-    case "note":
-      items.push({ kind: "note", commit: item.oid, at: item.commit.at, body });
       break;
     default: {
       const _exhaustive: never = body;

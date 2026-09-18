@@ -149,7 +149,7 @@ model failure answers `failed` and leaves the head where it was.
 | Run phase        | Pending change | Step does                                                          | Publish CAS (all in one)                          |
 | ---------------- | -------------- | ------------------------------------------------------------------ | ------------------------------------------------- |
 | none / terminal  | none admitted  | nothing: `idle`                                                    |                                                   |
-| none / terminal  | some admitted  | land the first policy lane whose batch the head admits; a batch with user input starts a new run in `respond`; configuration and notes land under the terminal run, or start a run already `done` when there is none | head, queue base, run                             |
+| none / terminal  | some admitted  | land the first policy lane whose batch the head admits; a batch with user input starts a new run in `respond`; configuration lands under the terminal run, or starts a run already `done` when there is none | head, queue base, run                             |
 | `respond`, flagged | any          | end the run `aborted`; nothing lands into a stopping run           | run                                               |
 | `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only completed work while the last landed input still awaits its answer | head, queue base, run (asserted) |
 | `respond`        | none           | `turn.respond` over the branch context; the commit carries `calls` (each call's `ToolClass` from its tool's `present`) or `failure` (the `Failure` the `ai` classifier decided) | head (assistant commit), run -> tools / done / retry `{ at, failure }` / failed `{ failure }` / aborted |
@@ -185,7 +185,7 @@ can only wake a runner to read the refs; what the runner may land is decided by
 | --------------------------------- | --------- | ------------------------------------------------------------------------------ |
 | live                              | live      | the next boundary-lane batch, into that run                                    |
 | live with `abortRequested`        | settling  | nothing, until the run is `aborted`                                            |
-| none, `done`, `failed`, `aborted` | idle      | a batch with a user message, as a new run; or a batch with nothing to answer (configuration, notes), under the terminal run |
+| none, `done`, `failed`, `aborted` | idle      | a batch with a user message, as a new run; or a batch with nothing to answer (configuration), under the terminal run |
 
 The three terminal phases are one case. A completion that arrives after a run
 ended, however it ended, or on a head that never ran, stays queued, survives
@@ -222,7 +222,7 @@ ended while the read was in flight.
 
 ### Configuration on an idle head
 
-Configuration and notes land without user input, committed under the terminal
+Configuration lands without user input, committed under the terminal
 run's id with the run ref only asserted, so the head stays idle and no run is
 created that completed work could then answer into. The next user message reads
 its config from the branch, whichever lane either landed in. In a lane that

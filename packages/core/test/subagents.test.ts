@@ -335,10 +335,12 @@ for (const selected of [opus, astra]) {
       ).flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
       const tool = parts.find((part) => part.kind === "tool");
       assert.ok(tool?.kind === "tool");
-      assert.deepEqual(tool.result?.details, {
-        model: key,
-        childSessionId: child.sessionId,
-        state: "completed",
+      assert.equal(tool.result?.isError, false);
+      assert.deepEqual(tool.class, {
+        kind: "delegate",
+        role: "spawn",
+        title: TASK_TITLE,
+        child: child.sessionId,
       });
     } finally {
       await nyte.close();

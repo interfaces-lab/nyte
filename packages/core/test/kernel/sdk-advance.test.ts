@@ -259,8 +259,8 @@ test("a remote stop cancels the in-flight step and cannot cancel the next user r
   assert.equal(current?.phase.kind, "done");
   const turns = (await second.messages.list({ sessionId })).filter((turn) => turn.kind === "turn");
   assert.deepEqual(
-    turns.map((turn) => turn.outcome),
-    ["aborted", "completed"],
+    turns.map((turn) => turn.failure?.class),
+    ["aborted", undefined],
   );
   assert.ok(
     turns[1]?.parts.some((part) => part.kind === "assistant" && part.text === "the next answer"),

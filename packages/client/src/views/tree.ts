@@ -132,7 +132,6 @@ export function navigationTarget(selected: StoredCommit | undefined): Navigation
     case "checkpoint":
     case "summary":
     case "config":
-    case "note":
       return { kind: "move", to: selected.oid };
     default: {
       const _exhaustive: never = body;

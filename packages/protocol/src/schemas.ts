@@ -405,12 +405,6 @@ const ConfigBody = open({
   agent: Type.Optional(Type.String()),
 });
 
-const NoteBody = open({
-  kind: Type.Literal("note"),
-  type: Type.String(),
-  data: Type.Optional(JsonValue),
-});
-
 const JobFields = {
   id: Type.String(),
   runId: Type.String(),
@@ -441,7 +435,6 @@ export const CommitBody = typed<CommitBodyType>()(
     CheckpointBody,
     SummaryBody,
     ConfigBody,
-    NoteBody,
   ]),
 );
 
@@ -663,17 +656,8 @@ export const ToolTurnPart = typed<ToolTurnPartType>()(
   open({
     kind: Type.Literal("tool"),
     callId: Type.String(),
-    toolName: Type.String(),
-    args: Type.Optional(JsonValue),
-    result: Type.Optional(
-      open({
-        commit: Oid,
-        output: Type.String(),
-        details: Type.Optional(JsonValue),
-        title: Type.Optional(Type.String()),
-        isError: Type.Boolean(),
-      }),
-    ),
+    class: ToolClass,
+    result: Type.Optional(open({ commit: Oid, output: Type.String(), isError: Type.Boolean() })),
   }),
 );
 
@@ -693,7 +677,6 @@ export const TurnPart = typed<TurnPartType>()(
       text: Type.String(),
     }),
     ToolTurnPart,
-    open({ kind: Type.Literal("note"), commit: Oid, text: Type.String() }),
   ]),
 );
 
@@ -703,7 +686,7 @@ export const Turn = typed<TurnType>()(
       kind: Type.Literal("turn"),
       id: Oid,
       parts: Type.Array(TurnPart),
-      outcome: literals(["completed", "aborted", "failed"]),
+      failure: Type.Optional(Failure),
       startedAt: Type.Number(),
       durationMs: Type.Number(),
     }),
@@ -715,7 +698,6 @@ export const Turn = typed<TurnType>()(
     }),
     open({ kind: Type.Literal("summary"), commit: Oid, at: Type.Number(), body: SummaryBody }),
     open({ kind: Type.Literal("config"), commit: Oid, at: Type.Number(), body: ConfigBody }),
-    open({ kind: Type.Literal("note"), commit: Oid, at: Type.Number(), body: NoteBody }),
   ]),
 );
 

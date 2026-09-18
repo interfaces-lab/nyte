@@ -242,7 +242,7 @@ async function land(
     landed = commitsFor(changes, context.tip, live.id, context.now);
     nextRun = live;
   } else if (run !== undefined && !changes.some(startsResponse)) {
-    // Configuration and notes on an idle head apply under the run that ended,
+    // Configuration on an idle head applies under the run that ended,
     // whose phase is history. A new run is only ever started by user input.
     landed = commitsFor(changes, context.tip, run.id, context.now);
     nextRun = run;

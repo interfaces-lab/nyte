@@ -1,29 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { FileChange, ToolTurnPart, Turn, TurnPart } from "@nyte-ai/protocol";
-import type { JsonValue } from "@nyte-ai/schema";
+import type { FileChange, ToolClass, ToolTurnPart, Turn, TurnPart } from "@nyte-ai/protocol";
 import type { CommitBody } from "../../src/kernel/model.ts";
-import { appendTurnChanges, changesFromTurns, EMPTY_CHANGES, readPatch } from "@nyte-ai/client";
+import { appendTurnChanges, changesFromTurns, EMPTY_CHANGES } from "@nyte-ai/client";
 import { appendTranscriptCommit, EMPTY_TRANSCRIPT, transcriptFromCommits } from "@nyte-ai/client";
 import { assistant, call, commit, message, toolResult, user } from "./helpers.ts";
 
-const firstPatch =
-  "--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-old\n+new\n@@ -8 +8,2 @@\n context\n+extra\n";
-const secondPatch = "--- /dev/null\n+++ b/second.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n";
-const deletion = "--- a/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-old\n";
-const rename =
-  "diff --git a/old.txt b/renamed.txt\nsimilarity index 100%\nrename from old.txt\nrename to renamed.txt\n";
-
-function turn(...parts: TurnPart[]): Extract<Turn, { kind: "turn" }> {
-  return { kind: "turn", id: "turn", parts, outcome: "completed", startedAt: 0, durationMs: 0 };
+function patch(
+  path: string,
+  added: number,
+  removed: number,
+  op: "edit" | "write" = "edit",
+): ToolClass {
+  return { kind: "file_patch", op, path, added, removed, patch: `--- a/${path}\n+++ b/${path}\n` };
 }
 
-function settled(commit: string, details: JsonValue, isError = false): ToolTurnPart {
+function turn(...parts: TurnPart[]): Extract<Turn, { kind: "turn" }> {
+  return { kind: "turn", id: "turn", parts, startedAt: 0, durationMs: 0 };
+}
+
+function settled(commit: string, toolClass: ToolClass, isError = false): ToolTurnPart {
   return {
     kind: "tool",
     callId: commit,
-    toolName: "edit",
-    result: { commit, details, isError, output: "done" },
+    class: toolClass,
+    result: { commit, isError, output: "done" },
   };
 }
 
@@ -46,65 +47,59 @@ function checkProjection(turns: readonly Turn[], expected: readonly FileChange[]
 }
 
 test("bulk and incremental totals keep file order, repeated paths, latest commits and OID deduplication", () => {
-  const repeated = settled("first", { patch: firstPatch + secondPatch + firstPatch });
+  const repeated = settled("first", patch("first.txt", 4, 2));
   const turns = [
     turn(repeated, repeated),
-    turn(settled("latest", { diff: secondPatch + deletion })),
+    turn(settled("latest", patch("second.txt", 2, 0, "write"))),
+    turn(settled("gone", patch("gone.txt", 0, 1)), settled("again", patch("second.txt", 2, 0))),
     turn(repeated),
   ];
   checkProjection(turns, [
     { path: "first.txt", added: 4, removed: 2, lastCommit: "first" },
-    { path: "second.txt", added: 4, removed: 0, lastCommit: "latest" },
-    { path: "gone.txt", added: 0, removed: 1, lastCommit: "latest" },
+    { path: "second.txt", added: 4, removed: 0, lastCommit: "again" },
+    { path: "gone.txt", added: 0, removed: 1, lastCommit: "gone" },
   ]);
 });
 
-test("skipped results do not reserve an OID and metadata still accounts for zero-count files", () => {
+test("only settled, successful file_patch results count; other parts and classes do not reserve an OID", () => {
   const ignored = turn(
     { kind: "user", commit: "user", parent: null, content: "edit" },
     { kind: "assistant", commit: "assistant", contentIndex: 0, text: "working" },
     { kind: "thinking", commit: "thinking", contentIndex: 0, text: "plan" },
-    { kind: "note", commit: "note", text: "note" },
-    { kind: "tool", callId: "pending", toolName: "edit" },
-    settled("failed", { patch: firstPatch }, true),
-    settled("malformed", { patch: "--- a/bad\n+++ b/bad\n@@ -1 +1 @@\n-old" }),
-    settled("no-path", { patch: "@@ -1 +1 @@\n-old\n+new\n" }),
-    settled("plain", { patch: "not a patch" }),
-    settled("empty", {}),
+    { kind: "tool", callId: "pending", class: { kind: "file_edit", path: "first.txt" } },
+    settled("failed", patch("first.txt", 2, 1), true),
+    settled("shell", { kind: "shell", command: "ls" }),
+    settled("read", { kind: "file_read", path: "first.txt" }),
+    settled("custom", { kind: "custom", label: "edit" }),
   );
   assert.equal(appendTurnChanges(EMPTY_CHANGES, ignored), EMPTY_CHANGES);
-  const zeroCounts = turn(
-    settled("rename", { patch: rename }),
-    settled("same", { patch: "--- a/same.txt\n+++ b/same.txt\n@@ -1 +1 @@\n context\n" }),
-    settled("headers", { patch: "--- a/headers.txt\n+++ b/headers.txt\n" }),
-  );
+  const zeroCounts = turn(settled("rename", patch("renamed.txt", 0, 0)));
   const valid = turn(
-    settled("failed", { patch: firstPatch }),
-    settled("malformed", { patch: secondPatch }),
-    settled("no-path", { patch: deletion }),
+    settled("failed", patch("first.txt", 2, 1)),
+    settled("shell", patch("second.txt", 2, 0)),
   );
   checkProjection(
     [ignored, zeroCounts, valid, ignored],
     [
       { path: "renamed.txt", added: 0, removed: 0, lastCommit: "rename" },
-      { path: "same.txt", added: 0, removed: 0, lastCommit: "same" },
-      { path: "headers.txt", added: 0, removed: 0, lastCommit: "headers" },
       { path: "first.txt", added: 2, removed: 1, lastCommit: "failed" },
-      { path: "second.txt", added: 2, removed: 0, lastCommit: "malformed" },
-      { path: "gone.txt", added: 0, removed: 1, lastCommit: "no-path" },
+      { path: "second.txt", added: 2, removed: 0, lastCommit: "shell" },
     ],
   );
   const sameTurn = turn(
-    settled("retry", { patch: "@@ -1 +1 @@\n-old\n+new\n" }),
-    settled("retry", { patch: firstPatch }),
+    settled("retry", patch("first.txt", 2, 1)),
+    settled("retry", patch("first.txt", 9, 9)),
   );
   checkProjection([sameTurn], [{ path: "first.txt", added: 2, removed: 1, lastCommit: "retry" }]);
 });
 
 test("forks from one snapshot and repeated bulk rebuilds own independent totals", () => {
-  const trunk = turn(settled("trunk", { patch: firstPatch }));
-  const left = turn(settled("left", { patch: firstPatch + secondPatch }));
-  const right = turn(settled("right", { patch: deletion }));
+  const trunk = turn(settled("trunk", patch("first.txt", 2, 1)));
+  const left = turn(
+    settled("left", patch("first.txt", 2, 1)),
+    settled("left-2", patch("second.txt", 2, 0)),
+  );
+  const right = turn(settled("right", patch("gone.txt", 0, 1)));
   const state = appendTurnChanges(EMPTY_CHANGES, trunk);
   const before = structuredClone(state);
   const leftState = appendTurnChanges(state, left);
@@ -113,7 +108,7 @@ test("forks from one snapshot and repeated bulk rebuilds own independent totals"
   const rightState = appendTurnChanges(state, right);
   const expectedLeft = [
     { path: "first.txt", added: 4, removed: 2, lastCommit: "left" },
-    { path: "second.txt", added: 2, removed: 0, lastCommit: "left" },
+    { path: "second.txt", added: 2, removed: 0, lastCommit: "left-2" },
   ];
   const expectedRight = [
     { path: "first.txt", added: 2, removed: 1, lastCommit: "trunk" },
@@ -130,26 +125,18 @@ test("forks from one snapshot and repeated bulk rebuilds own independent totals"
   checkProjection([], []);
 });
 
-test("a tool's patch is read from `patch`, then `diff`, byte for byte", () => {
-  assert.equal(readPatch({ patch: firstPatch, diff: secondPatch }), firstPatch);
-  assert.equal(readPatch({ patch: "", diff: secondPatch }), secondPatch);
-  assert.equal(readPatch({ patch: 1, diff: secondPatch }), secondPatch);
-  assert.equal(readPatch({ diff: ` ${firstPatch}` }), undefined);
-  for (const details of [undefined, null, [], "patch", { patch: false, diff: {} }]) {
-    assert.equal(readPatch(details), undefined);
-  }
-});
-
 test("user and completion-opened work turns project the same changes during settlement and rebuild", () => {
-  const bodies: CommitBody[] = [
+  const bodies: (CommitBody | { body: CommitBody; calls?: Record<string, ToolClass> })[] = [
     message(user("edit")),
     message(assistant("working", { calls: [call("foreground", "edit")] })),
-    message(toolResult("foreground", "edit", "done", { details: { patch: firstPatch } })),
+    {
+      body: message(toolResult("foreground", "edit", "done")),
+      calls: { foreground: patch("first.txt", 2, 1) },
+    },
     message(assistant("finished")),
     { kind: "checkpoint", summary: "so far", retainedTail: [], tokensBefore: 10 },
     { kind: "summary", text: "another branch" },
     { kind: "config", model: { id: "model" } },
-    { kind: "note", type: "status", data: { patch: deletion } },
     {
       kind: "completion",
       job: {
@@ -167,28 +154,37 @@ test("user and completion-opened work turns project the same changes during sett
       },
     },
     message(assistant("follow-up", { calls: [call("follow-up", "edit")] })),
-    message(toolResult("follow-up", "edit", "done", { details: { patch: secondPatch } })),
+    {
+      body: message(toolResult("follow-up", "edit", "done")),
+      calls: { "follow-up": patch("second.txt", 2, 0) },
+    },
   ];
-  const items = bodies.map((body, index) => ({
-    oid: `commit-${index}`,
-    commit: commit(index === 0 ? null : `commit-${index - 1}`, body, { at: index * 1000 }),
-  }));
+  const items = bodies.map((entry, index) => {
+    const stamped = "body" in entry ? entry : { body: entry, calls: undefined };
+    return {
+      oid: `commit-${index}`,
+      commit: commit(index === 0 ? null : `commit-${index - 1}`, stamped.body, {
+        at: index * 1000,
+        calls: stamped.calls,
+      }),
+    };
+  });
   const before = structuredClone(items);
   const turns = transcriptFromCommits(items);
   assert.deepEqual(
     turns.map((item) => item.kind),
-    ["turn", "checkpoint", "summary", "config", "note", "turn"],
+    ["turn", "checkpoint", "summary", "config", "turn"],
   );
   const work = turns.at(-1);
   assert.ok(work?.kind === "turn");
-  assert.equal(work.id, "commit-8");
+  assert.equal(work.id, "commit-7");
   assert.deepEqual(
     work.parts.map((part) => part.kind),
     ["assistant", "tool"],
   );
   const expected = [
     { path: "first.txt", added: 2, removed: 1, lastCommit: "commit-2" },
-    { path: "second.txt", added: 2, removed: 0, lastCommit: "commit-10" },
+    { path: "second.txt", added: 2, removed: 0, lastCommit: "commit-9" },
   ];
   checkProjection(turns, expected);
   let transcript = EMPTY_TRANSCRIPT;
