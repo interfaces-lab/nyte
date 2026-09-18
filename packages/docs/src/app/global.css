@@ -1489,3 +1489,43 @@ html > body[data-scroll-locked] {
     animation: none;
   }
 }
+
+@keyframes scribble-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* --------------------------------------------------------- hero plate --- */
+
+:root {
+  --hero-blue: #2222dd;
+}
+
+/*
+ * The hero is one blue plane, so the shared bar joins it: same ground, same
+ * button shape as the page's own. Scoped to the route that opts in.
+ */
+body:has(.hero-plate) .site-nav {
+  background: var(--hero-blue);
+}
+
+body:has(.hero-plate) .site-nav-brand,
+body:has(.hero-plate) .site-sections-item {
+  color: #fff;
+}
+
+body:has(.hero-plate) .site-nav .site-nav-search {
+  height: 42px;
+  border-radius: 0;
+  padding-inline: 20px;
+  background: #fff;
+  color: var(--hero-blue);
+}
+
+body:has(.hero-plate) .site-nav-icon {
+  color: #fff;
+}

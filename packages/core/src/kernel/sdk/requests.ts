@@ -11,7 +11,7 @@ import {
   type HookRegistry,
   type HookInvocation,
 } from "../../plugins/hooks.ts";
-import type { StreamFn, StreamOptions } from "../../types.ts";
+import type { StreamFn, StreamOptions } from "../loop/types.ts";
 import type { ProviderCompaction } from "../compaction.ts";
 import { startSpan } from "../telemetry.ts";
 

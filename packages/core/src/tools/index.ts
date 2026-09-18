@@ -7,7 +7,7 @@
  * Based on https://github.com/earendil-works/pi/tree/main/packages/agent/src/harness/tools
  * and https://github.com/earendil-works/pi/tree/main/packages/coding-agent/src/core/tools
  */
-import type { AgentTool } from "../types.ts";
+import type { AgentTool } from "../kernel/loop/types.ts";
 import { createBashTool } from "./bash.ts";
 import { bindTool } from "./bind-tool.ts";
 import { createEditTool } from "./edit.ts";

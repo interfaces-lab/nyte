@@ -10,7 +10,7 @@ import { headRef, runRef } from "../../src/kernel/names.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
-import { ToolWait } from "../../src/types.ts";
+import { ToolWait } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,

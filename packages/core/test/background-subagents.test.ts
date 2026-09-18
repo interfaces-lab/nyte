@@ -9,7 +9,7 @@ import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { ModelCatalog, Nyte, SessionEvent, SessionId } from "../src/kernel/sdk/types.ts";
 import type { Session, Store } from "../src/kernel/store.ts";
 import { definePlugin, inlinePlugin, type Plugin } from "../src/plugins/index.ts";
-import { ToolWait, type StreamFn } from "../src/types.ts";
+import { ToolWait, type StreamFn } from "../src/kernel/loop/types.ts";
 import { createBashTool } from "../src/tools/bash.ts";
 import { assistant, call, only, openStore, storePath, within } from "./kernel/helpers.ts";
 

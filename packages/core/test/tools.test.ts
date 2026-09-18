@@ -10,7 +10,7 @@ import { createEditTool } from "../src/tools/edit.ts";
 import { createLsTool } from "../src/tools/ls.ts";
 import { createReadTool } from "../src/tools/read.ts";
 import { createWriteTool } from "../src/tools/write.ts";
-import { toolResultText } from "../src/utils/tool-result.ts";
+import { toolResultText } from "../src/kernel/loop/tool-result.ts";
 
 test("read preserves small images and bounds converted, oversized, and oriented images", async () => {
   const directory = await mkdtemp(join(tmpdir(), "nyte-read-image-"));

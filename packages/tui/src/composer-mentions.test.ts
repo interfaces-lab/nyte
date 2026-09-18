@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, test } from "bun:test";
-import { discoverMentionFiles } from "./composer.ts";
+import { discoverMentionFiles } from "@nyte-ai/host";
 
 const previousPath = process.env.PATH;
 let root: string;

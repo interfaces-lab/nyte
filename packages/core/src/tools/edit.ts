@@ -10,8 +10,8 @@
 import { readFile as fsReadFile, stat as fsStat, writeFile as fsWriteFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { Type, type Static } from "typebox";
-import type { AgentTool, AgentToolCall, AgentToolResult } from "../types.ts";
-import { toolResultContent } from "../utils/tool-result.ts";
+import type { AgentTool, AgentToolCall, AgentToolResult } from "../kernel/loop/types.ts";
+import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import {
   applyEditsToNormalizedContent,
   detectLineEnding,

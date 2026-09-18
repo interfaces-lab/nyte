@@ -9,7 +9,7 @@ import { runRef } from "../src/kernel/names.ts";
 import { pending, submit } from "../src/kernel/queue.ts";
 import { createJobs, JOB_PREFIX, parseJobRecord } from "../src/kernel/sdk/jobs.ts";
 import { sessionId } from "../src/kernel/sdk/types.ts";
-import { ToolWait, type AgentTool, type AgentToolResult } from "../src/types.ts";
+import { ToolWait, type AgentTool, type AgentToolResult } from "../src/kernel/loop/types.ts";
 import { granted, lease, only, openStore, storePath, within } from "./kernel/helpers.ts";
 
 afterEach(() => vi.restoreAllMocks());

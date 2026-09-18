@@ -18,7 +18,7 @@ import {
   readWorkspaceFile,
   resolveWorkspaceFile,
   searchWorkspaceFiles,
-} from "@nyte-ai/core/files";
+} from "@nyte-ai/host";
 import { ensureShellEnvironment } from "./shell-environment.ts";
 
 /** Run Git and formatter CLIs without a shell. */

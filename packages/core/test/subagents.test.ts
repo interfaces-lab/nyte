@@ -11,7 +11,7 @@ import type { AssistantMessage, Context } from "@nyte-ai/schema";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
 import type { HeadName, ModelCatalog, Nyte, SessionId } from "../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../src/plugins/index.ts";
-import type { AgentTool, StreamFn } from "../src/types.ts";
+import type { AgentTool, StreamFn } from "../src/kernel/loop/types.ts";
 import { Type } from "typebox";
 import { assistant, call, openStore, sleep, within } from "./kernel/helpers.ts";
 

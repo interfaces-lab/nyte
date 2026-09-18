@@ -11,7 +11,7 @@ import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { Nyte } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin, type AgentTool } from "../../src/plugins/index.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, sleep, usage } from "./helpers.ts";
 
 const model: Model<Api> = {

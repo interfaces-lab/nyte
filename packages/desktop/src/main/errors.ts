@@ -1,9 +1,13 @@
-import { WorkspaceFileError, WorkspaceSearchError } from "@nyte-ai/core/files";
-import { InvalidRipgrepPattern } from "@nyte-ai/core/ripgrep";
+import {
+  InvalidRipgrepPattern,
+  WorkspaceFileError,
+  WorkspaceSearchError,
+  WorkspaceTrustRequired,
+} from "@nyte-ai/host";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { randomUUID } from "node:crypto";
-import { NyteClosed, UnknownSession, WorkspaceTrustRequired } from "@nyte-ai/core";
+import { NyteClosed, UnknownSession } from "@nyte-ai/core";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type { NyteOptions } from "@nyte-ai/core";
 import type { IpcFailure, IpcResult } from "../shared/errors.ts";

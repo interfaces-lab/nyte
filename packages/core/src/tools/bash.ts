@@ -11,8 +11,8 @@ import { spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { access as fsAccess } from "node:fs/promises";
 import { Type } from "typebox";
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "../types.ts";
-import { toolResultContent } from "../utils/tool-result.ts";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "../kernel/loop/types.ts";
+import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import { argumentParser } from "./support/arguments.ts";
 import { OutputAccumulator } from "./support/output-accumulator.ts";
 import {

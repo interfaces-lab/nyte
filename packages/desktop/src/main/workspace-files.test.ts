@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
-import { WorkspaceTrustRequired, WorkspaceTrustStore } from "@nyte-ai/core";
+import { readWorkspaceFile, WorkspaceStore, WorkspaceTrustRequired } from "@nyte-ai/host";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, test } from "vitest";
@@ -11,7 +11,6 @@ import {
   formatWorkspaceFile,
 } from "./workspace-files.ts";
 import { ipcDiagnostics, ipcResult } from "./errors.ts";
-import { readWorkspaceFile } from "@nyte-ai/core/files";
 
 async function fixture(): Promise<{ readonly root: string; readonly file: string }> {
   const root = await mkdtemp(join(tmpdir(), "nyte-files-"));
@@ -422,7 +421,7 @@ describe("workspace formatting", () => {
       if (original.kind !== "text") return;
       const input = { path: file, contents: "const x=1", version: original.version };
       assert.equal((await formatWorkspaceFile(root, input)).kind, "unsupported");
-      const trust = new WorkspaceTrustStore(join(root, "trust.json"));
+      const trust = new WorkspaceStore(join(root, "workspaces.json"));
       const editor = createWorkspaceEditor({
         workspace: async () => root,
         requireTrust: async (cwd) => {

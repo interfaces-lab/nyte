@@ -28,7 +28,7 @@ import type { Context, JsonValue, Message, Usage } from "@nyte-ai/schema";
 import type { ProviderCompaction } from "../kernel/compaction.ts";
 import { isJsonObject, toJsonValue, type JsonObject } from "@nyte-ai/client";
 import { addUsage } from "@nyte-ai/client";
-import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../types.ts";
+import type { AgentToolResult, StreamOptions, StreamOptionsPatch } from "../kernel/loop/types.ts";
 
 /**
  * The model a request is about. pi carries its full `Model<Api>` here; Nyte's

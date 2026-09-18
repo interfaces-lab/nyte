@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
+import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
@@ -30,6 +31,13 @@ import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
 import { WorkerStore } from "../../src/kernel/worker-store.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
+import { TRUSTED_WORKSPACE } from "../../src/kernel/sdk/types.ts";
+import type { TrustedWorkspace } from "../../src/kernel/sdk/types.ts";
+
+/** What the host's trust store would mint after a grant on `cwd`. */
+export async function trustWorkspace(cwd: string): Promise<TrustedWorkspace> {
+  return { cwd: await realpath(cwd), [TRUSTED_WORKSPACE]: true };
+}
 
 /**
  * The landing policy these suites run under. The lane names are deliberately

@@ -18,7 +18,7 @@ import { schemas, type CompactionInfo } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 import { Result } from "./result.ts";
-import type { StreamFn, ThinkingLevel } from "../types.ts";
+import type { StreamFn, ThinkingLevel } from "./loop/types.ts";
 import { contextMessages, modelContext } from "@nyte-ai/client";
 import { contextCommits } from "./graph.ts";
 import { hashObject } from "./hash.ts";

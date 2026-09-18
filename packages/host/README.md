@@ -40,13 +40,14 @@ a plugin list. The caller opens the store and closes it after `nyte.close()`.
   one process-wide connection pool. `pluginWatchTargets` is what a host
   watches to re-resolve; pass `nyte.holdPlugins` as the watcher's `hold` so
   runners wait for the swap. `target` is `{ kind: "home" }`, `{ kind: "project", workspace }`
-  where `workspace` is a `TrustedWorkspace` (only the trust store makes one), or
+  where `workspace` is a `TrustedWorkspace` (only the workspace store makes one), or
   `{ kind: "deferred", resolve }` to open storage now and resolve the target
   when the first session activates. `extra` appends client-specific built-ins.
 - `custom`: plugins the caller loaded itself, passed through.
 
-`nyteHome()` is `NYTE_HOME` or `~/.nyte`. `createTrustStore()` and
-`createWorkspaceRegistry()` name the files there that every client shares.
+`nyteHome()` is `NYTE_HOME` or `~/.nyte`. `createWorkspaceStore()` names the
+file there that every client shares: `workspaces.json`, which records each
+workspace's trust grant and when it was last opened.
 
 ## Delegated models
 
@@ -139,6 +140,22 @@ final line without a newline is treated as an in-progress append until the next
 scan. A complete final object counts without a newline. Files are streamed only
 to their size at open.
 Cancellation rejects with the signal's reason and never returns partial totals.
+
+## Workspace search
+
+The host package owns ripgrep discovery and execution. It uses system `rg` 12 or later, then the Nyte cache, otherwise downloads ripgrep 15.1.0 for the current platform. Downloads are checked against pinned SHA-256 digests before extraction. The cache lives at `$NYTE_HOME/bin`, or `~/.nyte/bin` by default. Cancelling one search does not cancel a shared installation; a failed installation can be retried.
+
+`findRipgrepFiles` enumerates eligible files. `grepRipgrep` streams validated JSON matches with UTF-8 byte offsets and takes exactly one source, a directory or text on stdin. Calls disable user ripgrep configuration, use the default non-backtracking regex engine, and bound output. Partial read failures, such as unreadable directories, keep the records ripgrep already produced. No Electron API is required.
+
+The search design follows [OpenCode v2](https://github.com/anomalyco/opencode/tree/0643a5638e0cd02234e73f176771527d7600faf7/packages/core/src/ripgrep). See the [shared third-party notices](../../THIRD-PARTY-NOTICES.md#opencode-anomalycoopencode).
+
+`@nyte-ai/host` owns workspace reads, version-checked saves, and `searchWorkspaceFiles`, as well as filename discovery. Content search owns draft precedence, confinement, strict UTF-8/binary/2 MB file checks, skipped counts, UTF-16 selections, and bounded snippets. Hosts validate requests with `WorkspaceSearchSchema` and add their own cancellation IDs. Desktop only dispatches the parsed request and maps host errors to IPC errors.
+
+Content search keeps Nyte's validated-byte behavior: disk batches use private temporary snapshots, removed after the subprocess closes; drafts use stdin. This differs from OpenCode's direct workspace grep. Removing the snapshots would also require changing validation and skipped-count behavior. Searches are bounded by matches (500 by default, 1,000 at most), 8 MB of subprocess output, and five seconds, excluding binary installation. Regex validation runs even when filters select no files; literal searches need no validation subprocess.
+
+`discoverMentionFiles` and `rankMentionFiles` provide filename discovery. `sdk.workspace.files({ sessionId?, query? })` carries that discovery over the wire for clients that cannot read the host's filesystem: it resolves the session's directory, or the directory a new session would start in, and answers `rankMentionFiles`' best matches, one menu's worth. Ranking is split by where the list lives: a client holding the whole tree ranks it itself, as Desktop does with prefix and substring buckets; a client that asks per query gets the host's substring ranking and nothing else to keep in sync. Both Desktop and TUI use ripgrep for file discovery; the TUI ranks filenames with `fuzzysort`. There is no native filename index or platform-specific search binding. Home-directory scans exclude hidden files and protected macOS and Windows folders, including when the home path is a symlink. Enumeration is bounded at 100,000 files; mention lists return at most 5,000 entries.
+
+Ripgrep owns ignore-file behavior. Linked ignore files are read but not offered as mention candidates. Directory results are derived from discovered files, so empty directories are not guaranteed.
 
 ## Account usage
 

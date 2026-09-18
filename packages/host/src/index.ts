@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
 import type { MutableModels } from "@nyte-ai/ai";
-import { createNyte, WorkspaceRegistry, WorkspaceTrustStore } from "@nyte-ai/core";
+import { createNyte } from "@nyte-ai/core";
 import type {
   ActivationRequirement,
   ActiveSessionActivation,
@@ -26,6 +26,7 @@ import type { Api, Model } from "@nyte-ai/schema";
 import { nyteHome } from "./paths.ts";
 import type { PluginTarget } from "./paths.ts";
 import { resolveHostPlugins } from "./plugins.ts";
+import { WorkspaceStore } from "./workspace-store.ts";
 
 export {
   manifestPaths,
@@ -37,6 +38,22 @@ export {
 } from "./paths.ts";
 export type { PluginTarget } from "./paths.ts";
 export { readManifest, resolveHostPlugins, type HostManifest } from "./plugins.ts";
+export {
+  WorkspaceStore,
+  WorkspaceTrustRequired,
+  workspaceName,
+  type WorkspaceTrustResolution,
+} from "./workspace-store.ts";
+export { discoverMentionFiles, rankMentionFiles } from "./mention-files.ts";
+export {
+  MAX_WORKSPACE_FILE_BYTES,
+  readWorkspaceFile,
+  resolveWorkspaceFile,
+  saveWorkspaceFile,
+  WorkspaceFileError,
+} from "./workspace-files.ts";
+export { searchWorkspaceFiles, WorkspaceSearchError } from "./workspace-search.ts";
+export { InvalidRipgrepPattern } from "./ripgrep.ts";
 
 export type DeferredPluginTarget =
   | PluginTarget
@@ -69,12 +86,8 @@ export type HostOptions = Omit<
   readonly plugins: HostPlugins;
 };
 
-export function createTrustStore(): WorkspaceTrustStore {
-  return new WorkspaceTrustStore(join(nyteHome(), "trust.json"));
-}
-
-export function createWorkspaceRegistry(): WorkspaceRegistry {
-  return new WorkspaceRegistry(join(nyteHome(), "workspaces.json"));
+export function createWorkspaceStore(): WorkspaceStore {
+  return new WorkspaceStore(join(nyteHome(), "workspaces.json"));
 }
 
 /** `"provider/id"` to a catalog model, restoring the provider's persisted catalog first (no network). */

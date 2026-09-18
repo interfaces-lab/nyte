@@ -13,7 +13,7 @@ import { sessionMark } from "@nyte-ai/client";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
-import { ToolWait } from "../../src/types.ts";
+import { ToolWait } from "../../src/kernel/loop/types.ts";
 import { assistant, call, openStore, within } from "./helpers.ts";
 
 const model: Model<Api> = {

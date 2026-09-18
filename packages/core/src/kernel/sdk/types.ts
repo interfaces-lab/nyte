@@ -72,9 +72,7 @@ import type {
   PluginInfo,
   SettingInfo,
 } from "../../plugins/types.ts";
-import type { StreamFn, StreamOptions, ThinkingLevel } from "../../types.ts";
-import type { WorkspaceRegistryBackend } from "../../workspace-registry.ts";
-import type { TrustedWorkspace } from "../../workspace-trust.ts";
+import type { StreamFn, StreamOptions, ThinkingLevel } from "../loop/types.ts";
 import type { CompactionSettings } from "../compaction.ts";
 import type { Actor, Run } from "../model.ts";
 import type { StepOutcome } from "../step.ts";
@@ -143,7 +141,14 @@ export {
   type WorkspaceSelectOutcome,
   type WorkspaceSelection,
 } from "@nyte-ai/protocol";
-export type { WorkspaceRegistryBackend } from "../../workspace-registry.ts";
+
+export const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
+
+/** A realpath workspace that passed the host's trust decision. */
+export interface TrustedWorkspace {
+  readonly cwd: string;
+  readonly [TRUSTED_WORKSPACE]: true;
+}
 
 // ---------------------------------------------------------------------------
 // Sessions
@@ -289,6 +294,20 @@ export interface VcsBackend {
   diff(input?: { readonly paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
 }
 
+/** Everything the SDK's `workspace` namespace answers from; the host supplies it all. */
+export interface WorkspaceBackend {
+  list(): Promise<readonly WorkspaceInfo[]>;
+  touch(path: string, now?: number): Promise<void>;
+  forget(path: string): Promise<void>;
+  /** Files and folders `@` can name under `cwd`, ranked by `query`; the backend caps the count. */
+  files(input: {
+    readonly cwd: string;
+    readonly query?: string;
+    readonly signal?: AbortSignal;
+  }): Promise<readonly MentionFile[]>;
+  readonly vcs?: VcsBackend;
+}
+
 export interface Workspace {
   list(): Promise<readonly WorkspaceInfo[]>;
   current(): Promise<WorkspaceSelection>;
@@ -403,8 +422,7 @@ interface NyteBaseOptions {
   readonly streamOptions?: StreamOptions;
   /** default: records nothing */
   readonly telemetry?: TelemetryContext;
-  readonly vcs?: VcsBackend;
-  readonly workspaces?: WorkspaceRegistryBackend;
+  readonly workspace?: WorkspaceBackend;
 }
 
 export interface ActiveSessionActivation {

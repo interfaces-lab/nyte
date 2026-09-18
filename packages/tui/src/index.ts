@@ -1,9 +1,8 @@
 import process from "node:process";
 import { createNyteModels, FileCredentialStore } from "@nyte-ai/ai";
 import type { AuthType } from "@nyte-ai/ai";
-import { WorkspaceTrustRequired } from "@nyte-ai/core";
 import type { TrustedWorkspace } from "@nyte-ai/core";
-import { createTrustStore } from "@nyte-ai/host";
+import { createWorkspaceStore, WorkspaceTrustRequired } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
 import { loginProvider, logoutProvider } from "./auth.ts";
 import { loadAuthenticatedModels, requireProvider } from "./catalog.ts";
@@ -199,7 +198,7 @@ async function print(flags: RunFlags): Promise<PrintOutcome> {
   signal.throwIfAborted();
   let workspace: TrustedWorkspace;
   try {
-    workspace = await createTrustStore().require(process.cwd());
+    workspace = await createWorkspaceStore().require(process.cwd());
   } catch (cause) {
     if (cause instanceof WorkspaceTrustRequired) {
       throw new Error(

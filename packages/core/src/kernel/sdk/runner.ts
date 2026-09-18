@@ -6,7 +6,7 @@
  */
 import { isTerminalPhase, validateHeadName } from "@nyte-ai/protocol";
 import type { Api, Model } from "@nyte-ai/schema";
-import type { AgentTool } from "../../types.ts";
+import type { AgentTool } from "../loop/types.ts";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
 import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.ts";
 import { failedAssistant } from "./requests.ts";

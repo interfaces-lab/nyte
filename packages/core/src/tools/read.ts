@@ -9,9 +9,9 @@
 import { readFile } from "node:fs/promises";
 import { relative } from "node:path";
 import { Type } from "typebox";
-import type { AgentTool, AgentToolResult } from "../types.ts";
-import { processImage } from "../utils/image.ts";
-import { toolResultContent } from "../utils/tool-result.ts";
+import type { AgentTool, AgentToolResult } from "../kernel/loop/types.ts";
+import { processImage } from "../kernel/loop/image.ts";
+import { toolResultContent } from "../kernel/loop/tool-result.ts";
 import { argumentParser } from "./support/arguments.ts";
 import { detectSupportedImageMimeType } from "./support/image.ts";
 import { resolveReadPathAsync } from "./support/path-utils.ts";

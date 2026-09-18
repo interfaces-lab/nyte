@@ -20,7 +20,7 @@ import { submit } from "../../src/kernel/queue.ts";
 import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn, type TurnInput } from "../../src/kernel/turn.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,

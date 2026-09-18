@@ -6,7 +6,7 @@ import { FileModelsStore } from "@nyte-ai/ai";
 import type { Model } from "@nyte-ai/ai";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Session } from "@nyte-ai/core/store";
-import { createTrustStore, createWorkspaceRegistry, workspaceStorePath } from "@nyte-ai/host";
+import { createWorkspaceStore, workspaceStorePath } from "@nyte-ai/host";
 import type { Commit, CommitBody } from "@nyte-ai/protocol";
 import { rememberWorkspace } from "../src/main/workspaces.ts";
 
@@ -54,8 +54,7 @@ export interface DesktopBenchmarkPaths {
   readonly workspace: string;
   readonly workspaceStore: string;
   readonly modelCatalog: string;
-  readonly trust: string;
-  readonly workspaceRegistry: string;
+  readonly workspaces: string;
   readonly rememberedWorkspace: string;
 }
 
@@ -263,11 +262,10 @@ export async function createDesktopBenchmarkFixture(
 
   let store: SqliteStore | undefined;
   try {
-    const trustStore = createTrustStore();
-    const trustedWorkspace = await trustStore.trust(workspaceDirectory);
+    const workspaces = createWorkspaceStore();
+    const trustedWorkspace = await workspaces.trust(workspaceDirectory);
     const workspace = trustedWorkspace.cwd;
-    const registry = createWorkspaceRegistry();
-    await registry.touch(workspace, DESKTOP_BENCHMARK_EPOCH_MS);
+    await workspaces.touch(workspace, DESKTOP_BENCHMARK_EPOCH_MS);
     await rememberWorkspace(workspace);
 
     const modelCatalog = join(nyteHome, "models-store.json");
@@ -300,8 +298,7 @@ export async function createDesktopBenchmarkFixture(
         workspace,
         workspaceStore,
         modelCatalog,
-        trust: trustStore.path,
-        workspaceRegistry: registry.path,
+        workspaces: workspaces.path,
         rememberedWorkspace: join(nyteHome, "desktop-workspace.json"),
       },
       sessions,

@@ -12,7 +12,7 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
-import { dispatch, watchPluginDirectories, WorkspaceTrustRequired } from "@nyte-ai/core";
+import { dispatch, watchPluginDirectories } from "@nyte-ai/core";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type {
   Disposer,
@@ -25,7 +25,6 @@ import type {
   WorkspaceSelectOutcome,
   WorkspaceSelection,
 } from "@nyte-ai/core";
-import { discoverMentionFiles, readWorkspaceFile, saveWorkspaceFile } from "@nyte-ai/core/files";
 import { createNyteClient } from "@nyte-ai/client";
 import type { NyteClient } from "@nyte-ai/client";
 // Hosts name their storage backend through the store entry; the worker keeps
@@ -34,12 +33,16 @@ import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import {
   createHost,
-  createTrustStore,
-  createWorkspaceRegistry,
+  createWorkspaceStore,
+  discoverMentionFiles,
   nyteHome,
   pluginWatchTargets,
+  rankMentionFiles,
+  readWorkspaceFile,
   resolveHostPlugins,
+  saveWorkspaceFile,
   workspaceStorePath,
+  WorkspaceTrustRequired,
 } from "@nyte-ai/host";
 import type { DeferredPluginTarget, PluginTarget } from "@nyte-ai/host";
 import { createOtelExport } from "@nyte-ai/host/otel";
@@ -257,8 +260,7 @@ function isSdkOperation(path: CallPath): path is SdkOperationPath {
 
 export class DesktopHost {
   private readonly dependencies: DesktopHostDependencies;
-  private readonly trustStore = createTrustStore();
-  private readonly registry = createWorkspaceRegistry();
+  private readonly workspaces = createWorkspaceStore();
   private readonly preferences = createModelPreferencesStore();
   private readonly browserAccess = createBrowserAccessStore();
   private readonly serverSettings = new ServerSettingsStore(join(nyteHome(), "server.json"));
@@ -535,11 +537,11 @@ export class DesktopHost {
     input: CallInput<CallPath>,
   ): Promise<CallOutput<SdkOperationPath>> {
     switch (path) {
-      // The registry answers before any workspace is open, so the rail's recents
+      // The workspace store answers before any workspace is open, so the rail's recents
       // speak the same operation the SDK defines.
       case "workspace.list":
         CALL_INPUT_SCHEMAS[path].Parse(input);
-        return this.registry.list();
+        return this.workspaces.list();
       case "workspace.forget":
         return this.forgetWorkspace(CALL_INPUT_SCHEMAS[path].Parse(input).path);
       // The model catalog is user-scoped. Reading its fallback must not force a
@@ -735,7 +737,7 @@ export class DesktopHost {
    */
   private async requireTrust(path: string): Promise<void> {
     try {
-      await this.trustStore.require(path);
+      await this.workspaces.require(path);
     } catch (cause) {
       if (cause instanceof WorkspaceTrustRequired) {
         this.dependencies.emitHostEvent({ kind: "workspace_trust_required", path: cause.cwd });
@@ -751,7 +753,7 @@ export class DesktopHost {
       if (this.open !== undefined) return this.open;
       const path = await readLastWorkspace();
       if (path !== null) {
-        const workspace = (await this.registry.list()).find((entry) => entry.path === path);
+        const workspace = (await this.workspaces.list()).find((entry) => entry.path === path);
         if (workspace !== undefined) {
           // A broken saved project must not prevent opening the desktop on Home.
           const restored = await this.compose({ kind: "project", workspace }).catch(
@@ -815,7 +817,7 @@ export class DesktopHost {
 
   private trustWorkspace(path: string): Promise<OpenWorkspaceOutcome> {
     return this.serialize<OpenWorkspaceOutcome>(async () => {
-      await this.trustStore.trust(path);
+      await this.workspaces.trust(path);
       await Promise.all([...this.openTargets.values()].map((open) => open.sdk.reactivate()));
       return { kind: "cancelled" };
     }).catch((cause): OpenWorkspaceOutcome => ({
@@ -837,8 +839,8 @@ export class DesktopHost {
     if (this.open?.kind === "project" && this.open.workspace.path === cwd) {
       return { kind: "opened", workspace: this.open.workspace };
     }
-    await this.registry.touch(cwd);
-    const workspace = (await this.registry.list()).find((entry) => entry.path === cwd);
+    await this.workspaces.touch(cwd);
+    const workspace = (await this.workspaces.list()).find((entry) => entry.path === cwd);
     if (workspace === undefined) throw new Error(`Workspace was not recorded: ${cwd}`);
     const target = { kind: "project", workspace } as const;
     // Keep the current session open if local storage cannot be composed.
@@ -853,11 +855,11 @@ export class DesktopHost {
   /** Where this target's plugins load from, or why they cannot load yet. */
   private async pluginTarget(target: WorkspaceTarget): Promise<DeferredPluginTarget> {
     if (target.kind === "home") return { kind: "home" };
-    const current = (await this.registry.list()).find(
+    const current = (await this.workspaces.list()).find(
       (workspace) => workspace.path === target.workspace.path,
     );
     if (current?.available !== true) return { kind: "inactive" };
-    const resolution = await this.trustStore.resolve(target.workspace.path);
+    const resolution = await this.workspaces.resolve(target.workspace.path);
     switch (resolution.kind) {
       case "trusted":
         return { kind: "project", workspace: resolution.workspace };
@@ -938,8 +940,14 @@ export class DesktopHost {
         thinkingLevel: catalog.defaults.thinkingLevel,
         telemetry: this.otel.telemetry,
         onDiagnostic: retainDiagnostic,
-        vcs,
-        workspaces: this.registry,
+        workspace: {
+          list: () => this.workspaces.list(),
+          touch: (path, now) => this.workspaces.touch(path, now),
+          forget: (path) => this.workspaces.forget(path),
+          files: async ({ cwd, query, signal }) =>
+            rankMentionFiles(await discoverMentionFiles(cwd, signal), query ?? ""),
+          vcs,
+        },
         plugins: {
           kind: "workspace",
           // Storage opens before trust; project code loads once the user has granted it.
@@ -987,7 +995,7 @@ export class DesktopHost {
 
   /** Drop a workspace from the rail. Forgetting the selected one returns the view to Home. */
   private async forgetWorkspace(path: string): Promise<void> {
-    await this.registry.forget(path);
+    await this.workspaces.forget(path);
     if (this.open?.kind !== "project") return;
     const target = await realpath(resolve(path)).catch(() => resolve(path));
     if (this.open.workspace.path === target) await this.closeWorkspace();
@@ -1011,7 +1019,7 @@ export class DesktopHost {
   private async sessionDirectory(): Promise<readonly WorkspaceSessionDirectory[]> {
     const server = this.serverDirectory();
     const opens = await this.serialize(async () => {
-      const workspaces = await this.registry.list();
+      const workspaces = await this.workspaces.list();
       const targets: WorkspaceTarget[] = [
         { kind: "home" },
         ...workspaces.map(
@@ -1208,7 +1216,7 @@ export class DesktopHost {
         selection: { kind: "project", workspace: cursor.open.workspace },
       };
     }
-    const workspace = (await this.registry.list()).find(
+    const workspace = (await this.workspaces.list()).find(
       (entry) => entry.path === cwd || entry.path === input.path,
     );
     if (workspace === undefined) {
@@ -1517,7 +1525,7 @@ export class DesktopHost {
 
   /** Every store the page reads, with the names the SDK holds for its sessions. */
   private async usageStores(): Promise<readonly NamedStore[]> {
-    const workspaces = await this.registry.list();
+    const workspaces = await this.workspaces.list();
     const targets: WorkspaceTarget[] = [
       { kind: "home" },
       ...workspaces.map((workspace) => ({ kind: "project", workspace }) satisfies WorkspaceTarget),

@@ -5,9 +5,8 @@ import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-a
 import { expect, test } from "vitest";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { definePlugin, inlinePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
-import type { StreamFn } from "../../src/types.ts";
-import { WorkspaceTrustStore } from "../../src/workspace-trust.ts";
-import { assistant, call, openStore, storePath, within } from "./helpers.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
+import { assistant, call, openStore, storePath, trustWorkspace, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -43,7 +42,7 @@ test("relocation keeps history in its store, rebinds filesystem tools, and requi
   const cwd = dirname(path);
   const destination = join(cwd, "destination");
   mkdirSync(destination);
-  const workspace = await new WorkspaceTrustStore(join(cwd, "trust.json")).trust(destination);
+  const workspace = await trustWorkspace(destination);
   const originalPlugins = [locationPlugin("original"), inlinePlugin(toolsFsPlugin())];
   const destinationPlugins = [locationPlugin("destination"), inlinePlugin(toolsFsPlugin())];
   const requests: number[] = [];
@@ -147,7 +146,7 @@ test("relocation rejects queued work and another head's execution lease without 
   const cwd = dirname(path);
   const destination = join(cwd, "destination");
   mkdirSync(destination);
-  const workspace = await new WorkspaceTrustStore(join(cwd, "trust.json")).trust(destination);
+  const workspace = await trustWorkspace(destination);
   const store = openStore(path);
   const nyte = await createNyte({
     store,
@@ -189,7 +188,7 @@ test("scoped plugin reload keeps the directory and leaves a live run and other s
   const cwd = dirname(path);
   const destination = join(cwd, "destination");
   mkdirSync(destination);
-  const workspace = await new WorkspaceTrustStore(join(cwd, "trust.json")).trust(destination);
+  const workspace = await trustWorkspace(destination);
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const nyte = await createNyte({
@@ -249,9 +248,7 @@ test("messages admitted during relocation run only after destination activation 
   const path = storePath();
   const cwd = dirname(path);
   const destination = dirname(storePath());
-  const workspace = await new WorkspaceTrustStore(join(destination, "trust.json")).trust(
-    destination,
-  );
+  const workspace = await trustWorkspace(destination);
   const started = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
   const prompts: (string | undefined)[] = [];

@@ -15,12 +15,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test, vi } from "vitest";
-import {
-  readWorkspaceFile,
-  saveWorkspaceFile,
-  searchWorkspaceFiles,
-  WorkspaceSearchError,
-} from "../src/files.ts";
+import { readWorkspaceFile, saveWorkspaceFile } from "../src/workspace-files.ts";
+import { searchWorkspaceFiles, WorkspaceSearchError } from "../src/workspace-search.ts";
 
 async function fixture(): Promise<{ readonly root: string; readonly file: string }> {
   const root = await mkdtemp(join(tmpdir(), "nyte-files-"));

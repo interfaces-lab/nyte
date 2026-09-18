@@ -20,7 +20,7 @@ import {
   type Plugin,
   type PluginSession,
 } from "../../src/plugins/index.ts";
-import type { StreamFn } from "../../src/types.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { assistant, call, commit, lease, message, openSession, seedHead, user } from "./helpers.ts";
 
 const model: Model<Api> = {

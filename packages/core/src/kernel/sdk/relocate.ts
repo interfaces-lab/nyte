@@ -5,7 +5,6 @@
  */
 import { DEFAULT_LANDING, isTerminalPhase } from "@nyte-ai/protocol";
 import type { LoadedPlugin } from "../../plugins/types.ts";
-import type { TrustedWorkspace } from "../../workspace-trust.ts";
 import { landsNow } from "../admission.ts";
 import { withLeaseRenewal } from "../lease.ts";
 import type { Run } from "../model.ts";
@@ -17,7 +16,14 @@ import { JOB_PREFIX } from "./jobs.ts";
 import type { Runners } from "./runner.ts";
 import { CWD_FACT, type Pooled, type SessionPool } from "./session-pool.ts";
 import type { Subagents } from "./subagent-host.ts";
-import { sessionId, type HeadName, type Nyte, type NyteOptions, type SessionId } from "./types.ts";
+import {
+  sessionId,
+  type HeadName,
+  type Nyte,
+  type NyteOptions,
+  type SessionId,
+  type TrustedWorkspace,
+} from "./types.ts";
 
 type RelocateOutcome = Awaited<ReturnType<Nyte["relocate"]>>;
 

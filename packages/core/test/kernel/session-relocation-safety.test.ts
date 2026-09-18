@@ -6,9 +6,8 @@ import { expect, test } from "vitest";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { definePlugin, inlinePlugin, toolsFsPlugin } from "../../src/plugins/index.ts";
-import type { StreamFn } from "../../src/types.ts";
-import { WorkspaceTrustStore } from "../../src/workspace-trust.ts";
-import { assistant, call, openStore, storePath, within } from "./helpers.ts";
+import type { StreamFn } from "../../src/kernel/loop/types.ts";
+import { assistant, call, openStore, storePath, trustWorkspace, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -88,7 +87,7 @@ function fixture(streamFn?: StreamFn) {
     destination,
     requests,
     open,
-    workspace: new WorkspaceTrustStore(join(cwd, "trust.json")).trust(destination),
+    workspace: trustWorkspace(destination),
   };
 }
 
@@ -277,9 +276,7 @@ test("spawned subagents persist the parent's destination instead of following a 
     await nyte.setPlugins(plugins("global"));
     assert.ok((await nyte.plugins.list(childInput)).some((plugin) => plugin.id === "destination"));
     const elsewhere = dirname(storePath());
-    const nextWorkspace = await new WorkspaceTrustStore(join(elsewhere, "trust.json")).trust(
-      elsewhere,
-    );
+    const nextWorkspace = await trustWorkspace(elsewhere);
     await expect
       .poll(() =>
         nyte.relocate({ ...input, workspace: nextWorkspace, plugins: plugins("elsewhere") }),
