@@ -15,7 +15,7 @@ already stored.
 
 | Entry                 | Imports                                                                                                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nyte-ai/core`       | `createNyte`, the whole wire contract, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose.                                                                        |
+| `@nyte-ai/core`       | `createNyte`, the wire data types, `MAIN`, `DEFAULT_LANDING`, `CursorExpired`, the views, and what a host needs to compose. The operation table, envelopes, and SSE codec stay in `@nyte-ai/protocol`. |
 | `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here; clients never import it. |
 | `@nyte-ai/core/views` | The projections alone, with no `node:` imports. A browser client renders from this entry.                                                                                                              |
 
@@ -172,12 +172,15 @@ racing a landing settles as `cancelled` or `landed`, never both.
 
 ## Runs
 
-| Operation      | Outcome                                                              | Use                                                                       |
-| -------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `runs.wait`    | `idle` \| `waiting { runId }` \| `cancelled`                         | Block until the head is free, a tool parks, or the caller cancels.        |
-| `runs.reply`   | `signalled` \| `not_waiting` \| `not_found`                          | Answer the exact parked generation by `callId` and `waitId`.              |
-| `runs.abort`   | `requested { runId }` \| `not_running`                               | Stop the live run. What was already said is kept.                         |
-| `runs.compact` | `compacted { commit }` \| `nothing_to_compact` \| `busy` \| `failed` | Write one checkpoint now, with the branch's own model and thinking level. |
+| Operation      | Outcome                                                                                            | Use                                                                       |
+| -------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `runs.wait`    | `idle` \| `waiting { runId }` \| `cancelled`                                                       | Block until the head is free, a tool parks, or the caller cancels.        |
+| `runs.reply`   | `signalled` \| `not_waiting` \| `not_found`                                                        | Answer the exact parked generation by `callId` and `waitId`.              |
+| `runs.abort`   | `requested { runId }` \| `not_running`                                                             | Stop the live run. What was already said is kept.                         |
+| `runs.compact` | `compacted { commit }` \| `aborted` \| `nothing_to_compact` \| `busy { run }` \| `failed { code }` | Write one checkpoint now, with the branch's own model and thinking level. |
+
+`runs.compact`'s `failed` carries a `code` of `internal`, `inactive`, `busy`, `conflict`, or
+`fenced`. Switch on the code, not the message.
 
 ```ts
 const outcome = await sdk.runs.wait({ sessionId });
@@ -282,21 +285,25 @@ a view that was already stale. `heads.create` cuts a stacked head from another h
 
 Every event carries `seq`. A client keeps the last one it applied as its cursor.
 
-| Kind                                    | Fold                                                                              |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                          |
-| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                 |
-| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.         |
-| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                             |
-| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.            |
-| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.       |
-| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result. |
-| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away.                     |
-| `synced`                                | Replay is over; what follows is live.                                             |
-| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                 |
-| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.     |
+| Kind                                    | Fold                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                                         |
+| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                                |
+| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.                        |
+| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                                            |
+| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.                           |
+| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.                      |
+| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result.                |
+| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away. A deleted fact carries no `value`. |
+| `compaction`                            | Checkpoint work in flight on that head; `compaction: null` means it ended.                       |
+| `config_queued`                         | A configuration choice joined the queue before anything landed.                                  |
+| `activation_changed`                    | Host-local activation state, replayed once per watch and not ordered by `seq`.                   |
+| `synced`                                | Replay is over; what follows is live.                                                            |
+| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                                |
+| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.                    |
 
-There is no compaction event. A checkpoint arrives as an ordinary `commit`.
+The checkpoint a compaction writes still arrives as an ordinary `commit`. The `compaction` event is
+progress, not a second history.
 
 ## What the host still owns
 
