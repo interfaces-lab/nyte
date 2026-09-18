@@ -8,8 +8,8 @@ The app is organized as a single stack behind a saved host connection: a
 root Agents list with sections for needs-input, failed, working, pinned, and
 earlier sessions plus a persistent capsule composer, a pushed Settings page, a
 conversation with streamed replies and follow-ups, a review page, a
-changed-files page with agent-edit and on-Mac diff views, an expanded compose
-sheet with model choice and real on-device dictation, and a markup editor that
+changed-files page with agent-edit and on-Mac diff views, an inline composer
+with model choice and real on-device dictation, and a markup editor that
 bakes numbered comments and drawn marks into attached photos. Working and
 waiting sessions mirror to a lock-screen Live Activity automatically. Expo
 Router provides stack navigation, header search and menus, and sheets; the
@@ -112,8 +112,8 @@ From the repository root:
 
 ```sh
 pnpm install
-pnpm --dir packages/ios prebuild
-cd packages/ios/ios
+pnpm --dir packages/mobile prebuild
+cd packages/mobile/ios
 pod install
 ```
 
@@ -121,15 +121,15 @@ From the repository root, start Metro yourself, then build and launch in
 another terminal with the same `DEVELOPER_DIR`:
 
 ```sh
-pnpm --dir packages/ios dev
-pnpm --dir packages/ios ios
+pnpm --dir packages/mobile dev
+pnpm --dir packages/mobile ios
 ```
 
 The local scene lifecycle config plugin supplies the single-window scene delegate required by the iOS 27 SDK. Expo 57 still generates the older app lifecycle, as tracked in [Expo issue 46664](https://github.com/expo/expo/issues/46664). Remove the plugin and its Swift adapter once a stable Expo prebuild template includes `ExpoAppSceneDelegate`. The adapter keeps window creation in the scene and forwards lifecycle and link events through Expo.
 
 MMKV is a Nitro module, so adding it needs a fresh `prebuild` and `pod install`
 before the app will launch. It ships its own Nitrogen output built against
-`react-native-nitro-modules` 0.35, one minor behind the version VisionCamera
+`react-native-nitro-modules` 0.35, two minors behind the version VisionCamera
 and Nitro Image pin here; check the Pods build after upgrading either side.
 
 Native Markdown and SF Symbols require a development build; Expo Go cannot
@@ -145,8 +145,8 @@ signing requires your own Apple team.
 
 `ios:release` builds and launches a Release app without Metro. `ios:build`
 does the same without installing Pods and copies the built `.app` into
-`packages/ios/build/app`; `bundle` writes the Hermes bundle to
-`packages/ios/build/export`. The `build/` directory is ignored by Git, as are
+`packages/mobile/build/app`; `bundle` writes the Hermes bundle to
+`packages/mobile/build/export`. The `build/` directory is ignored by Git, as are
 `ios/` and `dist/`. Xcode's own DerivedData stays in its default location.
 
 If CocoaPods selects an SDK from mismatched Command Line Tools, explicitly
@@ -175,16 +175,16 @@ so one variant cannot read another's activity state.
 Inspect a resolved config before building:
 
 ```sh
-APP_VARIANT=preview pnpm --dir packages/ios exec expo config --json
+APP_VARIANT=preview pnpm --dir packages/mobile exec expo config --json
 ```
 
 EAS profiles live in [`eas.json`](eas.json) and set `APP_VARIANT` per profile:
 
 ```sh
-pnpm --dir packages/ios build:dev         # simulator dev client
-pnpm --dir packages/ios build:preview     # internal distribution
-pnpm --dir packages/ios build:production  # App Store and TestFlight
-pnpm --dir packages/ios submit            # upload the production build
+pnpm --dir packages/mobile build:dev         # simulator dev client
+pnpm --dir packages/mobile build:preview     # internal distribution
+pnpm --dir packages/mobile build:production  # App Store and TestFlight
+pnpm --dir packages/mobile submit            # upload the production build
 ```
 
 The EAS project is `@nameisdaniel/nyte-ios`; its id lives in `app.json` under
@@ -216,7 +216,7 @@ belongs to the host rather than this package.
 Start in `src/app/_layout.tsx` for startup, providers, the connection gate,
 and the root stack. The route tree is flat: `index` is the Agents list,
 `settings`, `chat/[id]`, `changes/[id]`, and `review/[id]` are pushed screens,
-and `compose`/`annotate` are native sheets. There is no tab bar; the composer
+and `annotate` is a native sheet. There is no tab bar; the composer
 capsule sits above the root list's safe area. Route files only parse params
 and render the owning feature's screen body.
 
@@ -224,7 +224,7 @@ and render the owning feature's screen body.
 | --- | --- |
 | `src/app/` | Expo Router route tree: root layout and thin route files |
 | `src/connection/` | Connection form, pairing-code scanner, address validation, Keychain, host client creation, and the host context behind the gate |
-| `src/chat/` | Conversation screens, list rows and grouping, composer, new-chat workspace menu, compose sheet, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
+| `src/chat/` | Conversation screens, list rows and grouping, composer, dictation, new-chat workspace menu, message rendering, selections, models, session list, transcript-derived changes, and remote session state |
 | `src/inbox/` | The root Agents list: sections, filtering, and the floating composer |
 | `src/activity/` | The Voltra Live Activity, synchronized from working and waiting sessions |
 | `src/review/` | Run review page: status, change totals, and the ask-to-merge instruction |
@@ -272,9 +272,9 @@ no Bluesky implementation or styling was copied.
 ## Checks
 
 ```sh
-pnpm --dir packages/ios typecheck
-pnpm --dir packages/ios test
-pnpm --dir packages/ios bundle
+pnpm --dir packages/mobile typecheck
+pnpm --dir packages/mobile test
+pnpm --dir packages/mobile bundle
 ```
 
 `test` covers address validation and host error wording without native
@@ -292,9 +292,8 @@ this app independently implements its patterns using published libraries.
 
 The Agents list is one sectioned session list under a large-title header with
 an integrated search field, a debounced query, and a filter menu; a new
-conversation starts from the capsule composer pinned above the safe area, and
-the header's compose button opens the sheet when the task needs a model or
-attachments first. Sections name what they hold, so failed runs sit under Failed
+conversation starts from the capsule composer pinned above the safe area, which
+expands in place when the task needs a model or attachments first. Sections name what they hold, so failed runs sit under Failed
 rather than Needs input, the filter menu picks sections instead of re-deriving
 its own rules, and each row's label reads the same status its text shows. Review and changed-files screens derive edit evidence from the transcript
 rather than a second host read. Disconnect lives in Settings as a grouped
@@ -369,7 +368,7 @@ app's existing Reanimated/Gesture Handler stack.
 | `expo-router` | File routes, native tabs and stacks, sheets, header search, deep links |
 | `react-native-screens` | Native stack and tab presentation for the router |
 | `@use-voltra/ios`, `@use-voltra/ios-client` | Lock-screen Live Activity and Dynamic Island content |
-| `expo-speech-recognition` | On-device dictation and mic level for the compose sheet |
+| `expo-speech-recognition` | On-device dictation and mic level for the composer |
 | `react-native-svg`, `react-native-view-shot` | Markup strokes and baking annotated photos |
 | `@expo/ui` 57 / `swift-ui` | Native glass controls and menus |
 | `react-strict-dom` | StyleX-compatible native content layout |
@@ -386,7 +385,7 @@ app's existing Reanimated/Gesture Handler stack.
 | `react-native-mmkv` 4 | Synchronous storage for display preferences |
 | `react-native-vision-camera` 5.2 | Native still-photo capture |
 | `react-native-nitro-modules`, `react-native-nitro-image` | VisionCamera's required native runtime and image peers |
-| `expo-image-picker`, `expo-image-manipulator` | System photo selection and local JPEG resizing |
+| `expo-media-library`, `expo-image-manipulator` | System photo selection and local JPEG resizing |
 | `expo-secure-store`, `expo-crypto` | Saved host token and message retry IDs |
 | `expo-constants`, `expo-linking`, `expo-status-bar` | Router runtime peers, deep links, and status bar |
 | `react-native-safe-area-context` | Device and modal insets |
@@ -478,7 +477,7 @@ work appears, updates while the session set changes, and ends when nothing is
 working; the system Settings toggle is the off switch. Live Activities render
 Voltra JSX, not React Native views.
 
-The [Cursor iOS study](../../output/cursor-ios-study/cursor-ios-study.html) informs
-the interaction order and visual hierarchy; its iPad layouts were adapted to
-iPhone rather than copied. Durable drafts across navigation to
-the conversation list, offline history, and real-phone pairing remain future work.
+A Cursor iOS study informs the interaction order and visual hierarchy; its iPad
+layouts were adapted to iPhone rather than copied. Durable drafts across
+navigation to the conversation list, offline history, and real-phone pairing
+remain future work.

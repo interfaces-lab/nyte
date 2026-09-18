@@ -1,20 +1,18 @@
 ---
 title: Desktop
-description: The product Electron app composes createNyte. The demo desktop was the last pre-SDK host
+description: The product Electron app composes createNyte
 ---
 
-There are two Electron apps in this repo. They are not the same product.
+One Electron app ships from this repo.
 
-| Path                    | Package                 | What it is                                                                                          |
-| ----------------------- | ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `packages/desktop`      | `@nyte-ai/desktop`      | The product app. Main process hosts `createNyte`. Renderer talks SDK operations over `window.nyte`. |
-| `packages/demo/desktop` | `@nyte-ai/demo-desktop` | The leftover demo. Per-agent conversations and snapshots over the old harness, which is deleted.    |
+| Path               | Package            | What it is                                                                                          |
+| ------------------ | ------------------ | --------------------------------------------------------------------------------------------------- |
+| `packages/desktop` | `@nyte-ai/desktop` | The product app. Main process hosts `createNyte`. Renderer talks SDK operations over `window.nyte`. |
 
-Root `pnpm dev` still starts the **demo**. Until that script moves, start the product app from its package:
+Start it from its package:
 
 ```bash
 pnpm --dir packages/desktop dev
-pnpm --dir packages/demo/desktop dev   # also: pnpm dev
 ```
 
 Desktop and the TUI share one store per workspace at `~/.nyte/workspaces/<path-hash>/sessions.db`.
@@ -28,9 +26,10 @@ Trust grants live in `~/.nyte/trust.json`, so a folder you trusted in the termin
 Opening a workspace loads local history without checking trust. Sending resolves the folder through
 core and requests trust before loading project code. A missing path fails the send, which stays in
 the outbox for retry. The main process loads the same plugin set as the TUI (`system-prompt`,
-`rename`, `context-files`, `tools-fs`, `fast-mode`, `web-search` and its provider plugins,
-`skills`, plus user and project dirs), then `createNyte`. Runners attach per session. Switching
-workspaces keeps earlier sessions and their jobs open.
+`rename`, `context-files`, `tools-fs`, `openai-compaction`, `openai-astra-context`, `fast-mode`,
+`web-search` and its provider plugins, `mcp`, `skills`, plus user and project dirs), then
+`createNyte`. Runners attach per session. Switching workspaces keeps earlier sessions and their
+jobs open.
 
 The renderer never imports `@nyte-ai/core`. IPC is one `nyte:call` channel: operation path plus one input object,
 the same namespaces as the in-process SDK (`sessions`, `messages`, `jobs`, `runs`, `heads`, `workspace`,
@@ -38,9 +37,9 @@ the same namespaces as the in-process SDK (`sessions`, `messages`, `jobs`, `runs
 same `afterSeq` / `live` cursors.
 
 What you get in the UI today: session list, composer send, plugin slash commands, abort, a pending strip
-with cancel and redeliver, and a context gauge from `runs.context`. What the bridge already exposes but the
-renderer does not draw: the session tree, `/usage` card, and run-end notifications. Those are TUI surfaces,
-not missing SDK operations.
+with cancel and redeliver, a context gauge from `runs.context`, and the usage card. What the bridge
+already exposes but the renderer does not draw: the session tree and run-end notifications. Those
+are TUI surfaces, not missing SDK operations.
 
 The renderer imports controls from `@nyte-ai/ui` and each product-specific headless namespace from its
 direct component subpath, such as `@nyte-ai/ui/popover`. Desktop keeps Cursor-specific layout and StyleX
@@ -108,16 +107,6 @@ Set `NYTE_OTEL_ENDPOINT` in the app's launch environment to enable the existing 
 GitHub commands emit `desktop.github.command` spans with an allowlisted operation, outcome,
 exit code, and duration. They never include command output, arguments, credentials, device codes,
 repository paths, or environment values. Export is off when the endpoint is unset.
-
-## Demo desktop
-
-Keep this around as a product sketch (agent profiles, per-agent history). Do not copy it if you want the
-SDK. Its preload was `window.ujiDesktop` with `initialize`, `login`, `send`, `abort`, `newChat`,
-`selectAgent`. It forwarded a handful of events from the old harness and discarded `suspended` on open, so crash resume
-was not faithful. Plugins were a system prompt from the agent instructions; no filesystem tools, no skills.
-
-[Host and client](/docs/host-sdk) used to treat that IPC as the desktop contract. It is now labeled as the
-legacy demo. The future `@nyte-ai/protocol` should mirror `window.nyte`, not `initialize` / `selectAgent`.
 
 ## Related
 
