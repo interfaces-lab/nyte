@@ -9,12 +9,13 @@ To inspect assembly with a harmless fixture, without compiling:
 
 ```sh
 fixture=$(mktemp -d)
+version=$(node -p "require('./packages/cli/package.json').version")
 printf '#!/bin/sh\nexit 0\n' > "$fixture/nyte"
 sh scripts/assemble-release.sh "$fixture/nyte" "$fixture/release" darwin-arm64
-tar -tzf "$fixture/release/nyte-v0.0.2-darwin-arm64.tar.gz"
+tar -tzf "$fixture/release/nyte-v$version-darwin-arm64.tar.gz"
 ```
 
-Use the current manifest version in the archive name and the target you need.
+The archive name carries the current manifest version. Use the target you need.
 The archive layout is:
 
 ```text
