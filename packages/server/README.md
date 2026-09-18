@@ -84,7 +84,8 @@ checks availability. Neither proves that a live upstream request succeeds.
 - `messages.send` and `messages.redeliver`: the lane is in the SDK's landing
   policy, reported as `invalid_input` at `/lane` before the SDK is called.
 - Every watch: exactly the query keys `sessionId`, and one of `after` (a
-  non-negative safe integer) or `live=1`; no repeats, no unknown keys.
+  non-negative safe integer) or `live` (`1` or `true`); no repeats, no unknown
+  keys.
 
 ## Errors a client sees
 
@@ -179,8 +180,9 @@ accessible Mac service.
 - Token auth uses one credential. Custom auth can verify host-managed device
   credentials; permissions can constrain calls and watches. The package supplies
   no identity store, tenant-specific result filtering, or pairing endpoints.
-- The operation set is the desktop's SDK subset plus `landing` (see the protocol
-  README). `runs.wait` and `runs.compact` are not served.
+- The operation set is the desktop's SDK subset plus `landing`, `runs.current`,
+  `runs.reply`, `plugins.status.list`, `jobs.*`, and the workspace share pair
+  (see the protocol README). `runs.wait` and `runs.compact` are not served.
 - No rate limiting, no request logging beyond `onError`.
 - No listener. Bind whatever you attach it to on a loopback address unless
   the deployment has its own edge in front.
