@@ -94,7 +94,6 @@ test("model context keeps what a provider accepts and drops what it rejects", ()
     commit(null, message(failed)),
     commit(null, message(aborted)),
     commit(null, { kind: "config", model: { id: "m" } }),
-    commit(null, { kind: "note", type: "ui", data: 1 }),
     commit(null, message(asked)),
     commit(null, message(toolResult("c1", "read", "contents"))),
     commit(null, message(toolResult("zzz", "read", "orphan"))),

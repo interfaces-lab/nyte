@@ -17,7 +17,7 @@ export type Admission =
   | { readonly kind: "settling" }
   /**
    * No run, or the last one ended, however it ended. Only a batch with user
-   * input starts model work, as a new run. Configuration and notes land
+   * input starts model work, as a new run. Configuration lands
    * without one; completed background work waits for that input and joins
    * its context.
    */
@@ -32,7 +32,7 @@ export function isUserInput(item: PendingChange): boolean {
   return item.change.body.kind === "message" && item.change.body.message.role === "user";
 }
 
-/** A landed change the model must answer, as opposed to configuration or a note. */
+/** A landed change the model must answer, as opposed to configuration. */
 export function startsResponse(item: PendingChange): boolean {
   return item.change.body.kind === "message" || item.change.body.kind === "completion";
 }

@@ -123,9 +123,7 @@ export type CommitBody =
       readonly model?: ModelRef;
       readonly thinkingLevel?: string;
       readonly agent?: string;
-    }
-  /** Product-defined. Stored and replayed by core, rendered by clients, unseen by the model. */
-  | { readonly kind: "note"; readonly type: string; readonly data?: JsonValue };
+    };
 
 /** Run inputs as a branch declares them: the fold of its config commits, latest field wins. */
 export interface BranchConfig {

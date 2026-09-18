@@ -72,9 +72,10 @@ async function turnText(nyte: Nyte, id: SessionId): Promise<string[]> {
   const turns = await nyte.messages.list({ sessionId: id });
   return turns.flatMap((turn) =>
     turn.kind === "turn"
-      ? turn.parts.flatMap((part) =>
-          part.kind === "assistant" || part.kind === "note" ? [part.text] : [],
-        )
+      ? [
+          ...turn.parts.flatMap((part) => (part.kind === "assistant" ? [part.text] : [])),
+          ...(turn.failure === undefined ? [] : [turn.failure.message]),
+        ]
       : [],
   );
 }

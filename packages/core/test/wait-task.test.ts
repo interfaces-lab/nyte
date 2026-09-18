@@ -297,7 +297,11 @@ test("cancelling the awaited task settles the wait and the parent continues", as
     const waited = (await toolParts(nyte, parent.sessionId)).find((part) => part.callId === "wait");
     assert.ok(waited?.result !== undefined);
     expect(waited.result.isError).toBe(true);
-    expect(waited.result.details).toEqual({ jobId: task.id, state: "cancelled" });
+    expect(waited.class).toEqual({ kind: "delegate", role: "await", jobId: task.id });
+    expect(
+      (await nyte.jobs.list({ sessionId: parent.sessionId })).find((job) => job.id === task.id)
+        ?.state,
+    ).toBe("cancelled");
     expect((await nyte.runs.current({ sessionId: parent.sessionId }))?.phase.kind).toBe("done");
   } finally {
     release.resolve();
@@ -365,7 +369,7 @@ test("wait_task refuses an unknown job id", async () => {
     const waited = (await toolParts(nyte, parent.sessionId)).find((part) => part.callId === "wait");
     assert.ok(waited?.result !== undefined);
     expect(waited.result.isError).toBe(true);
-    expect(waited.result.details).toEqual({ jobId: "job_missing", state: "not_found" });
+    expect(waited.result.output).toBe("Task job not found in this session: job_missing");
   } finally {
     await nyte.close();
   }
@@ -406,7 +410,7 @@ test("wait_task cannot observe another session's running task", async () => {
     const waited = (await toolParts(nyte, other.sessionId)).find((part) => part.callId === "wait");
     assert.ok(waited?.result !== undefined);
     expect(waited.result.isError).toBe(true);
-    expect(waited.result.details).toEqual({ jobId: task.id, state: "not_found" });
+    expect(waited.result.output).toBe(`Task job not found in this session: ${task.id}`);
     expect(waited.result.output).not.toContain("private child report");
     expect(only(await nyte.jobs.list({ sessionId: owner.sessionId })).state).toBe("running");
   } finally {

@@ -110,7 +110,6 @@ export function pendingItem(item: PendingChange): PendingItem | undefined {
     case "checkpoint":
     case "summary":
     case "config":
-    case "note":
       return undefined;
     default: {
       const _exhaustive: never = body;

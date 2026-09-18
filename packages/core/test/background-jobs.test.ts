@@ -458,7 +458,7 @@ for (const kind of ["bash", "task"] as const) {
       expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
       const turns = await f.nyte.messages.list({ sessionId: f.parent });
       expect(
-        turns.filter((turn) => turn.kind === "turn" && turn.outcome === "aborted"),
+        turns.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
       ).toHaveLength(1);
       expect(await f.nyte.runs.abort({ sessionId: f.parent })).toEqual({ kind: "not_running" });
       expect(await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).toEqual({
@@ -476,7 +476,7 @@ for (const kind of ["bash", "task"] as const) {
       expect(await queuedCompletions()).toBe(0);
       const later = await f.nyte.messages.list({ sessionId: f.parent });
       expect(
-        later.filter((turn) => turn.kind === "turn" && turn.outcome === "aborted"),
+        later.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
       ).toHaveLength(1);
       const parts = later.flatMap((turn) =>
         turn.kind === "turn"

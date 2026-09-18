@@ -1201,7 +1201,6 @@ function branchMessages(commit: Commit): Message[] {
     case "summary":
       return contextMessages([commit]);
     case "config":
-    case "note":
       return [];
     default: {
       const _exhaustive: never = body;

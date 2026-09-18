@@ -23,12 +23,9 @@ import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
 import type { Lane } from "@nyte-ai/protocol";
-import {
-  Composer,
-  ComposerFrame,
-  readComposerImageAttachments,
-} from "../conversation/composer.tsx";
-import type { ComposerImageAttachment } from "../conversation/composer.tsx";
+import { Composer, ComposerFrame } from "../conversation/composer.tsx";
+import { attachComposerFiles } from "../conversation/composer-files.ts";
+import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
 import { dropHandlers } from "../conversation/composer-file-drop.ts";
 import type {
@@ -1146,6 +1143,14 @@ function BlankConversation({
   const [attachments, setAttachments] = useState<readonly ComposerImageAttachment[]>([]);
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
+  const editorRef = useRef<ComposerEditorHandle | null>(null);
+  const attachInput = useCallback(
+    (handle: ComposerEditorHandle | null) => {
+      editorRef.current = handle;
+      inputRef(handle);
+    },
+    [inputRef],
+  );
   const branch = workspace === undefined ? undefined : repositoryBranch(vcs.data);
   const recentWorkspaces = (workspaces.data ?? []).filter(
     (candidate) => candidate.path !== workspace?.path,
@@ -1218,7 +1223,7 @@ function BlankConversation({
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
-    return readComposerImageAttachments(files)
+    return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         if (result.attachments.length > 0) {
           setAttachments((current) => [...current, ...result.attachments]);
@@ -1346,7 +1351,7 @@ function BlankConversation({
               setAttachments((current) => current.filter((attachment) => attachment.id !== id));
               setAttachmentError(undefined);
             }}
-            inputRef={inputRef}
+            inputRef={attachInput}
             onFocusChange={(focused) =>
               updateViewState((state) => ({
                 ...state,

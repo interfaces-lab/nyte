@@ -24,8 +24,10 @@ import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { useMentionFiles, usePluginCatalog } from "../queries.ts";
 import { Prose } from "./prose.tsx";
 import type { ComposerDocumentState, ComposerSubmission } from "./composer-document.ts";
-import { ComposerFrame, readComposerImageAttachments } from "./composer.tsx";
-import type { ComposerImageAttachment } from "./composer.tsx";
+import { ComposerFrame } from "./composer.tsx";
+import type { ComposerEditorHandle } from "./composer-editor.tsx";
+import { attachComposerFiles } from "./composer-files.ts";
+import type { ComposerImageAttachment } from "./composer-files.ts";
 import { composerMessageContent } from "./composer-send.ts";
 import { composerSource } from "./composer-suggestions.tsx";
 import { ImagePreview } from "./image-preview.tsx";
@@ -161,6 +163,7 @@ export function UserMessageView({
 }): ReactElement {
   const [edit, setEdit] = useState<UserEditState | undefined>();
   const rowRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<ComposerEditorHandle | null>(null);
   const canDismissEdit = edit !== undefined && !edit.saving && edit.attachmentReads === 0;
   useEffect(() => {
     const row = rowRef.current;
@@ -209,7 +212,7 @@ export function UserMessageView({
 
   const addFiles = async (files: readonly File[]): Promise<void> => {
     patchEdit((current) => ({ ...current, attachmentReads: current.attachmentReads + 1 }));
-    return readComposerImageAttachments(files)
+    return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
         patchEdit((current) => ({
           ...current,
@@ -346,6 +349,9 @@ export function UserMessageView({
                 }))
               }
               model={modelPicker}
+              inputRef={(handle) => {
+                editorRef.current = handle;
+              }}
               editing={{ kind: "message", onCancel: () => setEdit(undefined) }}
             />
           </div>

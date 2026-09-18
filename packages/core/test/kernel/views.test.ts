@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { hashObject } from "../../src/kernel/hash.ts";
-import type { Commit, CommitBody, Oid } from "../../src/kernel/model.ts";
+import type { Commit, CommitBody, Oid, ToolClass } from "../../src/kernel/model.ts";
 import {
   appendTranscriptCommit,
   changesFromTurns,
@@ -10,30 +10,34 @@ import {
   EMPTY_TRANSCRIPT,
   mergeUsageSummaries,
   navigationTarget,
-  presentNote,
-  presentTool,
   projectContextStatus,
   projectTree,
   projectUsage,
   sessionDirectoryEntry,
-  projectToolView,
   transcriptFromCommits,
   type Turn,
 } from "@nyte-ai/client";
 import { assistant, call, commit, message, toolResult, usage, user } from "./helpers.ts";
 
 type Item = { readonly oid: Oid; readonly commit: Commit };
+type Stamped = { readonly body: CommitBody } & Pick<Commit, "calls" | "failure">;
 
 /** A branch as the store would hand it back: oldest first, each commit naming its parent. */
 function branch(
-  bodies: readonly CommitBody[],
+  bodies: readonly (CommitBody | Stamped)[],
   options: { at?: number; run?: string } = {},
 ): Item[] {
   const items: Item[] = [];
   let parent: Oid | null = null;
   let at = options.at ?? 1_000;
-  for (const body of bodies) {
-    const value = commit(parent, body, { at, run: options.run });
+  for (const entry of bodies) {
+    const stamped = "body" in entry ? entry : { body: entry };
+    const value = commit(parent, stamped.body, {
+      at,
+      run: options.run,
+      calls: stamped.calls,
+      failure: stamped.failure,
+    });
     const oid = hashObject(value);
     items.push({ oid, commit: value });
     parent = oid;
@@ -50,17 +54,29 @@ function conversation(turn: Turn | undefined): Extract<Turn, { kind: "turn" }> {
 const partKinds = (turn: Turn | undefined): string[] =>
   conversation(turn).parts.map((part) => part.kind);
 
+const filePatch = (path: string, added: number, removed: number): ToolClass => ({
+  kind: "file_patch",
+  op: "edit",
+  path,
+  added,
+  removed,
+  patch: `--- a/${path}\n+++ b/${path}\n`,
+});
+
 test("a turn is the user's message, the assistant's parts, and each tool call paired with its result", () => {
   const items = branch([
     message(user("read a.txt")),
-    message({
-      ...assistant("looking", { calls: [call("c1", "read", { path: "a.txt" })] }),
-      content: [
-        { type: "thinking", thinking: "let me see" },
-        { type: "text", text: "looking" },
-        call("c1", "read", { path: "a.txt" }),
-      ],
-    }),
+    {
+      body: message({
+        ...assistant("looking", { calls: [call("c1", "read", { path: "a.txt" })] }),
+        content: [
+          { type: "thinking", thinking: "let me see" },
+          { type: "text", text: "looking" },
+          call("c1", "read", { path: "a.txt" }),
+        ],
+      }),
+      calls: { c1: { kind: "file_read", path: "a.txt" } },
+    },
     message(toolResult("c1", "read", "hello world", { details: { path: "a.txt" } })),
     message(assistant("it says hello")),
   ]);
@@ -68,31 +84,71 @@ test("a turn is the user's message, the assistant's parts, and each tool call pa
   assert.equal(turns.length, 1);
   const turn = conversation(turns[0]);
   assert.equal(turn.id, items[0]?.oid);
-  assert.equal(turn.outcome, "completed");
+  assert.equal(turn.failure, undefined);
   assert.deepEqual(partKinds(turn), ["user", "thinking", "assistant", "tool", "assistant"]);
   const tool = turn.parts[3];
   assert.ok(tool?.kind === "tool");
-  assert.deepEqual(tool.args, { path: "a.txt" });
+  assert.deepEqual(tool.class, { kind: "file_read", path: "a.txt" });
   assert.equal(tool.result?.output, "hello world");
   assert.equal(tool.result?.commit, items[2]?.oid);
   assert.equal(turn.startedAt, 1_000);
   assert.equal(turn.durationMs, 3_000);
 });
 
-test("failures and aborts mark the turn; empty assistant output draws nothing", () => {
+test("a tool part carries the call's stamped class until its result commit replaces it", () => {
+  const items = branch([
+    message(user("edit")),
+    {
+      body: message(
+        assistant("", { calls: [call("c1", "edit", { path: "a.ts" }), call("c2", "x")] }),
+      ),
+      calls: { c1: { kind: "file_edit", path: "a.ts" } },
+    },
+    {
+      body: message(toolResult("c1", "edit", "ok")),
+      calls: { c1: filePatch("a.ts", 2, 1) },
+    },
+    message(toolResult("c2", "x", "done")),
+  ]);
+  const turn = conversation(transcriptFromCommits(items)[0]);
+  const [, edited, unknown] = turn.parts;
+  assert.ok(edited?.kind === "tool" && unknown?.kind === "tool");
+  assert.deepEqual(edited.class, filePatch("a.ts", 2, 1));
+  assert.equal(edited.result?.commit, items[2]?.oid);
+  assert.deepEqual(unknown.class, { kind: "custom", label: "x" });
+  assert.equal(unknown.result?.output, "done");
+
+  const pending = conversation(transcriptFromCommits(items.slice(0, 2))[0]).parts[1];
+  assert.ok(pending?.kind === "tool");
+  assert.deepEqual(pending.class, { kind: "file_edit", path: "a.ts" });
+  assert.equal(pending.result, undefined);
+});
+
+test("failures and aborts mark the turn from the commit; empty assistant output draws nothing", () => {
+  const failure = { class: "provider", message: "boom" } as const;
   const failed = transcriptFromCommits(
-    branch([message(user("q")), message(assistant("", { stop: "error", error: "boom" }))]),
+    branch([
+      message(user("q")),
+      { body: message(assistant("", { stop: "error", error: "boom" })), failure },
+    ]),
   );
-  assert.equal(conversation(failed[0]).outcome, "failed");
-  assert.deepEqual(partKinds(failed[0]), ["user", "note"]);
+  assert.deepEqual(conversation(failed[0]).failure, failure);
+  assert.deepEqual(partKinds(failed[0]), ["user"]);
 
   const aborted = transcriptFromCommits(
-    branch([message(user("q")), message(assistant("half", { stop: "aborted" }))]),
+    branch([
+      message(user("q")),
+      {
+        body: message(assistant("half", { stop: "aborted" })),
+        failure: { class: "aborted", message: "stopped" },
+      },
+    ]),
   );
-  assert.equal(conversation(aborted[0]).outcome, "aborted");
+  assert.equal(conversation(aborted[0]).failure?.class, "aborted");
 
   const blank = transcriptFromCommits(branch([message(user("q")), message(assistant("   "))]));
   assert.deepEqual(partKinds(blank[0]), ["user"]);
+  assert.equal(conversation(blank[0]).failure, undefined);
 });
 
 test("a result whose call is not on this branch stands on its own", () => {
@@ -100,21 +156,22 @@ test("a result whose call is not on this branch stands on its own", () => {
     branch([message(user("q")), message(toolResult("elsewhere", "bash", "out"))]),
   );
   const tool = conversation(turns[0]).parts[1];
-  assert.ok(tool?.kind === "tool" && tool.args === undefined && tool.result?.output === "out");
+  assert.ok(tool?.kind === "tool");
+  assert.deepEqual(tool.class, { kind: "custom", label: "bash" });
+  assert.equal(tool.result?.output, "out");
 });
 
-test("checkpoints, summaries, config, and notes are markers between turns", () => {
+test("checkpoints, summaries, and config are markers between turns", () => {
   const items = branch([
     message(user("a")),
     { kind: "checkpoint", summary: "so far", retainedTail: [], tokensBefore: 10 },
     { kind: "summary", text: "the other branch" },
     { kind: "config", model: { id: "m2" } },
-    { kind: "note", type: "task_settled", data: { id: 1 } },
     message(user("b")),
   ]);
   assert.deepEqual(
     transcriptFromCommits(items).map((turn) => turn.kind),
-    ["turn", "checkpoint", "summary", "config", "note", "turn"],
+    ["turn", "checkpoint", "summary", "config", "turn"],
   );
 });
 
@@ -139,60 +196,19 @@ test("folding one commit at a time along the branch gives the same transcript, a
   assert.equal(appendTranscriptCommit(state, fork), undefined);
 });
 
-test("file changes fold from settled patches, per file, ignoring failed calls", () => {
-  const patch = (path: string, adds: number) =>
-    `--- a/${path}\n+++ b/${path}\n@@ -1,1 +1,${String(adds)} @@\n-y\n${"+x\n".repeat(adds)}`;
+test("file changes fold from stamped patch classes, per file, ignoring failed calls", () => {
   const items = branch([
     message(user("edit")),
     message(assistant("", { calls: [call("c1", "edit"), call("c2", "edit"), call("c3", "edit")] })),
-    message(toolResult("c1", "edit", "ok", { details: { patch: patch("a.ts", 2) } })),
-    message(toolResult("c2", "edit", "ok", { details: { patch: patch("a.ts", 1) } })),
-    message(
-      toolResult("c3", "edit", "failed", { isError: true, details: { patch: patch("b.ts", 5) } }),
-    ),
+    { body: message(toolResult("c1", "edit", "ok")), calls: { c1: filePatch("a.ts", 2, 1) } },
+    { body: message(toolResult("c2", "edit", "ok")), calls: { c2: filePatch("a.ts", 1, 1) } },
+    {
+      body: message(toolResult("c3", "edit", "failed", { isError: true })),
+      calls: { c3: filePatch("b.ts", 5, 0) },
+    },
   ]);
   const changes = changesFromTurns(transcriptFromCommits(items));
   assert.deepEqual(changes, [{ path: "a.ts", added: 3, removed: 2, lastCommit: items[3]?.oid }]);
-});
-
-test("a tool presents as running, done, or failed, with a diff body when it carries a patch", () => {
-  const items = branch([
-    message(user("x")),
-    message(assistant("", { calls: [call("c1", "edit", { path: "a.ts" })] })),
-    message(
-      toolResult("c1", "edit", "changed", {
-        details: { patch: "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n+new\n-old\n" },
-      }),
-    ),
-  ]);
-  const settled = conversation(transcriptFromCommits(items)[0]).parts.find(
-    (part) => part.kind === "tool",
-  );
-  assert.ok(settled?.kind === "tool");
-  const done = presentTool(projectToolView(settled));
-  assert.equal(done.status, "done");
-  assert.equal(done.body.kind, "diff");
-  if (done.body.kind === "diff") assert.deepEqual([done.body.added, done.body.removed], [1, 1]);
-
-  const running = presentTool(
-    projectToolView({ kind: "tool", callId: "c9", toolName: "bash" }, { text: "…" }),
-  );
-  assert.equal(running.status, "running");
-  const failed = presentTool(
-    projectToolView({
-      kind: "tool",
-      callId: "c8",
-      toolName: "bash",
-      result: { commit: "x", output: "no", isError: true },
-    }),
-  );
-  assert.equal(failed.status, "failed");
-
-  assert.match(
-    presentNote({ commit: "n", at: 1, body: { kind: "note", type: "task_settled", data: "done" } })
-      .text,
-    /task_settled/u,
-  );
 });
 
 test("the tree is a forest with the selected path marked and every head labelled", () => {

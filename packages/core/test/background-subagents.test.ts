@@ -214,10 +214,13 @@ test("simultaneous heads reusing a task call id keep their children, models and 
         kind: "applied",
       });
       await idle(nyte, parent.sessionId, head);
-      expect(only(await toolParts(nyte, parent.sessionId, head)).result?.details).toMatchObject({
-        jobId: job.id,
-        childSessionId: child.sessionId,
+      const backgrounded = only(await toolParts(nyte, parent.sessionId, head));
+      expect(backgrounded.class).toMatchObject({
+        kind: "delegate",
+        role: "spawn",
+        child: child.sessionId,
       });
+      expect(backgrounded.result?.output).toContain(job.id);
     }
     releaseChildren.resolve();
     await expect
@@ -644,7 +647,7 @@ test("an agent stops its background task by the returned job id", async () => {
     const stopped = (await toolParts(nyte, parent.sessionId)).find(
       (part) => part.callId === "stop",
     );
-    expect(stopped?.result?.details).toEqual({ jobId: job.id, kind: "applied" });
+    expect(stopped?.result?.output).toBe(`Task ${job.id} stopped.`);
     for (const [jobId, kind] of [
       [job.id, "finished"],
       ["job_missing", "not_found"],
@@ -654,7 +657,11 @@ test("an agent stops its background task by the returned job id", async () => {
       const stopped = (await toolParts(nyte, parent.sessionId)).findLast(
         (part) => part.callId === "stop-again",
       );
-      expect(stopped?.result?.details).toEqual({ jobId, kind });
+      expect(stopped?.result?.output).toBe(
+        kind === "finished"
+          ? `Task ${jobId} has already finished.`
+          : `Task job not found in this session: ${jobId}`,
+      );
       expect(stopped?.result?.isError ?? false).toBe(kind === "not_found");
     }
     expect((await nyte.runs.current({ sessionId: parent.sessionId }))?.phase.kind).toBe("done");
@@ -702,7 +709,7 @@ test("stop_task cannot cancel another session's task", async () => {
     await idle(nyte, other.sessionId);
     const stopped = only(await toolParts(nyte, other.sessionId));
     expect(stopped.result?.isError).toBe(true);
-    expect(stopped.result?.details).toEqual({ jobId: job.id, kind: "not_found" });
+    expect(stopped.result?.output).toBe(`Task job not found in this session: ${job.id}`);
     expect(only(await nyte.jobs.list({ sessionId: owner.sessionId })).state).toBe("running");
     release.resolve();
     await expect
@@ -801,7 +808,7 @@ test("stop_task rejects a shell command in the same session without stopping it"
       (part) => part.callId === "stop",
     );
     expect(stopped?.result?.isError).toBe(true);
-    expect(stopped?.result?.details).toEqual({ jobId: job.id, kind: "not_found" });
+    expect(stopped?.result?.output).toBe(`Task job not found in this session: ${job.id}`);
     expect(only(await nyte.jobs.list({ sessionId: parent.sessionId })).state).toBe("running");
     expect(processRunning(pid)).toBe(true);
 
@@ -877,7 +884,7 @@ for (const background of [false, true]) {
         (part) => part.callId === "stop",
       );
       expect(stopped?.result?.isError ?? false).toBe(false);
-      expect(stopped?.result?.details).toEqual({ jobId: task.id, kind: "applied" });
+      expect(stopped?.result?.output).toBe(`Task ${task.id} stopped.`);
       // Check before host shutdown: close also kills commands and could hide a broken stop.
       await expect.poll(() => processRunning(pid), poll).toBe(false);
       await idle(nyte, task.childSessionId);

@@ -567,10 +567,7 @@ export { sessionMark, type SessionMark } from "./session/session-status.ts";
 export {
   appendTurnChanges,
   changesFromTurns,
-  diffStat,
   EMPTY_CHANGES,
-  patchedPath,
-  readPatch,
   type ChangesState,
   type FileChange,
 } from "./views/changes.ts";
@@ -599,27 +596,6 @@ export {
   type PatchStat,
 } from "./views/patch.ts";
 export {
-  createPresenter,
-  presentNote,
-  presentTool,
-  projectToolView,
-  runActivityLabel,
-  subagentToolKind,
-  type NotePresentation,
-  type NoteRefiner,
-  type NoteView,
-  type Presenter,
-  type PresenterOptions,
-  type SubagentToolKind,
-  type ToolBody,
-  type ToolLive,
-  type ToolPresentation,
-  type ToolRefiner,
-  type ToolResultView,
-  type ToolStatus,
-  type ToolView,
-} from "./views/presentation.ts";
-export {
   appendTranscriptCommit,
   EMPTY_TRANSCRIPT,
   transcriptFromCommits,
@@ -627,7 +603,6 @@ export {
   type ToolTurnPart,
   type TranscriptState,
   type Turn,
-  type TurnOutcome,
   type TurnPart,
   type UserTurnPart,
 } from "./views/transcript.ts";
