@@ -82,7 +82,8 @@ The client reports that as a failure, not as completion.
 
 ## Operations
 
-The set the desktop already carries over Electron IPC, plus `landing` and the
+The set the desktop already carries over Electron IPC, plus `landing`, `runs.current`,
+`runs.reply`, `plugins.status.list`, the four `jobs.*` operations, and the
 wire-only `workspace.current`/`workspace.select` pair that retargets a mobile
 share:
 
@@ -92,6 +93,7 @@ sessions.create  sessions.get  sessions.snapshot  sessions.metadata  sessions.li
 sessions.rename  sessions.setPinned  sessions.setArchived  sessions.delete  sessions.configure
 messages.send  messages.cancel  messages.redeliver
 runs.current  runs.abort  runs.reply  runs.changes
+jobs.list  jobs.start  jobs.background  jobs.cancel
 heads.move
 workspace.list  workspace.current  workspace.select  workspace.forget  workspace.files  workspace.vcs.diff
 provider.models.list  provider.models.default

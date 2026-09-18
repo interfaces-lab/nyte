@@ -136,24 +136,26 @@ change produces a different oid.
 
 There are six object kinds:
 
-| Object   | Meaning                                                                                                  |
-| -------- | -------------------------------------------------------------------------------------------------------- |
-| `commit` | One point in a conversation, with one parent, optional imports, provenance, and a body.                  |
-| `change` | A commit body waiting for a parent, linked to the prior change in the same lane.                         |
-| `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request. |
-| `effect` | One tool call's durable state: `intent`, `waiting`, `expired`, `signal`, or `result`.                    |
-| `stack`  | The parent head and base commit for a stacked head.                                                      |
-| `blob`   | A small JSON value behind a fact, cancellation marker, or deletion marker.                               |
+| Object   | Meaning                                                                                                   |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| `commit` | One point in a conversation, with one parent, optional imports, provenance, and a body.                   |
+| `change` | A commit body waiting for a parent, linked to the prior change in the same lane.                          |
+| `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request.  |
+| `effect` | One tool call's durable state: `intent`, `waiting`, `expired`, `signal`, or `result`.                     |
+| `stack`  | The parent head and base commit for a stacked head.                                                       |
+| `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker. |
 
-A commit's provenance is two optional oids. `change` names the submitted change it landed, and
-`run` names the run that wrote it. Neither is context. They exist so a client can ask which files
-one run touched, or which commit a receipt turned into, without guessing from timestamps.
+A commit's provenance is three optional fields. `change` names the submitted change it landed,
+`key` repeats that change's submission key, and `run` names the run that wrote it. None is context.
+They exist so a client can ask which files one run touched, or which commit a receipt turned into,
+without guessing from timestamps.
 
-A commit body is one of five kinds:
+A commit body is one of six kinds:
 
 | Commit body  | Meaning                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `message`    | One schema `Message`: user, assistant, or tool result.                                                           |
+| `message`    | One schema `Message`: user, assistant, or tool result, with the agent its submission selected.                   |
+| `completion` | A finished background job's output, consumed by the model without impersonating user input.                      |
 | `checkpoint` | A context checkpoint with a summary, retained tail, token count, optional provider material, and optional usage. |
 | `summary`    | What a path being carried forward was about. It does not cut context.                                            |
 | `config`     | A model, thinking level, or agent declaration. The latest value of each field wins.                              |
@@ -187,7 +189,9 @@ refs/stacks/<head>             Stack { parent, base }
 refs/queues/<head>/<lane>/tip  newest submitted Change in the lane
 refs/queues/<head>/<lane>/base last landed Change; pending is (base, tip]
 refs/runs/<head>               current Run object and phase
+refs/compactions/<head>        checkpoint work in flight under the head lease
 refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
+refs/jobs/<job>                Blob recording one background job
 refs/keys/<key>                idempotency receipt naming the Change
 refs/facts/<key>               Blob holding a small session value
 refs/cancelled/<change>        Blob tombstone for a withdrawn Change
@@ -320,9 +324,10 @@ assistant message. Its outcomes are `checkpoint`, `complete`, `tools`, `retry`, 
 compaction is a commit like any other and never a special phase.
 
 `tools` receives the same durable inputs plus the committed assistant message. It recovers or
-executes each tool call through its effect ref. Its outcomes are `complete`, `waiting`, and
-`failed`. Complete and failed outcomes carry tool-result messages in call order. Waiting names the
-parked call ids.
+executes each tool call through its effect ref. Its outcomes are `complete`, `waiting`, `failed`,
+`fenced`, and `conflict`. Complete and failed outcomes carry tool-result messages in call order.
+Waiting names the parked call ids. `fenced` and `conflict` end the batch without committing, after
+a lost lease or a raced effect CAS.
 
 The turn emits text and thinking deltas with the supplied attempt number. Tool progress names the
 run and call. Emission is buffered through a fenced outbox and flushed before the call returns, so
@@ -370,8 +375,9 @@ does one durable action and releases a lease it acquired itself. `drive` acquire
 before every step, loops over `continue`, waits through a retry deadline, and releases when it
 returns.
 
-The step reads the head, run, and deletion refs. A session being deleted makes every step `idle`.
-Otherwise the step follows this table:
+The step first settles any checkpoint work left in `refs/compactions/<head>`, then reads the head,
+run, and deletion refs. A session being deleted makes every step `idle`. Otherwise the step follows
+this table:
 
 | Run phase        | Pending change        | Step does                                                                                                   | Publish CAS                                    |
 | ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -383,9 +389,12 @@ Otherwise the step follows this table:
 | `waiting`        | any                   | wake on a signal, expiry, completed result batch, deadline, or abort; otherwise return `waiting { until? }` | the same publish as `tools` when it wakes      |
 | `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                                                    | none until responding                          |
 
-Two small rules sit inside the `respond` row. First, an abort request already on the run stores
+Three small rules sit inside the `respond` row. First, an abort request already on the run stores
 `aborted` without calling the model. Second, if the projected context ends in something other than
 a user message or a tool result, there is nothing to answer, and the run goes straight to `done`.
+Third, if the pending batch selects a different agent than the live run folded, the step ends that
+run `done` for the reason `agent changed`, lands nothing, and leaves the batch queued for the run
+that follows.
 
 Every runner publish carries the lease and asserts `refs/deleted` absent. A participant head move,
 an abort request written through the run ref, another run ref change, or session deletion may make
@@ -498,9 +507,12 @@ match. Transcript and usage projections keep the checkpoint as history.
 
 `Turn` produces checkpoint outcomes for threshold and overflow compaction, and `step` commits them
 before asking for another response. `runs.compact` calls `writeCheckpoint` for a manual checkpoint
-under the head lease, summarizing with the model and thinking level the branch declares. Watchers
-receive the resulting head update as an ordinary `commit` event. There is no compaction event kind,
-because there is no compaction that is not a commit.
+under the head lease, summarizing with the model and thinking level the branch declares. The
+checkpoint itself lands as an ordinary `commit` event, because a checkpoint is a commit like any
+other. What compaction adds is liveness, not history: `refs/compactions/<head>` records the work in
+flight, a `compaction` event carries that record to watchers, and the same record rides the
+snapshot, so a client that joins mid-summary can draw the progress and a later step can settle
+work its host abandoned. The event ends with `compaction: null`.
 
 ### Two ways to run
 
@@ -563,11 +575,13 @@ Cancel does not rewrite a change or splice a chain. It writes a blob behind
 tombstone. Landing asserts that every change it selected has no tombstone. A cancel racing a land
 therefore settles as `cancelled` or `landed`, never both.
 
-Redelivery moves a pending item between lanes in one atomic update. It writes the original
-change's tombstone, asserts the source base, writes a copy on the target chain, and advances the
-target tip. The copy keeps the body, author, and submission time, records `supersedes`, and gets a
-new oid because its predecessor and provenance changed. No intermediate state shows the item in
-both lanes or in neither.
+Redelivery edits a pending item in one atomic update: it may move the item to another lane, change
+its position within a lane through `before`, replace the content of a pending user message, or any
+combination. It tombstones every change from the splice point onward, asserts the source base, and
+rewrites that suffix onto the target chain. A rewritten copy keeps its body, author, and submission
+time, records `supersedes`, and gets a new oid because its predecessor and provenance changed. An
+unchanged prefix keeps its ids. Nothing new, nothing moved, and no content means `unchanged`. No
+intermediate state shows an item in both lanes or in neither.
 
 ### A submitted message is never lost
 
@@ -628,19 +642,19 @@ lease. The runner honors the new run ref at its next publish.
 
 The `Store` contract has four namespaces on every `Session`:
 
-| Namespace | Required behavior                                                                                       |
-| --------- | ------------------------------------------------------------------------------------------------------- |
-| `objects` | Idempotent content-addressed put, get, list with write time, and collector delete.                      |
-| `refs`    | Read, prefix list, and atomic multi-ref CAS with assertions, optional lease, actor, reason, and events. |
-| `leases`  | Acquire, renew, release, and read fenced execution rights.                                              |
-| `events`  | Fenced append, cursor read, last, floor, trim, and gap-free ordered watch.                              |
+| Namespace | Required behavior                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `objects` | Idempotent content-addressed put, get, list with write time, ancestry `chain` and `commits` reads, and collector delete. |
+| `refs`    | Read, prefix list, and atomic multi-ref CAS with assertions, optional lease, actor, reason, and events.                  |
+| `leases`  | Acquire, renew, release, and read fenced execution rights.                                                               |
+| `events`  | Fenced append, cursor read, last, floor, trim, and gap-free ordered watch.                                               |
 
 The transaction that matters spans a `refs.update`: check the lease, check every `from`, apply
 every non-assertion ref write, allocate sequences, append ref events and supplied events, then
 publish to watchers. A backend that cannot make that atomic **must not** host the kernel. Objects
 are put first and may stay loose if this transaction loses its race.
 
-The SQLite backend uses five tables:
+Two backends ship. The SQLite backend uses five tables:
 
 | Table      | Holds                                                            |
 | ---------- | ---------------------------------------------------------------- |
@@ -653,6 +667,11 @@ The SQLite backend uses five tables:
 SQLite serializes writes with `BEGIN IMMEDIATE`. One session row allocates every event sequence.
 An assertion changes no ref row and emits no ref event. Trimming deletes event rows and raises the
 session floor in one transaction.
+
+The Postgres backend, exported as `@nyte-ai/core/postgres`, holds the same five under a `nyte_`
+prefix plus a `nyte_schema` version row, and takes the same transaction with row locks instead of
+`BEGIN IMMEDIATE`. It is the first backend a host can put on the far side of a network, which is
+what the server and serverless placements need.
 
 ## Deployment
 
@@ -672,9 +691,10 @@ the embedded and server placements and remains an open question on stateless one
 The implemented wire follows the SDK's operation table in `@nyte-ai/protocol`:
 
 ```text
-GET  /v1/info                         host release and wire version
-POST /v1/call/{operation}             validated SDK input and discriminated reply
+GET  /v1/info                          host release and wire version
+POST /v1/call/{operation}              validated SDK input and discriminated reply
 GET  /v1/watch?sessionId=id&after=seq  projected session events over SSE
+GET  /v1/watch?sessionId=id&live=1     the same stream, starting at the tip
 ```
 
 The server **must not** attach a runner or execute a step on behalf of a connection. Host
@@ -722,15 +742,16 @@ bake a guess into the kernel.
 
 Projections in `kernel/views` are pure reads:
 
-| Projection area | Exports                                                                             |
-| --------------- | ----------------------------------------------------------------------------------- |
-| changes         | `appendTurnChanges`, `changesFromTurns`, `diffStat`, `patchedPath`, and `readPatch` |
-| context         | `projectContextStatus`                                                              |
-| directory       | `sessionDirectoryEntry`                                                             |
-| presentation    | `createPresenter`, `presentNote`, `presentTool`, and `projectToolView`              |
-| transcript      | `appendTranscriptCommit`, `transcriptFromCommits`, and `turnPartId`                 |
-| tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                           |
-| usage           | `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage`                      |
+| Projection area | Exports                                                                                                        |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| changes         | `appendTurnChanges`, `changesFromTurns`, `diffStat`, `patchedPath`, `readPatch`, and `EMPTY_CHANGES`           |
+| context         | `projectContextStatus`                                                                                         |
+| directory       | `sessionDirectoryEntry`                                                                                        |
+| live parts      | `foldLiveParts`, `livePartKey`, and `EMPTY_LIVE_PARTS`                                                         |
+| presentation    | `createPresenter`, `presentNote`, `presentTool`, `projectToolView`, `runActivityLabel`, and `subagentToolKind` |
+| transcript      | `appendTranscriptCommit`, `transcriptFromCommits`, `turnPartId`, and `EMPTY_TRANSCRIPT`                        |
+| tree            | `collectAbandoned`, `navigationTarget`, and `projectTree`                                                      |
+| usage           | `commitUsage`, `usageTokens`, `emptyUsageSummary`, `mergeUsageSummaries`, and `projectUsage`                   |
 
 Projections **must not** write. The transcript must render complete settled messages without a
 plugin. Presentation refiners may improve a tool or note, but an unknown tool or note still has a
@@ -778,8 +799,8 @@ Activation is per session and per host process. Handlers **must** be re-entrant.
 belongs behind session fact refs or in a host-owned service, never in a runner closure. Plugin
 failure **must not** weaken a policy decision into permission.
 
-Facts use `refs/facts/<key>` pointing to blobs. The SDK keeps a session's `name` and `parent`
-there, and plugin storage lives under a per-plugin prefix. Ref updates make their changes visible
+Facts use `refs/facts/<key>` pointing to blobs. The SDK keeps a session's `name`, `parent`,
+`pinned`, `archived`, and `cwd` there, and plugin storage lives under a per-plugin prefix. Ref updates make their changes visible
 in the same event stream as every other domain ref, so a plugin learns of its own setting changes
 the way a client does: a `fact` event carrying the key it wrote and the new value.
 
@@ -847,25 +868,30 @@ The root contract is:
 ```text
 Nyte
   landing    the landing policy in force: the lanes a client may send to, in priority order
-  sessions   create · get · snapshot · list · rename · setPinned · setArchived · delete · configure
+  sessions   create · get · snapshot · metadata · list · rename · setPinned · setArchived · delete · configure
   messages   send · cancel · redeliver · list · pending
   runs       current · abort · wait · reply · compact · context · changes
+  jobs       list · start · background · cancel
   heads      list · create · move · delete · merge
-  workspace  list · forget · vcs.status · vcs.diff
+  workspace  list · current · select · forget · files · vcs.status · vcs.diff
   provider   models.list · models.default
-  plugins    list · commands.list · commands.run · settings.list · settings.apply · resources.list · status.list
+  plugins    catalog · list · commands.list · commands.run · settings.list · settings.apply · resources.list · status.list
   watch({ sessionId, afterSeq? } | { sessionId, live: true })
   attach({ sessions? })
+  advance({ sessionId, head?, signal? })          host-only, one leased kernel step
+  sessionCwd({ sessionId })                       host-only location read
+  relocate({ sessionId, workspace, plugins })     re-point one idle session
   reactivate()
-  setPlugins(plugins)
+  setPlugins(plugins, { sessionId }?)
+  holdPlugins()                                   pause every runner's next step
   close()
 ```
 
 `NyteOptions` always supplies `store`, `streamFn`, `models`, and a fallback `model`. It may supply
 `landing` (the lanes this host serves; absent means `steer` and `queue`), `actor`, `thinkingLevel`,
-`compaction`, stream options, VCS, and a workspace registry. Static composition supplies `plugins`
-and `env`. Lazy composition supplies `resolveActivation` and must not also supply static plugins or
-env.
+`compaction`, stream options, `telemetry`, `onDiagnostic`, VCS, and a workspace registry. Static
+composition supplies `plugins` and `env`. Lazy composition supplies `resolveActivation` and must
+not also supply static plugins or env.
 
 `SessionInfo.activation` is host-local state. `activation_changed` is replayed once on every watch
 with the latest durable sequence, but it is not ordered by the snapshot's `seq` and does not enter
@@ -884,20 +910,27 @@ SendReceipt        queued { change } | duplicate { change }
 CancelOutcome      cancelled | landed | not_found
 RedeliverOutcome   redelivered { change } | unchanged | landed | not_found
 AbortOutcome       requested { runId } | not_running
-WaitOutcome        idle | waiting { runId }
+WaitOutcome        idle | waiting { runId } | cancelled
 ReplyOutcome       signalled | not_waiting | not_found
-CompactOutcome     compacted { commit } | nothing_to_compact | busy { run } | failed { message }
+CompactOutcome     compacted { commit } | aborted | nothing_to_compact | busy { run } | failed { code, message }
 CreateHeadOutcome  created { tip } | exists | unknown_parent
-MoveOutcome        moved { from, restored?: { commit, content }, summary?: Oid } | busy { run } | moved_since { tip } | not_found | failed { message }
+MoveOutcome        moved { from, restored?: { commit, content }, summary?: Oid } | busy { run } | moved_since { tip } | not_found | failed { code, message }
 DeleteHeadOutcome  deleted | not_found | busy
 MergeOutcome       merged { tip } | stale | empty | no_stack
+JobActionOutcome   the reply to jobs.background and jobs.cancel
+WorkspaceSelectOutcome  the reply to workspace.select
 CommandOutcome     ran { output? } | prompt { prompt } | not_found | failed { message }
 ApplyOutcome       applied | not_found | invalid_choice
 ```
 
+A `failed` outcome is not one shape. `CompactOutcome` and `MoveOutcome` both carry a `code` beside
+their message, so a client distinguishes an internal failure from `inactive`, `busy`, `conflict`,
+`fenced`, or a stopped summary without matching on prose. The message is for a human.
+
 `RunInfo` is not a terminal-state union. It carries `runId`, `head`, the kernel `RunPhase`,
-`startedAt`, `attempts`, optional `abortRequested`, and the current lease owner and expiry when a
-lease exists.
+`startedAt`, `attempts`, the `config` the run folded when it began, optional `abortRequested`,
+optional `awaitingReply` while a `waiting` run is parked on a participant rather than on background
+work, and the current lease owner and expiry when a lease exists.
 
 ### Events
 
@@ -908,6 +941,8 @@ kinds:
 commit           { head, item: { oid, commit } }
 head_moved       { head, from, to, reason, actor? }
 run              { head, run }
+compaction       { head, compaction }        compaction is null when the work ends
+job              { job }
 queued           { head, item }
 landed           { head, change }
 queue_cancelled  { change }
@@ -915,7 +950,7 @@ config_queued    { head, change }
 effect           { runId, callId, state: intent | expired | signal | result, tool, args }
 effect           { runId, callId, state: waiting, waitId, tool, args, selection?, until? }
 stack            { head, parent, base }
-fact             { key, value }
+fact             { key, value? }             a deleted fact carries no value key
 deleted
 synced
 text_delta       { runId, attempt, index, delta }
@@ -928,9 +963,10 @@ status_changed   { items }
 activation_changed { activation }
 ```
 
-The SDK event contract has no claim events, entry ids, retry overlay, compacting overlay, or
-compaction event. Deltas use the provisional run tuple because no commit oid exists until the
-assistant message is whole.
+The SDK event contract has no claim events, entry ids, and no retry overlay. The `compaction` event
+and its snapshot field are liveness, not a second history: the checkpoint they describe still
+arrives as an ordinary `commit`. Deltas use the provisional run tuple because no commit oid exists
+until the assistant message is whole.
 
 ## Invariants
 
@@ -1074,8 +1110,9 @@ Kernel CAS, queues, retention, and streaming:
 ## Open questions
 
 1. **Long tools on stateless placements.** A command that outlives a request needs a process that
-   can finish it or an external service that later signals its effect. The wait mechanism exists.
-   The first remote backend has to decide the host wiring.
+   can finish it or an external service that later signals its effect. The wait mechanism and the
+   Postgres backend exist. What stays open is the host wiring: which process finishes the command,
+   and what wakes the next step.
 2. **Joining heads.** `heads.merge` fast-forwards a current stacked child into its parent. A general
    join of two named heads stays deferred until a product needs one.
 3. **Identity and authorization.** `Actor` is durable attribution. ACL-scoped callers are host and

@@ -107,8 +107,10 @@ snapshot's seq is the cursor the SDK guarantees.
 
 ## Limitations
 
-- The operation set is the desktop's SDK subset plus `landing`; see the protocol
-  README. `runs.wait` and `runs.compact` are not available remotely.
+- The operation set is the desktop's SDK subset plus `landing`, `runs.current`,
+  `runs.reply`, `plugins.status.list`, `jobs.*`, and the workspace share pair;
+  see the protocol README. `runs.wait` and `runs.compact` are not available
+  remotely.
 - No reconnect logic, no backoff, no queueing while offline. The caller owns
   those.
 - One token for everything; the client has no notion of which sessions the
