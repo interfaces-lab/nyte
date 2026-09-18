@@ -2,7 +2,7 @@
 
 macOS uses `electron-sparkle` and Sparkle's native download, installation, and relaunch UI. Windows and Linux retain `electron-updater`. Release archives live in the public `interfaces-lab/nyte` GitHub releases, separate from the TUI tarballs.
 
-The Nyte application menu includes **Check for Updates…**. Packaged apps check 15 seconds after startup and every six hours. Downloads require user approval. On macOS, Sparkle verifies the signed archive and handles installation. Before opening a manual update check, Nyte warns if tasks or terminal commands are still running and offers **Not Now** or **Check Anyway**. Scheduled checks wait for idle work and retry after 15 minutes.
+The Nyte application menu includes **Check for Updates…**. Packaged apps check 15 seconds after startup and every six hours. Downloads require user approval. On macOS, Sparkle verifies the signed archive and handles installation. Nyte does not block a check while work is running; it blocks the install. If tasks or terminal commands are still running when an update is ready, a dialog names what is running and asks you to choose **Restart to Update** once they finish.
 
 Before relaunch, Nyte gives its host up to 10 seconds to close sessions and terminals cleanly. Update lifecycle events go to `~/Library/Application Support/Nyte/updates.log` on macOS. This log contains event names, versions, counts, and errors, not update request headers.
 

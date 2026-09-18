@@ -26,13 +26,14 @@ The detailed review covered adapter conversion and streaming, JSON recovery, too
 
 ## Remaining findings
 
-### 1. Anthropic SSE still claims an unchecked event type
+### 1. Anthropic SSE event decoding — resolved
 
-[`iterateAnthropicEvents`](src/api/anthropic-messages.ts) calls `parseJsonWithRepair<RawMessageStreamEvent>`. The generic in [`json-parse.ts`](src/utils/json-parse.ts) only casts `JSON.parse` output. Selecting an SSE event name does not validate its body, usage counters, content blocks, or deltas.
-
-The streaming-argument generic is fixed. This separate generic remains because removing it requires a real Anthropic event decoder, not moving its cast to the caller.
-
-Next: define schemas for the wire fields Nyte consumes, retain supported proxy extensions, and derive the reducer's event union from those schemas. Test malformed known events, unknown events, repaired JSON, and early EOF through the actual SSE reader. Do not mirror every SDK interface or assert the result back to the full SDK event type.
+[`anthropic-events.ts`](src/api/anthropic-events.ts) now defines TypeBox schemas for the wire fields
+Nyte consumes (`UsageSchema`, `ContentBlockSchema`, `ContentDeltaSchema`) and derives the reducer's
+event union from them, consumed by [`anthropic-messages.ts`](src/api/anthropic-messages.ts).
+`parseJsonWithRepair` and its caller-selected generic are gone;
+[`json-parse.ts`](src/utils/json-parse.ts) exports only `repairJson` and `parseStreamingJson`.
+Selecting an SSE event name now validates its body.
 
 ### 2. Model unions lose the relationship between API and compatibility options
 
@@ -62,7 +63,7 @@ Next: carry the request body type through concrete adapter options. Validate rep
 
 ### 4. Tool coercion needs one explicit schema contract
 
-[`validation.ts`](src/utils/validation.ts) maintains a handwritten JSON Schema subset, casts it to TypeBox schema types, branches on a TypeBox symbol, and uses `any` for validated results. A blanket replacement with `Value.Convert` would change behavior. The tests cover serialized-schema primitive coercion, unions, and optional non-nullable properties receiving `null`.
+[`validation.ts`](src/utils/validation.ts) maintains a handwritten JSON Schema subset, casts it to TypeBox schema types, and branches on a TypeBox symbol. A blanket replacement with `Value.Convert` would change behavior. The tests cover serialized-schema primitive coercion, unions, and optional non-nullable properties receiving `null`.
 
 [`ToolCall.arguments`](../schema/src/message.ts) is still `Record<string, any>`. [`agent-loop.ts`](../core/src/agent-loop.ts) validates before execution and after hook modifications, which is a boundary worth retaining.
 
@@ -84,30 +85,29 @@ suites and stale exclusions, and ported the catalog type checks to Nyte's provid
 Anthropic and Responses tests use injected HTTP fixtures rather than SDK mocks. Removing the
 second Anthropic OAuth suite also removed the fixed callback-port collision in parallel runs.
 
-Scripts are still not directly included in the package typecheck. The audit found 68 lint
+Scripts are still not directly included in the package typecheck. The audit found lint
 diagnostics in [`generate-models.ts`](scripts/generate-models.ts), including casts of fetched catalog
 data. Validate each upstream catalog before generating typed model constants. Do not edit generated
 files to hide generator defects.
 
-## Validation and remaining lint at the time of this audit
+## Validation at the time of this audit
 
-| Location | Before | After |
-| --- | ---: | ---: |
-| Source | 451 | 407 |
-| Tests | 254 | 237 |
-| Scripts | 70 | 70 |
-| Total | 775 | 714 |
-
-All 714 remaining diagnostics are errors. No lint rule, severity, suppression, or ignore was changed for this audit.
+The audit's lint inventory (775 diagnostics before, 714 after) was taken under a configuration this
+repository no longer uses. Under the repository's own `pnpm lint`, `oxlint packages/ai` reports zero
+warnings and zero errors across 140 files. Treat the inventory as history, not as a count to
+reproduce. No lint rule, severity, suppression, or ignore was changed for this audit.
 
 Checks:
 
 - Model-data check passed.
 - Package typecheck passed, plus an expanded check for the changed upstream test.
-- 341 tests passed across 44 files with `vitest --run --no-file-parallelism`. This count excludes the files already excluded by the existing configuration.
+- Tests passed with `vitest --run --no-file-parallelism`. `vitest.config.ts` includes
+  `test/**/*.ts` with no exclusions; the suite has grown since the audit, so the count recorded
+  here was removed rather than left stale.
 - Formatting and whitespace checks passed for the changes.
 - Lazy streams, the event queue, `StringEnum`, and all five added or rewritten test files pass lint with unused-disable reporting.
 - Change-detector classification returned KEEP for all five test files. They assert emitted events, wire payloads, parsed values, or terminal results rather than implementation call sequences.
 - An independent audit/critic could not run because the subagent service returned a usage-credit error. The review was completed directly.
 
-Next implementation order: Anthropic wire decoding and payload replacement, the shared model/API relationship, then tool-schema normalization. These remove unsafe claims at their source. Mechanically rewriting the remaining lint sites would leave the underlying contracts unchanged.
+Next implementation order: payload replacement, the shared model/API relationship, then tool-schema
+normalization. These remove unsafe claims at their source.

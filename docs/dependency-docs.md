@@ -46,7 +46,8 @@ Determine the current installation and version and verify existence before readi
 Custom system-prompt text still replaces the default. No home-directory reads or docs
 loading happen at prompt initialization. The accepted packaging fixtures verify actual
 packed, cache, and installer paths. Old installations may lack docs; the TUI self-updater
-currently replaces only the executable, so it may leave no matching versioned docs.
+stages the release's docs beside the versioned install root when the archive carries them,
+so a version installed before that still has none.
 
 ## Core benchmarks
 

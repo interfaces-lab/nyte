@@ -20,7 +20,9 @@ const nyte = await createHost({
   plugins: { kind: "chat", system: "You are…" },
 });
 nyte.attach();
-export default { fetch: createNyteServer({ sdk: nyte, auth: { kind: "token", token } }).fetch };
+export default {
+  fetch: createNyteServer({ sdk: nyte, version: "1.0.0", auth: { kind: "token", token } }).fetch,
+};
 ```
 
 `HostOptions` is `NyteOptions` minus what the host derives: `models` supplies

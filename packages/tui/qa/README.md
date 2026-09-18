@@ -92,7 +92,7 @@ judged on outcome. Provider replies and completed shutdown are never local-feedb
 
 ## Journeys
 
-The approved full contract is in `output/nyte-terminal-qa.html`; the suite is built against it and
+The suite is built against the approved full contract and
 does not yet cover the whole inventory. It is two continuous sessions plus two boundary cases. Each journey is a sequence of named
 beats in `qa/journeys.ts`; a failure names the beat a person was in. Beats assert what the person
 sees, what the loopback provider received, what survives a restart, and the exit output.
