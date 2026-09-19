@@ -12,22 +12,6 @@ export type SqliteValue = string | number | null;
 
 export type SqlRow = Readonly<Record<string, unknown>>;
 
-export function stringColumn(row: SqlRow, name: string): string {
-  const value = row[name];
-  if (typeof value !== "string") {
-    throw new TypeError(`SQLite column ${name} is not a string`);
-  }
-  return value;
-}
-
-export function numberColumn(row: SqlRow, name: string): number {
-  const value = row[name];
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new TypeError(`SQLite column ${name} is not a safe integer`);
-  }
-  return value;
-}
-
 export interface SqliteConnection {
   /** Runs a statement and discards its rows. */
   run(text: string, params: readonly SqliteValue[]): void;
