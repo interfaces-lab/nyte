@@ -238,14 +238,38 @@ function toolTitle(toolClass: ToolClass, settled: boolean): string {
       return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
     case "file_patch":
       return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
+    case "spawn":
+      return `${settled ? "Created" : "Creating"} ${toolClass.title}`;
+    case "delegate_call":
+      return `${delegateVerb(toolClass.role, settled)} ${toolClass.session}`;
     case "delegate":
-      return toolClass.role === "spawn"
-        ? `${settled ? "Delegated" : "Delegating"} ${toolClass.title}`
-        : `${settled ? "Waited for" : "Waiting for"} ${toolClass.jobId}`;
+      return `${delegateVerb(toolClass.role, settled)} ${toolClass.title}`;
     case "custom":
       return toolClass.label;
     default: {
       const exhaustive: never = toolClass;
+      return exhaustive;
+    }
+  }
+}
+
+function delegateVerb(
+  role: "create" | "send" | "await" | "read" | "stop",
+  settled: boolean,
+): string {
+  switch (role) {
+    case "create":
+      return "Agent";
+    case "send":
+      return settled ? "Sent to" : "Sending to";
+    case "await":
+      return settled ? "Waited for" : "Waiting for";
+    case "read":
+      return settled ? "Read" : "Reading";
+    case "stop":
+      return settled ? "Stopped" : "Stopping";
+    default: {
+      const exhaustive: never = role;
       return exhaustive;
     }
   }
