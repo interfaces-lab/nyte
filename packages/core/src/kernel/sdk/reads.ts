@@ -1,25 +1,27 @@
 /**
  * Read-only projections a client draws from a pooled session: the session
- * page, the snapshot a watch starts from, context status, and file changes.
- * Nothing here instantiates plugins or moves a ref.
+ * page, the snapshot a watch starts from, context status, and a run's diff.
+ * Nothing here instantiates plugins; `runs.revert` moves files, never a ref.
  */
 import type { Api, Model } from "@nyte-ai/schema";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { FileDiff, OperationInput, RunDiff, RunRevert, TreeId } from "@nyte-ai/protocol";
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
-import type { Commit, Oid } from "../model.ts";
+import type { Commit } from "../model.ts";
 import { headRef } from "../names.ts";
 import { pending } from "../queue.ts";
-import { changesFromTurns, projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
+import { projectContextStatus, transcriptFromCommits } from "@nyte-ai/client";
 import type { Pooled, SessionPool } from "./session-pool.ts";
 import { headConfig, pendingItems, sessionInfo } from "./snapshot.ts";
 import {
+  CorruptObject,
   MAIN,
   UnknownSession,
   sessionId,
   type HeadName,
   type NyteOptions,
   type ParkedCall,
-  type RunId,
   type RunInfo,
   type SessionId,
   type SessionInfo,
@@ -140,6 +142,11 @@ export function createReads(input: {
       return info;
     } catch (error) {
       if (error instanceof UnknownSession) return undefined;
+      // One unreadable session leaves the directory; it must not close the workspace.
+      if (error instanceof CorruptObject) {
+        process.emitWarning(`Session ${id} is unreadable: ${error.message}`, "CorruptSession");
+        return undefined;
+      }
       throw error;
     }
   };
@@ -276,28 +283,86 @@ export function createReads(input: {
     ).status;
   };
 
-  const changes = async (input: {
+  /** A run's commits on the head, and the tree pair its first and last stamped commits carry. */
+  const runTrees = async (input: {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
-    readonly runId?: RunId;
+    readonly runId: string;
   }) => {
-    pool.alive();
     const session = (await pool.open(input.sessionId)).session;
-    const tip = await session.refs.read(headRef(input.head ?? MAIN));
-    const commits = await branch(session.objects, tip);
-    if (input.runId === undefined) {
-      return changesFromTurns(transcriptFromCommits(commits));
-    }
-    const selected = commits.filter((item) => item.commit.run === input.runId);
-    if (selected.length === 0) return [];
-    let parent: Oid | null = null;
-    const contiguous = selected.map((item) => {
-      const projected = { oid: item.oid, commit: { ...item.commit, parent } };
-      parent = item.oid;
-      return projected;
-    });
-    return changesFromTurns(transcriptFromCommits(contiguous));
+    const head = input.head ?? MAIN;
+    const [tip, run] = await Promise.all([
+      session.refs.read(headRef(head)),
+      pool.currentRun(session, head),
+    ]);
+    const commits = (await branch(session.objects, tip))
+      .map((item) => item.commit)
+      .filter((commit) => commit.run === input.runId);
+    const live = run?.runId === input.runId && !isTerminalPhase(run.phase) ? run : undefined;
+    return { commits, live, from: commits[0]?.tree };
   };
 
-  return { snapshot, metadata, list, context, changes };
+  const lastResultTree = (commits: readonly Commit[]): TreeId | undefined =>
+    commits.findLast(
+      (commit) =>
+        commit.tree !== undefined &&
+        commit.body.kind === "message" &&
+        commit.body.message.role === "toolResult",
+    )?.tree;
+
+  const recordedDiff = (
+    commits: readonly Commit[],
+    paths: readonly string[] | undefined,
+  ): readonly FileDiff[] => {
+    const files: FileDiff[] = [];
+    for (const commit of commits) {
+      if (commit.body.kind !== "message" || commit.body.message.role !== "toolResult") continue;
+      if (commit.body.message.isError) continue;
+      const settled = commit.calls?.[commit.body.message.toolCallId];
+      if (settled?.kind !== "file_patch") continue;
+      if (paths !== undefined && !paths.includes(settled.path)) continue;
+      files.push({
+        path: settled.path,
+        kind:
+          settled.removed === 0 && settled.patch.startsWith("--- /dev/null") ? "added" : "modified",
+        added: settled.added,
+        removed: settled.removed,
+        patch: settled.patch,
+      });
+    }
+    return files;
+  };
+
+  const diff = async (input: OperationInput<"runs.diff">): Promise<RunDiff> => {
+    pool.alive();
+    const { commits, live, from } = await runTrees(input);
+    if (commits.length === 0) return { kind: "not_found" };
+    const vcs = options.workspace?.vcs;
+    if (vcs !== undefined && from !== undefined) {
+      const current = live === undefined ? undefined : await vcs.tree();
+      const to = current?.kind === "tree" ? current.id : lastResultTree(commits);
+      if (to !== undefined) {
+        const files = await vcs.diffTrees({ from, to, paths: input.paths });
+        return { kind: "tree", from, to, files };
+      }
+    }
+    return { kind: "recorded", files: recordedDiff(commits, input.paths) };
+  };
+
+  const revert = async (input: OperationInput<"runs.revert">): Promise<RunRevert> => {
+    pool.alive();
+    const { commits, live, from } = await runTrees(input);
+    if (commits.length === 0) return { kind: "not_found" };
+    if (live !== undefined) return { kind: "busy", run: live };
+    const vcs = options.workspace?.vcs;
+    const to = lastResultTree(commits);
+    if (vcs === undefined || from === undefined || to === undefined) return { kind: "no_tree" };
+    const paths = (await vcs.diffTrees({ from, to })).map((file) => file.path);
+    const restored = await vcs.restoreTree({ tree: from, paths });
+    return restored.kind === "restored"
+      ? { kind: "reverted", files: restored.files }
+      : { kind: "failed", reason: restored.reason };
+  };
+
+  return { snapshot, metadata, list, context, diff, revert };
 }

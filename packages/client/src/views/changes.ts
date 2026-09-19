@@ -67,7 +67,6 @@ function accumulateTurnChanges(builder: ChangesBuilder, turn: Turn): void {
       path,
       added: (previous?.added ?? 0) + part.class.added,
       removed: (previous?.removed ?? 0) + part.class.removed,
-      lastCommit: result.commit,
     };
     if (position === undefined) index.set(path, files.push(change) - 1);
     else files[position] = change;

@@ -90,12 +90,14 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
   if (last?.kind === "turn") {
     const turn = last === builder.sharedTail ? { ...last, parts: [...last.parts] } : last;
     turn.durationMs = Math.max(turn.durationMs, item.commit.at - turn.startedAt);
+    if (turn.run === undefined && item.commit.run !== undefined) turn.run = item.commit.run;
     builder.items[builder.items.length - 1] = turn;
     return turn;
   }
   const turn: ConversationTurn = {
     kind: "turn",
     id: item.oid,
+    ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
     parts: [],
     startedAt: item.commit.at,
     durationMs: 0,
@@ -115,6 +117,7 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
   items.push({
     kind: "turn",
     id: item.oid,
+    ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
     startedAt: item.commit.at,
     durationMs: 0,
     parts: [item.commit.key === undefined ? part : { ...part, key: item.commit.key }],
@@ -241,6 +244,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       items.push({
         kind: "turn",
         id: item.oid,
+        ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
         startedAt: item.commit.at,
         durationMs: 0,
         parts: [],

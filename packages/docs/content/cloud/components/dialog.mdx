@@ -1,0 +1,188 @@
+---
+title: Dialog
+description: "A modal with a scrim, a centered popup, and a built-in close button"
+---
+
+```ts title="Import"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@nyte-ai/ui";
+import { Dialog as DialogPrimitive } from "@nyte-ai/ui/dialog";
+```
+
+A modal that opens on top of the page and takes focus. Reach for it when a task needs the user's
+full attention and can be cancelled.
+
+The root exports give you the styled surface. There is no styled Trigger or Close, so use
+`DialogPrimitive.Trigger` and `DialogPrimitive.Close` with `render={<Button … />}`. The namespace
+also carries `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
+
+## Usage
+
+- Every dialog needs a `DialogTitle`. It becomes the accessible name. Hide it visually rather
+  than omitting it.
+- Use `DialogDescription` for the one sentence that explains the consequence. Longer content goes
+  in the body.
+- Confirmations that destroy something use [Alert dialog](/cloud/components/alert-dialog), which
+  does not dismiss on outside press.
+- `showCloseButton` is on by default. Turn it off when the footer already has a Cancel.
+- `DialogContent` renders the portal, backdrop, and popup as one unit. Use the namespace parts
+  when you need to place them yourself or need a scrollable `Viewport`.
+- Nest dialogs normally. Style the parent with the `[data-nested-dialog-open]` selector and the
+  `--nested-dialogs` CSS variable. Backdrops of child dialogs are not rendered.
+
+## Anatomy
+
+```tsx
+<Dialog>
+  <DialogPrimitive.Trigger />
+  <DialogContent>
+    {/* Portal › Backdrop › Popup, plus Close */}
+    <DialogHeader>
+      <DialogTitle />
+      <DialogDescription />
+    </DialogHeader>
+    …
+    <DialogFooter />
+  </DialogContent>
+</Dialog>
+```
+
+The same tree with the unstyled namespace:
+
+```tsx
+<DialogPrimitive.Root>
+  <DialogPrimitive.Trigger />
+  <DialogPrimitive.Portal>
+    <DialogPrimitive.Backdrop />
+    <DialogPrimitive.Viewport>
+      <DialogPrimitive.Popup>
+        <DialogPrimitive.Title />
+        <DialogPrimitive.Description />
+        <DialogPrimitive.Close />
+      </DialogPrimitive.Popup>
+    </DialogPrimitive.Viewport>
+  </DialogPrimitive.Portal>
+</DialogPrimitive.Root>
+```
+
+## Examples
+
+<Preview>
+  <DialogDemo />
+</Preview>
+
+```tsx
+<Dialog>
+  <DialogPrimitive.Trigger render={<Button variant="outline" />}>
+    Rename session
+  </DialogPrimitive.Trigger>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Rename session</DialogTitle>
+      <DialogDescription>The name shows in the sidebar and in the window title.</DialogDescription>
+    </DialogHeader>
+    <DialogFooter>
+      <DialogPrimitive.Close render={<Button variant="ghost" />}>Cancel</DialogPrimitive.Close>
+      <DialogPrimitive.Close render={<Button />}>Save</DialogPrimitive.Close>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+```
+
+Pass `open` and `onOpenChange` to drive the dialog from your own state, which is how you open it
+from a menu item or close it after a submit.
+
+```tsx
+const [open, setOpen] = useState(false);
+
+<Dialog open={open} onOpenChange={setOpen}>
+  <DialogContent showCloseButton={false}>
+    <DialogHeader>
+      <DialogTitle>Rename session</DialogTitle>
+    </DialogHeader>
+    <form
+      onSubmit={async () => {
+        await save();
+        setOpen(false);
+      }}
+    >
+      …
+    </form>
+  </DialogContent>
+</Dialog>;
+```
+
+## Props
+
+| Export              | Renders                                      | Styling                     |
+| ------------------- | -------------------------------------------- | --------------------------- |
+| `Dialog`            | `Root`                                       | None, it renders no element |
+| `DialogContent`     | `Portal`, `Backdrop`, `Popup`, and `Close`   | Styles land on the popup    |
+| `DialogHeader`      | A `<div>` that stacks title and description  | Layout only                 |
+| `DialogTitle`       | `Title`                                      | Title type scale            |
+| `DialogDescription` | `Description`                                | Muted body type             |
+| `DialogFooter`      | A `<div>` that right-aligns its buttons      | Layout only                 |
+
+`DialogContent` adds one prop on top of the popup props.
+
+| Prop              | Type      | Default | Description                                        |
+| ----------------- | --------- | ------- | -------------------------------------------------- |
+| `showCloseButton` | `boolean` | `true`  | Render the ✕ close button in the top-right corner. |
+
+Every styled export accepts `xstyle` alongside `className` and `style`. The backdrop is not
+exposed, change it with the scrim token, see [Tokens](/cloud/foundations/tokens).
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/dialog/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/dialog/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/dialog/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/dialog/Backdrop.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/dialog/Viewport.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/dialog/Popup.md</include>
+
+### Title
+
+<include>../../base-ui-reference/dialog/Title.md</include>
+
+### Description
+
+<include>../../base-ui-reference/dialog/Description.md</include>
+
+### Close
+
+<include>../../base-ui-reference/dialog/Close.md</include>
+
+## Accessibility
+
+- The popup has `role="dialog"` and `aria-modal="true"`, labelled by `DialogTitle` and described
+  by `DialogDescription`.
+- Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
+  popup.
+- Escape closes. Outside press closes unless `disablePointerDismissal` is set on the root.
+- Content outside the dialog is inert while it is open, and background scroll is locked. Set
+  `modal={false}` on the root to allow interaction with the rest of the page.
+- `initialFocus` and `finalFocus` on the popup override where focus lands.

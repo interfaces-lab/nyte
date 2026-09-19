@@ -17,6 +17,7 @@ import {
   testModel,
   toolCall,
   toolParts,
+  toolResultOf,
   TestWorkspace,
 } from "./host.ts";
 
@@ -64,7 +65,7 @@ async function openParked(): Promise<{
   return { sdk, sessionId, callId: waiting.callId, waitId: waiting.waitId };
 }
 
-/** Answer the parked call and return what the transcript shows for it. */
+/** Answer the parked call and return what the transcript shows for it, with the tool's message. */
 async function reply(
   sdk: Nyte,
   sessionId: SessionId,
@@ -79,7 +80,7 @@ async function reply(
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one question was asked");
   assert.ok(part.result !== undefined, "the question settled");
-  return part.result;
+  return { ...part.result, message: await toolResultOf({ sdk, sessionId, callId }) };
 }
 
 test("asking parks the run; the waiting call carries the question a client renders", async () => {
@@ -115,8 +116,11 @@ test("asking parks the run; the waiting call carries the question a client rende
   const settled = await reply(sdk, sessionId, callId, waitId, "2");
   assert.equal(settled.output, "Broad rewrite");
   assert.equal(settled.isError, false);
-  assert.deepEqual(settled.details, { question: "Which implementation?", answer: "Broad rewrite" });
-  assert.equal(settled.title, "Which implementation?");
+  assert.deepEqual(settled.message.details, {
+    question: "Which implementation?",
+    answer: "Broad rewrite",
+  });
+  assert.equal(settled.message.title, "Which implementation?");
   assert.equal(await lastAssistantText(sdk, sessionId), "Proceeding with Broad rewrite");
 });
 
@@ -133,7 +137,7 @@ test("walking away is not an answer", async () => {
   const settled = await reply(sdk, sessionId, callId, waitId, "   ");
   assert.equal(settled.isError, true);
   assert.match(settled.output, /unanswered/);
-  assert.deepEqual(settled.details, { question: "Which implementation?" });
+  assert.deepEqual(settled.message.details, { question: "Which implementation?" });
 });
 
 test("a reply selects by number or label; anything else is its own answer", () => {

@@ -1,6 +1,6 @@
 ---
 title: Alert dialog
-description: "The Dialog surface with the alert semantics: no outside dismissal, no close button, the user must choose"
+description: "A modal that requires a choice, with no outside dismissal and no close button"
 ---
 
 ```ts title="Import"
@@ -15,17 +15,17 @@ import {
 } from "@nyte-ai/ui";
 ```
 
-Implemented in `packages/ui/src/components/ui/alert-dialog.tsx`, wrapping
-[`@nyte-ai/ui/alert-dialog`](/cloud/headless/alert-dialog). It reuses `dialogStyles` from
-Dialog, so the two look identical; the difference is behavior.
+The [Dialog](/cloud/primitives/dialog) surface with alert semantics, built on
+[`@nyte-ai/ui/alert-dialog`](/cloud/headless/alert-dialog). The two look identical, the behavior
+differs.
 
 ## Usage
 
-- Use for a decision the user cannot back out of by clicking away: delete, discard, overwrite,
+- Use it for a decision the user cannot back out of by clicking away. Delete, discard, overwrite,
   revoke.
-- The footer **must** offer an explicit way out (a Cancel `AlertDialogClose`). There is no ✕ and
-  outside press does nothing.
-- Title states the question; description states the consequence. Both are required.
+- The footer needs an explicit way out, a Cancel `AlertDialogClose`. There is no ✕ and outside
+  press does nothing.
+- Title states the question, description states the consequence. Both are required.
 - The destructive action is the last button and uses `variant="destructive"`.
 
 ## Anatomy
@@ -45,10 +45,7 @@ Dialog, so the two look identical; the difference is behavior.
 </AlertDialog>
 ```
 
-`AlertDialog`, `AlertDialogTrigger`, and `AlertDialogClose` are the Base UI parts re-exported
-without styling.
-
-## Example
+## Examples
 
 <Preview>
   <AlertDialogDemo />
@@ -78,13 +75,13 @@ without styling.
 
 ### AlertDialogContent
 
-`StyledProps<AlertDialog.Popup.Props>`. Channels apply to the Popup.
+`className`, `style`, and `xstyle` apply to the popup.
 
 <include>../../base-ui-reference/alert-dialog/Popup.md</include>
 
 ### AlertDialogTitle, AlertDialogDescription, AlertDialogFooter
 
-`StyledProps` of the matching Base UI part; Footer is a `<div>`. Styles are Dialog's.
+The matching Base UI part, styled. Footer is a `<div>` that right-aligns its buttons.
 
 ### AlertDialogTrigger, AlertDialogClose
 
@@ -94,12 +91,8 @@ without styling.
 
 ## Accessibility
 
-- `role="alertdialog"`, `aria-modal="true"`, labelled by the title and described by the
+- `role="alertdialog"` and `aria-modal="true"`, labelled by the title and described by the
   description.
-- Outside press does not close. Escape closes by default in Base UI; pass an `onOpenChange` that
-  ignores the `escape-key` reason if the surface must not be escapable.
+- Outside press does not close. Escape does. To block that, pass an `onOpenChange` that ignores
+  the `escape-key` reason.
 - Focus moves into the popup on open and returns to the trigger on close.
-
-## Styling
-
-Same tokens as [Dialog](/cloud/primitives/dialog#styling).

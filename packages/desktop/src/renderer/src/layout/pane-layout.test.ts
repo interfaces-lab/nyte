@@ -166,7 +166,11 @@ describe("pane drop semantics", () => {
 
       assert.equal(result.direction, direction, placement);
       assert.equal(result.ratio, DEFAULT_SPLIT_RATIO, placement);
-      assert.equal(result.leading, draggedLeads ? "secondary" : "primary", placement);
+      assert.deepEqual(
+        orderedPanes(result).map((pane) => pane.selection),
+        draggedLeads ? [session(BETA), session(ALPHA)] : [session(ALPHA), session(BETA)],
+        placement,
+      );
       assert.deepEqual(result.primary, session(ALPHA), placement);
       assert.deepEqual(result.secondary, session(BETA), placement);
       assert.equal(activePane(result).id, "secondary", placement);
@@ -191,7 +195,10 @@ describe("pane drop semantics", () => {
     );
 
     assert.equal(result.direction, "down");
-    assert.equal(result.leading, "secondary");
+    assert.deepEqual(
+      orderedPanes(result).map((pane) => pane.selection),
+      [session(BETA), session(ALPHA)],
+    );
     assert.deepEqual(result.primary, session(ALPHA));
     assert.deepEqual(result.secondary, session(BETA));
     assert.equal(result.ratio, initial.ratio);
@@ -314,17 +321,19 @@ describe("pane layout persistence", () => {
       createSinglePane("secondary", session(ALPHA)),
     );
 
+    const order = ["secondary", "primary"] satisfies readonly PaneId[];
     const split = JSON.stringify({
       version: 1,
       kind: "split",
       direction: "down",
       ratio: 0.4,
-      order: ["secondary", "primary"],
+      order,
       primary: { id: "primary", selection: { kind: "session", sessionId: ALPHA } },
       secondary: { id: "secondary", selection: { kind: "blank" } },
       activePaneId: "secondary",
     });
-    assert.deepEqual(parsePersistedPaneLayout(split), {
+    const restored = parsePersistedPaneLayout(split);
+    assert.deepEqual(restored, {
       kind: "split",
       direction: "down",
       ratio: 0.4,
@@ -333,6 +342,10 @@ describe("pane layout persistence", () => {
       secondary: { kind: "blank" },
       activePaneId: "secondary",
     });
+    assert.deepEqual(
+      orderedPanes(restored).map((pane) => pane.id),
+      order,
+    );
   });
 
   test("a corrupt or duplicated layout string resets to a blank single pane", () => {

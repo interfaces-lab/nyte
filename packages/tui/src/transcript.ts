@@ -41,17 +41,9 @@ import type {
   OptimizedBuffer,
 } from "@opentui/core";
 import { Edge } from "@opentui/core/yoga";
-import {
-  presentNote,
-  presentTool,
-  projectToolView,
-  runActivityLabel,
-  turnPartId,
-  type ToolLive,
-  type ToolPresentation,
-} from "@nyte-ai/client";
+import { parsePatchFacts, turnPartId } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { ToolTurnPart, TurnOutcome, TurnPart } from "@nyte-ai/protocol";
+import type { Failure, ToolProgress, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import type { RunInfo, Turn } from "@nyte-ai/core";
 import type { ImageContent, UserMessage } from "@nyte-ai/schema";
 import { diffChars, diffWordsWithSpace } from "diff";
@@ -68,9 +60,7 @@ import {
 import type { ShellRun } from "./composer.ts";
 import type { ShellExecution } from "./local-shell.ts";
 import {
-  ACTIVITY_FAILED_LABEL,
   ACTIVITY_RETRY_LABEL,
-  ACTIVITY_STOPPED_LABEL,
   ACTIVITY_THINKING_LABEL,
   ACTIVITY_THOUGHT_LABEL,
   ACTIVITY_WAITING_LABEL,
@@ -98,16 +88,36 @@ import {
   toolHeading,
   unchangedLinesLabel,
 } from "./format.ts";
-import { diffFromOutput, type ChangedLinePair, type OutputDiff } from "./output-diff.ts";
-import { isJsonObject, isJsonString } from "./json.ts";
+import {
+  diffFromOutput,
+  patchSections,
+  type ChangedLinePair,
+  type OutputDiff,
+} from "./output-diff.ts";
 import type { LabelSyntax } from "./label-syntax.ts";
 import { renderMermaidASCII } from "beautiful-mermaid";
 import { waitingCall } from "@nyte-ai/client";
 import type { SessionState } from "@nyte-ai/client";
 import { livePartKey, type LivePart } from "@nyte-ai/client";
 import { extractSkillInvocations } from "./slash.ts";
-import { runStatus, statusMark, taskSteps } from "./tasks.ts";
+import {
+  phaseStatus,
+  runStatus,
+  statusMark,
+  taskLabel,
+  taskPrompt,
+  taskSteps,
+  type Task,
+} from "./tasks.ts";
 import type { CliTheme } from "./theme.ts";
+import {
+  failureNotice,
+  runningActivityLabel,
+  toolLabel,
+  toolPhase,
+  toolSubject,
+  type ToolPhase,
+} from "./tool-copy.ts";
 import { cellOffset, displayWidth } from "./width.ts";
 
 // Native text buffers retain their construction-time width rules after capability replies.
@@ -446,14 +456,8 @@ function markChangedWords(diff: DiffRenderable, pair: ChangedLinePair): void {
   code.onHighlight = (highlights, context) => [...highlights, ...wordSpans(context.content, pair)];
 }
 
-/** Tools whose title is source rather than prose, named by the grammar it speaks. */
-const HEADING_FILETYPES = new Map([["bash", "bash"]]);
-
-/** Tools whose newest output matters most: a collapsed card keeps the tail and drops the head. */
-const TAIL_PREVIEW_TOOLS = new Set(["bash"]);
-
-function previewCut(toolName: string | undefined): PreviewCut {
-  return toolName !== undefined && TAIL_PREVIEW_TOOLS.has(toolName)
+function previewCut(toolClass: ToolTurnPart["class"] | undefined): PreviewCut {
+  return toolClass?.kind === "shell"
     ? { kind: "tail", max: RESULT_TAIL_ONLY_LINES }
     : { kind: "head-tail", head: RESULT_PREVIEW_LINES, tail: RESULT_TAIL_LINES };
 }
@@ -582,10 +586,10 @@ export interface Transcript {
   readonly nextId: (prefix?: string) => string;
   readonly openPath: (path: string) => void;
   /**
-   * Child sessions of the one shown, for delegation cards. The task browser
+   * The tasks of the session shown, for delegation cards. The task browser
    * follows them and installs this once it exists; until then there are none.
    */
-  children: () => readonly SessionState[];
+  tasks: () => readonly Task[];
   readonly disclosures?: TranscriptDisclosures;
   /** Width for user cards, which sit inside the scroll padding. */
   readonly userBlocks: Set<BoxRenderable>;
@@ -1058,13 +1062,6 @@ function appendMarker(transcript: Transcript, item: Exclude<Turn, { kind: "turn"
       if (item.body.agent !== undefined) parts.push(`Agent → ${item.body.agent}`);
       return appendNote(transcript, parts.join(" · "), undefined, transcript.container);
     }
-    case "note":
-      return appendNote(
-        transcript,
-        presentNote({ commit: item.commit, at: item.at, body: item.body }).text,
-        undefined,
-        transcript.container,
-      );
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -1332,7 +1329,7 @@ class ActivityBlock {
     if (spins(mode)) this.spinner.start();
   }
 
-  settle(outcome: TurnOutcome): void {
+  settle(failure: Failure | undefined): void {
     if (this.mode === "settled") return;
     const { theme } = this.transcript;
     const elapsed = this.durationMs + performance.now() - this.startedAt;
@@ -1340,28 +1337,14 @@ class ActivityBlock {
     this.spinner.visible = false;
     this.mode = "settled";
     const paint = (): void => {
-      switch (outcome) {
-        case "completed": {
-          const duration =
-            elapsed >= MIN_REPORTED_DURATION_MS ? ` for ${formatDuration(elapsed)}` : "";
-          this.line.content = new StyledText([
-            fg(theme.dim)(`${ACTIVITY_WORKED_LABEL}${duration}`),
-          ]);
-          return;
-        }
-        case "aborted":
-          this.line.content = new StyledText([fg(theme.warning)(ACTIVITY_STOPPED_LABEL)]);
-          return;
-        case "failed":
-          this.line.content = new StyledText([
-            fg(theme.error)(`${GLYPHS.cross}${ACTIVITY_FAILED_LABEL}`),
-          ]);
-          return;
-        default: {
-          const _exhaustive: never = outcome;
-          return _exhaustive;
-        }
+      if (failure === undefined) {
+        const duration =
+          elapsed >= MIN_REPORTED_DURATION_MS ? ` for ${formatDuration(elapsed)}` : "";
+        this.line.content = new StyledText([fg(theme.dim)(`${ACTIVITY_WORKED_LABEL}${duration}`)]);
+        return;
       }
+      const notice = failureNotice(failure);
+      this.line.content = new StyledText([fg(theme[notice.tone])(notice.text)]);
     };
     repaints.set(this.line, paint);
     paint();
@@ -1412,18 +1395,10 @@ class ActivityBlock {
 // Tool cards
 // ---------------------------------------------------------------------------
 
-function taskPreview(part: ToolTurnPart | ShellExecution) {
-  if (part.kind === "shell") return undefined;
-  if (part.toolName !== "task" || !isJsonObject(part.args)) return undefined;
-  const { model, prompt, title } = part.args;
-  if (!isJsonString(model) || !isJsonString(prompt)) return undefined;
-  return { model, title: isJsonString(title) ? title : "Task", prompt };
-}
-
 /**
  * One card per tool call, reused from the call through progress to the
- * settled result. Unified diffs from edit details or shell output render
- * with DiffRenderable; everything else shows a capped preview.
+ * settled result. A settled patch renders with DiffRenderable, as does a
+ * unified diff inside shell output; everything else shows a capped preview.
  */
 class ToolCard {
   readonly container: BoxRenderable;
@@ -1433,7 +1408,9 @@ class ToolCard {
   private readonly heading: TextRenderable;
   private readonly structuredBodies: Renderable[] = [];
   private current: ToolTurnPart | ShellExecution;
-  private live: ToolLive | undefined;
+  private live: ToolProgress | undefined;
+  /** Whether the run that made the call is still on it; a call left behind is interrupted. */
+  private running: boolean;
   private expanded = false;
   private destroyed = false;
   private textBody: CodeRenderable | undefined;
@@ -1469,12 +1446,14 @@ class ToolCard {
     part: ToolTurnPart | ShellExecution,
     parent: Renderable,
     before: Renderable | undefined,
-    live?: ToolLive,
+    live: ToolProgress | undefined,
+    running: boolean,
     note?: string,
   ) {
     this.transcript = transcript;
     this.current = part;
     this.live = live;
+    this.running = running;
     this.note = note;
     this.container = section(transcript, "tool", {}, parent, before);
     this.heading = new TranscriptTextRenderable(transcript.renderer, {
@@ -1495,7 +1474,7 @@ class ToolCard {
     this.container.add(this.detail);
     repaints.set(this.container, () => this.retheme());
     const unregister = transcript.toolOutput.register(this);
-    if (this.toolName === "bash" && !this.completed) {
+    if (this.toolClass?.kind === "shell" && !this.completed) {
       this.timing = {
         kind: "running",
         startedAt: performance.now(),
@@ -1515,8 +1494,8 @@ class ToolCard {
     return this.current.kind === "tool" ? this.current : undefined;
   }
 
-  private get toolName(): string {
-    return this.current.kind === "shell" ? "bash" : this.current.toolName;
+  private get toolClass(): ToolTurnPart["class"] | undefined {
+    return this.current.kind === "tool" ? this.current.class : undefined;
   }
 
   private get result() {
@@ -1542,11 +1521,15 @@ class ToolCard {
   }
 
   /** The settled part, or a fresh progress report while the call runs. */
-  sync(part: ToolTurnPart | ShellExecution, live: ToolLive | undefined): void {
-    const changed =
-      part !== this.current || live?.text !== this.live?.text || live?.title !== this.live?.title;
+  sync(
+    part: ToolTurnPart | ShellExecution,
+    live: ToolProgress | undefined,
+    running: boolean,
+  ): void {
+    const changed = part !== this.current || live !== this.live || running !== this.running;
     this.current = part;
     this.live = live;
+    this.running = running;
     if (this.completed) this.stopClock();
     // A delegation's rows follow the child, which changes without this part.
     if (changed || this.window !== undefined) this.render();
@@ -1584,9 +1567,8 @@ class ToolCard {
       this.renderShell(this.current);
       return;
     }
-    const delegation = taskPreview(this.current);
-    if (delegation !== undefined) {
-      this.renderDelegation(delegation);
+    if (this.current.class.kind === "delegate") {
+      this.renderDelegation(this.current.class);
       return;
     }
     const output = this.live?.text ?? "";
@@ -1643,20 +1625,24 @@ class ToolCard {
   }
 
   /**
-   * The tool name and its title. A shell call's title is a command, which
+   * The call's label and its subject. A shell call's subject is a command, which
    * reads as code, so it is highlighted as one once the grammar answers.
    */
   private headingTitle(): TextChunk[] {
     const { theme, labelSyntax } = this.transcript;
     const title = this.title();
     const name =
-      this.current.kind === "shell" ? (this.note === undefined ? "!" : "!!") : this.toolName;
+      this.current.kind === "shell"
+        ? this.note === undefined
+          ? "!"
+          : "!!"
+        : toolLabel(this.current.class, this.phase());
     const plain = fg(theme.foreground)(` ${toolHeading(name, title)}`);
-    const filetype = HEADING_FILETYPES.get(this.toolName);
-    if (filetype === undefined || title === undefined) return [plain];
+    const command = this.current.kind === "shell" || this.current.class.kind === "shell";
+    if (!command || title === undefined) return [plain];
     const highlighted = labelSyntax.chunks(
       title,
-      filetype,
+      "bash",
       this.transcript.syntaxStyle,
       this.refreshHeading,
     );
@@ -1664,9 +1650,13 @@ class ToolCard {
     return [fg(theme.foreground)(` ${name} `), ...highlighted];
   }
 
+  private phase(): ToolPhase {
+    return toolPhase(this.result, this.running);
+  }
+
   private title(): string | undefined {
     if (this.current.kind === "shell") return this.current.command;
-    return this.result?.title ?? this.live?.title ?? taskPreview(this.current)?.title;
+    return toolSubject(this.current.class);
   }
 
   private render(): void {
@@ -1675,20 +1665,20 @@ class ToolCard {
       return;
     }
     const { theme } = this.transcript;
-    const delegation = taskPreview(this.current);
-    if (delegation !== undefined) {
-      this.renderDelegation(delegation);
+    if (this.current.class.kind === "delegate") {
+      this.renderDelegation(this.current.class);
       return;
     }
-    const view = projectToolView(this.current, this.live);
-    const presentation = presentTool(view);
-    switch (presentation.status) {
-      case "running": {
+    const phase = this.phase();
+    switch (phase) {
+      case "running":
+      case "interrupted": {
         const text = this.live?.text ?? "";
         const inline = inlineToolPreview(text);
+        const mark = statusMark(phaseStatus(phase));
         this.heading.content = this.headingContent(
-          GLYPHS.bullet,
-          text === "" ? theme.running : theme.user,
+          mark.glyph,
+          phase === "running" && text !== "" ? theme.user : theme[mark.tone],
           inline ?? resultSummary(text),
         );
         if (inline !== undefined || text === "") this.clearBody();
@@ -1696,13 +1686,13 @@ class ToolCard {
         return;
       }
       case "failed":
-        this.renderSettled(presentation, true);
+        this.renderSettled(true);
         return;
       case "done":
-        this.renderSettled(presentation, false);
+        this.renderSettled(false);
         return;
       default: {
-        const _exhaustive: never = presentation.status;
+        const _exhaustive: never = phase;
         return _exhaustive;
       }
     }
@@ -1736,11 +1726,26 @@ class ToolCard {
     this.showPreview(execution.output, outcome === undefined ? theme.dim : theme.error);
   }
 
-  private renderDelegation(delegation: NonNullable<ReturnType<typeof taskPreview>>): void {
+  private renderDelegation(delegation: Extract<ToolTurnPart["class"], { kind: "delegate" }>): void {
     if (this.current.kind !== "tool") return;
     const callId = this.current.callId;
     const { theme } = this.transcript;
-    const child = this.transcript.children().find((state) => state.info.parent?.callId === callId);
+    const tasks = this.transcript.tasks();
+    if (delegation.role === "await") {
+      const task = tasks.find((candidate) => candidate.id === delegation.jobId);
+      const phase = this.phase();
+      const mark = statusMark(phaseStatus(phase));
+      this.heading.content = new StyledText([
+        fg(theme[mark.tone])(`${mark.glyph} `),
+        fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
+        fg(theme.tool)(task === undefined ? delegation.jobId : taskLabel(task)),
+      ]);
+      this.clearBody();
+      return;
+    }
+    const child = tasks
+      .flatMap((task) => (task.kind === "agent" ? [task.state] : []))
+      .find((state) => state.info.parent?.callId === callId);
     const result = this.result;
     const status =
       result !== undefined
@@ -1751,14 +1756,13 @@ class ToolCard {
           ? "running"
           : runStatus(child.run);
     const mark = statusMark(status);
-    const title = this.title();
-    const config = [child?.config.model?.id ?? delegation.model, child?.config.thinkingLevel]
+    const config = [child?.config.model?.id, child?.config.thinkingLevel]
       .filter((value) => value !== undefined)
       .join(" · ");
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
       fg(theme.foreground)("task "),
-      fg(theme.tool)(title ?? delegation.title),
+      fg(theme.tool)(delegation.title),
       ...(config === "" ? [] : [fg(theme.dim)(`  ${config}`)]),
     ]);
 
@@ -1772,8 +1776,9 @@ class ToolCard {
       });
       this.container.add(this.window);
     }
+    const prompt = child === undefined ? undefined : taskPrompt(child);
     const steps = [
-      { status: "queued" as const, text: delegation.prompt },
+      ...(prompt === undefined ? [] : [{ status: "queued" as const, text: prompt }]),
       ...(child === undefined ? [] : taskSteps(child)),
     ].slice(-DELEGATION_ROWS);
     const rows: TextChunk[] = [];
@@ -1787,22 +1792,24 @@ class ToolCard {
     this.window.content = new StyledText(rows);
   }
 
-  private renderSettled(presentation: ToolPresentation, isError: boolean): void {
+  private renderSettled(isError: boolean): void {
     const { theme } = this.transcript;
     const output = this.result?.output ?? "";
-    if (presentation.body.kind === "diff" && !isError) {
-      const { patch, path, added, removed } = presentation.body;
+    const toolClass = this.toolClass;
+    if (toolClass?.kind === "file_patch" && !isError) {
+      const { patch, path, added, removed } = toolClass;
       this.heading.content = this.headingContent(
         GLYPHS.check,
         theme.ok,
         `+${String(added)} -${String(removed)}`,
       );
-      const diff = diffFromOutput(patch);
-      if (diff === undefined) this.showPreview(patch, theme.dim);
+      const facts = parsePatchFacts(patch);
+      if (facts === undefined) this.showPreview(patch, theme.dim);
       else
         this.showDiff({
-          ...diff,
-          files: diff.files.map((file) => ({ ...file, path: path ?? file.path })),
+          files: facts.files.map((file) => ({ path, sections: patchSections(file, patch) })),
+          before: undefined,
+          after: undefined,
         });
       return;
     }
@@ -1818,10 +1825,10 @@ class ToolCard {
       return;
     }
     const inline = inlineToolPreview(output);
-    const summary = presentation.summary ?? inline ?? resultSummary(output);
+    const summary = inline ?? resultSummary(output);
     // A collapsed read names the file and its size without repeating its body.
     const collapsedRead =
-      this.toolName === "read" && !isError && !this.expanded && inline === undefined;
+      toolClass?.kind === "file_read" && !isError && !this.expanded && inline === undefined;
     const headingResult = collapsedRead
       ? [summary, `${keycap("chat.tools.toggle")} expand`]
           .filter((value) => value !== undefined)
@@ -1841,7 +1848,7 @@ class ToolCard {
    * https://github.com/anomalyco/opencode/blob/v2/packages/tui/src/routes/session/index.tsx
    */
   private showPreview(text: string, color: string): void {
-    const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolName));
+    const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolClass));
     if (this.structuredBodies.length > 0) this.clearBody();
     if (preview === "") {
       this.clearBody();
@@ -1850,8 +1857,8 @@ class ToolCard {
     this.detail.visible = true;
     this.detail.paddingLeft = 2;
     const filetype =
-      this.completed && this.toolName === "read" && this.title() !== undefined
-        ? pathToFiletype(this.title() ?? "")
+      this.completed && this.toolClass?.kind === "file_read"
+        ? pathToFiletype(this.toolClass.path)
         : undefined;
     if (this.textBody === undefined) {
       this.textBody = new TranscriptCodeRenderable(this.transcript.renderer, {
@@ -1929,7 +1936,7 @@ class ToolCard {
   }
 
   private addSupplementalPreview(text: string): void {
-    const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolName));
+    const preview = toolOutputPreview(text, this.expanded, previewCut(this.toolClass));
     if (preview === "") return;
     const panel = new BoxRenderable(this.transcript.renderer, {
       id: this.transcript.nextId("tool-output"),
@@ -1991,7 +1998,7 @@ type TurnStatus =
     }
   | { readonly kind: "unanswered" }
   | { readonly kind: "compacting" }
-  | { readonly kind: "settled"; readonly outcome: TurnOutcome };
+  | { readonly kind: "settled"; readonly failure: Failure | undefined };
 
 type PartBlock =
   | { readonly kind: "text"; readonly block: AssistantPartBlock; readonly contentIndex: number }
@@ -2023,7 +2030,8 @@ class TurnBlock {
   }
 
   sync(turn: Extract<Turn, { kind: "turn" }> | undefined, status: TurnStatus): void {
-    const progress = new Map<string, ToolLive>();
+    const progress = new Map<string, ToolProgress>();
+    const running = status.kind === "open";
     if (status.kind === "open") {
       for (const part of status.live) {
         if (part.kind === "tool") progress.set(part.callId, part.progress);
@@ -2032,12 +2040,12 @@ class TurnBlock {
     if (turn !== undefined && turn !== this.lastTurn) {
       this.durationMs = turn.durationMs;
       for (const part of turn.parts)
-        this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined);
+        this.syncPart(part, part.kind === "tool" ? progress.get(part.callId) : undefined, running);
       this.lastTurn = turn;
     }
     for (const [callId, card] of this.tools) {
       const part = card.part;
-      if (part !== undefined) card.sync(part, progress.get(callId));
+      if (part !== undefined) card.sync(part, progress.get(callId), running);
     }
     switch (status.kind) {
       case "open": {
@@ -2056,7 +2064,7 @@ class TurnBlock {
       }
       case "settled":
         this.syncLive([]);
-        this.settle(status.outcome);
+        this.settle(status.failure);
         return;
       default: {
         const _exhaustive: never = status;
@@ -2071,7 +2079,7 @@ class TurnBlock {
     this.root.destroyRecursively();
   }
 
-  private syncPart(part: TurnPart, progress: ToolLive | undefined): void {
+  private syncPart(part: TurnPart, progress: ToolProgress | undefined, running: boolean): void {
     const id = turnPartId(part);
     switch (part.kind) {
       case "user":
@@ -2112,24 +2120,13 @@ class TurnBlock {
         if (card === undefined) {
           this.tools.set(
             part.callId,
-            new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress),
+            new ToolCard(this.transcript, part, this.root, this.contentAnchor(), progress, running),
           );
           return;
         }
-        card.sync(part, progress);
+        card.sync(part, progress, running);
         return;
       }
-      case "note":
-        if (this.settled.has(id)) return;
-        this.settled.add(id);
-        appendNote(
-          this.transcript,
-          part.text,
-          part.text.startsWith("Error:") ? this.transcript.theme.error : undefined,
-          this.root,
-          this.contentAnchor(),
-        );
-        return;
       default: {
         const _exhaustive: never = part;
         return _exhaustive;
@@ -2199,10 +2196,10 @@ class TurnBlock {
     }
   }
 
-  private settle(outcome: TurnOutcome): void {
+  private settle(failure: Failure | undefined): void {
     if (this.closed) return;
     this.closed = true;
-    this.ensureActivity().settle(outcome);
+    this.ensureActivity().settle(failure);
   }
 
   private ensureActivity(initial: ActivityMode = "working"): ActivityBlock {
@@ -2212,12 +2209,12 @@ class TurnBlock {
 
   /** Tool calls still without a result, in call order. */
   private runningActivity(): string | undefined {
-    const running: string[] = [];
+    const running: ToolTurnPart["class"][] = [];
     for (const card of this.tools.values()) {
       const part = card.part;
-      if (part !== undefined && part.result === undefined) running.push(part.toolName);
+      if (part !== undefined && part.result === undefined) running.push(part.class);
     }
-    return runActivityLabel(running);
+    return runningActivityLabel(running);
   }
 
   /** A turn with a status row keeps it last, so content lands above it. */
@@ -2271,21 +2268,24 @@ function settledStatus(
 ): Extract<TurnStatus, { kind: "unanswered" | "settled" }> {
   const answered = run !== undefined && run.startedAt >= turn.startedAt;
   if (!answered) {
-    return isRequestOnly(turn) && turn.outcome === "completed"
+    return isRequestOnly(turn) && turn.failure === undefined
       ? { kind: "unanswered" }
-      : { kind: "settled", outcome: turn.outcome };
+      : { kind: "settled", failure: turn.failure };
   }
   switch (run.phase.kind) {
     case "aborted":
-      return { kind: "settled", outcome: "aborted" };
+      return {
+        kind: "settled",
+        failure: turn.failure ?? { class: "aborted", message: "Run stopped." },
+      };
     case "failed":
-      return { kind: "settled", outcome: "failed" };
+      return { kind: "settled", failure: turn.failure ?? run.phase.failure };
     case "done":
     case "respond":
     case "tools":
     case "waiting":
     case "retry":
-      return { kind: "settled", outcome: turn.outcome };
+      return { kind: "settled", failure: turn.failure };
     default: {
       const _exhaustive: never = run.phase;
       return _exhaustive;
@@ -2852,7 +2852,7 @@ export class TranscriptView {
     const item = this.items[index]?.item;
     const state = this.state;
     if (mounted.kind === "shell" && item?.kind === "shell") {
-      mounted.card.sync(item.execution, undefined);
+      mounted.card.sync(item.execution, undefined, false);
       mounted.card.setNote(item.note);
       return;
     }
@@ -3158,7 +3158,7 @@ export class TranscriptView {
       const transcript: Transcript = {
         ...this.transcript,
         disclosures: item.disclosures,
-        children: () => owner.children(),
+        tasks: () => owner.tasks(),
         get syntaxStyle() {
           return owner.syntaxStyle;
         },
@@ -3186,6 +3186,7 @@ export class TranscriptView {
                   root,
                   undefined,
                   undefined,
+                  false,
                   item.item.note,
                 );
                 return { kind: "shell", root, card };

@@ -44,7 +44,7 @@ export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
                   Get started
                   <span aria-hidden>→</span>
                 </Link>
-                <Link className="cloud-cta-secondary" href={`${cloudRoute}/primitives/button`}>
+                <Link className="cloud-cta-secondary" href={`${cloudRoute}/components/button`}>
                   Try it out
                 </Link>
               </div>

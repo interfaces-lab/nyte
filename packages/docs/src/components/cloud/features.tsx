@@ -9,25 +9,10 @@ function layerPresentation(label: string): { icon: DocsIconName; description: st
         icon: "IconLayersThree",
         description: "Tokens, theming channels, focus modality, and icons.",
       };
-    case "Primitives":
+    case "Components":
       return {
         icon: "IconComponents",
-        description: "Styled wrappers exported from @nyte-ai/ui.",
-      };
-    case "Headless":
-      return {
-        icon: "IconCodeBrackets",
-        description: "Base UI namespaces, unstyled, with the author's contract intact.",
-      };
-    case "Desktop":
-      return {
-        icon: "IconConsole",
-        description: "The desktop app's own component tier.",
-      };
-    case "Surfaces":
-      return {
-        icon: "IconPackage",
-        description: "One page per product concern, across hosts.",
+        description: "Every component the package exports, styled or unstyled.",
       };
     default:
       return undefined;

@@ -456,7 +456,7 @@ the camera; no microphone or frame processor is used. The camera session is
 released on dismissal and pauses when backgrounded. Simulator has no camera;
 use its photo library to test attachment staging and sending.
 
-`runs.changes` returns file summaries. `workspace.vcs.diff` returns the current
+`runs.diff` returns the run's file diff. `workspace.vcs.diff` returns the current
 working-tree diff and is labeled that way, since it can contain other edits.
 Missing diffs are shown explicitly; this is not run-isolated patch storage.
 The review page composes those same real reads; because the protocol exposes

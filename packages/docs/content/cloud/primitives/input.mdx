@@ -1,25 +1,20 @@
 ---
 title: Input
-description: "A single-line text field on the field tokens, with invalid and disabled states"
+description: "A single-line text field with invalid and disabled states"
 ---
 
 ```ts title="Import"
 import { Input } from "@nyte-ai/ui";
 ```
 
-Implemented in `packages/ui/src/components/ui/input.tsx`, wrapping `@base-ui/react/input`.
+A single-line text field. For multi-line text use [Textarea](/cloud/primitives/textarea).
 
 ## Usage
 
-- Every input **must** have an accessible name: a `<label for>`, `aria-label`, or
-  `aria-labelledby`. Placeholder is not a name.
-- Set `aria-invalid` when validation fails; the border switches to `--nyte-color-destructive`.
-- Width is `100%`; constrain it with the parent, not with `style`.
-- For multi-line text use [Textarea](/cloud/primitives/textarea).
-
-## Anatomy
-
-A single `<input>` with `data-slot="input"`.
+- Every input needs an accessible name from a `<label for>`, `aria-label`, or `aria-labelledby`.
+  A placeholder is not a name.
+- Set `aria-invalid` when validation fails. The border turns destructive.
+- Width is `100%`. Constrain it with the parent.
 
 ## Examples
 
@@ -44,21 +39,7 @@ A single `<input>` with `data-slot="input"`.
 
 ## Accessibility
 
-- Native `<input>`; all native keyboard behavior applies.
-- Base UI's Input integrates with its Field component for labels, descriptions, and validation
-  state. Nyte does not wrap Field yet; wire `aria-*` by hand or use the headless
-  [`@nyte-ai/ui`](/cloud/headless) subpaths.
-- Focus: border moves to `--nyte-color-ring` and a 2px `--nyte-color-focus-ring` shadow appears on
-  `:focus-visible`. See [Focus](/cloud/foundations/focus) for why the ring color is gated.
-
-## Styling
-
-| Token                                          | Role                          |
-| ---------------------------------------------- | ----------------------------- |
-| `--nyte-control-height-md`                     | Minimum height (28px)         |
-| `--nyte-control-padding-lg` / `-sm`            | Horizontal / vertical padding |
-| `--nyte-radius-field`                          | Corner radius                 |
-| `--nyte-color-field-background`                | Background                    |
-| `--nyte-color-border`, `-ring`, `-destructive` | Border by state               |
-| `--nyte-color-muted-foreground`                | Placeholder                   |
-| `--nyte-control-disabled-opacity`              | Disabled                      |
+- A native `<input>`, so all native keyboard behavior applies.
+- There is no styled Field wrapper. Wire labels, descriptions, and validation state through
+  `aria-*`, or use the headless [subpaths](/cloud/headless).
+- The focus ring appears on `:focus-visible`. See [Focus](/cloud/foundations/focus).

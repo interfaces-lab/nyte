@@ -1,84 +1,69 @@
 ---
 title: Desktop
-description: The product Electron app composes createNyte
+description: The Nyte desktop app, an Electron host that composes createNyte
 ---
 
-One Electron app ships from this repo.
-
-| Path               | Package            | What it is                                                                                          |
-| ------------------ | ------------------ | --------------------------------------------------------------------------------------------------- |
-| `packages/desktop` | `@nyte-ai/desktop` | The product app. Main process hosts `createNyte`. Renderer talks SDK operations over `window.nyte`. |
-
-Start it from its package:
+The desktop app hosts `createNyte` in its main process. The renderer calls SDK operations over
+`window.nyte`.
 
 ```bash
 pnpm --dir packages/desktop dev
 ```
 
+## Workspaces
+
 Desktop and the TUI share one store per workspace at `~/.nyte/workspaces/<path-hash>/sessions.db`.
 On first open, a client imports an existing `<workspace>/.nyte/sessions.db` with a SQLite backup and
-leaves the original intact. `NYTE_HOME` overrides `~/.nyte`.
-Missing folders stay in the sidebar with dimmed names, and their saved chats remain available.
-Trust grants live in `~/.nyte/workspaces.json`, so a folder you trusted in the terminal stays trusted here.
+leaves the original intact. `NYTE_HOME` overrides `~/.nyte`. Missing folders stay in the sidebar with
+dimmed names, and their saved chats remain available.
 
-## Product desktop
+Trust grants live in `~/.nyte/workspaces.json`, so a folder you trusted in the terminal stays trusted
+here. Opening a workspace loads local history without checking trust. Sending resolves the folder and
+requests trust before loading project code. A missing path fails the send, which stays in the outbox
+for retry. Runners attach per session, and switching workspaces keeps earlier sessions and their jobs
+open.
 
-Opening a workspace loads local history without checking trust. Sending resolves the folder through
-core and requests trust before loading project code. A missing path fails the send, which stays in
-the outbox for retry. The main process loads the same plugin set as the TUI (`system-prompt`,
-`rename`, `context-files`, `tools-fs`, `openai-compaction`, `openai-astra-context`, `fast-mode`,
-`web-search` and its provider plugins, `mcp`, `skills`, plus user and project dirs), then
-`createNyte`. Runners attach per session. Switching workspaces keeps earlier sessions and their
-jobs open.
+## The IPC bridge
 
-The renderer never imports `@nyte-ai/core`. IPC is one `nyte:call` channel: operation path plus one input object,
-the same namespaces as the in-process SDK (`sessions`, `messages`, `jobs`, `runs`, `heads`, `workspace`,
-`provider`, `plugins`). `watch` cannot be an AsyncIterable across IPC, so it is a start/stop pump with the
-same `afterSeq` / `live` cursors.
-
-What you get in the UI today: session list, composer send, plugin slash commands, abort, a pending strip
-with cancel and redeliver, a context gauge from `runs.context`, and the usage card. What the bridge
-already exposes but the renderer does not draw: the session tree and run-end notifications. Those
-are TUI surfaces, not missing SDK operations.
-
-The renderer imports controls from `@nyte-ai/ui` and each product-specific headless namespace from its
-direct component subpath, such as `@nyte-ai/ui/popover`. Desktop keeps Cursor-specific layout and StyleX
-overrides locally; the shared package owns the Base UI dependency, accessible interaction contracts,
-and reusable control defaults.
+The renderer never imports `@nyte-ai/core`. One `nyte:call` channel carries an operation path and one
+input object, across the same namespaces as the in-process SDK (`sessions`, `messages`, `jobs`,
+`runs`, `heads`, `workspace`, `provider`, `plugins`). `watch` cannot be an AsyncIterable across IPC,
+so it is a start/stop pump with the same `afterSeq` and `live` cursors.
 
 ## Subagent models
 
-Delegated tasks default to `openai-codex/gpt-5.6-sol` with `high` thinking. Tell the parent to
-use another model or thinking level when needed; it passes that exact choice for the task call.
-There is no General/Explore task type or global subagent setting. An unavailable explicit choice
-or default fails before child creation, and Nyte does not substitute another model or provider.
+Delegated tasks default to `openai-codex/gpt-5.6-sol` with `high` thinking. Tell the parent to use
+another model or thinking level when needed, and it passes that exact choice for the task call. An
+unavailable explicit choice or default fails before child creation, and Nyte does not substitute
+another model or provider.
 
-Child sessions stay out of the sidebar and chat search. Inspect their progress and results from
-the parent task or jobs panel.
+Child sessions stay out of the sidebar and chat search. Inspect their progress and results from the
+parent task or the jobs panel.
 
 ## Web search
 
-TUI and desktop share the web-search plugin and saved search credentials. In `auto`, search
-prefers providers with keys and keeps the selected route for the session, including after a restart.
-HTTP 429 can switch to another eligible provider, once per provider per call. Keyed searches never
-fall back to anonymous access. Explicit provider selections never fail over.
+TUI and desktop share the web-search plugin and saved search credentials. In `auto`, search prefers
+providers with keys and keeps the selected route for the session, including after a restart. HTTP 429
+can switch to another eligible provider, once per provider per call. Keyed searches never fall back
+to anonymous access. Explicit provider selections never fail over.
 
-Before the first anonymous request, the run waits for a choice: allow automatic search, choose an
-installed provider, or turn search off. TUI uses its OpenTUI selection dialog; desktop shows consent
-controls above the composer. Escape, ordinary messages, and closing the client do not approve search.
-The choice is remembered for that session. Headless clients must reply through `runs.reply`.
+Before the first anonymous request, the run waits for a choice. Allow automatic search, pick an
+installed provider, or turn search off. Desktop shows consent controls above the composer. Escape,
+ordinary messages, and closing the client do not approve search. The choice is remembered for that
+session. Headless clients reply through `runs.reply`.
 
-Search results identify the provider, credential source, and any rate-limit failover, without exposing
-keys. Routing details belong in the settings dialog, not the TUI footer. `/websearch-key <provider> [key]`
-saves a key; omitting the key removes the saved credential. Environment keys still apply, and a
-terminal-only environment variable may not reach the desktop app.
+Search results identify the provider, credential source, and any rate-limit failover, without
+exposing keys. `/websearch-key <provider> [key]` saves a key. Omitting the key removes the saved
+credential. Environment keys still apply, and a terminal-only environment variable may not reach the
+desktop app.
 
 ## Jobs
 
 Each chat has a Jobs panel above the composer. It lists commands and subagents, their foreground or
-background mode, state, and expandable output. Running foreground jobs have **Run in background**
-and **Cancel job** buttons. Background jobs keep **Cancel job**; finished jobs keep their output.
-These buttons remain available while the parent run is parked. They target a job, not the entire run.
+background mode, state, and expandable output. Running foreground jobs have **Run in background** and
+**Cancel job** buttons. Background jobs keep **Cancel job**, and finished jobs keep their output.
+These buttons stay available while the parent run is parked, and they target a job, not the whole
+run.
 
 ```text
 Jobs panel -> window.nyte.jobs -> validated IPC -> owning workspace SDK
@@ -86,27 +71,26 @@ job event  -> refresh jobs list
 ```
 
 The panel refreshes on job events and polls every two seconds while mounted. Closing it or switching
-chats does not cancel work. Closing the owning host interrupts live jobs; recovery retains their
-records without rerunning them. Finished background results stay available in Jobs. They can join
-an active run, but never start another run on their own. When the parent is idle, they wait for
-explicit user input. Background agents inherit workspace trust and are not offered tools marked
-`availability: "foreground"`, regardless of tool name or whether a particular wait carries a
-selection.
+chats does not cancel work. Closing the owning host interrupts live jobs, and recovery retains their
+records without rerunning them. Finished background results stay available in Jobs. They can join an
+active run, but never start another run on their own. When the parent is idle, they wait for user
+input. Background agents inherit workspace trust and are not offered tools marked
+`availability: "foreground"`.
 
 ## GitHub account
 
-Accounts uses the installed GitHub CLI, including at Home without an open workspace. Browser
-sign-in copies the CLI's one-time code to the clipboard. Sign-out removes the shared CLI login,
-so it also affects terminal commands and other apps using that login. Local Git does not require it.
+Accounts uses the installed GitHub CLI, including at Home without an open workspace. Browser sign-in
+copies the CLI's one-time code to the clipboard. Sign-out removes the shared CLI login, so it also
+affects terminal commands and other apps using that login. Local Git does not require it.
 
-Both dev and compiled desktop startup recover POSIX PATH from a bounded login-shell probe before
-starting the host. Windows keeps its inherited environment. Recovery reads only PATH; shell-only
-GitHub tokens and configuration overrides are not imported. Use `gh auth login` for stored CLI credentials.
+Desktop startup recovers POSIX PATH from a bounded login-shell probe before starting the host.
+Windows keeps its inherited environment. Recovery reads only PATH, so shell-only GitHub tokens and
+configuration overrides are not imported. Use `gh auth login` for stored CLI credentials.
 
-Set `NYTE_OTEL_ENDPOINT` in the app's launch environment to enable the existing OTLP exporter.
-GitHub commands emit `desktop.github.command` spans with an allowlisted operation, outcome,
-exit code, and duration. They never include command output, arguments, credentials, device codes,
-repository paths, or environment values. Export is off when the endpoint is unset.
+Set `NYTE_OTEL_ENDPOINT` in the app's launch environment to enable the OTLP exporter. GitHub commands
+emit `desktop.github.command` spans with an allowlisted operation, outcome, exit code, and duration.
+They never include command output, arguments, credentials, device codes, repository paths, or
+environment values. Export is off when the endpoint is unset.
 
 ## Related
 
@@ -118,15 +102,9 @@ repository paths, or environment values. Export is off when the endpoint is unse
     description="createNyte, attach, send, watch"
   />
   <DocCard
-    icon="IconConsole"
-    title="TUI"
-    href="/docs/tui"
-    description="The other product host, same store file"
-  />
-  <DocCard
-    icon="IconBridge"
-    title="Host and client"
-    href="/docs/host-sdk"
-    description="The reserved wire, and what the demo still does"
+    icon="IconPackage"
+    title="Design record"
+    href="/docs/design"
+    description="The contract behind the operations"
   />
 </Cards>

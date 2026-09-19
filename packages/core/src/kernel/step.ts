@@ -1,5 +1,5 @@
 import { setTimeout } from "node:timers/promises";
-import { isTerminalPhase, type Landing } from "@nyte-ai/protocol";
+import { isTerminalPhase, type Landing, type TreeId, type TreeOutcome } from "@nyte-ai/protocol";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
 import { admissionFor, admits, isUserInput, nextBatch, startsResponse } from "./admission.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
@@ -41,6 +41,8 @@ export interface StepOptions {
   readonly now?: () => number;
   /** Validate host execution authority under the head lease, before landing or executing. */
   readonly beforeStep?: () => Promise<void>;
+  /** The workspace tree, stamped on a run's first commit and its tool results. Absent without a VCS backend. */
+  readonly tree?: () => Promise<TreeOutcome>;
 }
 
 export type StepOutcome =
@@ -101,6 +103,12 @@ function isCommit(object: Obj): object is Commit {
   return object.kind === "commit";
 }
 
+/** The tree to stamp, or none: a host without a backend, or one that cannot answer, stamps nothing. */
+async function currentTree(options: StepOptions): Promise<TreeId | undefined> {
+  const outcome = await options.tree?.();
+  return outcome?.kind === "tree" ? outcome.id : undefined;
+}
+
 async function readRun(session: Session, oid: string | null): Promise<Run | undefined> {
   if (oid === null) return undefined;
   const object = await session.objects.get(oid);
@@ -154,11 +162,13 @@ async function noteOverriddenFailure(context: StepContext, phase: RunPhase): Pro
   );
 }
 
+/** `tree`, when a new run starts here, is stamped on the batch's first commit only. */
 function commitsFor(
   changes: readonly PendingChange[],
   parent: string | null,
   runId: string,
   now: () => number,
+  tree?: TreeId,
 ): LandedCommits {
   const commits: Commit[] = [];
   let previous = parent;
@@ -170,6 +180,7 @@ function commitsFor(
       change: item.oid,
       run: runId,
       at: now(),
+      ...(tree === undefined || commits.length > 0 ? {} : { tree }),
     };
     const keyed: Commit =
       item.change.key === undefined ? baseCommit : { ...baseCommit, key: item.change.key };
@@ -248,7 +259,7 @@ async function land(
     nextRun = run;
   } else {
     const id = newRunId();
-    landed = commitsFor(changes, context.tip, id, context.now);
+    landed = commitsFor(changes, context.tip, id, context.now, await currentTree(context.options));
     const prior = await branch(context.session.objects, context.tip);
     const config = branchConfig([...prior.map((entry) => entry.commit), ...landed.commits]);
     nextRun = {
@@ -624,6 +635,7 @@ function toolCommits(
   parent: string | null,
   runId: string,
   now: () => number,
+  tree: TreeId | undefined,
 ): Commit[] {
   const commits: Commit[] = [];
   let previous = parent;
@@ -636,6 +648,7 @@ function toolCommits(
       run: runId,
       at: now(),
       ...(settled === undefined ? {} : { calls: { [message.toolCallId]: settled } }),
+      ...(tree === undefined ? {} : { tree }),
     };
     previous = hashObject(commit);
     commits.push(commit);
@@ -651,7 +664,13 @@ async function publishTools(
     readonly reason: "tools" | "fail";
   },
 ): Promise<StepOutcome> {
-  const commits = toolCommits(options.outcome, context.tip, context.run.id, context.now);
+  const commits = toolCommits(
+    options.outcome,
+    context.tip,
+    context.run.id,
+    context.now,
+    await currentTree(context.options),
+  );
   const finalCommit = commits.at(-1);
   const outputTip = finalCommit === undefined ? context.tip : hashObject(finalCommit);
   await noteOverriddenFailure(context, options.phase);

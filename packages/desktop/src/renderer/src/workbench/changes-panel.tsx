@@ -9,7 +9,13 @@ import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
 import { nyte } from "../nyte.ts";
 import { macPlatform } from "../platform.ts";
-import { refreshVcs, useSessionSnapshot, useVcsScopedDiffs, useVcsSnapshot } from "../queries.ts";
+import {
+  refreshVcs,
+  useRunDiff,
+  useSessionSnapshot,
+  useVcsScopedDiffs,
+  useVcsSnapshot,
+} from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import {
@@ -205,12 +211,13 @@ interface ChangesPanelProps {
   readonly onRevertPath?: (path: string) => void;
 }
 
-interface ChangesPanelViewProps extends Omit<ChangesPanelProps, "sessionId"> {
+interface ChangesPanelViewProps extends ChangesPanelProps {
   readonly turns: readonly Turn[];
   readonly turnsError: Error | null;
 }
 
 function ChangesPanelView({
+  sessionId,
   scope,
   selectedPath,
   revealPathRevision,
@@ -306,15 +313,30 @@ function ChangesPanelView({
       ? parsePatchFacts(patch)
       : parseCachedDiff({ repositoryId, revision: diffRevision, path }, patch);
 
+  // The exact per-run diff, from the trees the run's commits recorded; the
+  // turn's own file_patch facts stand in until it answers.
+  const runDiff = useRunDiff(sessionId, selectedTurn?.run);
+  const runFiles =
+    runDiff.data === undefined || runDiff.data.kind === "not_found"
+      ? undefined
+      : runDiff.data.files;
   const patchRows: readonly PatchChangeRow[] =
     selectedTurn !== undefined
-      ? selectedTurn.files.map(({ change, patch }): PatchChangeRow => ({
-          source: "patch",
-          path: change.path,
-          patch,
-          added: change.added,
-          removed: change.removed,
-        }))
+      ? runFiles !== undefined
+        ? runFiles.map((file): PatchChangeRow => ({
+            source: "patch",
+            path: file.path,
+            patch: file.patch,
+            added: file.added,
+            removed: file.removed,
+          }))
+        : selectedTurn.files.map(({ change, patch }): PatchChangeRow => ({
+            source: "patch",
+            path: change.path,
+            patch,
+            added: change.added,
+            removed: change.removed,
+          }))
       : activeScope.kind === "commit"
         ? (diffs.data ?? []).map((diff): PatchChangeRow => {
             const parsed = parseDiff(diff.path, diff.patch);

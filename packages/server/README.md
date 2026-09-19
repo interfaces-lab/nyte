@@ -149,7 +149,7 @@ const server = createNyteServer({
   permissions: {
     calls: {
       "sessions.snapshot": ({ sessionId }) => readableSessions.has(sessionId),
-      "runs.changes": ({ sessionId }) => readableSessions.has(sessionId),
+      "runs.diff": ({ sessionId }) => readableSessions.has(sessionId),
     },
     watch: (sessionId) => readableSessions.has(sessionId),
   },

@@ -5,6 +5,7 @@
  */
 import type { Message } from "@nyte-ai/schema";
 import type { CommitBody, Failure, Oid, ToolClass } from "./kernel.ts";
+import type { RunId } from "./sdk.ts";
 
 type UserMessage = Extract<Message, { role: "user" }>;
 
@@ -46,6 +47,8 @@ export type Turn =
   | {
       kind: "turn";
       id: Oid;
+      /** The run that wrote the turn's commits. A turn of only a user message has none yet. */
+      run?: RunId;
       parts: TurnPart[];
       /** Why the turn's assistant message stopped, when it stopped with `error` or `aborted`. */
       failure?: Failure;
@@ -95,6 +98,15 @@ export interface FileChange {
   readonly path: string;
   readonly added: number;
   readonly removed: number;
-  /** The settled tool-result commit that last touched the file. */
-  readonly lastCommit: Oid;
+}
+
+export type FileDiffKind = "added" | "modified" | "deleted" | "renamed";
+
+/** One file of a run's diff. A binary file counts zero lines and carries the patch git prints. */
+export interface FileDiff {
+  readonly path: string;
+  readonly kind: FileDiffKind;
+  readonly added: number;
+  readonly removed: number;
+  readonly patch: string;
 }

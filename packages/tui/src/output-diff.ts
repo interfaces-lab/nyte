@@ -15,7 +15,7 @@ interface DiffSection {
   readonly pair: ChangedLinePair | undefined;
 }
 
-interface OutputDiffFile {
+export interface OutputDiffFile {
   readonly sections: readonly DiffSection[];
   readonly path: string | undefined;
 }
@@ -88,6 +88,24 @@ function trimSection(lines: readonly string[]): string | undefined {
   return text === "" ? undefined : text;
 }
 
+/** One section per hunk, following OpenCode's per-hunk layout; `source` stands in for a hunkless file. */
+export function patchSections(file: StructuredPatch, source: string): readonly DiffSection[] {
+  let previousEnd = 1;
+  const sections = file.hunks.map((hunk) => {
+    const omittedBefore = Math.max(0, hunk.newStart - previousEnd);
+    previousEnd = hunk.newStart + hunk.newLines;
+    return {
+      patch: formatPatch({ ...file, isGit: false, hunks: [hunk] }, OMIT_HEADERS),
+      omittedBefore,
+      rows: hunk.lines.filter((line) => !line.startsWith("\\")).length,
+      pair: changedLinePair(hunk.lines),
+    };
+  });
+  return sections.length === 0
+    ? [{ patch: source, omittedBefore: 0, rows: 0, pair: undefined }]
+    : sections;
+}
+
 /**
  * jsdiff tolerates prose after hunks. Bound each file first, then use its parsed
  * hunks for both rendering and height, following OpenCode's per-hunk layout.
@@ -140,24 +158,7 @@ export function diffFromOutput(text: string): OutputDiff | undefined {
         file.oldMode === file.newMode)
     )
       break;
-    let previousEnd = 1;
-    const sections = file.hunks.map((hunk) => {
-      const omittedBefore = Math.max(0, hunk.newStart - previousEnd);
-      previousEnd = hunk.newStart + hunk.newLines;
-      return {
-        patch: formatPatch({ ...file, isGit: false, hunks: [hunk] }, OMIT_HEADERS),
-        omittedBefore,
-        rows: hunk.lines.filter((line) => !line.startsWith("\\")).length,
-        pair: changedLinePair(hunk.lines),
-      };
-    });
-    files.push({
-      path: diffPath(file),
-      sections:
-        sections.length === 0
-          ? [{ patch: source, omittedBefore: 0, rows: 0, pair: undefined }]
-          : sections,
-    });
+    files.push({ path: diffPath(file), sections: patchSections(file, source) });
     end = fileEnd;
     if (!fileHeader(lines, end)) break;
   }

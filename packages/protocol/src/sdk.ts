@@ -9,7 +9,16 @@
  * `RemoteNyte` in `remote.ts`.
  */
 import type { JsonValue, ModelThinkingLevel, UserMessage } from "@nyte-ai/schema";
-import type { Actor, Commit, ModelRef, Oid, RunPhase, Seq, ToolProgress } from "./kernel.ts";
+import type {
+  Actor,
+  Commit,
+  ModelRef,
+  Oid,
+  RunPhase,
+  Seq,
+  ToolProgress,
+  TreeId,
+} from "./kernel.ts";
 import type { Static } from "typebox";
 import type {
   SummaryFailure,
@@ -21,7 +30,7 @@ import type {
 } from "./schemas.ts";
 import type { PluginInfo } from "./plugins.ts";
 import type { Selection } from "./ui.ts";
-import type { ContextStatus, Turn } from "./views.ts";
+import type { ContextStatus, FileDiff, Turn } from "./views.ts";
 
 // ---------------------------------------------------------------------------
 // Ids
@@ -288,6 +297,34 @@ export type CompactOutcome =
   | { readonly kind: "nothing_to_compact" }
   | { readonly kind: "busy"; readonly run: RunInfo }
   | Readonly<Static<typeof CheckpointFailure>>;
+
+/** What the VCS backend answers when asked for the workspace's current tree. */
+export type TreeOutcome =
+  | { readonly kind: "tree"; readonly id: TreeId }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+/**
+ * A run's file changes. `tree` is exact, from the trees recorded on the run's
+ * commits; `recorded` is what the run's `file_patch` facts declared, so edits
+ * made through a shell are absent from it.
+ */
+export type RunDiff =
+  | {
+      readonly kind: "tree";
+      readonly from: TreeId;
+      readonly to: TreeId;
+      readonly files: readonly FileDiff[];
+    }
+  | { readonly kind: "recorded"; readonly files: readonly FileDiff[] }
+  | { readonly kind: "not_found" };
+
+export type RunRevert =
+  | { readonly kind: "reverted"; readonly files: readonly string[] }
+  | { readonly kind: "busy"; readonly run: RunInfo }
+  /** The run has no tree pair to restore from. */
+  | { readonly kind: "no_tree" }
+  | { readonly kind: "not_found" }
+  | { readonly kind: "failed"; readonly reason: string };
 
 // ---------------------------------------------------------------------------
 // Heads

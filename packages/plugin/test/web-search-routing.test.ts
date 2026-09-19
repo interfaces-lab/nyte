@@ -21,6 +21,7 @@ import {
   testModel,
   toolCall,
   toolParts,
+  toolResultOf,
   TestWorkspace,
 } from "./host.ts";
 
@@ -136,10 +137,12 @@ function destinations(requests: readonly Request[]): string[] {
   return requests.map((request) => new URL(request.url).hostname.replace(".search.invalid", ""));
 }
 
+/** The latest call's transcript result, with the tool's own message beside it. */
 async function lastResult(sdk: Nyte, sessionId: SessionId) {
   const part = (await toolParts(sdk, sessionId)).at(-1);
   assert.ok(part?.result, "the latest search has a durable result");
-  return part.result;
+  const message = await toolResultOf({ sdk, sessionId, callId: part.callId });
+  return { ...part.result, message };
 }
 
 async function search(sdk: Nyte, sessionId: SessionId, query = "search current releases") {
@@ -221,7 +224,7 @@ describe("web search routing through the SDK", () => {
     assert.ok(snapshot?.parked?.some((call) => call.callId === callId));
     assert.equal(fixture.state.requests.length, 0);
     const result = await reply(restored, sessionId, callId, "auto");
-    expect(result.details).toMatchObject({
+    expect(result.message.details).toMatchObject({
       provider: "beta",
       credential: "anonymous",
       rateLimited: ["alpha"],
@@ -265,7 +268,7 @@ describe("web search routing through the SDK", () => {
     const sessionId = fixture.world.sessionId;
     const result = await search(sdk, sessionId);
     assert.equal(result.isError, false);
-    assert.deepEqual(result.details, {
+    assert.deepEqual(result.message.details, {
       provider: "beta",
       mode: "auto",
       credential: "environment key",
@@ -274,7 +277,7 @@ describe("web search routing through the SDK", () => {
     });
     assert.match(result.output, /Rate limited: alpha/);
     assert.match(result.output, /\[beta result\]\(https:\/\/results.invalid\/beta\)/);
-    assert.match(result.title ?? "", /^search .* · BETA$/);
+    assert.match(result.message.title ?? "", /^search .* · BETA$/);
     const progress = (await eventsSoFar(sdk, sessionId)).flatMap((event) =>
       event.kind === "tool_progress" ? [event.progress.text] : [],
     );
@@ -293,7 +296,7 @@ describe("web search routing through the SDK", () => {
     await assertPrivate(sdk, sessionId, ["alpha-secret", "beta-secret"]);
     const repeated = await search(sdk, sessionId, "search after failover");
     assert.equal(repeated.isError, false);
-    expect(repeated.details).toMatchObject({ rateLimited: [] });
+    expect(repeated.message.details).toMatchObject({ rateLimited: [] });
     await sdk.close();
     const restarted = await fixture.open();
     assert.equal((await search(restarted, sessionId)).isError, false);
@@ -311,7 +314,7 @@ describe("web search routing through the SDK", () => {
     assert.equal(result.isError, true);
     assert.match(result.output, /HTTP 429/);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "beta"]);
-    expect(result.details).toMatchObject({ rateLimited: ["alpha"] });
+    expect(result.message.details).toMatchObject({ rateLimited: ["alpha"] });
     await assertPrivate(sdk, fixture.world.sessionId, ["alpha-secret", "beta-secret"]);
   });
 
@@ -343,7 +346,7 @@ describe("web search routing through the SDK", () => {
     );
     const result = await search(sdk, sessionId);
     assert.equal(result.isError, true);
-    assert.deepEqual(result.details, {
+    assert.deepEqual(result.message.details, {
       provider: "beta",
       mode: "explicit",
       credential: "saved key",
@@ -429,7 +432,7 @@ describe("web search routing through the SDK", () => {
       assert.equal(fixture.state.requests.length, 0);
       const result = await reply(sdk, sessionId, callId, choice);
       assert.equal(result.isError, false);
-      expect(result.details).toMatchObject({
+      expect(result.message.details).toMatchObject({
         credential: "anonymous",
         mode: choice === "auto" ? "auto" : "explicit",
       });
@@ -519,18 +522,18 @@ describe("web search routing through the SDK", () => {
     fixture.state.keys.set("alpha", "alpha-secret");
     const sdk = await fixture.open();
     const sessionId = fixture.world.sessionId;
-    expect((await search(sdk, sessionId)).details).toMatchObject({ provider: "alpha" });
+    expect((await search(sdk, sessionId)).message.details).toMatchObject({ provider: "alpha" });
     assert.equal(
       await runCommand(sdk, sessionId, "websearch-key", "beta beta-secret"),
       "Saved the BETA API key.",
     );
     fixture.state.random = 0.99;
-    expect((await search(sdk, sessionId)).details).toMatchObject({ provider: "alpha" });
+    expect((await search(sdk, sessionId)).message.details).toMatchObject({ provider: "alpha" });
     assert.equal(
       await runCommand(sdk, sessionId, "websearch-key", "alpha"),
       "Removed the ALPHA API key.",
     );
-    expect((await search(sdk, sessionId)).details).toMatchObject({ provider: "beta" });
+    expect((await search(sdk, sessionId)).message.details).toMatchObject({ provider: "beta" });
     await runCommand(sdk, sessionId, "websearch-key", "beta");
     await parked(sdk, sessionId);
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "alpha", "beta"]);
@@ -542,15 +545,18 @@ describe("web search routing through the SDK", () => {
     const sdk = await fixture.open();
     const sessionId = fixture.world.sessionId;
     const callId = await parked(sdk, sessionId);
-    expect((await reply(sdk, sessionId, callId, "auto")).details).toMatchObject({
+    expect((await reply(sdk, sessionId, callId, "auto")).message.details).toMatchObject({
       provider: "alpha",
     });
     fixture.state.environment.set("BETA_API_KEY", "environment-secret");
     const keyed = await search(sdk, sessionId);
-    expect(keyed.details).toMatchObject({ provider: "beta", credential: "environment key" });
+    expect(keyed.message.details).toMatchObject({
+      provider: "beta",
+      credential: "environment key",
+    });
     fixture.state.environment.delete("BETA_API_KEY");
     const anonymous = await search(sdk, sessionId);
-    expect(anonymous.details).toMatchObject({ provider: "beta", credential: "anonymous" });
+    expect(anonymous.message.details).toMatchObject({ provider: "beta", credential: "anonymous" });
     assert.deepEqual(destinations(fixture.state.requests), ["alpha", "beta", "beta"]);
     assert.deepEqual(
       fixture.state.requests.map((request) => request.headers.get("Authorization")),

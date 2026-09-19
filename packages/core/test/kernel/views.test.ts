@@ -208,7 +208,7 @@ test("file changes fold from stamped patch classes, per file, ignoring failed ca
     },
   ]);
   const changes = changesFromTurns(transcriptFromCommits(items));
-  assert.deepEqual(changes, [{ path: "a.ts", added: 3, removed: 2, lastCommit: items[3]?.oid }]);
+  assert.deepEqual(changes, [{ path: "a.ts", added: 3, removed: 2 }]);
 });
 
 test("the tree is a forest with the selected path marked and every head labelled", () => {

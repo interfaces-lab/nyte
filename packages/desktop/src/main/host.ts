@@ -1310,7 +1310,8 @@ export class DesktopHost {
         reply: (input) => sdk(input.sessionId).runs.reply(input),
         compact: (input) => sdk(input.sessionId).runs.compact(input),
         context: (input) => sdk(input.sessionId).runs.context(input),
-        changes: (input) => sdk(input.sessionId).runs.changes(input),
+        diff: (input) => sdk(input.sessionId).runs.diff(input),
+        revert: (input) => sdk(input.sessionId).runs.revert(input),
       },
       jobs: {
         list: (input) => sdk(input.sessionId).jobs.list(input),

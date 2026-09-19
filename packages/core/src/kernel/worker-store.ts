@@ -29,7 +29,7 @@ import type {
   SessionInfo,
   Store,
 } from "./store.ts";
-import { UnknownSession } from "./store.ts";
+import { CorruptObject, UnknownSession } from "./store.ts";
 import { validateLimit } from "./sqlite.ts";
 import {
   AppendOutcomeSchema,
@@ -100,6 +100,8 @@ function toError(error: WireError): Error {
     return new UnknownSession(error.id);
   if (error.name === "CursorExpired" && error.floor !== undefined)
     return new CursorExpired(error.floor);
+  if (error.name === "CorruptObject" && error.oid !== undefined)
+    return new CorruptObject(error.oid, error.message.slice(`Stored object ${error.oid} `.length));
   if (error.name === "RangeError") return new RangeError(error.message);
   if (error.name === "TypeError") return new TypeError(error.message);
   const rebuilt = new Error(error.message);

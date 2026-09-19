@@ -611,7 +611,8 @@ export const composerStyles = stylex.create({
     flexWrap: "nowrap",
   },
   editorExpanded: { minHeight: 54, paddingBlock: 8, paddingInline: 12 },
-  editorCollapsed: { maxHeight: "100%" },
+  // Clips a multi-line draft to the compact row; `inputCompact`'s nowrap does not stop hard line breaks.
+  editorCollapsed: { maxHeight: 28 },
   mentionChip: {
     "--_mention-leading-opacity": {
       default: "1",
@@ -703,15 +704,6 @@ export const composerStyles = stylex.create({
     gridTemplateColumns: "28px minmax(64px, 1fr) minmax(0, auto) 28px",
     alignItems: "center",
     gap: 8,
-  },
-  layoutCollapsed: {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 10,
-    height: 28,
-    boxSizing: "border-box",
   },
   controls: {
     display: "flex",

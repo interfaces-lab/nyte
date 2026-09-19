@@ -1,66 +1,19 @@
 ---
 title: Introduction
-description: "Cloud is Nyte's design system: the tokens, primitives, and application surfaces shared by the web, desktop, and terminal hosts"
+description: "Tokens, styled primitives, and headless Base UI re-exports, shipped as @nyte-ai/ui"
 ---
 
-## Features
+`@nyte-ai/ui` wraps [Base UI](https://base-ui.com) in StyleX styles driven by `--nyte-*` custom
+properties. Components with a styled wrapper come from the package root. Everything else
+re-exports Base UI unstyled from its own subpath.
 
-The same system, named in the tier it actually lives in.
+```ts
+import "@nyte-ai/ui/styles.css";
+import { Button } from "@nyte-ai/ui";
+import { Popover } from "@nyte-ai/ui/popover";
+```
+
+Change how a primitive looks with [token overrides, `className`, or
+`xstyle`](/cloud/foundations/theming).
 
 <CloudFeatures />
-
-Nyte ships the same product in three hosts. Each host renders the same concerns with different
-materials, and Cloud documents them in the tier they actually live in.
-
-```
-@base-ui/react              headless interaction, focus, ARIA
-  └─ @nyte-ai/ui            6 styled wrappers, 18 headless re-exports, --nyte-* tokens
-       └─ desktop/components  Menu, Button, ConfirmDialog, Settings controls (own theme vars)
-            └─ desktop surfaces  ModelPicker, SearchPalette, Sidebar, DiffView, Composer…
-@opentui/core               terminal (documented later; not in this pass)
-```
-
-## How to read a component page
-
-Every page follows the same order so an agent can jump to what it needs.
-
-1. **Import** and the file that implements it.
-2. **Usage** rules: when to reach for this and when not to.
-3. **Anatomy**: the parts, in the nesting they must appear in.
-4. **Examples**: live where the component is pure, code otherwise.
-5. **Props** as a table. For headless pages the table is Base UI's own.
-6. **Accessibility**: the keyboard model, focus behavior, and ARIA the component guarantees.
-7. **Data attributes and styling hooks**.
-
-## Precedence and voice
-
-Cloud describes what shipped. It is not the core contract; when a Cloud page and the
-[design record](/docs/design) disagree about the runtime, the design record wins. Within Cloud,
-**must** and **must not** mark accessibility and interaction rules that a change is not allowed to
-regress. Anatomy and props are descriptive.
-
-## Verbatim material
-
-Base UI owns the interaction layer. Their component documentation is MIT-licensed (© Material-UI
-SAS), and Cloud reproduces the relevant props tables, anatomy, and accessibility notes word for
-word rather than paraphrasing them, so an agent reads the same guarantees the library author wrote.
-Every headless page carries the attribution. Regenerate them with:
-
-```bash
-node packages/docs/scripts/sync-base-ui-reference.mjs
-```
-
-The structure of the pages (Usage → Anatomy → Examples → Props → Accessibility) follows Vercel's
-Geist documentation. The wording is Nyte's.
-
-## Known gaps
-
-- `@nyte-ai/ui` ships styled wrappers for six components. The desktop app does not use them; it
-  imports the headless subpaths and styles a second tier in `desktop/src/renderer/src/components`.
-  Both tiers are documented. The duplication is the known target for consolidation.
-- `@nyte-ai/ui` and the desktop keep separate token systems: `--nyte-*` from
-  `platform-tokens.stylex.ts` and `t.*` from `desktop/src/renderer/src/theme/vars.stylex.ts`.
-  [Foundations](/cloud/foundations/tokens) documents both.
-- Twelve of the eighteen headless subpaths have no Nyte styling anywhere yet. Their pages exist so
-  the accessibility contract is on record before a wrapper is written.
-- Terminal components are out of scope for this pass.

@@ -7,18 +7,14 @@ description: "Image with initials fallback in four sizes, two shapes, and five t
 import { Avatar, AvatarFallback, AvatarImage } from "@nyte-ai/ui";
 ```
 
-Implemented in `packages/ui/src/components/ui/avatar.tsx`, wrapping `@base-ui/react/avatar`
-(no dedicated headless subpath; the styled wrapper is the only export).
+An image that falls back to initials while it loads or when it fails.
 
 ## Usage
 
-- Always include `AvatarFallback`. The image can fail, and the fallback is what a screen reader
-  user and a slow network both get.
-- Fallback text is two characters. The font sizes are tuned for that and nothing longer fits at
-  `xs`.
-- `tone` is for identity (a participant, an agent), not for status. Do not use `green` to mean
-  online.
-- `AvatarImage` needs `alt`. If the avatar is decorative beside the participant's name, `alt=""`.
+- Always include `AvatarFallback`. It is what a screen reader user and a slow network both get.
+- Fallback text is two characters. Nothing longer fits at `xs`.
+- `tone` is for identity, not status. Do not use `green` to mean online.
+- `AvatarImage` needs `alt`. If the avatar sits beside the name it repeats, use `alt=""`.
 
 ## Anatomy
 
@@ -28,9 +24,6 @@ Implemented in `packages/ui/src/components/ui/avatar.tsx`, wrapping `@base-ui/re
   <AvatarFallback />
 </Avatar>
 ```
-
-`Avatar` renders a `<span>` with `data-slot="avatar"`, `data-size`, and `data-tone`. Image and
-fallback set `data-slot="avatar-image"` and `data-slot="avatar-fallback"`.
 
 ## Examples
 
@@ -60,12 +53,12 @@ fallback set `data-slot="avatar-image"` and `data-slot="avatar-fallback"`.
 
 ### Avatar
 
-| Prop                           | Type                                                     | Default     | Description                                  |
-| ------------------------------ | -------------------------------------------------------- | ----------- | -------------------------------------------- |
-| `size`                         | `"xs" \| "sm" \| "md" \| "lg"`                           | `"md"`      | 20, 24, 28, or 36px.                         |
-| `shape`                        | `"circle" \| "rounded"`                                  | `"circle"`  | Pill radius or `--nyte-radius-avatar` (42%). |
-| `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` | Background and foreground pair.              |
-| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)                |             |                                              |
+| Prop                           | Type                                                     | Default     | Description                     |
+| ------------------------------ | -------------------------------------------------------- | ----------- | ------------------------------- |
+| `size`                         | `"xs" \| "sm" \| "md" \| "lg"`                           | `"md"`      | 20, 24, 28, or 36px.            |
+| `shape`                        | `"circle" \| "rounded"`                                  | `"circle"`  | Full circle or rounded square.  |
+| `tone`                         | `"neutral" \| "orange" \| "blue" \| "violet" \| "green"` | `"neutral"` | Background and foreground pair. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming)                |             |                                 |
 
 <include>../../base-ui-reference/avatar/Root.md</include>
 
@@ -79,17 +72,6 @@ fallback set `data-slot="avatar-image"` and `data-slot="avatar-fallback"`.
 
 ## Accessibility
 
-- The root is a `<span>`; it has no role. Meaning comes from the image's `alt` or from the text
-  around it.
-- Base UI tracks image loading status and swaps to the fallback on error or while loading;
-  `delay` on the fallback avoids a flash for fast loads.
-
-## Styling
-
-| Token                                              | Role                                  |
-| -------------------------------------------------- | ------------------------------------- |
-| `--nyte-avatar-size-*`, `--nyte-avatar-font-*`     | Per-size box and fallback font        |
-| `--nyte-avatar-ring-width`                         | 0.5px border in `--nyte-color-border` |
-| `--nyte-color-avatar-*-background` / `-foreground` | Per-tone pair                         |
-| `--nyte-radius-avatar`, `--nyte-radius-pill`       | Shapes                                |
-| `--nyte-font-weight-semibold`                      | Fallback weight                       |
+- The root is a `<span>` with no role. Meaning comes from the image's `alt` or the text around it.
+- The fallback shows while the image loads and after it errors. `delay` on the fallback avoids a
+  flash for fast loads.

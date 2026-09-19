@@ -53,6 +53,11 @@ export {
   WorkspaceFileError,
 } from "./workspace-files.ts";
 export { searchWorkspaceFiles, WorkspaceSearchError } from "./workspace-search.ts";
+export {
+  createTreeSnapshot,
+  type TreeSnapshot,
+  type TreeSnapshotOptions,
+} from "./tree-snapshot.ts";
 export { InvalidRipgrepPattern } from "./ripgrep.ts";
 
 export type DeferredPluginTarget =

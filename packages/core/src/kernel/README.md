@@ -78,7 +78,7 @@ refs/deleted                   Blob: the session is being deleted
 | `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
-| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, changes). |
+| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, `runs.diff`, `runs.revert`). |
 
 Host schedulers can call `sdk.advance` for one kernel `step`, using the same turn
 preparation as the attached runner. `sdk/advance.ts` observes remote cancellation
@@ -153,13 +153,14 @@ model failure answers `failed` and leaves the head where it was.
 | `respond`, flagged | any          | end the run `aborted`; nothing lands into a stopping run           | run                                               |
 | `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only completed work while the last landed input still awaits its answer | head, queue base, run (asserted) |
 | `respond`        | none           | `turn.respond` over the branch context; the commit carries `calls` (each call's `ToolClass` from its tool's `present`) or `failure` (the `Failure` the `ai` classifier decided) | head (assistant commit), run -> tools / done / retry `{ at, failure }` / failed `{ failure }` / aborted |
-| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results, each with the settled `ToolClass` under `calls` | head (result commits), run -> respond / waiting / failed |
+| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results, each with the settled `ToolClass` under `calls` and the workspace `tree` the host's VCS backend answered after the batch | head (result commits), run -> respond / waiting / failed |
 | `waiting`        | any            | after a signal, expiry, completed result batch, or abort: `turn.tools` again; otherwise `waiting` | as `tools`                                        |
 | `retry`          | any            | before `at`: `retry`; after, or once an abort is flagged: as `respond` |                                                   |
 
-`calls` and `failure` are provenance, not context: the runner stamps them once,
-from the tool's typed arguments and the classifier's closed union, and the
-model never sees them. A tool without `present`, an unknown tool, or arguments
+`calls`, `failure`, and `tree` are provenance, not context: the runner stamps them once,
+from the tool's typed arguments, the classifier's closed union, and the host's VCS
+backend (`tree` on a run's first commit and on each tool-result commit, so `runs.diff`
+and `runs.revert` answer from a tree pair), and the model never sees them. A tool without `present`, an unknown tool, or arguments
 its parse refuses is `custom` under the tool's label; a failed call keeps its
 call class. A `failed` phase the run itself produced (a tool batch, a step
 ceiling) carries `class: "runner"`.

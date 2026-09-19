@@ -6,6 +6,7 @@ import { type Commit, type Event, type EventBody, type Lease, type Obj } from ".
 import { isRefName, newOwnerId } from "../names.ts";
 import { checkEventBody, checkObject } from "../store-schemas.ts";
 import {
+  CorruptObject,
   UnknownSession,
   type Session,
   type RefUpdateOptions,
@@ -35,9 +36,8 @@ function validateLimit(limit: number | undefined): void {
 function parseObject(row: PostgresRow): { readonly oid: string; readonly object: Obj } {
   const oid = stringColumn(row, "oid");
   const value: unknown = JSON.parse(stringColumn(row, "body"));
-  if (!checkObject.Check(value)) throw new TypeError(`Stored object ${oid} is not a known object`);
-  if (hashObject(value) !== oid)
-    throw new TypeError(`Stored object ${oid} does not match its hash`);
+  if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
+  if (hashObject(value) !== oid) throw new CorruptObject(oid, "does not match its hash");
   return { oid, object: value };
 }
 

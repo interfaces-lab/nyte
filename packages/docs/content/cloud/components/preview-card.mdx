@@ -1,0 +1,120 @@
+---
+title: Preview card
+description: "A link that shows a destination preview without interrupting keyboard or screen reader navigation"
+---
+
+```ts title="Import"
+import { PreviewCard } from "@nyte-ai/ui/preview-card";
+```
+
+A card that previews where a link goes, shown on hover. Reach for it when a sighted reader
+benefits from seeing the destination before clicking.
+
+No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- The trigger renders an `<a>`. Give it a real `href`, since the link is the only part users can
+  reach by keyboard, touch, or screen reader.
+- Put everything the card shows on the linked page as well. Nothing unique lives in the popup.
+- The card opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 300ms.
+  Both live on the trigger.
+- `PreviewCard.Positioner` places the popup. It defaults to `side="bottom"` and `align="center"`.
+  Pass `sideOffset` for the gap.
+- `PreviewCard.Arrow` only works inside the positioner.
+- `PreviewCard.Viewport` is only needed when one popup serves several triggers and you animate the
+  content change.
+- To open from a trigger outside the root, pass one handle from `PreviewCard.createHandle()` to
+  both the trigger and the root.
+
+## Anatomy
+
+```tsx
+<PreviewCard.Root>
+  <PreviewCard.Trigger />
+  <PreviewCard.Portal>
+    <PreviewCard.Backdrop />
+    <PreviewCard.Positioner>
+      <PreviewCard.Popup>
+        <PreviewCard.Arrow />
+        <PreviewCard.Viewport />
+      </PreviewCard.Popup>
+    </PreviewCard.Positioner>
+  </PreviewCard.Portal>
+</PreviewCard.Root>
+```
+
+## Examples
+
+A link that previews its destination.
+
+```tsx
+<PreviewCard.Root>
+  <PreviewCard.Trigger href="https://nyte.ai">Nyte</PreviewCard.Trigger>
+  <PreviewCard.Portal>
+    <PreviewCard.Positioner sideOffset={8}>
+      <PreviewCard.Popup>
+        <PreviewCard.Arrow />
+        <img src="/preview.png" alt="" />
+        <p>The agent workspace. Same content as the linked page.</p>
+      </PreviewCard.Popup>
+    </PreviewCard.Positioner>
+  </PreviewCard.Portal>
+</PreviewCard.Root>
+```
+
+Open sooner and keep the card up longer.
+
+```tsx
+<PreviewCard.Trigger href="/docs/sdk" delay={200} closeDelay={600}>
+  SDK
+</PreviewCard.Trigger>
+```
+
+Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
+positioner, and its size with `width` and `height` on the popup.
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/preview-card/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/preview-card/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/preview-card/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/preview-card/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/preview-card/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/preview-card/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/preview-card/Arrow.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/preview-card/Viewport.md</include>
+
+## Accessibility
+
+- The popup is not exposed to screen readers and is not reachable by touch or keyboard. It is a
+  visual enhancement for sighted mouse and keyboard users.
+- The link is the accessible interface. Screen reader users read the link text and continue,
+  without being walked through the preview.
+- The trigger carries `data-popup-open` while the card is open.
+- Escape closes the card. Outside press closes it.

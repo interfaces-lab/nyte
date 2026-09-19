@@ -29,6 +29,7 @@ import {
   runInfo,
 } from "./snapshot.ts";
 import {
+  CorruptObject,
   MAIN,
   NyteClosed,
   UnknownSession,
@@ -266,7 +267,7 @@ export function createSessionPool(input: {
     const oid = await session.refs.read(name);
     if (oid === null) return undefined;
     const object = await session.objects.get(oid);
-    if (object?.kind !== "blob") throw new Error(`Corrupt fact ref ${name} at ${oid}`);
+    if (object?.kind !== "blob") throw new CorruptObject(oid, `is not the blob ${name} names`);
     return object.value;
   }
 
@@ -337,7 +338,8 @@ export function createSessionPool(input: {
     const oid = await session.refs.read(runRef(head));
     if (oid === null) return undefined;
     const object = await session.objects.get(oid);
-    if (object?.kind !== "run") throw new Error(`Corrupt run ref ${runRef(head)} at ${oid}`);
+    if (object?.kind !== "run")
+      throw new CorruptObject(oid, `is not the run ${runRef(head)} names`);
     return { oid, run: object };
   };
 

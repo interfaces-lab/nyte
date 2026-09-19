@@ -92,7 +92,6 @@ function landedTurn(oid: string, parent: string | null, key: string, content = "
   return {
     kind: "turn",
     id: oid,
-    outcome: "completed",
     startedAt: 1_500,
     durationMs: 0,
     parts: [{ kind: "user", commit: oid, parent, content, key }],

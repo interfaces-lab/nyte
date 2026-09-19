@@ -474,7 +474,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       },
       compact: summaries.compact,
       context: reads.context,
-      changes: reads.changes,
+      diff: reads.diff,
+      revert: reads.revert,
     },
 
     heads: {

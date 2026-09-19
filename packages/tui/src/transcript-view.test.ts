@@ -49,7 +49,6 @@ function turn(index: number, responseLines = 1): TranscriptTurn {
         text: response,
       },
     ],
-    outcome: "completed",
     startedAt: index * 1_000,
     durationMs: 500,
   };
@@ -85,15 +84,13 @@ function richTurn(index: number): TranscriptTurn {
       {
         kind: "tool",
         callId: `rich-tool-${suffix}`,
-        toolName: "bash",
-        args: { command: `printf rich-${suffix}` },
+        class: { kind: "shell", command: `printf rich-${suffix}` },
         result: {
           commit: `rich-result-${suffix}`,
           output: Array.from(
             { length: 24 },
             (_, line) => `tool-${suffix}-row-${String(line).padStart(2, "0")} λ`,
           ).join("\n"),
-          title: `rich-${suffix}`,
           isError: false,
         },
       },
@@ -104,7 +101,6 @@ function richTurn(index: number): TranscriptTurn {
         text: `RICH-ANCHOR-${suffix} survives Markdown, tool disclosure, and Unicode reflow.`,
       },
     ],
-    outcome: "completed",
     startedAt: index * 1_000,
     durationMs: 500,
   };

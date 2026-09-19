@@ -259,11 +259,13 @@ export function createRunners(input: {
 
     const optionsFor = (head: HeadName, signal: AbortSignal): StepOptions => {
       const executionLanding = { ...input.landing };
+      const vcs = options.workspace?.vcs;
       return {
         head,
         landing: executionLanding,
         telemetry: options.telemetry,
         signal,
+        ...(vcs === undefined ? {} : { tree: () => vcs.tree() }),
         steps: (run) =>
           unavailableModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
         resolveConfig: (config) =>

@@ -1,0 +1,186 @@
+---
+title: Context menu
+description: "A menu that appears at the pointer on right click or long press"
+---
+
+```ts title="Import"
+import { ContextMenu } from "@nyte-ai/ui/context-menu";
+```
+
+A menu that opens where the user right clicks or long presses. No Nyte styling on this one, you own
+the visual layer.
+
+## Usage
+
+- Treat a context menu as an enhancement. Users may not discover it, especially on touch devices or
+  with assistive technology, so expose the same actions from a visible control such as a
+  [Menu](/cloud/components/menu) button.
+- `ContextMenu.Trigger` renders a `<div>`. It defines the area that responds to right click and long
+  press.
+- The root popup is positioned at the pointer. Submenus are positioned against their trigger, and
+  default to `side="inline-end"`.
+- `closeOnClick` controls whether clicking an item closes the menu. It defaults to `true` on
+  `ContextMenu.Item` and `false` on `ContextMenu.CheckboxItem`.
+- `ContextMenu.LinkItem` renders an `<a>`, so pass `href` instead of `onClick`.
+
+## Anatomy
+
+```tsx
+<ContextMenu.Root>
+  <ContextMenu.Trigger />
+  <ContextMenu.Portal>
+    <ContextMenu.Backdrop />
+    <ContextMenu.Positioner>
+      <ContextMenu.Popup>
+        <ContextMenu.Arrow />
+        <ContextMenu.Item />
+        <ContextMenu.LinkItem />
+        <ContextMenu.Separator />
+
+        <ContextMenu.SubmenuRoot>
+          <ContextMenu.SubmenuTrigger />
+          {/* Portal › Positioner › Popup, as above */}
+        </ContextMenu.SubmenuRoot>
+
+        <ContextMenu.Group>
+          <ContextMenu.GroupLabel />
+        </ContextMenu.Group>
+
+        <ContextMenu.RadioGroup>
+          <ContextMenu.RadioItem>
+            <ContextMenu.RadioItemIndicator />
+          </ContextMenu.RadioItem>
+        </ContextMenu.RadioGroup>
+
+        <ContextMenu.CheckboxItem>
+          <ContextMenu.CheckboxItemIndicator />
+        </ContextMenu.CheckboxItem>
+      </ContextMenu.Popup>
+    </ContextMenu.Positioner>
+  </ContextMenu.Portal>
+</ContextMenu.Root>
+```
+
+## Examples
+
+```tsx title="Wrapping an area"
+<ContextMenu.Root>
+  <ContextMenu.Trigger render={<article />}>{card}</ContextMenu.Trigger>
+  <ContextMenu.Portal>
+    <ContextMenu.Positioner>
+      <ContextMenu.Popup>
+        <ContextMenu.Item onClick={duplicate}>Duplicate</ContextMenu.Item>
+        <ContextMenu.Separator />
+        <ContextMenu.Item onClick={remove}>Delete</ContextMenu.Item>
+      </ContextMenu.Popup>
+    </ContextMenu.Positioner>
+  </ContextMenu.Portal>
+</ContextMenu.Root>
+```
+
+A submenu is a `ContextMenu.SubmenuRoot` nested in the parent popup, opened by
+`ContextMenu.SubmenuTrigger`.
+
+```tsx title="Submenu"
+<ContextMenu.SubmenuRoot>
+  <ContextMenu.SubmenuTrigger>Move to</ContextMenu.SubmenuTrigger>
+  <ContextMenu.Portal>
+    <ContextMenu.Positioner>
+      <ContextMenu.Popup>
+        <ContextMenu.Item onClick={archive}>Archive</ContextMenu.Item>
+      </ContextMenu.Popup>
+    </ContextMenu.Positioner>
+  </ContextMenu.Portal>
+</ContextMenu.SubmenuRoot>
+```
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/context-menu/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/context-menu/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/context-menu/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/context-menu/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/context-menu/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/context-menu/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/context-menu/Arrow.md</include>
+
+### Item
+
+<include>../../base-ui-reference/context-menu/Item.md</include>
+
+### LinkItem
+
+<include>../../base-ui-reference/context-menu/LinkItem.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/context-menu/Separator.md</include>
+
+### Group
+
+<include>../../base-ui-reference/context-menu/Group.md</include>
+
+### GroupLabel
+
+<include>../../base-ui-reference/context-menu/GroupLabel.md</include>
+
+### RadioGroup
+
+<include>../../base-ui-reference/context-menu/RadioGroup.md</include>
+
+### RadioItem
+
+<include>../../base-ui-reference/context-menu/RadioItem.md</include>
+
+### RadioItemIndicator
+
+<include>../../base-ui-reference/context-menu/RadioItemIndicator.md</include>
+
+### CheckboxItem
+
+<include>../../base-ui-reference/context-menu/CheckboxItem.md</include>
+
+### CheckboxItemIndicator
+
+<include>../../base-ui-reference/context-menu/CheckboxItemIndicator.md</include>
+
+### SubmenuRoot
+
+<include>../../base-ui-reference/context-menu/SubmenuRoot.md</include>
+
+### SubmenuTrigger
+
+<include>../../base-ui-reference/context-menu/SubmenuTrigger.md</include>
+
+## Accessibility
+
+- Right click or long press inside the trigger opens the menu. Escape closes it.
+- Arrow keys move the highlight. `orientation` on the root switches between up and down and left and
+  right. `loopFocus` wraps at the ends and defaults to `true`.
+- Typing matches item text. `label` on an item overrides the text that typeahead matches.
+- Arrow Right opens a submenu, Arrow Left closes it. Submenu triggers also open on hover.
+- Disabled items carry `data-disabled` and ignore pointer and keyboard input.
+- `ContextMenu.GroupLabel` is associated with its parent group. `ContextMenu.Separator` is exposed to
+  screen readers.

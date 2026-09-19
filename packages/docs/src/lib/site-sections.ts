@@ -7,7 +7,6 @@ export type SiteFeatureIcon = "design" | "cloud";
 export interface SiteFeature {
   href: string;
   title: string;
-  description: string;
   icon: SiteFeatureIcon;
 }
 
@@ -31,7 +30,6 @@ export const SITE_SECTIONS = [
       {
         href: `${docsRoute}/design`,
         title: "Design",
-        description: "How core is put together: objects, refs, leases, and one event stream.",
         icon: "design",
       },
     ],
@@ -44,7 +42,6 @@ export const SITE_SECTIONS = [
       {
         href: `${cloudRoute}/introduction`,
         title: "Cloud",
-        description: "The design system for web, desktop, and terminal.",
         icon: "cloud",
       },
     ],
