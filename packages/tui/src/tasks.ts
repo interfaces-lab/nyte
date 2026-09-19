@@ -1,27 +1,14 @@
-/** Task rows join session-owned jobs with their full child transcripts. */
+/** Task rows: the session's child agents with their full transcripts, and its command jobs. */
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import {
-  sessionId,
-  type JobInfo,
-  type Nyte,
-  type RunInfo,
-  type SessionEvent,
-  type SessionId,
-} from "@nyte-ai/core";
+import type { JobInfo, Nyte, RunInfo, SessionEvent, SessionId } from "@nyte-ai/core";
 import { GLYPHS } from "./constants.ts";
 import { userText } from "./format.ts";
-import { isJsonObject, isJsonString } from "./json.ts";
 import { SessionObserver } from "@nyte-ai/client";
 import type { SessionState } from "@nyte-ai/client";
 import { toolLabel, toolPhase, toolSubject, type ToolPhase } from "./tool-copy.ts";
 
 export type Task =
-  | {
-      readonly kind: "agent";
-      readonly id: string;
-      readonly state: SessionState;
-      readonly job?: JobInfo;
-    }
+  | { readonly kind: "agent"; readonly id: string; readonly state: SessionState }
   | { readonly kind: "job"; readonly id: string; readonly job: JobInfo };
 
 type TaskStatus =
@@ -67,15 +54,22 @@ export function statusMark(status: TaskStatus): {
 }
 
 export function taskStatus(task: Task): TaskStatus {
-  if (task.job !== undefined && task.job.state !== "running") {
-    return task.job.state === "completed"
-      ? "done"
-      : task.job.state === "failed"
-        ? "failed"
-        : "stopped";
+  if (task.kind === "agent") return runStatus(task.state.run);
+  switch (task.job.phase.kind) {
+    case "running":
+      return "running";
+    case "completed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "cancelled":
+    case "interrupted":
+      return "stopped";
+    default: {
+      const _exhaustive: never = task.job.phase;
+      return _exhaustive;
+    }
   }
-  if (task.kind === "job") return "running";
-  return runStatus(task.state.run);
 }
 
 export function phaseStatus(phase: ToolPhase): TaskStatus {
@@ -119,8 +113,7 @@ export function runStatus(run: RunInfo | undefined): TaskStatus {
 }
 
 export function canStopTask(task: Task): boolean {
-  if (task.job !== undefined) return task.job.state === "running";
-  if (task.kind === "job") return false;
+  if (task.kind === "job") return task.job.phase.kind === "running";
   return (
     task.state.run !== undefined &&
     !isTerminalPhase(task.state.run.phase) &&
@@ -130,12 +123,11 @@ export function canStopTask(task: Task): boolean {
 
 /** Whether the task runs a child session or a command. */
 export function taskAgent(task: Task): string {
-  return task.kind === "agent" ? "subagent" : task.job.kind;
+  return task.kind === "agent" ? "subagent" : "command";
 }
 
 export function taskLabel(task: Task): string {
-  if (task.kind === "job") return task.job.title;
-  if (task.job !== undefined) return task.job.title;
+  if (task.kind === "job") return task.job.command;
   const info = task.state.info;
   return info.name ?? taskPrompt(task.state) ?? info.preview ?? info.sessionId;
 }
@@ -206,36 +198,33 @@ export function taskSteps(state: SessionState): TaskStep[] {
 
 /** Time on the task so far, or the time it took. */
 export function taskElapsedMs(task: Task, now: number): number | undefined {
-  if (task.job !== undefined)
+  if (task.kind === "job")
     return (unfinishedTask(task) ? now : task.job.updatedAt) - task.job.startedAt;
-  if (task.kind === "job") return undefined;
   if (unfinishedTask(task) && task.state.run !== undefined) return now - task.state.run.startedAt;
   return task.state.transcript.items.findLast((item) => item.kind === "turn")?.durationMs;
 }
 
 export function unfinishedTask(task: Task): boolean {
-  return task.job === undefined
+  return task.kind === "agent"
     ? !["done", "failed", "stopped"].includes(taskStatus(task))
-    : task.job.state === "running";
+    : task.job.phase.kind === "running";
+}
+
+/** Whether a job runs in the background: foreground work is the transcript's tool card, not a task row. */
+export function backgroundJob(job: JobInfo): boolean {
+  return job.phase.kind === "running" && job.phase.mode === "background";
 }
 
 export function projectTasks(
   children: readonly SessionState[],
   jobs: readonly JobInfo[] = [],
 ): Task[] {
-  const tasks: Task[] = children.map((state) => {
-    const job = jobs.find(
-      (candidate) => candidate.kind === "subagent" && candidate.childSessionId === state.sessionId,
-    );
-    return { kind: "agent", id: job?.id ?? state.sessionId, state, job };
-  });
-  for (const job of jobs) {
-    if (job.kind === "command" && job.mode !== "background") continue;
-    if (job.kind === "subagent" && children.some((state) => state.sessionId === job.childSessionId))
-      continue;
-    tasks.push({ kind: "job", id: job.id, job });
-  }
-  return tasks;
+  return [
+    ...children.map((state): Task => ({ kind: "agent", id: state.sessionId, state })),
+    ...jobs
+      .filter((job) => job.phase.kind !== "running" || backgroundJob(job))
+      .map((job): Task => ({ kind: "job", id: job.id, job })),
+  ];
 }
 
 interface TaskIndexOptions {
@@ -245,11 +234,10 @@ interface TaskIndexOptions {
 }
 
 /**
- * One observer per child. The task tool's progress names a spawned child only
- * after its setup finished, so that signal follows it directly; the session
- * listing runs only at deliberate boundaries (initial load, reconnect,
- * opening Tasks) to recover children with no live progress. Job events carry
- * the task rows themselves and never open a child mid-setup.
+ * One observer per child. A settled delegate call names its child, so that
+ * signal follows it directly; a call that parks on a child (task, await) has
+ * created it by then, so its wait lists. The session listing otherwise runs
+ * only at deliberate boundaries (initial load, reconnect, opening Tasks).
  */
 export class TaskIndex {
   private parent: SessionState | undefined;
@@ -276,17 +264,19 @@ export class TaskIndex {
     if (this.closed) return;
     // TaskBrowser handles parent changes; this index notifies when children change.
     this.parent = state;
-    if (
-      event?.kind === "tool_progress" &&
-      isJsonObject(event.progress.details) &&
-      isJsonString(event.progress.details.childSessionId) &&
-      // Progress details are tool output; an empty id must not throw here.
-      event.progress.details.childSessionId !== ""
-    ) {
-      void this.follow(sessionId(event.progress.details.childSessionId));
+    if (event?.kind === "commit") {
+      for (const call of Object.values(event.item.commit.calls ?? {})) {
+        if (call.kind === "delegate" || call.kind === "delegate_call")
+          void this.follow(call.session);
+      }
       return;
     }
-    if (event === undefined || event.kind === "synced") this.discover();
+    if (
+      event === undefined ||
+      event.kind === "synced" ||
+      (event.kind === "effect" && event.state === "waiting")
+    )
+      this.discover();
   }
 
   /** Look for children the parent links but no job names. A store scan, so boundaries only. */
@@ -306,8 +296,7 @@ export class TaskIndex {
   private async follow(id: SessionId): Promise<void> {
     if (this.closed || this.followers.has(id)) return;
     try {
-      // A replayed progress event may name a deleted child, and progress
-      // details are tool output: only a session linked to this parent counts.
+      // A replayed commit may name a deleted child: only a session linked to this parent counts.
       const info = await this.options.nyte.sessions.get({ sessionId: id });
       if (info?.parent?.sessionId !== this.parent?.sessionId) return;
       if (this.closed || this.followers.has(id)) return;

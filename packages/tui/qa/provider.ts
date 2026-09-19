@@ -410,7 +410,7 @@ export function subagentRequest(options: {
       arguments: {
         model: `${FIXTURE_PROVIDER}/${FIXTURE_CHILD_MODEL}`,
         prompt: options.prompt,
-        background: options.background,
+        ...(options.background ? { waitMs: 0 } : {}),
       },
     },
   };

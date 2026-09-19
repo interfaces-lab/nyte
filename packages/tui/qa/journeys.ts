@@ -271,11 +271,10 @@ const long: Scenario = {
     "Tasks: cancel selected bash terminates process",
     "Parent stop cancels its background bash",
     "Tasks and child inspection",
-    "parent cancels foreground subagent",
-    "parent cancels background subagent",
-    "Parent stop cancels subagents",
+    "Parent stop leaves its children working",
+    "Tasks: cancel child agent",
     "Cancelled child-owned bash terminates",
-    "Background child and child-owned background bash are cancelled",
+    "Background child and child-owned background bash are cancelled from Tasks",
     "Questions: answer owns input, no extra user message",
     "Questions: dismiss and answer later",
     "Questions: typed answer is the reply",
@@ -623,7 +622,7 @@ const long: Scenario = {
           assert.match(JSON.stringify(users.at(-2)?.content), /run the heartbeat again/u);
           assert.match(
             JSON.stringify(users.at(-1)?.content),
-            /Background command job_\S+ was cancelled/u,
+            /Background command job_\S+ \(.*\) was cancelled/u,
           );
           await owned.alive();
           // The first backgrounding may still be on screen; only a new line proves this one.
@@ -635,32 +634,58 @@ const long: Scenario = {
           await provider.waitForStage(parent.id, "aborted");
           await owned.stopped(true);
         });
-        await beat("stopping the parent cancels a foreground child and its bash", async () => {
-          await type(terminal, "delegate child work");
-          await press(
-            terminal,
-            "chat.submit",
-            (screen) => !composer(screen, "delegate child work"),
-          );
-          await child.alive();
-          await press(terminal, "chat.interrupt", idle);
-          await child.stopped(true);
-        });
-        await beat("stopping the parent cancels a background child and its bash", async () => {
-          await type(terminal, "delegate background work");
-          await press(
-            terminal,
-            "chat.submit",
-            (screen) => !composer(screen, "delegate background work"),
-          );
-          await background.alive();
-          const waiting = await held("child waiting");
-          const parent = await held("parent waiting");
-          await press(terminal, "chat.interrupt", idle);
-          await background.stopped(true);
-          await provider.waitForStage(waiting.id, "aborted");
-          await provider.waitForStage(parent.id, "aborted");
-        });
+        await beat(
+          "stopping the parent leaves its awaited child working; Tasks stops the child and its bash",
+          async () => {
+            await type(terminal, "delegate child work");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => !composer(screen, "delegate child work"),
+            );
+            await child.alive();
+            await press(terminal, "chat.interrupt", idle);
+            await child.alive();
+            await command(
+              terminal,
+              "tasks",
+              (screen) =>
+                screen.text.includes("Finished ·") &&
+                screen.lines.some((line) => line.includes("❯") && line.includes("cd child")),
+            );
+            await stopTask(terminal, "cd child");
+            await child.stopped(true);
+          },
+        );
+        await beat(
+          "stopping the parent leaves its background child working; Tasks stops the child and its bash",
+          async () => {
+            await type(terminal, "delegate background work");
+            await press(
+              terminal,
+              "chat.submit",
+              (screen) => !composer(screen, "delegate background work"),
+            );
+            await background.alive();
+            const waiting = await held("child waiting");
+            const parent = await held("parent waiting");
+            await press(terminal, "chat.interrupt", idle);
+            await provider.waitForStage(parent.id, "aborted");
+            await background.alive();
+            await command(
+              terminal,
+              "tasks",
+              (screen) =>
+                screen.text.includes("Finished ·") &&
+                screen.lines.some(
+                  (line) => line.includes("❯") && line.includes("background child work"),
+                ),
+            );
+            await stopTask(terminal, "background child work");
+            await background.stopped(true);
+            await provider.waitForStage(waiting.id, "aborted");
+          },
+        );
         await beat(
           "a question can be dismissed, revisited and answered without a new user message",
           async () => {
@@ -692,7 +717,15 @@ const long: Scenario = {
             const continuation = await provider.waitForRequest(
               (item) => item.script === "answer continuation",
             );
-            assert.equal(continuation.prompt, "ask the QA question");
+            // The stopped children's reports ride with the question; the answer adds no message.
+            const users = continuation.payload.messages
+              .filter((message) => message.role === "user")
+              .map((message) => JSON.stringify(message.content));
+            assert.match(users.at(-1) ?? "", /Background agent .* was cancelled/u);
+            assert.match(
+              users.findLast((text) => !text.includes("Background agent")) ?? "",
+              /^"ask the QA question"$/u,
+            );
             assert.ok(
               continuation.payload.messages.some(
                 (message) =>
@@ -1115,7 +1148,7 @@ const long: Scenario = {
               probe.payload.messages.some(
                 (message) =>
                   message.role === "user" &&
-                  JSON.stringify(message.content).includes("Background subagent"),
+                  JSON.stringify(message.content).includes("Background agent"),
               ),
               "The waiting completion reaches the model with the first message after the restart",
             );

@@ -167,7 +167,11 @@ function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSumm
       }
     }
     case "completion":
-      return { role: "tool", label: `[task: ${body.job.state}]`, text: oneLine(body.job.title) };
+      return {
+        role: "tool",
+        label: `[${body.job.kind === "command" ? "command" : "agent"}: ${body.job.end.kind}]`,
+        text: oneLine(body.job.kind === "command" ? body.job.command : body.job.title),
+      };
     case "checkpoint":
       return {
         role: "checkpoint",

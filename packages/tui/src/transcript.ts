@@ -1400,6 +1400,22 @@ class ActivityBlock {
  * settled result. A settled patch renders with DiffRenderable, as does a
  * unified diff inside shell output; everything else shows a capped preview.
  */
+type DelegationClass = Extract<
+  ToolTurnPart["class"],
+  { kind: "spawn" | "delegate_call" | "delegate" }
+>;
+
+function delegationClass(toolClass: ToolTurnPart["class"]): DelegationClass | undefined {
+  switch (toolClass.kind) {
+    case "spawn":
+    case "delegate_call":
+    case "delegate":
+      return toolClass;
+    default:
+      return undefined;
+  }
+}
+
 class ToolCard {
   readonly container: BoxRenderable;
 
@@ -1567,8 +1583,9 @@ class ToolCard {
       this.renderShell(this.current);
       return;
     }
-    if (this.current.class.kind === "delegate") {
-      this.renderDelegation(this.current.class);
+    const delegation = delegationClass(this.current.class);
+    if (delegation !== undefined) {
+      this.renderDelegation(delegation);
       return;
     }
     const output = this.live?.text ?? "";
@@ -1665,8 +1682,9 @@ class ToolCard {
       return;
     }
     const { theme } = this.transcript;
-    if (this.current.class.kind === "delegate") {
-      this.renderDelegation(this.current.class);
+    const delegation = delegationClass(this.current.class);
+    if (delegation !== undefined) {
+      this.renderDelegation(delegation);
       return;
     }
     const phase = this.phase();
@@ -1726,26 +1744,38 @@ class ToolCard {
     this.showPreview(execution.output, outcome === undefined ? theme.dim : theme.error);
   }
 
-  private renderDelegation(delegation: Extract<ToolTurnPart["class"], { kind: "delegate" }>): void {
+  /**
+   * The call that made the child is its card: the child's steps follow it
+   * while it works. Every other call on a child is one line.
+   */
+  private renderDelegation(delegation: DelegationClass): void {
     if (this.current.kind !== "tool") return;
     const callId = this.current.callId;
     const { theme } = this.transcript;
-    const tasks = this.transcript.tasks();
-    if (delegation.role === "await") {
-      const task = tasks.find((candidate) => candidate.id === delegation.jobId);
-      const phase = this.phase();
+    const agents = this.transcript.tasks().flatMap((task) => (task.kind === "agent" ? [task] : []));
+    const phase = this.phase();
+    if (delegation.kind !== "spawn" && delegation.role !== "create") {
+      const task = agents.find((candidate) => candidate.state.sessionId === delegation.session);
       const mark = statusMark(phaseStatus(phase));
       this.heading.content = new StyledText([
         fg(theme[mark.tone])(`${mark.glyph} `),
         fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
-        fg(theme.tool)(task === undefined ? delegation.jobId : taskLabel(task)),
+        fg(theme.tool)(
+          task !== undefined
+            ? taskLabel(task)
+            : delegation.kind === "delegate"
+              ? delegation.title
+              : delegation.session,
+        ),
       ]);
       this.clearBody();
       return;
     }
-    const child = tasks
-      .flatMap((task) => (task.kind === "agent" ? [task.state] : []))
-      .find((state) => state.info.parent?.callId === callId);
+    const child = agents.find(({ state }) =>
+      delegation.kind === "delegate"
+        ? state.sessionId === delegation.session
+        : state.info.parent?.callId === callId,
+    )?.state;
     const result = this.result;
     const status =
       result !== undefined
@@ -1761,7 +1791,7 @@ class ToolCard {
       .join(" · ");
     this.heading.content = new StyledText([
       fg(theme[mark.tone])(`${mark.glyph} `),
-      fg(theme.foreground)("task "),
+      fg(theme.foreground)(`${toolLabel(delegation, phase)} `),
       fg(theme.tool)(delegation.title),
       ...(config === "" ? [] : [fg(theme.dim)(`  ${config}`)]),
     ]);
