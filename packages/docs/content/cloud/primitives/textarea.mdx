@@ -1,23 +1,20 @@
 ---
 title: Textarea
-description: "A multi-line field with the same tokens as Input and vertical resize"
+description: "A multi-line field with vertical resize"
 ---
 
 ```ts title="Import"
 import { Textarea } from "@nyte-ai/ui";
 ```
 
-Implemented in `packages/ui/src/components/ui/textarea.tsx`. This is a plain `<textarea>`; there
-is no Base UI part behind it.
+A plain `<textarea>` styled to match [Input](/cloud/primitives/input).
 
 ## Usage
 
-- Same naming rule as Input: label, `aria-label`, or `aria-labelledby`.
-- Resize is vertical only. If a surface must not grow, set `resize: none` through `xstyle`.
-- The composer in the desktop app is not this component; it is a Lexical editor. Use Textarea for
-  settings and forms.
+- Same naming rule as Input. Use a label, `aria-label`, or `aria-labelledby`.
+- Resize is vertical only. To stop it growing, set `resize: none` through `xstyle`.
 
-## Example
+## Examples
 
 <Preview>
   <TextareaDemo />
@@ -29,7 +26,7 @@ is no Base UI part behind it.
 
 ## Props
 
-`TextareaProps` is `React.ComponentProps<"textarea">` minus `className`/`style`, plus:
+`TextareaProps` is `React.ComponentProps<"textarea">` plus:
 
 | Prop                           | Type                                      | Default | Description                  |
 | ------------------------------ | ----------------------------------------- | ------- | ---------------------------- |
@@ -38,10 +35,4 @@ is no Base UI part behind it.
 
 ## Accessibility
 
-Native. `aria-invalid` switches the border to `--nyte-color-destructive`; `disabled` drops
-opacity.
-
-## Styling
-
-Identical to [Input](/cloud/primitives/input#styling) except the minimum height, which is
-`--nyte-control-textarea-min-height` (64px).
+Native. `aria-invalid` turns the border destructive and `disabled` drops opacity.

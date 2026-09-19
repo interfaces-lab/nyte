@@ -1,5 +1,5 @@
 import { changesFromTurns, parsePatchFacts } from "@nyte-ai/client";
-import type { FileChange, Turn, VcsDiff, VcsStatus } from "@nyte-ai/protocol";
+import type { FileChange, RunId, Turn, VcsDiff, VcsStatus } from "@nyte-ai/protocol";
 import type {
   DesktopVcsCommit,
   DesktopVcsDiffInput,
@@ -30,6 +30,8 @@ export interface ChangesScopeOption {
 
 export interface TurnChangeOption {
   readonly scope: TurnChangesScope;
+  /** The run whose exact diff `runs.diff` answers; a turn of only a request has none yet. */
+  readonly run: RunId | undefined;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };
   readonly files: readonly { readonly change: FileChange; readonly patch: string }[];
@@ -71,6 +73,7 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
     }));
     options.push({
       scope: { kind: "turn", turnId: turn.id },
+      run: turn.run,
       label: ordinal === turnCount ? "Latest" : `Turn ${String(ordinal)}`,
       stats: changeStats(files.map((file) => file.change)),
       files,

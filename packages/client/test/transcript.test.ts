@@ -136,6 +136,6 @@ test("file_patch results fold into changes by their stamped counts, without read
     { body: result("c2", { isError: true }), calls: { c2: { ...patched, path: "b.ts" } } },
   ]);
   assert.deepEqual(changesFromTurns(transcriptFromCommits(items)), [
-    { path: "a.ts", added: 3, removed: 1, lastCommit: "c1" },
+    { path: "a.ts", added: 3, removed: 1 },
   ]);
 });

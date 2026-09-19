@@ -1,4 +1,5 @@
 import { Pool, type PoolConfig } from "pg";
+import { stampRunFailure } from "../migrations.ts";
 
 export type PostgresValue = string | number | null | readonly string[];
 export type PostgresRow = Readonly<Record<string, unknown>>;
@@ -121,6 +122,39 @@ const TABLES = [
   )`,
 ];
 
+/** Bumped whenever the tables or a stored object's shape change; an earlier version is upgraded through {@link MIGRATIONS}. */
+const SCHEMA_VERSION = 2;
+
+async function stampRunFailures(transaction: PostgresQuery): Promise<void> {
+  const rows = await transaction.query(
+    `SELECT session_id, oid, body, at FROM nyte_objects
+     WHERE kind = 'run' AND jsonb_typeof(body::jsonb #> '{phase,error}') = 'string'`,
+  );
+  for (const row of rows) {
+    const sessionId = stringColumn(row, "session_id");
+    const oid = stringColumn(row, "oid");
+    const next = stampRunFailure(oid, stringColumn(row, "body"));
+    await transaction.query(
+      `INSERT INTO nyte_objects (session_id, oid, kind, body, at) VALUES ($1, $2, 'run', $3, $4)
+       ON CONFLICT DO NOTHING`,
+      [sessionId, next.oid, next.body, integerColumn(row, "at")],
+    );
+    await transaction.query("UPDATE nyte_refs SET oid = $1 WHERE session_id = $2 AND oid = $3", [
+      next.oid,
+      sessionId,
+      oid,
+    ]);
+    await transaction.query("DELETE FROM nyte_objects WHERE session_id = $1 AND oid = $2", [
+      sessionId,
+      oid,
+    ]);
+  }
+}
+
+const MIGRATIONS: ReadonlyMap<number, (transaction: PostgresQuery) => Promise<void>> = new Map([
+  [1, stampRunFailures],
+]);
+
 export async function initializePostgres(db: PostgresDatabase): Promise<void> {
   await db.transaction(async (transaction) => {
     // Cold starts may initialize together. PostgreSQL's IF NOT EXISTS alone
@@ -128,10 +162,30 @@ export async function initializePostgres(db: PostgresDatabase): Promise<void> {
     await transaction.query("SELECT pg_advisory_xact_lock(1853453413)");
     await transaction.query("CREATE TABLE IF NOT EXISTS nyte_schema (version INTEGER PRIMARY KEY)");
     const versions = await transaction.query("SELECT version FROM nyte_schema");
-    if (versions.length > 1 || versions.some((row) => integerColumn(row, "version") !== 1)) {
-      throw new Error("Unsupported Nyte PostgreSQL schema version");
+    if (versions.length > 1) throw new Error("Unsupported Nyte PostgreSQL schema version");
+    const [row] = versions;
+    const stored = row === undefined ? SCHEMA_VERSION : integerColumn(row, "version");
+    if (stored > SCHEMA_VERSION) {
+      throw new Error(
+        `Nyte PostgreSQL schema ${String(stored)} is newer than this build (${String(SCHEMA_VERSION)})`,
+      );
     }
     for (const table of TABLES) await transaction.query(table);
-    await transaction.query("INSERT INTO nyte_schema (version) VALUES (1) ON CONFLICT DO NOTHING");
+    for (let version = stored; version < SCHEMA_VERSION; version += 1) {
+      const migrate = MIGRATIONS.get(version);
+      if (migrate === undefined) {
+        throw new Error(
+          `Nyte PostgreSQL schema ${String(version)} cannot be upgraded by this build`,
+        );
+      }
+      await migrate(transaction);
+    }
+    await transaction.query("UPDATE nyte_schema SET version = $1 WHERE version <> $1", [
+      SCHEMA_VERSION,
+    ]);
+    await transaction.query(
+      "INSERT INTO nyte_schema (version) VALUES ($1) ON CONFLICT DO NOTHING",
+      [SCHEMA_VERSION],
+    );
   });
 }

@@ -92,7 +92,7 @@ landing
 sessions.create  sessions.get  sessions.snapshot  sessions.metadata  sessions.list
 sessions.rename  sessions.setPinned  sessions.setArchived  sessions.delete  sessions.configure
 messages.send  messages.cancel  messages.redeliver
-runs.current  runs.abort  runs.reply  runs.changes
+runs.current  runs.abort  runs.reply  runs.diff  runs.revert
 jobs.list  jobs.start  jobs.background  jobs.cancel
 heads.move
 workspace.list  workspace.current  workspace.select  workspace.forget  workspace.files  workspace.vcs.diff

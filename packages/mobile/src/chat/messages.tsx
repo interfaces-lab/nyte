@@ -12,9 +12,8 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
-import type { TurnPart } from "@nyte-ai/protocol";
+import type { Failure, ToolClass, TurnPart } from "@nyte-ai/protocol";
 import type { SessionState } from "@nyte-ai/client";
-import { diffStat, presentTool, projectToolView, readPatch } from "@nyte-ai/client";
 import {
   controls,
   conversation,
@@ -31,7 +30,7 @@ import type { ConversationLayout } from "./conversation-layout.ts";
 import { useTranscriptFont } from "../settings/preferences.ts";
 import { toast } from "../ui/toast.tsx";
 import { elapsed } from "./sessions.ts";
-import { fileStatus, formatDuration, type ConversationTurn } from "./turn-changes.ts";
+import { formatDuration, type ConversationTurn } from "./turn-changes.ts";
 
 export type ChatRow =
   | TurnPart
@@ -201,47 +200,82 @@ function Disclosure({
   );
 }
 
-/** A file-edit tool result: status badge, basename, totals, opens the diff. */
+/** A settled file edit: status badge, basename, totals, opens the diff. */
 function EditRow({
-  part,
+  patch,
   onOpenFile,
 }: {
-  part: Extract<TurnPart, { kind: "tool" }>;
+  patch: Extract<ToolClass, { kind: "file_patch" }>;
   onOpenFile?: (path: string) => void;
 }) {
   const theme = useTheme();
-  const patch = part.result === undefined ? undefined : readPatch(part.result.details);
-  const stat = patch === undefined ? { added: 0, removed: 0 } : diffStat(patch);
-  const presentation = presentTool(projectToolView(part));
-  const body = presentation.body;
-  const path = body.kind === "diff" ? body.path : undefined;
-  const file = body.kind === "diff" && body.files.length === 1 ? body.files[0] : undefined;
-  const basename = path?.split("/").pop() ?? presentation.title ?? part.toolName;
-  const status = file === undefined ? "M" : fileStatus(file);
+  const basename = patch.path.split("/").pop() ?? patch.path;
   return (
-    <html.button
-      onClick={() => {
-        if (path !== undefined) onOpenFile?.(path);
-      }}
-      style={styles.editRow}
-    >
+    <html.button onClick={() => onOpenFile?.(patch.path)} style={styles.editRow}>
       <html.div style={styles.editBadge}>
-        <html.span style={styles.editBadgeText}>{status}</html.span>
+        <html.span style={styles.editBadgeText}>M</html.span>
       </html.div>
       <html.span style={[textStyles.secondary, styles.editTitle]}>{basename}</html.span>
       <html.span style={[textStyles.caption, styles.editTotals]}>
-        {`+${String(stat.added)} \u2212${String(stat.removed)}`}
+        {`+${String(patch.added)} \u2212${String(patch.removed)}`}
       </html.span>
       <SymbolView name="chevron.right" size={13} tintColor={theme.tertiary} />
     </html.button>
   );
 }
 
-const workLabels: Record<ConversationTurn["outcome"], string> = {
-  completed: "Finished",
-  aborted: "Stopped",
-  failed: "Failed",
-};
+function toolTitle(toolClass: ToolClass, settled: boolean): string {
+  switch (toolClass.kind) {
+    case "file_read":
+      return `${settled ? "Read" : "Reading"} ${toolClass.path}`;
+    case "list":
+      return `${settled ? "Listed" : "Listing"} ${toolClass.path}`;
+    case "shell":
+      return `${settled ? "Ran" : "Running"} ${toolClass.command}`;
+    case "file_edit":
+      return `${settled ? "Edited" : "Editing"} ${toolClass.path}`;
+    case "file_write":
+      return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
+    case "file_patch":
+      return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
+    case "delegate":
+      return toolClass.role === "spawn"
+        ? `${settled ? "Delegated" : "Delegating"} ${toolClass.title}`
+        : `${settled ? "Waited for" : "Waiting for"} ${toolClass.jobId}`;
+    case "custom":
+      return toolClass.label;
+    default: {
+      const exhaustive: never = toolClass;
+      return exhaustive;
+    }
+  }
+}
+
+function failureLabel(failure: Failure): string {
+  switch (failure.class) {
+    case "aborted":
+      return "Stopped";
+    case "rate_limit":
+      return "Rate limited";
+    case "context_window":
+      return "Context window exceeded";
+    case "quota":
+      return "Quota reached";
+    case "auth":
+      return "Authentication failed";
+    case "overloaded":
+      return "Model unavailable";
+    case "network":
+      return "Connection lost";
+    case "provider":
+    case "runner":
+      return failure.message.replaceAll(/\s+/gu, " ").trim() || "Failed";
+    default: {
+      const exhaustive: never = failure.class;
+      return exhaustive;
+    }
+  }
+}
 
 function WorkRow({
   turn,
@@ -259,8 +293,12 @@ function WorkRow({
   const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
   const [now] = useState(() => Date.now());
-  const failed = turn.outcome === "failed";
-  const label = live ? `Responding · ${elapsed(turn.startedAt, now)}` : workLabels[turn.outcome];
+  const failed = turn.failure !== undefined && turn.failure.class !== "aborted";
+  const label = live
+    ? `Responding · ${elapsed(turn.startedAt, now)}`
+    : turn.failure === undefined
+      ? "Finished"
+      : failureLabel(turn.failure);
   return (
     <Row layout={layout}>
       <html.div style={styles.work}>
@@ -311,13 +349,9 @@ function WorkRow({
                   />
                 );
               if (part.kind !== "tool") return null;
-              const presentation = presentTool(projectToolView(part));
-              if (!part.result?.isError && presentation.body.kind === "diff")
-                return <EditRow key={part.callId} part={part} onOpenFile={onOpenFile} />;
-              const title =
-                part.result === undefined
-                  ? `Using ${part.toolName}`
-                  : `${part.result.isError ? "Failed: " : ""}${part.result.title ?? part.toolName}`;
+              if (part.class.kind === "file_patch" && part.result?.isError === false)
+                return <EditRow key={part.callId} patch={part.class} onOpenFile={onOpenFile} />;
+              const title = `${part.result?.isError === true ? "Failed: " : ""}${toolTitle(part.class, part.result !== undefined)}`;
               const text = part.result?.output ?? "";
               return <Disclosure key={part.callId} title={title} text={text} layout={layout} />;
             })}
@@ -372,8 +406,6 @@ export const MessageRow = memo(function MessageRow({
       return item.body.model ? (
         <Notice text={`Model changed to ${item.body.model.id}`} layout={layout} />
       ) : null;
-    case "note":
-      return "text" in item ? <Notice text={item.text} layout={layout} /> : null;
     case "tool":
     case "thinking":
       return null;

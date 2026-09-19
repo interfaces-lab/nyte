@@ -131,6 +131,7 @@ export const CALL_INPUT_SCHEMAS = {
   "jobs.cancel": compile(OPERATIONS["jobs.cancel"].input),
   "runs.abort": compile(OPERATIONS["runs.abort"].input),
   "runs.reply": compile(OPERATIONS["runs.reply"].input),
+  "runs.diff": compile(OPERATIONS["runs.diff"].input),
   "heads.move": compile(OPERATIONS["heads.move"].input),
   "workspace.list": compile(OPERATIONS["workspace.list"].input),
   "workspace.forget": compile(OPERATIONS["workspace.forget"].input),

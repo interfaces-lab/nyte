@@ -25,6 +25,8 @@ import type { MentionFile } from "@nyte-ai/client";
 import type {
   JobInfo,
   PluginCatalog,
+  RunDiff,
+  RunId,
   SessionId,
   SessionInfo,
   SettingInfo,
@@ -322,7 +324,23 @@ export const vcsKeys = {
     ] as const,
   log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
   refs: ["vcs", "refs"] as const,
+  runDiff: (sessionId: SessionId, runId: RunId) => ["vcs", "run-diff", sessionId, runId] as const,
 };
+
+/** One run's file diff, exact from its recorded trees when the host has them; refreshed with the VCS state. */
+export function useRunDiff(sessionId: SessionId | undefined, runId: RunId | undefined) {
+  return useQuery<RunDiff>({
+    queryKey:
+      sessionId === undefined || runId === undefined
+        ? (["vcs", "run-diff", "unavailable"] as const)
+        : vcsKeys.runDiff(sessionId, runId),
+    queryFn: () =>
+      sessionId === undefined || runId === undefined
+        ? Promise.resolve<RunDiff>({ kind: "not_found" })
+        : nyte.runs.diff({ sessionId, runId }),
+    enabled: sessionId !== undefined && runId !== undefined,
+  });
+}
 
 export interface VcsScopedDiffsIdentity {
   readonly repositoryId: string;

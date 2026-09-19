@@ -59,9 +59,10 @@ export type StoreRequest = Static<typeof RequestSchema>;
 const WireErrorSchema = Type.Object({
   name: Type.String(),
   message: Type.String(),
-  /** `UnknownSession` carries the id; `CursorExpired` carries the floor. */
+  /** `UnknownSession` carries the id; `CursorExpired` carries the floor; `CorruptObject` carries the oid. */
   id: Type.Optional(Type.String()),
   floor: Type.Optional(Type.Number()),
+  oid: Type.Optional(Type.String()),
 });
 export type WireError = Static<typeof WireErrorSchema>;
 

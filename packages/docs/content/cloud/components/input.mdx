@@ -1,0 +1,53 @@
+---
+title: Input
+description: "A single-line text field with invalid and disabled states"
+---
+
+```ts title="Import"
+import { Input } from "@nyte-ai/ui";
+```
+
+A single-line text field. For multi-line text use [Textarea](/cloud/components/textarea).
+
+## Usage
+
+- Every input needs an accessible name from a `<label for>`, `aria-label`, or `aria-labelledby`.
+  A placeholder is not a name.
+- Set `aria-invalid` when validation fails. The border turns destructive.
+- Width is `100%`. Constrain it with the parent.
+
+## Examples
+
+<Preview>
+  <InputDemo />
+</Preview>
+
+```tsx
+<Input placeholder="Workspace name" aria-label="Workspace name" />
+<Input aria-label="Invalid" aria-invalid defaultValue="not-a-url" />
+<Input aria-label="Disabled" disabled />
+```
+
+### Unstyled
+
+```tsx
+<Input unstyled xstyle={myStyles.field} aria-label="Search" />
+```
+
+## Props
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+| Prop                           | Type                                      | Default | Description                  |
+| ------------------------------ | ----------------------------------------- | ------- | ---------------------------- |
+| `unstyled`                     | `boolean`                                 | `false` | Render with no StyleX class. |
+| `className`, `style`, `xstyle` | see [Theming](/cloud/foundations/theming) |         |                              |
+
+<include>../../base-ui-reference/input/Input.md</include>
+
+## Accessibility
+
+- A native `<input>`, so all native keyboard behavior applies.
+- There is no styled field wrapper. Wire labels, descriptions, and validation state through
+  `aria-*` on the input.
+- The focus ring appears on `:focus-visible`. See [Focus](/cloud/foundations/focus).

@@ -169,7 +169,7 @@ export class TaskBrowser {
 
   constructor(options: TaskBrowserOptions) {
     this.options = options;
-    options.shell.transcript.children = () => this.index?.states ?? [];
+    options.shell.transcript.tasks = () => this.rows;
     options.shell.taskStatus.onMouseDown = (event) => {
       if (event.button !== 0) return;
       event.preventDefault();

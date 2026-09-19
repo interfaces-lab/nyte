@@ -1,0 +1,81 @@
+---
+title: Collapsible
+description: "A panel that a button opens and closes"
+---
+
+```ts title="Import"
+import { Collapsible } from "@nyte-ai/ui/collapsible";
+```
+
+One trigger, one panel. Reach for it when a section of a surface is worth hiding until the reader
+asks for it. No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- `defaultOpen` leaves the panel uncontrolled. `open` with `onOpenChange` controls it.
+- The closed panel unmounts unless you pass `keepMounted` or `hiddenUntilFound`.
+- Animate the panel from `--collapsible-panel-height` and `--collapsible-panel-width`, which the
+  panel publishes while it transitions.
+- `disabled` on the root stops the trigger from opening the panel.
+
+## Anatomy
+
+```tsx
+<Collapsible.Root>
+  <Collapsible.Trigger />
+  <Collapsible.Panel />
+</Collapsible.Root>
+```
+
+## Examples
+
+### Basic
+
+```tsx
+<Collapsible.Root>
+  <Collapsible.Trigger>Shipping details</Collapsible.Trigger>
+  <Collapsible.Panel>Standard shipping takes 3 to 5 business days.</Collapsible.Panel>
+</Collapsible.Root>
+```
+
+### Hidden until found
+
+`hiddenUntilFound` hides the closed panel with
+[`hidden="until-found"`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden),
+so find-in-page can match its contents and open it. The panel stays in the DOM, which also makes it
+indexable. Browsers without support for `hidden="until-found"` keep the panel hidden until the
+trigger opens it, and find-in-page skips it.
+
+```tsx
+<Collapsible.Root>
+  <Collapsible.Trigger>Shipping details</Collapsible.Trigger>
+  <Collapsible.Panel hiddenUntilFound>
+    Standard shipping takes 3 to 5 business days.
+  </Collapsible.Panel>
+</Collapsible.Root>
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/collapsible/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/collapsible/Trigger.md</include>
+
+### Panel
+
+<include>../../base-ui-reference/collapsible/Panel.md</include>
+
+## Accessibility
+
+- The trigger renders a native `<button>` with `aria-expanded`, and `aria-controls` pointing at the
+  panel while it is open. Enter and Space toggle it.
+- Rendering the trigger as something other than a `<button>` needs `nativeButton={false}`.
+- Open state lands on `data-panel-open` on the trigger, and `data-open` or `data-closed` on the root
+  and the panel.
+- The focus ring is yours to draw. See [Focus](/cloud/foundations/focus).

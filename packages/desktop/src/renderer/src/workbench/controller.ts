@@ -144,6 +144,8 @@ type WorkbenchWidthBounds =
 
 export interface WorkbenchViewState {
   readonly expanded: boolean;
+  /** Which surface stands in for the panel while it is closed. Not persisted. */
+  readonly collapsed: "floating" | "compact";
   readonly activeTab: WorkbenchTabId | null;
   readonly maximized: boolean;
   readonly openTabs: readonly WorkbenchTabId[];
@@ -172,6 +174,7 @@ export interface WorkbenchController {
     readonly openTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
     readonly closeTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
     readonly toggle: (key: WorkbenchViewKey) => void;
+    readonly toggleCollapsed: (key: WorkbenchViewKey) => void;
     readonly toggleWorkbench: (key: WorkbenchViewKey, scope: WorkbenchScope) => void;
     readonly toggleMaximized: (key: WorkbenchViewKey) => void;
     readonly selectChangesScope: (key: WorkbenchViewKey, scope: WorkbenchChangesScope) => void;
@@ -193,6 +196,7 @@ const VIEW_IDENTITIES = new Map<WorkbenchViewKey, WorkbenchViewIdentity>();
 const EMPTY_SCROLL = Object.freeze({ changes: 0 });
 const DEFAULT_VIEW = Object.freeze({
   expanded: false,
+  collapsed: "floating",
   activeTab: null,
   maximized: false,
   openTabs: Object.freeze([]),
@@ -343,6 +347,7 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
       key,
       Object.freeze({
         expanded: stored.expanded && activeTab !== null,
+        collapsed: "floating",
         activeTab,
         maximized: stored.maximized,
         openTabs,
@@ -514,6 +519,12 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
           openTabs: visit(current, activeTab),
         };
       });
+    },
+    toggleCollapsed(key) {
+      update(key, (current) => ({
+        ...current,
+        collapsed: current.collapsed === "floating" ? "compact" : "floating",
+      }));
     },
     toggleMaximized(key) {
       update(key, (current) => ({ ...current, maximized: !current.maximized }));

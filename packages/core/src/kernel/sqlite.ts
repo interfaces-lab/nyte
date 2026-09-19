@@ -6,9 +6,10 @@ import { hashCanonicalJson, hashObject } from "./hash.ts";
 import { canonicalJson } from "@nyte-ai/client";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { isRefName, newOwnerId } from "./names.ts";
-import { sql, sqlList, type SqliteConnection, type SqlRow } from "./sql.ts";
+import { numberColumn, sql, sqlList, stringColumn, type SqliteConnection } from "./sql.ts";
+import { MIGRATIONS } from "./sqlite-migrations.ts";
 import { checkEventBody, checkObject } from "./store-schemas.ts";
-import { UnknownSession } from "./store.ts";
+import { CorruptObject, UnknownSession } from "./store.ts";
 import type {
   Commit,
   Event,
@@ -81,11 +82,12 @@ CREATE TABLE IF NOT EXISTS events (
 `;
 
 /**
- * Bumped whenever the tables change shape. There is no migration: a file an
- * earlier schema wrote is refused with a message that says to delete it, since
- * `CREATE TABLE IF NOT EXISTS` would keep the old shape and fail later.
+ * Bumped whenever the tables or a stored object's shape change. A file an
+ * earlier schema wrote is upgraded on open through {@link MIGRATIONS}, or
+ * refused when no migration reaches it, since `CREATE TABLE IF NOT EXISTS`
+ * would keep the old shape and fail later.
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const WAL_ATTEMPTS = 40;
 const WAL_RETRY_MS = 25;
@@ -142,28 +144,7 @@ function openNodeSqlite(path: string): SqliteConnection {
     statements.set(text, prepared);
     return prepared;
   };
-  try {
-    db.exec("PRAGMA busy_timeout=5000");
-    enableWal(db);
-    db.exec("PRAGMA synchronous=FULL");
-    transaction(db, "BEGIN IMMEDIATE", () => {
-      const versionRow = db.prepare("PRAGMA user_version").get();
-      const version = versionRow === undefined ? 0 : numberColumn(versionRow, "user_version");
-      const fresh =
-        db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1").get() ===
-        undefined;
-      if (version !== SCHEMA_VERSION && !(version === 0 && fresh)) {
-        throw new Error(
-          `${path} was written by another nyte schema (${String(version)}, this build reads ${String(SCHEMA_VERSION)}). Delete it to start over.`,
-        );
-      }
-      db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`);
-    });
-  } catch (error) {
-    db.close();
-    throw error;
-  }
-  return {
+  const connection: SqliteConnection = {
     run: (text, params) => {
       statement(text).run(...params);
     },
@@ -178,32 +159,46 @@ function openNodeSqlite(path: string): SqliteConnection {
     },
     close: () => db.close(),
   };
+  try {
+    db.exec("PRAGMA busy_timeout=5000");
+    enableWal(db);
+    db.exec("PRAGMA synchronous=FULL");
+    connection.transact(() => upgradeSchema(connection, path));
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+  return connection;
 }
 
-function stringColumn(row: SqlRow, name: string): string {
-  const value = row[name];
-  if (typeof value !== "string") {
-    throw new TypeError(`SQLite column ${name} is not a string`);
+/** Bring a file up to {@link SCHEMA_VERSION}, one migration per version, inside the caller's transaction. */
+function upgradeSchema(db: SqliteConnection, path: string): void {
+  const fresh =
+    sql`SELECT name FROM sqlite_master WHERE type = 'table' LIMIT 1`.get(db) === undefined;
+  const versionRow = sql`PRAGMA user_version`.get(db);
+  const stored = versionRow === undefined ? 0 : numberColumn(versionRow, "user_version");
+  if (stored > SCHEMA_VERSION) {
+    throw new Error(
+      `${path} was written by a newer nyte schema (${String(stored)}, this build reads ${String(SCHEMA_VERSION)}).`,
+    );
   }
-  return value;
-}
-
-function numberColumn(row: SqlRow, name: string): number {
-  const value = row[name];
-  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
-    throw new TypeError(`SQLite column ${name} is not a safe integer`);
+  for (let version = fresh ? SCHEMA_VERSION : stored; version < SCHEMA_VERSION; version += 1) {
+    const migrate = MIGRATIONS.get(version);
+    if (migrate === undefined) {
+      throw new Error(
+        `${path} was written by nyte schema ${String(version)}, which this build cannot upgrade. Delete it to start over.`,
+      );
+    }
+    migrate(db);
   }
-  return value;
+  db.exec(`PRAGMA user_version = ${String(SCHEMA_VERSION)}`);
 }
 
 /** Validate the stored shape before checking its content-addressed identity. */
 function parseObject(raw: string, oid: Oid): Obj {
   const value: unknown = JSON.parse(raw);
-  if (!checkObject.Check(value)) {
-    throw new TypeError(`Stored object ${oid} is not a known object`);
-  }
-  if (hashObject(value) !== oid)
-    throw new TypeError(`Stored object ${oid} does not match its hash`);
+  if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
+  if (hashObject(value) !== oid) throw new CorruptObject(oid, "does not match its hash");
   return value;
 }
 

@@ -11,17 +11,12 @@ description: "Provides a shared state to a series of toggle buttons."
 import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
 ```
 
-`@nyte-ai/ui/toggle-group` re-exports the Base UI namespace unchanged. There is no Nyte styling on
-this subpath; the consumer owns every class, StyleX style, and layout decision. Base UI owns the
-interaction model, keyboard handling, focus management, and ARIA below.
-
-Consumed by:
-
-- `desktop/src/renderer/src/chrome/usage-settings.tsx`
+`@nyte-ai/ui/toggle-group` re-exports the Base UI namespace unstyled, so Base UI owns the behavior
+and you own the styling.
 
 The rest of this page is Base UI's documentation for `@base-ui/react/toggle-group`, reproduced
-verbatim under the MIT license, © Material-UI SAS. Component paths in examples refer to the Base UI
-package; in Nyte, import from the subpath above.
+verbatim under the MIT license, © Material-UI SAS. Its examples import from `@base-ui/react`.
+Import from the subpath above instead.
 
 ## Anatomy
 

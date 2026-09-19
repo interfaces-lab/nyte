@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { createTwoFilesPatch } from "diff";
 import { shell } from "electron";
 import type { VcsBackend, VcsDiff, VcsStatus } from "@nyte-ai/core";
+import { createTreeSnapshot } from "@nyte-ai/host";
 import type {
   DesktopGitSnapshot,
   DesktopVcsCommit,
@@ -804,9 +805,14 @@ export function createGitVcs(cwd: string, options: GitVcsOptions = {}): DesktopG
   const status = async (): Promise<VcsStatus> => {
     return (await readStatus(cwd)).status;
   };
+  // Run provenance lives in a shadow repository the host owns, never in this `.git`.
+  const snapshots = createTreeSnapshot(cwd, { discard: trashItem });
 
   return {
     status,
+    tree: snapshots.tree,
+    diffTrees: snapshots.diffTrees,
+    restoreTree: snapshots.restoreTree,
     async snapshot() {
       const read = await readStatus(cwd);
       return repositorySnapshot(cwd, read);

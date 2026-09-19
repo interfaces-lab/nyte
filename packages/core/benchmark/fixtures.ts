@@ -113,7 +113,6 @@ export function projectionFixture(count: number, workload: Workload) {
       path,
       added: (previous?.added ?? 0) + 2,
       removed: (previous?.removed ?? 0) + 1,
-      lastCommit: item.oid,
     });
   }
   return {

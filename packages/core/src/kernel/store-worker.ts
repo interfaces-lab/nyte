@@ -9,7 +9,7 @@ import { Compile } from "typebox/compile";
 import { CursorExpired } from "@nyte-ai/protocol";
 import type { Event } from "./model.ts";
 import type { Session } from "./store.ts";
-import { UnknownSession } from "./store.ts";
+import { CorruptObject, UnknownSession } from "./store.ts";
 import { SqliteStore } from "./sqlite.ts";
 import { EventBodySchema, LeaseSchema, ObjectSchema, RefUpdateSchema } from "./store-schemas.ts";
 import {
@@ -212,6 +212,8 @@ function wireError(cause: unknown): WireError {
     return { name: cause.name, message: cause.message, id: cause.id };
   if (cause instanceof CursorExpired)
     return { name: cause.name, message: cause.message, floor: cause.floor };
+  if (cause instanceof CorruptObject)
+    return { name: cause.name, message: cause.message, oid: cause.oid };
   if (cause instanceof Error) return { name: cause.name, message: cause.message };
   return { name: "Error", message: String(cause) };
 }

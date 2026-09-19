@@ -105,6 +105,7 @@ const bridge = {
   runs: {
     abort: object("runs.abort"),
     reply: object("runs.reply"),
+    diff: object("runs.diff"),
   },
   heads: {
     move: object("heads.move"),

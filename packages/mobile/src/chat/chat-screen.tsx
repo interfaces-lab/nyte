@@ -104,7 +104,7 @@ export function ChatScreen({
         userSeen = true;
       }
     }
-    if (userSeen || work.length > 0 || item.outcome !== "completed" || item.durationMs > 0) {
+    if (userSeen || work.length > 0 || item.failure !== undefined || item.durationMs > 0) {
       emitted.push({
         kind: "work",
         turn: item,

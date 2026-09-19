@@ -68,7 +68,7 @@ import { composerStyles } from "./styles.stylex.ts";
 
 const FOLLOW_UP_PLACEHOLDER = "Add a follow-up";
 const DROP_PLACEHOLDER = "Drop here to attach…";
-/** Below the layout's minimum pane width the follow-up row has no room to grow. */
+/** Measured on the composer frame, which sits inside the conversation gutters, not the pane. */
 const COMPACT_FRAME_WIDTH = 320;
 
 type ComposerSurface = "new-chat" | "follow-up";
@@ -280,6 +280,7 @@ export function ComposerFrame({
   const followUpExpanded = geometry === "follow-up-expanded";
   const followUpCard =
     surface === "follow-up" &&
+    !collapsed &&
     (followUpExpanded ||
       attachments.length > 0 ||
       attachmentError !== undefined ||
@@ -326,11 +327,12 @@ export function ComposerFrame({
     const area = areaRef.current?.element;
     const frame = frameRef.current;
     if (area === null || area === undefined || frame === null) return undefined;
-    resize();
-    const observer = new ResizeObserver(() => {
+    const measure = (): void => {
       setNarrow(frame.getBoundingClientRect().width < COMPACT_FRAME_WIDTH);
       resize();
-    });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(area);
     observer.observe(frame);
     return () => observer.disconnect();
@@ -481,7 +483,6 @@ export function ComposerFrame({
             composerStyles.layout,
             geometry === "new-chat" && composerStyles.layoutNewChat,
             compact && composerStyles.layoutCompact,
-            collapsed && composerStyles.layoutCollapsed,
           )}
         >
           <div

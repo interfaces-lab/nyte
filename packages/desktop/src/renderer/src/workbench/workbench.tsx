@@ -1,23 +1,29 @@
 /**
  * Eager workbench controller. Open panels stay mounted while hidden; closing a
- * tab releases its panel. The window titlebar owns the tab strip and the only
- * control that hides the panel, which frees the panel's width for the stage.
+ * tab releases its panel. The window titlebar owns the tab strip. Collapsing
+ * leaves a compact bar of the tabs this scope can open, the way Cursor
+ * collapses a part rather than widening it into a second sidebar.
  *
  * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench.tsx
  */
 import { create, props } from "@stylexjs/stylex";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent, PointerEvent, ReactElement } from "react";
+import { Button } from "@nyte-ai/ui";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent, ReactElement, ReactNode } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import { PanelToggleIcon } from "../components/icons";
-import { ToggleIconButton } from "../components/ui";
-import { useHostState } from "../queries.ts";
-import { layer, workbench } from "../theme/schema.stylex";
+import { changesFromTurns } from "@nyte-ai/client";
+import { Icon, PanelToggleIcon } from "../components/icons";
+import type { IconName } from "../components/icons";
+import { focus, IconButton, ToggleIconButton } from "../components/ui";
+import { useHostState, useSessionSnapshot } from "../queries.ts";
+import { glyph, layer, workbench } from "../theme/schema.stylex";
 import { t } from "../theme/vars.stylex";
 import {
   clampWorkbenchWidthToBounds,
   workbenchTabAvailable,
   activeWorkbenchTab,
+  workbenchTabLabel,
+  workbenchTabs,
   WORKBENCH_ACTIVE_WIDTH_VARIABLE,
   WORKBENCH_CENTER_WIDTH_MIN,
   WORKBENCH_WIDTH_DEFAULT,
@@ -36,11 +42,11 @@ import type {
   WorkbenchViewState,
 } from "./controller";
 
-import { useTerminals } from "./terminal-store";
+import { terminalActions, useTerminals } from "./terminal-store";
 
 import { BrowserPanel } from "./browser-panel";
 import { FilesPanel } from "./files-panel.tsx";
-import { useFileTabs } from "./file-store.ts";
+import { useFileTabs, fileActions } from "./file-store.ts";
 import { TerminalPanel } from "./terminal-panel";
 import { AgentsPanel } from "./agents-panel.tsx";
 import { ChangesPanel } from "./changes-panel";
@@ -58,13 +64,18 @@ const styles = create({
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    minWidth: workbench.panelWidth,
     minHeight: 0,
+    backgroundColor: t.bgBase,
+  },
+  panelOpen: {
+    minWidth: workbench.panelWidth,
     borderInlineStartWidth: 1,
     borderInlineStartStyle: "solid",
     borderInlineStartColor: t.strokeTertiary,
-    backgroundColor: t.bgBase,
   },
+  railHost: { width: workbench.railWidth, minWidth: workbench.railWidth },
+  /** The compact bar's 34px box plus its 6px margins. */
+  railHostCompact: { width: 46, minWidth: 46 },
   panelOverlay: {
     position: "absolute",
     zIndex: layer.workbench,
@@ -76,6 +87,125 @@ const styles = create({
   },
   panelHidden: { display: "none" },
   panelBody: { display: "flex", flex: 1, minWidth: 0, minHeight: 0, flexDirection: "column" },
+  /** The floating panel: the always-present list of what this scope can open. */
+  rail: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    width: "100%",
+    minWidth: 0,
+    paddingBlock: 4,
+    paddingInline: 8,
+    color: t.textSecondary,
+  },
+  railSection: { display: "flex", flexDirection: "column", gap: 1, minWidth: 0 },
+  railHeading: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 24,
+    paddingInline: 6,
+    color: t.textTertiary,
+    fontSize: t.fontSm,
+    lineHeight: t.leadingSm,
+  },
+  railHeadingText: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  /** The floating panel's collapse control, sized to its heading row. */
+  chevron: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
+    height: 24,
+    marginInlineEnd: -4,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: t.radiusBase,
+    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
+    color: t.iconTertiary,
+    cursor: "pointer",
+  },
+  /** Two chevrons overlap into one glyph; the icon set has no chevron-left. */
+  doubleChevron: { display: "inline-flex", alignItems: "center" },
+  doubleChevronBack: { transform: "scaleX(-1)" },
+  doubleChevronTrail: { display: "inline-flex", marginInlineStart: -4 },
+  railRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    minWidth: 0,
+    minHeight: 28,
+    paddingBlock: 2,
+    paddingInline: 6,
+    borderStyle: "none",
+    borderRadius: t.radiusBase,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
+      ":active": t.fillGhostSelected,
+    },
+    color: t.textSecondary,
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+    textAlign: "start",
+    cursor: "pointer",
+  },
+  railIcon: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: glyph.box,
+    flexShrink: 0,
+    color: t.iconSecondary,
+  },
+  railLabel: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  railStats: {
+    display: "inline-flex",
+    gap: 6,
+    flexShrink: 0,
+    fontVariantNumeric: "tabular-nums",
+  },
+  railAdded: { color: t.textSuccess },
+  railRemoved: { color: t.textDanger },
+  /**
+   * The collapsed workbench: a compact bar of the tabs this scope can open,
+   * sized to hold one 28px icon button inside its 2px padding and hairline
+   * border. `railHost` above reserves that 34px box plus its 6px margins.
+   */
+  iconRail: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    boxSizing: "border-box",
+    width: 34,
+    marginBlockStart: 4,
+    marginInline: 6,
+    padding: 2,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: t.strokeTertiary,
+    /** Concentric with the 8px buttons inside it: 8 + 2px of padding. */
+    borderRadius: 10,
+    backgroundColor: t.bgElevated,
+    color: t.textSecondary,
+    boxShadow: `0 1px 2px ${t.shadowControlColor}`,
+  },
+  iconRailDivider: {
+    height: 1,
+    marginInline: 2,
+    backgroundColor: t.strokeTertiary,
+  },
   panelSlot: {
     display: "flex",
     flexDirection: "column",
@@ -104,6 +234,14 @@ const styles = create({
   sashActive: { backgroundColor: t.fillPrimary, opacity: 0.25 },
 });
 
+const tabIcons = {
+  files: "file",
+  changes: "git-branch",
+  browser: "globe",
+  terminal: "console",
+  agents: "robot",
+} satisfies Record<WorkbenchTabId, IconName>;
+
 interface ResizeState {
   readonly pointerId: number;
   readonly startX: number;
@@ -115,6 +253,249 @@ function setActiveWidth(width: number): void {
   document.documentElement.style.setProperty(WORKBENCH_ACTIVE_WIDTH_VARIABLE, `${String(width)}px`);
 }
 
+function RailRow({
+  icon,
+  label,
+  title,
+  children,
+  onClick,
+}: {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly title?: string;
+  readonly children?: ReactNode;
+  readonly onClick: () => void;
+}): ReactElement {
+  return (
+    <Button
+      unstyled
+      type="button"
+      title={title}
+      {...props(styles.railRow, focus.ring)}
+      onClick={onClick}
+    >
+      <span {...props(styles.railIcon)}>
+        <Icon name={icon} size={14} />
+      </span>
+      <span {...props(styles.railLabel)}>{label}</span>
+      {children}
+    </Button>
+  );
+}
+
+/**
+ * The control that swaps the floating panel for the compact bar. It always
+ * points away from the surface it would leave, so the same glyph reads as
+ * collapse on the panel and expand on the bar.
+ */
+function DoubleChevron({ back = false }: { readonly back?: boolean }): ReactElement {
+  return (
+    <span {...props(styles.doubleChevron, back && styles.doubleChevronBack)}>
+      <Icon name="chevron-right" size={11} />
+      <span {...props(styles.doubleChevronTrail)}>
+        <Icon name="chevron-right" size={11} />
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The declared line counts of one session, folded from the transcript the
+ * chat in this pane is already observing. The floating panel always names the
+ * active pane's session, so this shares that observation rather than opening a
+ * read of its own.
+ */
+function RailChangeStats({ sessionId }: { readonly sessionId: SessionId }): ReactElement | null {
+  const snapshot = useSessionSnapshot(sessionId);
+  const transcript = snapshot.data?.transcript;
+  const stats = useMemo(
+    () =>
+      changesFromTurns(transcript ?? []).reduce(
+        (total, file) => ({
+          added: total.added + file.added,
+          removed: total.removed + file.removed,
+        }),
+        { added: 0, removed: 0 },
+      ),
+    [transcript],
+  );
+  if (stats.added === 0 && stats.removed === 0) return null;
+  return (
+    <span
+      aria-label={`${String(stats.added)} added, ${String(stats.removed)} removed`}
+      {...props(styles.railStats)}
+    >
+      {stats.added > 0 && <span {...props(styles.railAdded)}>+{stats.added}</span>}
+      {stats.removed > 0 && <span {...props(styles.railRemoved)}>-{stats.removed}</span>}
+    </span>
+  );
+}
+
+/** Opening the Terminal tab with no shell yet has to start one first. */
+function openWorkbenchTab({
+  viewKey,
+  tab,
+  terminalCount,
+  workspacePath,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly tab: WorkbenchTabId;
+  readonly terminalCount: number;
+  readonly workspacePath: string | null;
+}): void {
+  if (tab === "terminal" && terminalCount === 0) {
+    void terminalActions.create(viewKey, workspacePath);
+  }
+  workbenchController.actions.openTab(viewKey, tab);
+}
+
+/** The floating panel: what this scope can open, and what is already open. */
+function FloatingWorkbenchPanel({
+  viewKey,
+  view,
+  scope,
+  sessionId,
+  workspaceName,
+  workspacePath,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly view: WorkbenchViewState;
+  readonly scope: WorkbenchScope;
+  readonly sessionId: SessionId | undefined;
+  readonly workspaceName: string | undefined;
+  readonly workspacePath: string | null;
+}): ReactElement {
+  const terminals = useTerminals(viewKey);
+  const files = useFileTabs(viewKey);
+  const openTabs = view.openTabs.filter(
+    (tab) => tab !== "terminal" && workbenchTabAvailable(scope, tab),
+  );
+
+  return (
+    <nav aria-label="Workbench navigation" {...props(styles.rail)}>
+      <section {...props(styles.railSection)}>
+        <div {...props(styles.railHeading)}>
+          <span {...props(styles.railHeadingText)}>Open Tabs</span>
+          <Button
+            unstyled
+            type="button"
+            aria-label="Collapse workbench"
+            title="Collapse workbench"
+            {...props(styles.chevron, focus.ring)}
+            onClick={() => workbenchController.actions.toggleCollapsed(viewKey)}
+          >
+            <DoubleChevron />
+          </Button>
+        </div>
+        {openTabs.flatMap((tab) =>
+          tab === "files" && files.tabs.length > 0
+            ? files.tabs.map((file) => (
+                <RailRow
+                  key={`file:${file.path}`}
+                  icon="file"
+                  label={file.displayPath}
+                  title={`${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`}
+                  onClick={() => fileActions.select(viewKey, file.path)}
+                />
+              ))
+            : [
+                <RailRow
+                  key={tab}
+                  icon={tabIcons[tab]}
+                  label={workbenchTabLabel(tab)}
+                  onClick={() => workbenchController.actions.openTab(viewKey, tab)}
+                />,
+              ],
+        )}
+        {view.openTabs.includes("terminal") && terminals.tabs.length === 0 && (
+          <RailRow
+            icon="console"
+            label="Terminal"
+            onClick={() => workbenchController.actions.openTab(viewKey, "terminal")}
+          />
+        )}
+        {terminals.tabs.map((terminal) => (
+          <RailRow
+            key={terminal.id}
+            icon="console"
+            label={terminal.title}
+            title={terminal.cwd}
+            onClick={() => {
+              terminalActions.select(viewKey, terminal.id);
+              workbenchController.actions.openTab(viewKey, "terminal");
+            }}
+          />
+        ))}
+      </section>
+
+      <section {...props(styles.railSection)}>
+        <div {...props(styles.railHeading)}>
+          <span {...props(styles.railHeadingText)}>
+            {workspaceName === undefined ? "On This Mac" : `On ${workspaceName}`}
+          </span>
+        </div>
+        {workbenchTabs(scope).map((tab) => (
+          <RailRow
+            key={tab}
+            icon={tabIcons[tab]}
+            label={
+              tab === "terminal" && terminals.tabs.length > 1
+                ? `${String(terminals.tabs.length)} Terminals`
+                : workbenchTabLabel(tab)
+            }
+            onClick={() =>
+              openWorkbenchTab({
+                viewKey,
+                tab,
+                terminalCount: terminals.tabs.length,
+                workspacePath,
+              })
+            }
+          >
+            {tab === "changes" && sessionId !== undefined && (
+              <RailChangeStats sessionId={sessionId} />
+            )}
+          </RailRow>
+        ))}
+      </section>
+    </nav>
+  );
+}
+
+/** The floating panel collapsed to its icons. */
+function CompactWorkbenchBar({
+  viewKey,
+  scope,
+  workspacePath,
+}: {
+  readonly viewKey: WorkbenchViewKey;
+  readonly scope: WorkbenchScope;
+  readonly workspacePath: string | null;
+}): ReactElement {
+  const terminals = useTerminals(viewKey);
+
+  return (
+    <nav aria-label="Workbench navigation" {...props(styles.iconRail)}>
+      <IconButton
+        icon={<DoubleChevron back />}
+        label="Expand workbench"
+        onClick={() => workbenchController.actions.toggleCollapsed(viewKey)}
+      />
+      <span aria-hidden="true" {...props(styles.iconRailDivider)} />
+      {workbenchTabs(scope).map((tab) => (
+        <IconButton
+          key={tab}
+          icon={tabIcons[tab]}
+          label={`Open ${workbenchTabLabel(tab)}`}
+          onClick={() =>
+            openWorkbenchTab({ viewKey, tab, terminalCount: terminals.tabs.length, workspacePath })
+          }
+        />
+      ))}
+    </nav>
+  );
+}
+
 interface PanelContentProps {
   readonly tab: WorkbenchTabId;
   readonly viewKey: WorkbenchViewKey;
@@ -123,9 +504,8 @@ interface PanelContentProps {
   readonly visible: boolean;
   readonly workspaceActive: boolean;
   readonly workspacePath: string | null;
-  /** The panel's own inner list: the Changes file tree, the Browser's visit history. */
-  readonly tabSidebarVisible: boolean;
-  readonly onToggleTabSidebar: () => void;
+  readonly sidebarVisible: boolean;
+  readonly onToggleSidebar: () => void;
   readonly onSelectPath: (path: string | undefined) => void;
   readonly onRevealPath: (path: string) => void;
   readonly onChangesScroll: (scrollTop: number) => void;
@@ -140,8 +520,8 @@ function PanelContent({
   visible,
   workspacePath,
   workspaceActive,
-  tabSidebarVisible,
-  onToggleTabSidebar,
+  sidebarVisible,
+  onToggleSidebar,
   onSelectPath,
   onRevealPath,
   onChangesScroll,
@@ -158,9 +538,9 @@ function PanelContent({
           selectedPath={view.selectedPath}
           revealPathRevision={view.pathRevealRevision}
           scrollTop={view.scrollTop.changes}
-          fileTreeVisible={tabSidebarVisible}
+          fileTreeVisible={sidebarVisible}
           onScopeChange={(scope) => workbenchController.actions.selectChangesScope(viewKey, scope)}
-          onToggleFileTree={onToggleTabSidebar}
+          onToggleFileTree={onToggleSidebar}
           onSelectPath={onSelectPath}
           onRevealPath={onRevealPath}
           onScrollTop={onChangesScroll}
@@ -171,16 +551,16 @@ function PanelContent({
         <BrowserPanel
           surface={viewKey}
           visible={visible}
-          historyVisible={tabSidebarVisible}
+          historyVisible={sidebarVisible}
           url={view.browserUrl}
           onUrlChange={onBrowserUrl}
           workspacePath={workspacePath}
           toolbarActions={
             <ToggleIconButton
-              icon={<PanelToggleIcon side="right" visible={tabSidebarVisible} />}
-              label={tabSidebarVisible ? "Hide visit history" : "Show visit history"}
-              pressed={tabSidebarVisible}
-              onPressedChange={onToggleTabSidebar}
+              icon={<PanelToggleIcon side="right" visible={sidebarVisible} />}
+              label={sidebarVisible ? "Hide visit history" : "Show visit history"}
+              pressed={sidebarVisible}
+              onPressedChange={onToggleSidebar}
             />
           }
         />
@@ -210,6 +590,7 @@ function WorkbenchViewHost({
   current,
   scope,
   stageWidth,
+  workspaceName,
   workspacePath,
 }: {
   readonly viewKey: WorkbenchViewKey;
@@ -218,12 +599,13 @@ function WorkbenchViewHost({
   readonly current: boolean;
   readonly scope: WorkbenchScope;
   readonly stageWidth: number;
+  readonly workspaceName: string | undefined;
   readonly workspacePath: string | null;
 }): ReactElement {
   const [resizing, setResizing] = useState(false);
   const activeTerminalId = useTerminals(viewKey).activeId;
   const files = useFileTabs(viewKey);
-  const [tabSidebars, setTabSidebars] = useState<Record<WorkbenchTabId, boolean>>({
+  const [sidebars, setSidebars] = useState<Record<WorkbenchTabId, boolean>>({
     files: true,
     changes: true,
     browser: false,
@@ -233,6 +615,8 @@ function WorkbenchViewHost({
   const panelRef = useRef<HTMLElement>(null);
   const resizeRef = useRef<ResizeState | undefined>(undefined);
   const bounds = workbenchWidthBounds(stageWidth);
+  // A stage too narrow for the floating panel forces the compact bar.
+  const compact = view.collapsed === "compact" || bounds.kind === "overlay";
   const panelWidth = view.maximized ? stageWidth : clampWorkbenchWidthToBounds(view.width, bounds);
   const defaultWidth = clampWorkbenchWidthToBounds(WORKBENCH_WIDTH_DEFAULT, bounds);
   const selectPath = useCallback(
@@ -301,8 +685,9 @@ function WorkbenchViewHost({
     workbenchController.actions.setWidth(viewKey, clampWorkbenchWidthToBounds(width, bounds));
   };
 
+  const hostVisible = current;
   const activeTab = activeWorkbenchTab(view, scope);
-  const panelVisible = current && view.expanded && activeTab !== null;
+  const panelVisible = hostVisible && view.expanded && activeTab !== null;
 
   useLayoutEffect(() => {
     if (panelVisible) setActiveWidth(panelWidth);
@@ -315,17 +700,32 @@ function WorkbenchViewHost({
   return (
     <section
       ref={panelRef}
-      hidden={!panelVisible}
-      aria-hidden={!panelVisible}
-      inert={panelVisible ? undefined : true}
+      hidden={!hostVisible}
+      aria-hidden={!hostVisible}
+      inert={!hostVisible ? true : undefined}
       {...props(
         styles.panel,
+        panelVisible && styles.panelOpen,
+        !panelVisible && (compact ? styles.railHostCompact : styles.railHost),
         panelVisible && (view.maximized || bounds.kind === "overlay") && styles.panelOverlay,
-        !panelVisible && styles.panelHidden,
+        !hostVisible && styles.panelHidden,
       )}
       style={panelVisible ? { width: panelWidth } : undefined}
     >
-      <div {...props(styles.panelBody)}>
+      {!panelVisible &&
+        (compact ? (
+          <CompactWorkbenchBar viewKey={viewKey} scope={scope} workspacePath={workspacePath} />
+        ) : (
+          <FloatingWorkbenchPanel
+            viewKey={viewKey}
+            view={view}
+            scope={scope}
+            sessionId={target.kind === "session" ? target.sessionId : undefined}
+            workspaceName={workspaceName}
+            workspacePath={workspacePath}
+          />
+        ))}
+      <div hidden={!panelVisible} {...props(styles.panelBody, !panelVisible && styles.panelHidden)}>
         {panelVisible && !view.maximized && (
           <div
             role="separator"
@@ -372,9 +772,9 @@ function WorkbenchViewHost({
                 visible={tabVisible}
                 workspacePath={workspacePath}
                 workspaceActive={current}
-                tabSidebarVisible={tabSidebars[tab]}
-                onToggleTabSidebar={() =>
-                  setTabSidebars((current) => ({ ...current, [tab]: !current[tab] }))
+                sidebarVisible={sidebars[tab]}
+                onToggleSidebar={() =>
+                  setSidebars((current) => ({ ...current, [tab]: !current[tab] }))
                 }
                 onSelectPath={selectPath}
                 onRevealPath={revealPath}
@@ -448,6 +848,7 @@ export function Workbench({ target, paneKey }: WorkbenchProps): ReactElement {
             current={current}
             scope={scope}
             stageWidth={stageWidth}
+            workspaceName={host.data?.workspace?.name}
             workspacePath={
               identity.target.kind === "home"
                 ? null

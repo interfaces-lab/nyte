@@ -36,7 +36,8 @@ export interface RemoteRuns {
   readonly current: OperationFn<"runs.current">;
   readonly abort: OperationFn<"runs.abort">;
   readonly reply: OperationFn<"runs.reply">;
-  readonly changes: OperationFn<"runs.changes">;
+  readonly diff: OperationFn<"runs.diff">;
+  readonly revert: OperationFn<"runs.revert">;
 }
 
 export interface RemoteJobs {

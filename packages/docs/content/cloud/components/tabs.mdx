@@ -1,0 +1,103 @@
+---
+title: Tabs
+description: "Switches between related panels on the same page"
+---
+
+```ts title="Import"
+import { Tabs } from "@nyte-ai/ui/tabs";
+```
+
+One list of tabs, one panel visible at a time. Reach for it when the panels are peers and the reader
+only needs one of them at a time. No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- Each `Tabs.Tab` and each `Tabs.Panel` needs a matching `value`. Without `defaultValue` on the
+  root, the first tab starts active.
+- Tabs activate on Enter or Space. `activateOnFocus` on the list activates them on arrow key focus
+  instead.
+- `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
+- `Tabs.Indicator` is optional. Position it from the `--active-tab-*` CSS variables it publishes.
+- A hidden panel unmounts unless you pass `keepMounted`.
+
+## Anatomy
+
+```tsx
+<Tabs.Root>
+  <Tabs.List>
+    <Tabs.Tab />
+    <Tabs.Indicator />
+  </Tabs.List>
+  <Tabs.Panel />
+</Tabs.Root>
+```
+
+## Examples
+
+### Basic
+
+```tsx
+<Tabs.Root defaultValue="overview">
+  <Tabs.List>
+    <Tabs.Tab value="overview">Overview</Tabs.Tab>
+    <Tabs.Tab value="activity">Activity</Tabs.Tab>
+    <Tabs.Indicator />
+  </Tabs.List>
+  <Tabs.Panel value="overview">Overview content</Tabs.Panel>
+  <Tabs.Panel value="activity">Activity content</Tabs.Panel>
+</Tabs.Root>
+```
+
+### Animated panels
+
+A panel carries `data-starting-style` and `data-ending-style` while it animates.
+`data-activation-direction` says where the newly active tab sits relative to the previous one, so a
+panel can slide in from the matching side.
+
+### Links
+
+To render a tab as an anchor, pass the element to `render` and set `nativeButton={false}`.
+
+```tsx
+<Tabs.Root>
+  <Tabs.List>
+    <Tabs.Tab nativeButton={false} render={<Link href="/overview" />} value="overview">
+      Overview
+    </Tabs.Tab>
+  </Tabs.List>
+</Tabs.Root>
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/tabs/Root.md</include>
+
+### List
+
+<include>../../base-ui-reference/tabs/List.md</include>
+
+### Tab
+
+<include>../../base-ui-reference/tabs/Tab.md</include>
+
+### Indicator
+
+<include>../../base-ui-reference/tabs/Indicator.md</include>
+
+### Panel
+
+<include>../../base-ui-reference/tabs/Panel.md</include>
+
+## Accessibility
+
+- The parts render `role="tablist"`, `role="tab"`, and `role="tabpanel"`. The indicator renders
+  `role="presentation"`.
+- Arrow keys move focus along the list. Focus wraps at the end unless you pass `loopFocus={false}`.
+- Enter and Space activate the focused tab, unless `activateOnFocus` activates it on focus.
+- A disabled first tab is skipped and the next enabled tab is selected. Server rendering does not
+  know which tabs are disabled, so set `defaultValue` or `value` to an enabled tab.
+- The focus ring is yours to draw. See [Focus](/cloud/foundations/focus).

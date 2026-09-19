@@ -50,6 +50,7 @@ import type {
   RunPhase as RunPhaseType,
   ToolClass as ToolClassType,
   ToolProgress as ToolProgressType,
+  TreeId as TreeIdType,
 } from "./kernel.ts";
 import type {
   ApplyOutcome as ApplyOutcomeType,
@@ -75,7 +76,9 @@ import type {
   RedeliverOutcome as RedeliverOutcomeType,
   ReplyOutcome as ReplyOutcomeType,
   RunConfig as RunConfigType,
+  RunDiff as RunDiffType,
   RunInfo as RunInfoType,
+  RunRevert as RunRevertType,
   SendReceipt as SendReceiptType,
   SessionEvent as SessionEventType,
   SessionId as SessionIdType,
@@ -88,6 +91,7 @@ import type {
 import type {
   ContextStatus as ContextStatusType,
   FileChange as FileChangeType,
+  FileDiff as FileDiffType,
   ToolTurnPart as ToolTurnPartType,
   Turn as TurnType,
   TurnPart as TurnPartType,
@@ -160,6 +164,11 @@ const literals = <Values extends string[]>(values: readonly [...Values]) => Type
 /** Non-empty is the whole `SessionId` brand invariant, so the check earns the type. */
 export const SessionId = Unsafe<SessionIdType>({ type: "string", minLength: 1 });
 export const Oid = Type.String({ minLength: 1 });
+/** A git tree hash, SHA-1 or SHA-256; the pattern is the whole `TreeId` brand invariant. */
+export const TreeId = Unsafe<TreeIdType>({
+  type: "string",
+  pattern: "^([0-9a-f]{40}|[0-9a-f]{64})$",
+});
 export const Seq = Type.Integer({ minimum: 0 });
 export { HeadName };
 export const NonEmptyString = Type.String({ minLength: 1 });
@@ -496,6 +505,7 @@ export const Commit = typed<CommitType>()(
     run: Type.Optional(Type.String()),
     calls: Type.Optional(Type.Record(Type.String(), ToolClass)),
     failure: Type.Optional(Failure),
+    tree: Type.Optional(TreeId),
     body: CommitBody,
     at: Type.Number(),
     author: Type.Optional(Actor),
@@ -685,6 +695,7 @@ export const Turn = typed<TurnType>()(
     open({
       kind: Type.Literal("turn"),
       id: Oid,
+      run: Type.Optional(Type.String()),
       parts: Type.Array(TurnPart),
       failure: Type.Optional(Failure),
       startedAt: Type.Number(),
@@ -713,7 +724,17 @@ export const ContextStatus = typed<ContextStatusType>()(
 );
 
 export const FileChange = typed<FileChangeType>()(
-  open({ path: Type.String(), added: Type.Number(), removed: Type.Number(), lastCommit: Oid }),
+  open({ path: Type.String(), added: Type.Number(), removed: Type.Number() }),
+);
+
+export const FileDiff = typed<FileDiffType>()(
+  open({
+    path: Type.String(),
+    kind: Type.Enum(["added", "modified", "deleted", "renamed"]),
+    added: Type.Number(),
+    removed: Type.Number(),
+    patch: Type.String(),
+  }),
 );
 
 const sessionMetadata = {
@@ -786,6 +807,24 @@ export const ReplyOutcome = typed<ReplyOutcomeType>()(
     open({ kind: Type.Literal("signalled") }),
     open({ kind: Type.Literal("not_waiting") }),
     open({ kind: Type.Literal("not_found") }),
+  ]),
+);
+
+export const RunDiff = typed<RunDiffType>()(
+  Type.Union([
+    open({ kind: Type.Literal("tree"), from: TreeId, to: TreeId, files: list(FileDiff) }),
+    open({ kind: Type.Literal("recorded"), files: list(FileDiff) }),
+    open({ kind: Type.Literal("not_found") }),
+  ]),
+);
+
+export const RunRevert = typed<RunRevertType>()(
+  Type.Union([
+    open({ kind: Type.Literal("reverted"), files: list(Type.String()) }),
+    open({ kind: Type.Literal("busy"), run: RunInfo }),
+    open({ kind: Type.Literal("no_tree") }),
+    open({ kind: Type.Literal("not_found") }),
+    open({ kind: Type.Literal("failed"), reason: Type.String() }),
   ]),
 );
 

@@ -3,7 +3,6 @@ import { shellMdxComponents } from "~/components/shell/mdx";
 import { CloudFeatures } from "./features";
 import { Preview } from "./preview";
 import { TokenTable } from "./token-table";
-import { HostMatrix } from "./host-matrix";
 import { ButtonSizesDemo, ButtonStatesDemo, ButtonVariantsDemo } from "./demos/button";
 import { AvatarDemo, AvatarTonesDemo } from "./demos/avatar";
 import { InputDemo, TextareaDemo } from "./demos/input";
@@ -20,7 +19,6 @@ export function cloudMdxComponents(): MDXComponents {
     CloudFeatures,
     Preview,
     TokenTable,
-    HostMatrix,
     ButtonVariantsDemo,
     ButtonSizesDemo,
     ButtonStatesDemo,

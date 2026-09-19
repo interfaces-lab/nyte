@@ -11,19 +11,12 @@ description: "A popup that opens on top of the entire page."
 import { Dialog } from "@nyte-ai/ui/dialog";
 ```
 
-`@nyte-ai/ui/dialog` re-exports the Base UI namespace unchanged. There is no Nyte styling on
-this subpath; the consumer owns every class, StyleX style, and layout decision. Base UI owns the
-interaction model, keyboard handling, focus management, and ARIA below.
-
-Consumed by:
-
-- `desktop/src/renderer/src/chrome/about-dialog.tsx`
-- `desktop/src/renderer/src/chrome/open-workspace.tsx`
-- `desktop/src/renderer/src/conversation/image-preview.tsx`
+`@nyte-ai/ui/dialog` re-exports the Base UI namespace unstyled, so Base UI owns the behavior
+and you own the styling.
 
 The rest of this page is Base UI's documentation for `@base-ui/react/dialog`, reproduced
-verbatim under the MIT license, © Material-UI SAS. Component paths in examples refer to the Base UI
-package; in Nyte, import from the subpath above.
+verbatim under the MIT license, © Material-UI SAS. Its examples import from `@base-ui/react`.
+Import from the subpath above instead.
 
 ## Usage guidelines
 

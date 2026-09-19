@@ -9,7 +9,9 @@
  *
  * Every plugin fact these tests care about is read back through the operations a
  * client has (`plugins.settings.list`, `plugins.commands.run`, the transcript,
- * the event stream), never through the session's refs.
+ * the event stream). The one exception is what a tool returned: the transcript
+ * carries a call's class and output, and the `ToolResultMessage` itself lives on
+ * the tool-result commit, so `toolResultOf` reads that commit from the store.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -28,8 +30,8 @@ import type {
   WaitOutcome,
 } from "@nyte-ai/core";
 import type { ToolTurnPart } from "@nyte-ai/protocol";
-import { SqliteStore } from "@nyte-ai/core/store";
-import type { Api, AssistantMessage, Model, ToolCall } from "@nyte-ai/schema";
+import { branch, SqliteStore, type Store } from "@nyte-ai/core/store";
+import type { Api, AssistantMessage, Model, ToolCall, ToolResultMessage } from "@nyte-ai/schema";
 
 /** A model that advertises nothing special; tests spread over it for what they need. */
 export const testModel: Model<Api> = {
@@ -137,6 +139,7 @@ export class TestWorkspace {
       options.compaction === undefined ? base : { ...base, compaction: options.compaction },
     );
     this.opened.push(sdk);
+    storeOf.set(sdk, this.store);
     this.sessionIdValue ??= (await sdk.sessions.create()).sessionId;
     sdk.attach();
     return sdk;
@@ -148,6 +151,8 @@ export class TestWorkspace {
     rmSync(this.directory, { recursive: true, force: true });
   }
 }
+
+const storeOf = new WeakMap<Nyte, Store>();
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -202,6 +207,28 @@ export async function toolParts(sdk: Nyte, sessionId: SessionId): Promise<ToolTu
   return turns.flatMap((turn) =>
     turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
   );
+}
+
+/** The message a tool returned for a call, read from the tool-result commit on `main`. */
+export async function toolResultOf(input: {
+  readonly sdk: Nyte;
+  readonly sessionId: SessionId;
+  readonly callId: string;
+}): Promise<ToolResultMessage> {
+  const store = storeOf.get(input.sdk);
+  if (store === undefined) throw new Error("open the sdk through a TestWorkspace");
+  const session = await store.open(input.sessionId);
+  try {
+    const commits = await branch(session.objects, await session.refs.read("refs/heads/main"));
+    for (const { commit } of commits) {
+      if (commit.body.kind !== "message") continue;
+      const { message } = commit.body;
+      if (message.role === "toolResult" && message.toolCallId === input.callId) return message;
+    }
+  } finally {
+    await session.close();
+  }
+  throw new Error(`call ${input.callId} has no tool result on main`);
 }
 
 /** The text of the last assistant message on the branch. */

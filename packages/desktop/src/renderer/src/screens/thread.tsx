@@ -26,7 +26,7 @@ import { Composer, ComposerFrame } from "../conversation/composer.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
 import { composerSource } from "../conversation/composer-suggestions.tsx";
-import { dropHandlers } from "../conversation/composer-file-drop.ts";
+import { bindComposerFileDrop } from "../conversation/composer-file-drop.ts";
 import type {
   ComposerDocumentState,
   ComposerSubmission,
@@ -1169,6 +1169,7 @@ function BlankConversation({
   const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string>();
   const editorRef = useRef<ComposerEditorHandle | null>(null);
+  const blankRef = useRef<HTMLDivElement>(null);
   const attachInput = useCallback(
     (handle: ComposerEditorHandle | null) => {
       editorRef.current = handle;
@@ -1246,7 +1247,7 @@ function BlankConversation({
     }
   };
 
-  const addFiles = async (files: readonly File[]): Promise<void> => {
+  const addFiles = useCallback(async (files: readonly File[]): Promise<void> => {
     setAttachmentReads((count) => count + 1);
     return attachComposerFiles({ files, editor: editorRef.current })
       .then((result) => {
@@ -1256,20 +1257,25 @@ function BlankConversation({
         setAttachmentError(result.error);
       })
       .finally(() => setAttachmentReads((count) => count - 1));
-  };
+  }, []);
+
+  const dropDisabled = sending || host.data === undefined;
+  useLayoutEffect(() => {
+    const element = blankRef.current;
+    if (element === null) return undefined;
+    return bindComposerFileDrop({
+      element,
+      disabled: dropDisabled,
+      onFiles: (files) => {
+        void addFiles(files);
+      },
+    });
+  }, [addFiles, dropDisabled]);
 
   return (
     <div {...stylex.props(styles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-      <div
-        {...stylex.props(styles.blank)}
-        {...dropHandlers({
-          onFiles: (files) => {
-            void addFiles(files);
-          },
-          disabled: sending || host.data === undefined,
-        })}
-      >
+      <div ref={blankRef} {...stylex.props(styles.blank)}>
         <div {...stylex.props(styles.blankColumn)}>
           {host.data !== undefined && (
             <div {...stylex.props(styles.workspaceContext)}>

@@ -1,0 +1,128 @@
+---
+title: Tooltip
+description: "A popup that appears when an element is hovered or focused, showing a hint for sighted users"
+---
+
+```ts title="Import"
+import { Tooltip } from "@nyte-ai/ui/tooltip";
+```
+
+A hint that appears on hover or focus. Reach for it to label an icon-only control in a dense
+interface.
+
+No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- Give the trigger an `aria-label` that closely matches the tooltip text. The tooltip does not
+  label the trigger.
+- Tooltips are disabled on touch devices. Never put information there that a user would miss.
+- If the trigger exists to open the popup, use [Popover](/cloud/components/popover) with
+  `openOnHover` instead. If the trigger does something else, it is a tooltip.
+- For contextual feedback after an action, use an anchored [Toast](/cloud/components/toast).
+- The tooltip opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 0.
+  Both live on the trigger.
+- Wrap a group in `Tooltip.Provider` to share one delay. Once one tooltip is visible, the next
+  opens instantly, for `timeout` milliseconds after the last one closed.
+- `Tooltip.Positioner` places the popup. It defaults to `side="top"` and `align="center"`. Pass
+  `sideOffset` for the gap.
+- `Tooltip.Arrow` only works inside the positioner.
+- Set `trackCursorAxis` on the root to follow the pointer along `x`, `y`, or `both`.
+
+## Anatomy
+
+```tsx
+<Tooltip.Provider>
+  <Tooltip.Root>
+    <Tooltip.Trigger />
+    <Tooltip.Portal>
+      <Tooltip.Positioner>
+        <Tooltip.Popup>
+          <Tooltip.Arrow />
+          <Tooltip.Viewport />
+        </Tooltip.Popup>
+      </Tooltip.Positioner>
+    </Tooltip.Portal>
+  </Tooltip.Root>
+</Tooltip.Provider>
+```
+
+## Examples
+
+An icon button with a matching label.
+
+```tsx
+<Tooltip.Root>
+  <Tooltip.Trigger aria-label="Copy output">
+    <CopyIcon />
+  </Tooltip.Trigger>
+  <Tooltip.Portal>
+    <Tooltip.Positioner sideOffset={6}>
+      <Tooltip.Popup>
+        <Tooltip.Arrow />
+        Copy output
+      </Tooltip.Popup>
+    </Tooltip.Positioner>
+  </Tooltip.Portal>
+</Tooltip.Root>
+```
+
+A toolbar of triggers sharing one delay, so moving along the row does not re-wait.
+
+```tsx
+<Tooltip.Provider delay={400} closeDelay={100}>
+  <Tooltip.Root>…</Tooltip.Root>
+  <Tooltip.Root>…</Tooltip.Root>
+</Tooltip.Provider>
+```
+
+Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
+positioner, and its size with `width` and `height` on the popup.
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Provider
+
+<include>../../base-ui-reference/tooltip/Provider.md</include>
+
+### Root
+
+<include>../../base-ui-reference/tooltip/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/tooltip/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/tooltip/Portal.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/tooltip/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/tooltip/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/tooltip/Arrow.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/tooltip/Viewport.md</include>
+
+## Accessibility
+
+- The tooltip is a visual aid. Screen reader users get the trigger's `aria-label`, so write the
+  two to match.
+- The tooltip opens on hover and on keyboard focus of the trigger.
+- Escape closes it. Outside press closes it. Pressing the trigger closes it, unless you set
+  `closeOnClick={false}`.
+- The popup can be hovered without closing. Set `disableHoverablePopup` on the root to change
+  that.
+- The trigger carries `data-popup-open` while the tooltip is open, and `data-trigger-disabled`
+  when it is disabled.

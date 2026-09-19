@@ -83,6 +83,7 @@ export const SDK_OPERATION_PATHS = [
   "jobs.cancel",
   "runs.abort",
   "runs.reply",
+  "runs.diff",
   "heads.move",
   "workspace.list",
   "workspace.forget",
@@ -869,7 +870,7 @@ export type SessionsBridge = Pick<
 
 export type MessagesBridge = Pick<RemoteNyte["messages"], "send" | "cancel" | "redeliver">;
 
-export type RunsBridge = Pick<RemoteNyte["runs"], "abort" | "reply">;
+export type RunsBridge = Pick<RemoteNyte["runs"], "abort" | "reply" | "diff">;
 
 export type HeadsBridge = Pick<RemoteNyte["heads"], "move">;
 
