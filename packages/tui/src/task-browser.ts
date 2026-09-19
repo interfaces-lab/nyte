@@ -11,6 +11,7 @@ import type { Shell } from "./app/ui.ts";
 
 import {
   TaskIndex,
+  backgroundJob,
   projectTasks,
   statusMark,
   taskAgent,
@@ -100,7 +101,7 @@ class TaskInspector {
       fg(theme.dim)(
         [
           status,
-          task.job?.mode === "background" ? "background" : undefined,
+          task.kind === "job" && backgroundJob(task.job) ? "background" : undefined,
           ...(task.kind === "agent"
             ? [task.state.config.model?.id, task.state.config.thinkingLevel]
             : []),
@@ -150,6 +151,10 @@ interface TaskBrowserOptions {
   readonly onChange?: () => void;
   readonly onClose: () => void;
   readonly onError: (cause: unknown) => void;
+}
+
+function foregroundJob(job: JobInfo): boolean {
+  return job.phase.kind === "running" && job.phase.mode === "foreground";
 }
 
 /** Session-owned jobs stay alive when their menu or output view closes. */
@@ -235,7 +240,7 @@ export class TaskBrowser {
         head: state.head,
       });
       if (generation !== this.generation) return;
-      const foreground = jobs.filter((job) => job.mode === "foreground" && job.state === "running");
+      const foreground = jobs.filter(foregroundJob);
       if (foreground.length === 0) {
         notice(this.options.shell, "No foreground work to background.");
         return;
@@ -264,7 +269,7 @@ export class TaskBrowser {
 
   /** Foreground work is not a task row, but it is what Ctrl+Z moves. */
   get hasForegroundWork(): boolean {
-    return this.jobs.some((job) => job.mode === "foreground" && job.state === "running");
+    return this.jobs.some(foregroundJob);
   }
 
   get waiting() {
@@ -364,7 +369,7 @@ export class TaskBrowser {
           return {
             id: task.id,
             mark: { text: mark.glyph, tone: mark.tone },
-            label: `${task.job?.mode === "background" ? `${GLYPHS.steer} ` : ""}${taskAgent(task)} · ${taskLabel(task)}`,
+            label: `${task.kind === "job" && backgroundJob(task.job) ? `${GLYPHS.steer} ` : ""}${taskAgent(task)} · ${taskLabel(task)}`,
             description: [
               elapsed === undefined ? undefined : formatDuration(Math.max(0, elapsed)),
               ...(task.kind === "agent"
@@ -387,8 +392,8 @@ export class TaskBrowser {
 
   private repaint(): void {
     const { shell } = this.options;
-    const active = this.tasks.filter(
-      (task) => task.job?.mode === "background" && unfinishedTask(task),
+    const active = this.tasks.filter((task) =>
+      task.kind === "job" ? backgroundJob(task.job) : unfinishedTask(task),
     ).length;
     shell.taskStatus.visible = active > 0;
     // A background child waiting on the user outranks the count: it is the one thing to act on.
@@ -414,7 +419,7 @@ export class TaskBrowser {
             `${keycap("chat.interrupt")} back`,
             `${keycap("chat.history.previous", "symbol")}${keycap("chat.history.next", "symbol")} scroll`,
             ...(canStopTask(task) ? [`${keycap("chat.task.stop")} cancel`] : []),
-            ...(task.job?.mode === "foreground" && task.job.state === "running"
+            ...(task.kind === "job" && foregroundJob(task.job)
               ? [`${keycap("chat.job.background")} background`]
               : []),
             `${keycap("chat.tools.toggle")} follow`,
@@ -437,20 +442,20 @@ export class TaskBrowser {
     const task = this.tasks.find((candidate) => candidate.id === id);
     if (state === undefined || task === undefined) return;
     if (this.inspector === undefined) this.close();
-    if (task.job === undefined) {
-      if (action === "cancel" && task.kind === "agent" && canStopTask(task)) {
-        await this.options.nyte.runs.abort({
-          sessionId: task.state.sessionId,
-          head: task.state.head,
-        });
-      }
+    if (task.kind === "agent") {
+      if (action !== "cancel" || !canStopTask(task)) return;
+      notice(this.options.shell, "Cancellation requested.");
+      await this.options.nyte.runs.abort({
+        sessionId: task.state.sessionId,
+        head: task.state.head,
+      });
       return;
     }
-    if (task.job.state !== "running") {
+    if (task.job.phase.kind !== "running") {
       notice(this.options.shell, "This task has already finished. /tasks opens its output.");
       return;
     }
-    if (action === "background" && task.job.mode === "background") {
+    if (action === "background" && backgroundJob(task.job)) {
       notice(this.options.shell, "This task is already running in background.");
       return;
     }
