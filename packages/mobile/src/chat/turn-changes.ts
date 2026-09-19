@@ -2,7 +2,6 @@ import type { Turn } from "@nyte-ai/protocol";
 import {
   changesFromTurns,
   parsePatchFacts,
-  readPatch,
   type FileChange,
   type PatchFile,
 } from "@nyte-ai/client";
@@ -28,7 +27,6 @@ export function latestChangedTurn(items: readonly Turn[]): ConversationTurn | un
 export interface RecordedEdit {
   readonly turnId: string;
   readonly commit: string;
-  readonly title: string;
   readonly file: PatchFile;
 }
 
@@ -39,20 +37,17 @@ export function recordedEdits(items: readonly Turn[]): Map<string, RecordedEdit[
     if (turn.kind !== "turn") continue;
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.result === undefined || part.result.isError) continue;
-      const patch = readPatch(part.result.details);
-      if (patch === undefined) continue;
-      const facts = parsePatchFacts(patch);
+      if (part.class.kind !== "file_patch") continue;
+      const facts = parsePatchFacts(part.class.patch);
       if (facts === undefined) continue;
       for (const file of facts.files) {
-        if (file.path === undefined) continue;
         const edit: RecordedEdit = {
           turnId: turn.id,
           commit: part.result.commit,
-          title: part.result.title ?? part.toolName,
           file,
         };
-        const group = groups.get(file.path);
-        if (group === undefined) groups.set(file.path, [edit]);
+        const group = groups.get(part.class.path);
+        if (group === undefined) groups.set(part.class.path, [edit]);
         else group.push(edit);
       }
     }

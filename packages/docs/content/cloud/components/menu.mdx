@@ -1,0 +1,258 @@
+---
+title: Menu
+description: "A dropdown of actions with items, radio groups, and submenus"
+---
+
+```ts title="Import"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@nyte-ai/ui";
+import { Menu } from "@nyte-ai/ui/menu";
+```
+
+A list of actions opened by a button, with keyboard navigation and submenus. The root export ships
+styled `DropdownMenu*` components. The `@nyte-ai/ui/menu` subpath gives you the same behavior
+unstyled when you need parts the styled set does not cover, such as checkbox items, links, or an
+arrow.
+
+## Usage
+
+- Items are actions. To choose one of several values use a `DropdownMenuRadioGroup`. For a
+  form-style control use [Select](/cloud/components/select).
+- Put `variant="destructive"` on the last item, after a separator.
+- `inset` on items and labels aligns their text with radio items in the same menu, which reserve a
+  gutter on the left for the indicator.
+- `DropdownMenuShortcut` is display only. It does not bind the key.
+- `closeOnClick` controls whether clicking an item closes the menu. It defaults to `true` on
+  `Menu.Item` and `false` on `Menu.CheckboxItem`.
+- `Menu.LinkItem` renders an `<a>`, so pass `href` instead of `onClick`.
+- `openOnHover` on `Menu.Trigger` opens the menu on hover after `delay` milliseconds. Submenu
+  triggers open on hover already.
+- A trigger rendered outside `Menu.Root` connects to it through a handle from
+  `Menu.createHandle()`, passed to the `handle` prop on both. Submenu triggers stay inside their
+  `Menu.SubmenuRoot`.
+
+## Anatomy
+
+```tsx title="Styled"
+<DropdownMenu>
+  <DropdownMenuTrigger />
+  <DropdownMenuContent>
+    {/* Portal › Positioner › Popup */}
+    <DropdownMenuLabel />
+    <DropdownMenuItem>
+      <DropdownMenuShortcut />
+    </DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuRadioGroup>
+      <DropdownMenuRadioItem /> {/* includes the indicator */}
+    </DropdownMenuRadioGroup>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger /> {/* includes the chevron */}
+      <DropdownMenuSubContent /> {/* Content with side="right" */}
+    </DropdownMenuSub>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+```tsx title="Unstyled"
+<Menu.Root>
+  <Menu.Trigger />
+  <Menu.Portal>
+    <Menu.Backdrop />
+    <Menu.Positioner>
+      <Menu.Popup>
+        <Menu.Arrow />
+        <Menu.Item />
+        <Menu.LinkItem />
+        <Menu.Separator />
+
+        <Menu.SubmenuRoot>
+          <Menu.SubmenuTrigger />
+          {/* Portal › Positioner › Popup, as above */}
+        </Menu.SubmenuRoot>
+
+        <Menu.Group>
+          <Menu.GroupLabel />
+        </Menu.Group>
+
+        <Menu.RadioGroup>
+          <Menu.RadioItem>
+            <Menu.RadioItemIndicator />
+          </Menu.RadioItem>
+        </Menu.RadioGroup>
+
+        <Menu.CheckboxItem>
+          <Menu.CheckboxItemIndicator />
+        </Menu.CheckboxItem>
+      </Menu.Popup>
+    </Menu.Positioner>
+  </Menu.Portal>
+</Menu.Root>
+```
+
+## Examples
+
+<Preview>
+  <DropdownMenuDemo />
+</Preview>
+
+```tsx
+<DropdownMenu>
+  <DropdownMenuTrigger render={<Button variant="outline" />}>Session</DropdownMenuTrigger>
+  <DropdownMenuContent>
+    <DropdownMenuItem>
+      Rename
+      <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
+    </DropdownMenuItem>
+    <DropdownMenuSeparator />
+    <DropdownMenuRadioGroup value={effort} onValueChange={setEffort}>
+      <DropdownMenuLabel inset>Effort</DropdownMenuLabel>
+      <DropdownMenuRadioItem value="low">Low</DropdownMenuRadioItem>
+      <DropdownMenuRadioItem value="high">High</DropdownMenuRadioItem>
+    </DropdownMenuRadioGroup>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
+        <DropdownMenuItem>Archive</DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+    <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
+  </DropdownMenuContent>
+</DropdownMenu>
+```
+
+Open a dialog from an item by controlling the dialog and setting its state in `onClick`.
+
+```tsx
+<DropdownMenuItem onClick={() => setRenameOpen(true)}>Rename</DropdownMenuItem>
+```
+
+## Props
+
+Each styled component wraps a Base UI part.
+
+| Styled                  | Part                                       |
+| ----------------------- | ------------------------------------------ |
+| `DropdownMenu`          | `Menu.Root`                                |
+| `DropdownMenuTrigger`   | `Menu.Trigger`                             |
+| `DropdownMenuContent`   | `Menu.Portal`, `Positioner`, `Popup`       |
+| `DropdownMenuItem`      | `Menu.Item`                                |
+| `DropdownMenuLabel`     | `Menu.GroupLabel`                          |
+| `DropdownMenuSeparator` | `Menu.Separator`                           |
+| `DropdownMenuRadioGroup`| `Menu.RadioGroup`                          |
+| `DropdownMenuRadioItem` | `Menu.RadioItem`, `RadioItemIndicator`     |
+| `DropdownMenuSub`       | `Menu.SubmenuRoot`                         |
+| `DropdownMenuSubTrigger`| `Menu.SubmenuTrigger`                      |
+| `DropdownMenuSubContent`| `DropdownMenuContent` with submenu defaults |
+| `DropdownMenuShortcut`  | a `<span>` pushed to the right of the item |
+
+`DropdownMenuContent` forwards these to the positioner and passes the rest to the popup.
+
+| Prop          | Type                                   | Default    | Description                     |
+| ------------- | -------------------------------------- | ---------- | ------------------------------- |
+| `side`        | `Menu.Positioner.Props["side"]`        | `"bottom"` | Which side of the trigger.      |
+| `align`       | `Menu.Positioner.Props["align"]`       | `"start"`  | Alignment along that side.      |
+| `sideOffset`  | `number`                               | `4`        | Gap from the trigger.           |
+| `alignOffset` | `Menu.Positioner.Props["alignOffset"]` | `0`        | Shift along the alignment axis. |
+
+`DropdownMenuSubContent` takes the same props with defaults `side="right"`, `align="start"`,
+`sideOffset={0}`, `alignOffset={-3}`.
+
+`DropdownMenuItem`, `DropdownMenuRadioItem`, `DropdownMenuSubTrigger`, and `DropdownMenuLabel` add
+`inset`. `DropdownMenuItem` also adds `variant`.
+
+| Prop      | Type                         | Default     | Description                             |
+| --------- | ---------------------------- | ----------- | --------------------------------------- |
+| `inset`   | `boolean`                    | `false`     | Left padding to align with radio items. |
+| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color.                      |
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/menu/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/menu/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/menu/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/menu/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/menu/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/menu/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/menu/Arrow.md</include>
+
+### Item
+
+<include>../../base-ui-reference/menu/Item.md</include>
+
+### LinkItem
+
+<include>../../base-ui-reference/menu/LinkItem.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/menu/Separator.md</include>
+
+### Group
+
+<include>../../base-ui-reference/menu/Group.md</include>
+
+### GroupLabel
+
+<include>../../base-ui-reference/menu/GroupLabel.md</include>
+
+### RadioGroup
+
+<include>../../base-ui-reference/menu/RadioGroup.md</include>
+
+### RadioItem
+
+<include>../../base-ui-reference/menu/RadioItem.md</include>
+
+### RadioItemIndicator
+
+<include>../../base-ui-reference/menu/RadioItemIndicator.md</include>
+
+### CheckboxItem
+
+<include>../../base-ui-reference/menu/CheckboxItem.md</include>
+
+### CheckboxItemIndicator
+
+<include>../../base-ui-reference/menu/CheckboxItemIndicator.md</include>
+
+### SubmenuRoot
+
+<include>../../base-ui-reference/menu/SubmenuRoot.md</include>
+
+### SubmenuTrigger
+
+<include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
+
+## Accessibility
+
+- The popup has `role="menu"`, items `role="menuitem"`, radio items `role="menuitemradio"` with
+  `aria-checked`, submenu triggers `aria-haspopup="menu"` and `aria-expanded`.
+- Arrow Down and Up move the highlight and wrap, Home and End jump, typing matches item text
+  (override with `label`), Enter and Space activate, Escape closes and returns focus to the
+  trigger.
+- `orientation` on the root switches arrow navigation to left and right. `loopFocus={false}` stops
+  the highlight wrapping at the ends.
+- Arrow Right opens a submenu and moves focus into it, Arrow Left closes it. Submenus also open on
+  hover.
+- Disabled items are `aria-disabled` and skipped by keyboard navigation.
+- Separators are `role="separator"`.

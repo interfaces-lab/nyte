@@ -1,0 +1,72 @@
+---
+title: Toggle group
+description: "Shared pressed state across a series of toggle buttons"
+---
+
+```ts title="Import"
+import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+```
+
+Holds the pressed state for a row of [Toggle](/cloud/components/toggle) buttons and moves focus
+between them with the arrow keys. No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- Every child toggle needs a `value`. The group's `value` is the array of pressed ones.
+- One item at a time by default. `multiple` lets several stay pressed.
+- `value` with `onValueChange` controls the group. `defaultValue` leaves it uncontrolled.
+- `orientation="vertical"` switches arrow key navigation to the vertical axis and sets
+  `data-orientation` on the group.
+
+## Anatomy
+
+```tsx
+import { Toggle } from "@nyte-ai/ui/toggle";
+import { ToggleGroup } from "@nyte-ai/ui/toggle-group";
+
+<ToggleGroup>
+  <Toggle value="bold" />
+  <Toggle value="italic" />
+</ToggleGroup>;
+```
+
+## Examples
+
+### Single
+
+```tsx
+<ToggleGroup defaultValue={["left"]}>
+  <Toggle value="left" aria-label="Align left" />
+  <Toggle value="center" aria-label="Align center" />
+  <Toggle value="right" aria-label="Align right" />
+</ToggleGroup>
+```
+
+### Multiple
+
+`multiple` allows more than one toggle to be pressed at a time.
+
+```tsx
+<ToggleGroup multiple defaultValue={["bold"]}>
+  <Toggle value="bold" aria-label="Bold" />
+  <Toggle value="italic" aria-label="Italic" />
+</ToggleGroup>
+```
+
+## Props
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+### ToggleGroup
+
+<include>../../base-ui-reference/toggle-group/ToggleGroup.md</include>
+
+The `Orientation` type in that table is `'horizontal' | 'vertical'`.
+
+## Accessibility
+
+- Renders `role="group"`. Label it with `aria-label` or `aria-labelledby`.
+- Arrow keys move focus between the toggles. Focus wraps at the end unless you pass
+  `loopFocus={false}`.
+- `disabled` on the group disables every toggle in it and sets `data-disabled`.
+- Each toggle keeps its own `aria-pressed`. See [Toggle](/cloud/components/toggle).

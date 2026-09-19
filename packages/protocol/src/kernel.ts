@@ -7,6 +7,8 @@
  */
 import type { JsonValue, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema";
+import { Value } from "typebox/value";
+import { TreeId as TreeIdSchema } from "./schemas.ts";
 import type { JobInfo, SessionId } from "./sdk.ts";
 
 export type { Failure, FailureClass } from "@nyte-ai/schema";
@@ -15,6 +17,14 @@ export type { Failure, FailureClass } from "@nyte-ai/schema";
 export type Oid = string;
 /** Position in a session's event stream. The first event is 1. */
 export type Seq = number;
+/** The VCS backend's id for one workspace tree: a git tree hash, SHA-1 or SHA-256. */
+export type TreeId = string & { readonly __brand: "TreeId" };
+
+/** Parse the untrusted string a wire request or a git command supplied. */
+export function treeId(value: string): TreeId {
+  if (!Value.Check(TreeIdSchema, value)) throw new Error(`Invalid tree id: ${value}`);
+  return value;
+}
 
 /** The cursor is older than the stream's floor: take a snapshot, then watch from its seq. */
 export class CursorExpired extends Error {
@@ -91,6 +101,12 @@ export interface Commit {
   readonly calls?: Readonly<Record<string, ToolClass>>;
   /** Why an assistant message stopped with `error` or `aborted`. Provenance, never context. */
   readonly failure?: Failure;
+  /**
+   * The workspace tree when this commit was written: a run's first commit and
+   * each tool-result commit carry one, when the host has a VCS backend.
+   * Provenance, never context.
+   */
+  readonly tree?: TreeId;
   readonly body: CommitBody;
   readonly at: number;
   readonly author?: Actor;

@@ -1,0 +1,29 @@
+{
+  "title": "Components",
+  "pages": [
+    "index",
+    "alert-dialog",
+    "autocomplete",
+    "avatar",
+    "button",
+    "collapsible",
+    "context-menu",
+    "dialog",
+    "input",
+    "menu",
+    "number-field",
+    "popover",
+    "preview-card",
+    "row",
+    "select",
+    "slider",
+    "switch",
+    "tabs",
+    "textarea",
+    "toast",
+    "toggle",
+    "toggle-group",
+    "toolbar",
+    "tooltip"
+  ]
+}

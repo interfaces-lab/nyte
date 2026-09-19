@@ -100,7 +100,7 @@ test("a stored parent loop terminates at the limit", async () => {
   }
   // The rows fail hash verification, which proves the query returned rather than looped.
   await assert.rejects(session.objects.chain("first-oid", { limit: 50 }), {
-    name: "TypeError",
+    name: "CorruptObject",
     message: /does not match its hash/,
   });
 });

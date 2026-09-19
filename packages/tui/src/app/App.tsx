@@ -399,7 +399,7 @@ function App(props: AppProps): BoxRenderable {
     nextId,
     openPath,
     onFollowModeChange: setFollowingLatest,
-    children: () => [],
+    tasks: () => [],
     userBlocks,
     userBlockWidth,
   };

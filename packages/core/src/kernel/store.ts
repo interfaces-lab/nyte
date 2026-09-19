@@ -140,6 +140,22 @@ export interface Store {
   close(): Promise<void>;
 }
 
+/**
+ * Thrown by the store when a stored object cannot be read as what it claims:
+ * not a known shape, not matching its oid, or not the kind its ref promised.
+ * Reads of that session fail; the SDK keeps the failure out of listings.
+ */
+export class CorruptObject extends Error {
+  readonly kind = "corrupt" satisfies "corrupt";
+  readonly oid: string;
+
+  constructor(oid: string, reason: string) {
+    super(`Stored object ${oid} ${reason}`);
+    this.name = "CorruptObject";
+    this.oid = oid;
+  }
+}
+
 /** Thrown by the store and passed through the SDK unchanged; `kind` and `what` name it to a wire mapping. */
 export class UnknownSession extends Error {
   readonly kind = "not_found" satisfies "not_found";

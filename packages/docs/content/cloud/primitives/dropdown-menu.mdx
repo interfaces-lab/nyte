@@ -1,6 +1,6 @@
 ---
 title: Dropdown menu
-description: "A Base UI menu on the menu tokens: items, radio groups, submenus, labels, shortcuts, separators"
+description: "Items, radio groups, submenus, labels, shortcuts, and separators"
 ---
 
 ```ts title="Import"
@@ -20,21 +20,15 @@ import {
 } from "@nyte-ai/ui";
 ```
 
-Implemented in `packages/ui/src/components/ui/dropdown-menu.tsx`, wrapping
-[`@nyte-ai/ui/menu`](/cloud/headless/menu). `DropdownMenu`, `DropdownMenuTrigger`,
-`DropdownMenuRadioGroup`, and `DropdownMenuSub` are the Base UI parts (`Root`, `Trigger`,
-`RadioGroup`, `SubmenuRoot`) re-exported unstyled.
-
-The desktop app has its own richer menu tier (checkbox items, switch items, command menu). See
-[Desktop › Menu](/cloud/desktop/menu). This wrapper is for web hosts and demos.
+A menu built on [`@nyte-ai/ui/menu`](/cloud/headless/menu).
 
 ## Usage
 
-- Items are actions. For choosing one of several values, use a `DropdownMenuRadioGroup`; for a
-  form-style select, use the headless [Select](/cloud/headless/select).
-- `variant="destructive"` on the last item, after a separator.
+- Items are actions. To choose one of several values use a `DropdownMenuRadioGroup`. For a
+  form-style select use the headless [Select](/cloud/headless/select).
+- Put `variant="destructive"` on the last item, after a separator.
 - `inset` on items and labels aligns their text with radio items in the same menu, which reserve
-  `--nyte-control-menu-inset` on the left for the indicator.
+  a gutter on the left for the indicator.
 - `DropdownMenuShortcut` is display only. It does not bind the key.
 
 ## Anatomy
@@ -60,7 +54,7 @@ The desktop app has its own richer menu tier (checkbox items, switch items, comm
 </DropdownMenu>
 ```
 
-## Example
+## Examples
 
 <Preview>
   <DropdownMenuDemo />
@@ -99,7 +93,7 @@ The desktop app has its own richer menu tier (checkbox items, switch items, comm
 
 ### DropdownMenuContent
 
-`StyledProps<Menu.Popup.Props>` plus the positioning subset forwarded to `Menu.Positioner`:
+Positioning props are forwarded to the positioner.
 
 | Prop          | Type                                   | Default    | Description                     |
 | ------------- | -------------------------------------- | ---------- | ------------------------------- |
@@ -115,21 +109,16 @@ The desktop app has its own richer menu tier (checkbox items, switch items, comm
 
 ### DropdownMenuItem
 
-`StyledProps<Menu.Item.Props>` plus:
-
-| Prop      | Type                         | Default     | Description                                  |
-| --------- | ---------------------------- | ----------- | -------------------------------------------- |
-| `inset`   | `boolean`                    | `false`     | Left padding to align with radio items.      |
-| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color; highlighted wash matches. |
-
-Sets `data-slot="dropdown-menu-item"`, `data-variant`, and `data-inset`.
+| Prop      | Type                         | Default     | Description                             |
+| --------- | ---------------------------- | ----------- | --------------------------------------- |
+| `inset`   | `boolean`                    | `false`     | Left padding to align with radio items. |
+| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color.                      |
 
 <include>../../base-ui-reference/menu/Item.md</include>
 
 ### DropdownMenuRadioGroup, DropdownMenuRadioItem
 
-`DropdownMenuRadioItem` is `StyledProps<Menu.RadioItem.Props>` plus `inset`. It renders the
-`RadioItemIndicator` with a check glyph in an [IconBox](/cloud/foundations/icons#iconbox).
+`DropdownMenuRadioItem` also takes `inset` and renders its own check indicator.
 
 <include>../../base-ui-reference/menu/RadioGroup.md</include>
 
@@ -137,13 +126,13 @@ Sets `data-slot="dropdown-menu-item"`, `data-variant`, and `data-inset`.
 
 ### DropdownMenuSubTrigger
 
-`StyledProps<Menu.SubmenuTrigger.Props>` plus `inset`. Renders a trailing chevron.
+Also takes `inset`. Renders a trailing chevron.
 
 <include>../../base-ui-reference/menu/SubmenuTrigger.md</include>
 
 ### DropdownMenuLabel
 
-`StyledProps<Menu.GroupLabel.Props>` plus `inset`.
+Also takes `inset`.
 
 <include>../../base-ui-reference/menu/GroupLabel.md</include>
 
@@ -153,32 +142,16 @@ Sets `data-slot="dropdown-menu-item"`, `data-variant`, and `data-inset`.
 
 ### DropdownMenuShortcut
 
-`StyledProps<React.ComponentProps<"span">>`. Pushed to the right with `margin-left: auto`, in
-`--nyte-color-muted-foreground` at `--nyte-font-size-detail`.
+A `<span>` pushed to the right edge of the item.
 
 ## Accessibility
 
-Base UI's menu model, unchanged:
-
-- Popup has `role="menu"`; items `role="menuitem"`, radio items `role="menuitemradio"` with
+- The popup has `role="menu"`, items `role="menuitem"`, radio items `role="menuitemradio"` with
   `aria-checked`, submenu triggers `aria-haspopup="menu"` and `aria-expanded`.
-- Arrow Down/Up move the highlight and wrap; Home/End jump; typing matches item text
-  (override with `label`); Enter and Space activate; Escape closes and returns focus to the
+- Arrow Down and Up move the highlight and wrap, Home and End jump, typing matches item text
+  (override with `label`), Enter and Space activate, Escape closes and returns focus to the
   trigger.
-- Arrow Right opens a submenu and moves focus into it; Arrow Left closes it. Submenus also open on
-  hover (`openOnHover`).
-- Disabled items are `aria-disabled`, skipped by keyboard navigation, and set `data-disabled`.
+- Arrow Right opens a submenu and moves focus into it, Arrow Left closes it. Submenus also open on
+  hover.
+- Disabled items are `aria-disabled` and skipped by keyboard navigation.
 - Separators are `role="separator"`.
-
-## Styling
-
-| Token                                                                 | Role                                                                 |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `--nyte-layer-menu`                                                   | z-index (60), above dialogs                                          |
-| `--nyte-menu-min-width`, `-max-width`, `-max-height`                  | Popup box, bound to `--available-*`                                  |
-| `--nyte-radius-menu`, `--nyte-elevation-menu`, `--nyte-color-popover` | Popup surface                                                        |
-| `--nyte-font-size-label` / `--nyte-leading-label`                     | Items                                                                |
-| `--nyte-color-muted-hover`                                            | `[data-highlighted]` and `[data-popup-open]`                         |
-| `--nyte-color-destructive`, `-muted`                                  | Destructive item and its highlight                                   |
-| `--nyte-control-menu-inset`                                           | Indicator gutter / `inset`                                           |
-| `--nyte-motion-normal`                                                | Fade + 0.98 scale on `[data-starting-style]` / `[data-ending-style]` |

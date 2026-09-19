@@ -28,7 +28,7 @@ import type {
   ContextStatus,
   CreateHeadOutcome,
   DeleteHeadOutcome,
-  FileChange,
+  FileDiff,
   HeadInfo,
   HeadName,
   RemoteJobs,
@@ -44,8 +44,9 @@ import type {
   PluginCatalog,
   RedeliverOutcome,
   ReplyOutcome,
-  RunId,
+  RunDiff,
   RunInfo,
+  RunRevert,
   SendInput,
   SendReceipt,
   Seq,
@@ -56,6 +57,8 @@ import type {
   SessionParent,
   SessionActivationState,
   SessionSnapshot,
+  TreeId,
+  TreeOutcome,
   Turn,
   VcsDiff,
   VcsStatus,
@@ -97,6 +100,7 @@ export {
   type CreateHeadOutcome,
   type DeleteHeadOutcome,
   type FileChange,
+  type FileDiff,
   type HeadInfo,
   type HeadName,
   type JobInfo,
@@ -116,8 +120,10 @@ export {
   type RedeliverOutcome,
   type ReplyOutcome,
   type RunConfig,
+  type RunDiff,
   type RunId,
   type RunInfo,
+  type RunRevert,
   type RunPhase,
   type SendInput,
   type Selection,
@@ -132,6 +138,8 @@ export {
   type SessionActivationState,
   type SessionSnapshot,
   type ToolProgress,
+  type TreeId,
+  type TreeOutcome,
   type Turn,
   type VcsDiff,
   type VcsStatus,
@@ -246,11 +254,8 @@ export interface Runs {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
   }): Promise<ContextStatus>;
-  changes(input: {
-    readonly sessionId: SessionId;
-    readonly head?: HeadName;
-    readonly runId?: RunId;
-  }): Promise<readonly FileChange[]>;
+  diff(input: OperationInput<"runs.diff">): Promise<RunDiff>;
+  revert(input: OperationInput<"runs.revert">): Promise<RunRevert>;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +297,21 @@ export interface Heads {
 export interface VcsBackend {
   status(): Promise<VcsStatus>;
   diff(input?: { readonly paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
+  /** The workspace's current tree, recorded on commits as provenance. */
+  tree(): Promise<TreeOutcome>;
+  diffTrees(input: {
+    readonly from: TreeId;
+    readonly to: TreeId;
+    readonly paths?: readonly string[];
+  }): Promise<readonly FileDiff[]>;
+  /** Put `paths` back as `tree` had them; a path absent from `tree` is removed. */
+  restoreTree(input: {
+    readonly tree: TreeId;
+    readonly paths: readonly string[];
+  }): Promise<
+    | { readonly kind: "restored"; readonly files: readonly string[] }
+    | { readonly kind: "failed"; readonly reason: string }
+  >;
 }
 
 /** Everything the SDK's `workspace` namespace answers from; the host supplies it all. */
@@ -382,7 +402,7 @@ export class NyteClosed extends Error {
   }
 }
 
-export { UnknownSession } from "../store.ts";
+export { CorruptObject, UnknownSession } from "../store.ts";
 
 export type { Disposer };
 

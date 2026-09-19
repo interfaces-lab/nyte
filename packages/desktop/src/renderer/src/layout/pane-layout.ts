@@ -393,14 +393,7 @@ export function parsePersistedPaneLayout(value: string | null): PaneLayout {
         return { kind: "single", paneId: persisted.pane.id, selection: persisted.pane.selection };
       }
       const { direction, ratio, order, primary, secondary, activePaneId } = persisted;
-      if (
-        primary.id !== "primary" ||
-        secondary.id !== "secondary" ||
-        order[0] === order[1] ||
-        duplicatedSession(primary.selection, secondary.selection)
-      ) {
-        return createSinglePane();
-      }
+      if (duplicatedSession(primary.selection, secondary.selection)) return createSinglePane();
       return {
         kind: "split",
         direction,

@@ -46,7 +46,7 @@ export type TreeFilter = "default" | "no-tools" | "users" | "all";
 
 const FILTER_CYCLE: readonly TreeFilter[] = ["default", "no-tools", "users", "all"];
 
-type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary" | "config" | "note";
+type TreeRole = "user" | "assistant" | "tool" | "checkpoint" | "summary" | "config";
 
 /** One drawn row of the tree. */
 interface TreeRow {
@@ -182,8 +182,6 @@ function describe(node: SessionTreeNode, calls: ReadonlyMap<string, ToolCallSumm
         label: `[config: ${body.model?.id ?? body.thinkingLevel ?? body.agent ?? ""}]`,
         text: "",
       };
-    case "note":
-      return { role: "note", label: `[${body.type}]`, text: "" };
     default: {
       const _exhaustive: never = body;
       return _exhaustive;
@@ -462,7 +460,6 @@ class TreeRows extends Renderable {
         return this.theme.warning;
       case "tool":
       case "config":
-      case "note":
         return this.theme.muted;
       default: {
         const _exhaustive: never = row.role;

@@ -55,9 +55,9 @@ test("bulk and incremental totals keep file order, repeated paths, latest commit
     turn(repeated),
   ];
   checkProjection(turns, [
-    { path: "first.txt", added: 4, removed: 2, lastCommit: "first" },
-    { path: "second.txt", added: 4, removed: 0, lastCommit: "again" },
-    { path: "gone.txt", added: 0, removed: 1, lastCommit: "gone" },
+    { path: "first.txt", added: 4, removed: 2 },
+    { path: "second.txt", added: 4, removed: 0 },
+    { path: "gone.txt", added: 0, removed: 1 },
   ]);
 });
 
@@ -81,16 +81,16 @@ test("only settled, successful file_patch results count; other parts and classes
   checkProjection(
     [ignored, zeroCounts, valid, ignored],
     [
-      { path: "renamed.txt", added: 0, removed: 0, lastCommit: "rename" },
-      { path: "first.txt", added: 2, removed: 1, lastCommit: "failed" },
-      { path: "second.txt", added: 2, removed: 0, lastCommit: "shell" },
+      { path: "renamed.txt", added: 0, removed: 0 },
+      { path: "first.txt", added: 2, removed: 1 },
+      { path: "second.txt", added: 2, removed: 0 },
     ],
   );
   const sameTurn = turn(
     settled("retry", patch("first.txt", 2, 1)),
     settled("retry", patch("first.txt", 9, 9)),
   );
-  checkProjection([sameTurn], [{ path: "first.txt", added: 2, removed: 1, lastCommit: "retry" }]);
+  checkProjection([sameTurn], [{ path: "first.txt", added: 2, removed: 1 }]);
 });
 
 test("forks from one snapshot and repeated bulk rebuilds own independent totals", () => {
@@ -107,12 +107,12 @@ test("forks from one snapshot and repeated bulk rebuilds own independent totals"
   const leftFiles = changesFromTurns([trunk, left]);
   const rightState = appendTurnChanges(state, right);
   const expectedLeft = [
-    { path: "first.txt", added: 4, removed: 2, lastCommit: "left" },
-    { path: "second.txt", added: 2, removed: 0, lastCommit: "left-2" },
+    { path: "first.txt", added: 4, removed: 2 },
+    { path: "second.txt", added: 2, removed: 0 },
   ];
   const expectedRight = [
-    { path: "first.txt", added: 2, removed: 1, lastCommit: "trunk" },
-    { path: "gone.txt", added: 0, removed: 1, lastCommit: "right" },
+    { path: "first.txt", added: 2, removed: 1 },
+    { path: "gone.txt", added: 0, removed: 1 },
   ];
   assert.deepEqual(leftState.files, expectedLeft);
   assert.deepEqual(rightState.files, expectedRight);
@@ -183,8 +183,8 @@ test("user and completion-opened work turns project the same changes during sett
     ["assistant", "tool"],
   );
   const expected = [
-    { path: "first.txt", added: 2, removed: 1, lastCommit: "commit-2" },
-    { path: "second.txt", added: 2, removed: 0, lastCommit: "commit-9" },
+    { path: "first.txt", added: 2, removed: 1 },
+    { path: "second.txt", added: 2, removed: 0 },
   ];
   checkProjection(turns, expected);
   let transcript = EMPTY_TRANSCRIPT;

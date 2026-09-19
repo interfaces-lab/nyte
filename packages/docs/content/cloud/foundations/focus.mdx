@@ -1,14 +1,13 @@
 ---
 title: Focus and keyboard
-description: "The focus ring, the pointer/keyboard modality switch, and the keyboard model every primitive inherits from Base UI"
+description: "The focus ring, the pointer and keyboard modality switch, and the keyboard model from Base UI"
 ---
 
 ## The ring
 
-Every focusable primitive draws the same ring: `--nyte-control-focus-width` solid
-`--nyte-color-focus-ring`, offset by `--nyte-control-focus-offset`, on `:focus-visible` only.
-`@nyte-ai/ui/styles.css` restates the rule globally so ad-hoc focusables in an app land on the
-same ring:
+Every focusable primitive draws the same ring on `:focus-visible`.
+`@nyte-ai/ui/styles.css` restates the rule globally, so ad-hoc focusables in an app land on the
+same ring.
 
 ```css
 :focus-visible {
@@ -17,56 +16,41 @@ same ring:
 }
 ```
 
-Text fields (`Input`, `Textarea`) use a 2px `box-shadow` in `--nyte-color-focus-ring` plus a
+`Input` and `Textarea` use a 2px `box-shadow` in `--nyte-color-focus-ring` plus a
 `--nyte-color-ring` border instead of an outline, so the ring hugs the field's radius.
 
-## Why the ring has its own color token
+## Focus modality
 
-Chromium matches `:focus-visible` on every text field focus, pointer included. A plain
-`:focus-visible` rule therefore snaps a ring around any input the user merely clicked into. No
-selector can tell the two apart, so the color is the gate:
+Chromium matches `:focus-visible` on every text field focus, pointer clicks included, so the ring
+color is the gate. The host marks the document with `data-nyte-focus-modality="pointer"` when the
+last focus move came from a pointer and `"keyboard"` when it came from a key.
+`@nyte-ai/ui/styles.css` sets `--nyte-color-focus-ring: transparent` while the attribute reads
+`pointer`.
 
-- `--nyte-color-focus-ring` defaults to `var(--nyte-color-ring)`.
-- The host marks the document with `data-nyte-focus-modality="pointer"` when the last focus
-  movement came from a pointer, and `keyboard` when it came from a key.
-- `@nyte-ai/ui/styles.css` sets `--nyte-color-focus-ring: transparent` while the attribute reads
-  `pointer`.
+Start the document at `pointer`, so a window that autofocuses a field does not open ringed. Inside
+a text field, count only Tab as a keyboard move, since letters and Cmd+A are edits. Elsewhere,
+count any non-modifier key. Listen in the capture phase, so the modality is settled before a
+handler moves focus.
 
-The desktop's implementation is `desktop/src/renderer/src/theme/focus-modality.ts`. Its rules,
-which a host **must** preserve:
-
-1. Launch quiet. The attribute starts as `pointer`, so a window that autofocuses its composer does
-   not open ringed. The first Tab earns the ring.
-2. `pointerdown` (capture phase) sets `pointer`.
-3. `keydown` (capture phase) sets `keyboard` only when the key moved focus:
-   - inside a text field (`input` without a non-text `type`, `textarea`, `contenteditable`) only
-     **Tab** qualifies; letters and Cmd+A / Cmd+V are edits;
-   - elsewhere any non-modifier key qualifies (arrows walk a menu, Enter activates, Escape backs
-     out).
-
-Capture phase matters: the modality is settled before any handler moves focus, so the very first
-focused element already has the right ring state.
-
-A web host that does not run this script gets a ring on click as well as on Tab. That is
-acceptable; hiding the ring on keyboard focus is not.
+A host that skips this gets a ring on click as well as on Tab, which is fine. Hiding the ring on
+keyboard focus is not.
 
 ## Keyboard model
 
-Base UI owns keyboard behavior, and the primitives do not intercept it. The guarantees that a
-wrapper **must not** break:
+Base UI owns keyboard behavior and the primitives do not intercept it.
 
-| Component            | Keys                                                                                                                                                                                                                                           |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Button               | Enter and Space activate. A `render`-replaced non-button needs `nativeButton={false}` to keep this.                                                                                                                                            |
-| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes a Dialog; Alert dialog ignores outside press and Escape unless `disablePointerDismissal`/… say otherwise (see the headless page). |
-| Dropdown menu        | Arrow Down/Up move highlight, Home/End jump, type-ahead matches item text, Enter/Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it.                                                                          |
-| Input                | Native.                                                                                                                                                                                                                                        |
+| Component            | Keys                                                                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Button               | Enter and Space activate. A `render`-replaced non-button needs `nativeButton={false}` to keep this.                                                                                                            |
+| Dialog, Alert dialog | Focus moves into the popup on open and returns to the trigger on close. Tab is trapped inside. Escape closes a Dialog. Alert dialog ignores outside press and Escape unless its dismissal props say otherwise. |
+| Dropdown menu        | Arrow Down and Up move the highlight, Home and End jump, type-ahead matches item text, Enter and Space activate, Escape closes, Arrow Right opens a submenu and Arrow Left closes it.                          |
+| Input                | Native.                                                                                                                                                                                                        |
 
-The full key tables are on the [headless pages](/cloud/headless), reproduced from Base UI.
+The full key tables are on the [component pages](/cloud/components), reproduced from Base UI.
 
 ## Disabled
 
 A disabled control drops to `--nyte-control-disabled-opacity` (0.56) and, for `Button`, sets
 `pointer-events: none`. When a button enters a loading state after activation, pass
-`focusableWhenDisabled` so focus stays on it; otherwise focus falls to `<body>` and a screen reader
+`focusableWhenDisabled` so focus stays on it. Otherwise focus falls to `<body>` and a screen reader
 loses its place.

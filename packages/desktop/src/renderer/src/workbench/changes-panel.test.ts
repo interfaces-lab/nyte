@@ -57,6 +57,7 @@ vi.mock("../queries.ts", () => ({
   },
   useVcsLog: () => ({ data: { commits: [], hasMore: false }, isPending: false }),
   useVcsRefs: () => ({ data: { local: [], remote: [] } }),
+  useRunDiff: () => ({ data: undefined, isLoading: false, isError: false }),
   refreshVcs: () => undefined,
 }));
 
@@ -162,10 +163,10 @@ test("a result seen twice on the branch counts once, and its files keep their ow
   assert.ok(option);
   assert.deepEqual(option.stats, { added: 2, removed: 0 });
   assert.deepEqual(
-    option.files.map((row) => [row.change.path, row.patch, row.change.lastCommit]),
+    option.files.map((row) => [row.change.path, row.patch]),
     [
-      ["src/a.ts", addA, "twice-result-0"],
-      ["src/b.ts", addB, "twice-result-1"],
+      ["src/a.ts", addA],
+      ["src/b.ts", addB],
     ],
   );
 });

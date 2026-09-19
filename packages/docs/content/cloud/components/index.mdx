@@ -1,0 +1,57 @@
+---
+title: Overview
+description: "Every component @nyte-ai/ui exports, and the import path for each"
+---
+
+`@nyte-ai/ui` is one component set. The package root exports the components we style with StyleX
+and `--nyte-*` tokens. The subpaths re-export a Base UI namespace unstyled, so Base UI owns the
+interaction model and you own every class, StyleX style, and layout decision. A component with
+both gives you the styled version at the root and the raw parts on the subpath.
+
+```ts
+import "@nyte-ai/ui/styles.css";
+import { Button } from "@nyte-ai/ui";
+import { Popover } from "@nyte-ai/ui/popover";
+```
+
+## Import paths
+
+| Component                                      | Styled                           | Unstyled                   |
+| ---------------------------------------------- | -------------------------------- | -------------------------- |
+| [Alert dialog](/cloud/components/alert-dialog) | `@nyte-ai/ui`                    | `@nyte-ai/ui/alert-dialog` |
+| [Autocomplete](/cloud/components/autocomplete) | none                             | `@nyte-ai/ui/autocomplete` |
+| [Avatar](/cloud/components/avatar)             | `@nyte-ai/ui`                    | none                       |
+| [Button](/cloud/components/button)             | `@nyte-ai/ui`                    | `@nyte-ai/ui/button`       |
+| [Collapsible](/cloud/components/collapsible)   | none                             | `@nyte-ai/ui/collapsible`  |
+| [Context menu](/cloud/components/context-menu) | none                             | `@nyte-ai/ui/context-menu` |
+| [Dialog](/cloud/components/dialog)             | `@nyte-ai/ui`                    | `@nyte-ai/ui/dialog`       |
+| [Input](/cloud/components/input)               | `@nyte-ai/ui`                    | none                       |
+| [Menu](/cloud/components/menu)                 | `@nyte-ai/ui`                    | `@nyte-ai/ui/menu`         |
+| [Number field](/cloud/components/number-field) | none                             | `@nyte-ai/ui/number-field` |
+| [Popover](/cloud/components/popover)           | none                             | `@nyte-ai/ui/popover`      |
+| [Preview card](/cloud/components/preview-card) | none                             | `@nyte-ai/ui/preview-card` |
+| [Row](/cloud/components/row)                   | `@nyte-ai/ui`, `@nyte-ai/ui/row` | none                       |
+| [Select](/cloud/components/select)             | none                             | `@nyte-ai/ui/select`       |
+| [Slider](/cloud/components/slider)             | none                             | `@nyte-ai/ui/slider`       |
+| [Switch](/cloud/components/switch)             | none                             | `@nyte-ai/ui/switch`       |
+| [Tabs](/cloud/components/tabs)                 | none                             | `@nyte-ai/ui/tabs`         |
+| [Textarea](/cloud/components/textarea)         | `@nyte-ai/ui`                    | none                       |
+| [Toast](/cloud/components/toast)               | `@nyte-ai/ui/sonner`             | none                       |
+| [Toggle](/cloud/components/toggle)             | none                             | `@nyte-ai/ui/toggle`       |
+| [Toggle group](/cloud/components/toggle-group) | none                             | `@nyte-ai/ui/toggle-group` |
+| [Toolbar](/cloud/components/toolbar)           | none                             | `@nyte-ai/ui/toolbar`      |
+| [Tooltip](/cloud/components/tooltip)           | none                             | `@nyte-ai/ui/tooltip`      |
+
+The styled menu exports are named `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`,
+and so on. `@nyte-ai/ui/row` and the package root export the same `Row`. `@nyte-ai/ui/sonner`
+re-exports `Toaster`, `toast`, and `useSonner` from the `sonner` package, which brings its own
+styling.
+
+Import a Base UI namespace from its subpath rather than from `@base-ui/react`, so the Base UI
+version stays behind the shared package. When `render` produces something other than a `<button>`,
+pass `nativeButton={false}` so Base UI keeps button semantics.
+
+## Not wrapped
+
+Base UI parts with no subpath yet: Checkbox, CheckboxGroup, Radio, RadioGroup, Field, Fieldset,
+Form, Progress, Meter, Separator, ScrollArea, Accordion, Combobox, NavigationMenu, Toast.

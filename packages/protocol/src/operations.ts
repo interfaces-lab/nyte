@@ -23,7 +23,6 @@ import {
   CommandInfo,
   CommandOutcome,
   ConfigureOutcome,
-  FileChange,
   HeadName,
   JsonValue,
   JobInfo,
@@ -38,7 +37,9 @@ import {
   PluginInfo,
   RedeliverOutcome,
   ReplyOutcome,
+  RunDiff,
   RunInfo,
+  RunRevert,
   SendReceipt,
   SessionId,
   SessionInfo,
@@ -189,13 +190,18 @@ export const OPERATIONS = Object.freeze({
     }),
     ReplyOutcome,
   ),
-  "runs.changes": operation(
+  "runs.diff": operation(
     strict({
       sessionId: SessionId,
       head: Type.Optional(HeadName),
-      runId: Type.Optional(Type.String()),
+      runId: Type.String(),
+      paths: Type.Optional(Type.Array(Type.String())),
     }),
-    list(FileChange),
+    RunDiff,
+  ),
+  "runs.revert": operation(
+    strict({ sessionId: SessionId, head: Type.Optional(HeadName), runId: Type.String() }),
+    RunRevert,
   ),
 
   "heads.move": operation(

@@ -29,6 +29,7 @@ import {
   testModel,
   toolCall,
   toolParts,
+  toolResultOf,
 } from "./host.ts";
 
 const echoServer: McpServerConfig = {
@@ -158,8 +159,12 @@ test("the plugin offers the server's tools to the model and runs a call through 
   ]);
   const parts = await toolParts(sdk, sessionId);
   assert.deepEqual(
-    parts.map((part) => [part.toolName, part.result?.output, part.result?.isError]),
-    [[bridgedToolName("echo", "echo"), "echo: there", false]],
+    parts.map((part) => [part.callId, part.class, part.result?.output, part.result?.isError]),
+    [["c1", { kind: "custom", label: "echo: echo" }, "echo: there", false]],
+  );
+  assert.equal(
+    (await toolResultOf({ sdk, sessionId, callId: "c1" })).toolName,
+    bridgedToolName("echo", "echo"),
   );
   assert.equal(await runCommand(sdk, sessionId, "mcp"), "echo: 2 tools\noff: off");
 });

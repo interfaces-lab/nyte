@@ -1,0 +1,119 @@
+---
+title: Toolbar
+description: "A container that groups buttons and controls under one tab stop"
+---
+
+```ts title="Import"
+import { Toolbar } from "@nyte-ai/ui/toolbar";
+```
+
+Groups a set of controls and moves focus between them with the arrow keys, so the whole toolbar is
+one stop in the tab order. No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- Arrow keys move focus inside a toolbar. In a horizontal toolbar they also move the text cursor
+  inside an input, so use at most one `Toolbar.Input` and put it last.
+- Toolbar items stay focusable while disabled by default, which keeps the arrow key order stable.
+  Pass `focusableWhenDisabled={false}` to drop an item out of it.
+- A popup trigger goes through `Toolbar.Button` with `render`, so the item stays part of the
+  toolbar.
+- `Toolbar.Separator` defaults to the opposite orientation of the toolbar.
+
+## Anatomy
+
+```tsx
+<Toolbar.Root>
+  <Toolbar.Button />
+  <Toolbar.Link />
+  <Toolbar.Separator />
+  <Toolbar.Group>
+    <Toolbar.Button />
+    <Toolbar.Button />
+  </Toolbar.Group>
+  <Toolbar.Input />
+</Toolbar.Root>
+```
+
+## Examples
+
+### With a menu
+
+Pass the trigger to `Toolbar.Button` with `render`. The same shape works for
+[Alert dialog](/cloud/components/alert-dialog), [Dialog](/cloud/components/dialog),
+[Menu](/cloud/components/menu), [Popover](/cloud/components/popover), and
+[Select](/cloud/components/select).
+
+```tsx
+<Toolbar.Root>
+  <Menu.Root>
+    <Toolbar.Button render={<Menu.Trigger />} />
+    <Menu.Portal>{/* Compose the rest of the menu */}</Menu.Portal>
+  </Menu.Root>
+</Toolbar.Root>
+```
+
+### With a tooltip
+
+A tooltip goes the other way around. The toolbar item is passed to `Tooltip.Trigger`.
+
+```tsx
+<Toolbar.Root>
+  <Tooltip.Root>
+    <Tooltip.Trigger render={<Toolbar.Button />} />
+    <Tooltip.Portal>{/* Compose the rest of the tooltip */}</Tooltip.Portal>
+  </Tooltip.Root>
+</Toolbar.Root>
+```
+
+### With a number field
+
+Pass `NumberField.Input` to `Toolbar.Input` with `render`.
+
+```tsx
+<Toolbar.Root>
+  <NumberField.Root>
+    <NumberField.Group>
+      <NumberField.Decrement />
+      <Toolbar.Input render={<NumberField.Input />} />
+      <NumberField.Increment />
+    </NumberField.Group>
+  </NumberField.Root>
+</Toolbar.Root>
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/toolbar/Root.md</include>
+
+### Button
+
+<include>../../base-ui-reference/toolbar/Button.md</include>
+
+### Link
+
+<include>../../base-ui-reference/toolbar/Link.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/toolbar/Separator.md</include>
+
+### Group
+
+<include>../../base-ui-reference/toolbar/Group.md</include>
+
+### Input
+
+<include>../../base-ui-reference/toolbar/Input.md</include>
+
+## Accessibility
+
+- `Toolbar.Root` renders `role="toolbar"`. Label it with `aria-label` or `aria-labelledby`.
+- Arrow keys move focus between items. Focus wraps at the end unless you pass `loopFocus={false}`.
+- Orientation follows the `orientation` prop and lands on `data-orientation` for every part.
+- A disabled item gets `data-disabled`, and `data-focusable` while it remains reachable by arrow
+  key.

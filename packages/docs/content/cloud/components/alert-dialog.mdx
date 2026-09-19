@@ -1,0 +1,171 @@
+---
+title: Alert dialog
+description: "A modal that requires a choice, with no outside dismissal and no close button"
+---
+
+```ts title="Import"
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@nyte-ai/ui";
+import { AlertDialog as AlertDialogPrimitive } from "@nyte-ai/ui/alert-dialog";
+```
+
+The [Dialog](/cloud/components/dialog) surface with alert semantics. The two look identical, the
+behavior differs. Reach for it when the user has to answer the question before anything else
+happens.
+
+The root exports give you the styled surface. The `@nyte-ai/ui/alert-dialog` namespace gives you
+every part unstyled, including `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
+
+## Usage
+
+- Use it for a decision the user cannot back out of by clicking away. Delete, discard, overwrite,
+  revoke.
+- The footer needs an explicit way out, a Cancel `AlertDialogClose`. There is no ✕ and outside
+  press does nothing.
+- Title states the question, description states the consequence. Both are required.
+- The destructive action is the last button and uses `variant="destructive"`.
+- `AlertDialogContent` renders the portal, backdrop, and popup as one unit. Use the namespace
+  parts when you need to place them yourself or need a scrollable `Viewport`.
+- To open the dialog from a trigger that sits outside the root, pass one handle from
+  `AlertDialogPrimitive.createHandle()` to both the trigger and the root.
+
+## Anatomy
+
+```tsx
+<AlertDialog>
+  <AlertDialogTrigger />
+  <AlertDialogContent>
+    {/* Portal › Backdrop › Popup */}
+    <AlertDialogTitle />
+    <AlertDialogDescription />
+    <AlertDialogFooter>
+      <AlertDialogClose /> {/* cancel */}
+      <AlertDialogClose /> {/* confirm */}
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+The same tree with the unstyled namespace:
+
+```tsx
+<AlertDialogPrimitive.Root>
+  <AlertDialogPrimitive.Trigger />
+  <AlertDialogPrimitive.Portal>
+    <AlertDialogPrimitive.Backdrop />
+    <AlertDialogPrimitive.Viewport>
+      <AlertDialogPrimitive.Popup>
+        <AlertDialogPrimitive.Title />
+        <AlertDialogPrimitive.Description />
+        <AlertDialogPrimitive.Close />
+      </AlertDialogPrimitive.Popup>
+    </AlertDialogPrimitive.Viewport>
+  </AlertDialogPrimitive.Portal>
+</AlertDialogPrimitive.Root>
+```
+
+## Examples
+
+<Preview>
+  <AlertDialogDemo />
+</Preview>
+
+```tsx
+<AlertDialog>
+  <AlertDialogTrigger render={<Button variant="destructive" />}>Delete session</AlertDialogTrigger>
+  <AlertDialogContent>
+    <AlertDialogTitle>Delete this session?</AlertDialogTitle>
+    <AlertDialogDescription>
+      The history tree and every head under it are removed. This cannot be undone.
+    </AlertDialogDescription>
+    <AlertDialogFooter>
+      <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+      <AlertDialogClose render={<Button variant="destructive" />}>Delete</AlertDialogClose>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+A handle links a trigger that lives somewhere else in the tree. Calls on the handle are ignored
+while no root using it is mounted.
+
+```tsx
+const deleteSession = AlertDialogPrimitive.createHandle();
+
+<AlertDialogTrigger handle={deleteSession}>Delete session</AlertDialogTrigger>;
+
+<AlertDialog handle={deleteSession}>
+  <AlertDialogContent>…</AlertDialogContent>
+</AlertDialog>;
+```
+
+## Props
+
+| Export                   | Renders                                 | Styling                     |
+| ------------------------ | --------------------------------------- | --------------------------- |
+| `AlertDialog`            | `Root`                                  | None, it renders no element |
+| `AlertDialogTrigger`     | `Trigger`                               | None, pass `render`         |
+| `AlertDialogContent`     | `Portal`, `Backdrop`, and `Popup`       | Styles land on the popup    |
+| `AlertDialogTitle`       | `Title`                                 | Title type scale            |
+| `AlertDialogDescription` | `Description`                           | Muted body type             |
+| `AlertDialogFooter`      | A `<div>` that right-aligns its buttons | Layout only                 |
+| `AlertDialogClose`       | `Close`                                 | None, pass `render`         |
+
+Every styled export accepts `xstyle` alongside `className` and `style`. The backdrop is not
+exposed, change it with the scrim token, see [Tokens](/cloud/foundations/tokens).
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/alert-dialog/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/alert-dialog/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/alert-dialog/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/alert-dialog/Backdrop.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/alert-dialog/Viewport.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/alert-dialog/Popup.md</include>
+
+### Title
+
+<include>../../base-ui-reference/alert-dialog/Title.md</include>
+
+### Description
+
+<include>../../base-ui-reference/alert-dialog/Description.md</include>
+
+### Close
+
+<include>../../base-ui-reference/alert-dialog/Close.md</include>
+
+## Accessibility
+
+- The popup has `role="alertdialog"` and `aria-modal="true"`, labelled by the title and described
+  by the description.
+- Outside press does not close. Escape does. To block that, pass an `onOpenChange` that ignores
+  the `escape-key` reason.
+- Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
+  popup.
+- Content outside the dialog is inert while it is open, and background scroll is locked.
+- `initialFocus` and `finalFocus` on the popup override where focus lands.

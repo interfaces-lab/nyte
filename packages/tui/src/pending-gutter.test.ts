@@ -34,7 +34,6 @@ const reviewTurn: TranscriptTurn = {
     { kind: "user", commit: "user-review", parent: null, content: request },
     { kind: "assistant", commit: "assistant-review", contentIndex: 0, text: answer },
   ],
-  outcome: "completed",
   startedAt: 1_000,
   durationMs: 1_100,
 };
@@ -62,7 +61,6 @@ function correctionTurn(content: string = correction): TranscriptTurn {
     kind: "turn",
     id: "turn-correction",
     parts: [{ kind: "user", commit: "user-correction", parent: "assistant-review", content }],
-    outcome: "completed",
     startedAt: 3_000,
     durationMs: 0,
   };

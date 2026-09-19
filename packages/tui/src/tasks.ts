@@ -13,6 +13,7 @@ import { userText } from "./format.ts";
 import { isJsonObject, isJsonString } from "./json.ts";
 import { SessionObserver } from "@nyte-ai/client";
 import type { SessionState } from "@nyte-ai/client";
+import { toolLabel, toolPhase, toolSubject, type ToolPhase } from "./tool-copy.ts";
 
 export type Task =
   | {
@@ -77,6 +78,23 @@ export function taskStatus(task: Task): TaskStatus {
   return runStatus(task.state.run);
 }
 
+export function phaseStatus(phase: ToolPhase): TaskStatus {
+  switch (phase) {
+    case "running":
+      return "running";
+    case "done":
+      return "done";
+    case "failed":
+      return "failed";
+    case "interrupted":
+      return "stopped";
+    default: {
+      const _exhaustive: never = phase;
+      return _exhaustive;
+    }
+  }
+}
+
 export function runStatus(run: RunInfo | undefined): TaskStatus {
   if (run === undefined) return "queued";
   switch (run.phase.kind) {
@@ -119,13 +137,17 @@ export function taskLabel(task: Task): string {
   if (task.kind === "job") return task.job.title;
   if (task.job !== undefined) return task.job.title;
   const info = task.state.info;
-  if (info.name !== undefined) return info.name;
-  for (const item of task.state.transcript.items) {
+  return info.name ?? taskPrompt(task.state) ?? info.preview ?? info.sessionId;
+}
+
+/** What a child was asked to do: its first user message. */
+export function taskPrompt(state: SessionState): string | undefined {
+  for (const item of state.transcript.items) {
     if (item.kind !== "turn") continue;
     const user = item.parts.find((part) => part.kind === "user");
     if (user !== undefined) return oneLine(userText(user.content));
   }
-  return info.preview ?? info.sessionId;
+  return undefined;
 }
 
 function oneLine(text: string): string {
@@ -157,9 +179,10 @@ export function taskSteps(state: SessionState): TaskStep[] {
     for (const part of item.parts) {
       if (part.kind === "tool") {
         calls.set(part.callId, steps.length);
+        const phase = toolPhase(part.result, true);
         steps.push({
-          status: part.result === undefined ? "running" : part.result.isError ? "failed" : "done",
-          text: oneLine(`${part.toolName} ${part.result?.title ?? ""}`),
+          status: phaseStatus(phase),
+          text: oneLine(`${toolLabel(part.class, phase)} ${toolSubject(part.class) ?? ""}`),
         });
       } else if (part.kind === "assistant") {
         steps.push({ status: "done", text: oneLine(part.text) });

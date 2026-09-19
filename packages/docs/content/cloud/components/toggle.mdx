@@ -1,0 +1,54 @@
+---
+title: Toggle
+description: "A two-state button that is on or off"
+---
+
+```ts title="Import"
+import { Toggle } from "@nyte-ai/ui/toggle";
+```
+
+A button that holds a pressed state. Reach for it when one control switches one thing on and off in
+place, without a form value. No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- Style the pressed state from the `data-pressed` attribute.
+- `pressed` with `onPressedChange` controls the state. `defaultPressed` leaves it uncontrolled.
+- Give it `value` when it sits inside a [Toggle group](/cloud/components/toggle-group). The group
+  reads that string.
+- Rendering something other than a `<button>` needs `nativeButton={false}`.
+
+## Examples
+
+### Uncontrolled
+
+```tsx
+<Toggle defaultPressed aria-label="Bold">
+  B
+</Toggle>
+```
+
+### Controlled
+
+```tsx
+const [pressed, setPressed] = useState(false);
+
+<Toggle pressed={pressed} onPressedChange={setPressed} aria-label="Bold">
+  B
+</Toggle>;
+```
+
+## Props
+
+The reference table below comes from Base UI, MIT, © Material-UI SAS.
+
+### Toggle
+
+<include>../../base-ui-reference/toggle/Toggle.md</include>
+
+## Accessibility
+
+- Renders a native `<button>` with `aria-pressed`. Enter and Space flip it.
+- An icon-only toggle needs `aria-label`. The label names the control, not the current state.
+- `disabled` sets `data-disabled` and stops interaction.
+- The focus ring is yours to draw. See [Focus](/cloud/foundations/focus).

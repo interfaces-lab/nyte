@@ -20,6 +20,7 @@ import {
   testModel,
   toolCall,
   toolParts,
+  toolResultOf,
   TestWorkspace,
 } from "./host.ts";
 
@@ -207,6 +208,7 @@ test("the rename_chat tool names the chat, trimming and capping; a blank name is
   assert.equal(blank?.result?.isError, true);
   assert.equal(named.result?.isError, false);
   assert.equal(named.result?.output, `Chat named ${expected}`);
-  assert.deepEqual(named.result?.details, { name: expected });
-  assert.equal(named.result?.title, expected);
+  const message = await toolResultOf({ sdk, sessionId: world.sessionId, callId: named.callId });
+  assert.deepEqual(message.details, { name: expected });
+  assert.equal(message.title, expected);
 });

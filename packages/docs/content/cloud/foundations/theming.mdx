@@ -1,10 +1,7 @@
 ---
 title: Theming and styling channels
-description: "How a consumer changes what a primitive looks like without forking it: token overrides, className, and xstyle"
+description: "Change what a primitive looks like with token overrides, className, and xstyle"
 ---
-
-`@nyte-ai/ui` divides styling responsibility three ways, and each primitive exposes exactly the
-channels that division needs.
 
 | Layer         | Owns                                             | Mechanism                                                          |
 | ------------- | ------------------------------------------------ | ------------------------------------------------------------------ |
@@ -14,8 +11,8 @@ channels that division needs.
 
 ## Token overrides
 
-Override on an ancestor. The app root is the right place; a preview container is also fine, and
-that is how the examples on this site are themed independently of the docs chrome.
+Override on an ancestor. The app root is the right place, and a preview container works too, which
+is how the examples on this site are themed independently of the docs chrome.
 
 ```css
 .my-app {
@@ -25,12 +22,10 @@ that is how the examples on this site are themed independently of the docs chrom
 }
 ```
 
-Override only the tokens that carry identity. Overriding `--nyte-control-height-md` to fix one
-layout is a layout problem; solve it with `className`.
+Override the tokens that carry identity. Overriding `--nyte-control-height-md` to fix one layout is
+a layout problem, so solve that one with `className`.
 
 ## The three props every styled primitive accepts
-
-Every component in `packages/ui/src/components/ui` accepts these and merges them in this order.
 
 | Prop        | Type                  | Purpose                                                                                                          |
 | ----------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -38,34 +33,21 @@ Every component in `packages/ui/src/components/ui` accepts these and merges them
 | `style`     | `React.CSSProperties` | Inline overrides. Spread after StyleX's inline style, so it wins.                                                |
 | `xstyle`    | `XStyle`              | A deliberate StyleX override. Passed as the last argument to `stylex.props`, so it wins by StyleX's merge rules. |
 
-`XStyle` is `stylex.StyleXArray` of compiled styles, booleans, and null; you can pass one style,
-an array, or a conditional. The merge itself is `mergeStyleProps` in `packages/ui/src/style.ts`:
-
-```ts
-export function mergeStyleProps(base, className, style) {
-  return {
-    className: [base.className, className].filter(Boolean).join(" ") || undefined,
-    style: { ...base.style, ...style },
-  };
-}
-```
-
-`StyledProps<P>` is the helper type that strips `className`/`style` from a Base UI props type and
-adds the three channels back. Use it when wrapping a new part.
+`XStyle` accepts one compiled style, an array, or a conditional.
 
 ## `unstyled`
 
 `Button`, `Input`, and `Textarea` accept `unstyled`. When true the component renders the Base UI
-part with no StyleX class at all, keeping only the interaction layer and the `data-slot`
-attribute. On `Button`, `unstyled: true` also forbids `variant` and `size` at the type level.
+part with no StyleX class at all, keeping the interaction layer and the `data-slot` attribute. On
+`Button`, `unstyled` also forbids `variant` and `size` at the type level.
 
-`unstyled` is for product surfaces that supply a complete `xstyle` treatment of their own. It is
-not for "I need a slightly different button"; that is a token override or `xstyle`.
+Reach for `unstyled` when a surface supplies a complete `xstyle` treatment of its own. For a
+slightly different button, use a token override or `xstyle`.
 
 ## Data attributes
 
-Every primitive sets `data-slot="<part>"` so a consumer can target a part from CSS without knowing
-the StyleX class. Variant-bearing primitives also expose their appearance:
+Every primitive sets `data-slot="<part>"`, so you can target a part from CSS without knowing the
+StyleX class. Variant-bearing primitives also expose their appearance.
 
 | Component           | Attributes                                                                  |
 | ------------------- | --------------------------------------------------------------------------- |
@@ -78,24 +60,24 @@ the StyleX class. Variant-bearing primitives also expose their appearance:
 | `DropdownMenuItem`  | `data-slot="dropdown-menu-item"`, `data-variant`, `data-inset`              |
 | `DropdownMenuLabel` | `data-inset`                                                                |
 
-Base UI adds its own state attributes on top (`data-disabled`, `data-popup-open`,
-`data-highlighted`, `data-checked`, …). Those are listed on each component page.
+Base UI adds its own state attributes on top, such as `data-disabled`, `data-popup-open`,
+`data-highlighted`, and `data-checked`. Each component page lists them.
 
 ## Headless subpaths
 
 For anything without a styled wrapper, import the Base UI namespace from its subpath and style it
-in the app:
+in the app.
 
 ```ts
 import { Popover } from "@nyte-ai/ui/popover";
 ```
 
-Import from the subpath, not from `@base-ui/react`, so the Base UI version stays behind the shared
-package. See [Headless](/cloud/headless).
+Import from the subpath rather than `@base-ui/react`, so the Base UI version stays behind the
+shared package. See [Components](/cloud/components).
 
 ## Dark mode
 
-Tokens use `light-dark()`, so a primitive follows whichever `color-scheme` is in effect. There is
-no `.dark` class in the primitives. `@nyte-ai/ui/styles.css` does declare
-`@custom-variant dark (&:is(.dark *))` for Tailwind consumers that want class-based variants in
-their own utilities; it does not affect the primitives.
+Tokens use `light-dark()`, so a primitive follows whichever `color-scheme` is in effect. The
+primitives have no `.dark` class. `@nyte-ai/ui/styles.css` declares
+`@custom-variant dark (&:is(.dark *))` for Tailwind consumers who want class-based variants in
+their own utilities.

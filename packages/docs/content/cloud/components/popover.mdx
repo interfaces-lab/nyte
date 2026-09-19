@@ -1,0 +1,165 @@
+---
+title: Popover
+description: "An accessible popup anchored to a button"
+---
+
+```ts title="Import"
+import { Popover } from "@nyte-ai/ui/popover";
+```
+
+A popup anchored to the button that opens it. Reach for it when the content is interactive and
+belongs next to its trigger.
+
+No Nyte styling on this one, you own the visual layer.
+
+## Usage
+
+- `Popover.Positioner` places the popup. It defaults to `side="bottom"` and `align="center"`.
+  Pass `sideOffset` for the gap between the anchor and the popup.
+- `Popover.Arrow` only works inside the positioner. `arrowPadding` on the positioner keeps the
+  arrow clear of rounded corners.
+- `openOnHover` on the trigger opens the popup on hover after `delay`, which is 300ms. Set
+  `closeDelay` to hold it open while the pointer travels.
+- The popover is non-modal by default. With `modal={true}`, focus trapping turns on only when
+  `Popover.Close` is rendered inside `Popover.Popup`.
+- `Popover.Title` and `Popover.Description` name and describe the popup. Render them rather than
+  writing your own ARIA.
+- `Popover.Viewport` is only needed when one popup serves several triggers and you animate the
+  content change.
+- To open from a trigger outside the root, pass one handle from `Popover.createHandle()` to both
+  the trigger and the root.
+
+## Anatomy
+
+```tsx
+<Popover.Root>
+  <Popover.Trigger />
+  <Popover.Portal>
+    <Popover.Backdrop />
+    <Popover.Positioner>
+      <Popover.Popup>
+        <Popover.Arrow />
+        <Popover.Viewport>
+          <Popover.Title />
+          <Popover.Description />
+          <Popover.Close />
+        </Popover.Viewport>
+      </Popover.Popup>
+    </Popover.Positioner>
+  </Popover.Portal>
+</Popover.Root>
+```
+
+## Examples
+
+A popover that opens on press, offset from its trigger.
+
+```tsx
+<Popover.Root>
+  <Popover.Trigger>Notifications</Popover.Trigger>
+  <Popover.Portal>
+    <Popover.Positioner sideOffset={8}>
+      <Popover.Popup>
+        <Popover.Arrow />
+        <Popover.Title>Notifications</Popover.Title>
+        <Popover.Description>You are all caught up.</Popover.Description>
+        <Popover.Close>Close</Popover.Close>
+      </Popover.Popup>
+    </Popover.Positioner>
+  </Popover.Portal>
+</Popover.Root>
+```
+
+An infotip opens on hover and stays open while the pointer moves to the popup.
+
+```tsx
+<Popover.Trigger openOnHover delay={200} closeDelay={150}>
+  <InfoIcon />
+</Popover.Trigger>
+```
+
+One popover driven by two detached triggers, each passing its own payload.
+
+```tsx
+const details = Popover.createHandle<{ name: string }>();
+
+<Popover.Trigger handle={details} payload={{ name: "Ada" }}>Ada</Popover.Trigger>
+<Popover.Trigger handle={details} payload={{ name: "Linus" }}>Linus</Popover.Trigger>
+
+<Popover.Root handle={details}>
+  {({ payload }) => (
+    <Popover.Portal>
+      <Popover.Positioner>
+        <Popover.Popup>
+          <Popover.Title>{payload?.name}</Popover.Title>
+        </Popover.Popup>
+      </Popover.Positioner>
+    </Popover.Portal>
+  )}
+</Popover.Root>;
+```
+
+Animate the popup's position with CSS transitions on `left`, `right`, `top`, and `bottom` of the
+positioner, and its size with `width` and `height` on the popup.
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/popover/Root.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/popover/Trigger.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/popover/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/popover/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/popover/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/popover/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/popover/Arrow.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/popover/Viewport.md</include>
+
+### Title
+
+<include>../../base-ui-reference/popover/Title.md</include>
+
+### Description
+
+<include>../../base-ui-reference/popover/Description.md</include>
+
+### Close
+
+<include>../../base-ui-reference/popover/Close.md</include>
+
+## Accessibility
+
+- The trigger carries `data-popup-open` while the popup is open, and `data-pressed` while it is
+  pressed.
+- `Popover.Title` renders an `<h2>` that labels the popup. `Popover.Description` renders a `<p>`
+  that describes it.
+- Escape closes the popup. Outside press closes it. Focus leaving the popup closes it.
+- Focus moves to the first tabbable element inside the popup on open, except when the popover was
+  opened by touch, where the popup itself takes focus. `initialFocus` and `finalFocus` on the
+  popup override this.
+- On close, focus returns to the trigger or to the previously focused element.
+- Render `Popover.Close` inside the popup when `modal` is `true` or `'trap-focus'` so touch screen
+  reader users can leave it.

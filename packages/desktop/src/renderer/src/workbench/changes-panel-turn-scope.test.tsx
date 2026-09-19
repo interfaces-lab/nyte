@@ -61,6 +61,7 @@ vi.mock("../queries.ts", () => ({
   useVcsScopedDiffs: () => ({ data: [], isLoading: false, isError: false }),
   useVcsLog: () => ({ data: { commits: [], hasMore: false }, isLoading: false, isError: false }),
   useVcsRefs: () => ({ data: { local: [], remote: [] }, isLoading: false, isError: false }),
+  useRunDiff: () => ({ data: undefined, isLoading: false, isError: false }),
   refreshVcs: () => undefined,
 }));
 

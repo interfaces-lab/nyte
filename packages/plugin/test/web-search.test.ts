@@ -30,6 +30,7 @@ import {
   testModel,
   toolCall,
   toolParts,
+  toolResultOf,
   TestWorkspace,
 } from "./host.ts";
 
@@ -138,7 +139,8 @@ async function search(query: string, options: WebSearchPluginOptions) {
   const [part, ...rest] = await toolParts(sdk, sessionId);
   assert.ok(part !== undefined && rest.length === 0, "one search ran");
   assert.ok(part.result !== undefined, "the search settled");
-  return { sdk, sessionId, result: part.result };
+  const message = await toolResultOf({ sdk, sessionId, callId: part.callId });
+  return { sdk, sessionId, result: part.result, message };
 }
 
 /** Only this provider holds a key, so `auto` routes to it. */
@@ -153,7 +155,7 @@ describe("web search plugin", () => {
       read: (provider) => Promise.resolve(provider === "exa" ? "exa-secret" : undefined),
       write: () => Promise.resolve(),
     };
-    const { sdk, sessionId, result } = await search(" Effect 4 ", {
+    const { sdk, sessionId, result, message } = await search(" Effect 4 ", {
       credentials,
       environment: environment({}),
       fetch: fetchMock(calls, () =>
@@ -186,7 +188,7 @@ describe("web search plugin", () => {
       params: { name: "web_search_exa", arguments: { query: "Effect 4", numResults: 8 } },
     });
 
-    assert.deepEqual(result.details, {
+    assert.deepEqual(message.details, {
       provider: "exa",
       mode: "auto",
       credential: "saved key",
@@ -200,7 +202,7 @@ describe("web search plugin", () => {
         },
       ],
     });
-    assert.equal(result.title, "Effect 4 · Exa");
+    assert.equal(message.title, "Effect 4 · Exa");
     assert.match(result.output, /## \[Effect 4\]\(https:\/\/example.com\/effect\)/);
     assert.equal(result.isError, false);
 
@@ -212,7 +214,7 @@ describe("web search plugin", () => {
 
   test("uses Parallel bearer auth and its structured results", async () => {
     const calls: Request[] = [];
-    const { result } = await search("current releases", {
+    const { message } = await search("current releases", {
       ...onlyKeyed("PARALLEL_API_KEY", "parallel-secret"),
       fetch: fetchMock(calls, () =>
         mcp({
@@ -246,7 +248,7 @@ describe("web search plugin", () => {
         arguments: { objective: "current releases", search_queries: ["current releases"] },
       },
     });
-    assert.deepEqual(result.details, {
+    assert.deepEqual(message.details, {
       provider: "parallel",
       mode: "auto",
       credential: "environment key",
@@ -264,7 +266,7 @@ describe("web search plugin", () => {
 
   test("uses Firecrawl bearer auth and decodes its text payload", async () => {
     const calls: Request[] = [];
-    const { result } = await search("fresh page", {
+    const { message } = await search("fresh page", {
       ...onlyKeyed("FIRECRAWL_API_KEY", "fire-secret"),
       fetch: fetchMock(calls, () =>
         mcpSse({
@@ -299,7 +301,7 @@ describe("web search plugin", () => {
       method: "tools/call",
       params: { name: "firecrawl_search", arguments: { query: "fresh page", limit: 8 } },
     });
-    assert.deepEqual(result.details, {
+    assert.deepEqual(message.details, {
       provider: "firecrawl",
       mode: "auto",
       credential: "environment key",
@@ -360,7 +362,8 @@ describe("web search plugin", () => {
       max_results: 8,
     });
     const [part] = await toolParts(sdk, sessionId);
-    assert.deepEqual(part?.result?.details, {
+    assert.ok(part?.result !== undefined, "the search settled");
+    assert.deepEqual((await toolResultOf({ sdk, sessionId, callId: part.callId })).details, {
       provider: "tavily",
       mode: "auto",
       credential: "anonymous",
@@ -373,7 +376,7 @@ describe("web search plugin", () => {
 
   test("automatic routing prefers the provider holding a key", async () => {
     const calls: Request[] = [];
-    const { result } = await search("keyed", {
+    const { result, message } = await search("keyed", {
       // Firecrawl is the only keyed route, so it answers however the shuffle falls.
       environment: environment({ FIRECRAWL_API_KEY: "fire-secret" }),
       random: () => 0.99,
@@ -392,7 +395,7 @@ describe("web search plugin", () => {
       calls.map((request) => new URL(request.url).hostname),
       ["mcp.firecrawl.dev"],
     );
-    assert.deepEqual(result.details, {
+    assert.deepEqual(message.details, {
       provider: "firecrawl",
       mode: "auto",
       credential: "environment key",
@@ -405,7 +408,7 @@ describe("web search plugin", () => {
 
   test("with no key held, automatic routing picks one keyless provider at random", async () => {
     const calls: Request[] = [];
-    const { result } = await search("random", {
+    const { message } = await search("random", {
       environment: environment({}),
       // Four providers join in registration order; 0.5 lands on the third.
       random: () => 0.5,
@@ -420,7 +423,7 @@ describe("web search plugin", () => {
       calls.map((request) => new URL(request.url).hostname),
       ["search.parallel.ai"],
     );
-    assert.deepEqual(result.details, {
+    assert.deepEqual(message.details, {
       provider: "parallel",
       mode: "auto",
       credential: "anonymous",
@@ -438,7 +441,7 @@ describe("web search plugin", () => {
     assert.equal(calls.length, 1);
     assert.equal(rateLimited.result.isError, true);
     assert.equal(rateLimited.result.output, "Web search rate limited (HTTP 429)");
-    assert.deepEqual(rateLimited.result.details, {
+    assert.deepEqual(rateLimited.message.details, {
       provider: "exa",
       mode: "auto",
       credential: "environment key",

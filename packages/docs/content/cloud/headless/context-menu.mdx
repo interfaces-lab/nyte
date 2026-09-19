@@ -11,17 +11,12 @@ description: "A menu that appears at the pointer on right click or long press."
 import { ContextMenu } from "@nyte-ai/ui/context-menu";
 ```
 
-`@nyte-ai/ui/context-menu` re-exports the Base UI namespace unchanged. There is no Nyte styling on
-this subpath; the consumer owns every class, StyleX style, and layout decision. Base UI owns the
-interaction model, keyboard handling, focus management, and ARIA below.
-
-Consumed by:
-
-- `desktop/src/renderer/src/components/menu.tsx`
+`@nyte-ai/ui/context-menu` re-exports the Base UI namespace unstyled, so Base UI owns the behavior
+and you own the styling.
 
 The rest of this page is Base UI's documentation for `@base-ui/react/context-menu`, reproduced
-verbatim under the MIT license, © Material-UI SAS. Component paths in examples refer to the Base UI
-package; in Nyte, import from the subpath above.
+verbatim under the MIT license, © Material-UI SAS. Its examples import from `@base-ui/react`.
+Import from the subpath above instead.
 
 ## Usage guidelines
 

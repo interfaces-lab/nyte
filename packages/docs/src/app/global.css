@@ -52,6 +52,12 @@ html {
   overflow: hidden;
 }
 
+/* The plate has to reach the canvas, or overscroll shows the white page under it. */
+html:has(.hero-plate),
+body:has(.hero-plate) {
+  background: var(--hero-blue);
+}
+
 body {
   min-width: 0;
   font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -111,10 +117,11 @@ html > body[data-scroll-locked] {
   }
 }
 
+/* Stays under --nyte-layer-dialog (50) so a dialog scrim covers the bar too. */
 .site-nav {
   position: sticky;
   top: 0;
-  z-index: 60;
+  z-index: 30;
   width: 100%;
   min-width: 0;
   height: var(--site-nav-height);
@@ -179,9 +186,9 @@ html > body[data-scroll-locked] {
   background: color-mix(in srgb, currentColor 10%, transparent);
   opacity: 0;
   transition:
-    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 150ms ease;
+    transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease;
   pointer-events: none;
 }
 
@@ -193,12 +200,12 @@ html > body[data-scroll-locked] {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 51;
+  z-index: 31;
   padding-top: 8px;
   width: max-content;
   max-width: min(316px, calc(100vw - 48px));
-  animation: site-panel-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: site-panel-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes site-panel-in {
@@ -222,18 +229,21 @@ html > body[data-scroll-locked] {
   }
 }
 
+/* Own its colors: the bar inherits page chrome, which on the hero is white. */
 .site-panel-card {
   width: 316px;
   max-width: 100%;
   padding: 4px;
-  background: var(--nyte-color-background);
+  background: var(--nyte-color-popover);
+  color: var(--nyte-color-popover-foreground);
+  border: 1px solid var(--nyte-color-border);
   border-radius: var(--nyte-radius-surface);
   box-shadow: 0 8px 30px color-mix(in srgb, var(--nyte-color-foreground) 10%, transparent);
-  animation: site-panel-content-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: site-panel-content-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .site-panel-row {
-  animation: site-panel-row-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: site-panel-row-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--enter-delay, 0ms);
 }
 
@@ -249,7 +259,8 @@ html > body[data-scroll-locked] {
 
 .site-feature {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   padding: 8px;
   border-radius: var(--nyte-radius-row);
 }
@@ -262,32 +273,18 @@ html > body[data-scroll-locked] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
-  border-radius: var(--nyte-radius-row);
-  background: var(--nyte-color-muted-hover);
   color: var(--nyte-color-foreground);
 }
 
-.site-feature-copy {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-}
-
 .site-feature-title {
+  min-width: 0;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 20px;
-}
-
-.site-feature-lede {
-  font-size: 13px;
-  line-height: 18px;
-  color: var(--nyte-color-muted-foreground);
+  color: var(--nyte-color-popover-foreground);
 }
 
 .site-nav-actions {
@@ -450,7 +447,7 @@ html > body[data-scroll-locked] {
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 40;
+  z-index: 20;
   background: transparent;
 }
 
@@ -458,7 +455,7 @@ html > body[data-scroll-locked] {
   position: fixed;
   inset: 0;
   top: var(--site-nav-height);
-  z-index: 50;
+  z-index: 29;
   box-sizing: border-box;
   padding: 8px var(--site-pad) 24px;
   pointer-events: none;
@@ -1582,11 +1579,20 @@ body:has(.hero-plate) .site-sections-item {
 }
 
 body:has(.hero-plate) .site-nav .site-nav-search {
-  height: 42px;
+  height: 36px;
   border-radius: var(--nyte-radius-pill);
-  padding-inline: 20px;
-  background: #fff;
-  color: var(--hero-blue);
+  padding-inline: 14px;
+  gap: 8px;
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+}
+
+body:has(.hero-plate) .site-nav .site-nav-search:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
+body:has(.hero-plate) .site-nav .site-nav-search svg {
+  display: inline-flex;
 }
 
 body:has(.hero-plate) .site-nav-icon {

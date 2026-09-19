@@ -294,7 +294,8 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       current: operation("runs.current"),
       abort: operation("runs.abort"),
       reply: operation("runs.reply"),
-      changes: operation("runs.changes"),
+      diff: operation("runs.diff"),
+      revert: operation("runs.revert"),
     },
     jobs: {
       list: operation("jobs.list"),

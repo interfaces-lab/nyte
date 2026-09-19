@@ -145,12 +145,15 @@ There are six object kinds:
 | `stack`  | The parent head and base commit for a stacked head.                                                       |
 | `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker. |
 
-A commit's provenance is five optional fields. `change` names the submitted change it landed,
+A commit's provenance is six optional fields. `change` names the submitted change it landed,
 `key` repeats that change's submission key, and `run` names the run that wrote it. `calls` maps each
 tool call id to its `ToolClass`, stamped by the runner from the tool's own typed arguments when the
 call commits and from its result when it settles, so no reader classifies a call by name. `failure`
 is the `Failure` the `ai` classifier decided when an assistant message stopped with `error` or
-`aborted`, so no reader classifies by error text. None is context, and the model never sees them.
+`aborted`, so no reader classifies by error text. `tree` is the workspace tree id the host's VCS
+backend answered, on a run's first commit and on each tool-result commit, so a run's exact file diff
+and its revert come from a tree pair rather than from what its tools declared: provenance, never
+context. None is context, and the model never sees them.
 They exist so a client can ask which files one run touched, or which commit a receipt turned into,
 without guessing from timestamps.
 
