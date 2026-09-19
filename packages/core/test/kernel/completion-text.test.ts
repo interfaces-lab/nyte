@@ -1,43 +1,56 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { sessionId, type JobInfo } from "@nyte-ai/protocol";
+import { sessionId, type JobReport } from "@nyte-ai/protocol";
 import { completionText } from "@nyte-ai/client";
 
-const base = {
-  id: "job_1",
-  runId: "run",
-  callId: "call",
-  head: "main",
-  mode: "background",
-  startedAt: 1,
-  updatedAt: 2,
-} as const;
+const child = sessionId("s_child_1");
 
-const subagent = (state: JobInfo["state"], output: string): JobInfo => ({
-  ...base,
-  kind: "subagent",
-  childSessionId: sessionId("child"),
+const agent = (end: JobReport["end"], text: string): JobReport => ({
+  kind: "delegate",
+  session: child,
   title: "explore",
-  state,
-  output,
+  request: "request-commit",
+  end,
+  report: text === "" ? { kind: "none" } : { kind: "text", text, commit: "answer-commit" },
 });
 
 test.each([
-  { job: subagent("completed", "Found three call sites."), says: ["explore", "finished"] },
   {
-    job: { ...base, kind: "command", title: "pnpm test", state: "completed", output: "12 passed" },
-    says: ["pnpm test", "exited"],
+    job: agent({ kind: "completed" }, "Found three call sites."),
+    says: ["explore", child, "finished", "Found three call sites."],
   },
-  { job: subagent("failed", ""), says: ["failed", "(no output)"] },
-  { job: subagent("cancelled", ""), says: ["cancelled", "(no output)"] },
-  { job: subagent("interrupted", ""), says: ["interrupted", "(no output)"] },
-] satisfies { job: JobInfo; says: string[] }[])(
-  "a landed completion names the job, how it ended, and its output: $job.state $job.kind",
+  {
+    job: {
+      kind: "command",
+      id: "job_1",
+      command: "pnpm test",
+      end: { kind: "completed" },
+      output: "12 passed",
+    },
+    says: ["job_1", "pnpm test", "finished", "12 passed"],
+  },
+  {
+    job: {
+      kind: "command",
+      id: "job_1",
+      command: "pnpm test",
+      end: { kind: "failed", reason: "exit 1" },
+      output: "",
+    },
+    says: ["failed: exit 1", "(no output)"],
+  },
+  {
+    job: agent({ kind: "failed", reason: "provider down" }, ""),
+    says: ["failed: provider down", "(no report)"],
+  },
+  { job: agent({ kind: "cancelled" }, ""), says: ["was cancelled", "(no report)"] },
+  { job: agent({ kind: "interrupted" }, ""), says: ["was interrupted", "(no report)"] },
+] satisfies { job: JobReport; says: string[] }[])(
+  "a landed completion names the work, how it ended, and what it produced: $job.kind $job.end.kind",
   ({ job, says }) => {
     const text = completionText(job);
-    assert.ok(text.includes(job.id));
-    for (const phrase of [...says, ...(job.output === "" ? [] : [job.output])]) {
+    assert.ok(text.startsWith("Background "), text);
+    for (const phrase of says)
       assert.ok(text.includes(phrase), `${JSON.stringify(text)} lacks ${phrase}`);
-    }
   },
 );

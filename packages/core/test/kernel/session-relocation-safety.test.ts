@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
+import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { expect, test } from "vitest";
 import { submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
@@ -239,8 +239,11 @@ test("children keep their creation directory across parent moves and resume with
 
 test("spawned subagents persist the parent's destination instead of following a later parent move", async () => {
   const setup = fixture((_model, context) => {
+    // The child's report reaches the parent twice: as the wake and again as a completion.
+    const last = context.messages.at(-1);
     const response =
-      context.messages.at(-1)?.role === "user" &&
+      last?.role === "user" &&
+      !contentText(last.content).startsWith("Background ") &&
       context.tools?.some((tool) => tool.name === "task")
         ? assistant("", {
             calls: [

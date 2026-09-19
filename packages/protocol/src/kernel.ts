@@ -9,7 +9,7 @@ import type { JsonValue, Message, ProviderCheckpointMaterial, Usage } from "@nyt
 import type { Failure } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import { TreeId as TreeIdSchema } from "./schemas.ts";
-import type { JobInfo, SessionId } from "./sdk.ts";
+import type { JobReport, SessionId } from "./sdk.ts";
 
 export type { Failure, FailureClass } from "@nyte-ai/schema";
 
@@ -69,14 +69,21 @@ export type ToolClass =
   | { readonly kind: "file_read"; readonly path: string }
   | { readonly kind: "list"; readonly path: string }
   | { readonly kind: "shell"; readonly command: string }
-  /** `child` is absent when the spawn failed before a session existed. */
+  /** A `create` or `task` call before its child session exists, or one that never got one. */
+  | { readonly kind: "spawn"; readonly title: string }
+  /** A call addressing an existing child, before its result names the child. */
+  | {
+      readonly kind: "delegate_call";
+      readonly role: "send" | "await" | "read" | "stop";
+      readonly session: SessionId;
+    }
+  /** A settled call on a child; `title` is the child's name. `await` names its first agent. */
   | {
       readonly kind: "delegate";
-      readonly role: "spawn";
+      readonly role: "create" | "send" | "await" | "read" | "stop";
+      readonly session: SessionId;
       readonly title: string;
-      readonly child?: SessionId;
     }
-  | { readonly kind: "delegate"; readonly role: "await"; readonly jobId: string }
   | { readonly kind: "custom"; readonly label: string };
 
 /** One point in a conversation. Model context is linear, so it has one parent. */
@@ -119,8 +126,8 @@ export type CommitBody =
       /** Agent selection travels with its message through submit, cancel, and redelivery. */
       readonly agent?: string;
     }
-  /** Background tool output, consumed by the model without impersonating user input. */
-  | { readonly kind: "completion"; readonly job: JobInfo }
+  /** Background work's report, consumed by the model without impersonating user input. */
+  | { readonly kind: "completion"; readonly job: JobReport }
   /** A context checkpoint. Projection starts at the newest one. */
   | {
       readonly kind: "checkpoint";

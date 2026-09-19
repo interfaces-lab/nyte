@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
-import { treeId } from "@nyte-ai/protocol";
+import { treeId, type RunInfo } from "@nyte-ai/protocol";
 import type { TreeId, TreeOutcome } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { branch } from "../../src/kernel/graph.ts";
@@ -142,17 +142,17 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
     nyte.attach();
     await nyte.messages.send({ sessionId, content: "go" });
     // The write call is parked in the tool: the run is live with one tree recorded.
-    await within(
-      new Promise<void>((resolve) => {
-        const poll = () => {
-          if (vcs.trees.length >= 1) resolve();
-          else setTimeout(poll, 5);
+    // The tree is read before the run ref is published, so wait for the run.
+    const run = await within(
+      new Promise<RunInfo>((resolve) => {
+        const poll = async () => {
+          const current = await nyte.runs.current({ sessionId });
+          if (current !== undefined) resolve(current);
+          else setTimeout(() => void poll(), 5);
         };
-        poll();
+        void poll();
       }),
     );
-    const run = await nyte.runs.current({ sessionId });
-    assert.ok(run !== undefined);
     const liveDiff = await nyte.runs.diff({ sessionId, runId: run.runId });
     assert.equal(liveDiff.kind, "tree");
     if (liveDiff.kind !== "tree") return;

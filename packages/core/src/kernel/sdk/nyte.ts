@@ -1,6 +1,6 @@
 /**
  * The plain-data SDK over the kernel. Conversation behavior stays in kernel
- * operations; this file composes the session pool, runners, subagents,
+ * operations; this file composes the session pool, runners, delegation,
  * relocation, and summaries, and exposes them as the `Nyte` namespaces.
  */
 import { realpath, stat } from "node:fs/promises";
@@ -21,7 +21,7 @@ import { isCommandPrompt } from "../../plugins/types.ts";
 import { createReads } from "./reads.ts";
 import { createRunners, errorMessage } from "./runner.ts";
 import { createRelocation } from "./relocate.ts";
-import { createSubagents } from "./subagent-host.ts";
+import { createDelegation } from "./delegation.ts";
 import { createSummaries } from "./summaries.ts";
 import {
   CWD_FACT,
@@ -123,17 +123,8 @@ function toModelInfo(model: NyteOptions["model"]): ModelInfo {
 /** Compose the host services into the kernel SDK. */
 export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const attachments = new Set<Attachment>();
-  const background: unknown[] = [];
+  const detached: unknown[] = [];
   const landing = options.landing ?? DEFAULT_LANDING;
-  /**
-   * Lanes a live run lands at its response boundaries. A parked call denies the
-   * head those boundaries, so input waiting in one of these is input the parked
-   * call is holding up; input in an idle-landing lane waits for the run to end
-   * either way.
-   */
-  const boundaryLanes = landing.lanes
-    .filter((policy) => policy.lands === "boundary")
-    .map((policy) => policy.lane);
 
   /** Where a send with no lane goes: the first lane the runner serves. */
   const defaultLane = (): string => {
@@ -178,8 +169,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     hooks: {
       stopRunner: (pooled) => runners.stopRunner(pooled),
       requestAbort: (pooled, name) => runners.requestAbortAtRef(pooled, name),
-      closeJobs: (id, pooled) => subagents.jobsFor(id, pooled).close(),
-      pluginsFor: (input) => subagents.pluginsFor(input),
+      closeJobs: (id, pooled) => delegation.jobsFor(id, pooled).close(),
+      pluginsFor: (input) => delegation.pluginsFor(input),
     },
   });
   const runners = createRunners({
@@ -193,15 +184,19 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       ],
     },
     resolveModel: resolveModelRef,
-    jobsFor: (id, pooled) => subagents.jobsFor(id, pooled),
-    backgroundChild: (id) => subagents.backgroundChild(id),
+    jobsFor: (id, pooled) => delegation.jobsFor(id, pooled),
+    delegation: {
+      childRunChanged: (id, pooled) => delegation.childRunChanged(id, pooled),
+      recheck: (id, pooled, runId) => delegation.recheck(id, pooled, runId),
+      yieldToInput: (id, pooled, head) => delegation.yieldToInput(id, pooled, head),
+    },
     covered: (id, pooled) => selectedAttachment(id, pooled) !== undefined,
     reportBackground: (cause) => {
-      background.push(cause);
+      detached.push(cause);
     },
   });
-  const subagents = createSubagents({ options, pool, runners, defaultLane, boundaryLanes });
-  const relocation = createRelocation({ options, pool, runners, subagents });
+  const delegation = createDelegation({ options, pool, runners, landing });
+  const relocation = createRelocation({ options, pool, runners, delegation });
   const summaries = createSummaries({ options, pool, resolveModel: resolveModelRef });
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });
 
@@ -312,7 +307,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           try {
             await runners.reconcileRunner(input.sessionId, pooled);
           } catch (error) {
-            background.push(error);
+            detached.push(error);
           }
         })();
         return { kind: "queued", change: outcome.change };
@@ -351,7 +346,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           try {
             await runners.reconcileRunner(input.sessionId, pooled);
           } catch (error) {
-            background.push(error);
+            detached.push(error);
           }
         })();
         return receipt;
@@ -400,7 +395,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     jobs: {
       async list(input) {
         const pooled = await pool.open(input.sessionId);
-        return subagents.jobsFor(input.sessionId, pooled).list(input.head);
+        return delegation.jobsFor(input.sessionId, pooled).list(input.head);
       },
       async start(input) {
         pool.alive();
@@ -408,17 +403,15 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         // Activation registers the jobs wrapper that `start` runs the tool through.
         if ((await pool.activationFor(input.sessionId, pooled)) === undefined)
           throw new Error("This chat is not active");
-        return subagents
-          .jobsFor(input.sessionId, pooled)
-          .start("bash", input.head ?? MAIN, { command: input.command }, input.command);
+        return delegation.jobsFor(input.sessionId, pooled).start(input.head ?? MAIN, input.command);
       },
       async background(input) {
         const pooled = await pool.open(input.sessionId);
-        return subagents.jobsFor(input.sessionId, pooled).background(input.jobId);
+        return delegation.jobsFor(input.sessionId, pooled).background(input.jobId);
       },
       async cancel(input) {
         const pooled = await pool.open(input.sessionId);
-        return subagents.jobsFor(input.sessionId, pooled).cancel(input.jobId);
+        return delegation.jobsFor(input.sessionId, pooled).cancel(input.jobId);
       },
     },
 
@@ -435,13 +428,12 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const pooled = await pool.open(input.sessionId);
         const head = input.head ?? MAIN;
         const runId = await runners.requestAbortAtRef(pooled, runRef(head), input.runId);
-        if (runId !== undefined) {
-          if (pooled.parent !== undefined) await subagents.interruptChild(input.sessionId);
-          else
-            await subagents
-              .jobsFor(input.sessionId, pooled)
-              .interruptOwned({ runId, state: "cancelled" });
-        }
+        // Commands the run owns stop with it; children it created keep working, and
+        // its parked waits settle cancelled through the abort flag.
+        if (runId !== undefined)
+          await delegation
+            .jobsFor(input.sessionId, pooled)
+            .interruptOwned({ runId, kind: "cancelled" });
         return runId === undefined ? { kind: "not_running" } : { kind: "requested", runId };
       },
       async wait(input): Promise<WaitOutcome> {
@@ -771,7 +763,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const activation = await pool.activationFor(input.sessionId, pooled);
         if (activation === undefined) throw new Error("Session is not active in this host");
         await activation.setPlugins(
-          subagents.pluginsFor({ id: input.sessionId, pooled, plugins: next }),
+          delegation.pluginsFor({ id: input.sessionId, pooled, plugins: next }),
         );
         if (pooled.activationState?.kind === "active") {
           pooled.activationState = { ...pooled.activationState, plugins: next };
@@ -788,7 +780,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         }
         const activation = await pool.activationFor(id, pooled);
         if (activation !== undefined)
-          await activation.setPlugins(subagents.pluginsFor({ id, pooled, plugins: next }));
+          await activation.setPlugins(delegation.pluginsFor({ id, pooled, plugins: next }));
       }
     },
 
@@ -833,7 +825,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       };
       void begin().catch((cause: unknown) => {
         if (cause instanceof NyteClosed || !attachments.has(attachment)) return;
-        background.push(cause);
+        detached.push(cause);
       });
       let disposed = false;
       return () => {
@@ -870,7 +862,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         await pooled.session.close().catch((cause: unknown) => errors.push(cause));
       }
       pool.clear();
-      errors.push(...background.splice(0));
+      errors.push(...detached.splice(0));
       if (errors.length > 0) throw new AggregateError(errors, "Failed to close nyte");
     },
   };

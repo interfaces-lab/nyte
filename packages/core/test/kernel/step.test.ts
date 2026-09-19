@@ -433,17 +433,11 @@ function completion(id: string, state: "completed" | "cancelled" = "completed"):
   return {
     kind: "completion",
     job: {
-      id,
       kind: "command",
-      runId: "earlier-run",
-      callId: `call-${id}`,
-      head: "main",
-      mode: "background",
-      state,
-      title: `Job ${id}`,
+      id,
+      command: `Job ${id}`,
+      end: { kind: state },
       output: `output of ${id}`,
-      startedAt: 1,
-      updatedAt: 2,
     },
   };
 }

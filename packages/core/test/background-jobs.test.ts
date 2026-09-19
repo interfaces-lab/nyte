@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
-import { isUserJob } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { expect, test } from "vitest";
 import { createNyte } from "../src/kernel/sdk/nyte.ts";
@@ -63,7 +62,7 @@ async function idle(nyte: Nyte, id: SessionId) {
 }
 
 /** Gates hold real work open so assertions do not depend on process or provider speed. */
-async function fixture(kind: "bash" | "task", background: boolean, continuingParent = false) {
+async function fixture(background: boolean, continuingParent = false) {
   const path = storePath();
   const cwd = dirname(path);
   const releasePath = join(cwd, "release");
@@ -83,8 +82,9 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
     }, 10);
   `,
   );
-  const childGate = gate();
   const parentGate = gate();
+  /** Holds the answer to a plain "child-work" message, so a test can stop that run. */
+  const holdGate = gate();
   const parent = sessionId("jobs-parent");
   const requests: {
     text: string;
@@ -116,15 +116,7 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
     const answer =
       text === "start" && result === undefined
         ? assistant("", {
-            calls: [
-              call(
-                "work",
-                kind,
-                kind === "task"
-                  ? { model: "openai/test-model", prompt: "child-work", background }
-                  : { command, background },
-              ),
-            ],
+            calls: [call("work", "bash", { command, background })],
           })
         : continuingParent &&
             text === "start" &&
@@ -141,7 +133,7 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
             );
     const waiting =
       text === "child-work"
-        ? childGate.promise
+        ? holdGate.promise
         : text === "start" && result !== undefined
           ? parentGate.promise
           : Promise.resolve();
@@ -235,7 +227,6 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
     events,
     parentGate,
     release() {
-      childGate.release();
       writeFileSync(releasePath, "");
     },
     async start() {
@@ -243,20 +234,14 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
       await expect
         .poll(async () => (await nyte.jobs.list({ sessionId: parent })).length, poll)
         .toBe(1);
-      if (kind === "bash") await expect.poll(() => existsSync(pidPath), poll).toBe(true);
-      else
-        await expect
-          .poll(() => requests.filter((request) => request.text === "child-work").length, poll)
-          .toBe(1);
+      await expect.poll(() => existsSync(pidPath), poll).toBe(true);
       return only(await nyte.jobs.list({ sessionId: parent }));
     },
     async reload() {
       await nyte.setPlugins(plugins);
     },
     executions() {
-      return kind === "bash"
-        ? readFileSync(startsPath, "utf8").trim().split("\n").length
-        : requests.filter((request) => request.text === "child-work").length;
+      return readFileSync(startsPath, "utf8").trim().split("\n").length;
     },
     pid() {
       return Number(readFileSync(pidPath, "utf8"));
@@ -267,324 +252,284 @@ async function fixture(kind: "bash" | "task", background: boolean, continuingPar
       try {
         await nyte.close();
       } finally {
-        childGate.release();
+        holdGate.release();
         await watch;
       }
     },
   };
 }
 
-for (const kind of ["bash", "task"] as const) {
-  for (const background of [false, true]) {
-    test(`${kind}: ${background ? "background:true" : "park then background"} delivers once at the next response without interrupting streaming or queuing user input`, async () => {
-      const f = await fixture(kind, background, true);
-      try {
-        expect(await f.nyte.jobs.list({ sessionId: f.parent })).toEqual([]);
-        const job = await f.start();
-        expect(job).toMatchObject({
-          mode: background ? "background" : "foreground",
-          state: "running",
-          callId: "work",
-          head: "main",
-          kind: kind === "bash" ? "command" : "subagent",
-        });
-        if (!background) {
-          expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe(
-            "waiting",
-          );
-          expect((await f.nyte.sessions.snapshot({ sessionId: f.parent }))?.parked).toEqual(
-            expect.arrayContaining([expect.objectContaining({ callId: "work", tool: kind })]),
-          );
-          expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
-            kind: "applied",
-          });
-        }
-        await expect
-          .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
-          .toBe(2);
+for (const background of [false, true]) {
+  test(`${background ? "background:true" : "park then background"} delivers once at the next response without interrupting streaming or queuing user input`, async () => {
+    const f = await fixture(background, true);
+    try {
+      expect(await f.nyte.jobs.list({ sessionId: f.parent })).toEqual([]);
+      const job = await f.start();
+      expect(job).toMatchObject({
+        phase: { kind: "running", mode: background ? "background" : "foreground" },
+        origin: { kind: "run", callId: "work" },
+        head: "main",
+        command: expect.stringContaining("work.cjs"),
+      });
+      assert.equal(job.origin.kind, "run");
+      if (!background) {
+        expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe(
+          "waiting",
+        );
+        expect((await f.nyte.sessions.snapshot({ sessionId: f.parent }))?.parked).toEqual(
+          expect.arrayContaining([expect.objectContaining({ callId: "work", tool: "bash" })]),
+        );
         expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
           kind: "applied",
         });
-        expect(await f.nyte.jobs.list({ sessionId: f.parent, head: "other" })).toEqual([]);
-        f.release();
-        await expect
-          .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).state, poll)
-          .toBe("completed");
-        expect(await f.nyte.messages.pending({ sessionId: f.parent })).toEqual([]);
-        expect((await f.nyte.sessions.snapshot({ sessionId: f.parent }))?.pending).toEqual([]);
-        expect(f.requests.filter((request) => request.text.startsWith("Background "))).toHaveLength(
-          0,
-        );
-        expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("respond");
-        expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).output).toContain(
-          "job-result",
-        );
-        f.parentGate.release();
-        await idle(f.nyte, f.parent);
-        await f.nyte.reactivate();
-        await idle(f.nyte, f.parent);
+      }
+      await expect
+        .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
+        .toBe(2);
+      expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
+        kind: "applied",
+      });
+      expect(await f.nyte.jobs.list({ sessionId: f.parent, head: "other" })).toEqual([]);
+      f.release();
+      await expect
+        .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind, poll)
+        .toBe("completed");
+      expect(await f.nyte.messages.pending({ sessionId: f.parent })).toEqual([]);
+      expect((await f.nyte.sessions.snapshot({ sessionId: f.parent }))?.pending).toEqual([]);
+      expect(f.requests.filter((request) => request.text.startsWith("Background "))).toHaveLength(
+        0,
+      );
+      expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("respond");
+      expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).output).toContain("job-result");
+      f.parentGate.release();
+      await idle(f.nyte, f.parent);
+      await f.nyte.reactivate();
+      await idle(f.nyte, f.parent);
+      expect(f.requests.filter((request) => request.text.startsWith("Background "))).toHaveLength(
+        1,
+      );
+      expect(f.executions()).toBe(1);
+      expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
+        kind: "finished",
+      });
+      expect(await f.nyte.jobs.cancel({ sessionId: f.parent, jobId: job.id })).toEqual({
+        kind: "finished",
+      });
+      await expect
+        .poll(
+          () =>
+            f.events.some(
+              (event) =>
+                event.kind === "job" &&
+                event.job.id === job.id &&
+                event.job.phase.kind === "completed" &&
+                event.job.output.includes("job-result"),
+            ),
+          poll,
+        )
+        .toBe(true);
+      expect(
+        f.events.some(
+          (event) =>
+            event.kind === "job" && event.job.id === job.id && event.job.phase.kind === "running",
+        ),
+      ).toBe(true);
+      expect(
+        f.events.filter((event) => event.kind === "queued" && event.item.lane === "background"),
+      ).toHaveLength(0);
+      expect((await f.nyte.runs.current({ sessionId: f.parent }))?.runId).toBe(job.origin.runId);
+      const transcript = await f.nyte.messages.list({ sessionId: f.parent });
+      expect(
+        transcript.flatMap((turn) =>
+          turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "user") : [],
+        ),
+      ).toEqual([expect.objectContaining({ kind: "user", content: "start" })]);
+      await f.close();
+      const reopened = await f.open();
+      try {
+        reopened.attach({ sessions: [f.parent] });
+        await reopened.reactivate();
+        await idle(reopened, f.parent);
+        expect(only(await reopened.jobs.list({ sessionId: f.parent }))).toMatchObject({
+          id: job.id,
+          phase: { kind: "completed" },
+        });
+        expect(await reopened.messages.list({ sessionId: f.parent })).toEqual(transcript);
         expect(f.requests.filter((request) => request.text.startsWith("Background "))).toHaveLength(
           1,
         );
         expect(f.executions()).toBe(1);
-        expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
-          kind: "finished",
-        });
-        expect(await f.nyte.jobs.cancel({ sessionId: f.parent, jobId: job.id })).toEqual({
-          kind: "finished",
-        });
-        await expect
-          .poll(
-            () =>
-              f.events.some(
-                (event) =>
-                  event.kind === "job" &&
-                  event.job.id === job.id &&
-                  event.job.state === "completed" &&
-                  event.job.output.includes("job-result"),
-              ),
-            poll,
-          )
-          .toBe(true);
-        expect(
-          f.events.some(
-            (event) =>
-              event.kind === "job" && event.job.id === job.id && event.job.state === "running",
-          ),
-        ).toBe(true);
-        expect(
-          f.events.filter((event) => event.kind === "queued" && event.item.lane === "background"),
-        ).toHaveLength(0);
-        expect((await f.nyte.runs.current({ sessionId: f.parent }))?.runId).toBe(job.runId);
-        const transcript = await f.nyte.messages.list({ sessionId: f.parent });
-        expect(
-          transcript.flatMap((turn) =>
-            turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "user") : [],
-          ),
-        ).toEqual([expect.objectContaining({ kind: "user", content: "start" })]);
-        await f.close();
-        const reopened = await f.open();
-        try {
-          reopened.attach({ sessions: [f.parent] });
-          await reopened.reactivate();
-          await idle(reopened, f.parent);
-          expect(only(await reopened.jobs.list({ sessionId: f.parent }))).toMatchObject({
-            id: job.id,
-            state: "completed",
-            mode: "background",
-          });
-          expect(await reopened.messages.list({ sessionId: f.parent })).toEqual(transcript);
-          expect(
-            f.requests.filter((request) => request.text.startsWith("Background ")),
-          ).toHaveLength(1);
-          expect(f.executions()).toBe(1);
-        } finally {
-          await reopened.close();
-        }
-      } finally {
-        await f.close();
-      }
-    }, 15_000);
-
-    test(`${kind}: runs.abort cancels ${background ? "background" : "parked foreground"} work the run owns`, async () => {
-      const f = await fixture(kind, background);
-      try {
-        const job = await f.start();
-        if (background)
-          await expect
-            .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
-            .toBe(2);
-        else
-          expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe(
-            "waiting",
-          );
-        expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
-        await idle(f.nyte, f.parent);
-        expect
-          .soft((await f.nyte.runs.current({ sessionId: f.parent }))?.phase)
-          .toEqual({ kind: "aborted" });
-        expect.soft(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("cancelled");
-        if (job.kind === "command") {
-          await expect.poll(() => alive(f.pid()), poll).toBe("dead");
-        } else {
-          await idle(f.nyte, job.childSessionId);
-          expect((await f.nyte.runs.current({ sessionId: job.childSessionId }))?.phase.kind).toBe(
-            "aborted",
-          );
-          await expect
-            .poll(
-              () =>
-                f.events.some(
-                  (event) =>
-                    event.kind === "job" &&
-                    event.job.id === job.id &&
-                    event.job.state === "cancelled",
-                ),
-              poll,
-            )
-            .toBe(true);
-        }
-      } finally {
-        await f.close();
-      }
-    }, 15_000);
-  }
-
-  test(`${kind}: work that finishes as the user stops cannot restart the stopped run; the next message hears it once`, async () => {
-    const f = await fixture(kind, true);
-    try {
-      const job = await f.start();
-      // The parent is answering the job receipt (held by parentGate) when the job ends.
-      await expect
-        .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
-        .toBe(2);
-      f.release();
-      const store = openStore(join(f.cwd, "store.db"));
-      const session = await store.open(f.parent);
-      const queuedCompletions = async () =>
-        (await pending(session, "main")).filter(
-          (item) => item.change.body.kind === "completion" && item.change.body.job.id === job.id,
-        ).length;
-      await expect.poll(queuedCompletions, poll).toBe(1);
-      expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("completed");
-
-      expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
-      await idle(f.nyte, f.parent);
-      // The completion is durable and still queued; the stop did not consume it.
-      expect(await queuedCompletions()).toBe(1);
-      const current = await f.nyte.runs.current({ sessionId: f.parent });
-      expect(current?.phase).toEqual({ kind: "aborted" });
-      expect(current?.runId).toBe(job.runId);
-      expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
-      const turns = await f.nyte.messages.list({ sessionId: f.parent });
-      expect(
-        turns.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
-      ).toHaveLength(1);
-      expect(await f.nyte.runs.abort({ sessionId: f.parent })).toEqual({ kind: "not_running" });
-      expect(await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).toEqual({
-        kind: "idle",
-      });
-
-      await f.nyte.messages.send({ sessionId: f.parent, content: "after" });
-      await idle(f.nyte, f.parent);
-      const answered = await f.nyte.runs.current({ sessionId: f.parent });
-      expect(answered?.runId).not.toBe(job.runId);
-      expect(answered?.phase).toEqual({ kind: "done" });
-      const heard = f.requests.filter((request) => request.completions > 0);
-      expect(heard).toHaveLength(1);
-      expect(heard[0]).toMatchObject({ completions: 1 });
-      expect(await queuedCompletions()).toBe(0);
-      const later = await f.nyte.messages.list({ sessionId: f.parent });
-      expect(
-        later.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
-      ).toHaveLength(1);
-      const parts = later.flatMap((turn) =>
-        turn.kind === "turn"
-          ? turn.parts.flatMap((part) =>
-              part.kind === "assistant"
-                ? [`assistant:${part.text}`]
-                : part.kind === "user"
-                  ? [`user:${contentText(part.content)}`]
-                  : [],
-            )
-          : [],
-      );
-      expect(parts.slice(-2)).toEqual(["user:after", "assistant:received job-result"]);
-    } finally {
-      await f.close();
-    }
-  }, 15_000);
-
-  test(`${kind}: close/reopen retains interrupted jobs without replaying work; the interruption waits for the next message and is heard once`, async () => {
-    const f = await fixture(kind, true);
-    try {
-      const job = await f.start();
-      f.parentGate.release();
-      await idle(f.nyte, f.parent);
-      await f.close();
-      const store = openStore(join(f.cwd, "store.db"));
-      const session = await store.open(f.parent);
-      const queuedCompletions = async () =>
-        (await pending(session, "main")).filter(
-          (item) => item.change.body.kind === "completion" && item.change.body.job.id === job.id,
-        ).length;
-      const reopened = await f.open();
-      try {
-        expect(only(await reopened.jobs.list({ sessionId: f.parent }))).toMatchObject({
-          id: job.id,
-          state: "interrupted",
-        });
-        reopened.attach({ sessions: [f.parent] });
-        // Recovery reports the interruption durably; the finished parent run does
-        // not answer it. Only the next message does.
-        await expect.poll(queuedCompletions, poll).toBe(1);
-        await idle(reopened, f.parent);
-        expect((await reopened.runs.current({ sessionId: f.parent }))?.runId).toBe(job.runId);
-        expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
-        expect(f.executions()).toBe(1);
-        expect(only(await reopened.jobs.list({ sessionId: f.parent })).state).toBe("interrupted");
-
-        await reopened.messages.send({ sessionId: f.parent, content: "after" });
-        await idle(reopened, f.parent);
-        expect((await reopened.runs.current({ sessionId: f.parent }))?.runId).not.toBe(job.runId);
-        const heard = f.requests.filter((request) => request.completions > 0);
-        expect(heard).toHaveLength(1);
-        expect(heard[0]).toMatchObject({ completions: 1 });
-        expect(heard[0]?.completionText).toContain("interrupted");
-        expect(await queuedCompletions()).toBe(0);
       } finally {
         await reopened.close();
       }
-      const again = await f.open();
-      try {
-        again.attach({ sessions: [f.parent] });
-        await again.reactivate();
-        await idle(again, f.parent);
-        expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(1);
-        expect(await queuedCompletions()).toBe(0);
-        expect(f.executions()).toBe(1);
-      } finally {
-        await again.close();
-        await store.close();
-      }
+    } finally {
+      await f.close();
+    }
+  }, 15_000);
+
+  test(`runs.abort cancels ${background ? "background" : "parked foreground"} work the run owns`, async () => {
+    const f = await fixture(background);
+    try {
+      await f.start();
+      if (background)
+        await expect
+          .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
+          .toBe(2);
+      else
+        expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe(
+          "waiting",
+        );
+      expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
+      await idle(f.nyte, f.parent);
+      expect
+        .soft((await f.nyte.runs.current({ sessionId: f.parent }))?.phase)
+        .toEqual({ kind: "aborted" });
+      expect
+        .soft(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind)
+        .toBe("cancelled");
+      await expect.poll(() => alive(f.pid()), poll).toBe("dead");
     } finally {
       await f.close();
     }
   }, 15_000);
 }
 
-for (const background of [false, true]) {
-  test(`task background=${background}: child inherits trust and ${background ? "cannot" : "can"} ask questions`, async () => {
-    const f = await fixture("task", background);
+test("work that finishes as the user stops cannot restart the stopped run; the next message hears it once", async () => {
+  const f = await fixture(true);
+  try {
+    const job = await f.start();
+    assert.equal(job.origin.kind, "run");
+    // The parent is answering the job receipt (held by parentGate) when the job ends.
+    await expect
+      .poll(() => f.requests.filter((request) => request.text === "start").length, poll)
+      .toBe(2);
+    f.release();
+    const store = openStore(join(f.cwd, "store.db"));
+    const session = await store.open(f.parent);
+    const queuedCompletions = async () =>
+      (await pending(session, "main")).filter(
+        (item) =>
+          item.change.body.kind === "completion" &&
+          item.change.body.job.kind === "command" &&
+          item.change.body.job.id === job.id,
+      ).length;
+    await expect.poll(queuedCompletions, poll).toBe(1);
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("completed");
+
+    expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
+    await idle(f.nyte, f.parent);
+    // The completion is durable and still queued; the stop did not consume it.
+    expect(await queuedCompletions()).toBe(1);
+    const current = await f.nyte.runs.current({ sessionId: f.parent });
+    expect(current?.phase).toEqual({ kind: "aborted" });
+    expect(current?.runId).toBe(job.origin.runId);
+    expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
+    const turns = await f.nyte.messages.list({ sessionId: f.parent });
+    expect(
+      turns.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
+    ).toHaveLength(1);
+    expect(await f.nyte.runs.abort({ sessionId: f.parent })).toEqual({ kind: "not_running" });
+    expect(await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).toEqual({
+      kind: "idle",
+    });
+
+    await f.nyte.messages.send({ sessionId: f.parent, content: "after" });
+    await idle(f.nyte, f.parent);
+    const answered = await f.nyte.runs.current({ sessionId: f.parent });
+    expect(answered?.runId).not.toBe(job.origin.runId);
+    expect(answered?.phase).toEqual({ kind: "done" });
+    const heard = f.requests.filter((request) => request.completions > 0);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ completions: 1 });
+    expect(await queuedCompletions()).toBe(0);
+    const later = await f.nyte.messages.list({ sessionId: f.parent });
+    expect(
+      later.filter((turn) => turn.kind === "turn" && turn.failure?.class === "aborted"),
+    ).toHaveLength(1);
+    const parts = later.flatMap((turn) =>
+      turn.kind === "turn"
+        ? turn.parts.flatMap((part) =>
+            part.kind === "assistant"
+              ? [`assistant:${part.text}`]
+              : part.kind === "user"
+                ? [`user:${contentText(part.content)}`]
+                : [],
+          )
+        : [],
+    );
+    expect(parts.slice(-2)).toEqual(["user:after", "assistant:received job-result"]);
+  } finally {
+    await f.close();
+  }
+}, 15_000);
+
+test("close/reopen retains interrupted jobs without replaying work; the interruption waits for the next message and is heard once", async () => {
+  const f = await fixture(true);
+  try {
+    const job = await f.start();
+    assert.equal(job.origin.kind, "run");
+    f.parentGate.release();
+    await idle(f.nyte, f.parent);
+    await f.close();
+    const store = openStore(join(f.cwd, "store.db"));
+    const session = await store.open(f.parent);
+    const queuedCompletions = async () =>
+      (await pending(session, "main")).filter(
+        (item) =>
+          item.change.body.kind === "completion" &&
+          item.change.body.job.kind === "command" &&
+          item.change.body.job.id === job.id,
+      ).length;
+    const reopened = await f.open();
     try {
-      const job = await f.start();
-      assert.equal(job.kind, "subagent");
-      const child = await f.nyte.sessions.get({ sessionId: job.childSessionId });
-      expect(child?.activation).toEqual({ kind: "active" });
-      expect(f.resolved).toEqual([f.parent]);
-      expect(
-        only(f.requests.filter((request) => request.text === "child-work")).tools.includes(
-          "clarify",
-        ),
-      ).toBe(!background);
-      expect(only(f.requests.filter((request) => request.text === "child-work")).tools).toContain(
-        "bash",
+      expect(only(await reopened.jobs.list({ sessionId: f.parent }))).toMatchObject({
+        id: job.id,
+        phase: { kind: "interrupted" },
+      });
+      reopened.attach({ sessions: [f.parent] });
+      // Recovery reports the interruption durably; the finished parent run does
+      // not answer it. Only the next message does.
+      await expect.poll(queuedCompletions, poll).toBe(1);
+      await idle(reopened, f.parent);
+      expect((await reopened.runs.current({ sessionId: f.parent }))?.runId).toBe(job.origin.runId);
+      expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
+      expect(f.executions()).toBe(1);
+      expect(only(await reopened.jobs.list({ sessionId: f.parent })).phase.kind).toBe(
+        "interrupted",
       );
-      expect(f.requests[0]?.tools).toContain("clarify");
-      f.release();
-      f.parentGate.release();
-      await expect
-        .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).state, poll)
-        .toBe("completed");
-      await idle(f.nyte, f.parent);
+
+      await reopened.messages.send({ sessionId: f.parent, content: "after" });
+      await idle(reopened, f.parent);
+      expect((await reopened.runs.current({ sessionId: f.parent }))?.runId).not.toBe(
+        job.origin.runId,
+      );
+      const heard = f.requests.filter((request) => request.completions > 0);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]).toMatchObject({ completions: 1 });
+      expect(heard[0]?.completionText).toContain("interrupted");
+      expect(await queuedCompletions()).toBe(0);
     } finally {
-      await f.close();
+      await reopened.close();
     }
-  }, 15_000);
-}
+    const again = await f.open();
+    try {
+      again.attach({ sessions: [f.parent] });
+      await again.reactivate();
+      await idle(again, f.parent);
+      expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(1);
+      expect(await queuedCompletions()).toBe(0);
+      expect(f.executions()).toBe(1);
+    } finally {
+      await again.close();
+      await store.close();
+    }
+  } finally {
+    await f.close();
+  }
+}, 15_000);
 
 test("jobs.cancel kills the local process and publishes cancelled output", async () => {
-  const f = await fixture("bash", true);
+  const f = await fixture(true);
   try {
     expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: "missing" })).toEqual({
       kind: "not_found",
@@ -607,13 +552,15 @@ test("jobs.cancel kills the local process and publishes cancelled output", async
       kind: "applied",
     });
     await expect.poll(() => alive(pid), poll).toBe("dead");
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("cancelled");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("cancelled");
     await expect
       .poll(
         () =>
           f.events.some(
             (event) =>
-              event.kind === "job" && event.job.id === job.id && event.job.state === "cancelled",
+              event.kind === "job" &&
+              event.job.id === job.id &&
+              event.job.phase.kind === "cancelled",
           ),
         poll,
       )
@@ -636,19 +583,16 @@ test("jobs.cancel kills the local process and publishes cancelled output", async
 }, 15_000);
 
 test("a user job runs without a run: streams, lists, backgrounds, cancels, survives an abort, and is interrupted by close", async () => {
-  const f = await fixture("bash", false);
+  const f = await fixture(false);
   const command = `exec '${process.execPath.replaceAll("'", "'\\''")}' work.cjs`;
   try {
     const job = await f.nyte.jobs.start({ sessionId: f.parent, command });
     expect(job).toMatchObject({
-      kind: "command",
-      callId: job.id,
+      origin: { kind: "user" },
       head: "main",
-      title: command,
-      mode: "foreground",
-      state: "running",
+      command,
+      phase: { kind: "running", mode: "foreground" },
     });
-    expect(isUserJob(job)).toBe(true);
     await expect
       .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).output, poll)
       .toContain("working");
@@ -660,14 +604,14 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
             (event) =>
               event.kind === "job" &&
               event.job.id === job.id &&
-              event.job.state === "running" &&
+              event.job.phase.kind === "running" &&
               event.job.output.includes("working"),
           ),
         poll,
       )
       .toBe(true);
     expect(
-      f.events.some((event) => event.kind === "tool_progress" && event.callId === job.callId),
+      f.events.some((event) => event.kind === "tool_progress" && event.callId === job.id),
     ).toBe(false);
     // Aborting a run the user's job does not belong to leaves the job alone.
     await f.nyte.messages.send({ sessionId: f.parent, content: "child-work" });
@@ -678,18 +622,20 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
     await idle(f.nyte, f.parent);
     const abortedRun = await f.nyte.runs.current({ sessionId: f.parent });
     expect(abortedRun?.phase).toEqual({ kind: "aborted" });
-    expect(abortedRun?.runId).not.toBe(job.runId);
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("running");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("running");
     expect(alive(pid)).toBe("alive");
     expect(await f.nyte.jobs.background({ sessionId: f.parent, jobId: job.id })).toEqual({
       kind: "applied",
     });
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).mode).toBe("background");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase).toEqual({
+      kind: "running",
+      mode: "background",
+    });
     expect(await f.nyte.jobs.cancel({ sessionId: f.parent, jobId: job.id })).toEqual({
       kind: "applied",
     });
     await expect.poll(() => alive(pid), poll).toBe("dead");
-    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("cancelled");
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("cancelled");
     // A user job is never a completion: no background lane item, no model turn.
     expect(await f.nyte.messages.pending({ sessionId: f.parent })).toEqual([]);
     expect(
@@ -697,38 +643,29 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
     ).toHaveLength(0);
     expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
 
+    const phaseOf = async (id: string) =>
+      (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === id)?.phase;
     const completed = await f.nyte.jobs.start({
       sessionId: f.parent,
       command: "printf 'natural\\n'",
     });
-    await expect
-      .poll(
-        async () =>
-          (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === completed.id)
-            ?.state,
-        poll,
-      )
-      .toBe("completed");
+    await expect.poll(async () => (await phaseOf(completed.id))?.kind, poll).toBe("completed");
     expect(
       (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === completed.id),
-    ).toMatchObject({ state: "completed", output: "natural\n" });
+    ).toMatchObject({ phase: { kind: "completed" }, output: "natural\n" });
 
     const failed = await f.nyte.jobs.start({
       sessionId: f.parent,
       command: "printf 'failure\\n'; exit 7",
     });
-    await expect
-      .poll(
-        async () =>
-          (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === failed.id)
-            ?.state,
-        poll,
-      )
-      .toBe("failed");
+    await expect.poll(async () => (await phaseOf(failed.id))?.kind, poll).toBe("failed");
     const failedJob = (await f.nyte.jobs.list({ sessionId: f.parent })).find(
       (item) => item.id === failed.id,
     );
-    expect(failedJob?.state).toBe("failed");
+    expect(failedJob?.phase).toMatchObject({
+      kind: "failed",
+      reason: expect.stringContaining("7"),
+    });
     expect(failedJob?.output).toContain("failure");
     expect(failedJob?.output).toMatch(/Command exited with code 7$/u);
 
@@ -736,14 +673,7 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
       sessionId: f.parent,
       command: `exec '${process.execPath.replaceAll("'", "'\\''")}' -e "process.stdout.write('x'.repeat(60000))"`,
     });
-    await expect
-      .poll(
-        async () =>
-          (await f.nyte.jobs.list({ sessionId: f.parent })).find((item) => item.id === truncated.id)
-            ?.state,
-        poll,
-      )
-      .toBe("completed");
+    await expect.poll(async () => (await phaseOf(truncated.id))?.kind, poll).toBe("completed");
     const truncatedOutput = (await f.nyte.jobs.list({ sessionId: f.parent })).find(
       (item) => item.id === truncated.id,
     )?.output;
@@ -766,11 +696,18 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
       expect(reopenedJobs).toHaveLength(5);
       expect(reopenedJobs).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ id: job.id, state: "cancelled" }),
-          expect.objectContaining({ id: completed.id, state: "completed", output: "natural\n" }),
-          expect.objectContaining({ id: failed.id, state: "failed" }),
-          expect.objectContaining({ id: truncated.id, state: "completed" }),
-          expect.objectContaining({ id: second.id, state: "interrupted" }),
+          expect.objectContaining({ id: job.id, phase: { kind: "cancelled" } }),
+          expect.objectContaining({
+            id: completed.id,
+            phase: { kind: "completed" },
+            output: "natural\n",
+          }),
+          expect.objectContaining({
+            id: failed.id,
+            phase: expect.objectContaining({ kind: "failed" }),
+          }),
+          expect.objectContaining({ id: truncated.id, phase: { kind: "completed" } }),
+          expect.objectContaining({ id: second.id, phase: { kind: "interrupted" } }),
         ]),
       );
     } finally {
@@ -781,66 +718,65 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
   }
 }, 20_000);
 
-for (const kind of ["bash", "task"] as const) {
-  test(`${kind}: foreground work waits and returns a normal tool result, including after plugin reload`, async () => {
-    const f = await fixture(kind, false);
-    try {
-      const job = await f.start();
-      expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe("waiting");
-      expect(f.requests.filter((request) => request.text === "start")).toHaveLength(1);
-      await f.reload();
-      f.parentGate.release();
-      f.release();
-      await expect
-        .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).state, poll)
-        .toBe("completed");
-      await idle(f.nyte, f.parent);
-      const transcript = await f.nyte.messages.list({ sessionId: f.parent });
-      const parts = transcript.flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
-      expect(
-        parts.find((part) => part.kind === "tool" && part.callId === job.callId),
-      ).toMatchObject({
-        result: { output: expect.stringContaining("job-result"), isError: false },
-      });
-      expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
-      expect(f.requests.filter((request) => request.text === "start")).toHaveLength(2);
-      expect(f.executions()).toBe(1);
-    } finally {
-      await f.close();
-    }
-  });
+test("foreground work waits and returns a normal tool result, including after plugin reload", async () => {
+  const f = await fixture(false);
+  try {
+    const job = await f.start();
+    const { origin } = job;
+    assert.equal(origin.kind, "run");
+    expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe("waiting");
+    expect(f.requests.filter((request) => request.text === "start")).toHaveLength(1);
+    await f.reload();
+    f.parentGate.release();
+    f.release();
+    await expect
+      .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind, poll)
+      .toBe("completed");
+    await idle(f.nyte, f.parent);
+    const transcript = await f.nyte.messages.list({ sessionId: f.parent });
+    const parts = transcript.flatMap((turn) => (turn.kind === "turn" ? turn.parts : []));
+    expect(
+      parts.find((part) => part.kind === "tool" && part.callId === origin.callId),
+    ).toMatchObject({
+      result: { output: expect.stringContaining("job-result"), isError: false },
+    });
+    expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
+    expect(f.requests.filter((request) => request.text === "start")).toHaveLength(2);
+    expect(f.executions()).toBe(1);
+  } finally {
+    await f.close();
+  }
+});
 
-  test(`${kind}: an idle parent cannot relocate while background work is running`, async () => {
-    const f = await fixture(kind, true);
-    const destination = dirname(storePath());
-    const workspace = await trustWorkspace(destination);
-    try {
-      const job = await f.start();
-      f.parentGate.release();
-      await idle(f.nyte, f.parent);
-      expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("done");
-      expect(await f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] })).toEqual({
-        kind: "busy",
-      });
-      expect(await f.nyte.sessionCwd({ sessionId: f.parent })).toBe(f.cwd);
-      expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).state).toBe("running");
-      f.release();
-      await expect
-        .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).state, poll)
-        .toBe("completed");
-      await idle(f.nyte, f.parent);
-      if (job.kind === "subagent") await idle(f.nyte, job.childSessionId);
-      // The finished job's report waits for the next message; inert, it does not hold the move.
-      await expect
-        .poll(() => f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] }), poll)
-        .toEqual({ kind: "relocated" });
-      expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
-      const session = await openStore(join(f.cwd, "store.db")).open(f.parent);
-      expect(
-        (await pending(session, "main")).filter((item) => item.change.body.kind === "completion"),
-      ).toHaveLength(1);
-    } finally {
-      await f.close();
-    }
-  }, 15_000);
-}
+test("an idle parent cannot relocate while background work is running", async () => {
+  const f = await fixture(true);
+  const destination = dirname(storePath());
+  const workspace = await trustWorkspace(destination);
+  try {
+    await f.start();
+    f.parentGate.release();
+    await idle(f.nyte, f.parent);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("done");
+    expect(await f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] })).toEqual({
+      kind: "busy",
+    });
+    expect(await f.nyte.sessionCwd({ sessionId: f.parent })).toBe(f.cwd);
+    expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("running");
+    f.release();
+    await expect
+      .poll(async () => only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind, poll)
+      .toBe("completed");
+    await idle(f.nyte, f.parent);
+    // The finished job's report waits for the next message; inert, it does not hold the move.
+    await expect
+      .poll(() => f.nyte.relocate({ sessionId: f.parent, workspace, plugins: [] }), poll)
+      .toEqual({ kind: "relocated" });
+    expect(f.requests.filter((request) => request.completions > 0)).toHaveLength(0);
+    const session = await openStore(join(f.cwd, "store.db")).open(f.parent);
+    expect(
+      (await pending(session, "main")).filter((item) => item.change.body.kind === "completion"),
+    ).toHaveLength(1);
+  } finally {
+    await f.close();
+  }
+}, 15_000);

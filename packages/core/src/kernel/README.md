@@ -44,7 +44,8 @@ refs/queues/<head>/<lane>/base last landed Change; pending = (base, tip]
 refs/runs/<head>               Run: the branch's current run and phase
 refs/compactions/<head>        Blob: active checkpoint work fenced by the head lease
 refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
-refs/jobs/<job>                Blob: command or subagent job, output, result, delivery receipt
+refs/jobs/<job>                Blob: command job, output, result, what it still owes its head
+refs/delegations/<child>/<change> Blob: a request sent to a child, and whether its answer landed here
 refs/keys/<key>                idempotency receipt: the Change a key produced; the change
                                and the commit that lands it also carry the key, so the
                                sender can recognize its message by identity
@@ -78,7 +79,7 @@ refs/deleted                   Blob: the session is being deleted
 | `telemetry.ts` | The span vocabulary `step.ts` and `turn.ts` emit, and its typed starter. |
 | `compaction.ts` | Checkpoints and branch summaries: the cut, the summary, the publish.  |
 | `gc.ts`       | Mark from refs and recent ref events; sweep unreachable, aged objects. |
-| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `subagent-host.ts` (child sessions and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, `runs.diff`, `runs.revert`). |
+| `sdk/`        | The client contract (`types.ts`), event projection, activation, and `createNyte` (`nyte.ts`), composed from `session-pool.ts` (one handle per session: facts, heads, activation, notices), `runner.ts` (drive loops and aborts), `delegation.ts` (child sessions, the requests sent to them, their completions, and the jobs wrapper), `relocate.ts`, `summaries.ts` (`runs.compact`, the summary a move carries), and `reads.ts` (session page, snapshot, context, `runs.diff`, `runs.revert`). |
 
 Host schedulers can call `sdk.advance` for one kernel `step`, using the same turn
 preparation as the attached runner. `sdk/advance.ts` observes remote cancellation
@@ -213,10 +214,14 @@ runner notice instead. The flag stays on the terminal run object, and the run
 is then as idle as one that finished on its own.
 
 A user message queued during or after the stop starts a new run id in the same
-conversation; the stopped run is history. Aborting the parent cancels every job
-its run owns; their records are marked delivered as they are cancelled, so no
-completion is submitted for them. User jobs have no run and are untouched. The
-runner cancels its local drive from the run ref, never from an event's payload,
+conversation; the stopped run is history. Aborting a run cancels every command
+job it owns; their records owe nothing after that, so no completion is
+submitted for them. User jobs have no run and are untouched. Children the run
+created are untouched too: a child is a session, not the run's work. Its parked
+`await` (or `task`, or `send` with `waitMs`) wakes with the abort flag and
+settles `cancelled`; the child keeps working, and the completion its answer
+produces waits for the next user message like any other. Only `stop` ends a
+child. The runner cancels its local drive from the run ref, never from an event's payload,
 because a stopped run's final event still carries the flag after the next run
 has started; a read of that ref taken for one drive is dropped if the drive
 ended while the read was in flight.
@@ -266,40 +271,29 @@ lane's delivery order. The queue event projection publishes every appended copy.
 
 ## Background jobs
 
-The SDK wraps `bash` and `task` as jobs. Each `refs/jobs/<job>` points to an
-immutable blob containing `JobInfo`, an optional tool result, and a `delivered`
-flag. Job IDs derive from the originating run and call IDs. Updates use the same
-object-before-ref CAS as other durable state; there is no separate jobs table.
-The `job` event projects the ref's `JobInfo`, and `jobs.list` reads these refs.
-Output in `JobInfo` retains the last 50,000 characters.
+The SDK wraps `bash` as a job. Each `refs/jobs/<job>` points to an immutable
+blob containing `JobInfo`, an optional tool result, and what the job still owes
+its head: nothing, a completion, or one already delivered. Job IDs derive from
+the originating run and call IDs. Updates use the same object-before-ref CAS as
+other durable state; there is no separate jobs table. The `job` event projects
+the ref's `JobInfo`, and `jobs.list` reads these refs. Output in `JobInfo`
+retains the last 50,000 characters. Children are not jobs: see Delegation.
 
 ```text
-bash / task -> job ref + job lease -> work
-                  |
-                  +-> parked tool effect
-                        foreground: settle with the result when work ends
-                        background: settle with a receipt; work keeps its lease
+bash -> job ref + job lease -> work
+           |
+           +-> parked tool effect
+                 foreground: settle with the result when work ends
+                 background: settle with a receipt; work keeps its lease
 ```
 
 Both modes park the originating tool effect first. The runner rechecks jobs after
 parking so fast completion cannot lose its wake. `jobs.background` switches
 running foreground work to background without restarting it. `jobs.cancel`
-cancels that job, not the whole parent run. `wait_task` parks a new job that
-observes an owned subagent job until it ends, then settles with the stored
-report; it never re-runs the task, and cancelling the wait leaves the observed
-job running. A wait holds back the completion message while it carries a report
-and claims it on the way out, so an awaited report is heard once. Aborting the
-parent cancels every job that run owns, foreground or background, command or
-subagent; a run that ends on its own leaves its background work running, and
-that work's result then waits for the next user message.
-
-A parked call gives the head no response boundary, so user input queued for this
-run would wait for the child. Both parked shapes yield instead: `wait_task`
-settles with the task still running, and a foreground subagent job moves to
-background, which settles its call with the receipt. Only input in a lane that
-lands at a boundary counts; input queued for an idle head waits for the run
-either way. Yielding never touches the child: it keeps working, and its report
-arrives as a completion.
+cancels that job, not the whole parent run. Aborting the parent cancels every
+command job that run owns, foreground or background; a run that ends on its own
+leaves its background work running, and that work's result then waits for the
+next user message.
 
 Execution holds a renewable, fenced lease on the job ref, independently of the
 head lease. Closing a UI panel or switching chats does not cancel the job.
@@ -323,13 +317,49 @@ Recovery can repeat delivery after a crash between those writes without admittin
 a second completion. Completion includes failed, cancelled, and interrupted
 jobs, not just successful work; undelivered results survive host close.
 Foreground work returns its normal tool result and does not submit a completion.
-A job `jobs.start` runs for the user (`runId: "user"`, `isUserJob`) has no run:
-it is born delivered, signals no effect, survives `runs.abort`, and only
+A job `jobs.start` runs for the user (`origin.kind === "user"`) has no run: it
+owes no completion, signals no effect, survives `runs.abort`, and only
 `jobs.cancel` or host close ends it early; clients read it from `job` events.
 
-Child sessions inherit workspace trust. A background child is not offered tools marked `availability: "foreground"`, regardless of tool
-name. This is a host-placement filter in core, not knowledge of what a tool does or a client-side
-approval prompt.
+## Delegation
+
+A child is a session the parent addresses by `SessionId`, created by `create`
+or `task` at `childIdOf(parent, runId, callId)` with a `parent` fact, the
+parent's directory, the title as its `name` fact, and a config commit naming
+its model. It persists until `stop`: `send` enqueues a user message on its
+`main` head as the parent (`{ clientId: parent, device: "delegate" }`), in the
+first idle-landing lane when the child is idle and the first boundary lane when
+it is live, so the child's own landing rules apply unchanged. Each send writes
+`refs/delegations/<child>/<change>` in the parent session: the owning run and
+call, the head to answer on, and a `delivered` flag. That record is internal:
+not a `JobInfo`, not in `jobs.list`, never a `job` event.
+
+When the child run that landed a request ends (`done`, `failed`, `aborted`),
+the child's runner (or its next reconcile, after a crash) delivers one
+`completion` commit to the parent head with `JobReport.delegate`: the child,
+its title, `request` (the child commit the send landed as), how the run ended,
+and the child's last assistant commit of that run as `report`, or `none`.
+Delivery claims the record before submitting under `delegate-<child>-<change>`,
+so recovery can repeat it without admitting a second completion. A request the
+child was stopped before landing is delivered `cancelled`, named by its change.
+The completion rides the private `background` lane under the admission rules
+above: it never starts a run.
+
+`await` (and `task`, which is create, send, and await in one call; and `send`
+with `waitMs`) parks its effect with `until = now + timeoutMs`. Delegation
+signals the parked call when the agents it names satisfy its mode (`any` or
+`all`) or when user input arrives in a boundary lane of that head; the runner
+expires it at the deadline. The wake handler always settles: reports for the
+agents whose request ended, `{ phase }` for the rest, and a note when the wait
+ended for input or on the deadline. A report is heard again as its completion.
+`read` answers from the child's transcript projection and never parks. `stop`
+flags the child cancelled, aborts its run, cancels its queue, and interrupts
+its jobs; it answers no further `send`.
+
+Child sessions inherit workspace trust. A child is not offered tools marked
+`availability: "foreground"`, regardless of tool name: it works unattended.
+This is a host-placement filter in core, not knowledge of what a tool does or a
+client-side approval prompt.
 
 ## Session location
 

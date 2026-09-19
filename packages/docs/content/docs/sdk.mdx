@@ -206,10 +206,10 @@ recorded on the run's commits when the host has a VCS backend and from `file_pat
 
 ## Jobs
 
-Core tracks `bash` commands and `task` subagents as jobs. Both tools accept `background: true`. A
-parent agent calls `wait_task({ jobId })` to join an existing background subagent and continue the
-same run when its report is ready. That is a tool, not an SDK method. Cancelling the wait does not
-cancel the observed task. Aborting a run does cancel that run's own jobs.
+Core tracks `bash` commands as jobs. The tool accepts `background: true`. Children are sessions,
+not jobs: the parent addresses one by `SessionId` through `create`, `send`, `await`, `read`, and
+`stop`, and `sessions.list({ parent })` finds them. Aborting a run cancels that run's own command
+jobs and its parked waits; the children keep working.
 
 To move already-running work to background, use its job ID, not its run ID.
 
@@ -218,7 +218,7 @@ import type { Nyte, SessionId } from "@nyte-ai/core";
 
 async function backgroundWork(sdk: Nyte, sessionId: SessionId) {
   const jobs = await sdk.jobs.list({ sessionId, head: "main" });
-  const job = jobs.find((job) => job.state === "running" && job.mode === "foreground");
+  const job = jobs.find((job) => job.phase.kind === "running" && job.phase.mode === "foreground");
   if (job === undefined) return;
   return sdk.jobs.background({ sessionId, jobId: job.id });
 }
@@ -234,20 +234,22 @@ that job. `runs.abort` cancels foreground and background work owned by that run,
 independent user jobs running. These controls work while the parent run is waiting, so do not gate
 them on an idle composer.
 
-`JobInfo` includes `id`, `head`, `runId`, `callId`, `title`, `mode`, `state`, timestamps, and
-`output`. Its kind is `command` or `subagent`. Only subagents include `childSessionId`. State is
-`running`, `completed`, `failed`, `cancelled`, or `interrupted`. Output retains the last 50,000
+`JobInfo` includes `id`, `head`, `origin`, `command`, `phase`, timestamps, and `output`. `origin`
+is `{ kind: "run", runId, callId }` for a job a tool call started and `{ kind: "user" }` for one
+`jobs.start` began. `phase` is `running` with a `foreground` or `background` mode, or
+`completed`, `failed`, `cancelled`, or `interrupted`. Output retains the last 50,000
 characters. Read jobs with `jobs.list` and refresh on `job` events. Job data is separate from the
 session snapshot.
 
 Job records and output are durable, but work does not survive the owning host closing. Host close or
 recovery marks abandoned work `interrupted` without rerunning it. A terminal background job submits
-its state and output as an idempotent completion on the originating head, through core's private
-`background` lane. It can join an active run at a response boundary, but cannot start model work on
-its own. Without an active run, it waits for user input. Clients do not add that lane to their
-landing policy or send completion messages themselves.
+its end and output as an idempotent completion on the originating head, through core's private
+`background` lane; a child's answered request lands on its parent the same way. A completion can
+join an active run at a response boundary, but cannot start model work on its own. Without an
+active run, it waits for user input. Clients do not add that lane to their landing policy or send
+completion messages themselves.
 
-Background children inherit workspace trust and are not offered tools marked
+Children inherit workspace trust and are not offered tools marked
 `availability: "foreground"`.
 
 ## Heads

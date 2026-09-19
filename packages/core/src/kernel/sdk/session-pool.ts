@@ -1,7 +1,7 @@
 /**
  * One handle per open session, and everything that belongs to that handle:
  * the store session, its facts, its heads and runs, the host's activation
- * answer, and the notice fan-out to watchers. Runners and subagents are built
+ * answer, and the notice fan-out to watchers. Runners and delegation are built
  * on top of it and reach back through `SessionPoolHooks`.
  */
 import { isAbsolute } from "node:path";
@@ -89,7 +89,6 @@ export interface Pooled {
   activation?: Activation;
   activationCwd?: string;
   opening?: Promise<Activation | undefined>;
-  background: boolean;
   relocating?: boolean;
   scopedPlugins?: boolean;
   jobs?: ReturnType<typeof createJobs>;
@@ -199,7 +198,6 @@ export function createSessionPool(input: {
       return existing;
     }
     const parent = parentFromFact(await readFact(session, PARENT_FACT));
-    const backgroundJob = (await readFact(session, "job-background")) === true;
     // Another opener or shutdown may have won while the parent fact was read.
     const winner = pool.get(id);
     if (closed || winner !== undefined) {
@@ -211,7 +209,6 @@ export function createSessionPool(input: {
     const pooled: Pooled = {
       session,
       parent,
-      background: backgroundJob,
       runnerTasks: new Set(),
       noticeListeners: new Set(),
       retired: false,

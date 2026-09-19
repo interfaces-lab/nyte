@@ -25,7 +25,6 @@ import type {
   SummaryStoppedFailure,
   CheckpointFailure,
   InactiveFailure,
-  JobInfo as JobInfoSchema,
   JobActionOutcome as JobActionOutcomeSchema,
 } from "./schemas.ts";
 import type { PluginInfo } from "./plugins.ts";
@@ -263,18 +262,59 @@ export interface RunInfo {
   readonly lease?: { readonly owner: string; readonly expiresAt: number };
 }
 
-export type JobInfo = Readonly<Static<typeof JobInfoSchema>>;
-export type JobActionOutcome = Readonly<Static<typeof JobActionOutcomeSchema>>;
+// ---------------------------------------------------------------------------
+// Jobs: commands a session runs outside the model's turn
+// ---------------------------------------------------------------------------
 
-/**
- * The `runId` of a job the user started (`jobs.start`), which no run owns: it
- * survives `runs.abort`, delivers no completion, and its `callId` is its own id.
- */
-export const USER_JOB_RUN_ID = "user";
+/** A run's job parks the call that started it; a participant's (`jobs.start`) has no run and is born delivered. */
+export type JobOrigin =
+  | { readonly kind: "run"; readonly runId: RunId; readonly callId: string }
+  | { readonly kind: "user" };
 
-export function isUserJob(job: JobInfo): boolean {
-  return job.runId === USER_JOB_RUN_ID;
+export type JobPhase =
+  | { readonly kind: "running"; readonly mode: "foreground" | "background" }
+  | { readonly kind: "completed" }
+  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "interrupted" };
+
+export type JobEnd = Exclude<JobPhase, { readonly kind: "running" }>;
+
+/** A command job. Child sessions are sessions, not jobs: `sessions.list({ parent })` finds them. */
+export interface JobInfo {
+  readonly id: string;
+  readonly head: HeadName;
+  readonly origin: JobOrigin;
+  readonly command: string;
+  /** The last 50k characters, growing while running, final after. */
+  readonly output: string;
+  readonly phase: JobPhase;
+  readonly startedAt: number;
+  readonly updatedAt: number;
 }
+
+/** What a `completion` commit carries: how background work ended, and what it produced. */
+export type JobReport =
+  | {
+      readonly kind: "command";
+      readonly id: string;
+      readonly command: string;
+      readonly end: JobEnd;
+      readonly output: string;
+    }
+  | {
+      readonly kind: "delegate";
+      readonly session: SessionId;
+      readonly title: string;
+      /** The child commit the parent's send landed as; one completion per request answered. */
+      readonly request: Oid;
+      readonly end: JobEnd;
+      readonly report:
+        | { readonly kind: "text"; readonly text: string; readonly commit: Oid }
+        | { readonly kind: "none" };
+    };
+
+export type JobActionOutcome = Readonly<Static<typeof JobActionOutcomeSchema>>;
 
 export type AbortOutcome =
   | { readonly kind: "requested"; readonly runId: RunId }

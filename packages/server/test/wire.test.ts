@@ -307,19 +307,15 @@ test("run reads and replies on an idle head answer without a runner, and status 
 
 test("job calls dispatch through HTTP and job events round-trip through SSE", async () => {
   const job: JobInfo = {
-    kind: "command",
     id: "job-1",
-    runId: "run-1",
-    callId: "call-1",
     head: "branch",
-    title: "Run tests",
-    mode: "background",
-    state: "running",
+    origin: { kind: "run", runId: "run-1", callId: "call-1" },
+    command: "pnpm test",
+    phase: { kind: "running", mode: "background" },
     startedAt: 1,
     updatedAt: 2,
     output: "partial output\n",
   };
-  const childSessionId = sessionId("child");
   const calls: unknown[] = [];
   const { client, raw } = await fixture({
     wrap: (sdk) => ({
@@ -341,11 +337,7 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
       },
       async *watch() {
         yield { seq: 3, kind: "job", job };
-        yield {
-          seq: 3,
-          kind: "job",
-          job: { ...job, kind: "subagent", childSessionId },
-        };
+        yield { seq: 4, kind: "job", job: { ...job, phase: { kind: "completed" } } };
       },
     }),
   });
@@ -383,7 +375,7 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
     events.push(event);
   assert.deepEqual(events, [
     { seq: 3, kind: "job", job },
-    { seq: 3, kind: "job", job: { ...job, kind: "subagent", childSessionId: "child" } },
+    { seq: 4, kind: "job", job: { ...job, phase: { kind: "completed" } } },
   ]);
 });
 

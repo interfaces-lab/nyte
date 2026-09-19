@@ -11,6 +11,7 @@
  *   refs/effects/<run>/<call>      one tool call's durable state
  *   refs/keys/<key>                idempotency receipt for a submission
  *   refs/facts/<key>               a small session value
+ *   refs/delegations/<child>/<change> a request this session sent a child, and whether its answer landed here
  *   refs/cancelled/<change>        a submitted change withdrawn before it landed
  *   refs/deleted                   the session is being deleted; runs may not publish
  *
@@ -34,6 +35,7 @@ const COMPACTIONS = "refs/compactions/";
 const EFFECTS = "refs/effects/";
 const KEYS = "refs/keys/";
 const FACTS = "refs/facts/";
+const DELEGATIONS = "refs/delegations/";
 const CANCELLED = "refs/cancelled/";
 
 export function headRef(head: string): RefName {
@@ -110,6 +112,15 @@ export function keyRef(key: string): RefName {
 
 export function factRef(key: string): RefName {
   return FACTS + key;
+}
+
+export function delegationRef(child: string, change: Oid): RefName {
+  return `${DELEGATIONS}${child}/${change}`;
+}
+
+/** Every request one child was sent, for `refs.list`. */
+export function delegationPrefix(child: string): string {
+  return `${DELEGATIONS}${child}/`;
 }
 
 /**

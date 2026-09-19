@@ -13,7 +13,7 @@ import type {
   ProviderId,
   UserMessage,
 } from "@nyte-ai/schema";
-import type { BranchConfig, Commit, JobInfo, ModelRef } from "@nyte-ai/protocol";
+import type { BranchConfig, Commit, JobEnd, JobReport, ModelRef } from "@nyte-ai/protocol";
 
 export interface ModelContext {
   readonly messages: Message[];
@@ -113,20 +113,34 @@ function enforceToolPairs(messages: readonly Message[]): Message[] {
   return output;
 }
 
+function endText(end: JobEnd): string {
+  switch (end.kind) {
+    case "completed":
+      return "finished";
+    case "failed":
+      return `failed: ${end.reason}`;
+    case "cancelled":
+    case "interrupted":
+      return `was ${end.kind}`;
+    default: {
+      const _exhaustive: never = end;
+      return _exhaustive;
+    }
+  }
+}
+
 /** The message a finished background job lands as. The model reads it as a new user turn. */
-export function completionText(job: JobInfo): string {
-  const subject =
-    job.kind === "subagent" ? `subagent ${job.title} (${job.id})` : `command ${job.id}`;
-  const outcome =
-    job.state === "completed"
-      ? job.kind === "subagent"
-        ? "finished. Its report:"
-        : `exited: \`${job.title}\`. Its output:`
-      : job.state === "failed"
-        ? "failed:"
-        : `was ${job.state}.`;
-  const output = job.output === "" ? "(no output)" : job.output;
-  return `Background ${subject} ${outcome}\n\n${output}`;
+export function completionText(job: JobReport): string {
+  switch (job.kind) {
+    case "command":
+      return `Background command ${job.id} (\`${job.command}\`) ${endText(job.end)}. Its output:\n\n${job.output === "" ? "(no output)" : job.output}`;
+    case "delegate":
+      return `Background agent ${job.title} (${job.session}) ${endText(job.end)}. Its report:\n\n${job.report.kind === "text" && job.report.text !== "" ? job.report.text : "(no report)"}`;
+    default: {
+      const _exhaustive: never = job;
+      return _exhaustive;
+    }
+  }
 }
 
 /** Convert oldest-first commits into provider-safe model messages. */

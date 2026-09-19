@@ -15,7 +15,7 @@ import { activate } from "./activation.ts";
 import { JOB_PREFIX } from "./jobs.ts";
 import type { Runners } from "./runner.ts";
 import { CWD_FACT, type Pooled, type SessionPool } from "./session-pool.ts";
-import type { Subagents } from "./subagent-host.ts";
+import type { Delegation } from "./delegation.ts";
 import {
   sessionId,
   type HeadName,
@@ -31,10 +31,10 @@ export function createRelocation(input: {
   readonly options: NyteOptions;
   readonly pool: SessionPool;
   readonly runners: Runners;
-  readonly subagents: Pick<Subagents, "jobsFor" | "pluginsFor">;
+  readonly delegation: Pick<Delegation, "jobsFor" | "pluginsFor">;
 }) {
   const { options, pool, runners } = input;
-  const { jobsFor, pluginsFor } = input.subagents;
+  const { jobsFor, pluginsFor } = input.delegation;
   const drain = (options.landing ?? DEFAULT_LANDING).drain;
   /** Queued work the runner would land now. A completion waiting for user input is not. */
   const queuedWork = async (
@@ -81,7 +81,7 @@ export function createRelocation(input: {
       /** Live job work, or a job lease another owner still holds, blocks the move. */
       const jobsBusy = async (sessionId: SessionId, entry: Pooled): Promise<boolean> => {
         for (const job of await jobsFor(sessionId, entry).list()) {
-          if (!restoring && job.state === "running") return true;
+          if (!restoring && job.phase.kind === "running") return true;
           if ((await entry.session.leases.read(JOB_PREFIX + job.id)) !== undefined) return true;
         }
         return false;
