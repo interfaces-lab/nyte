@@ -22,6 +22,28 @@ function phased(
   }
 }
 
+function delegateVerb(
+  role: Extract<ToolClass, { readonly kind: "delegate" }>["role"],
+  phase: ToolPhase,
+): string {
+  switch (role) {
+    case "create":
+      return phased(phase, { running: "Creating", done: "Created", noun: "Delegation" });
+    case "send":
+      return phased(phase, { running: "Sending to", done: "Sent to", noun: "Send" });
+    case "await":
+      return phased(phase, { running: "Waiting for", done: "Waited for", noun: "Wait" });
+    case "read":
+      return phased(phase, { running: "Reading", done: "Read", noun: "Read" });
+    case "stop":
+      return phased(phase, { running: "Stopping", done: "Stopped", noun: "Stop" });
+    default: {
+      const _exhaustive: never = role;
+      return _exhaustive;
+    }
+  }
+}
+
 export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
   switch (toolClass.kind) {
     case "file_read":
@@ -38,10 +60,11 @@ export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
       return toolClass.op === "edit"
         ? phased(phase, { running: "Editing", done: "Edited", noun: "Edit" })
         : phased(phase, { running: "Writing", done: "Wrote", noun: "Write" });
+    case "spawn":
+      return phased(phase, { running: "Creating", done: "Created", noun: "Delegation" });
+    case "delegate_call":
     case "delegate":
-      return toolClass.role === "spawn"
-        ? phased(phase, { running: "Delegating", done: "Delegated", noun: "Delegation" })
-        : phased(phase, { running: "Waiting for", done: "Waited for", noun: "Wait" });
+      return delegateVerb(toolClass.role, phase);
     case "custom":
       return phased(phase, {
         running: toolClass.label,

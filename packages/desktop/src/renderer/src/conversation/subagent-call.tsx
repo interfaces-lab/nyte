@@ -1,27 +1,32 @@
 /**
- * One delegation. A spawn is the subagent's card: its title over its status,
- * with the model beside the title once the child session exists. The status
- * comes from the chat's jobs, since a backgrounded call settles while its
- * subagent keeps working; until the job is listed the tool's own phase stands
- * in. An await of that job is one compact line that links to the same child,
- * never a second card. Same law as other tool calls: no status icon, the
- * shimmer is the running state.
+ * One delegation. A settled `create` is the subagent's card: its title over
+ * its status, with the model beside the title once the child session is
+ * listed. The status comes from the chat's child sessions, since a create
+ * settles while its subagent keeps working; until the child is listed the
+ * tool's own phase stands in. Every other call on a child (`send`, `await`,
+ * `read`, `stop`), and a create still waiting for its child, is one compact
+ * line that links to the same child, never a second card. Same law as other
+ * tool calls: no status icon, the shimmer is the running state.
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import type { ReactElement } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { RunConfig, SessionId, ToolClass } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
-import { useCatalog, useJobs, useSession } from "../queries.ts";
-import { jobStateLabel } from "./jobs-view.ts";
-import type { SubagentJob } from "./jobs-view.ts";
+import { useCatalog, useChildSessions } from "../queries.ts";
+import { AGENT_STATE_LABEL, agentState } from "./agent-status.ts";
 import { modelDisplayName } from "./model-picker-state.ts";
 import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
 import { useSubagentInspector } from "./subagent-inspector.ts";
 import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
+
+export type DelegateToolClass = Extract<
+  ToolClass,
+  { readonly kind: "spawn" | "delegate_call" | "delegate" }
+>;
 
 const PHASE_STATUS = {
   running: "Working",
@@ -30,45 +35,36 @@ const PHASE_STATUS = {
   interrupted: "Stopped",
 } satisfies Readonly<Record<ToolPhase, string>>;
 
-/** The model a subagent runs on, in muted text; nothing until the child session answers. */
-export function SubagentModel({
-  childSessionId,
-  style,
-  separator = "",
+/** The model a subagent runs on, in muted text; nothing until the child session is listed. */
+function SubagentModel({
+  session,
+  model,
 }: {
-  childSessionId: SessionId;
-  style?: stylex.StyleXStyles;
-  /** Text after the name, so a caller can join it to what follows. */
-  separator?: string;
+  session: SessionId;
+  model: RunConfig["model"];
 }): ReactElement | null {
-  const catalog = useCatalog(childSessionId);
-  const child = useSession(childSessionId);
-  const model = modelDisplayName(catalog.data, child.data?.config.model);
-  if (model === undefined) return null;
-  return (
-    <span {...stylex.props(style)}>
-      {model}
-      {separator}
-    </span>
-  );
+  const catalog = useCatalog(session);
+  const name = modelDisplayName(catalog.data, model);
+  if (name === undefined) return null;
+  return <span {...stylex.props(toolCallStyles.detail)}>{name}</span>;
 }
 
 function OpenAgentButton({
   title,
-  childSessionId,
+  session,
 }: {
   title: string;
-  childSessionId: SessionId | undefined;
+  session: SessionId | undefined;
 }): ReactElement | null {
   const inspector = useSubagentInspector();
-  if (inspector === undefined || childSessionId === undefined) return null;
+  if (inspector === undefined || session === undefined) return null;
   return (
     <button
       type="button"
       aria-label={`Open ${title} in the Agents panel`}
       title="Open in Agents panel"
       {...stylex.props(toolCallStyles.openAgent, focus.ring)}
-      onClick={() => inspector.inspect(childSessionId)}
+      onClick={() => inspector.inspect(session)}
     >
       <Icon name="expand" size={12} />
     </button>
@@ -77,34 +73,30 @@ function OpenAgentButton({
 
 export function SubagentCallView({
   title,
-  child,
+  session,
   phase,
   output,
   density,
 }: {
   title: string;
-  child: SessionId | undefined;
+  session: SessionId;
   phase: ToolPhase;
   output: string | undefined;
   density: ToolCallDensity;
 }): ReactElement {
   const inspector = useSubagentInspector();
-  const jobs = useJobs(inspector?.sessionId);
-  const job = jobs.data?.find(
-    (candidate): candidate is SubagentJob =>
-      candidate.kind === "subagent" && child !== undefined && candidate.childSessionId === child,
-  );
-  const running = job === undefined ? phase === "running" : job.state === "running";
-  const failed = job === undefined ? phase === "failed" : job.state === "failed";
-  const status = job === undefined ? PHASE_STATUS[phase] : jobStateLabel(job);
+  const children = useChildSessions(inspector?.sessionId);
+  const child = children.data?.find((candidate) => candidate.sessionId === session);
+  const state = child === undefined ? undefined : agentState(child);
+  const running = state === undefined ? phase === "running" : state === "working";
+  const failed = state === undefined ? phase === "failed" : state === "failed";
+  const status = state === undefined ? PHASE_STATUS[phase] : AGENT_STATE_LABEL[state];
   const expandable = output !== undefined;
   const content = (open: boolean): ReactElement => (
     <>
       <span {...stylex.props(subagentCallStyles.head)}>
         <span {...stylex.props(toolCallStyles.verb)}>{title}</span>
-        {child !== undefined && (
-          <SubagentModel childSessionId={child} style={toolCallStyles.detail} />
-        )}
+        {child !== undefined && <SubagentModel session={session} model={child.config.model} />}
         {expandable && (
           <span {...stylex.props(toolCallStyles.chevron, open && toolCallStyles.chevronOpen)}>
             <Icon name="chevron-right" size={12} />
@@ -136,7 +128,7 @@ export function SubagentCallView({
     <Collapsible.Root disabled={!expandable} {...stylex.props(toolCallStyles.root)}>
       <div {...stylex.props(toolCallStyles.row)}>
         {line}
-        <OpenAgentButton title={title} childSessionId={child} />
+        <OpenAgentButton title={title} session={session} />
       </div>
       {output !== undefined && (
         <Collapsible.Panel
@@ -152,23 +144,35 @@ export function SubagentCallView({
   );
 }
 
-/** The job names the subagent; until it is listed the line names the job id. */
-export function SubagentAwaitView({
-  jobId,
+function lineTarget(toolClass: DelegateToolClass): {
+  readonly label: string;
+  readonly session: SessionId | undefined;
+} {
+  switch (toolClass.kind) {
+    case "spawn":
+      return { label: toolClass.title, session: undefined };
+    case "delegate_call":
+      return { label: toolClass.session, session: toolClass.session };
+    case "delegate":
+      return { label: toolClass.title, session: toolClass.session };
+    default: {
+      const _exhaustive: never = toolClass;
+      return _exhaustive;
+    }
+  }
+}
+
+/** A call on a child: the verb, then the child's name, or its id until the result names it. */
+export function SubagentLineView({
+  toolClass,
   phase,
   density,
 }: {
-  jobId: string;
+  toolClass: DelegateToolClass;
   phase: ToolPhase;
   density: ToolCallDensity;
 }): ReactElement {
-  const inspector = useSubagentInspector();
-  const jobs = useJobs(inspector?.sessionId);
-  const job = jobs.data?.find(
-    (candidate): candidate is SubagentJob =>
-      candidate.kind === "subagent" && candidate.id === jobId,
-  );
-  const title = job?.title ?? jobId;
+  const { label, session } = lineTarget(toolClass);
   return (
     <div {...stylex.props(toolCallStyles.row)}>
       <div
@@ -181,14 +185,14 @@ export function SubagentAwaitView({
         )}
       >
         <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
-          {toolVerb({ kind: "delegate", role: "await", jobId }, phase)}
+          {toolVerb(toolClass, phase)}
         </span>
         {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_STATUS[phase]}</span>}
-        <span title={title} {...stylex.props(toolCallStyles.detail)}>
-          {title}
+        <span title={label} {...stylex.props(toolCallStyles.detail)}>
+          {label}
         </span>
       </div>
-      <OpenAgentButton title={title} childSessionId={job?.childSessionId} />
+      <OpenAgentButton title={label} session={session} />
     </div>
   );
 }

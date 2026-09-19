@@ -186,7 +186,7 @@ test("update activity follows running local tasks", async () => {
     sessionId: session.sessionId,
     command: "printf ready; sleep 30",
   });
-  assert.equal(job.state, "running");
+  assert.equal(job.phase.kind, "running");
   assert.deepEqual(await host.updateActivity(), {
     kind: "busy",
     taskCount: 1,

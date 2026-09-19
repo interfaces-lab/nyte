@@ -1,60 +1,61 @@
 // Standalone browser-test preload. Import before any renderer module reads window.nyte.
 import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo, SessionSnapshot } from "@nyte-ai/protocol";
+import type { SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
 import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const visibilityParent = sessionId("visibility-parent");
 export const visibilityChild = sessionId("visibility-child");
 const visibilityOther = sessionId("visibility-other");
 
-const runningJob: JobInfo = {
-  id: "visibility-job",
-  kind: "subagent",
-  childSessionId: visibilityChild,
-  runId: "visibility-run",
-  callId: "visibility-call",
-  head: "main",
-  title: "Selected agent",
-  mode: "foreground",
-  state: "running",
-  startedAt: Date.now(),
-  updatedAt: Date.now(),
-  output: "",
+const runningAgent: SessionInfo = {
+  sessionId: visibilityChild,
+  activation: { kind: "active" },
+  name: "Selected agent",
+  createdAt: Date.now(),
+  lastActivityAt: Date.now(),
+  pinned: false,
+  archived: false,
+  heads: [
+    {
+      head: "main",
+      tip: null,
+      run: {
+        runId: "visibility-run",
+        head: "main",
+        phase: { kind: "tools" },
+        startedAt: Date.now(),
+        attempts: 1,
+        config: {},
+      },
+    },
+  ],
+  config: {},
+  parent: { sessionId: visibilityParent, runId: "parent-run", callId: "visibility-call", depth: 1 },
 };
 
-const jobs: JobInfo[] = [
-  runningJob,
+const agents: SessionInfo[] = [
+  runningAgent,
   {
-    ...runningJob,
-    id: "visibility-other-job",
-    childSessionId: visibilityOther,
-    title: "Newest agent",
-    updatedAt: runningJob.updatedAt + 1,
+    ...runningAgent,
+    sessionId: visibilityOther,
+    name: "Newest agent",
+    lastActivityAt: runningAgent.lastActivityAt + 1,
   },
 ];
 
 export const agentVisibilityScript = {
   activeClocks: new Set<number>(),
   snapshots: 0,
-  jobsReads: 0,
+  listReads: 0,
   watches: 0,
   unwatches: 0,
-  cancellations: 0,
+  aborts: 0,
   activeWatches: 0,
   failSnapshot: false,
-  jobs,
+  agents,
   snapshot: {
     seq: 3,
-    session: {
-      sessionId: visibilityChild,
-      activation: { kind: "active" },
-      createdAt: 1,
-      lastActivityAt: 2,
-      pinned: false,
-      archived: false,
-      heads: [],
-      config: {},
-    },
+    session: runningAgent,
     head: "main",
     tip: null,
     config: {},
@@ -94,13 +95,13 @@ const metadata: NyteBridge["sessions"]["metadata"] = async () => {
   const { session, head, config, context } = agentVisibilityScript.snapshot;
   return { session, head, config, context };
 };
-const list: NyteBridge["jobs"]["list"] = async () => {
-  agentVisibilityScript.jobsReads += 1;
-  return agentVisibilityScript.jobs;
+const list: NyteBridge["sessions"]["list"] = async () => {
+  agentVisibilityScript.listReads += 1;
+  return { items: agentVisibilityScript.agents };
 };
-const cancel: NyteBridge["jobs"]["cancel"] = async () => {
-  agentVisibilityScript.cancellations += 1;
-  return { kind: "applied" };
+const abort: NyteBridge["runs"]["abort"] = async () => {
+  agentVisibilityScript.aborts += 1;
+  return { kind: "not_running" };
 };
 const watch: NyteBridge["watch"] = (input) => {
   agentVisibilityScript.watches += 1;
@@ -115,8 +116,8 @@ const watch: NyteBridge["watch"] = (input) => {
 Object.defineProperty(window, "nyte", {
   configurable: true,
   value: {
-    sessions: { snapshot, metadata },
-    jobs: { list, cancel, background: async () => {} },
+    sessions: { snapshot, metadata, list },
+    runs: { abort },
     watch,
     host: {
       state: () => new Promise(() => {}),

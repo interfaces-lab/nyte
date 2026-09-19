@@ -1,6 +1,6 @@
 /**
  * Which subagent the Agents panel shows, per workbench view. The list of
- * subagents itself comes from the parent session's jobs; only the selection
+ * subagents itself comes from the parent session's child sessions; only the selection
  * is window state, so it is not persisted.
  */
 import type { SessionId } from "@nyte-ai/protocol";
@@ -28,9 +28,9 @@ export function useSelectedAgent(owner: string): SessionId | undefined {
 }
 
 export const agentActions = {
-  select(owner: string, childSessionId: SessionId): void {
-    if (selected.get(owner) === childSessionId) return;
-    publish(new Map(selected).set(owner, childSessionId));
+  select(owner: string, child: SessionId): void {
+    if (selected.get(owner) === child) return;
+    publish(new Map(selected).set(owner, child));
   },
   clear(owner: string): void {
     if (!selected.has(owner)) return;

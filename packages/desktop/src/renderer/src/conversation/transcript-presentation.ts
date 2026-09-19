@@ -13,7 +13,12 @@ type TranscriptDisplayPart =
 function isWorkPart(part: TurnPart): part is WorkTurnPart {
   // A delegation owns a child session and outlives the call, so it is not a
   // step inside someone else's episode.
-  if (part.kind === "tool") return part.class.kind !== "delegate";
+  if (part.kind === "tool")
+    return (
+      part.class.kind !== "spawn" &&
+      part.class.kind !== "delegate_call" &&
+      part.class.kind !== "delegate"
+    );
   return part.kind === "thinking";
 }
 

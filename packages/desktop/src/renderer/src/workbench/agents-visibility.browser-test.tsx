@@ -52,7 +52,7 @@ export async function run(): Promise<string> {
     render(false);
     check(container.textContent === "", "Initially hidden panels must not mount content");
     check(
-      agentVisibilityScript.snapshots === 0 && agentVisibilityScript.jobsReads === 0,
+      agentVisibilityScript.snapshots === 0 && agentVisibilityScript.listReads === 0,
       "Initially hidden panels must not fetch",
     );
     render(true);
@@ -69,12 +69,12 @@ export async function run(): Promise<string> {
     await until(() => agentVisibilityScript.activeWatches === 0 && observers() === 0);
     check(agentVisibilityScript.unwatches === 1, "Hiding disposes the child watch");
     check(agentVisibilityScript.activeClocks.size === 0, "Hiding stops the elapsed-time clock");
-    check(agentVisibilityScript.cancellations === 0, "Hiding must not cancel the running job");
-    const reads = agentVisibilityScript.jobsReads;
+    check(agentVisibilityScript.aborts === 0, "Hiding must not stop the running agent");
+    const reads = agentVisibilityScript.listReads;
     const snapshots = agentVisibilityScript.snapshots;
     await new Promise<void>((resolve) => window.setTimeout(resolve, 2_100));
     check(
-      agentVisibilityScript.jobsReads === reads && agentVisibilityScript.snapshots === snapshots,
+      agentVisibilityScript.listReads === reads && agentVisibilityScript.snapshots === snapshots,
       "Hidden panels must not poll or refresh snapshots",
     );
 
@@ -92,16 +92,19 @@ export async function run(): Promise<string> {
     scrollport().dispatchEvent(new Event("scroll", { bubbles: true }));
     render(false);
     await until(() => agentVisibilityScript.activeWatches === 0);
-    agentVisibilityScript.jobs = agentVisibilityScript.jobs.map((job) => ({
-      ...job,
-      state: "completed",
-      updatedAt: job.startedAt + 5_000,
+    agentVisibilityScript.agents = agentVisibilityScript.agents.map((agent) => ({
+      ...agent,
+      heads: agent.heads.map((head) =>
+        head.run === undefined
+          ? head
+          : { ...head, run: { ...head.run, phase: { kind: "done" as const } } },
+      ),
     }));
     agentVisibilityScript.snapshot.seq = 12;
     // An expired cache must not erase a retained reading position while loading.
     queryClient.removeQueries({ queryKey: keys.snapshot(visibilityChild), exact: true });
     render(true);
-    await until(() => container.textContent?.includes("Completed after 5s") === true);
+    await until(() => container.textContent?.includes("Completed") === true);
     check(scrollport().scrollTop > 120, "Pinned readers resume following after reopening");
     check(
       container.querySelector('[aria-label="Stop agent"]') === null,
@@ -121,7 +124,7 @@ export async function run(): Promise<string> {
     if (retry === undefined) throw new Error("Missing snapshot retry");
     retry.click();
     await until(() => agentVisibilityScript.activeWatches === 1);
-    check(agentVisibilityScript.cancellations === 0, "Visibility and retry never cancel jobs");
+    check(agentVisibilityScript.aborts === 0, "Visibility and retry never stop agents");
     return "passed";
   } finally {
     flushSync(() => root.unmount());

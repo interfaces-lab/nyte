@@ -23,6 +23,7 @@ export const keys = {
   session: (sessionId: SessionId) => ["session", sessionId] as const,
   jobs: (sessionId: SessionId | undefined) => ["jobs", sessionId] as const,
   children: (sessionId: SessionId) => ["children", sessionId] as const,
+  childSessions: (sessionId: SessionId | undefined) => ["sessions", "children", sessionId] as const,
   snapshot: (sessionId: SessionId) => ["snapshot", sessionId] as const,
   pluginSettings: (sessionId: SessionId) => ["plugins", "settings", sessionId] as const,
   vcsSnapshot: ["vcs", "snapshot"] as const,

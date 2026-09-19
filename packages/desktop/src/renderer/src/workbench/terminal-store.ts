@@ -5,15 +5,13 @@ import { errorMessage } from "../../../shared/errors.ts";
 import type { HostEvent } from "../../../shared/ipc.ts";
 import { nyte } from "../nyte.ts";
 
-export type CommandJobInfo = Extract<JobInfo, { readonly kind: "command" }>;
-
 type ShellTerminalState =
   | { readonly kind: "starting" }
   | { readonly kind: "running" }
   | { readonly kind: "exited"; readonly exitCode: number }
   | { readonly kind: "failed"; readonly message: string };
 
-type JobTerminalState = { readonly kind: CommandJobInfo["state"] };
+type JobTerminalState = { readonly kind: JobInfo["phase"]["kind"] };
 
 type TerminalRenderingState =
   | { readonly kind: "ready" }
@@ -35,7 +33,7 @@ interface JobTerminalTab extends TerminalTabFields {
   readonly source: {
     readonly kind: "job";
     readonly sessionId: SessionId;
-    readonly jobId: CommandJobInfo["id"];
+    readonly jobId: JobInfo["id"];
     readonly output: string;
   };
   readonly state: JobTerminalState;
@@ -123,7 +121,7 @@ export function getActiveTerminal(owner: string): TerminalTab | undefined {
 export function getJobTerminal(
   owner: string,
   sessionId: SessionId,
-  jobId: CommandJobInfo["id"],
+  jobId: JobInfo["id"],
 ): JobTerminalTab | undefined {
   return snapshot.tabs.find(
     (tab): tab is JobTerminalTab =>
@@ -179,10 +177,7 @@ function writeJobOutput(id: string, previous: string, next: string): void {
 }
 
 function syncJobs(owner: string, sessionId: SessionId, jobs: readonly JobInfo[]): void {
-  const commands = new Map<CommandJobInfo["id"], CommandJobInfo>();
-  for (const job of jobs) {
-    if (job.kind === "command") commands.set(job.id, job);
-  }
+  const commands = new Map(jobs.map((job) => [job.id, job]));
   let changed = false;
   const tabs = snapshot.tabs.map((tab): TerminalTab => {
     if (!isJobTerminal(tab) || tab.owner !== owner || tab.source.sessionId !== sessionId)
@@ -190,8 +185,8 @@ function syncJobs(owner: string, sessionId: SessionId, jobs: readonly JobInfo[])
     const job = commands.get(tab.source.jobId);
     if (job === undefined) return tab;
     if (
-      tab.title === job.title &&
-      tab.state.kind === job.state &&
+      tab.title === job.command &&
+      tab.state.kind === job.phase.kind &&
       tab.source.output === job.output
     ) {
       return tab;
@@ -199,9 +194,9 @@ function syncJobs(owner: string, sessionId: SessionId, jobs: readonly JobInfo[])
     changed = true;
     const next: JobTerminalTab = {
       ...tab,
-      title: job.title,
+      title: job.command,
       source: { ...tab.source, output: job.output },
-      state: { kind: job.state },
+      state: { kind: job.phase.kind },
     };
     output.get(tab.id)?.update(next);
     writeJobOutput(tab.id, tab.source.output, job.output);
@@ -269,7 +264,7 @@ export const terminalActions = {
     creating.set(id, pending);
     return pending;
   },
-  openJob(owner: string, sessionId: SessionId, job: CommandJobInfo): string {
+  openJob(owner: string, sessionId: SessionId, job: JobInfo): string {
     const existing = getJobTerminal(owner, sessionId, job.id);
     if (existing !== undefined) {
       syncJobs(owner, sessionId, [job]);
@@ -283,10 +278,10 @@ export const terminalActions = {
         {
           id,
           owner,
-          title: job.title,
+          title: job.command,
           cwd: "",
           source: { kind: "job", sessionId, jobId: job.id, output: job.output },
-          state: { kind: job.state },
+          state: { kind: job.phase.kind },
           rendering: { kind: "ready" },
         },
       ],

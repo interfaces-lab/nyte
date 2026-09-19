@@ -1,7 +1,8 @@
 /**
- * The Agents tab: one subagent of the current chat at a time, read-only. The
- * toolbar picks among the chat's subagents and carries the controls the jobs
- * tray offers; the body is the child session's transcript, live while it runs.
+ * The Agents tab: one child session of the current chat at a time. The
+ * toolbar picks among the chat's children and can stop the one shown; the
+ * body is the child's transcript, live while it runs, over a composer that
+ * sends to it.
  */
 import { Button as BaseButton } from "@nyte-ai/ui";
 import { Toolbar } from "@nyte-ai/ui/toolbar";
@@ -9,14 +10,15 @@ import * as stylex from "@stylexjs/stylex";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { JobInfo, SessionId, Turn } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, Turn } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
+import type { IconName } from "../components/icons.tsx";
 import { Menu, MenuRadioGroup, MenuRadioItem } from "../components/menu.tsx";
 import { Spinner } from "../components/spinner.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
+import { AGENT_STATE_LABEL, agentState } from "../conversation/agent-status.ts";
+import type { AgentState } from "../conversation/agent-status.ts";
 import { LiveTurn } from "../conversation/live-turn.tsx";
-import { jobStateLabel } from "../conversation/jobs-view.ts";
-import type { SubagentJob } from "../conversation/jobs-view.ts";
 import { modelDisplayName } from "../conversation/model-picker-state.ts";
 import { TurnView } from "../conversation/turn-view.tsx";
 import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
@@ -24,7 +26,13 @@ import { rendersInTranscript } from "../conversation/transcript-rows.ts";
 import { useSessionLive } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
 import { nyte } from "../nyte.ts";
-import { keys, useCatalog, useHostState, useJobs, useSessionSnapshot } from "../queries.ts";
+import {
+  keys,
+  useCatalog,
+  useChildSessions,
+  useHostState,
+  useSessionSnapshot,
+} from "../queries.ts";
 import { conversation, workbench } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { agentActions, useSelectedAgent } from "./agents-store.ts";
@@ -119,6 +127,29 @@ const styles = stylex.create({
     lineHeight: t.leadingSm,
   },
   error: { color: t.textDanger },
+  composer: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+    paddingBlock: 6,
+    paddingInline: 16,
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: t.strokeTertiary,
+  },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    padding: 0,
+    borderStyle: "none",
+    outline: "none",
+    backgroundColor: "transparent",
+    color: { default: t.textPrimary, "::placeholder": t.textTertiary },
+    fontFamily: "inherit",
+    fontSize: t.fontBase,
+    lineHeight: t.leadingBase,
+  },
   empty: {
     display: "flex",
     flex: 1,
@@ -175,49 +206,49 @@ function formatElapsed(ms: number): string {
     : `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
 }
 
-function StatusIcon({ job }: { readonly job: SubagentJob }): ReactElement {
+const STATE_ICON = {
+  idle: "clock",
+  completed: "checkmark",
+  failed: "warning",
+  stopped: "circle-x",
+} satisfies Readonly<Record<Exclude<AgentState, "working">, IconName>>;
+
+function StatusIcon({ state }: { readonly state: AgentState }): ReactElement {
   return (
     <span
       aria-hidden="true"
-      {...stylex.props(styles.statusIcon, job.state === "failed" && styles.error)}
+      {...stylex.props(styles.statusIcon, state === "failed" && styles.error)}
     >
-      {job.state === "running" ? (
-        <Spinner />
-      ) : (
-        <Icon
-          name={
-            job.state === "completed"
-              ? "checkmark"
-              : job.state === "failed"
-                ? "warning"
-                : "circle-x"
-          }
-          size={14}
-        />
-      )}
+      {state === "working" ? <Spinner /> : <Icon name={STATE_ICON[state]} size={14} />}
     </span>
   );
 }
 
+function agentTitle(agent: SessionInfo): string {
+  return agent.name ?? agent.sessionId;
+}
+
 function AgentTranscript({
-  job,
+  agent,
   cwd,
   position,
   onPositionChange,
 }: {
-  readonly job: SubagentJob;
+  readonly agent: SessionInfo;
   readonly cwd: string | undefined;
   readonly position: AgentScrollPosition;
   readonly onPositionChange: (position: AgentScrollPosition) => void;
 }): ReactElement {
-  const catalog = useCatalog(job.childSessionId);
-  const snapshot = useSessionSnapshot(job.childSessionId);
+  const catalog = useCatalog(agent.sessionId);
+  const snapshot = useSessionSnapshot(agent.sessionId);
   // A retained cache can predate a hidden interval. The observer opens on a
   // fresh coherent read and watches from it; a failed read keeps the retry
   // affordance, and closing the panel closes the observation.
-  const live = useSessionLive(job.childSessionId);
+  const live = useSessionLive(agent.sessionId);
   const turns = (snapshot.data?.transcript ?? EMPTY_TURNS).filter(rendersInTranscript);
-  const working = job.state === "running";
+  const state = agentState(agent);
+  const working = state === "working";
+  const startedAt = agent.heads[0]?.run?.startedAt;
   const now = useNow(working);
   const lastTurn = turns.at(-1);
   const settledWork =
@@ -248,9 +279,9 @@ function AgentTranscript({
           ·
         </span>
         <span>
-          {working
-            ? `Working for ${formatElapsed(now - job.startedAt)}`
-            : `${jobStateLabel(job)} after ${formatElapsed(job.updatedAt - job.startedAt)}`}
+          {working && startedAt !== undefined
+            ? `Working for ${formatElapsed(now - startedAt)}`
+            : AGENT_STATE_LABEL[state]}
         </span>
       </div>
       <div
@@ -304,21 +335,72 @@ function AgentTranscript({
   );
 }
 
+type AgentAction =
+  | { readonly kind: "stop"; readonly agent: SessionId }
+  | { readonly kind: "send"; readonly agent: SessionId; readonly content: string };
+
 function useAgentAction(sessionId: SessionId | undefined) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      jobId,
-      operation,
-    }: {
-      jobId: JobInfo["id"];
-      operation: "background" | "cancel";
-    }) =>
-      sessionId === undefined
-        ? Promise.reject(new Error("No session"))
-        : nyte.jobs[operation]({ sessionId, jobId }),
-    onSettled: () => client.invalidateQueries({ queryKey: keys.jobs(sessionId) }),
+    mutationFn: async (action: AgentAction) => {
+      switch (action.kind) {
+        case "stop":
+          await nyte.runs.abort({ sessionId: action.agent });
+          return;
+        case "send":
+          await nyte.messages.send({ sessionId: action.agent, content: action.content });
+          return;
+        default: {
+          const _exhaustive: never = action;
+          return _exhaustive;
+        }
+      }
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: keys.childSessions(sessionId) }),
   });
+}
+
+function AgentComposer({
+  agent,
+  action,
+}: {
+  readonly agent: SessionInfo;
+  readonly action: ReturnType<typeof useAgentAction>;
+}): ReactElement {
+  const [draft, setDraft] = useState("");
+  return (
+    <form
+      {...stylex.props(styles.composer)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        const content = draft.trim();
+        if (content === "" || action.isPending) return;
+        action.mutate(
+          { kind: "send", agent: agent.sessionId, content },
+          {
+            onSuccess: () => setDraft(""),
+          },
+        );
+      }}
+    >
+      <input
+        type="text"
+        aria-label={`Message ${agentTitle(agent)}`}
+        placeholder={`Message ${agentTitle(agent)}`}
+        autoComplete="off"
+        value={draft}
+        disabled={action.isPending}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        {...stylex.props(styles.input)}
+      />
+      <IconButton
+        icon="arrow-up"
+        label="Send"
+        type="submit"
+        disabled={action.isPending || draft.trim() === ""}
+      />
+    </form>
+  );
 }
 
 function VisibleAgentsPanel({
@@ -334,13 +416,14 @@ function VisibleAgentsPanel({
 }): ReactElement {
   const host = useHostState();
   const selectedId = useSelectedAgent(owner);
-  const jobs = useJobs(sessionId, "always");
-  const agents = (jobs.data ?? [])
-    .filter((job): job is SubagentJob => job.kind === "subagent")
-    .toSorted((left, right) => right.updatedAt - left.updatedAt);
-  const selected = agents.find((job) => job.childSessionId === selectedId) ?? agents[0];
+  const children = useChildSessions(sessionId);
+  const agents = (children.data ?? []).toSorted(
+    (left, right) => right.lastActivityAt - left.lastActivityAt,
+  );
+  const selected = agents.find((agent) => agent.sessionId === selectedId) ?? agents[0];
+  const selectedState = selected === undefined ? undefined : agentState(selected);
 
-  if (sessionId === undefined || (jobs.data !== undefined && agents.length === 0)) {
+  if (sessionId === undefined || (children.data !== undefined && agents.length === 0)) {
     return (
       <section aria-label="Agents" {...stylex.props(styles.root)}>
         <div {...stylex.props(styles.empty)}>
@@ -365,12 +448,14 @@ function VisibleAgentsPanel({
               <BaseButton
                 unstyled
                 type="button"
-                aria-label={`Showing ${selected.title}, ${jobStateLabel(selected)}`}
+                aria-label={`Showing ${agentTitle(selected)}, ${AGENT_STATE_LABEL[agentState(selected)]}`}
                 {...stylex.props(styles.picker, focus.ring)}
               >
-                <StatusIcon job={selected} />
-                <span {...stylex.props(styles.pickerLabel)}>{selected.title}</span>
-                <span {...stylex.props(styles.pickerState)}>{jobStateLabel(selected)}</span>
+                <StatusIcon state={agentState(selected)} />
+                <span {...stylex.props(styles.pickerLabel)}>{agentTitle(selected)}</span>
+                <span {...stylex.props(styles.pickerState)}>
+                  {AGENT_STATE_LABEL[agentState(selected)]}
+                </span>
                 <span {...stylex.props(styles.pickerChevron)}>
                   <Icon name="chevron-down" size={10} />
                 </span>
@@ -378,51 +463,47 @@ function VisibleAgentsPanel({
             }
           >
             <MenuRadioGroup
-              value={selected.childSessionId}
+              value={selected.sessionId}
               onValueChange={(value) => {
-                const next = agents.find((job) => job.childSessionId === value);
-                if (next !== undefined) agentActions.select(owner, next.childSessionId);
+                const next = agents.find((agent) => agent.sessionId === value);
+                if (next !== undefined) agentActions.select(owner, next.sessionId);
               }}
             >
-              {agents.map((job) => (
+              {agents.map((agent) => (
                 <MenuRadioItem
-                  key={job.id}
-                  value={job.childSessionId}
-                  leading={<StatusIcon job={job} />}
-                  meta={<span {...stylex.props(styles.pickerState)}>{jobStateLabel(job)}</span>}
+                  key={agent.sessionId}
+                  value={agent.sessionId}
+                  leading={<StatusIcon state={agentState(agent)} />}
+                  meta={
+                    <span {...stylex.props(styles.pickerState)}>
+                      {AGENT_STATE_LABEL[agentState(agent)]}
+                    </span>
+                  }
                 >
-                  {job.title}
+                  {agentTitle(agent)}
                 </MenuRadioItem>
               ))}
             </MenuRadioGroup>
           </Menu>
         )}
         <span {...stylex.props(styles.spacer)} />
-        {selected?.state === "running" && selected.mode === "foreground" && (
-          <IconButton
-            icon="layers"
-            label="Run in background"
-            disabled={action.isPending}
-            onClick={() => action.mutate({ jobId: selected.id, operation: "background" })}
-          />
-        )}
-        {selected?.state === "running" && (
+        {selected !== undefined && selectedState === "working" && (
           <IconButton
             icon="square"
             label="Stop agent"
             disabled={action.isPending}
-            onClick={() => action.mutate({ jobId: selected.id, operation: "cancel" })}
+            onClick={() => action.mutate({ kind: "stop", agent: selected.sessionId })}
           />
         )}
       </Toolbar.Root>
-      {jobs.isError && (
+      {children.isError && (
         <div role="alert" {...stylex.props(styles.notice, styles.error)}>
           Couldn’t load this chat’s agents.{" "}
           <BaseButton
             unstyled
             type="button"
             {...stylex.props(focus.ring)}
-            onClick={() => void jobs.refetch()}
+            onClick={() => void children.refetch()}
           >
             Try again
           </BaseButton>
@@ -435,13 +516,14 @@ function VisibleAgentsPanel({
       )}
       {selected !== undefined && (
         <AgentTranscript
-          key={selected.childSessionId}
-          job={selected}
-          position={positions.read(selected.childSessionId)}
-          onPositionChange={(position) => positions.write(selected.childSessionId, position)}
+          key={selected.sessionId}
+          agent={selected}
+          position={positions.read(selected.sessionId)}
+          onPositionChange={(position) => positions.write(selected.sessionId, position)}
           cwd={host.data?.workspace?.path}
         />
       )}
+      {selected !== undefined && <AgentComposer agent={selected} action={action} />}
     </section>
   );
 }

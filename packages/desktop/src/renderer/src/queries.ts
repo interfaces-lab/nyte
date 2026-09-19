@@ -23,7 +23,6 @@ export { keys } from "./query-keys.ts";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { MentionFile } from "@nyte-ai/client";
 import type {
-  JobInfo,
   PluginCatalog,
   RunDiff,
   RunId,
@@ -57,6 +56,7 @@ import { readSessionSnapshot, sessionSelection } from "./live.ts";
 import { nyte } from "./nyte.ts";
 import { SessionObservations } from "./session-freshness.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
+import { agentState } from "./conversation/agent-status.ts";
 import type { WorkspaceSearchInput } from "../../shared/workspace-editor.ts";
 
 export const queryClient = new QueryClient({
@@ -261,21 +261,25 @@ export function useSessionSnapshot(sessionId: SessionId) {
   });
 }
 
-/**
- * The jobs of one chat. Job events invalidate this; the poll while one runs
- * covers a job that settles without an event reaching this window. The client
- * default keeps a settled list across mounts; pass `"always"` when a view must
- * re-read on every visit.
- */
-export function useJobs(sessionId: SessionId | undefined, refetchOnMount?: "always") {
+/** The child sessions one chat delegated to. Parent commits invalidate this; the poll follows a working child. */
+export function useChildSessions(sessionId: SessionId | undefined) {
   return useQuery({
-    queryKey: keys.jobs(sessionId),
-    queryFn: (): Promise<readonly JobInfo[]> =>
-      sessionId === undefined ? Promise.resolve([]) : nyte.jobs.list({ sessionId }),
+    queryKey: keys.childSessions(sessionId),
+    queryFn: async (): Promise<readonly SessionInfo[]> => {
+      if (sessionId === undefined) return [];
+      const first = await nyte.sessions.list({ parent: sessionId });
+      const children = [...first.items];
+      let cursor = first.next;
+      while (cursor !== undefined) {
+        const page = await nyte.sessions.list({ parent: sessionId, cursor });
+        children.push(...page.items);
+        cursor = page.next;
+      }
+      return children;
+    },
     enabled: sessionId !== undefined,
-    refetchOnMount,
     refetchInterval: (query) =>
-      query.state.data?.some((job) => job.state === "running") === true ? 2_000 : false,
+      query.state.data?.some((child) => agentState(child) === "working") === true ? 2_000 : false,
   });
 }
 
