@@ -31,17 +31,11 @@ test("completion joins the next response without swallowing or impersonating que
     body: {
       kind: "completion",
       job: {
-        id: "job",
         kind: "command",
-        runId: "earlier-run",
-        callId: "call",
-        head: "main",
-        mode: "background",
-        state: "completed",
-        title: "Check build",
+        id: "job",
+        command: "Check build",
+        end: { kind: "completed" },
         output: "Build passed",
-        startedAt: 1,
-        updatedAt: 2,
       },
     },
   });
@@ -108,17 +102,11 @@ test("stopping the response to a landed completion keeps it out of the request t
     body: {
       kind: "completion",
       job: {
-        id: "job",
         kind: "command",
-        runId: "earlier-run",
-        callId: "call",
-        head: "main",
-        mode: "background",
-        state: "completed",
-        title: "Check build",
+        id: "job",
+        command: "Check build",
+        end: { kind: "completed" },
         output: "Build passed",
-        startedAt: 1,
-        updatedAt: 2,
       },
     },
   });

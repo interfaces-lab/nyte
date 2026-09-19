@@ -6,11 +6,10 @@
  */
 import { isTerminalPhase, validateHeadName } from "@nyte-ai/protocol";
 import type { Api, Model } from "@nyte-ai/schema";
-import type { AgentTool } from "../loop/types.ts";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
 import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.ts";
 import { failedAssistant } from "./requests.ts";
-import { factRef, parseHeadRef, isHeadName, parseQueueRef, runRef } from "../names.ts";
+import { parseHeadRef, isHeadName, parseQueueRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { drive, type StepOptions } from "../step.ts";
 import { advanceStep } from "./advance.ts";
@@ -88,7 +87,12 @@ export function createRunners(input: {
     readonly id: string;
   }) => Model<Api> | undefined;
   readonly jobsFor: (id: SessionId, pooled: Pooled) => ReturnType<typeof createJobs>;
-  readonly backgroundChild: (id: SessionId) => Promise<void>;
+  /** What a runner tells delegation: a child's run moved, a run parked, or input arrived on a head. */
+  readonly delegation: {
+    readonly childRunChanged: (id: SessionId, pooled: Pooled) => Promise<void>;
+    readonly recheck: (id: SessionId, pooled: Pooled, runId: string) => Promise<void>;
+    readonly yieldToInput: (id: SessionId, pooled: Pooled, head: HeadName) => Promise<void>;
+  };
   /** Whether an attachment currently volunteers this host for the session. */
   readonly covered: (id: SessionId, pooled: Pooled) => boolean;
   /** Failures of detached work, surfaced by `close`. */
@@ -119,13 +123,6 @@ export function createRunners(input: {
     pooled: Pooled,
     event: Extract<Event, { readonly kind: "ref" }>,
   ): Promise<boolean> => {
-    if (
-      event.name === factRef("job-background") &&
-      (await pool.readFact(pooled.session, "job-background")) === true
-    ) {
-      await input.backgroundChild(id);
-      return true;
-    }
     if (event.name.startsWith(JOB_PREFIX)) {
       await input.jobsFor(id, pooled).sync(event.name.slice(JOB_PREFIX.length));
       return true;
@@ -134,30 +131,14 @@ export function createRunners(input: {
   };
 
   const prepareExecution = (id: SessionId, pooled: Pooled, activation: Activation) => {
-    const foregroundTools = new Map<AgentTool, AgentTool>();
     const bound = turnFor(
       {
         ...activation,
+        // A child works unattended: nothing marked for a present participant is offered to it.
         tools: () =>
-          activation.tools().flatMap((tool) => {
-            if (tool.availability !== "foreground") return [tool];
-            if (pooled.background) return [];
-            const cached = foregroundTools.get(tool);
-            if (cached !== undefined) return [cached];
-            const guarded: AgentTool = {
-              ...tool,
-              execute: (...args) => {
-                // A foreground request may finish preparing this call after backgrounding.
-                if (pooled.background)
-                  return Promise.reject(
-                    new Error("This tool is unavailable after the session moves to background."),
-                  );
-                return tool.execute(...args);
-              },
-            };
-            foregroundTools.set(tool, guarded);
-            return [guarded];
-          }),
+          activation
+            .tools()
+            .filter((tool) => tool.availability !== "foreground" || pooled.parent === undefined),
       },
       {
         streamFn: async (model, context, streamOptions) => {
@@ -305,6 +286,7 @@ export function createRunners(input: {
       if (pooled.parent !== undefined) {
         const parent = await pool.open(pooled.parent.sessionId);
         await input.jobsFor(pooled.parent.sessionId, parent).recover();
+        await input.delegation.childRunChanged(request.sessionId, pooled);
       }
       await input.jobsFor(request.sessionId, pooled).recover();
       signal.throwIfAborted();
@@ -384,10 +366,11 @@ export function createRunners(input: {
                 prepared.optionsFor(head, controller.signal),
               );
               if (outcome.kind === "busy") return;
-              // A job that finished while its call was being parked signalled a
-              // not-yet-waiting effect. Recheck only this run's parked calls.
+              // A job or a child that finished while its call was being parked
+              // signalled a not-yet-waiting effect. Recheck only this run's parked calls.
               if (outcome.kind === "waiting" && !stopped && !pooled.retired) {
                 await input.jobsFor(id, pooled).recheck(outcome.run.id);
+                await input.delegation.recheck(id, pooled, outcome.run.id);
                 if (outcome.until !== undefined) driveAt(head, outcome.until);
               }
             } catch (error) {
@@ -446,8 +429,19 @@ export function createRunners(input: {
 
     const handleRef = async (event: Extract<Event, { readonly kind: "ref" }>): Promise<void> => {
       if (await handleSessionRef(id, pooled, event)) return;
-      const directHead =
-        parseHeadRef(event.name) ?? queueHead(event.name) ?? headFromRunRef(event.name);
+      const runHead = headFromRunRef(event.name);
+      if (runHead === MAIN && pooled.parent !== undefined) {
+        await input.delegation
+          .childRunChanged(id, pooled)
+          .catch((cause: unknown) => emitRunnerDiagnostic(pooled.session, cause));
+      }
+      const inputHead = queueHead(event.name);
+      if (inputHead !== undefined && pooled.parent === undefined) {
+        await input.delegation
+          .yieldToInput(id, pooled, inputHead)
+          .catch((cause: unknown) => emitRunnerDiagnostic(pooled.session, cause));
+      }
+      const directHead = parseHeadRef(event.name) ?? inputHead ?? runHead;
       if (directHead !== undefined) {
         await inspectRunEvent(directHead, event);
         wake(directHead);
@@ -544,6 +538,7 @@ export function createRunners(input: {
         if (pooled.parent !== undefined) {
           const parent = await pool.open(pooled.parent.sessionId);
           await input.jobsFor(pooled.parent.sessionId, parent).recover();
+          await input.delegation.childRunChanged(id, pooled);
         }
         await input.jobsFor(id, pooled).recover();
         if (!input.covered(id, pooled) || pooled.relocating) return;

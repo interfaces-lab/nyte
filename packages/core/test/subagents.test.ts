@@ -1,8 +1,9 @@
 /**
  * Delegation end to end: the parent selects an exact model through `task`, the
  * call parks, the host runs the child in its own session, and the
- * child's terminal state wakes the parent. The provider is a script; the
- * store, the runner, and both sessions are real. Design: design.mdx, "Agents".
+ * child's terminal state wakes the parent with its report. The provider is a
+ * script; the store, the runner, and both sessions are real. Design:
+ * design.mdx, "Agents".
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
@@ -51,8 +52,13 @@ function script(
   const reasoning = new Map<string, string | undefined>();
   const streamFn: StreamFn = (selectedModel, context, streamOptions) => {
     options.onRequest?.(context);
+    // A completion is a user-role message too; the request it lands in is still the user's.
     const messages = context.messages.slice(
-      context.messages.findLastIndex((item) => item.role === "user"),
+      context.messages.findLastIndex(
+        (item) =>
+          item.role === "user" &&
+          !(typeof item.content === "string" && item.content.startsWith("Background ")),
+      ),
     );
     const tail = messages[0];
     const text = tail?.role === "user" && !Array.isArray(tail.content) ? tail.content : "";
@@ -220,16 +226,15 @@ test("a foreground parent waits for the child and receives its answer", async ()
     assert.deepEqual(await transcript(nyte, parent), [
       "user:delegate openai/script-model",
       "tool",
-      `assistant:got: three files (${CHILD_PROMPT})`,
+      `assistant:got: Background agent ${TASK_TITLE} (${child.sessionId}) finished. Its report:\n\nthree files (${CHILD_PROMPT})`,
     ]);
     assert.equal(child.parent?.sessionId, parent);
     assert.equal(child.parent?.callId, "task-1");
     assert.equal(child.parent?.depth, 1);
+    assert.equal(child.name, TASK_TITLE);
     assert.equal(child.config.agent, undefined);
-    assert.deepEqual(
-      (await nyte.jobs.list({ sessionId: parent })).map((job) => job.title),
-      [TASK_TITLE],
-    );
+    // A child is a session, not a job.
+    assert.deepEqual(await nyte.jobs.list({ sessionId: parent }), []);
     assert.deepEqual(await transcript(nyte, child.sessionId), [
       "config",
       `user:${CHILD_PROMPT}`,
@@ -285,10 +290,7 @@ test("task defaults to Codex GPT 5.6 Sol with high thinking", async () => {
     });
     assert.equal(child.config.thinkingLevel, "high");
     assert.equal(scripted.reasoning.get(CHILD_PROMPT), "high");
-    assert.deepEqual(
-      (await nyte.jobs.list({ sessionId: parent.sessionId })).map((job) => job.title),
-      ["openai-codex/gpt-5.6-sol"],
-    );
+    assert.equal(child.name, CHILD_PROMPT);
   } finally {
     await nyte.close();
   }
@@ -338,9 +340,9 @@ for (const selected of [opus, astra]) {
       assert.equal(tool.result?.isError, false);
       assert.deepEqual(tool.class, {
         kind: "delegate",
-        role: "spawn",
+        role: "create",
+        session: child.sessionId,
         title: TASK_TITLE,
-        child: child.sessionId,
       });
     } finally {
       await nyte.close();

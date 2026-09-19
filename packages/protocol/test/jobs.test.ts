@@ -5,30 +5,35 @@ import {
   OPERATIONS,
   schemas,
   sessionId,
-  isUserJob,
-  USER_JOB_RUN_ID,
-  type JobInfo,
   type JobActionOutcome,
+  type JobInfo,
+  type JobPhase,
+  type JobReport,
   type SessionEvent,
 } from "../src/index.ts";
 
 const command: JobInfo = {
-  kind: "command",
   id: "job-1",
-  runId: "run-1",
-  callId: "call-1",
   head: "main",
-  title: "Run tests",
-  mode: "foreground",
-  state: "running",
+  origin: { kind: "run", runId: "run-1", callId: "call-1" },
+  command: "pnpm test",
+  phase: { kind: "running", mode: "foreground" },
   startedAt: 1,
   updatedAt: 2,
   output: "partial output\n",
 };
 
-test("job variants require their fields and keep the child session exclusive to subagents", () => {
-  const subagent: JobInfo = { ...command, kind: "subagent", childSessionId: sessionId("child") };
-  for (const job of [command, subagent]) {
+const phases: readonly JobPhase[] = [
+  { kind: "running", mode: "foreground" },
+  { kind: "running", mode: "background" },
+  { kind: "completed" },
+  { kind: "failed", reason: "exit 1" },
+  { kind: "cancelled" },
+  { kind: "interrupted" },
+];
+
+test("a job names its command, its origin, and its phase", () => {
+  for (const job of [command, { ...command, origin: { kind: "user" } } satisfies JobInfo]) {
     assert.ok(Value.Check(schemas.JobInfo, job));
     for (const key of Object.keys(job)) {
       const missing: unknown = Object.fromEntries(
@@ -38,11 +43,11 @@ test("job variants require their fields and keep the child session exclusive to 
     }
   }
   for (const invalid of [
-    { ...command, childSessionId: "child" },
-    { ...subagent, childSessionId: "" },
-    { ...command, kind: "other" },
-    { ...command, mode: "detached" },
-    { ...command, state: "pending" },
+    { ...command, origin: { kind: "run", runId: "run-1" } },
+    { ...command, phase: { kind: "running" } },
+    { ...command, phase: { kind: "running", mode: "detached" } },
+    { ...command, phase: { kind: "failed" } },
+    { ...command, phase: { kind: "pending" } },
     { ...command, startedAt: "1" },
     { ...command, updatedAt: null },
     { ...command, output: [] },
@@ -50,63 +55,88 @@ test("job variants require their fields and keep the child session exclusive to 
     assert.ok(!Value.Check(schemas.JobInfo, invalid));
 });
 
-test("job lists and events carry every mode and state", () => {
-  const modes: readonly JobInfo["mode"][] = ["foreground", "background"];
-  const states: readonly JobInfo["state"][] = [
-    "running",
-    "completed",
-    "failed",
-    "cancelled",
-    "interrupted",
-  ];
-  for (const mode of modes)
-    for (const state of states) {
-      const job: JobInfo = { ...command, mode, state };
-      const event: SessionEvent = { seq: 3, kind: "job", job };
-      assert.ok(Value.Check(OPERATIONS["jobs.list"].output, [job]));
-      assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));
-    }
+test("job lists and events carry every phase", () => {
+  for (const phase of phases) {
+    const job: JobInfo = { ...command, phase };
+    const event: SessionEvent = { seq: 3, kind: "job", job };
+    assert.ok(Value.Check(OPERATIONS["jobs.list"].output, [job]));
+    assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));
+  }
   assert.ok(Value.Check(OPERATIONS["jobs.list"].output, []));
   assert.ok(!Value.Check(OPERATIONS["jobs.list"].output, undefined));
   assert.ok(!Value.Check(schemas.SessionEvent, { seq: 3, kind: "job" }));
 });
 
-test("completion commits preserve job identity through the wire", () => {
-  const event: SessionEvent = {
-    seq: 4,
-    kind: "commit",
-    head: "main",
-    item: {
-      oid: "completion",
-      commit: {
-        kind: "commit",
-        parent: null,
-        at: 3,
-        body: { kind: "completion", job: { ...command, mode: "background", state: "completed" } },
-      },
+test("completion commits carry a command's or a child's report through the wire", () => {
+  const reports: readonly JobReport[] = [
+    {
+      kind: "command",
+      id: "job-1",
+      command: "pnpm test",
+      end: { kind: "completed" },
+      output: "ok",
     },
-  };
-  assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));
-  assert.ok(
-    !Value.Check(schemas.CommitBody, { kind: "completion", job: { ...command, output: null } }),
-  );
-  assert.ok(
-    !Value.Check(schemas.CommitBody, {
-      kind: "completion",
-      message: { role: "user", content: "result", timestamp: 3 },
-    }),
-  );
+    {
+      kind: "delegate",
+      session: sessionId("child"),
+      title: "Map the repository",
+      request: "request-commit",
+      end: { kind: "failed", reason: "provider" },
+      report: { kind: "text", text: "Three files.", commit: "answer-commit" },
+    },
+    {
+      kind: "delegate",
+      session: sessionId("child"),
+      title: "Map the repository",
+      request: "request-commit",
+      end: { kind: "cancelled" },
+      report: { kind: "none" },
+    },
+  ];
+  for (const job of reports) {
+    const event: SessionEvent = {
+      seq: 4,
+      kind: "commit",
+      head: "main",
+      item: {
+        oid: "completion",
+        commit: { kind: "commit", parent: null, at: 3, body: { kind: "completion", job } },
+      },
+    };
+    assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));
+  }
+  for (const invalid of [
+    { kind: "completion", job: { ...reports[0], end: { kind: "running", mode: "foreground" } } },
+    { kind: "completion", job: { ...reports[0], output: null } },
+    { kind: "completion", job: { ...reports[1], session: "" } },
+    { kind: "completion", job: { ...reports[1], report: { kind: "text", text: "x" } } },
+    { kind: "completion", job: command },
+    { kind: "completion", message: { role: "user", content: "result", timestamp: 3 } },
+  ])
+    assert.ok(!Value.Check(schemas.CommitBody, invalid));
+});
+
+test("delegation tool classes name the child once it exists", () => {
+  for (const valid of [
+    { kind: "spawn", title: "Map the repository" },
+    { kind: "delegate_call", role: "send", session: "child" },
+    { kind: "delegate", role: "create", session: "child", title: "Map the repository" },
+    { kind: "delegate", role: "await", session: "child", title: "Map the repository" },
+  ])
+    assert.ok(Value.Check(schemas.ToolClass, valid));
+  for (const invalid of [
+    { kind: "spawn" },
+    { kind: "delegate", role: "spawn", title: "x" },
+    { kind: "delegate", role: "await", jobId: "j" },
+    { kind: "delegate_call", role: "create", session: "child" },
+    { kind: "delegate", role: "send", session: "child" },
+    { kind: "delegate", role: "send", session: "", title: "x" },
+  ])
+    assert.ok(!Value.Check(schemas.ToolClass, invalid));
 });
 
 test("job inputs are strict and actions return only the agreed outcomes", () => {
-  const userJob: JobInfo = {
-    ...command,
-    id: "job-user",
-    runId: USER_JOB_RUN_ID,
-    callId: "job-user",
-  };
-  assert.ok(isUserJob(userJob));
-  assert.ok(!isUserJob(command));
+  const userJob: JobInfo = { ...command, id: "job-user", origin: { kind: "user" } };
   assert.ok(Value.Check(OPERATIONS["jobs.start"].input, { sessionId: "s", command: "pwd" }));
   assert.ok(
     Value.Check(OPERATIONS["jobs.start"].input, {

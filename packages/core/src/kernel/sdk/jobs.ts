@@ -2,11 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import type { JsonValue } from "@nyte-ai/schema";
 import {
   isTerminalPhase,
-  isUserJob,
   schemas,
-  USER_JOB_RUN_ID,
-  type JobInfo,
   type JobActionOutcome,
+  type JobEnd,
+  type JobInfo,
+  type JobReport,
 } from "@nyte-ai/protocol";
 import { Type, type Static } from "typebox";
 import { Compile } from "typebox/compile";
@@ -20,15 +20,12 @@ import { ToolWait } from "../loop/types.ts";
 import { toolResultMessage } from "../loop/agent-loop.ts";
 import { toolErrorResult, toolResultContent, toolResultText } from "../loop/tool-result.ts";
 import { isJsonObject, toJsonValue } from "@nyte-ai/client";
-import { factRef, parseQueueRef, runRef } from "../names.ts";
-import { isUserInput } from "../admission.ts";
-import { pending } from "../queue.ts";
+import { factRef, runRef } from "../names.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { toolProgress } from "../turn.ts";
 import { withLeaseRenewal } from "../lease.ts";
 import type { Lease } from "../model.ts";
 import type { Session } from "../store.ts";
-import type { SessionId } from "./types.ts";
 
 export const JOB_PREFIX = "refs/jobs/";
 export const JOBS_CANCELLED_REF = factRef("jobs-cancelled");
@@ -40,7 +37,12 @@ const BACKGROUND_PEEK_MS = 1_500;
 const jobRecord = Type.Object({
   info: schemas.JobInfo,
   result: Type.Optional(schemas.ToolResultMessage),
-  delivered: Type.Boolean(),
+  /**
+   * What the job owes its head: nothing (foreground work answers through its
+   * parked call; a user job answers through `job` events), a completion, or
+   * one already landed.
+   */
+  completion: Type.Enum(["none", "owed", "delivered"]),
 });
 type JobRecord = Static<typeof jobRecord>;
 const checkJobRecord = Compile(jobRecord);
@@ -57,33 +59,9 @@ function jobId(runId: string, callId: string): string {
     .slice(0, 24)}`;
 }
 
-/**
- * User input waiting in a lane that lands at the next response boundary: the
- * input a parked call is holding up, and the reason it hands the turn back.
- * Input in an idle-landing lane waits for the run to end whatever the call does.
- */
-export async function pendingUserInput(
-  session: Session,
-  head: string,
-  lanes: readonly string[],
-): Promise<boolean> {
-  const queued = await pending(session, head);
-  return queued.some((item) => lanes.includes(item.lane) && isUserInput(item));
+function ended(phase: JobInfo["phase"]): JobEnd | undefined {
+  return phase.kind === "running" ? undefined : phase;
 }
-
-/**
- * What waiting for a job's report ends with. `still_running` means the wait gave
- * the turn back to queued user input; the job is untouched and its report is
- * still delivered. Assignable to the subagent plugin's `WaitTaskOutcome`.
- */
-export type JobWait =
-  | { readonly kind: "not_found" }
-  | { readonly kind: "still_running" }
-  | {
-      readonly kind: "finished";
-      readonly state: Exclude<JobInfo["state"], "running">;
-      readonly report: string;
-    };
 
 /**
  * Who a job answers to. A run's job parks the tool call that started it and
@@ -109,26 +87,20 @@ interface LiveJob {
 interface Admitted {
   readonly info: JobInfo;
   readonly runtime: LiveJob;
-  /** The tool reported its first progress. */
-  readonly started: Promise<void>;
   /** The tool reported non-empty output. */
   readonly produced: Promise<void>;
 }
 
-/** Commands and child sessions share ownership, cancellation, and durable results. */
+/** Commands run outside the model's turn: ownership, cancellation, durable results. */
 export function createJobs(input: {
   readonly session: Session;
-  readonly childId: (runId: string, callId: string) => SessionId;
-  /** Lanes a live run lands at its response boundaries; see `pendingUserInput`. */
-  readonly boundaryLanes: readonly string[];
-  readonly backgroundChild: (id: SessionId) => Promise<void>;
-  readonly interruptChild: (id: SessionId) => Promise<void>;
-  readonly notify: (job: JobInfo) => Promise<void>;
+  readonly notify: (
+    job: Extract<JobReport, { readonly kind: "command" }>,
+    head: string,
+  ) => Promise<void>;
   readonly diagnostic: (cause: unknown) => Promise<void>;
 }) {
   const live = new Map<string, LiveJob>();
-  /** Jobs a caller is carrying the report of, by how many holds each has. */
-  const awaited = new Map<string, number>();
   let closing = false;
   const shutdown = new AbortController();
   const operations = new Set<Promise<unknown>>();
@@ -184,83 +156,45 @@ export function createJobs(input: {
     }
   };
 
-  /** The job's record once it is no longer running, without owning the job. */
-  const observe = async (id: string, watching: AbortSignal): Promise<JobRecord | undefined> => {
-    const afterSeq = await input.session.events.last();
-    const current = await read(id);
-    if (current === undefined || current.record.info.state !== "running") return current?.record;
-    for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
-      if (event.kind !== "ref" || event.name !== JOB_PREFIX + id) continue;
-      const stored = await read(id);
-      if (stored === undefined || stored.record.info.state !== "running") return stored?.record;
-    }
-    watching.throwIfAborted();
-    throw new Error("Job event stream ended before the job finished");
-  };
-
-  /** The terminal record as a report. The one place a running job is refused. */
-  const finished = (record: JobRecord): JobWait => {
-    const { state } = record.info;
-    if (state === "running") throw new Error("A job wait ended before the job finished");
-    return {
-      kind: "finished",
-      state,
-      report:
-        record.result === undefined ? record.info.output : toolResultText(record.result.content),
-    };
-  };
-
-  /** Resolves once input the parked call is holding up is waiting on `head`. */
-  const inputArrives = async (head: string, watching: AbortSignal): Promise<void> => {
-    const afterSeq = await input.session.events.last();
-    if (await pendingUserInput(input.session, head, input.boundaryLanes)) return;
-    for await (const event of input.session.events.watch({ afterSeq, signal: watching })) {
-      if (event.kind !== "ref" || parseQueueRef(event.name)?.head !== head) continue;
-      if (await pendingUserInput(input.session, head, input.boundaryLanes)) return;
-    }
-    // The wait ended first. Never resolve for a reason that did not happen.
-    watching.throwIfAborted();
-    throw new Error("Session event stream ended while watching for queued input");
-  };
-
   const signal = async (job: JobInfo) => {
-    if (isUserJob(job)) return;
+    if (job.origin.kind === "user") return;
     const oid = await input.session.refs.read(runRef(job.head));
     const run = oid === null ? undefined : await input.session.objects.get(oid);
     // Abort already wakes the effect. Changing it underneath that wake would fence settlement.
-    if (run?.kind === "run" && run.id === job.runId && run.abortRequested) return;
+    if (run?.kind === "run" && run.id === job.origin.runId && run.abortRequested) return;
     await signalEffect(input.session, {
-      runId: job.runId,
-      callId: job.callId,
+      runId: job.origin.runId,
+      callId: job.origin.callId,
       signal: { kind: "job", id: job.id },
     });
   };
 
   const deliver = (record: JobRecord): Promise<void> => {
-    if (
-      closing ||
-      record.info.mode !== "background" ||
-      record.info.state === "running" ||
-      record.delivered ||
-      awaited.has(record.info.id)
-    )
-      return Promise.resolve();
+    const end = ended(record.info.phase);
+    if (closing || record.completion !== "owed" || end === undefined) return Promise.resolve();
     const id = record.info.id;
     const pending = deliveries.get(id);
     if (pending !== undefined) return pending;
     const task = (async () => {
       const current = await read(id);
-      if (current === undefined || current.record.delivered || closing) return;
-      // Claim before notifying, so a wait that takes the report over from here
-      // finds the claim and stays silent. A failed notify releases the claim;
-      // the submission key makes the retry one message, not two.
-      const claimed = await update(id, (current) => ({ ...current, delivered: true }));
+      if (current === undefined || current.record.completion !== "owed" || closing) return;
+      // Claim before notifying; a failed notify releases the claim, and the
+      // submission key makes the retry one message, not two.
+      const claimed = await update(id, (current) => ({ ...current, completion: "delivered" }));
       if (claimed === undefined) return;
       try {
-        // notify uses the job id as an admission key across hosts and crash recovery.
-        await input.notify(claimed.info);
+        await input.notify(
+          {
+            kind: "command",
+            id,
+            command: claimed.info.command,
+            end,
+            output: claimed.info.output,
+          },
+          claimed.info.head,
+        );
       } catch (cause) {
-        await update(id, (current) => ({ ...current, delivered: false }));
+        await update(id, (current) => ({ ...current, completion: "owed" }));
         throw cause;
       }
     })().finally(() => deliveries.delete(id));
@@ -272,14 +206,8 @@ export function createJobs(input: {
     const stored = await read(id);
     if (stored === undefined) return;
     const job = stored.record.info;
-    if (job.state !== "running") live.get(id)?.controller.abort();
-    if (job.kind === "subagent") {
-      if (job.state === "cancelled" || job.state === "interrupted")
-        await input.interruptChild(job.childSessionId);
-      else if (job.state === "running" && job.mode === "background" && !closing)
-        await input.backgroundChild(job.childSessionId);
-    }
-    if (job.mode === "background" || job.state !== "running") await signal(job);
+    if (job.phase.kind !== "running") live.get(id)?.controller.abort();
+    if (stored.record.completion === "owed" || job.phase.kind !== "running") await signal(job);
     await deliver(stored.record);
   };
 
@@ -287,51 +215,44 @@ export function createJobs(input: {
     if (closing) throw new Error("Host is closing");
     const stored = await read(id);
     if (stored === undefined) return { kind: "not_found" };
-    if (stored.record.info.state !== "running") return { kind: "finished" };
+    if (stored.record.info.phase.kind !== "running") return { kind: "finished" };
     const next = await update(id, (current) =>
-      current.info.state !== "running"
+      current.info.phase.kind !== "running"
         ? current
-        : { ...current, info: { ...current.info, mode: "background", updatedAt: Date.now() } },
+        : {
+            ...current,
+            completion: current.info.origin.kind === "user" ? current.completion : "owed",
+            info: {
+              ...current.info,
+              phase: { kind: "running", mode: "background" },
+              updatedAt: Date.now(),
+            },
+          },
     );
     await sync(id);
     return {
       kind:
-        next?.info.mode === "background" && next.info.state === "running" ? "applied" : "finished",
+        next?.info.phase.kind === "running" && next.info.phase.mode === "background"
+          ? "applied"
+          : "finished",
     };
-  };
-
-  /**
-   * A foreground subagent holds the parent turn until its report arrives. Input
-   * the user queues meanwhile asks for that turn back, so the job moves to
-   * background: the child keeps working and its report is delivered later.
-   * Only the watch of a run-owned subagent job calls this.
-   */
-  const yieldToInput = async (id: string, head: string): Promise<void> => {
-    const stored = await read(id);
-    if (stored === undefined) return;
-    const job = stored.record.info;
-    if (job.mode !== "foreground" || job.state !== "running") return;
-    if (!(await pendingUserInput(input.session, head, input.boundaryLanes))) return;
-    // A host that started closing between the checks and here has nothing to yield to.
-    if (closing) return;
-    await promote(id);
   };
 
   const interrupt = async (
     id: string,
-    state: "cancelled" | "interrupted",
+    kind: "cancelled" | "interrupted",
     options?: { readonly lease?: Lease; readonly quiet?: true },
   ) => {
     const next = await update(
       id,
       (record) =>
-        record.info.state !== "running"
+        record.info.phase.kind !== "running"
           ? record
           : {
               ...record,
-              info: { ...record.info, state, updatedAt: Date.now() },
+              info: { ...record.info, phase: { kind }, updatedAt: Date.now() },
               // An owner that stops its own jobs has nothing to learn from them.
-              ...(options?.quiet ? { delivered: true } : {}),
+              ...(options?.quiet ? { completion: "none" } : {}),
             },
       options?.lease,
     );
@@ -353,9 +274,8 @@ export function createJobs(input: {
   };
 
   /**
-   * Every runner reconciliation asks for recovery, including each child's for
-   * its parent. Callers join a pass in flight, and a settled instance answers
-   * without one.
+   * Every runner reconciliation asks for recovery. Callers join a pass in
+   * flight, and a settled instance answers without one.
    */
   const recover = (): Promise<void> => {
     if (closing || settled) return Promise.resolve();
@@ -382,7 +302,7 @@ export function createJobs(input: {
       try {
         const stored = await read(id);
         if (stored === undefined || closing) continue;
-        if (stored.record.info.state === "running" && !live.has(id)) {
+        if (stored.record.info.phase.kind === "running" && !live.has(id)) {
           const acquired = await input.session.leases.acquire(ref.name, LEASE_MS);
           if (!acquired.ok) {
             scheduleRecovery();
@@ -404,18 +324,13 @@ export function createJobs(input: {
 
   const receipt = (job: JobInfo): AgentToolResult<unknown> => ({
     content: toolResultContent(
-      job.kind === "subagent"
-        ? `Subagent ${job.title} runs in the background as ${job.id}. Its report arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished. Call wait_task with this job id only when you need the report before you reply.`
-        : [
-            `Started background command ${job.id}. It keeps running after this turn. Its exit arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished.`,
-            job.output === "" ? "No output yet." : `Output so far:\n${job.output}`,
-          ].join("\n"),
+      [
+        `Started background command ${job.id}. It keeps running after this turn. Its exit arrives as a "Background" message before your next response while you are still working, or with the user's next message once you have finished.`,
+        job.output === "" ? "No output yet." : `Output so far:\n${job.output}`,
+      ].join("\n"),
     ),
-    title: job.title,
-    details:
-      job.kind === "subagent"
-        ? { jobId: job.id, childSessionId: job.childSessionId }
-        : { jobId: job.id },
+    title: job.command,
+    details: { jobId: job.id },
   });
 
   const wake = async (id: string, aborted: boolean): Promise<ToolWakeOutcome> => {
@@ -429,14 +344,18 @@ export function createJobs(input: {
           details: {},
         },
       };
-    if (aborted && stored.record.info.state === "running") {
+    if (aborted && stored.record.info.phase.kind === "running") {
       await interrupt(id, "cancelled");
       stored = (await read(id)) ?? stored;
     }
-    if (stored.record.info.mode === "background")
-      return { kind: "settle", result: receipt(stored.record.info) };
-    const { info, result } = stored.record;
-    if (info.state === "running") return { kind: "wait" };
+    const { info, result, completion } = stored.record;
+    if (info.phase.kind === "running") {
+      return info.phase.mode === "background"
+        ? { kind: "settle", result: receipt(info) }
+        : { kind: "wait" };
+    }
+    // Background work already answered its call with the receipt; its end is a completion.
+    if (completion !== "none") return { kind: "settle", result: receipt(info) };
     if (result !== undefined) {
       const settled = { content: result.content, details: result.details };
       const titled = result.title === undefined ? settled : { ...settled, title: result.title };
@@ -447,7 +366,7 @@ export function createJobs(input: {
           result.addedToolNames === undefined
             ? measured
             : { ...measured, addedToolNames: result.addedToolNames },
-        isError: info.state !== "completed",
+        isError: info.phase.kind !== "completed",
       };
     }
     return {
@@ -455,9 +374,9 @@ export function createJobs(input: {
       isError: true,
       result: {
         content: toolResultContent(
-          `${info.kind === "command" ? "Command" : "Subagent"} ${info.state}.${info.output ? `\n${info.output}` : ""}`,
+          `Command ${info.phase.kind}.${info.output ? `\n${info.output}` : ""}`,
         ),
-        title: info.title,
+        title: info.command,
         details: { jobId: id },
       },
     };
@@ -472,7 +391,6 @@ export function createJobs(input: {
     owner: JobOwner,
     tool: AgentTool,
     args: unknown,
-    title: string,
     signal: AbortSignal | undefined,
     onUpdate: AgentToolUpdateCallback | undefined,
   ): Promise<Admitted> => {
@@ -480,35 +398,35 @@ export function createJobs(input: {
     signal?.throwIfAborted();
     const params = toJsonValue(args);
     if (!isJsonObject(params)) throw new Error("Job arguments must be an object");
+    const command = params.command;
+    if (typeof command !== "string") throw new Error("Job arguments must name a command");
     const id =
-      owner.kind === "run"
-        ? jobId(owner.runId, owner.callId)
-        : jobId(USER_JOB_RUN_ID, randomUUID());
+      owner.kind === "run" ? jobId(owner.runId, owner.callId) : jobId("user", randomUUID());
     const callId = owner.kind === "run" ? owner.callId : id;
-    const runId = owner.kind === "run" ? owner.runId : USER_JOB_RUN_ID;
     if ((await read(id)) !== undefined) throw new Error("Job already exists");
     const acquired = await input.session.leases.acquire(JOB_PREFIX + id, LEASE_MS);
     if (!acquired.ok) throw new Error("Job is already running");
     const controller = new AbortController();
     const now = Date.now();
-    const base = {
+    const background = params.background === true;
+    const info: JobInfo = {
       id,
-      runId,
-      callId,
       head: owner.head,
-      title,
-      mode: params.background === true ? "background" : "foreground",
-      state: "running",
+      origin:
+        owner.kind === "run"
+          ? { kind: "run", runId: owner.runId, callId: owner.callId }
+          : { kind: "user" },
+      command,
+      phase: { kind: "running", mode: background ? "background" : "foreground" },
       startedAt: now,
       updatedAt: now,
       output: "",
-    } satisfies Omit<JobInfo, "kind">;
-    const info: JobInfo =
-      tool.name === "task"
-        ? { ...base, kind: "subagent", childSessionId: input.childId(runId, callId) }
-        : { ...base, kind: "command" };
+    };
     // Nobody is told when a user job ends; its card reads the job ref.
-    const record: JobRecord = { info, delivered: owner.kind === "user" };
+    const record: JobRecord = {
+      info,
+      completion: owner.kind === "run" && background ? "owed" : "none",
+    };
     const runtime: LiveJob = {
       controller,
       lease: acquired.lease,
@@ -556,27 +474,18 @@ export function createJobs(input: {
       await input.session.leases.release(acquired.lease);
       throw cause;
     }
-    const started = Promise.withResolvers<void>();
     const produced = Promise.withResolvers<void>();
     const watching = new AbortController();
-    // Only a run-owned subagent parks a turn long enough for queued input to matter.
-    const yields = info.kind === "subagent" && owner.kind === "run";
     // Job ownership outlives a head runner or attachment. Remote control must still
     // reach the executing tool when the SDK is not watching that head.
     const watch = (async () => {
       const afterSeq = await input.session.events.last();
       await sync(id);
-      if (yields) await yieldToInput(id, owner.head).catch(diagnostic);
       for await (const event of input.session.events.watch({
         afterSeq,
         signal: watching.signal,
       })) {
-        if (event.kind !== "ref") continue;
-        if (event.name === JOB_PREFIX + id) await sync(id);
-        else if (yields && parseQueueRef(event.name)?.head === owner.head) {
-          // Advisory: a failure to yield must not take the job down with it.
-          await yieldToInput(id, owner.head).catch(diagnostic);
-        }
+        if (event.kind === "ref" && event.name === JOB_PREFIX + id) await sync(id);
       }
     })().catch(async (cause: unknown) => {
       controller.abort(cause);
@@ -587,7 +496,7 @@ export function createJobs(input: {
     runtime.done = track(
       (async () => {
         let result: AgentToolResult<unknown>;
-        let failed = false;
+        let failure: string | undefined;
         try {
           result = await withLeaseRenewal(
             {
@@ -615,7 +524,6 @@ export function createJobs(input: {
                       jobSignal,
                       (partial: AgentToolResult<unknown>) => {
                         if (!acceptingUpdates || jobSignal.aborted) return;
-                        started.resolve();
                         if (toolResultText(partial.content) !== "") produced.resolve();
                         try {
                           onUpdate?.(partial);
@@ -630,7 +538,7 @@ export function createJobs(input: {
                                 [
                                   {
                                     kind: "progress",
-                                    runId,
+                                    runId: owner.runId,
                                     callId,
                                     progress: {
                                       ...progress,
@@ -644,13 +552,12 @@ export function createJobs(input: {
                             await update(
                               id,
                               (current) =>
-                                current.info.state !== "running"
+                                current.info.phase.kind !== "running"
                                   ? current
                                   : {
                                       ...current,
                                       info: {
                                         ...current.info,
-                                        title: partial.title ?? current.info.title,
                                         output: toolResultText(partial.content).slice(
                                           -OUTPUT_LIMIT,
                                         ),
@@ -673,29 +580,30 @@ export function createJobs(input: {
             },
           );
         } catch (cause) {
-          failed = true;
+          failure = cause instanceof Error ? cause.message : String(cause);
           result = toolErrorResult(cause);
         }
         await runtime.writes;
+        const reason = failure;
         await update(
           id,
           (current) =>
-            current.info.state !== "running"
+            current.info.phase.kind !== "running"
               ? current
               : {
                   ...current,
                   result: toolResultMessage(
                     { toolCallId: callId, toolName: tool.name },
                     result,
-                    failed,
+                    reason !== undefined,
                   ),
                   info: {
                     ...current.info,
-                    state: shutdown.signal.aborted
-                      ? "interrupted"
-                      : failed
-                        ? "failed"
-                        : "completed",
+                    phase: shutdown.signal.aborted
+                      ? { kind: "interrupted" }
+                      : reason !== undefined
+                        ? { kind: "failed", reason }
+                        : { kind: "completed" },
                     output: toolResultText(result.content).slice(-OUTPUT_LIMIT),
                     updatedAt: Date.now(),
                   },
@@ -715,11 +623,11 @@ export function createJobs(input: {
           await diagnostic(cause);
         }),
     );
-    return { info, runtime, started: started.promise, produced: produced.promise };
+    return { info, runtime, produced: produced.promise };
   };
 
-  /** The tool behind each wrapper by name, so a user job runs it without the parking wrapper. */
-  const wrappedTools = new Map<string, AgentTool>();
+  /** The command tool behind the wrapper, so a user job runs it without the parking wrapper. */
+  let commandTool: AgentTool | undefined;
 
   const wrap = (tool: AgentTool): AgentTool => {
     const wrapper: AgentTool = {
@@ -735,25 +643,13 @@ export function createJobs(input: {
                 { kind: "run", runId: context.runId, callId, head: context.head },
                 tool,
                 args,
-                tool.name,
                 signal,
                 (partial) => {
                   if (executing) onUpdate?.(partial);
                 },
               );
               const { info, runtime } = admitted;
-              if (tool.name === "task") {
-                const cancelled = Promise.withResolvers<void>();
-                const onAbort = () => cancelled.resolve();
-                signal?.addEventListener("abort", onAbort, { once: true });
-                try {
-                  if (!signal?.aborted)
-                    await Promise.race([admitted.started, cancelled.promise, runtime.done]);
-                  if (signal?.aborted) await interrupt(info.id, "cancelled");
-                } finally {
-                  signal?.removeEventListener("abort", onAbort);
-                }
-              } else if (info.mode === "background") {
+              if (info.phase.kind === "running" && info.phase.mode === "background") {
                 await Promise.race([
                   admitted.produced,
                   runtime.done,
@@ -774,18 +670,17 @@ export function createJobs(input: {
       },
       wake: (call, context) => track(wake(jobId(call.runId, call.toolCallId), context.aborted)),
     };
-    wrappedTools.set(tool.name, tool);
+    commandTool = tool;
     return wrapper;
   };
 
   return {
     wrap,
-    /** Run a wrapped tool as a user-owned job on `head`; progress arrives as `job` events. */
-    start(toolName: string, head: string, args: JsonValue, title: string): Promise<JobInfo> {
-      const tool = wrappedTools.get(toolName);
-      if (tool === undefined) return Promise.reject(new Error(`This chat has no ${toolName} tool`));
+    /** Run the command tool as a user-owned job on `head`; progress arrives as `job` events. */
+    start(head: string, command: string): Promise<JobInfo> {
+      if (commandTool === undefined) return Promise.reject(new Error("This chat has no bash tool"));
       return track(
-        admit({ kind: "user", head }, tool, args, title, undefined, undefined).then(
+        admit({ kind: "user", head }, commandTool, { command }, undefined, undefined).then(
           (admitted) => admitted.info,
         ),
       );
@@ -808,9 +703,10 @@ export function createJobs(input: {
       );
     },
     recover,
+    /** A stopped run takes every command it owns with it; user jobs have no run and stay. */
     interruptOwned(options: {
       readonly runId?: string;
-      readonly state: "cancelled" | "interrupted";
+      readonly kind: "cancelled" | "interrupted";
     }): Promise<void> {
       return track(
         (async () => {
@@ -818,12 +714,13 @@ export function createJobs(input: {
             const id = ref.name.slice(JOB_PREFIX.length);
             const stored = await read(id);
             if (stored === undefined) continue;
-            const job = stored.record.info;
-            // A stopped run takes every job it owns with it, background ones included.
-            // User jobs have no run owner; only host close interrupts them.
-            if (isUserJob(job) || (options.runId !== undefined && job.runId !== options.runId))
+            const { origin } = stored.record.info;
+            if (
+              origin.kind === "user" ||
+              (options.runId !== undefined && origin.runId !== options.runId)
+            )
               continue;
-            await interrupt(id, options.state, { quiet: true });
+            await interrupt(id, options.kind, { quiet: true });
           }
           await Promise.all(deliveries.values());
         })(),
@@ -842,62 +739,6 @@ export function createJobs(input: {
         .filter((job) => head === undefined || job.head === head)
         .sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id));
     },
-    /** The job a tool call owns, by the same derivation that named it. */
-    async find(runId: string, callId: string): Promise<JobInfo | undefined> {
-      return (await read(jobId(runId, callId)))?.record.info;
-    },
-    /**
-     * The job's report, observed without owning the job. A parked wait gives its
-     * head no response boundary, so the wait ends `still_running` when input it
-     * is holding up is queued; the job and its work are untouched either way.
-     * Aborting the signal ends only the observation.
-     *
-     * The completion message is held back while this runs and claimed when the
-     * report is returned, so an awaited report is heard once and one this gives
-     * up on is delivered. A crash before the caller's own result is durable
-     * leaves the report in the job record, where another wait reads it.
-     */
-    waitFor(id: string, signal?: AbortSignal): Promise<JobWait> {
-      return track(
-        (async (): Promise<JobWait> => {
-          const ending = new AbortController();
-          const watching = AbortSignal.any(
-            signal === undefined
-              ? [shutdown.signal, ending.signal]
-              : [shutdown.signal, ending.signal, signal],
-          );
-          watching.throwIfAborted();
-          const current = await read(id);
-          if (current === undefined) return { kind: "not_found" };
-          awaited.set(id, (awaited.get(id) ?? 0) + 1);
-          const observing = observe(id, watching);
-          const yielding = inputArrives(current.record.info.head, watching);
-          try {
-            // A record and a yield are different answers; `undefined` is neither.
-            const settled = await Promise.race([
-              observing.then((record) => ({ kind: "observed" as const, record })),
-              yielding.then(() => ({ kind: "yielded" as const })),
-            ]);
-            if (settled.kind === "yielded") return { kind: "still_running" };
-            if (settled.record === undefined) return { kind: "not_found" };
-            // Claimed on the way out of the branch that returns the report, so a
-            // claim never outlives a report the caller did not receive.
-            await update(id, (stored) =>
-              stored.delivered ? stored : { ...stored, delivered: true },
-            );
-            return finished(settled.record);
-          } finally {
-            ending.abort();
-            for (const abandoned of [observing, yielding]) void abandoned.catch(() => undefined);
-            const held = (awaited.get(id) ?? 0) - 1;
-            if (held > 0) awaited.set(id, held);
-            else awaited.delete(id);
-            const stored = await read(id).catch(() => undefined);
-            if (stored !== undefined) await deliver(stored.record).catch(diagnostic);
-          }
-        })(),
-      );
-    },
     background(id: string): Promise<JobActionOutcome> {
       return track(promote(id));
     },
@@ -907,9 +748,9 @@ export function createJobs(input: {
           if (closing) throw new Error("Host is closing");
           const stored = await read(id);
           if (stored === undefined) return { kind: "not_found" };
-          if (stored.record.info.state !== "running") return { kind: "finished" };
+          if (stored.record.info.phase.kind !== "running") return { kind: "finished" };
           const next = await interrupt(id, "cancelled");
-          return { kind: next?.info.state === "cancelled" ? "applied" : "finished" };
+          return { kind: next?.info.phase.kind === "cancelled" ? "applied" : "finished" };
         })(),
       );
     },

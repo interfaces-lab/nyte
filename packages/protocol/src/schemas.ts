@@ -68,6 +68,8 @@ import type {
   ConfigureOutcome as ConfigureOutcomeType,
   CompactionInfo as CompactionInfoType,
   HeadInfo as HeadInfoType,
+  JobInfo as JobInfoType,
+  JobReport as JobReportType,
   Landing as LandingType,
   MoveOutcome as MoveOutcomeType,
   Page,
@@ -414,24 +416,54 @@ const ConfigBody = open({
   agent: Type.Optional(Type.String()),
 });
 
-const JobFields = {
-  id: Type.String(),
-  runId: Type.String(),
-  callId: Type.String(),
-  head: HeadName,
-  title: Type.String(),
-  mode: literals(["foreground", "background"]),
-  state: literals(["running", "completed", "failed", "cancelled", "interrupted"]),
-  startedAt: Type.Number(),
-  updatedAt: Type.Number(),
-  output: Type.String(),
-};
-
-/** Strict variants keep childSessionId exclusive to subagent jobs. */
-export const JobInfo = Type.Union([
-  strict({ ...JobFields, kind: Type.Literal("command") }),
-  strict({ ...JobFields, kind: Type.Literal("subagent"), childSessionId: SessionId }),
+const JobEnd = Type.Union([
+  open({ kind: Type.Literal("completed") }),
+  open({ kind: Type.Literal("failed"), reason: Type.String() }),
+  open({ kind: Type.Literal("cancelled") }),
+  open({ kind: Type.Literal("interrupted") }),
 ]);
+
+export const JobInfo = typed<JobInfoType>()(
+  open({
+    id: Type.String(),
+    head: HeadName,
+    origin: Type.Union([
+      open({ kind: Type.Literal("run"), runId: Type.String(), callId: Type.String() }),
+      open({ kind: Type.Literal("user") }),
+    ]),
+    command: Type.String(),
+    output: Type.String(),
+    phase: Type.Union([
+      open({ kind: Type.Literal("running"), mode: literals(["foreground", "background"]) }),
+      ...JobEnd.anyOf,
+    ]),
+    startedAt: Type.Number(),
+    updatedAt: Type.Number(),
+  }),
+);
+
+export const JobReport = typed<JobReportType>()(
+  Type.Union([
+    open({
+      kind: Type.Literal("command"),
+      id: Type.String(),
+      command: Type.String(),
+      end: JobEnd,
+      output: Type.String(),
+    }),
+    open({
+      kind: Type.Literal("delegate"),
+      session: SessionId,
+      title: Type.String(),
+      request: Oid,
+      end: JobEnd,
+      report: Type.Union([
+        open({ kind: Type.Literal("text"), text: Type.String(), commit: Oid }),
+        open({ kind: Type.Literal("none") }),
+      ]),
+    }),
+  ]),
+);
 
 export const CommitBody = typed<CommitBodyType>()(
   Type.Union([
@@ -440,7 +472,7 @@ export const CommitBody = typed<CommitBodyType>()(
       message: Message,
       agent: Type.Optional(Type.String()),
     }),
-    open({ kind: Type.Literal("completion"), job: JobInfo }),
+    open({ kind: Type.Literal("completion"), job: JobReport }),
     CheckpointBody,
     SummaryBody,
     ConfigBody,
@@ -484,13 +516,18 @@ export const ToolClass = typed<ToolClassType>()(
     open({ kind: Type.Literal("file_read"), path: Type.String() }),
     open({ kind: Type.Literal("list"), path: Type.String() }),
     open({ kind: Type.Literal("shell"), command: Type.String() }),
+    open({ kind: Type.Literal("spawn"), title: Type.String() }),
+    open({
+      kind: Type.Literal("delegate_call"),
+      role: literals(["send", "await", "read", "stop"]),
+      session: SessionId,
+    }),
     open({
       kind: Type.Literal("delegate"),
-      role: Type.Literal("spawn"),
+      role: literals(["create", "send", "await", "read", "stop"]),
+      session: SessionId,
       title: Type.String(),
-      child: Type.Optional(SessionId),
     }),
-    open({ kind: Type.Literal("delegate"), role: Type.Literal("await"), jobId: Type.String() }),
     open({ kind: Type.Literal("custom"), label: Type.String() }),
   ]),
 );

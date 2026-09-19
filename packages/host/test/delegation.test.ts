@@ -17,7 +17,7 @@ import {
   InMemoryModelsStore,
 } from "@nyte-ai/ai";
 import type { Provider } from "@nyte-ai/ai";
-import type { Nyte, TrustedWorkspace } from "@nyte-ai/core";
+import type { Nyte, SessionId, TrustedWorkspace } from "@nyte-ai/core";
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { Api, AssistantMessage, Context, Model } from "@nyte-ai/schema";
 import { createHost, createWorkspaceStore } from "../src/index.ts";
@@ -177,6 +177,11 @@ async function fixture(
   return { workspace, requests, open, refreshes };
 }
 
+/** What the parent says once its `task` call settles with the child's report. */
+function reported(child: SessionId): string {
+  return `done: Background agent ${CHILD_PROMPT} (${child}) finished. Its report:\n\nfound: ${CHILD_PROMPT}`;
+}
+
 /** A parent parked on its child answers `waiting`; keep asking until the child has woken it. */
 async function untilIdle(
   host: Nyte,
@@ -247,7 +252,7 @@ for (const composition of compositions) {
       (await host.runs.current({ sessionId: child.sessionId }))?.config.model,
       child.config.model,
     );
-    assert.deepEqual(answers, [`done: found: ${CHILD_PROMPT}`]);
+    assert.deepEqual(answers, [reported(child.sessionId)]);
   });
 }
 
@@ -307,7 +312,7 @@ test("a task can select another provider's cached model before a picker or netwo
       .map((request) => `${request.model.provider}/${request.model.id}`),
     ["openai-codex/gpt-6-astra"],
   );
-  assert.deepEqual(answers, [`done: found: ${CHILD_PROMPT}`]);
+  assert.deepEqual(answers, [reported(child.sessionId)]);
   assert.ok(f.refreshes.length > 0);
   assert.ok(f.refreshes.every((allowNetwork) => !allowNetwork));
 });

@@ -18,7 +18,6 @@ import { Type } from "typebox";
 import { bindTool } from "../../src/tools/bind-tool.ts";
 import { createAllTools } from "../../src/tools/index.ts";
 import { createJobs } from "../../src/kernel/sdk/jobs.ts";
-import { sessionId } from "../../src/kernel/sdk/types.ts";
 import { openEffect, readEffect, signalEffect } from "../../src/kernel/effects.ts";
 import type { Commit, EventBody, Lease, Run } from "../../src/kernel/model.ts";
 import { effectPrefix, headRef } from "../../src/kernel/names.ts";
@@ -587,10 +586,6 @@ test("builtin factories execute approved arguments after durable intent and jobs
   const diagnostics: unknown[] = [];
   const jobs = createJobs({
     session: b.session,
-    childId: () => sessionId("unused-child"),
-    boundaryLanes: ["steer"],
-    backgroundChild: async () => {},
-    interruptChild: async () => {},
     notify: async () => {},
     diagnostic: async (cause) => {
       diagnostics.push(cause);
@@ -641,7 +636,7 @@ test("builtin factories execute approved arguments after durable intent and jobs
     assert.equal(await effectState(b.session, "job"), "waiting");
     assert.equal(await readFile(join(directory, "sibling.txt"), "utf8"), "sibling");
     release.resolve();
-    await expect.poll(async () => (await jobs.list())[0]?.state).toBe("completed");
+    await expect.poll(async () => (await jobs.list())[0]?.phase.kind).toBe("completed");
     await jobs.recheck(b.run.id);
     for (let replay = 0; replay < 2; replay += 1) {
       const outcome = await turn.tools({ ...b.input(), assistant: requested });

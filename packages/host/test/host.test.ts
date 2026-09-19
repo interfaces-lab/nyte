@@ -131,7 +131,7 @@ test("chat answers a message without loading workspace tools or configuration", 
     ["hello host"],
   );
   assert.deepEqual(f.prompts, ["Echo the user."]);
-  assert.deepEqual(f.tools, [["task"]]);
+  assert.deepEqual(f.tools, [["task", "create", "send", "await", "read", "stop"]]);
   assert.ok(telemetry.spans().some((span) => span.name === "nyte.respond"));
 });
 

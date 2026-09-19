@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { JobInfo } from "@nyte-ai/protocol";
+import type { JobInfo, JobReport } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { afterEach, expect, test, vi } from "vitest";
 import { openEffect, parkEffect, readEffect } from "../src/kernel/effects.ts";
@@ -8,7 +8,6 @@ import type { Run } from "../src/kernel/model.ts";
 import { runRef } from "../src/kernel/names.ts";
 import { pending, submit } from "../src/kernel/queue.ts";
 import { createJobs, JOB_PREFIX, parseJobRecord } from "../src/kernel/sdk/jobs.ts";
-import { sessionId } from "../src/kernel/sdk/types.ts";
 import { ToolWait, type AgentTool, type AgentToolResult } from "../src/kernel/loop/types.ts";
 import { granted, lease, only, openStore, storePath, within } from "./kernel/helpers.ts";
 
@@ -34,19 +33,15 @@ async function fixture() {
   };
   const oid = only(await session.objects.put([run]));
   await session.refs.update([{ name: runRef(run.head), from: null, to: oid }], { reason: "test" });
-  const notifications: JobInfo[] = [];
-  const interruptions: string[] = [];
+  const notifications: JobReport[] = [];
   const diagnostics: unknown[] = [];
   const managers: ReturnType<typeof createJobs>[] = [];
-  const notify = async (job: JobInfo) => {
+  const notify = async (job: JobReport, head: string) => {
     const outcome = await submit(session, {
-      head: job.head,
+      head,
       lane: "background",
-      key: `background-${job.id}`,
-      body: {
-        kind: "message",
-        message: { role: "user", content: job.output, timestamp: job.updatedAt },
-      },
+      key: `background-${job.kind === "command" ? job.id : job.request}`,
+      body: { kind: "completion", job },
     });
     if (outcome.kind === "queued") notifications.push(job);
   };
@@ -56,12 +51,6 @@ async function fixture() {
   ) => {
     const jobs = createJobs({
       session: connection,
-      childId: () => sessionId("child"),
-      boundaryLanes: ["steer"],
-      backgroundChild: async () => {},
-      interruptChild: async (id) => {
-        interruptions.push(id);
-      },
       notify,
       diagnostic: async (cause) => {
         diagnostics.push(cause);
@@ -71,25 +60,21 @@ async function fixture() {
     managers.push(jobs);
     return jobs;
   };
-  const seed = async (state: JobInfo["state"] = "running", kind: JobInfo["kind"] = "command") => {
-    const base = {
+  const seed = async (phase: JobInfo["phase"] = { kind: "running", mode: "background" }) => {
+    const info: JobInfo = {
       id: "orphan",
-      runId: run.id,
-      callId: "call",
+      origin: { kind: "run", runId: run.id, callId: "call" },
       head: run.head,
-      title: kind,
-      state,
-      mode: "background",
+      command: "work",
+      phase,
       startedAt: 1,
       updatedAt: 1,
       output: "partial output",
-    } satisfies Omit<JobInfo, "kind">;
-    const info: JobInfo =
-      kind === "command"
-        ? { ...base, kind }
-        : { ...base, kind, childSessionId: sessionId("child") };
+    };
     const oid = only(
-      await session.objects.put([{ kind: "blob", value: toJsonValue({ info, delivered: false }) }]),
+      await session.objects.put([
+        { kind: "blob", value: toJsonValue({ info, completion: "owed" }) },
+      ]),
     );
     await session.refs.update([{ name: JOB_PREFIX + info.id, from: null, to: oid }], {
       reason: "test",
@@ -113,7 +98,6 @@ async function fixture() {
     stored,
     notifications,
     notify,
-    interruptions,
     diagnostics,
     close: async () => {
       await Promise.all(managers.map((jobs) => jobs.close()));
@@ -155,7 +139,7 @@ test("remote job refs cancel the owner without replacing the notified terminal o
   try {
     const wrapped = owner.wrap(work.tool);
     await expect(
-      wrapped.execute("call", {}, undefined, undefined, f.context),
+      wrapped.execute("call", { command: "work" }, undefined, undefined, f.context),
     ).rejects.toBeInstanceOf(ToolWait);
     const signal = await within(work.started.promise);
     work.publish({ ...result, content: [{ type: "text", text: "partial output" }] });
@@ -170,10 +154,18 @@ test("remote job refs cancel the owner without replacing the notified terminal o
     await owner.close();
     await remote.recover();
     expect((await f.stored(job.id)).info).toEqual(cancelled.info);
-    expect(f.notifications).toEqual([cancelled.info]);
+    expect(f.notifications).toEqual([
+      {
+        kind: "command",
+        id: job.id,
+        command: "work",
+        end: { kind: "cancelled" },
+        output: "partial output",
+      },
+    ]);
     expect(await pending(f.session, "main")).toHaveLength(1);
     await expect(
-      remote.wrap(work.tool).execute("call", {}, undefined, undefined, f.context),
+      remote.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
     ).rejects.toThrow("Job already exists");
     expect(work.executions()).toBe(1);
   } finally {
@@ -186,11 +178,12 @@ test("recovery leaves a leased job alive, then interrupts the orphan and wakes i
   const jobs = f.manager(f.peer);
   try {
     const info = await f.seed();
+    assert.equal(info.origin.kind, "run");
     const headLease = await lease(f.session, "main");
     const effect = await openEffect(f.session, {
       lease: headLease,
-      runId: info.runId,
-      callId: info.callId,
+      runId: info.origin.runId,
+      callId: info.origin.callId,
       tool: "bash",
       args: {},
       replay: "never",
@@ -199,13 +192,14 @@ test("recovery leaves a leased job alive, then interrupts the orphan and wakes i
     await parkEffect(f.session, { lease: headLease, view: effect.view });
     const held = granted(await f.session.leases.acquire(JOB_PREFIX + info.id, 15_000));
     await jobs.recover();
-    expect(only(await jobs.list()).state).toBe("running");
+    expect(only(await jobs.list()).phase.kind).toBe("running");
     expect(f.notifications).toEqual([]);
     await f.session.leases.release(held);
     await Promise.all([jobs.recover(), jobs.recover()]);
-    expect(only(await jobs.list()).state).toBe("interrupted");
+    expect(only(await jobs.list()).phase.kind).toBe("interrupted");
     expect(
-      (await readEffect(f.session, { runId: info.runId, callId: info.callId }))?.effect.state,
+      (await readEffect(f.session, { runId: info.origin.runId, callId: info.origin.callId }))
+        ?.effect.state,
     ).toBe("signal");
     expect(await f.session.leases.read(JOB_PREFIX + info.id)).toBeUndefined();
     expect(f.notifications).toHaveLength(1);
@@ -220,7 +214,7 @@ test("an expired recovery lease cannot cancel a successor's running job", async 
   const entered = Promise.withResolvers<void>();
   const resume = Promise.withResolvers<void>();
   try {
-    const info = await f.seed("running", "subagent");
+    const info = await f.seed();
     const update = f.peer.refs.update.bind(f.peer.refs);
     vi.spyOn(f.peer.refs, "update").mockImplementation(async (updates, options) => {
       entered.resolve();
@@ -234,8 +228,7 @@ test("an expired recovery lease cannot cancel a successor's running job", async 
     const successor = granted(await f.session.leases.acquire(JOB_PREFIX + info.id, 15_000));
     resume.resolve();
     await recovering;
-    expect(only(await jobs.list()).state).toBe("running");
-    expect(f.interruptions).toEqual([]);
+    expect(only(await jobs.list()).phase.kind).toBe("running");
     expect(f.notifications).toEqual([]);
     expect(await f.session.leases.read(JOB_PREFIX + info.id)).toEqual(successor);
     expect(f.diagnostics).toHaveLength(1);
@@ -245,35 +238,33 @@ test("an expired recovery lease cannot cancel a successor's running job", async 
   }
 });
 
-for (const name of ["bash", "task"]) {
-  test(`${name}: close settles uncooperative work and ignores late rejection and updates`, async () => {
-    const f = await fixture();
-    const jobs = f.manager();
-    const work = controlledTool(name);
-    const executing = jobs
-      .wrap(work.tool)
-      .execute("call", { background: true }, undefined, undefined, f.context)
-      .catch((cause: unknown) => cause);
-    try {
-      const signal = await within(work.started.promise);
-      await within(jobs.close());
-      expect(signal.aborted).toBe(true);
-      expect(await executing).toBeInstanceOf(ToolWait);
-      const job = only(await jobs.list());
-      expect(job.state).toBe("interrupted");
-      expect(await f.session.leases.read(JOB_PREFIX + job.id)).toBeUndefined();
-      const seq = await f.session.events.last();
-      work.publish();
-      work.finished.reject(new Error("late tool failure"));
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(await f.session.events.last()).toBe(seq);
-      expect(f.notifications).toEqual([]);
-    } finally {
-      await f.close();
-    }
-  });
-}
+test("close settles uncooperative work and ignores late rejection and updates", async () => {
+  const f = await fixture();
+  const jobs = f.manager();
+  const work = controlledTool();
+  const executing = jobs
+    .wrap(work.tool)
+    .execute("call", { command: "work", background: true }, undefined, undefined, f.context)
+    .catch((cause: unknown) => cause);
+  try {
+    const signal = await within(work.started.promise);
+    await within(jobs.close());
+    expect(signal.aborted).toBe(true);
+    expect(await executing).toBeInstanceOf(ToolWait);
+    const job = only(await jobs.list());
+    expect(job.phase.kind).toBe("interrupted");
+    expect(await f.session.leases.read(JOB_PREFIX + job.id)).toBeUndefined();
+    const seq = await f.session.events.last();
+    work.publish();
+    work.finished.reject(new Error("late tool failure"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(await f.session.events.last()).toBe(seq);
+    expect(f.notifications).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
 
 test("close waits for admission already in flight and never starts its side effect", async () => {
   const f = await fixture();
@@ -289,7 +280,7 @@ test("close waits for admission already in flight and never starts its side effe
   const work = controlledTool();
   const executing = jobs
     .wrap(work.tool)
-    .execute("call", {}, undefined, undefined, f.context)
+    .execute("call", { command: "work" }, undefined, undefined, f.context)
     .catch((cause: unknown) => cause);
   try {
     await within(entered.promise);
@@ -305,13 +296,13 @@ test("close waits for admission already in flight and never starts its side effe
   }
 });
 
-test("recovery retries failed delivery idempotently and repairs cancelled children", async () => {
+test("recovery retries failed delivery idempotently", async () => {
   const f = await fixture();
   const admitted = f.manager();
   let fail = true;
   const jobs = f.manager(f.peer, {
-    notify: async (info) => {
-      await f.notify(info);
+    notify: async (job, head) => {
+      await f.notify(job, head);
       if (fail) throw new Error("receipt write lost");
     },
     diagnostic: async () => {
@@ -319,15 +310,13 @@ test("recovery retries failed delivery idempotently and repairs cancelled childr
     },
   });
   try {
-    const info = await f.seed("cancelled", "subagent");
-    assert.equal(info.kind, "subagent");
+    const info = await f.seed({ kind: "cancelled" });
     await jobs.recover();
-    expect((await f.stored(info.id)).delivered).toBe(false);
-    expect(f.interruptions).toContain(info.childSessionId);
+    expect((await f.stored(info.id)).completion).toBe("owed");
     expect(f.notifications).toHaveLength(1);
     fail = false;
     await Promise.all([jobs.recover(), admitted.recover()]);
-    expect((await f.stored(info.id)).delivered).toBe(true);
+    expect((await f.stored(info.id)).completion).toBe("delivered");
     expect(await pending(f.session, "main")).toHaveLength(1);
     expect(f.notifications).toHaveLength(1);
   } finally {
@@ -347,29 +336,29 @@ test("a failed detached lease release and failed diagnostic do not reject shutdo
   const work = controlledTool();
   try {
     await expect(
-      jobs.wrap(work.tool).execute("call", {}, undefined, undefined, f.context),
+      jobs.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
     ).rejects.toBeInstanceOf(ToolWait);
     await within(work.started.promise);
     vi.spyOn(f.session.leases, "release").mockRejectedValue(new Error("release failed"));
     work.finished.resolve(result);
     await within(diagnosed.promise);
     await within(jobs.close());
-    expect(only(await jobs.list()).state).toBe("completed");
+    expect(only(await jobs.list()).phase.kind).toBe("completed");
   } finally {
     await f.close();
   }
 });
 
-test("cancellation losing to completion does not interrupt a completed child", async () => {
+test("cancellation losing to completion reports the completed job", async () => {
   const f = await fixture();
   const owner = f.manager();
   const remote = f.manager(f.peer);
-  const work = controlledTool("task");
+  const work = controlledTool();
   const entered = Promise.withResolvers<void>();
   const resume = Promise.withResolvers<void>();
   const executing = owner
     .wrap(work.tool)
-    .execute("call", { background: true }, undefined, undefined, f.context)
+    .execute("call", { command: "work", background: true }, undefined, undefined, f.context)
     .catch((cause: unknown) => cause);
   try {
     await within(work.started.promise);
@@ -385,11 +374,10 @@ test("cancellation losing to completion does not interrupt a completed child", a
     const cancelling = remote.cancel(job.id);
     await within(entered.promise);
     work.finished.resolve(result);
-    await expect.poll(async () => only(await owner.list()).state).toBe("completed");
+    await expect.poll(async () => only(await owner.list()).phase.kind).toBe("completed");
     resume.resolve();
     expect(await within(cancelling)).toEqual({ kind: "finished" });
-    expect(f.interruptions).toEqual([]);
-    expect(only(f.notifications).state).toBe("completed");
+    expect(only(f.notifications).end).toEqual({ kind: "completed" });
   } finally {
     resume.resolve();
     await f.close();
@@ -407,7 +395,7 @@ test("a lost lease stops the old owner's work and neither renewal nor close can 
   });
   try {
     await expect(
-      owner.wrap(work.tool).execute("call", {}, undefined, undefined, f.context),
+      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
     ).rejects.toBeInstanceOf(ToolWait);
     const signal = await within(work.started.promise);
     const job = only(await owner.list());
@@ -415,9 +403,9 @@ test("a lost lease stops the old owner's work and neither renewal nor close can 
     const successor = granted(await f.peer.leases.acquire(JOB_PREFIX + job.id, 15_000));
     await within(diagnosed.promise, 7_000);
     expect(signal.aborted).toBe(true);
-    expect(only(await owner.list()).state).toBe("running");
+    expect(only(await owner.list()).phase.kind).toBe("running");
     await within(owner.close());
-    expect(only(await owner.list()).state).toBe("running");
+    expect(only(await owner.list()).phase.kind).toBe("running");
     expect(await f.peer.leases.read(JOB_PREFIX + job.id)).toEqual(successor);
     expect(f.notifications).toEqual([]);
     work.finished.reject(new Error("late failure after takeover"));
@@ -436,7 +424,7 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
   const resume = Promise.withResolvers<void>();
   try {
     await expect(
-      owner.wrap(work.tool).execute("call", {}, undefined, undefined, f.context),
+      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
     ).rejects.toBeInstanceOf(ToolWait);
     const signal = await within(work.started.promise);
     const job = only(await owner.list());
@@ -449,7 +437,7 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
     const wake = remote.wrap(work.tool).wake;
     assert.ok(wake);
     const waking = wake(
-      { runId: f.run.id, toolCallId: "call", resultEntryId: "result", args: {} },
+      { runId: f.run.id, toolCallId: "call", resultEntryId: "result", args: { command: "work" } },
       { aborted: true, expired: false, signal: new AbortController().signal },
     );
     await within(entered.promise);
@@ -459,7 +447,8 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
       kind: "settle",
       result: { details: { jobId: job.id } },
     });
-    expect(only(await owner.list())).toMatchObject({ state: "cancelled", mode: "background" });
+    expect(only(await owner.list())).toMatchObject({ phase: { kind: "cancelled" } });
+    expect((await f.stored(job.id)).completion).not.toBe("none");
     expect(signal.aborted).toBe(true);
   } finally {
     resume.resolve();
@@ -474,11 +463,11 @@ test("recheck signals a job that finished before its call was parked, and skips 
   try {
     const executing = jobs
       .wrap(work.tool)
-      .execute("call", {}, undefined, undefined, f.context)
+      .execute("call", { command: "work" }, undefined, undefined, f.context)
       .catch((cause: unknown) => cause);
     await within(work.started.promise);
     work.finished.resolve(result);
-    await expect.poll(async () => only(await jobs.list()).state).toBe("completed");
+    await expect.poll(async () => only(await jobs.list()).phase.kind).toBe("completed");
     expect(await executing).toBeInstanceOf(ToolWait);
     // The turn parks after the job already finished, so the completion's own
     // signal found no waiting effect. The post-park recheck must wake it.

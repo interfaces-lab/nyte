@@ -488,6 +488,14 @@ handler settles or parks again with a new `waitId` and deadline. Desktop and TUI
 never settles the effect. A host step does. Local timers are only wake-up hints and must re-check
 the epoch deadline, including when it exceeds the platform's maximum timer delay.
 
+A wait on a child session is the bounded kind. `await`, `task`, and `send` with `waitMs` park with
+`until = now + timeoutMs` and no selection. Delegation signals the effect when the agents it names
+satisfy its mode, or when user input arrives in a boundary lane of the head the wait is holding up;
+the runner expires it at the deadline; an abort wakes it with the flag. Every wake settles: the
+handler answers with a report for each agent whose request ended and a phase for the rest, and
+the parent may wait again. Nothing about the wait is process state: which agents, from the intent's
+arguments; whether each has answered, from the child session and the parent's delegation record.
+
 `Choice`, `Selection`, and `SelectionReply` are protocol's first UI shapes: vocabulary a plugin
 fills, core carries, and any client draws. They deliberately do not grow toward a widget language. A plugin
 that needs a richer rendering than a list draws it from the typed `ToolClass` the commit carries,
@@ -825,44 +833,46 @@ server is a command the host spawns.
 ## Agents
 
 An agent is a host-resolved session preset, not a second runner type. A run using a preset stores
-its name in `config`. Delegation does not require a preset: the parent supplies a prompt through
-`task` and may supply an exact `provider/model`. The tool schema lists available explicit choices
-across authenticated providers, refreshed for each request. If the call omits a model, it resolves
-to `openai-codex/gpt-5.6-sol`; if it omits `task.thinkingLevel`, it resolves to `high`. The parent
-passes another model or thinking level when the user requests one. There is no global subagent
-setting or automatic model substitution.
+its name in `config`. Delegation does not require a preset: the parent creates a child through
+`create` or `task` and may supply an exact `provider/model`. The tool schema lists available
+explicit choices across authenticated providers, refreshed for each request. If the call omits a
+model, it resolves to `openai-codex/gpt-5.6-sol`; if it omits `thinkingLevel`, it resolves to
+`high`. The parent passes another model or thinking level when the user requests one. There is no
+global subagent setting or automatic model substitution.
 
-The child receives the shared session tools except `task`, `stop_task`, and `wait_task`, with its role and constraints
-supplied in the prompt. Its config records the resolved model and thinking level. Availability is
-checked before child creation. An unavailable explicit choice or default fails without creating a
-child. A model lost from the catalog before execution fails the child rather than replacing the
-selected model with the host default.
+The child receives the shared session tools except the delegation tools and any tool marked for a
+present participant, with its role and constraints supplied through `create.system` or the prompt.
+Its config records the resolved model and thinking level. Availability is checked before child
+creation. An unavailable explicit choice or default fails without creating a child. A model lost
+from the catalog before execution fails the child rather than replacing the selected model with
+the host default.
 
-Child work is a child session with durable parent coordinates stored as a `parent` fact: parent
-session, run, call, and depth. `sessions.create({ parent })` writes them, `sessions.list({
-parent })` finds the children, and a plugin reads `session.info().child`. Durable child completion
-**must** travel through stored state, never through a process-local registry the model queries.
+A child is a session the parent addresses by `SessionId`, with durable parent coordinates stored
+as a `parent` fact: parent session, run, call, and depth. `sessions.create({ parent })` writes
+them, `sessions.list({ parent })` finds the children, and a plugin reads `session.info().child`.
+A child persists until the parent calls `stop`; it is not a job, and `jobs.list` does not name it.
+A panel draws a child from its `SessionInfo`: `parent`, `name`, and its `main` head's `run`.
 
-Delegation is a `task` tool that creates the child and parks through the effect sandwich. The child
-runs independently, so a tool batch may run several children at once and the parent holds no lease
-while it waits. Child completion signals the parent's effect; the wake handler reads the result from
-the child session rather than trusting process-local state. The SDK installs `task` only in root
-sessions, so delegation depth is 1. A client presents a parked task as background work rather than
-as a request for user input. Desktop exposes the live child transcript from the parent task or jobs
-panel, not as a separate sidebar thread.
+The parent's tools are `task` (create, send, and await in one call), `create`, `send`, `await`,
+`read`, and `stop`. `send` enqueues a user message on the child's `main` head as the parent, in
+the idle lane when the child is idle and the boundary lane when it is live, so the child's landing
+rules decide when it is heard; each send is recorded as a request in the parent session. When the
+child run that landed a request ends, one `completion` lands on the parent head carrying
+`JobReport.delegate`: the child, its title, the `request` commit, how the run ended, and the
+child's last assistant commit as its report. One request, one completion; a second `send` earns
+a second. Durable child completion **must** travel through stored state, never through a
+process-local registry the model queries. The SDK installs the delegation tools only in root
+sessions, so delegation depth is 1. A client presents a parked wait as background work rather
+than as a request for user input.
 
-The parent can call `stop_task({ jobId })` with the ID returned by a background task. This cancels
-that child and its running work through the same durable cancellation used by clients. Only subagent
-jobs owned by the calling session can be stopped. Finished jobs stay unchanged; unknown job IDs
-return a tool error. Stopping a task does not abort the parent run.
-
-When the parent needs a background task's report before finishing its turn, it calls
-`wait_task({ jobId })`. The wait parks through the same jobs machinery as `task` itself, so the
-parent holds no lease while it waits and the report is the job's stored result, not a re-run. It
-observes without owning: stopping the parent run cancels the wait but leaves a task an earlier run
-started untouched, while `stop_task` on the observed task settles the wait with the cancelled
-state. A finished task answers immediately from its durable record. This replaces polling or
-relaunching a task to get a result the agent already paid for.
+`await` parks for up to `timeoutMs` on any or all of the named agents and returns what is known
+when it wakes: a report where a request ended, a phase otherwise. The parent may call it again;
+the report also arrives as its completion. `read` returns the child's phase and its latest turns
+without parking. `stop` cancels the child and its running work through the same durable
+cancellation clients use, and the child answers no further messages. Only children the calling
+session created can be addressed; unknown ids return a tool error. Stopping a child does not abort
+the parent run, and aborting the parent run cancels only its parked waits: the children keep
+working and their reports wait for the next user message.
 
 ## The SDK
 
