@@ -193,6 +193,7 @@ function react(sessionId: SessionId, state: SessionState, event: SessionEvent | 
   }
   if (rebase || event.kind === "commit" || event.kind === "effect") {
     void queryClient.invalidateQueries({ queryKey: keys.children(sessionId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: keys.childSessions(sessionId), exact: true });
   }
 }
 

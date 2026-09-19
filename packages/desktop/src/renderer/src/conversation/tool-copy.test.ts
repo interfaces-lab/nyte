@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
 import { failureNotice, toolVerb } from "./tool-copy.ts";
+
+const child = sessionId("child");
 
 test("a verb names the class and its phase", () => {
   assert.equal(toolVerb({ kind: "file_read", path: "a" }, "running"), "Reading");
@@ -16,7 +19,19 @@ test("a verb names the class and its phase", () => {
   );
   assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "done"), "Web search");
   assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "failed"), "Web search failed");
-  assert.equal(toolVerb({ kind: "delegate", role: "await", jobId: "j" }, "done"), "Waited for");
+  assert.equal(toolVerb({ kind: "spawn", title: "Explore" }, "running"), "Creating");
+  assert.equal(
+    toolVerb({ kind: "delegate_call", role: "send", session: child }, "done"),
+    "Sent to",
+  );
+  assert.equal(
+    toolVerb({ kind: "delegate", role: "await", session: child, title: "Explore" }, "done"),
+    "Waited for",
+  );
+  assert.equal(
+    toolVerb({ kind: "delegate", role: "stop", session: child, title: "Explore" }, "failed"),
+    "Stop failed",
+  );
 });
 
 test("a failure reads as product copy by class; only provider text reaches the reader", () => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
 import type { ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import {
   displayTranscriptParts,
@@ -92,12 +93,12 @@ describe("transcript presentation", () => {
     const spawn: TurnPart = {
       kind: "tool",
       callId: "task",
-      class: { kind: "delegate", role: "spawn", title: "Map the workbench" },
+      class: { kind: "spawn", title: "Map the workbench" },
     };
     const wait: TurnPart = {
       kind: "tool",
       callId: "wait",
-      class: { kind: "delegate", role: "await", jobId: "job-1" },
+      class: { kind: "delegate_call", role: "await", session: sessionId("child") },
     };
     assert.deepEqual(displayTranscriptParts([read("a"), spawn, read("b"), wait]), [
       { kind: "work", parts: [read("a")] },

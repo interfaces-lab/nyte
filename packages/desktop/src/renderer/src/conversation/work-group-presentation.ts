@@ -11,9 +11,17 @@ export interface WorkGroupPresentationInput {
   readonly stale: boolean;
 }
 
+function isDelegation(toolClass: ToolClass): boolean {
+  return (
+    toolClass.kind === "spawn" ||
+    toolClass.kind === "delegate_call" ||
+    toolClass.kind === "delegate"
+  );
+}
+
 /** What the run is waiting on: delegations win, then the newest running call. */
 function activityLabel(running: readonly ToolClass[]): string | undefined {
-  const delegates = running.filter((toolClass) => toolClass.kind === "delegate").length;
+  const delegates = running.filter(isDelegation).length;
   if (delegates > 1) return "Waiting for subagents";
   if (delegates === 1) return "Waiting for subagent";
   const newest = running.at(-1);
@@ -28,6 +36,8 @@ function activityLabel(running: readonly ToolClass[]): string | undefined {
     case "file_write":
     case "file_patch":
       return "Editing files";
+    case "spawn":
+    case "delegate_call":
     case "delegate":
       return "Waiting for subagent";
     case "custom":

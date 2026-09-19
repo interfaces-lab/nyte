@@ -704,7 +704,7 @@ export class DesktopHost {
             open.sdk.jobs.list({ sessionId: session.sessionId, head: head.head }),
           ),
         );
-        return jobs.some((group) => group.some((job) => job.state === "running"));
+        return jobs.some((group) => group.some((job) => job.phase.kind === "running"));
       }),
     );
     return active.filter((value) => value).length;

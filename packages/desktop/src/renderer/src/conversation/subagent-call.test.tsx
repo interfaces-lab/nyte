@@ -1,13 +1,13 @@
 /**
- * A backgrounded task and the later wait on it are two calls on one job. The
- * transcript draws the job once: the spawn is the agent card, the await a
+ * A create and the later wait on it are two calls on one child. The
+ * transcript draws the child once: the create is the agent card, the await a
  * compact line that links to the same child.
  */
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { JobInfo } from "@nyte-ai/protocol";
+import type { SessionInfo } from "@nyte-ai/protocol";
 import { SubagentInspectorProvider } from "./subagent-inspector.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
@@ -40,19 +40,30 @@ afterAll(() => vi.unstubAllGlobals());
 
 const parent = sessionId("chat");
 const child = sessionId("child");
-const job: JobInfo = {
-  id: "job-explore",
-  kind: "subagent",
-  childSessionId: child,
-  runId: "run",
-  callId: "task",
-  head: "main",
-  title: "Map the workbench",
-  mode: "background",
-  state: "completed",
-  startedAt: 1,
-  updatedAt: 2,
-  output: "Three panels found.",
+const childSession: SessionInfo = {
+  sessionId: child,
+  activation: { kind: "active" },
+  name: "Map the workbench",
+  createdAt: 1,
+  lastActivityAt: 2,
+  pinned: false,
+  archived: false,
+  heads: [
+    {
+      head: "main",
+      tip: null,
+      run: {
+        runId: "child-run",
+        head: "main",
+        phase: { kind: "done" },
+        startedAt: 1,
+        attempts: 1,
+        config: {},
+      },
+    },
+  ],
+  config: {},
+  parent: { sessionId: parent, runId: "run", callId: "task", depth: 1 },
 };
 
 const turn: RenderedTurn = {
@@ -64,21 +75,21 @@ const turn: RenderedTurn = {
     {
       kind: "tool",
       callId: "task",
-      class: { kind: "delegate", role: "spawn", title: "Map the workbench", child },
-      result: { commit: "spawned", output: "Started job-explore", isError: false },
+      class: { kind: "delegate", role: "create", session: child, title: "Map the workbench" },
+      result: { commit: "created", output: "Started Map the workbench", isError: false },
     },
     {
       kind: "tool",
       callId: "wait",
-      class: { kind: "delegate", role: "await", jobId: "job-explore" },
+      class: { kind: "delegate", role: "await", session: child, title: "Map the workbench" },
       result: { commit: "waited", output: "Three panels found.", isError: false },
     },
   ],
 };
 
-test("a spawn and its await draw one agent card and one compact line", () => {
+test("a create and its await draw one agent card and one compact line", () => {
   const client = new QueryClient();
-  client.setQueryData(["jobs", parent], [job]);
+  client.setQueryData(["sessions", "children", parent], [childSession]);
   const inspect = vi.fn();
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
@@ -88,7 +99,7 @@ test("a spawn and its await draw one agent card and one compact line", () => {
     </QueryClientProvider>,
   );
   client.clear();
-  // The card is the only place the job's state is spelled out.
+  // The card is the only place the child's state is spelled out.
   expect(html.match(/>Completed</g)?.length).toBe(1);
   expect(html.match(/>Map the workbench</g)?.length).toBe(2);
   expect(html).toContain(">Waited for<");

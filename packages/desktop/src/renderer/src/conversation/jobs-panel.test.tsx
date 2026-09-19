@@ -4,8 +4,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
 import type { JobInfo } from "@nyte-ai/protocol";
 import { BackgroundWork } from "./jobs-panel.tsx";
-import { jobStateLabel } from "./jobs-view.ts";
-import type { BackgroundWorkSection } from "./jobs-panel.tsx";
 
 vi.hoisted(() => vi.stubGlobal("window", { nyte: {} }));
 afterAll(() => vi.unstubAllGlobals());
@@ -13,27 +11,16 @@ afterAll(() => vi.unstubAllGlobals());
 const id = sessionId("chat");
 const command: JobInfo = {
   id: "command",
-  kind: "command",
-  runId: "run",
-  callId: "call",
+  origin: { kind: "run", runId: "run", callId: "call" },
   head: "main",
-  title: "Run tests",
-  mode: "background",
-  state: "running",
+  command: "Run tests",
+  phase: { kind: "running", mode: "background" },
   startedAt: 1,
   updatedAt: 1,
   output: "<script>output</script>",
 };
-const agent: JobInfo = {
-  ...command,
-  id: "agent",
-  kind: "subagent",
-  childSessionId: sessionId("child"),
-  title: "Review styling",
-  mode: "foreground",
-};
 
-function render(jobs?: readonly JobInfo[], open?: BackgroundWorkSection) {
+function render(jobs?: readonly JobInfo[], open = false) {
   const client = new QueryClient();
   if (jobs !== undefined) client.setQueryData(["jobs", id], jobs);
   try {
@@ -44,7 +31,6 @@ function render(jobs?: readonly JobInfo[], open?: BackgroundWorkSection) {
           terminalOwner="test"
           open={open}
           onOpenChange={() => {}}
-          onInspect={() => {}}
           onOpenTerminal={() => {}}
           viewport={null}
         />
@@ -56,28 +42,9 @@ function render(jobs?: readonly JobInfo[], open?: BackgroundWorkSection) {
 }
 
 describe("composer background work", () => {
-  test("adds nothing to the composer until there is background work", () => {
+  test("adds nothing to the composer until a terminal runs", () => {
     expect(render()).toBe("");
     expect(render([])).toBe("");
-    expect(render([agent])).not.toContain("Tasks");
-  });
-
-  test("uses Working while agents run and keeps recent agents accessible afterwards", () => {
-    expect(render([agent])).toContain('aria-label="Agents, Working 1"');
-    const finished = render([{ ...agent, state: "completed" }], "agents");
-    expect(finished).toContain('aria-label="Agents"');
-    expect(finished).not.toContain("Working 1");
-    expect(finished).not.toContain("Recent</div>");
-    expect(finished).toContain("Review styling");
-  });
-
-  test("counts foreground and background agents without counting terminals as agents", () => {
-    const html = render([agent, { ...agent, id: "second", mode: "background" }, command]);
-    expect(html).toContain('aria-label="Agents, Working 2"');
-    expect(html).toContain('aria-label="Open terminals (1)"');
-    expect(html).toContain(">Terminal</span>");
-    expect(html).not.toContain("Review styling");
-    expect(html).not.toContain("Run tests");
   });
 
   test("shows the terminal chip only while a terminal is running", () => {
@@ -85,92 +52,35 @@ describe("composer background work", () => {
     expect(html).toContain('aria-label="Open terminals (2)"');
     expect(html).toContain(">Terminals</span>");
     expect(html).toContain(">2</span>");
-    expect(render([{ ...command, state: "completed" }])).toBe("");
-    expect(render([{ ...command, state: "completed" }], "terminals")).toBe("");
-    const withAgents = render([
-      { ...command, state: "completed" },
-      { ...agent, state: "completed" },
-    ]);
-    expect(withAgents).toContain('aria-label="Agents"');
-    expect(withAgents).not.toContain("Open terminals");
-    expect(withAgents).not.toContain("Recent terminals");
+    expect(render([command])).toContain(">Terminal</span>");
+    expect(render([{ ...command, phase: { kind: "completed" } }])).toBe("");
+    expect(render([{ ...command, phase: { kind: "completed" } }], true)).toBe("");
   });
 
-  test("the active tray only lists its own kind of background work", () => {
-    const agents = render([agent, command], "agents");
-    expect(agents).toContain('aria-label="View output for Review styling"');
-    expect(agents).not.toContain('aria-label="Open terminal for Run tests"');
-    const terminals = render([agent, command], "terminals");
-    expect(terminals).toContain('aria-label="Open terminal for Run tests"');
-    expect(terminals).not.toContain('aria-label="View output for Review styling"');
-    expect(terminals).toContain("1 Terminal Running");
-  });
-
-  test("the terminal tray lists live shells only", () => {
+  test("the tray lists live shells only, each with its own stop action", () => {
     const html = render(
-      [command, { ...command, id: "done", state: "completed", title: "Finished tests" }],
-      "terminals",
+      [command, { ...command, id: "done", phase: { kind: "completed" }, command: "Finished" }],
+      true,
     );
     expect(html).toContain("1 Terminal Running");
     expect(html).toContain('aria-label="Open terminal for Run tests"');
     expect(html).toContain('aria-label="Stop Run tests"');
-    expect(html).not.toContain("Finished tests");
-    expect(html).not.toContain("Recent");
-  });
-
-  test("each running row has its own stop action; closing the tray is separate", () => {
-    const html = render([agent], "agents");
-    expect(html).toContain('aria-label="Stop Review styling"');
     expect(html).toContain('aria-label="Close background work"');
-    expect(html).not.toContain('aria-label="Agents, Working 1"');
     expect(html).toContain("<section");
-    expect(render([agent])).toContain('aria-expanded="false"');
-    const terminals = render([command], "terminals");
-    expect(terminals).toContain('aria-label="Stop Run tests"');
-    expect(terminals).toContain('aria-label="Close background work"');
+    expect(html).not.toContain("Finished");
+    expect(html).not.toContain('aria-label="Open terminals');
   });
-
-  test.each(["completed", "failed", "cancelled", "interrupted"] as const)(
-    "%s work stays inspectable without a stop action",
-    (state) => {
-      const html = render([{ ...agent, state }], "agents");
-      expect(html).not.toContain("Recent</div>");
-      expect(html).toContain('aria-label="View output for Review styling"');
-      expect(html).not.toContain('aria-label="Stop Review styling"');
-      expect(html).toContain(jobStateLabel({ state, mode: agent.mode }));
-    },
-  );
 
   test.each(["running", "completed", "failed", "cancelled", "interrupted"] as const)(
     "foreground commands never enter the tray when %s",
-    (state) => {
-      expect(render([{ ...command, mode: "foreground", state }])).toBe("");
+    (kind) => {
+      const phase: JobInfo["phase"] =
+        kind === "running"
+          ? { kind, mode: "foreground" }
+          : kind === "failed"
+            ? { kind, reason: "exit 1" }
+            : { kind };
+      expect(render([{ ...command, phase }])).toBe("");
     },
   );
-
-  test("recent history starts with five rows and keeps the rest behind More", () => {
-    const jobs = Array.from({ length: 8 }, (_, index): JobInfo => ({
-      ...agent,
-      id: `recent-${String(index)}`,
-      title: `Review ${String(index)}`,
-      state: "completed",
-      updatedAt: index,
-    }));
-    const html = render(jobs, "agents");
-    expect(html.match(/aria-label="View output for/g)).toHaveLength(5);
-    expect(html).toContain("More</button>");
-    expect(html).toContain("Review 7");
-    expect(html).not.toContain("Review 0");
-  });
-
-  test("lists active work before recent work", () => {
-    const html = render(
-      [{ ...agent, id: "finished", state: "completed", title: "Done review" }, agent],
-      "agents",
-    );
-    expect(html.indexOf('aria-label="View output for Review styling"')).toBeLessThan(
-      html.indexOf("1 Recent"),
-    );
-    expect(html.indexOf("1 Recent")).toBeLessThan(html.indexOf("Done review"));
-  });
 });

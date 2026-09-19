@@ -21,7 +21,7 @@ import type { ToolCallDensity } from "../theme/boot.ts";
 import { DiffView } from "./diff-view.tsx";
 import type { DiffFacts } from "./diff-view.tsx";
 import { activityStyles, toolCallStyles } from "./styles.stylex.ts";
-import { SubagentAwaitView, SubagentCallView } from "./subagent-call.tsx";
+import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
 import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 import { toolPhase } from "./transcript-presentation.ts";
@@ -53,8 +53,9 @@ function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail |
       return { text: tidyPath(toolClass.path, cwd) };
     case "shell":
       return { text: toolClass.command };
+    case "spawn":
+    case "delegate_call":
     case "delegate":
-      return toolClass.role === "spawn" ? { text: toolClass.title } : undefined;
     case "custom":
       return undefined;
     default: {
@@ -144,19 +145,24 @@ export const ToolCallView = memo(function ToolCallView({
       : text.trim() === ""
         ? { kind: "none" }
         : { kind: "output", text };
-  if (toolClass.kind === "delegate") {
-    const output = body.kind === "output" ? body.text : undefined;
-    return toolClass.role === "spawn" ? (
+  // One card per child: its settled create. Every other call on it is a line.
+  if (toolClass.kind === "delegate" && toolClass.role === "create") {
+    return (
       <SubagentCallView
         title={toolClass.title}
-        child={toolClass.child}
+        session={toolClass.session}
         phase={phase}
-        output={output}
+        output={body.kind === "output" ? body.text : undefined}
         density={density}
       />
-    ) : (
-      <SubagentAwaitView jobId={toolClass.jobId} phase={phase} density={density} />
     );
+  }
+  if (
+    toolClass.kind === "spawn" ||
+    toolClass.kind === "delegate_call" ||
+    toolClass.kind === "delegate"
+  ) {
+    return <SubagentLineView toolClass={toolClass} phase={phase} density={density} />;
   }
   const verb = toolVerb(toolClass, phase);
   const detail = toolDetail(toolClass, cwd);

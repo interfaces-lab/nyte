@@ -91,7 +91,6 @@ import { nyte } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
 
 import { BackgroundWork } from "../conversation/jobs-panel.tsx";
-import type { BackgroundWorkSection } from "../conversation/jobs-panel.tsx";
 import { LiveTurn, liveTurnStyles } from "../conversation/live-turn.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
 import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
@@ -756,7 +755,7 @@ function SessionConversation({
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
-  const [backgroundWork, setBackgroundWork] = useState<BackgroundWorkSection>();
+  const [backgroundWork, setBackgroundWork] = useState(false);
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
   const snapshotSession = snapshot.data?.session;
@@ -895,12 +894,12 @@ function SessionConversation({
   const subagentInspector = useMemo(
     () => ({
       sessionId,
-      inspect: (childSessionId: SessionId): void => {
+      inspect: (child: SessionId): void => {
         const viewKey = workbenchViewKey({
           paneKey: WORKBENCH_STAGE_PANE_KEY,
           target: { kind: "session", sessionId },
         });
-        agentActions.select(viewKey, childSessionId);
+        agentActions.select(viewKey, child);
         workbenchController.actions.openTab(viewKey, "agents");
       },
     }),
@@ -1064,7 +1063,6 @@ function SessionConversation({
                       })}
                       open={backgroundWork}
                       onOpenChange={setBackgroundWork}
-                      onInspect={subagentInspector.inspect}
                       onOpenTerminal={(job) => {
                         const viewKey = workbenchViewKey({
                           paneKey: WORKBENCH_STAGE_PANE_KEY,
@@ -1078,8 +1076,8 @@ function SessionConversation({
                     />
                   ),
                   onEscape: () => {
-                    if (backgroundWork === undefined) return false;
-                    setBackgroundWork(undefined);
+                    if (!backgroundWork) return false;
+                    setBackgroundWork(false);
                     return true;
                   },
                 }}
@@ -1116,7 +1114,7 @@ function SessionConversation({
             open
             pending={false}
             error={undefined}
-            description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
+            description="The chat disappears now. Undo from the notification before it closes."
             returnFocusRef={paneMenuTrigger}
             onOpenChange={(nextOpen) => {
               if (nextOpen) return;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { sessionId } from "@nyte-ai/protocol";
+import type { JobInfo } from "@nyte-ai/protocol";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const ipc = vi.hoisted(() => {
@@ -54,7 +55,7 @@ import {
   isShellTerminal,
   terminalActions,
 } from "./terminal-store.ts";
-import type { CommandJobInfo, TerminalOutput } from "./terminal-store.ts";
+import type { TerminalOutput } from "./terminal-store.ts";
 
 let ownerIndex = 0;
 
@@ -66,16 +67,13 @@ function owner(): string {
 const firstSession = sessionId("terminal-session-1");
 const secondSession = sessionId("terminal-session-2");
 
-function command(change: Partial<CommandJobInfo> = {}): CommandJobInfo {
+function command(change: Partial<JobInfo> = {}): JobInfo {
   return {
     id: "job-1",
-    kind: "command",
-    runId: "run-1",
-    callId: "call-1",
+    origin: { kind: "run", runId: "run-1", callId: "call-1" },
     head: "main",
-    title: "Run tests",
-    mode: "background",
-    state: "running",
+    command: "Run tests",
+    phase: { kind: "running", mode: "background" },
     startedAt: 1,
     updatedAt: 1,
     output: "starting\n",
@@ -114,7 +112,7 @@ describe("job-backed terminal tabs", () => {
   test("deduplicates an owner/session/job identity and selects the existing tab", () => {
     const currentOwner = owner();
     terminalActions.openJob(currentOwner, firstSession, command());
-    terminalActions.openJob(currentOwner, firstSession, command({ title: "Updated title" }));
+    terminalActions.openJob(currentOwner, firstSession, command({ command: "Updated title" }));
 
     const tabs = getTerminals(currentOwner);
     assert.equal(tabs.length, 1);
@@ -131,7 +129,7 @@ describe("job-backed terminal tabs", () => {
     terminalActions.openJob(rightOwner, firstSession, command());
 
     terminalActions.syncJobs(leftOwner, firstSession, [
-      command({ title: "Only this tab", state: "completed", output: "done\n" }),
+      command({ command: "Only this tab", phase: { kind: "completed" }, output: "done\n" }),
     ]);
 
     assert.equal(getJobTerminal(leftOwner, firstSession, "job-1")?.title, "Only this tab");
@@ -197,7 +195,7 @@ describe("job-backed terminal tabs", () => {
 
   test("removes completed jobs without cancellation", async () => {
     const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command({ state: "completed" }));
+    terminalActions.openJob(currentOwner, firstSession, command({ phase: { kind: "completed" } }));
     const tab = getJobTerminal(currentOwner, firstSession, "job-1");
     assert.ok(tab);
 
