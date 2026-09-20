@@ -11,6 +11,7 @@ const defaults = {
   durationMs: 1200,
   running: false,
   stale: false,
+  awaiting: 0,
 } satisfies WorkGroupPresentationInput;
 
 const read: ToolClass = { kind: "file_read", path: "/project/src/a.ts" };
@@ -90,6 +91,11 @@ test("live activity names the newest running call and lets delegations win", () 
     presentWorkGroup({ ...input, parts: [task, bash, { ...task, callId: "task2" }] }).summary.verb,
     "Waiting for subagents",
   );
+  assert.equal(
+    presentWorkGroup({ ...input, parts: [bash], awaiting: 4 }).summary.verb,
+    "Waiting for subagents",
+  );
+  assert.equal(presentWorkGroup({ ...input, awaiting: 1 }).summary.verb, "Waiting for subagent");
   assert.equal(
     presentWorkGroup({ ...input, parts: [pending("web", { kind: "custom", label: "Web search" })] })
       .summary.verb,

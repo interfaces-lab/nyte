@@ -1,13 +1,14 @@
 /**
  * A create and the later wait on it are two calls on one child. The
  * transcript draws the child once: the create is the agent card, the await a
- * compact line that links to the same child.
+ * compact line that links to the same child. While the wait is live it is run
+ * status, not a row: the cards say "Waiting" and the header counts down.
  */
 import { afterAll, expect, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { ParkedCall, SessionInfo, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
 import { SubagentInspectorProvider } from "./subagent-inspector.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
@@ -104,4 +105,104 @@ test("a create and its await draw one agent card and one compact line", () => {
   expect(html.match(/>Map the workbench</g)?.length).toBe(2);
   expect(html).toContain(">Waited for<");
   expect(html.match(/aria-label="Open Map the workbench in the Agents panel"/g)?.length).toBe(2);
+});
+
+const agents = ["north", "south", "east", "west"].map((name) => sessionId(name));
+const createAgent = (session: (typeof agents)[number]): ToolTurnPart => ({
+  kind: "tool",
+  callId: `create:${session}`,
+  class: { kind: "delegate", role: "create", session },
+  result: { commit: `created:${session}`, output: `Started ${session}`, isError: false },
+});
+const awaitAll: ToolTurnPart = {
+  kind: "tool",
+  callId: "wait-all",
+  // The class names the first agent; the parked call's arguments name them all.
+  class: { kind: "delegate", role: "await", session: agents[0] ?? child },
+};
+const parkedWait: ParkedCall = {
+  runId: "run",
+  callId: "wait-all",
+  waitId: "wait-1",
+  tool: "await",
+  args: { agents: [...agents], mode: "all", timeoutMs: 83_000 },
+  until: 1_083_000,
+};
+const prose: TurnPart = {
+  kind: "assistant",
+  commit: "a",
+  contentIndex: 0,
+  text: "Four agents are mapping the panels.",
+};
+const workingRun = { ...childSession.heads[0]?.run, phase: { kind: "tools" } } as const;
+
+function render(
+  parts: readonly TurnPart[],
+  options: { readonly running: boolean; readonly parked: readonly ParkedCall[] },
+): string {
+  const client = new QueryClient();
+  client.setQueryData(
+    ["sessions", "children", parent],
+    agents.map((session) => ({
+      ...childSession,
+      sessionId: session,
+      name: `Agent ${session}`,
+      heads: [{ head: "main", tip: null, run: workingRun }],
+    })),
+  );
+  const html = renderToStaticMarkup(
+    <QueryClientProvider client={client}>
+      <SubagentInspectorProvider value={{ sessionId: parent, inspect: vi.fn() }}>
+        <TurnView
+          turn={{ kind: "turn", id: "turn", startedAt: 1, durationMs: 0, parts: [...parts] }}
+          liveTools={new Map()}
+          cwd={undefined}
+          running={options.running}
+          parked={options.parked}
+        />
+      </SubagentInspectorProvider>
+    </QueryClientProvider>,
+  );
+  client.clear();
+  return html;
+}
+
+test("a live await on agents created in the turn is run status, not a row", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000_000);
+  const html = render([...agents.map(createAgent), prose, awaitAll], {
+    running: true,
+    parked: [parkedWait],
+  });
+  vi.useRealTimers();
+  expect(html.match(/aria-label="Open Agent \w+ in the Agents panel"/g)?.length).toBe(4);
+  expect(html.match(/>Waiting</g)?.length).toBe(4);
+  expect(html).not.toContain(">Waiting for<");
+  expect(html).toContain(">Waiting for subagents<");
+  expect(html).toContain("· 1:23");
+});
+
+test("the settled await is the compact line, with no countdown", () => {
+  const settled: ToolTurnPart = {
+    ...awaitAll,
+    result: { commit: "waited", output: "All four reported.", isError: false },
+  };
+  const html = render([...agents.map(createAgent), prose, settled], {
+    running: true,
+    parked: [],
+  });
+  expect(html.match(/>Waited for</g)?.length).toBe(1);
+  expect(html).not.toContain(">Waiting for subagents<");
+  expect(html).not.toContain(">Waiting<");
+  expect(html).not.toContain("· ");
+});
+
+test("a live await on a child from an earlier turn keeps its line and counts down", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1_000_000);
+  const html = render([prose, awaitAll], { running: true, parked: [parkedWait] });
+  vi.useRealTimers();
+  expect(html.match(/>Waiting for</g)?.length).toBe(1);
+  expect(html).toContain("· 1:23");
+  expect(html).not.toContain(">Waiting for subagents<");
 });
