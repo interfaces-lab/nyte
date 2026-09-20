@@ -69,20 +69,11 @@ export type ToolClass =
   | { readonly kind: "file_read"; readonly path: string }
   | { readonly kind: "list"; readonly path: string }
   | { readonly kind: "shell"; readonly command: string }
-  /** A `create` or `task` call before its child session exists, or one that never got one. */
-  | { readonly kind: "spawn"; readonly title: string }
-  /** A call addressing an existing child, before its result names the child. */
-  | {
-      readonly kind: "delegate_call";
-      readonly role: "send" | "await" | "read" | "stop";
-      readonly session: SessionId;
-    }
-  /** A settled call on a child; `title` is the child's name. `await` names its first agent. */
+  /** A call on a child session. `create` names the child the call owns; `await` names its first agent. */
   | {
       readonly kind: "delegate";
       readonly role: "create" | "send" | "await" | "read" | "stop";
       readonly session: SessionId;
-      readonly title: string;
     }
   | { readonly kind: "custom"; readonly label: string };
 

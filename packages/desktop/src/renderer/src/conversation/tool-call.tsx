@@ -53,8 +53,6 @@ function toolDetail(toolClass: ToolClass, cwd: string | undefined): ToolDetail |
       return { text: tidyPath(toolClass.path, cwd) };
     case "shell":
       return { text: toolClass.command };
-    case "spawn":
-    case "delegate_call":
     case "delegate":
     case "custom":
       return undefined;
@@ -145,24 +143,18 @@ export const ToolCallView = memo(function ToolCallView({
       : text.trim() === ""
         ? { kind: "none" }
         : { kind: "output", text };
-  // One card per child: its settled create. Every other call on it is a line.
-  if (toolClass.kind === "delegate" && toolClass.role === "create") {
-    return (
+  // One card per child: its create. Every other call on it is a line.
+  if (toolClass.kind === "delegate") {
+    return toolClass.role === "create" ? (
       <SubagentCallView
-        title={toolClass.title}
         session={toolClass.session}
         phase={phase}
         output={body.kind === "output" ? body.text : undefined}
         density={density}
       />
+    ) : (
+      <SubagentLineView toolClass={toolClass} phase={phase} density={density} />
     );
-  }
-  if (
-    toolClass.kind === "spawn" ||
-    toolClass.kind === "delegate_call" ||
-    toolClass.kind === "delegate"
-  ) {
-    return <SubagentLineView toolClass={toolClass} phase={phase} density={density} />;
   }
   const verb = toolVerb(toolClass, phase);
   const detail = toolDetail(toolClass, cwd);

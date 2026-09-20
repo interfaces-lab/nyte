@@ -224,7 +224,6 @@ test("create makes a persistent child session the parent names; it is not a job"
       kind: "delegate",
       role: "create",
       session: child.sessionId,
-      title: "helper",
     });
     expect(said).toContain(`Created agent helper as ${child.sessionId}`);
     expect(await f.nyte.jobs.list({ sessionId: f.parent })).toEqual([]);
@@ -247,7 +246,6 @@ test("send lands on the child and its answer reaches the parent once, as a compl
       kind: "delegate",
       role: "send",
       session: child.sessionId,
-      title: "helper",
     });
     expect(sent.said).toContain("Sent to agent helper");
     await expect
@@ -332,7 +330,6 @@ test("await returns phases at its deadline without settling the child, and the r
       kind: "delegate",
       role: "await",
       session: child.sessionId,
-      title: "helper",
     });
     expect(timedOut.part.result?.isError).toBe(false);
     expect(timedOut.said).toContain(`Agent helper (${child.sessionId}) is respond; no report yet.`);
@@ -378,9 +375,35 @@ test("a parked await wakes when the child answers", async () => {
       turn.kind === "turn" ? turn.parts : [],
     );
     expect(parts.find((part) => part.kind === "tool")).toMatchObject({
-      class: { kind: "delegate", role: "create", session: child.sessionId, title: "worker" },
+      class: { kind: "delegate", role: "create", session: child.sessionId },
       result: { isError: false, output: expect.stringContaining("answer: prompt") },
     });
+  } finally {
+    await f.close();
+  }
+});
+
+test("aborting the parent mid-task keeps the call classed as the child's create while the child runs on", async () => {
+  const f = await fixture();
+  try {
+    f.hold("prompt");
+    await f.nyte.messages.send({
+      sessionId: f.parent,
+      content: `do task ${JSON.stringify({ prompt: "prompt", title: "worker", model: MODEL, waitMs: 60_000 })}`,
+    });
+    expect((await within(f.nyte.runs.wait({ sessionId: f.parent }), 5_000)).kind).toBe("waiting");
+    const child = await f.child();
+    expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
+    await f.idle(f.parent);
+    const parts = (await f.nyte.messages.list({ sessionId: f.parent })).flatMap((turn) =>
+      turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
+    );
+    expect(parts.at(-1)).toMatchObject({
+      class: { kind: "delegate", role: "create", session: child.sessionId },
+      result: { isError: true, output: expect.stringContaining("cancelled") },
+    });
+    const running = await f.nyte.runs.current({ sessionId: child.sessionId });
+    assert.ok(running && !isTerminalPhase(running.phase));
   } finally {
     await f.close();
   }
@@ -408,7 +431,7 @@ test("aborting the parent cancels its parked await and leaves the child running;
     );
     // A failed call keeps its call-time class.
     expect(parts.at(-1)).toMatchObject({
-      class: { kind: "delegate_call", role: "await", session: child.sessionId },
+      class: { kind: "delegate", role: "await", session: child.sessionId },
       result: { isError: true, output: expect.stringContaining("cancelled") },
     });
     const running = await f.nyte.runs.current({ sessionId: child.sessionId });
@@ -420,7 +443,6 @@ test("aborting the parent cancels its parked await and leaves the child running;
       kind: "delegate",
       role: "stop",
       session: child.sessionId,
-      title: "helper",
     });
     await expect
       .poll(
@@ -452,7 +474,6 @@ test("read answers with the child's latest turns and phase without parking", asy
       kind: "delegate",
       role: "read",
       session: child.sessionId,
-      title: "helper",
     });
     expect(read.said).toContain(`Agent helper (${child.sessionId}) is done.`);
     expect(read.said).toContain("User: what is up");
@@ -485,7 +506,6 @@ test("a task whose child outlasts waitMs returns the child's phase; the report f
       kind: "delegate",
       role: "create",
       session: child.sessionId,
-      title: "Investigate the build",
     });
     expect(said).toContain(`Agent Investigate the build (${child.sessionId}) is respond`);
     release();

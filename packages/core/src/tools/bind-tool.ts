@@ -26,7 +26,10 @@ export function bindTool<T extends TSchema, Details>(
   const present = tool.present;
   return {
     ...tool,
-    present: present === undefined ? undefined : (args, result) => present(parse(args), result),
+    present:
+      present === undefined
+        ? undefined
+        : (args, context, result) => present(parse(args), context, result),
     execute: async (callId, args, signal, onUpdate, context) => {
       try {
         return await boundImages(

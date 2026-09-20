@@ -342,7 +342,6 @@ for (const selected of [opus, astra]) {
         kind: "delegate",
         role: "create",
         session: child.sessionId,
-        title: TASK_TITLE,
       });
     } finally {
       await nyte.close();

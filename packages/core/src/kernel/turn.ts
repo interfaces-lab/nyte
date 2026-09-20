@@ -311,6 +311,7 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
                 presentCall(
                   options.tools.find((tool) => tool.name === part.name),
                   part,
+                  input.run.id,
                 ),
               ]),
             ),
@@ -414,7 +415,7 @@ async function runTools(
         const result = message.isError
           ? undefined
           : { content: message.content, details: message.details };
-        return [[message.toolCallId, presentCall(tool, call, result)]];
+        return [[message.toolCallId, presentCall(tool, call, input.run.id, result)]];
       }),
     ),
   });
@@ -489,6 +490,7 @@ async function runTools(
 function presentCall(
   tool: AgentTool | undefined,
   call: AgentToolCall,
+  runId: string,
   result?: AgentToolResult<unknown>,
 ): ToolClass {
   const custom: ToolClass = { kind: "custom", label: tool?.label ?? call.name };
@@ -496,7 +498,7 @@ function presentCall(
   try {
     const args =
       tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
-    return tool.present(args, result);
+    return tool.present(args, { runId, callId: call.id }, result);
   } catch {
     return custom;
   }

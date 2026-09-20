@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
+import { sessionId } from "@nyte-ai/protocol";
 import type { ToolClass, ToolTurnPart } from "@nyte-ai/protocol";
 import { IDLE } from "../live-fold.ts";
 import { presentWorkGroup } from "./work-group-presentation.ts";
@@ -14,7 +15,7 @@ const defaults = {
 
 const read: ToolClass = { kind: "file_read", path: "/project/src/a.ts" };
 const shell: ToolClass = { kind: "shell", command: "pwd" };
-const spawn: ToolClass = { kind: "spawn", title: "Explore" };
+const spawn: ToolClass = { kind: "delegate", role: "create", session: sessionId("child") };
 const patch: ToolClass = {
   kind: "file_patch",
   op: "edit",

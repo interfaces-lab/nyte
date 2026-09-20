@@ -348,6 +348,12 @@ export interface ToolExecutionContext {
   readonly head: string;
 }
 
+/** The call `present` classifies: the run that committed it and its call id. */
+export interface ToolPresentContext {
+  readonly runId: string;
+  readonly callId: string;
+}
+
 /** Tool definition used by the agent runtime. */
 export interface AgentTool<
   TParameters extends TSchema = TSchema,
@@ -370,14 +376,16 @@ export interface AgentTool<
   /** Available only while the session is foreground work with a participant present. */
   availability?: "foreground";
   /**
-   * What this call is, for the record. Called with the parsed args when the
-   * call is committed, and again with the result when it settles without error.
+   * What this call is, for the record. Called with the parsed args and the
+   * call's identity when the call is committed, and again with the result
+   * when it settles without error.
    * A method, so its parameters are bivariant: a typed tool still erases to
    * `AgentTool` for the registry, which hands it back its own result.
    */
   present?(
     this: void,
     args: TSchema extends TParameters ? unknown : Static<TParameters>,
+    context: ToolPresentContext,
     result?: AgentToolResult<TDetails>,
   ): ToolClass;
   /** Human label for a tool without `present`; the default is the tool name. */
