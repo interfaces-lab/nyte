@@ -1,31 +1,33 @@
-/**
- * Workspace tree ids for run provenance, from a shadow git repository the
- * host owns. The user's `.git` is never read or written: objects put there
- * would be unreachable and pruned by their `git gc`, and a workspace need not
- * be a repository at all. Every git call runs with `GIT_DIR` at the shadow and
- * `GIT_WORK_TREE` at the workspace, so `.gitignore` applies and `.git` itself
- * is never added.
- */
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { access, mkdir, realpath, rename } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  access,
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+import { devNull } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { VcsBackend } from "@nyte-ai/core";
 import { treeId } from "@nyte-ai/protocol";
 import type { FileDiff, FileDiffKind, TreeId, TreeOutcome } from "@nyte-ai/protocol";
 import { nyteHome } from "./paths.ts";
 
 export type TreeSnapshot = Pick<VcsBackend, "tree" | "diffTrees" | "restoreTree"> & {
-  /** Where a file leaving the tree goes: the caller's `discard`, else the shadow trash. */
-  readonly discard: (absolutePath: string) => Promise<void>;
+  readonly discard: (input: {
+    readonly cwd: string;
+    readonly absolutePath: string;
+  }) => Promise<void>;
 };
 
 export interface TreeSnapshotOptions {
-  /**
-   * Where a file the tree does not have goes on restore. The desktop hands
-   * this to the OS trash; without one the file moves under the shadow
-   * repository's `trash/<timestamp>/<path>`.
-   */
   readonly discard?: (absolutePath: string) => Promise<void>;
 }
 
@@ -45,7 +47,38 @@ class GitCommandError extends Error {
   }
 }
 
-/** git's own first line, which is what the reader can act on. */
+const GIT_FLAGS = [
+  "--literal-pathspecs",
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "diff.external=",
+  "-c",
+  "core.pager=cat",
+  "-c",
+  "core.hooksPath=/dev/null",
+  "-c",
+  "core.quotepath=false",
+] as const;
+
+export function sanitizedGitEnv(
+  intended: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+  const clean: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name.startsWith("GIT_") || value === undefined) continue;
+    clean[name] = value;
+  }
+  return {
+    ...clean,
+    LC_ALL: "C",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: devNull,
+    GIT_TERMINAL_PROMPT: "0",
+    ...intended,
+  };
+}
+
 function firstLine(cause: unknown, fallback: string): string {
   const message = cause instanceof Error ? cause.message : String(cause);
   const line = message.split("\n").find((candidate) => candidate.trim() !== "");
@@ -57,17 +90,15 @@ function runGit(
   args: readonly string[],
 ): Promise<GitResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn("git", ["-c", "core.quotepath=off", ...args], {
-      cwd: env.workspace,
-      env: {
-        ...process.env,
-        LC_ALL: "C",
-        GIT_TERMINAL_PROMPT: "0",
-        GIT_DIR: env.shadow,
-        GIT_WORK_TREE: env.workspace,
+    const child = spawn(
+      "git",
+      [...GIT_FLAGS, "-c", "core.autocrlf=false", "-c", "core.safecrlf=false", ...args],
+      {
+        cwd: env.workspace,
+        env: sanitizedGitEnv({ GIT_DIR: env.shadow, GIT_WORK_TREE: env.workspace }),
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
@@ -85,46 +116,97 @@ function runGit(
   });
 }
 
-function safeWorkspacePath(workspace: string, path: string): string {
+function isFileError(cause: unknown, codes: ReadonlySet<string>): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    typeof cause.code === "string" &&
+    codes.has(cause.code)
+  );
+}
+
+const MISSING_PATH = new Set(["ENOENT", "ENOTDIR"]);
+
+function checkedWorkspacePath(workspace: string, path: string): string {
+  if (path === "" || path.startsWith("-") || isAbsolute(path)) {
+    throw new Error(`Path is outside the workspace: ${path}`);
+  }
   const absolute = resolve(workspace, path);
   const within = relative(workspace, absolute);
-  if (path === "" || isAbsolute(within) || within === ".." || within.startsWith("../")) {
+  if (isAbsolute(within) || within === ".." || within.startsWith(`..${sep}`)) {
     throw new Error(`Path is outside the workspace: ${path}`);
   }
   return absolute;
 }
 
-function diffKind(status: string): FileDiffKind {
-  switch (status[0]) {
+async function validatedWorkspacePath(workspace: string, path: string): Promise<string> {
+  const root = await realpath(workspace);
+  const absolute = checkedWorkspacePath(root, path);
+  let current = root;
+  for (const component of relative(root, absolute).split(sep)) {
+    current = join(current, component);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Path contains a symbolic link: ${path}`);
+      }
+    } catch (cause) {
+      if (isFileError(cause, MISSING_PATH)) continue;
+      throw cause;
+    }
+  }
+  return absolute;
+}
+
+function parseDiffKind(status: string): FileDiffKind {
+  const letter = status[0];
+  if (letter !== "A" && letter !== "D" && letter !== "M" && letter !== "R") {
+    throw new Error(`Unexpected git diff status: ${status}`);
+  }
+  switch (letter) {
     case "A":
       return "added";
     case "D":
       return "deleted";
+    case "M":
+      return "modified";
     case "R":
       return "renamed";
-    default:
-      return "modified";
+    default: {
+      const _exhaustive: never = letter;
+      return _exhaustive;
+    }
   }
 }
 
-/** `--name-status -z` records: `<status>\0<path>\0`, or `R<n>\0<old>\0<new>\0` for a rename. */
-function parseNameStatus(output: string): readonly { path: string; kind: FileDiffKind }[] {
+type NamedDiff =
+  | { readonly path: string; readonly kind: Exclude<FileDiffKind, "renamed"> }
+  | { readonly path: string; readonly from: string; readonly kind: "renamed" };
+
+function parseNameStatus(output: string): readonly NamedDiff[] {
   const fields = output.split("\0");
-  const entries: { path: string; kind: FileDiffKind }[] = [];
+  const entries: NamedDiff[] = [];
   let index = 0;
   while (index < fields.length) {
     const status = fields[index];
     if (status === undefined || status === "") break;
-    const kind = diffKind(status);
-    const path = fields[kind === "renamed" ? index + 2 : index + 1];
+    const kind = parseDiffKind(status);
+    if (kind === "renamed") {
+      const from = fields[index + 1];
+      const path = fields[index + 2];
+      if (from === undefined || path === undefined) break;
+      entries.push({ path, from, kind });
+      index += 3;
+      continue;
+    }
+    const path = fields[index + 1];
     if (path === undefined) break;
     entries.push({ path, kind });
-    index += kind === "renamed" ? 3 : 2;
+    index += 2;
   }
   return entries;
 }
 
-/** `--numstat -z` records: `<added>\t<removed>\t<path>\0`, or `<added>\t<removed>\t\0<old>\0<new>\0`. */
 function parseNumstat(output: string): readonly { added: number; removed: number }[] {
   const fields = output.split("\0");
   const counts: { added: number; removed: number }[] = [];
@@ -142,7 +224,6 @@ function parseNumstat(output: string): readonly { added: number; removed: number
   return counts;
 }
 
-/** One patch per `diff --git` header, in git's order, which the status and count listings share. */
 function splitPatches(output: string): readonly string[] {
   if (output === "") return [];
   return output
@@ -151,135 +232,260 @@ function splitPatches(output: string): readonly string[] {
     .map((patch) => (patch.endsWith("\n") ? patch : `${patch}\n`));
 }
 
-export function createTreeSnapshot(
-  workspace: string,
-  options: TreeSnapshotOptions = {},
-): TreeSnapshot {
-  let prepared: Promise<{ readonly shadow: string; readonly workspace: string }> | undefined;
-  /** The shadow index is one file: tree reads and restores take turns on it. */
-  let turn: Promise<unknown> = Promise.resolve();
+interface ShadowEnvironment {
+  readonly shadow: string;
+  readonly workspace: string;
+}
 
-  const prepare = async () => {
-    const root = await realpath(workspace);
-    const shadow = join(nyteHome(), "snapshots", createHash("sha256").update(root).digest("hex"));
-    const env = { shadow, workspace: root };
+async function prepare(workspace: string): Promise<ShadowEnvironment> {
+  const root = await realpath(workspace);
+  const shadow = join(nyteHome(), "snapshots", createHash("sha256").update(root).digest("hex"));
+  const env = { shadow, workspace: root };
+  await mkdir(shadow, { recursive: true, mode: 0o700 });
+  await withShadowLock(env, async () => {
     try {
       await access(join(shadow, "HEAD"));
     } catch {
-      await mkdir(shadow, { recursive: true, mode: 0o700 });
       await runGit(env, ["init", "--quiet"]);
     }
-    return env;
-  };
+    await mkdir(join(shadow, "info"), { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(shadow, "info", "attributes"),
+      "* !text !eol !working-tree-encoding !filter\n",
+      { mode: 0o600 },
+    );
+  });
+  return env;
+}
 
-  const ready = () => {
-    prepared ??= prepare().catch((cause: unknown) => {
-      prepared = undefined;
+export interface FileLeaseLockOptions {
+  readonly leaseMs: number;
+  readonly refreshMs: number;
+  readonly retryMs: number;
+}
+
+const DEFAULT_FILE_LEASE_LOCK_OPTIONS = {
+  leaseMs: 30_000,
+  refreshMs: 10_000,
+  retryMs: 10,
+} satisfies FileLeaseLockOptions;
+
+export async function withFileLeaseLock<Result>(
+  path: string,
+  operation: () => Promise<Result>,
+  options: FileLeaseLockOptions = DEFAULT_FILE_LEASE_LOCK_OPTIONS,
+): Promise<Result> {
+  const token = randomUUID();
+  let handle: FileHandle;
+  for (;;) {
+    try {
+      const created = await open(path, "wx", 0o600);
+      try {
+        await created.writeFile(token, "utf8");
+      } catch (cause) {
+        await created.close();
+        await rm(path, { force: true });
+        throw cause;
+      }
+      handle = created;
+      break;
+    } catch (cause) {
+      if (!isFileError(cause, new Set(["EEXIST"]))) throw cause;
+      let stale = false;
+      try {
+        stale = Date.now() - (await stat(path)).mtimeMs > options.leaseMs;
+      } catch (statCause) {
+        if (!isFileError(statCause, MISSING_PATH)) throw statCause;
+      }
+      if (stale) {
+        const stalePath = `${path}.stale-${token}`;
+        try {
+          await rename(path, stalePath);
+        } catch (renameCause) {
+          if (!isFileError(renameCause, MISSING_PATH)) throw renameCause;
+          continue;
+        }
+        await rm(stalePath, { force: true });
+        continue;
+      }
+      await new Promise<void>((resolveWait) => setTimeout(resolveWait, options.retryMs));
+    }
+  }
+  const refresh = setInterval(() => {
+    const now = new Date();
+    void handle.utimes(now, now).catch(() => {});
+  }, options.refreshMs);
+  refresh.unref();
+  try {
+    return await operation();
+  } finally {
+    clearInterval(refresh);
+    await handle.close();
+    const owner = await readFile(path, "utf8").catch(() => "");
+    if (owner === token) await rm(path, { force: true });
+  }
+}
+
+function withShadowLock<Result>(
+  env: ShadowEnvironment,
+  operation: () => Promise<Result>,
+): Promise<Result> {
+  return withFileLeaseLock(join(env.shadow, "lock"), operation);
+}
+
+async function treeBlob(
+  env: ShadowEnvironment,
+  tree: TreeId,
+  path: string,
+): Promise<string | null> {
+  const result = await runGit(env, ["ls-tree", "-z", tree, "--", path]);
+  const record = result.stdout.split("\0").find((field) => field.endsWith(`\t${path}`));
+  if (record === undefined) return null;
+  const metadata = record.split("\t", 1)[0]?.split(" ");
+  return metadata?.[2] ?? null;
+}
+
+async function currentBlob(env: ShadowEnvironment, path: string): Promise<string | null> {
+  const absolute = await validatedWorkspacePath(env.workspace, path);
+  let metadata;
+  try {
+    metadata = await lstat(absolute);
+  } catch (cause) {
+    if (isFileError(cause, MISSING_PATH)) return null;
+    throw cause;
+  }
+  if (!metadata.isFile()) throw new Error(`Restore paths must be files: ${path}`);
+  return (await runGit(env, ["hash-object", "--no-filters", "--", absolute])).stdout.trim();
+}
+
+export function createTreeSnapshot(options: TreeSnapshotOptions = {}): TreeSnapshot {
+  const prepared = new Map<string, Promise<ShadowEnvironment>>();
+  const ready = (cwd: string) => {
+    let pending = prepared.get(cwd);
+    if (pending !== undefined) return pending;
+    pending = prepare(cwd).catch((cause: unknown) => {
+      prepared.delete(cwd);
       throw cause;
     });
-    return prepared;
+    prepared.set(cwd, pending);
+    return pending;
   };
 
-  const serial = <T>(work: () => Promise<T>): Promise<T> => {
-    const next = turn.then(work, work);
-    turn = next.catch(() => undefined);
-    return next;
+  const discard = async (input: { readonly cwd: string; readonly absolutePath: string }) => {
+    if (options.discard !== undefined) {
+      await options.discard(input.absolutePath);
+      return;
+    }
+    const env = await ready(input.cwd);
+    const relativePath = relative(env.workspace, input.absolutePath);
+    const target = join(env.shadow, "trash", `${String(Date.now())}-${randomUUID()}`, relativePath);
+    await mkdir(dirname(target), { recursive: true });
+    await rename(input.absolutePath, target);
   };
 
-  const discard =
-    options.discard ??
-    (async (absolute: string) => {
-      const env = await ready();
-      const target = join(
-        env.shadow,
-        "trash",
-        String(Date.now()),
-        relative(env.workspace, absolute),
-      );
-      await mkdir(dirname(target), { recursive: true });
-      await rename(absolute, target);
-    });
-
-  const tree = (): Promise<TreeOutcome> =>
-    serial(async () => {
-      try {
-        const env = await ready();
-        await runGit(env, ["add", "-A", "."]);
+  const tree = async (input: { readonly cwd: string }): Promise<TreeOutcome> => {
+    try {
+      const env = await ready(input.cwd);
+      return await withShadowLock(env, async () => {
+        await runGit(env, ["add", "-A", "--", "."]);
         const written = await runGit(env, ["write-tree"]);
         return { kind: "tree", id: treeId(written.stdout.trim()) };
-      } catch (cause) {
-        return { kind: "unavailable", reason: firstLine(cause, "git is unavailable") };
-      }
-    });
+      });
+    } catch (cause) {
+      return { kind: "unavailable", reason: firstLine(cause, "git is unavailable") };
+    }
+  };
 
   const diffTrees = async (input: {
+    readonly cwd: string;
     readonly from: TreeId;
     readonly to: TreeId;
     readonly paths?: readonly string[];
   }): Promise<readonly FileDiff[]> => {
-    const env = await ready();
-    for (const path of input.paths ?? []) safeWorkspacePath(env.workspace, path);
+    const env = await ready(input.cwd);
+    for (const path of input.paths ?? []) await validatedWorkspacePath(env.workspace, path);
     const pathspec = input.paths === undefined ? [] : ["--", ...input.paths];
     const range = ["--find-renames", input.from, input.to];
     const [status, numstat, patch] = await Promise.all([
       runGit(env, ["diff", "--name-status", "-z", ...range, ...pathspec]),
       runGit(env, ["diff", "--numstat", "-z", ...range, ...pathspec]),
-      runGit(env, ["diff", "--no-color", "--no-ext-diff", ...range, ...pathspec]),
+      runGit(env, ["diff", "--no-color", "--no-ext-diff", "--no-textconv", ...range, ...pathspec]),
     ]);
     const counts = parseNumstat(numstat.stdout);
     const patches = splitPatches(patch.stdout);
-    return parseNameStatus(status.stdout).map((entry, index) => ({
-      path: entry.path,
-      kind: entry.kind,
-      added: counts[index]?.added ?? 0,
-      removed: counts[index]?.removed ?? 0,
-      patch: patches[index] ?? "",
-    }));
+    return parseNameStatus(status.stdout).map((entry, index) => {
+      const shared = {
+        path: entry.path,
+        added: counts[index]?.added ?? 0,
+        removed: counts[index]?.removed ?? 0,
+        patch: patches[index] ?? "",
+      };
+      return entry.kind === "renamed"
+        ? { ...shared, kind: entry.kind, from: entry.from }
+        : { ...shared, kind: entry.kind };
+    });
   };
 
-  const restoreTree = (input: { readonly tree: TreeId; readonly paths: readonly string[] }) =>
-    serial(
-      async (): Promise<
-        | { readonly kind: "restored"; readonly files: readonly string[] }
-        | { readonly kind: "failed"; readonly reason: string }
-      > => {
-        try {
-          const env = await ready();
-          for (const path of input.paths) safeWorkspacePath(env.workspace, path);
-          if (input.paths.length === 0) return { kind: "restored", files: [] };
-          // `git restore` deletes an indexed path its source lacks; those go to the trash instead.
-          const listed = await runGit(env, [
-            "ls-tree",
-            "-r",
-            "-z",
-            "--name-only",
-            input.tree,
-            "--",
-            ...input.paths,
-          ]);
-          const present = new Set(listed.stdout.split("\0").filter((path) => path !== ""));
-          const kept = input.paths.filter((path) => present.has(path));
-          if (kept.length > 0) {
-            await runGit(env, ["restore", `--source=${input.tree}`, "--worktree", "--", ...kept]);
-          }
-          for (const path of input.paths) {
-            if (present.has(path)) continue;
-            const absolute = safeWorkspacePath(env.workspace, path);
-            // A created file the user already removed needs no trashing.
-            if (
-              await access(absolute).then(
-                () => true,
-                () => false,
-              )
-            )
-              await discard(absolute);
-          }
-          return { kind: "restored", files: [...input.paths] };
-        } catch (cause) {
-          return { kind: "failed", reason: firstLine(cause, "The restore failed.") };
+  const restoreTree = async (input: {
+    readonly cwd: string;
+    readonly from: TreeId;
+    readonly expect: TreeId;
+    readonly paths: readonly FileDiff[];
+  }): Promise<
+    | { readonly kind: "restored"; readonly files: readonly string[] }
+    | { readonly kind: "conflict"; readonly paths: readonly string[] }
+    | { readonly kind: "failed"; readonly reason: string }
+  > => {
+    try {
+      const env = await ready(input.cwd);
+      return await withShadowLock(env, async () => {
+        for (const file of input.paths) {
+          checkedWorkspacePath(env.workspace, file.path);
+          if (file.kind === "renamed") checkedWorkspacePath(env.workspace, file.from);
         }
-      },
-    );
+        const conflicts: string[] = [];
+        for (const file of input.paths) {
+          if (
+            (await currentBlob(env, file.path)) !== (await treeBlob(env, input.expect, file.path))
+          ) {
+            conflicts.push(file.path);
+          }
+          if (
+            file.kind === "renamed" &&
+            (await currentBlob(env, file.from)) !== (await treeBlob(env, input.expect, file.from))
+          ) {
+            conflicts.push(file.from);
+          }
+        }
+        if (conflicts.length > 0) return { kind: "conflict", paths: conflicts };
+        if (input.paths.length === 0) return { kind: "restored", files: [] };
+        const restore = new Set<string>();
+        const remove = new Set<string>();
+        for (const file of input.paths) {
+          const target = file.kind === "renamed" ? file.from : file.path;
+          if ((await treeBlob(env, input.from, target)) === null) remove.add(target);
+          else restore.add(target);
+          if (file.kind === "renamed") remove.add(file.path);
+        }
+        for (const path of remove) {
+          const absolute = await validatedWorkspacePath(env.workspace, path);
+          try {
+            const metadata = await lstat(absolute);
+            if (metadata.isDirectory()) throw new Error(`Restore paths must be files: ${path}`);
+            await discard({ cwd: input.cwd, absolutePath: absolute });
+          } catch (cause) {
+            if (!isFileError(cause, MISSING_PATH)) throw cause;
+          }
+        }
+        if (restore.size > 0) {
+          await runGit(env, ["restore", `--source=${input.from}`, "--worktree", "--", ...restore]);
+        }
+        return { kind: "restored", files: input.paths.map((file) => file.path) };
+      });
+    } catch (cause) {
+      return { kind: "failed", reason: firstLine(cause, "The restore failed.") };
+    }
+  };
 
   return { tree, diffTrees, restoreTree, discard };
 }

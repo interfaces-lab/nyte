@@ -1,13 +1,38 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import {
+  access,
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, test } from "vitest";
+import { afterEach, describe, test, vi } from "vitest";
 import { createGitVcs } from "../src/git.ts";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
 
 const roots: string[] = [];
+
+function testEnv(root: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (name.startsWith("GIT_") || value === undefined) continue;
+    env[name] = value;
+  }
+  return {
+    ...env,
+    HOME: root,
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_GLOBAL: devNull,
+    GIT_TERMINAL_PROMPT: "0",
+  };
+}
 
 function gitIn(root: string) {
   return (...args: readonly string[]) =>
@@ -15,7 +40,7 @@ function gitIn(root: string) {
       cwd: root,
       encoding: "utf8",
       env: {
-        ...process.env,
+        ...testEnv(root),
         GIT_AUTHOR_NAME: "Nyte",
         GIT_AUTHOR_EMAIL: "nyte@example.com",
         GIT_COMMITTER_NAME: "Nyte",
@@ -47,7 +72,9 @@ async function repository(): Promise<string> {
 async function bareRemote(): Promise<string> {
   const remote = await mkdtemp(join(tmpdir(), "nyte-vcs-remote-"));
   roots.push(remote);
-  execFileSync("git", ["init", "--bare", "--initial-branch=main", remote]);
+  execFileSync("git", ["init", "--bare", "--initial-branch=main", remote], {
+    env: testEnv(remote),
+  });
   return remote;
 }
 
@@ -66,36 +93,41 @@ function trashRecorder() {
 function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[1]) {
   const backend = createGitVcs(root, options);
   const cwd = root;
+  const repository = async (): Promise<Extract<VcsSnapshot, { kind: "repository" }>> => {
+    const snapshot = await backend.snapshot({ cwd });
+    assert.equal(snapshot.kind, "repository");
+    if (snapshot.kind !== "repository") throw new Error("unreachable");
+    return snapshot;
+  };
+  const expect = async () => ({ revision: (await repository()).revision });
   return {
+    backend,
     snapshot: () => backend.snapshot({ cwd }),
-    repository: async (): Promise<Extract<VcsSnapshot, { kind: "repository" }>> => {
-      const snapshot = await backend.snapshot({ cwd });
-      assert.equal(snapshot.kind, "repository");
-      if (snapshot.kind !== "repository") throw new Error("unreachable");
-      return snapshot;
-    },
+    repository,
     diff: (input: Omit<Parameters<typeof backend.diff>[0], "cwd">) =>
       backend.diff({ cwd, ...input }),
     contents: (input: Omit<Parameters<typeof backend.contents>[0], "cwd">) =>
       backend.contents({ cwd, ...input }),
     log: (input: Omit<Parameters<typeof backend.log>[0], "cwd">) => backend.log({ cwd, ...input }),
     refs: () => backend.refs({ cwd }),
-    stage: (input: Omit<Parameters<typeof backend.stage>[0], "cwd">) =>
-      backend.stage({ cwd, ...input }),
-    discard: (input: Omit<Parameters<typeof backend.discard>[0], "cwd">) =>
-      backend.discard({ cwd, ...input }),
-    commit: (input: Omit<Parameters<typeof backend.commit>[0], "cwd">) =>
-      backend.commit({ cwd, ...input }),
-    createBranch: (input: Omit<Parameters<typeof backend.createBranch>[0], "cwd">) =>
-      backend.createBranch({ cwd, ...input }),
-    push: (input: Omit<Parameters<typeof backend.push>[0], "cwd">) =>
-      backend.push({ cwd, ...input }),
+    stage: async (input: Omit<Parameters<typeof backend.stage>[0], "cwd" | "expect">) =>
+      backend.stage({ cwd, ...input, expect: await expect() }),
+    discard: async (input: Omit<Parameters<typeof backend.discard>[0], "cwd" | "expect">) =>
+      backend.discard({ cwd, ...input, expect: await expect() }),
+    commit: async (input: Omit<Parameters<typeof backend.commit>[0], "cwd" | "expect">) =>
+      backend.commit({ cwd, ...input, expect: await expect() }),
+    createBranch: async (
+      input: Omit<Parameters<typeof backend.createBranch>[0], "cwd" | "expect">,
+    ) => backend.createBranch({ cwd, ...input, expect: await expect() }),
+    push: async (input: Omit<Parameters<typeof backend.push>[0], "cwd" | "expect">) =>
+      backend.push({ cwd, ...input, expect: await expect() }),
   };
 }
 
 const WORKTREE = { kind: "worktree" } as const;
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -172,7 +204,7 @@ describe("snapshot", () => {
     const git = gitIn(root);
     git("checkout", "-b", "feature");
     assert.deepEqual((await vcsAt(root).repository()).head.base, {
-      name: "main",
+      name: git("rev-parse", "main").trim(),
       source: "reflog",
     });
 
@@ -186,6 +218,19 @@ describe("snapshot", () => {
 
     git("checkout", "main");
     assert.equal((await vcsAt(root).repository()).head.base, null);
+  });
+
+  test("ignores inherited git repository and index overrides", async () => {
+    const root = await repository();
+    const other = await repository();
+    vi.stubEnv("GIT_DIR", join(other, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", other);
+    vi.stubEnv("GIT_INDEX_FILE", join(other, ".git", "index"));
+    vi.stubEnv("GIT_CONFIG_SYSTEM", join(other, "system-config"));
+
+    const snapshot = await vcsAt(root).repository();
+
+    assert.equal(snapshot.root, await realpath(root));
   });
 
   test("detached HEAD carries no branch and no base", async () => {
@@ -258,6 +303,17 @@ describe("contents", () => {
     assert.equal(result.truncated, false);
   });
 
+  test("uses git numstat attributes to classify binary data without a NUL", async () => {
+    const root = await repository();
+    await writeFile(join(root, ".gitattributes"), "*.dat binary\n");
+    await writeFile(join(root, "payload.dat"), "printable bytes only\n");
+
+    const result = await vcsAt(root).contents({ path: "payload.dat", scope: WORKTREE });
+
+    assert.equal(result.binary, true);
+    assert.equal(result.new, "");
+  });
+
   test("trims a side past the preview cap and flags it truncated", async () => {
     const root = await repository();
     await writeFile(join(root, "big.txt"), "a".repeat(2_000_050));
@@ -283,13 +339,56 @@ describe("contents", () => {
     assert.equal(result.new, "three\n");
   });
 
-  test("refuses a path outside the workspace", async () => {
+  test("rethrows worktree filesystem errors instead of reporting a missing side", async () => {
     const root = await repository();
+    const blocked = join(root, "blocked");
+    await mkdir(blocked);
+    await writeFile(join(blocked, "file.txt"), "blocked\n");
+    await chmod(blocked, 0);
+    try {
+      await assert.rejects(
+        vcsAt(root).contents({ path: "blocked/file.txt", scope: WORKTREE }),
+        /permission denied|operation not permitted/i,
+      );
+    } finally {
+      await chmod(blocked, 0o700);
+    }
+  });
+
+  test("rejects an intermediate symlink and absolute or leading-dash paths", async () => {
+    const root = await repository();
+    const outside = await mkdtemp(join(tmpdir(), "nyte-vcs-outside-"));
+    roots.push(outside);
+    await writeFile(join(outside, "secret.txt"), "secret\n");
+    await symlink(outside, join(root, "linked"));
+    const vcs = vcsAt(root);
 
     await assert.rejects(
-      vcsAt(root).contents({ path: "../escape.txt", scope: WORKTREE }),
-      /outside the workspace/,
+      vcs.contents({ path: "linked/secret.txt", scope: WORKTREE }),
+      /symbolic link/,
     );
+    await assert.rejects(
+      vcs.contents({ path: join(root, "tracked.txt"), scope: WORKTREE }),
+      /outside/,
+    );
+    await assert.rejects(vcs.contents({ path: "-tracked.txt", scope: WORKTREE }), /outside/);
+  });
+
+  test("does not run repository fsmonitor or textconv helpers", async () => {
+    const root = await repository();
+    const marker = join(root, "helper-ran");
+    const helper = join(root, "helper.sh");
+    await writeFile(helper, `#!/bin/sh\ntouch '${marker}'\ncat "$1"\n`, { mode: 0o755 });
+    const git = gitIn(root);
+    git("config", "core.fsmonitor", helper);
+    git("config", "diff.evil.textconv", helper);
+    await writeFile(join(root, ".gitattributes"), "*.txt diff=evil\n");
+    await writeFile(join(root, "tracked.txt"), "changed\n");
+
+    await vcsAt(root).snapshot();
+    await vcsAt(root).diff({ scope: WORKTREE });
+
+    await assert.rejects(access(marker));
   });
 });
 
@@ -410,16 +509,19 @@ describe("diff", () => {
     assert.match(diffs[0]?.patch ?? "", /\+hello/);
   });
 
-  test("refuses a path outside the workspace and a commit that is not a revision", async () => {
-    const vcs = vcsAt(await repository());
+  test("matches a literal pathspec that looks like magic", async () => {
+    const root = await repository();
+    await writeFile(join(root, ":(glob)*.txt"), "literal\n");
+    await writeFile(join(root, "other.txt"), "other\n");
 
-    await assert.rejects(
-      vcs.diff({ scope: { kind: "staged" }, paths: ["../escape.txt"] }),
-      /outside the workspace/,
-    );
-    await assert.rejects(
-      vcs.diff({ scope: { kind: "commit", oid: "--output=/tmp/pwned" } }),
-      /Not a usable revision/,
+    const diffs = await vcsAt(root).diff({
+      scope: WORKTREE,
+      paths: [":(glob)*.txt"],
+    });
+
+    assert.deepEqual(
+      diffs.map((item) => item.path),
+      [":(glob)*.txt"],
     );
   });
 });
@@ -509,7 +611,7 @@ describe("discard", () => {
     const result = await vcsAt(root, trash).discard({ paths: ["scratch.txt"] });
 
     assert.deepEqual(result, { kind: "applied", paths: ["scratch.txt"], skipped: [] });
-    assert.deepEqual(trash.trashed, [join(root, "scratch.txt")]);
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "scratch.txt")]);
   });
 
   test("skips a path the status does not report, with a reason and no error", async () => {
@@ -548,16 +650,47 @@ describe("discard", () => {
     assert.equal(await readFile(join(root, "tracked.txt"), "utf8"), "one\ntwo\n");
   });
 
-  test("refuses a path outside the workspace before touching anything", async () => {
+  test("moves a staged addition to trash and removes it from the index", async () => {
     const root = await repository();
-    await writeFile(join(root, "tracked.txt"), "changed\n");
+    await writeFile(join(root, "added.txt"), "added\n");
+    const trash = trashRecorder();
+    const vcs = vcsAt(root, trash);
+    await vcs.stage({ paths: ["added.txt"], staged: true });
+
+    const result = await vcs.discard({ paths: ["added.txt"] });
+
+    assert.deepEqual(result, { kind: "applied", paths: ["added.txt"], skipped: [] });
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "added.txt")]);
+    assert.deepEqual((await vcs.repository()).staged, []);
+  });
+
+  test("restores a rename source and trashes its destination", async () => {
+    const root = await repository();
+    gitIn(root)("mv", "tracked.txt", "moved.txt");
     const trash = trashRecorder();
 
-    const result = await vcsAt(root, trash).discard({ paths: ["tracked.txt", "../escape.txt"] });
+    const result = await vcsAt(root, trash).discard({ paths: ["moved.txt"] });
 
-    assert.equal(result.kind, "failed");
-    assert.equal(await readFile(join(root, "tracked.txt"), "utf8"), "changed\n");
-    assert.deepEqual(trash.trashed, []);
+    assert.equal(result.kind, "applied");
+    assert.equal(await readFile(join(root, "tracked.txt"), "utf8"), "one\ntwo\n");
+    assert.deepEqual(trash.trashed, [join(await realpath(root), "moved.txt")]);
+  });
+
+  test("answers stale when the worktree moved after the caller's snapshot", async () => {
+    const root = await repository();
+    const vcs = vcsAt(root);
+    const revision = (await vcs.repository()).revision;
+    await writeFile(join(root, "tracked.txt"), "human edit\n");
+
+    assert.deepEqual(
+      await vcs.backend.stage({
+        cwd: root,
+        paths: ["tracked.txt"],
+        staged: true,
+        expect: { revision },
+      }),
+      { kind: "stale" },
+    );
   });
 });
 
@@ -607,6 +740,40 @@ describe("stage", () => {
     assert.deepEqual(result.paths, ["scratch.txt"]);
     assert.equal(result.skipped[0]?.path, "missing.txt");
     assert.match(result.skipped[0]?.reason ?? "", /did not match any files/);
+  });
+
+  test("serializes clients with the same revision so the second answers stale", async () => {
+    const root = await repository();
+    await writeFile(join(root, "scratch.txt"), "untracked\n");
+    const first = createGitVcs(root);
+    const second = createGitVcs(root);
+    const snapshot = await first.snapshot({ cwd: root });
+    assert.equal(snapshot.kind, "repository");
+    if (snapshot.kind !== "repository") return;
+    const input = {
+      cwd: root,
+      paths: ["scratch.txt"],
+      staged: true,
+      expect: { revision: snapshot.revision },
+    };
+
+    const outcomes = await Promise.all([first.stage(input), second.stage(input)]);
+
+    assert.deepEqual(outcomes.map((outcome) => outcome.kind).toSorted(), ["applied", "stale"]);
+  });
+
+  test("refuses symlinked and leading-dash paths before touching the index", async () => {
+    const root = await repository();
+    const outside = await mkdtemp(join(tmpdir(), "nyte-vcs-outside-"));
+    roots.push(outside);
+    await writeFile(join(outside, "secret.txt"), "secret\n");
+    await symlink(outside, join(root, "linked"));
+    await writeFile(join(root, "-dash.txt"), "dash\n");
+    const vcs = vcsAt(root);
+
+    assert.equal((await vcs.stage({ paths: ["linked/secret.txt"], staged: true })).kind, "failed");
+    assert.equal((await vcs.stage({ paths: ["-dash.txt"], staged: true })).kind, "failed");
+    assert.deepEqual((await vcs.repository()).staged, []);
   });
 
   test("refuses a path outside the workspace before touching the index", async () => {
@@ -672,12 +839,13 @@ describe("commit", () => {
     ]);
   });
 
-  test("commits only the named paths", async () => {
+  test("commits the named index entries without reading later worktree edits", async () => {
     const root = await repository();
-    await writeFile(join(root, "tracked.txt"), "changed\n");
+    await writeFile(join(root, "tracked.txt"), "staged\n");
     await writeFile(join(root, "other.txt"), "other\n");
     const vcs = vcsAt(root);
-    await vcs.stage({ paths: ["other.txt"], staged: true });
+    await vcs.stage({ paths: ["tracked.txt", "other.txt"], staged: true });
+    await writeFile(join(root, "tracked.txt"), "working\n");
 
     const result = await vcs.commit({
       message: "only one",
@@ -685,7 +853,27 @@ describe("commit", () => {
     });
 
     assert.equal(result.kind, "committed");
-    assert.deepEqual((await vcs.repository()).staged, [{ path: "other.txt", kind: "added" }]);
+    assert.equal(gitIn(root)("show", "HEAD:tracked.txt"), "staged\n");
+    const snapshot = await vcs.repository();
+    assert.deepEqual(snapshot.staged, [{ path: "other.txt", kind: "added" }]);
+    assert.deepEqual(snapshot.unstaged, [{ path: "tracked.txt", kind: "modified" }]);
+  });
+
+  test("committing a staged rename by destination keeps both rename endpoints", async () => {
+    const root = await repository();
+    const git = gitIn(root);
+    git("mv", "tracked.txt", "moved.txt");
+
+    const result = await vcsAt(root).commit({
+      message: "move it",
+      target: { kind: "paths", paths: ["moved.txt"] },
+    });
+
+    assert.equal(result.kind, "committed");
+    assert.equal(
+      git("show", "--format=", "--name-status", "--find-renames", "HEAD").trim(),
+      "R100\ttracked.txt\tmoved.txt",
+    );
   });
 
   test("answers nothing_to_commit on a clean tree", async () => {
@@ -696,7 +884,7 @@ describe("commit", () => {
     });
   });
 
-  test("reports a rejecting hook as failed with git's own words", async () => {
+  test("does not run a repository pre-commit hook", async () => {
     const root = await repository();
     await writeFile(join(root, ".git", "hooks", "pre-commit"), "#!/bin/sh\necho no >&2\nexit 1\n", {
       mode: 0o755,
@@ -705,8 +893,8 @@ describe("commit", () => {
 
     const result = await vcsAt(root).commit({ message: "blocked", target: { kind: "all" } });
 
-    assert.deepEqual(result, { kind: "failed", reason: "no" });
-    assert.equal((await vcsAt(root).log({ limit: 5 })).commits.length, 1);
+    assert.equal(result.kind, "committed");
+    assert.equal((await vcsAt(root).log({ limit: 5 })).commits.length, 2);
   });
 
   test("refuses a path outside the workspace", async () => {
@@ -771,6 +959,28 @@ describe("createBranch", () => {
   );
 });
 
+describe("per-call workspace", () => {
+  test("tree and repository reads use the call cwd instead of the constructor cwd", async () => {
+    const constructor = await repository();
+    const called = await repository();
+    await writeFile(join(called, "only-there.txt"), "called\n");
+    const backend = createGitVcs(constructor);
+
+    const snapshot = await backend.snapshot({ cwd: called });
+    const tree = await backend.tree({ cwd: called });
+
+    assert.equal(snapshot.kind, "repository");
+    if (snapshot.kind !== "repository" || tree.kind !== "tree") return;
+    assert.equal(snapshot.root, await realpath(called));
+    const files = await backend.diffTrees({
+      cwd: called,
+      from: tree.id,
+      to: tree.id,
+    });
+    assert.deepEqual(files, []);
+  });
+});
+
 describe("push", () => {
   test("answers no_upstream for a branch that tracks nothing", async () => {
     const root = await repository();
@@ -781,7 +991,14 @@ describe("push", () => {
       kind: "no_upstream",
       branch: "main",
     });
-    assert.equal(execFileSync("git", ["branch", "-a"], { cwd: remote, encoding: "utf8" }), "");
+    assert.equal(
+      execFileSync("git", ["branch", "-a"], {
+        cwd: remote,
+        encoding: "utf8",
+        env: testEnv(remote),
+      }),
+      "",
+    );
   });
 
   test("publishes the branch with setUpstream against the single remote", async () => {
@@ -819,7 +1036,7 @@ describe("push", () => {
 
     const other = await mkdtemp(join(tmpdir(), "nyte-vcs-other-"));
     roots.push(other);
-    execFileSync("git", ["clone", remote, other]);
+    execFileSync("git", ["clone", remote, other], { env: testEnv(other) });
     const otherGit = gitIn(other);
     otherGit("config", "user.name", "Other");
     otherGit("config", "user.email", "other@example.com");
@@ -836,6 +1053,7 @@ describe("push", () => {
       execFileSync("git", ["log", "-1", "--format=%s", "main"], {
         cwd: remote,
         encoding: "utf8",
+        env: testEnv(remote),
       }).trim(),
       "theirs",
     );
@@ -867,7 +1085,21 @@ describe("push", () => {
 
     assert.equal(result.kind, "failed");
     assert.match(result.kind === "failed" ? result.reason : "", /backup, origin/);
-    assert.equal(execFileSync("git", ["branch"], { cwd: first, encoding: "utf8" }), "");
-    assert.equal(execFileSync("git", ["branch"], { cwd: second, encoding: "utf8" }), "");
+    assert.equal(
+      execFileSync("git", ["branch"], {
+        cwd: first,
+        encoding: "utf8",
+        env: testEnv(first),
+      }),
+      "",
+    );
+    assert.equal(
+      execFileSync("git", ["branch"], {
+        cwd: second,
+        encoding: "utf8",
+        env: testEnv(second),
+      }),
+      "",
+    );
   });
 });
