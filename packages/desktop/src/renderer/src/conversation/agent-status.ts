@@ -2,7 +2,6 @@ import type { SessionInfo } from "@nyte-ai/protocol";
 
 export type AgentState = "idle" | "working" | "completed" | "failed" | "stopped";
 
-/** A child session's state from its first head's run; no run yet is idle. */
 export function agentState(session: Pick<SessionInfo, "heads">): AgentState {
   const run = session.heads[0]?.run;
   if (run === undefined) return "idle";

@@ -1,16 +1,16 @@
-/**
- * Time left until a parked call wakes. The clock is mounted only while
- * something counts down, so a settled transcript never ticks.
- */
 import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
-function useNow(): number {
+function useNow(until: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, []);
+    if (now >= until) return undefined;
+    const timer = window.setTimeout(
+      () => setNow((current) => Math.min(until, Math.max(current, Date.now()))),
+      Math.min(1_000, until - now),
+    );
+    return () => window.clearTimeout(timer);
+  }, [now, until]);
   return now;
 }
 
@@ -24,6 +24,6 @@ export function formatCountdown(remainingMs: number): string {
 }
 
 export function Countdown({ until }: { until: number }): ReactElement {
-  const now = useNow();
+  const now = useNow(until);
   return <>{`· ${formatCountdown(until - now)}`}</>;
 }

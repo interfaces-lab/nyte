@@ -64,16 +64,19 @@ export function liveWaits(
   let until: number | undefined;
   for (const part of parts) {
     if (part.kind !== "tool" || part.class.kind !== "delegate") continue;
-    if (part.class.role === "create") {
-      created.add(part.class.session);
+    if (part.class.role === "create" && part.class.target.kind === "one") {
+      created.add(part.class.target.session);
       continue;
     }
     if (part.result !== undefined) continue;
     const call = parked?.find((candidate) => candidate.callId === part.callId);
     if (call?.until !== undefined) deadlines.set(part.callId, call.until);
-    if (!created.has(part.class.session)) continue;
+    const sessions =
+      part.class.target.kind === "one" ? [part.class.target.session] : part.class.target.sessions;
+    const owned = sessions.filter((session) => created.has(session));
+    if (owned.length === 0) continue;
     hidden.add(part.callId);
-    awaited.add(part.class.session);
+    for (const session of owned) awaited.add(session);
     if (call === undefined) continue;
     for (const agent of parkedAgents(call.args)) awaited.add(agent);
     if (call.until !== undefined && (until === undefined || call.until < until)) until = call.until;

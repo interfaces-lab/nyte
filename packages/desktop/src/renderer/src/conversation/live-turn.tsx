@@ -69,6 +69,7 @@ export function LiveTurn({
       {!settledWork && hasLiveWork && (
         <WorkGroupView
           parts={[]}
+          runId={undefined}
           live={live}
           liveTools={live.tools}
           cwd={cwd}

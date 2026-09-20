@@ -38,6 +38,8 @@ function session({
       ? {
           runId: `run-${id}`,
           head: MAIN_HEAD,
+          origin: { kind: "user" },
+          root: `run-${id}`,
           phase: { kind: "respond" },
           startedAt: updatedAt,
           attempts: 1,
@@ -48,6 +50,8 @@ function session({
         ? {
             runId: `run-${id}`,
             head: MAIN_HEAD,
+            origin: { kind: "user" },
+            root: `run-${id}`,
             phase: { kind: "waiting" },
             startedAt: updatedAt,
             attempts: 1,
@@ -57,9 +61,12 @@ function session({
           ? {
               runId: `run-${id}`,
               head: MAIN_HEAD,
+              origin: { kind: "user" },
+              root: `run-${id}`,
               phase: {
                 kind: "retry",
                 at: updatedAt + 1_000,
+                retries: 1,
                 failure: { class: "rate_limit", message: "rate limit" },
               },
               startedAt: updatedAt,
@@ -70,6 +77,8 @@ function session({
             ? {
                 runId: `run-${id}`,
                 head: MAIN_HEAD,
+                origin: { kind: "user" },
+                root: `run-${id}`,
                 phase: {
                   kind: "failed",
                   failure: { class: "provider", message: "provider error" },

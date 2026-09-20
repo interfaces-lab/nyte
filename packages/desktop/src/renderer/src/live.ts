@@ -10,9 +10,8 @@
  */
 import { useEffect, useSyncExternalStore } from "react";
 import type { Seq, SessionEvent, SessionId, SessionInfo, SessionSnapshot } from "@nyte-ai/protocol";
-import { SessionObserver } from "@nyte-ai/client";
+import { isTerminalPhase, SessionObserver, snapshotOf } from "@nyte-ai/client";
 import type { SessionState, SessionUpdate } from "@nyte-ai/client";
-import { isTerminalPhase } from "@nyte-ai/client";
 import { IDLE, projectLive } from "./live-fold.ts";
 import type { LiveSnapshot } from "./live-fold.ts";
 import { cacheSessionInfo, keys, queryClient, refreshVcs, SNAPSHOT_WARM_MS } from "./queries.ts";
@@ -24,23 +23,6 @@ export { livePartKey } from "./live-fold.ts";
 export type { LivePartRef, LiveRunState, LiveSnapshot, LiveToolProgress } from "./live-fold.ts";
 
 const RETRY_MS = 1_000;
-
-/** The `SessionSnapshot` the observer's state stands for; `seq` is the newest event applied. */
-function snapshotOf(state: SessionState): SessionSnapshot {
-  return {
-    session: state.info,
-    head: state.head,
-    config: state.config,
-    context: state.context,
-    seq: state.seq,
-    tip: state.transcript.tip,
-    transcript: state.transcript.items,
-    pending: state.pending,
-    ...(state.run === undefined ? {} : { run: state.run }),
-    ...(state.compaction === undefined ? {} : { compaction: state.compaction }),
-    parked: state.parked,
-  };
-}
 
 /** What a snapshot reader can see. `seq` and the overlay move with every delta and are not among it. */
 function durableChanged(previous: SessionState | undefined, next: SessionState): boolean {

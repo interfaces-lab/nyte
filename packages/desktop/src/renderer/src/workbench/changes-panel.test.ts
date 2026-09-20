@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { parsePatchFacts } from "@nyte-ai/client";
 import type { Turn, VcsDiff, VcsSnapshot } from "@nyte-ai/protocol";
 import type { VcsDiffRequest } from "../queries.ts";
-import { turnChangeOptions, visibleTurnOptions } from "./change-scopes.ts";
+import { transcriptChanges, turnChangeOptions, visibleTurnOptions } from "./change-scopes.ts";
 import { ChangesPanel, revertConfirmation } from "./changes-panel.tsx";
 import { changesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
@@ -92,7 +92,7 @@ const editA = ["--- a/src/a.ts", "+++ b/src/a.ts", "@@ -2 +2 @@", "-first", "+se
 const addB = ["--- a/src/b.ts", "+++ b/src/b.ts", "@@ -0,0 +1 @@", "+new", ""].join("\n");
 
 describe("turn change options", () => {
-  test("lists every turn newest first and keeps all patches for a file", () => {
+  test("projects totals and per-turn options in one transcript fold", () => {
     const unchanged: ConversationTurn = {
       kind: "turn",
       id: "turn-2",
@@ -100,10 +100,16 @@ describe("turn change options", () => {
       durationMs: 0,
       parts: [],
     };
-    const options = turnChangeOptions([
+    const projection = transcriptChanges([
       changedTurn("turn-1", [addA, editA]),
       unchanged,
       changedTurn("turn-3", [addB]),
+    ]);
+    const options = projection.options;
+
+    assert.deepEqual(projection.declared, [
+      { path: "src/a.ts", added: 2, removed: 1 },
+      { path: "src/b.ts", added: 1, removed: 0 },
     ]);
 
     assert.deepEqual(

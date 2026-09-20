@@ -16,8 +16,8 @@ interface LandingMessage {
 }
 
 export type TranscriptRow =
-  | { readonly kind: "skeleton"; readonly key: "skeleton" }
-  | { readonly kind: "error"; readonly key: "error" }
+  | { readonly kind: "skeleton"; readonly key: "row:skeleton" }
+  | { readonly kind: "error"; readonly key: "row:error" }
   | {
       readonly kind: "turn";
       readonly key: string;
@@ -30,10 +30,10 @@ export type TranscriptRow =
       readonly content: UserTurnPart["content"];
       readonly pending: boolean;
     }
-  | { readonly kind: "retry"; readonly key: "retry"; readonly message: string }
-  | { readonly kind: "live"; readonly key: "live"; readonly working: boolean }
+  | { readonly kind: "retry"; readonly key: "row:retry"; readonly message: string }
+  | { readonly kind: "live"; readonly key: "row:live"; readonly working: boolean }
   /** Selections parked on this session; delegated sessions' are discovered by the row itself. */
-  | { readonly kind: "selections"; readonly key: "selections"; readonly selections: number };
+  | { readonly kind: "selections"; readonly key: "row:selections"; readonly selections: number };
 
 /**
  * A landing prompt and the turn it commits into are the same row. The outbox
@@ -43,9 +43,11 @@ export type TranscriptRow =
  * its turn, so the key is on the first part or the turn never carried one.
  */
 function turnRowKey(turn: Turn): string {
-  if (turn.kind !== "turn") return `${turn.kind}:${turn.commit}`;
+  if (turn.kind !== "turn") return `turn:${turn.kind}:${turn.commit}`;
   const opening = turn.parts[0];
-  return (opening?.kind === "user" ? opening.key : undefined) ?? turn.id;
+  return opening?.kind === "user" && opening.key !== undefined
+    ? `landing:${opening.key}`
+    : `turn:${turn.id}`;
 }
 
 /** A turn the transcript draws. A config turn can never reach a row. */
@@ -133,9 +135,9 @@ export function transcriptRows({
   const rows: TranscriptRow[] = [];
   const rendered = turns.filter(rendersInTranscript);
   if (loading && rendered.length === 0 && landing.length === 0) {
-    rows.push({ kind: "skeleton", key: "skeleton" });
+    rows.push({ kind: "skeleton", key: "row:skeleton" });
   }
-  if (failed) rows.push({ kind: "error", key: "error" });
+  if (failed) rows.push({ kind: "error", key: "row:error" });
   for (const [index, turn] of rendered.entries()) {
     rows.push({
       kind: "turn",
@@ -147,14 +149,14 @@ export function transcriptRows({
   for (const message of landing) {
     rows.push({
       kind: "landing",
-      key: message.key,
+      key: `landing:${message.key}`,
       content: message.content,
       pending: message.pending,
     });
   }
-  if (retrying !== undefined) rows.push({ kind: "retry", key: "retry", message: retrying });
-  rows.push({ kind: "live", key: "live", working });
-  rows.push({ kind: "selections", key: "selections", selections });
+  if (retrying !== undefined) rows.push({ kind: "retry", key: "row:retry", message: retrying });
+  rows.push({ kind: "live", key: "row:live", working });
+  rows.push({ kind: "selections", key: "row:selections", selections });
   return rows;
 }
 

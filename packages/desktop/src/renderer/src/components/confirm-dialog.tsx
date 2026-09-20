@@ -60,7 +60,7 @@ interface ConfirmDialogProps {
   readonly error: string | undefined;
   readonly returnFocusRef: RefObject<HTMLButtonElement | null>;
   readonly title?: string;
-  readonly description?: ReactNode;
+  readonly description: ReactNode;
   readonly confirmLabel?: string;
   readonly pendingLabel?: string;
   readonly onOpenChange: (open: boolean) => void;
@@ -73,7 +73,7 @@ export function ConfirmDialog({
   error,
   returnFocusRef,
   title = "Delete chat?",
-  description = <>This permanently deletes the chat and its history. This can&rsquo;t be undone.</>,
+  description,
   confirmLabel = "Delete",
   pendingLabel = "Deleting…",
   onOpenChange,

@@ -12,11 +12,11 @@
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import type { ReactElement } from "react";
-import type { RunConfig, SessionId, SessionInfo, ToolClass } from "@nyte-ai/protocol";
+import type { RunConfig, SessionId, ToolClass } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
-import { useCatalog, useChildSessions } from "../queries.ts";
+import { useCatalog } from "../queries.ts";
 import { AGENT_STATE_LABEL, agentState } from "./agent-status.ts";
 import { Countdown } from "./countdown.tsx";
 import { modelDisplayName } from "./model-picker-state.ts";
@@ -48,11 +48,8 @@ function SubagentModel({
   return <span {...stylex.props(toolCallStyles.detail)}>{name}</span>;
 }
 
-/** The child's row in the chat's session list; nothing until it is listed. */
-function useChild(session: SessionId): SessionInfo | undefined {
-  const inspector = useSubagentInspector();
-  const children = useChildSessions(inspector?.sessionId);
-  return children.data?.find((candidate) => candidate.sessionId === session);
+function useChild(session: SessionId) {
+  return useSubagentInspector()?.children.get(session);
 }
 
 function OpenAgentButton({
@@ -168,8 +165,13 @@ export function SubagentLineView({
   /** When the parked call wakes unanswered; counts down beside the name. */
   until: number | undefined;
 }): ReactElement {
-  const { session } = toolClass;
-  const label = useChild(session)?.name ?? session;
+  const session =
+    toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
+  const child = useChild(session)?.name ?? session;
+  const label =
+    toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
+      ? `${child} +${String(toolClass.target.sessions.length - 1)}`
+      : child;
   return (
     <div {...stylex.props(toolCallStyles.row)}>
       <div

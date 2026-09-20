@@ -1,5 +1,6 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NO_WAITS } from "./transcript-presentation.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
@@ -47,6 +48,7 @@ function render(turn: RenderedTurn, running: boolean): string {
       cwd={undefined}
       onOpenChanges={() => {}}
       running={running}
+      waits={NO_WAITS}
     />,
   );
 }
@@ -103,6 +105,7 @@ test("a command failure stays on the tool row without failing the work group", (
           result: { commit: "test-result", output: "One test failed", isError: true },
         },
       ]}
+      runId={undefined}
       liveTools={new Map()}
       cwd={undefined}
       durationMs={2200}
@@ -124,6 +127,7 @@ test("reopening an interrupted tool group does not restart its indicator", () =>
       parts={[
         { kind: "tool", callId: "unfinished", class: { kind: "file_read", path: "README.md" } },
       ]}
+      runId={undefined}
       liveTools={new Map()}
       cwd={undefined}
       durationMs={2200}

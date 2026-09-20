@@ -5,6 +5,8 @@ import "@nyte-ai/ui/platform-tokens.css";
 import "../theme/tokens.css";
 import "../theme/global.css";
 import { WorkGroupView } from "./tool-group.tsx";
+import { IDLE } from "../live-fold.ts";
+import type { LiveSnapshot } from "../live-fold.ts";
 import type { WorkTurnPart } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS } from "./tool-group-follow.ts";
 import { WorkGroupWindow, opensWorkGroup } from "./work-group-window.tsx";
@@ -120,6 +122,7 @@ export async function run() {
       root.render(
         <WorkGroupView
           parts={parts}
+          runId={undefined}
           liveTools={new Map()}
           cwd={undefined}
           durationMs={0}
@@ -156,6 +159,91 @@ export async function run() {
       "Quiet spell restores preview follow",
     );
     check(lastParagraph() === paragraph, "Quiet-spell folding does not remount the newest prose");
+
+    const firstThought: WorkTurnPart = {
+      kind: "thinking",
+      commit: "thought-0",
+      contentIndex: 0,
+      text: "First thought",
+    };
+    const settledThought: WorkTurnPart = {
+      kind: "thinking",
+      commit: "thought-1",
+      contentIndex: 0,
+      text: "Streaming thought",
+    };
+    const liveKey = "run:2:0";
+    const streaming = {
+      parts: IDLE.parts,
+      runState: "working",
+      text: IDLE.text,
+      thinking: new Map([[liveKey, settledThought.text]]),
+      tools: IDLE.tools,
+      order: [{ kind: "thinking", runId: "run", attempt: 2, index: 0 }],
+    } satisfies LiveSnapshot;
+    flushSync(() =>
+      root.render(
+        <WorkGroupView
+          parts={[firstThought]}
+          runId="run"
+          liveTools={new Map()}
+          cwd={undefined}
+          durationMs={0}
+          running={false}
+          density="detailed"
+        />,
+      ),
+    );
+    await settle();
+    flushSync(() =>
+      root.render(
+        <WorkGroupView
+          parts={[firstThought]}
+          runId="run"
+          live={streaming}
+          liveTools={streaming.tools}
+          cwd={undefined}
+          durationMs={0}
+          running
+          density="detailed"
+        />,
+      ),
+    );
+    await settle();
+    const firstParagraph = Array.from(outer.querySelectorAll("p")).find(
+      (node) => node.textContent === firstThought.text,
+    );
+    const streamedParagraph = Array.from(outer.querySelectorAll("p")).find(
+      (node) => node.textContent === settledThought.text,
+    );
+    check(firstParagraph !== undefined, "Earlier settled thought is visible");
+    check(streamedParagraph !== undefined, "Streaming thought is visible");
+    flushSync(() =>
+      root.render(
+        <WorkGroupView
+          parts={[firstThought, settledThought]}
+          runId="run"
+          liveTools={new Map()}
+          cwd={undefined}
+          durationMs={0}
+          running={false}
+          density="detailed"
+        />,
+      ),
+    );
+    await settle();
+    check(
+      Array.from(outer.querySelectorAll("p")).find(
+        (node) => node.textContent === firstThought.text,
+      ) === firstParagraph,
+      "A reused content index does not remount older reasoning",
+    );
+    check(
+      Array.from(outer.querySelectorAll("p")).find(
+        (node) => node.textContent === settledThought.text,
+      ) === streamedParagraph,
+      "Settling a streamed thought preserves its row",
+    );
     return "passed";
   } finally {
     flushSync(() => root.unmount());

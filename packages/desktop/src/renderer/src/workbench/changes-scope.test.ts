@@ -255,30 +255,27 @@ test("working-tree options count each scope's files and the diffs already read",
         scope: { kind: "uncommitted" },
         label: "Uncommitted",
         detail: undefined,
-        stats: { added: 2, removed: 1 },
-        fileCount: 1,
+        read: { kind: "ready", stats: { added: 2, removed: 1 }, fileCount: 1 },
       },
       {
         scope: { kind: "staged" },
         label: "Staged",
         detail: undefined,
-        stats: { added: 0, removed: 0 },
-        fileCount: 1,
+        read: { kind: "ready", stats: { added: 0, removed: 0 }, fileCount: 1 },
       },
       {
         scope: { kind: "unstaged" },
         label: "Unstaged",
-        // No diff was read for this scope, so it reports no counts rather than zeroes.
+        // No diff was read for this scope, so it reports pending rather than zero counts.
         detail: undefined,
-        stats: undefined,
-        fileCount: 0,
+        read: { kind: "pending" },
       },
     ],
   );
 
   assert.deepEqual(
-    workingTreeScopeOptions(undefined).map((option) => option.fileCount),
-    [undefined, undefined, undefined],
+    workingTreeScopeOptions(undefined).map((option) => option.read.kind),
+    ["pending", "pending", "pending"],
   );
 });
 
@@ -287,22 +284,28 @@ test("a commit option names the commit and takes counts only once its diff is re
     { oid: "c0ffee0badc0ffee", subject: "Fix the thing", author: "Ada", committedAt: 1 },
     { oid: "deadbeef", subject: "Start", author: "Ada", committedAt: 0 },
   ];
-  assert.deepEqual(commitScopeOptions(commits, new Map([["deadbeef", { added: 3, removed: 0 }]])), [
-    {
-      scope: { kind: "commit", oid: "c0ffee0badc0ffee" },
-      label: "Fix the thing",
-      detail: "c0ffee0 · Ada",
-      stats: undefined,
-      fileCount: undefined,
-    },
-    {
-      scope: { kind: "commit", oid: "deadbeef" },
-      label: "Start",
-      detail: "deadbee · Ada",
-      stats: { added: 3, removed: 0 },
-      fileCount: undefined,
-    },
-  ]);
+  assert.deepEqual(
+    commitScopeOptions(
+      commits,
+      new Map([
+        ["deadbeef", { kind: "ready", stats: { added: 3, removed: 0 }, fileCount: 1 } as const],
+      ]),
+    ),
+    [
+      {
+        scope: { kind: "commit", oid: "c0ffee0badc0ffee" },
+        label: "Fix the thing",
+        detail: "c0ffee0 · Ada",
+        read: { kind: "pending" },
+      },
+      {
+        scope: { kind: "commit", oid: "deadbeef" },
+        label: "Start",
+        detail: "deadbee · Ada",
+        read: { kind: "ready", stats: { added: 3, removed: 0 }, fileCount: 1 },
+      },
+    ],
+  );
 });
 
 test("every scope maps to the read that answers it", () => {

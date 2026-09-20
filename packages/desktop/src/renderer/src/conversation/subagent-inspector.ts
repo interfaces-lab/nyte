@@ -4,10 +4,11 @@
  * find its child session without knowing about panes or the workbench.
  */
 import { createContext, useContext } from "react";
-import type { SessionId } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
 
 interface SubagentInspector {
   readonly sessionId: SessionId;
+  readonly children: ReadonlyMap<SessionId, SessionInfo>;
   readonly inspect: (child: SessionId) => void;
 }
 

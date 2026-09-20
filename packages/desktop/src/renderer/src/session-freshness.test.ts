@@ -21,6 +21,8 @@ function row(phase: "tools" | "done"): SessionInfo {
         run: {
           runId: "r1",
           head: "main",
+          origin: { kind: "user" },
+          root: "r1",
           phase: phase === "done" ? { kind: "done" } : { kind: "tools" },
           startedAt: 0,
           attempts: 1,

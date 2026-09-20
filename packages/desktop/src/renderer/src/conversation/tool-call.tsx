@@ -117,15 +117,15 @@ export const ToolCallView = memo(function ToolCallView({
   part,
   progress,
   cwd,
-  active = false,
-  density = "compact",
+  active,
+  density,
   waits,
 }: {
   part: ToolTurnPart;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
-  active?: boolean;
-  density?: ToolCallDensity;
+  active: boolean;
+  density: ToolCallDensity;
   /** The run's live waits on its children; only the trailing turn has any. */
   waits?: LiveWaits;
 }): ReactElement {
@@ -149,13 +149,13 @@ export const ToolCallView = memo(function ToolCallView({
         : { kind: "output", text };
   // One card per child: its create. Every other call on it is a line.
   if (toolClass.kind === "delegate") {
-    return toolClass.role === "create" ? (
+    return toolClass.role === "create" && toolClass.target.kind === "one" ? (
       <SubagentCallView
-        session={toolClass.session}
+        session={toolClass.target.session}
         phase={phase}
         output={body.kind === "output" ? body.text : undefined}
         density={density}
-        awaited={waits?.awaited.has(toolClass.session) ?? false}
+        awaited={waits?.awaited.has(toolClass.target.session) ?? false}
       />
     ) : (
       <SubagentLineView

@@ -7,6 +7,7 @@
  */
 import * as stylex from "@stylexjs/stylex";
 import {
+  memo,
   useCallback,
   useLayoutEffect,
   useMemo,
@@ -18,7 +19,7 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
 import type { Lane } from "@nyte-ai/protocol";
@@ -70,6 +71,7 @@ import {
   configureSession,
   queryClient,
   useCatalog,
+  useChildSessions,
   useSessionActions,
   useHostState,
   useMentionFiles,
@@ -88,6 +90,7 @@ import { conversation, layer, pane } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
+import type { DesktopModelOption } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
 
 import { BackgroundWork } from "../conversation/jobs-panel.tsx";
@@ -97,14 +100,19 @@ import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { Selections } from "../conversation/selection.tsx";
 import { parkedSelections } from "../conversation/selection.ts";
-import { displayTranscriptParts, liveWaits } from "../conversation/transcript-presentation.ts";
+import {
+  NO_WAITS,
+  displayTranscriptParts,
+  liveWaits,
+} from "../conversation/transcript-presentation.ts";
+import type { LiveWaits } from "../conversation/transcript-presentation.ts";
 import {
   conversationMessages,
   estimateRowSize,
   rendersInTranscript,
   transcriptRows,
 } from "../conversation/transcript-rows.ts";
-import type { TranscriptRow } from "../conversation/transcript-rows.ts";
+import type { RenderedTurn, TranscriptRow } from "../conversation/transcript-rows.ts";
 import {
   activeStickyCandidate,
   initialTranscriptOffset,
@@ -348,6 +356,7 @@ const styles = stylex.create({
 });
 
 const EMPTY_TURNS: readonly Turn[] = [];
+const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
 const NO_LIVE_TOOLS: ReadonlyMap<string, LiveToolProgress> = new Map();
 const TRANSCRIPT_OVERSCAN = 4;
 
@@ -404,7 +413,7 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
  * visit builds a virtualizer seeded from that session's last measurements
  * and offset rather than from whatever the previous chat left on screen.
  */
-function TranscriptPlane({
+const TranscriptPlane = memo(function TranscriptPlane({
   paneId,
   sessionId,
   ready,
@@ -565,7 +574,7 @@ function TranscriptPlane({
       })}
     </div>
   );
-}
+});
 
 function repositoryBranch(snapshot: VcsSnapshot | undefined): string | undefined {
   if (snapshot === undefined || snapshot.kind === "none") return undefined;
@@ -728,6 +737,89 @@ async function applyMessageEdit({
   }
 }
 
+type EditUserMessage = (
+  part: UserTurnPart,
+  content: UserTurnPart["content"],
+  choice: BranchModelChoice,
+) => Promise<void>;
+
+const SettledTurnView = memo(function SettledTurnView({
+  turn,
+  cwd,
+  onEditUser,
+  branchModel,
+  onOpenChanges,
+}: {
+  turn: RenderedTurn;
+  cwd: string | undefined;
+  onEditUser: EditUserMessage;
+  branchModel: BranchModelPicker;
+  onOpenChanges: ((target: TurnChangesTarget) => void) | undefined;
+}): ReactElement | null {
+  return (
+    <TurnView
+      turn={turn}
+      liveTools={NO_LIVE_TOOLS}
+      cwd={cwd}
+      onEditUser={onEditUser}
+      branchModel={branchModel}
+      onOpenChanges={onOpenChanges}
+      running={false}
+      waits={NO_WAITS}
+    />
+  );
+});
+
+const TrailingTurnView = memo(function TrailingTurnView({
+  sessionId,
+  turn,
+  cwd,
+  onEditUser,
+  branchModel,
+  onOpenChanges,
+  running,
+  waits,
+}: {
+  sessionId: SessionId;
+  turn: RenderedTurn;
+  cwd: string | undefined;
+  onEditUser: EditUserMessage;
+  branchModel: BranchModelPicker;
+  onOpenChanges: ((target: TurnChangesTarget) => void) | undefined;
+  running: boolean;
+  waits: LiveWaits;
+}): ReactElement | null {
+  const live = useSessionLive(sessionId);
+  return (
+    <TurnView
+      turn={turn}
+      liveTools={live.tools}
+      live={live}
+      cwd={cwd}
+      onEditUser={onEditUser}
+      branchModel={branchModel}
+      onOpenChanges={onOpenChanges}
+      running={running}
+      waits={waits}
+    />
+  );
+});
+
+const SessionLiveTurn = memo(function SessionLiveTurn({
+  sessionId,
+  working,
+  settledWork,
+  cwd,
+}: {
+  sessionId: SessionId;
+  working: boolean;
+  settledWork: boolean;
+  cwd: string | undefined;
+}): ReactElement | null {
+  const live = useSessionLive(sessionId);
+  return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
+});
+
 function SessionConversation({
   paneId,
   sessionId,
@@ -741,6 +833,7 @@ function SessionConversation({
   const { layout } = usePaneControllerSnapshot();
   const session = useSession(sessionId);
   const catalog = useCatalog(sessionId);
+  const children = useChildSessions(sessionId);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
@@ -782,7 +875,7 @@ function SessionConversation({
     () => viewStore.readSession(sessionId, paneId).scroll.bottomPinned,
   );
   const ready = snapshot.data !== undefined;
-  const modelOptions = catalog.data?.models ?? [];
+  const modelOptions = catalog.data?.models ?? EMPTY_MODEL_OPTIONS;
   const pluginSettings = usePluginSettings(
     sessionId,
     modelOptions.some((option) => option.fastMode.kind === "available"),
@@ -797,16 +890,20 @@ function SessionConversation({
     [pluginSettings.data],
   );
   const configuredModel = snapshot.data?.config.model;
-  const branchModel: BranchModelPicker = {
-    catalog: catalog.data,
-    model: modelOptions.find(
-      (option) =>
-        option.id === configuredModel?.id &&
-        (configuredModel.provider === undefined || option.provider === configuredModel.provider),
-    ),
-    thinkingLevel: snapshot.data?.config.thinkingLevel,
-    fastEnabled,
-  };
+  const thinkingLevel = snapshot.data?.config.thinkingLevel;
+  const branchModel = useMemo<BranchModelPicker>(
+    () => ({
+      catalog: catalog.data,
+      model: modelOptions.find(
+        (option) =>
+          option.id === configuredModel?.id &&
+          (configuredModel.provider === undefined || option.provider === configuredModel.provider),
+      ),
+      thinkingLevel,
+      fastEnabled,
+    }),
+    [catalog.data, configuredModel, fastEnabled, modelOptions, thinkingLevel],
+  );
   // These walk the transcript, so they are keyed on the durable inputs: a
   // streaming frame re-renders this component and must not repeat them.
   // The indicator belongs under the last turn the transcript draws, which is
@@ -834,14 +931,17 @@ function SessionConversation({
   // ends in prose needs it below the prose, or the model looks idle while it
   // prepares its next step.
   const parked = snapshot.data?.parked;
-  const settledWork = useMemo(() => {
-    if (lastTurn?.kind !== "turn") return false;
-    const waits = liveWaits(lastTurn.parts, parked, working);
-    return (
-      waits.hidden.size > 0 ||
-      displayTranscriptParts(lastTurn.parts, waits.hidden).at(-1)?.kind === "work"
-    );
-  }, [lastTurn, parked, working]);
+  const lastWaits = useMemo(
+    () => (lastTurn?.kind === "turn" ? liveWaits(lastTurn.parts, parked, working) : NO_WAITS),
+    [lastTurn, parked, working],
+  );
+  const settledWork = useMemo(
+    () =>
+      lastTurn?.kind === "turn" &&
+      (lastWaits.hidden.size > 0 ||
+        displayTranscriptParts(lastTurn.parts, lastWaits.hidden).at(-1)?.kind === "work"),
+    [lastTurn, lastWaits],
+  );
   const retrying = live.runState === "retrying" ? live.retry.message : undefined;
   const selections = parkedSelections(parked).length;
   const rows = useMemo(
@@ -888,9 +988,17 @@ function SessionConversation({
     },
     [fastEnabled, sessionId],
   );
+  const childBySession = useMemo(
+    () =>
+      new Map<SessionId, SessionInfo>(
+        (children.data ?? []).map((child) => [child.sessionId, child]),
+      ),
+    [children.data],
+  );
   const subagentInspector = useMemo(
     () => ({
       sessionId,
+      children: childBySession,
       inspect: (child: SessionId): void => {
         const viewKey = workbenchViewKey({
           paneKey: WORKBENCH_STAGE_PANE_KEY,
@@ -900,7 +1008,7 @@ function SessionConversation({
         workbenchController.actions.openTab(viewKey, "agents");
       },
     }),
-    [sessionId],
+    [childBySession, sessionId],
   );
   const openChanges = useCallback(
     (target: TurnChangesTarget): void => {
@@ -919,70 +1027,108 @@ function SessionConversation({
     },
     [sessionId],
   );
-  const renderRow = (row: TranscriptRow): ReactNode => {
-    switch (row.kind) {
-      case "skeleton":
-        return <TranscriptSkeleton />;
-      case "error":
-        return (
-          <div role="alert" {...stylex.props(styles.banner)}>
-            Couldn&rsquo;t load this chat.{" "}
-            <button
-              type="button"
-              {...stylex.props(styles.bannerAction, focus.ring)}
-              onClick={() => void snapshot.refetch()}
+  const snapshotError = snapshot.isError;
+  const refetchSnapshot = snapshot.refetch;
+  const renderRow = useCallback(
+    (row: TranscriptRow): ReactNode => {
+      switch (row.kind) {
+        case "skeleton":
+          return <TranscriptSkeleton />;
+        case "error":
+          return (
+            <div role="alert" {...stylex.props(styles.banner)}>
+              Couldn&rsquo;t load this chat.{" "}
+              <button
+                type="button"
+                {...stylex.props(styles.bannerAction, focus.ring)}
+                onClick={() => void refetchSnapshot()}
+              >
+                Try again
+              </button>
+            </div>
+          );
+        case "turn": {
+          const onOpenChanges =
+            !working && row.turn === latestChangedTurn ? openChanges : undefined;
+          if (row.trailing && working) {
+            return (
+              <TrailingTurnView
+                sessionId={sessionId}
+                turn={row.turn}
+                cwd={cwd}
+                onEditUser={editUserMessage}
+                branchModel={branchModel}
+                onOpenChanges={onOpenChanges}
+                running={working}
+                waits={lastWaits}
+              />
+            );
+          }
+          return (
+            <SettledTurnView
+              turn={row.turn}
+              cwd={cwd}
+              onEditUser={editUserMessage}
+              branchModel={branchModel}
+              onOpenChanges={onOpenChanges}
+            />
+          );
+        }
+        case "landing":
+          return (
+            <div
+              data-sticky-turn
+              title={row.pending ? "Lands at the next response" : undefined}
+              {...stylex.props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
             >
-              Try again
-            </button>
-          </div>
-        );
-      case "turn":
-        return (
-          <TurnView
-            turn={row.turn}
-            // Settled turns carry their tool results; only the trailing turn has calls in flight.
-            liveTools={row.trailing ? live.tools : NO_LIVE_TOOLS}
-            live={working && row.trailing ? live : undefined}
-            cwd={cwd}
-            onEditUser={editUserMessage}
-            branchModel={branchModel}
-            onOpenChanges={!working && row.turn === latestChangedTurn ? openChanges : undefined}
-            running={working && row.trailing}
-            parked={row.trailing ? parked : undefined}
-          />
-        );
-      case "landing":
-        return (
-          <div
-            data-sticky-turn
-            title={row.pending ? "Lands at the next response" : undefined}
-            {...stylex.props(liveTurnStyles.root, row.pending && liveTurnStyles.pending)}
-          >
-            <UserMessageView content={row.content} />
-          </div>
-        );
-      case "retry":
-        return (
-          <div role="status" title={row.message} {...stylex.props(styles.banner)}>
-            Retrying…
-          </div>
-        );
-      case "live":
-        return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
-      case "selections":
-        return (
-          <Selections
-            sessionId={sessionId}
-            parked={parked}
-            disabled={snapshot.isError || navigating}
-          />
-        );
-      default: {
-        const _exhaustive: never = row;
-        return _exhaustive;
+              <UserMessageView content={row.content} />
+            </div>
+          );
+        case "retry":
+          return (
+            <div role="status" title={row.message} {...stylex.props(styles.banner)}>
+              Retrying…
+            </div>
+          );
+        case "live":
+          return (
+            <SessionLiveTurn
+              sessionId={sessionId}
+              working={working}
+              settledWork={settledWork}
+              cwd={cwd}
+            />
+          );
+        case "selections":
+          return (
+            <Selections
+              sessionId={sessionId}
+              parked={parked}
+              disabled={snapshotError || navigating}
+            />
+          );
+        default: {
+          const _exhaustive: never = row;
+          return _exhaustive;
+        }
       }
-    }
-  };
+    },
+    [
+      branchModel,
+      cwd,
+      editUserMessage,
+      lastWaits,
+      latestChangedTurn,
+      navigating,
+      openChanges,
+      parked,
+      sessionId,
+      settledWork,
+      snapshotError,
+      refetchSnapshot,
+      working,
+    ],
+  );
 
   return (
     <SubagentInspectorProvider value={subagentInspector}>

@@ -20,13 +20,29 @@ test("a verb names the class and its phase", () => {
   assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "done"), "Web search");
   assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "failed"), "Web search failed");
   assert.equal(
-    toolVerb({ kind: "delegate", role: "create", session: child }, "running"),
+    toolVerb(
+      { kind: "delegate", role: "create", target: { kind: "one", session: child } },
+      "running",
+    ),
     "Creating",
   );
-  assert.equal(toolVerb({ kind: "delegate", role: "send", session: child }, "done"), "Sent to");
-  assert.equal(toolVerb({ kind: "delegate", role: "await", session: child }, "done"), "Waited for");
   assert.equal(
-    toolVerb({ kind: "delegate", role: "stop", session: child }, "failed"),
+    toolVerb({ kind: "delegate", role: "send", target: { kind: "one", session: child } }, "done"),
+    "Sent to",
+  );
+  assert.equal(
+    toolVerb(
+      {
+        kind: "delegate",
+        role: "await",
+        target: { kind: "many", sessions: [child], mode: "all" },
+      },
+      "done",
+    ),
+    "Waited for",
+  );
+  assert.equal(
+    toolVerb({ kind: "delegate", role: "stop", target: { kind: "one", session: child } }, "failed"),
     "Stop failed",
   );
 });

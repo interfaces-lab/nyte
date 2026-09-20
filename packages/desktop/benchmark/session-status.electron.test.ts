@@ -35,6 +35,8 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
           kind: "run",
           id: `status-${startedAt}`,
           head: "main",
+          origin: { kind: "user" },
+          root: `status-${startedAt}`,
           phase,
           startedAt,
           attempts: 1,

@@ -10,7 +10,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, ParkedCall, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { filesChangedLabel } from "../workbench/change-tree.ts";
@@ -39,12 +39,7 @@ import { USER_MESSAGE_PREVIEW_LINES, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import { failureNotice } from "./tool-copy.ts";
-import {
-  NO_WAITS,
-  displayTranscriptParts,
-  liveWaits,
-  userDisplayText,
-} from "./transcript-presentation.ts";
+import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
 import type { LiveWaits } from "./transcript-presentation.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
@@ -557,6 +552,15 @@ function TurnPartView({
   }
 }
 
+const ResponseView = memo(function ResponseView({
+  parts,
+}: {
+  parts: readonly Extract<TurnPart, { readonly kind: "assistant" }>[];
+}): ReactElement | null {
+  const markdown = useMemo(() => parts.map((part) => part.text.trim()).join("\n\n"), [parts]);
+  return markdown === "" ? null : <Prose markdown={markdown} />;
+});
+
 export const TurnView = memo(function TurnView({
   turn,
   liveTools,
@@ -565,8 +569,8 @@ export const TurnView = memo(function TurnView({
   onEditUser,
   branchModel,
   onOpenChanges,
-  running = false,
-  parked,
+  running,
+  waits,
 }: {
   turn: RenderedTurn;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
@@ -580,16 +584,11 @@ export const TurnView = memo(function TurnView({
   branchModel?: BranchModelPicker;
   /** Absent in read-only views, which then omit the changes card. */
   onOpenChanges?: (target: TurnChangesTarget) => void;
-  running?: boolean;
-  /** The run's parked calls; only the trailing turn has live waits. */
-  parked?: readonly ParkedCall[];
+  running: boolean;
+  waits: LiveWaits;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
-  const waits = useMemo(
-    () => (turn.kind === "turn" ? liveWaits(turn.parts, parked, running) : NO_WAITS),
-    [turn, parked, running],
-  );
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
   const display = useMemo(
     () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts, waits.hidden) : []),
@@ -616,6 +615,7 @@ export const TurnView = memo(function TurnView({
                 <WorkGroupView
                   key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
                   parts={item.parts}
+                  runId={turn.run}
                   live={trailing ? live : undefined}
                   liveTools={liveTools}
                   cwd={cwd}
@@ -628,11 +628,10 @@ export const TurnView = memo(function TurnView({
             }
             if (item.kind === "response") {
               const first = item.parts[0];
-              const markdown = item.parts.map((part) => part.text.trim()).join("\n\n");
-              return markdown === "" ? null : (
-                <Prose
+              return (
+                <ResponseView
                   key={`response:${first === undefined ? turn.id : turnPartId(first)}`}
-                  markdown={markdown}
+                  parts={item.parts}
                 />
               );
             }
@@ -653,6 +652,7 @@ export const TurnView = memo(function TurnView({
           {waits.hidden.size > 0 && display.at(-1)?.kind !== "work" && (
             <WorkGroupView
               parts={[]}
+              runId={turn.run}
               live={live}
               liveTools={liveTools}
               cwd={cwd}
