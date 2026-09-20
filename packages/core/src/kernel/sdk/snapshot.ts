@@ -68,6 +68,8 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
   const base = {
     runId: run.id,
     head: run.head,
+    origin: run.origin,
+    root: run.root,
     phase: run.phase,
     startedAt: run.startedAt,
     attempts: run.attempts,

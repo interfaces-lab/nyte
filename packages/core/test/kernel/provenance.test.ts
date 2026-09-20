@@ -60,7 +60,12 @@ async function drive(session: Session, streamFn: StreamFn, cwd: string, steps: n
     tools: createAllTools(cwd),
     retry: { enabled: true, maxRetries: 2, baseDelayMs: 1 },
   });
-  await submit(session, { head: "main", lane: "now", body: message(user("go")) });
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("go")),
+  });
   for (let index = 0; index < steps; index += 1) {
     await step(session, turn, { head: "main", landing });
   }
@@ -109,6 +114,7 @@ test("a provider error is classified once, on the commit and on the retry phase"
   assert.deepEqual(commits.at(-1)?.failure, failure);
   assert.equal(commits.at(-1)?.calls, undefined);
   assert.ok(run?.phase.kind === "retry");
+  assert.equal(run.phase.retries, 1);
   assert.deepEqual(run.phase.failure, failure);
 });
 
@@ -123,5 +129,7 @@ test("an unknown tool is custom under its own name", async () => {
   const [, asked, settled] = commits;
   assert.deepEqual(asked?.calls, { "call-x": { kind: "custom", label: "mystery" } });
   assert.ok(settled?.body.kind === "message" && settled.body.message.role === "toolResult");
-  assert.equal(settled.calls, undefined);
+  assert.deepEqual(settled.calls, {
+    "call-x": { kind: "custom", label: "mystery" },
+  });
 });

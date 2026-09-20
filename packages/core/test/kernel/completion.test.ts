@@ -23,9 +23,15 @@ test("completion joins the next response without swallowing or impersonating que
     },
   };
   for (const content of ["first question", "second question"]) {
-    await submit(session, { head: "main", lane: "input", body: message(user(content)) });
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      lane: "input",
+      body: message(user(content)),
+    });
   }
   await submit(session, {
+    preparation: { kind: "none" },
     head: "main",
     lane: "results",
     body: {
@@ -95,8 +101,14 @@ test("stopping the response to a landed completion keeps it out of the request t
       throw new Error("No tools expected");
     },
   };
-  await submit(session, { head: "main", lane: "input", body: message(user("question")) });
   await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "input",
+    body: message(user("question")),
+  });
+  await submit(session, {
+    preparation: { kind: "none" },
     head: "main",
     lane: "results",
     body: {
@@ -131,7 +143,12 @@ test("stopping the response to a landed completion keeps it out of the request t
   expect(stopped[1]?.parts.some((part) => part.kind === "user")).toBe(false);
   expect(stopped[1]?.failure?.class).toBe("aborted");
   outcome = "complete";
-  await submit(session, { head: "main", lane: "input", body: message(user("again")) });
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "input",
+    body: message(user("again")),
+  });
   await drive(session, turn, options);
   expect(requests.at(-1)).toEqual([
     expect.objectContaining({ role: "user", content: "question" }),

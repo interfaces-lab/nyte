@@ -167,6 +167,8 @@ async function turnInput(
       kind: "run",
       id: runId,
       head: "main",
+      origin: { kind: "user" },
+      root: runId,
       phase: { kind: "respond" },
       startedAt: 1,
       attempts: 0,
@@ -270,7 +272,12 @@ test("the step commits a checkpoint the turn asked for and asks again over the s
     compaction: settings,
   });
   await seedHead(session, "main", longChat().slice(0, 6));
-  await submit(session, { head: "main", lane: "now", body: message(user("latest")) });
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("latest")),
+  });
   await step(session, turn, { head: "main", landing });
   const runBefore = await session.refs.read(runRef("main"));
 

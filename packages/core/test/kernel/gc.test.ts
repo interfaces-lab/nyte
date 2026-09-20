@@ -62,6 +62,7 @@ test("every object a ref can reach through the graph is kept", async () => {
   const [, tip] = await seedHead(session, "main", [message(user("a")), message(assistant("b"))]);
   await createHead(session, { head: "review", from: { head: "main" } });
   const queued = await submit(session, {
+    preparation: { kind: "none" },
     head: "main",
     lane: "now",
     body: message(user("pending")),

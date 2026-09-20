@@ -8,8 +8,6 @@ import { createHash } from "node:crypto";
 import { contentText } from "@nyte-ai/ai";
 import { isTerminalPhase, type JobEnd, type Landing, type RunPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
-import { Type, type Static } from "typebox";
-import { Value } from "typebox/value";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
 import {
   SUBAGENTS_PLUGIN_ID,
@@ -23,9 +21,15 @@ import {
 } from "../../plugins/builtin/subagents.ts";
 import { transcriptFromCommits } from "@nyte-ai/client";
 import { isUserInput } from "../admission.ts";
+import {
+  putDelegationRecord,
+  readDelegation,
+  type DelegationRecord,
+  type StoredDelegation,
+} from "../delegation-record.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { branch } from "../graph.ts";
-import type { Commit, CommitBody, Oid, RefName } from "../model.ts";
+import type { Commit, CommitBody, Oid, RefName, RefUpdate, Run } from "../model.ts";
 import { delegationPrefix, delegationRef, headRef, runRef } from "../names.ts";
 import { cancel, pending, submit } from "../queue.ts";
 import { createJobs, JOBS_CANCELLED_REF } from "./jobs.ts";
@@ -49,25 +53,18 @@ import {
 
 const SYSTEM_FACT = "system";
 
-const delegationRecord = Type.Object({
-  runId: Type.String(),
-  callId: Type.String(),
-  head: Type.String(),
-  at: Type.Number(),
-  delivered: Type.Boolean(),
-});
-type DelegationRecord = Static<typeof delegationRecord>;
+type Request = StoredDelegation;
 
-interface Request {
-  readonly ref: RefName;
-  readonly oid: Oid;
-  readonly change: Oid;
-  readonly record: DelegationRecord;
-}
-
-export function childIdOf(parent: SessionId, runId: string, callId: string): SessionId {
-  const digest = createHash("sha256").update([parent, runId, callId].join("\u0000")).digest("hex");
-  return sessionId(`s_child_${digest.slice(0, 16)}`);
+export function childIdOf(
+  parent: SessionId,
+  head: string,
+  runId: string,
+  callId: string,
+): SessionId {
+  const digest = createHash("sha256")
+    .update([parent, head, runId, callId].join("\u0000"))
+    .digest("hex");
+  return sessionId(`s_child_${digest.slice(0, 32)}`);
 }
 
 function jobEnd(phase: RunPhase): JobEnd | undefined {
@@ -90,18 +87,10 @@ function jobEnd(phase: RunPhase): JobEnd | undefined {
   }
 }
 
-/** How a run that a newer run has since replaced ended, read from its last answer. */
-function endOfSuperseded(last: Commit | undefined): JobEnd {
-  if (last?.body.kind !== "message" || last.body.message.role !== "assistant")
-    return { kind: "interrupted" };
-  switch (last.body.message.stopReason) {
-    case "error":
-      return { kind: "failed", reason: last.body.message.errorMessage ?? "error" };
-    case "aborted":
-      return { kind: "cancelled" };
-    default:
-      return { kind: "completed" };
-  }
+/** How a run ended, read from the terminal run object retained by its request record. */
+function terminalEndOf(run: Run, runId: string): JobEnd | undefined {
+  if (run.id !== runId) throw new Error(`Delegation record names the wrong child run: ${runId}`);
+  return jobEnd(run.phase);
 }
 
 function assistantText(commit: Commit): string {
@@ -172,13 +161,17 @@ export function createDelegation(input: {
     pooled.jobs ??= createJobs({
       session: pooled.session,
       notify: async (job, head) => {
-        if ((await pooled.session.refs.read(JOBS_CANCELLED_REF)) !== null) return;
-        await submit(pooled.session, {
+        if ((await pooled.session.refs.read(JOBS_CANCELLED_REF)) !== null) {
+          throw new Error("Session jobs were cancelled");
+        }
+        const receipt = await submit(pooled.session, {
           head,
           lane: "background",
           key: `background-${job.id}`,
           body: { kind: "completion", job },
+          preparation: { kind: "none" },
         });
+        return receipt.change;
       },
       diagnostic: (cause) => runners.emitRunnerDiagnostic(pooled.session, cause),
     });
@@ -215,15 +208,7 @@ export function createDelegation(input: {
     const entries = await parent.session.refs.list(prefix);
     const requests = await Promise.all(
       entries.map(async (entry) => {
-        const blob = await parent.session.objects.get(entry.oid);
-        if (blob?.kind !== "blob" || !Value.Check(delegationRecord, blob.value))
-          throw new Error(`Corrupt delegation record ${entry.name}`);
-        return {
-          ref: entry.name,
-          oid: entry.oid,
-          change: entry.name.slice(prefix.length),
-          record: blob.value,
-        };
+        return readDelegation(parent.session, entry, prefix);
       }),
     );
     return requests.sort((a, b) => a.record.at - b.record.at || a.change.localeCompare(b.change));
@@ -233,55 +218,151 @@ export function createDelegation(input: {
     parent: Pooled,
     request: { readonly ref: RefName; readonly oid: Oid | null },
     record: DelegationRecord,
+    authority:
+      | { readonly kind: "none" }
+      | { readonly kind: "run"; readonly ref: RefName; readonly oid: Oid },
   ): Promise<boolean> => {
-    const oid = (await parent.session.objects.put([{ kind: "blob", value: record }]))[0];
-    if (oid === undefined) throw new Error("Delegation record write returned no object");
-    const outcome = await parent.session.refs.update(
-      [{ name: request.ref, from: request.oid, to: oid }],
-      { reason: "delegation" },
-    );
+    const oid = await putDelegationRecord(parent.session, record);
+    const updates: RefUpdate[] = [{ name: request.ref, from: request.oid, to: oid }];
+    if (authority.kind === "run") {
+      updates.push({ name: authority.ref, from: authority.oid, to: authority.oid });
+    }
+    const outcome = await parent.session.refs.update(updates, { reason: "delegation" });
     return outcome.ok;
   };
 
-  /**
-   * The report of one request, once the child run that answered it has ended.
-   * A request the child will never land (it was stopped first) ends cancelled,
-   * named by its change.
-   */
+  const updateRequest = async (
+    parent: Pooled,
+    ref: RefName,
+    change: (record: DelegationRecord) => DelegationRecord,
+  ): Promise<DelegationRecord | undefined> => {
+    for (;;) {
+      const oid = await parent.session.refs.read(ref);
+      if (oid === null) return undefined;
+      const slash = ref.lastIndexOf("/");
+      const prefix = slash === -1 ? "" : ref.slice(0, slash + 1);
+      const stored = await readDelegation(parent.session, { name: ref, oid }, prefix);
+      const next = change(stored.record);
+      if (next === stored.record) return next;
+      const nextOid = await putDelegationRecord(parent.session, next);
+      const outcome = await parent.session.refs.update([{ name: ref, from: oid, to: nextOid }], {
+        reason: "delegation",
+      });
+      if (outcome.ok) return next;
+      switch (outcome.reason) {
+        case "conflict":
+          continue;
+        case "fenced":
+          throw new Error(`Delegation update was unexpectedly fenced: ${ref}`);
+        default: {
+          const _exhaustive: never = outcome;
+          return _exhaustive;
+        }
+      }
+    }
+  };
+
+  const removePreparedRequest = async (
+    parent: Pooled,
+    ref: RefName,
+    expected: DelegationRecord,
+  ): Promise<void> => {
+    const expectedOid = await putDelegationRecord(parent.session, expected);
+    const oid = await parent.session.refs.read(ref);
+    if (oid === null || oid !== expectedOid) return;
+    await parent.session.refs.update([{ name: ref, from: oid, to: null }], {
+      reason: "delegation conflict",
+    });
+  };
+
+  /** The report of one request once its child run has ended, plus the run object that keeps its end durable. */
   const reportFor = async (
+    parent: Pooled,
     child: { readonly id: SessionId; readonly pooled: Pooled },
     title: string,
-    change: Oid,
-  ): Promise<AgentReport | undefined> => {
+    request: Request,
+  ): Promise<
+    | {
+        readonly answer: Extract<DelegationRecord["answer"], { readonly kind: "ready" }>;
+        readonly report: AgentReport | undefined;
+      }
+    | undefined
+  > => {
     const { session } = child.pooled;
     const commits = await branch(session.objects, await session.refs.read(headRef(MAIN)));
-    const landed = commits.find((item) => item.commit.change === change);
+    const landed = commits.find((item) => item.commit.change === request.change);
     const base = { kind: "delegate", session: child.id, title } as const;
     if (landed === undefined) {
-      return (await stopped(child.pooled))
-        ? { ...base, request: change, end: { kind: "cancelled" }, report: { kind: "none" } }
-        : undefined;
+      if (!(await stopped(child.pooled))) return undefined;
+      const answer = {
+        kind: "ready",
+        request: { kind: "change", oid: request.change },
+        source: { kind: "cancelled" },
+      } as const;
+      return {
+        answer,
+        report: {
+          ...base,
+          request: answer.request,
+          end: { kind: "cancelled" },
+          report: { kind: "none" },
+        },
+      };
     }
     const runId = landed.commit.run;
     if (runId === undefined) return undefined;
+    const requestIdentity = { kind: "commit", oid: landed.oid } as const;
+    let answer: Extract<DelegationRecord["answer"], { readonly kind: "ready" }>;
+    let run: Run;
+    if (request.record.answer.kind === "ready") {
+      answer = request.record.answer;
+      if (answer.source.kind === "cancelled") {
+        return {
+          answer,
+          report: {
+            ...base,
+            request: answer.request,
+            end: { kind: "cancelled" },
+            report: { kind: "none" },
+          },
+        };
+      }
+      const stored = await parent.session.objects.get(answer.source.oid);
+      if (stored?.kind !== "run")
+        throw new Error(`Missing retained child run ${answer.source.oid}`);
+      run = stored;
+    } else {
+      const current = await pool.readRun(session, MAIN);
+      if (current?.run.id !== runId || terminalEndOf(current.run, runId) === undefined) {
+        return undefined;
+      }
+      await parent.session.objects.put([current.run]);
+      answer = {
+        kind: "ready",
+        request: requestIdentity,
+        source: { kind: "run", oid: current.oid },
+      };
+      run = current.run;
+    }
+    const end = terminalEndOf(run, runId);
+    if (end === undefined) return { answer, report: undefined };
     const last = commits.findLast(
       (item) =>
         item.commit.run === runId &&
         item.commit.body.kind === "message" &&
         item.commit.body.message.role === "assistant",
     );
-    const current = await pool.readRun(session, MAIN);
-    const end =
-      current?.run.id === runId ? jobEnd(current.run.phase) : endOfSuperseded(last?.commit);
-    if (end === undefined) return undefined;
     return {
-      ...base,
-      request: landed.oid,
-      end,
-      report:
-        last === undefined
-          ? { kind: "none" }
-          : { kind: "text", text: assistantText(last.commit), commit: last.oid },
+      answer,
+      report: {
+        ...base,
+        request: requestIdentity,
+        end,
+        report:
+          last === undefined
+            ? { kind: "none" }
+            : { kind: "text", text: assistantText(last.commit), commit: last.oid },
+      },
     };
   };
 
@@ -305,9 +386,10 @@ export function createDelegation(input: {
         if (child === undefined) return { kind: "not_found", session: agent };
         const title = await titleOf(child.pooled);
         const latest = (await requestsOf(parent, agent)).at(-1);
-        const report =
-          latest === undefined ? undefined : await reportFor(child, title, latest.change);
-        if (report !== undefined) return { kind: "report", report };
+        const observation =
+          latest === undefined ? undefined : await reportFor(parent, child, title, latest);
+        if (observation?.report !== undefined)
+          return { kind: "report", report: observation.report };
         return { kind: "phase", session: agent, title, phase: await phaseOf(child.pooled, latest) };
       }),
     );
@@ -343,9 +425,9 @@ export function createDelegation(input: {
             runId: run.id,
             callId: view.intent.callId,
           },
-          (runId, callId) => childIdOf(parentId, runId, callId),
+          (runId, callId) => childIdOf(parentId, run.head, runId, callId),
         );
-        if (awaited === undefined) continue;
+        if (awaited.kind === "not_awaited") continue;
         if (scope.kind === "child" && !awaited.agents.includes(scope.child)) continue;
         const signal: JsonValue = yielding
           ? { kind: "yield" }
@@ -365,19 +447,30 @@ export function createDelegation(input: {
     const parent = await pool.open(parentId);
     const title = await titleOf(child);
     for (const request of await requestsOf(parent, childId)) {
-      if (request.record.delivered) continue;
-      const report = await reportFor({ id: childId, pooled: child }, title, request.change);
-      if (report === undefined) continue;
-      // Claim before submitting: a crash in between leaves a claimed record whose
-      // completion the submission key still makes one message on retry.
-      const claimed = await writeRequest(parent, request, { ...request.record, delivered: true });
-      if (!claimed) continue;
-      await submit(parent.session, {
-        head: request.record.head,
+      if (request.record.delivery.kind === "delivered") continue;
+      const observed = await reportFor(parent, { id: childId, pooled: child }, title, request);
+      if (observed === undefined) continue;
+      const ready = await updateRequest(parent, request.ref, (record) =>
+        record.answer.kind === "ready" ? record : { ...record, answer: observed.answer },
+      );
+      if (
+        ready === undefined ||
+        ready.delivery.kind === "delivered" ||
+        observed.report === undefined
+      )
+        continue;
+      const receipt = await submit(parent.session, {
+        head: ready.head,
         lane: "background",
         key: `delegate-${childId}-${request.change}`,
-        body: { kind: "completion", job: report },
+        body: { kind: "completion", job: observed.report },
+        preparation: { kind: "none" },
       });
+      await updateRequest(parent, request.ref, (record) =>
+        record.delivery.kind === "owed"
+          ? { ...record, delivery: { kind: "delivered", change: receipt.change } }
+          : record,
+      );
     }
     await wakeWaits(parentId, parent, { kind: "child", child: childId });
   };
@@ -405,13 +498,13 @@ export function createDelegation(input: {
   };
 
   const subagentHost = (id: SessionId, pooled: Pooled): SubagentHost => ({
-    childOf: (runId, callId) => childIdOf(id, runId, callId),
+    childOf: (head, runId, callId) => childIdOf(id, head, runId, callId),
     async create(input) {
       if (pooled.parent !== undefined)
         throw new Error("Delegation depth is 1: an agent cannot delegate further.");
       const stored = await pool.readRun(pooled.session, input.head);
       if (stored?.run.id !== input.runId) throw new Error("The parent run is no longer current");
-      const childId = childIdOf(id, input.runId, input.callId);
+      const childId = childIdOf(id, input.head, input.runId, input.callId);
       if ((await openChild(childId)) !== undefined) return childId;
 
       const slash = input.model.indexOf("/");
@@ -456,6 +549,7 @@ export function createDelegation(input: {
             model: { provider: model.provider, id: model.id },
             thinkingLevel: input.thinkingLevel,
           } satisfies CommitBody,
+          preparation: { kind: "none" },
           actor: { clientId: id, device: "delegate" },
         });
         return childId;
@@ -466,13 +560,31 @@ export function createDelegation(input: {
       }
     },
     async send(input) {
+      const owner = await pool.readRun(pooled.session, input.head);
+      if (
+        owner === undefined ||
+        owner.run.id !== input.runId ||
+        isTerminalPhase(owner.run.phase) ||
+        owner.run.abortRequested === true
+      ) {
+        throw new Error("The parent run is no longer live");
+      }
       const child = await ownedChild(id, input.agent);
       if (child === undefined) return { kind: "not_found" };
       const title = await titleOf(child.pooled);
       if (await stopped(child.pooled)) return { kind: "stopped", title };
       const current = await pool.readRun(child.pooled.session, MAIN);
       const live = current !== undefined && !isTerminalPhase(current.run.phase);
-      const receipt = await submit(child.pooled.session, {
+      const record: DelegationRecord = {
+        runId: input.runId,
+        callId: input.callId,
+        head: input.head,
+        at: Date.now(),
+        continuation: { kind: "authorized", root: owner.run.root },
+        delivery: { kind: "owed" },
+        answer: { kind: "pending" },
+      };
+      await submit(child.pooled.session, {
         head: MAIN,
         lane: live ? boundaryLane : idleLane,
         body: {
@@ -480,20 +592,23 @@ export function createDelegation(input: {
           message: { role: "user", content: input.message, timestamp: Date.now() },
         } satisfies CommitBody,
         actor: { clientId: id, device: "delegate" },
+        preparation: {
+          kind: "prepared",
+          publish: async (change) => {
+            const saved = await writeRequest(
+              pooled,
+              { ref: delegationRef(input.agent, change), oid: null },
+              record,
+              { kind: "run", ref: runRef(input.head), oid: owner.oid },
+            );
+            if (!saved) throw new Error("The parent run is no longer live");
+          },
+          abandon: (change) =>
+            removePreparedRequest(pooled, delegationRef(input.agent, change), record),
+        },
       });
-      const record: DelegationRecord = {
-        runId: input.runId,
-        callId: input.callId,
-        head: input.head,
-        at: Date.now(),
-        delivered: false,
-      };
-      await writeRequest(
-        pooled,
-        { ref: delegationRef(input.agent, receipt.change), oid: null },
-        record,
-      );
       await runners.reconcileRunner(input.agent, child.pooled);
+      await deliverDue(input.agent, child.pooled);
       return { kind: "sent", title };
     },
     status: (agents) => status(id, pooled, agents),
@@ -545,6 +660,38 @@ export function createDelegation(input: {
   return {
     pluginsFor,
     jobsFor,
+    participantSend(id: SessionId, pooled: Pooled) {
+      const parentLink = pooled.parent;
+      if (parentLink === undefined)
+        return Promise.resolve({ preparation: { kind: "none" as const } });
+      return pool.open(parentLink.sessionId).then((parent) => {
+        const record: DelegationRecord = {
+          runId: parentLink.runId,
+          callId: parentLink.callId,
+          head: MAIN,
+          at: Date.now(),
+          continuation: { kind: "input" },
+          delivery: { kind: "owed" },
+          answer: { kind: "pending" },
+        };
+        return {
+          preparation: {
+            kind: "prepared" as const,
+            publish: async (change: Oid) => {
+              const saved = await writeRequest(
+                parent,
+                { ref: delegationRef(id, change), oid: null },
+                record,
+                { kind: "none" },
+              );
+              if (!saved) throw new Error("Delegation request already exists");
+            },
+            abandon: (change: Oid) =>
+              removePreparedRequest(parent, delegationRef(id, change), record),
+          },
+        };
+      });
+    },
     interruptChild,
     /** A child's run ref moved, or its runner is being reconciled: deliver what it answered. */
     childRunChanged: deliverDue,

@@ -13,6 +13,8 @@ const selection: Selection = { title: "Continue?", choices: [{ id: "yes", label:
 const activeRun = {
   runId: "run",
   head: MAIN,
+  origin: { kind: "user" } as const,
+  root: "run",
   phase: { kind: "tools" } as const,
   startedAt: 0,
   attempts: 0,

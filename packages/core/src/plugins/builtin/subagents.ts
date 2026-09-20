@@ -49,7 +49,7 @@ export type AgentStatus =
 
 export interface SubagentHost {
   /** The child a `task` call owns: the same derivation the host names it by, so a wake finds it. */
-  childOf(runId: string, callId: string): SessionId;
+  childOf(head: string, runId: string, callId: string): SessionId;
   create(input: {
     readonly title: string;
     readonly model: string;
@@ -232,20 +232,30 @@ export function awaitedAgents(
     readonly callId: string;
   },
   childOf: (runId: string, callId: string) => SessionId,
-): { readonly agents: readonly SessionId[]; readonly mode: "any" | "all" } | undefined {
+):
+  | {
+      readonly kind: "awaited";
+      readonly agents: readonly SessionId[];
+      readonly mode: "any" | "all";
+    }
+  | { readonly kind: "not_awaited" } {
   switch (intent.tool) {
     case TASK_TOOL:
-      return { agents: [childOf(intent.runId, intent.callId)], mode: "all" };
+      return {
+        kind: "awaited",
+        agents: [childOf(intent.runId, intent.callId)],
+        mode: "all",
+      };
     case "send":
       return Value.Check(sendParameters, intent.args)
-        ? { agents: [intent.args.agent], mode: "all" }
-        : undefined;
+        ? { kind: "awaited", agents: [intent.args.agent], mode: "all" }
+        : { kind: "not_awaited" };
     case "await":
       return Value.Check(awaitParameters, intent.args)
-        ? { agents: intent.args.agents, mode: intent.args.mode }
-        : undefined;
+        ? { kind: "awaited", agents: intent.args.agents, mode: intent.args.mode }
+        : { kind: "not_awaited" };
     default:
-      return undefined;
+      return { kind: "not_awaited" };
   }
 }
 
@@ -321,18 +331,15 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
   return { result, isError: failed };
 }
 
-function wakeEnd(context: ToolWakeContext): WaitEnd {
-  if (context.aborted) return "cancelled";
-  if (context.expired) return "timeout";
-  return isJsonObject(context.reply) && context.reply.kind === "yield" ? "yield" : "settled";
-}
-
 /** Installed only in root sessions. */
 export function subagentsPlugin(host: SubagentHost) {
   const presentChild = (_input: unknown, context: ToolPresentContext): ToolClass => ({
     kind: "delegate",
     role: "create",
-    session: host.childOf(context.runId, context.callId),
+    target: {
+      kind: "one",
+      session: host.childOf(context.head, context.runId, context.callId),
+    },
   });
   /** Park on `agents` until `mode` is satisfied, `timeoutMs` passes, or the user's input needs the turn. */
   const awaitAgents = async (
@@ -349,7 +356,16 @@ export function subagentsPlugin(host: SubagentHost) {
     throw new ToolWait({ until: Date.now() + timeoutMs });
   };
   const wakeAgents = async (agents: readonly SessionId[], context: ToolWakeContext) =>
-    awaitResult(await host.status(agents), wakeEnd(context));
+    awaitResult(
+      await host.status(agents),
+      context.aborted
+        ? "cancelled"
+        : context.expired
+          ? "timeout"
+          : isJsonObject(context.reply) && context.reply.kind === "yield"
+            ? "yield"
+            : "settled",
+    );
   const settle = <Details>(outcome: WaitOutcome<Details>): AgentToolResult<Details> => {
     if (outcome.isError) throw new ToolError(outcome.result);
     return outcome.result;
@@ -406,7 +422,7 @@ If the user sends something while you wait, this returns early so you can answer
       );
     },
     wake: async (call, context) => {
-      const agent = host.childOf(call.runId, call.toolCallId);
+      const agent = host.childOf(call.head, call.runId, call.toolCallId);
       return { kind: "settle", ...forAgent(await wakeAgents([agent], context), agent) };
     },
   };
@@ -452,7 +468,11 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Sends a message to an agent this session created. The agent answers in its own session, with its earlier turns as context; its report arrives as a "Background" message once it finishes. Set waitMs to wait for the answer here, up to that long; without it this returns a receipt at once. If the user sends something while you wait, this returns early so you can answer them.`,
     parameters: sendParameters,
     replay: "never",
-    present: (input) => ({ kind: "delegate", role: "send", session: input.agent }),
+    present: (input) => ({
+      kind: "delegate",
+      role: "send",
+      target: { kind: "one", session: input.agent },
+    }),
     prepareArguments(value) {
       if (!Value.Check(sendParameters, value)) {
         throw new Error(
@@ -510,9 +530,13 @@ If the user sends something while you wait, this returns early so you can answer
     parameters: awaitParameters,
     replay: "never",
     present: (input) => {
-      const session = input.agents[0];
-      if (session === undefined) throw new Error("Await names no agent");
-      return { kind: "delegate", role: "await", session };
+      const [first, ...rest] = input.agents;
+      if (first === undefined) throw new Error("Await names no agent");
+      return {
+        kind: "delegate",
+        role: "await",
+        target: { kind: "many", sessions: [first, ...rest], mode: input.mode },
+      };
     },
     prepareArguments(value) {
       if (!Value.Check(awaitParameters, value)) {
@@ -538,7 +562,11 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Reads an agent's latest turns (default ${DEFAULT_READ_TURNS}) and its phase, without waiting. Use it to check on an agent that is still working or to revisit what it said.`,
     parameters: readParameters,
     replay: "safe",
-    present: (input) => ({ kind: "delegate", role: "read", session: input.agent }),
+    present: (input) => ({
+      kind: "delegate",
+      role: "read",
+      target: { kind: "one", session: input.agent },
+    }),
     prepareArguments(value) {
       if (!Value.Check(readParameters, value)) {
         throw new Error("Read arguments are invalid. Provide an agent id; turns is optional.");
@@ -572,7 +600,11 @@ If the user sends something while you wait, this returns early so you can answer
       "Stops an agent this session created: cancels its running work and everything queued for it. The agent answers no further messages. Stopping an agent does not stop this run.",
     parameters: stopParameters,
     replay: "never",
-    present: (input) => ({ kind: "delegate", role: "stop", session: input.agent }),
+    present: (input) => ({
+      kind: "delegate",
+      role: "stop",
+      target: { kind: "one", session: input.agent },
+    }),
     prepareArguments(value) {
       if (!Value.Check(stopParameters, value)) {
         throw new Error("Stop arguments are invalid. Provide an agent id.");

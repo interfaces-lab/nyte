@@ -213,6 +213,20 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
     const cwd = await workspaceCwd(sessionId);
     return backend === undefined || cwd === undefined ? undefined : { backend, cwd };
   };
+  const firstLiveRunAt = async (cwd: string) => {
+    const target = await realpath(cwd).catch(() => cwd);
+    for (const [id, pooled] of pool.entries()) {
+      const sessionPath = await relocation.sessionCwd({ sessionId: id });
+      if (sessionPath === undefined) continue;
+      const resolved = await realpath(sessionPath).catch(() => sessionPath);
+      if (resolved !== target) continue;
+      for (const head of await pool.listSessionHeads(pooled.session)) {
+        const run = await pool.currentRun(pooled.session, head.head);
+        if (run !== undefined && !isTerminalPhase(run.phase)) return run;
+      }
+    }
+    return undefined;
+  };
   const summaries = createSummaries({ options, pool, resolveModel: resolveModelRef });
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });
 
@@ -315,6 +329,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
               head: input.head ?? MAIN,
               lane: defaultLane(),
               body,
+              preparation: { kind: "none" },
             },
             options.actor,
           ),
@@ -346,11 +361,13 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           kind: "message",
           message: { role: "user", content, timestamp: Date.now() },
         } satisfies CommitBody;
+        const participantSend = await delegation.participantSend(input.sessionId, pooled);
         const submission = attributed(
           {
             head,
             lane,
             body: input.agent === undefined ? message : { ...message, agent: input.agent },
+            ...participantSend,
           },
           options.actor,
         );
@@ -692,11 +709,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         async discard(input) {
           const at = await vcsAt(input.sessionId);
           if (at === undefined) return NO_VCS;
-          // A live run would write over the restored files; `runs.revert` refuses the same way.
-          if (input.sessionId !== undefined) {
-            const run = await pool.currentRun((await pool.open(input.sessionId)).session, MAIN);
-            if (run !== undefined && !isTerminalPhase(run.phase)) return { kind: "busy", run };
-          }
+          const run = await firstLiveRunAt(at.cwd);
+          if (run !== undefined) return { kind: "busy", run };
           return at.backend.discard({ ...input, cwd: at.cwd });
         },
         async commit(input) {

@@ -111,6 +111,8 @@ test("a run change during observation cannot return a stale waiting outcome", as
     kind: "run",
     id: "run",
     head: "main",
+    origin: { kind: "user" },
+    root: "run",
     phase: { kind: "waiting" },
     startedAt: 0,
     attempts: 1,

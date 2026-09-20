@@ -18,7 +18,7 @@ Ordinary events fold locally: text, reasoning, tool progress, commits, queue mov
 
 ## Execution rule
 
-Only user input starts model work. A live run continues on its own authority (tools, retries, checkpoints, boundary landings) until it ends; after that, background results, recovery, reconnects, and ref events can wake a runner but never start a run. Completed background work is stored and joins the next user message once. The rule lives in [`src/kernel/admission.ts`](src/kernel/admission.ts) and is described in the kernel guide under "Who starts model work".
+User input starts model work. So does a delegate's answer to a request an un-stopped run authorized. The landing consumes that authorization once, and Stop revokes it. A live run continues on its own authority (tools, retries, checkpoints, boundary landings) until it ends; after that, background results, recovery, reconnects, and ref events can wake a runner but never start a run. Completed background work is stored and joins the next user message once. The rule lives in [`src/kernel/admission.ts`](src/kernel/admission.ts) and is described in the kernel guide under "Who starts model work".
 
 ## Delegated work
 

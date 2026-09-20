@@ -305,6 +305,7 @@ export function isToolWait(error: unknown): error is ToolWait {
  */
 export interface WaitingCall {
   readonly runId: string;
+  readonly head: string;
   readonly toolCallId: string;
   readonly resultEntryId: string;
   readonly args: JsonValue;
@@ -348,9 +349,10 @@ export interface ToolExecutionContext {
   readonly head: string;
 }
 
-/** The call `present` classifies: the run that committed it and its call id. */
+/** The call `present` classifies: the run and head that committed it, and its call id. */
 export interface ToolPresentContext {
   readonly runId: string;
+  readonly head: string;
   readonly callId: string;
 }
 

@@ -25,6 +25,8 @@ export const ObjectSchema = Type.Union([
     kind: Type.Literal("run"),
     id: Type.String(),
     head: Type.String(),
+    origin: schemas.RunOrigin,
+    root: Type.String(),
     phase: schemas.RunPhase,
     startedAt: Type.Number(),
     attempts: Type.Number(),

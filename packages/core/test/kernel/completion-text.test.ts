@@ -9,7 +9,7 @@ const agent = (end: JobReport["end"], text: string): JobReport => ({
   kind: "delegate",
   session: child,
   title: "explore",
-  request: "request-commit",
+  request: { kind: "commit", oid: "request-commit" },
   end,
   report: text === "" ? { kind: "none" } : { kind: "text", text, commit: "answer-commit" },
 });

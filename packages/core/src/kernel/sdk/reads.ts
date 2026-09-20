@@ -5,7 +5,7 @@
  */
 import type { Api, Model } from "@nyte-ai/schema";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { FileDiff, OperationInput, RunDiff, RunRevert, TreeId } from "@nyte-ai/protocol";
+import type { FileDiff, OperationInput, RunDiff, TreeId, TreeOutcome } from "@nyte-ai/protocol";
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
 import type { Commit } from "../model.ts";
@@ -23,6 +23,7 @@ import {
   type NyteOptions,
   type ParkedCall,
   type RunInfo,
+  type RunRevertOutcome,
   type SessionId,
   type SessionInfo,
 } from "./types.ts";
@@ -97,7 +98,6 @@ export function createReads(input: {
     };
   };
 
-  /** One listing row as a session row; `undefined` when a filter drops it or the session is gone. */
   /**
    * The session's directory row. Building it reads the whole main branch,
    * which a directory poll would otherwise repeat for every session on every
@@ -283,13 +283,27 @@ export function createReads(input: {
     ).status;
   };
 
-  /** A run's commits on the head, and the tree pair its first and last stamped commits carry. */
+  const liveTrees = new WeakMap<
+    Pooled,
+    Map<HeadName, { readonly seq: number; readonly cwd: string; readonly tree: TreeOutcome }>
+  >();
+
   const runTrees = async (input: {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
     readonly runId: string;
   }) => {
-    const session = (await pool.open(input.sessionId)).session;
+    const pooled = await pool.open(input.sessionId);
+    const session = pooled.session;
+    const storedCwd = await pool.storedCwd(session);
+    const activation =
+      storedCwd === undefined && pooled.activationCwd === undefined
+        ? await pool.resolveSessionActivation(input.sessionId, pooled)
+        : undefined;
+    const cwd =
+      storedCwd ??
+      pooled.activationCwd ??
+      (activation?.kind === "active" ? activation.env.cwd : null);
     const head = input.head ?? MAIN;
     const [tip, run] = await Promise.all([
       session.refs.read(headRef(head)),
@@ -299,7 +313,7 @@ export function createReads(input: {
       .map((item) => item.commit)
       .filter((commit) => commit.run === input.runId);
     const live = run?.runId === input.runId && !isTerminalPhase(run.phase) ? run : undefined;
-    return { commits, live, from: commits[0]?.tree };
+    return { commits, live, from: commits[0]?.tree, pooled, cwd, head };
   };
 
   const lastResultTree = (commits: readonly Commit[]): TreeId | undefined =>
@@ -335,33 +349,62 @@ export function createReads(input: {
 
   const diff = async (input: OperationInput<"runs.diff">): Promise<RunDiff> => {
     pool.alive();
-    const { commits, live, from } = await runTrees(input);
+    const { commits, live, from, pooled, cwd, head } = await runTrees(input);
     if (commits.length === 0) return { kind: "not_found" };
     const vcs = options.workspace?.vcs;
-    if (vcs !== undefined && from !== undefined) {
-      const current = live === undefined ? undefined : await vcs.tree();
+    if (vcs !== undefined && from !== undefined && cwd !== null) {
+      const seq = await pooled.session.events.last();
+      const cached = liveTrees.get(pooled)?.get(head);
+      const current =
+        live === undefined
+          ? undefined
+          : cached !== undefined && cached.seq === seq && cached.cwd === cwd
+            ? cached.tree
+            : await vcs.tree({ cwd }).then((tree) => {
+                const trees = liveTrees.get(pooled) ?? new Map();
+                trees.set(head, { seq, cwd, tree });
+                liveTrees.set(pooled, trees);
+                return tree;
+              });
       const to = current?.kind === "tree" ? current.id : lastResultTree(commits);
       if (to !== undefined) {
-        const files = await vcs.diffTrees({ from, to, paths: input.paths });
+        const files = await vcs.diffTrees({ cwd, from, to, paths: input.paths });
         return { kind: "tree", from, to, files };
       }
     }
     return { kind: "recorded", files: recordedDiff(commits, input.paths) };
   };
 
-  const revert = async (input: OperationInput<"runs.revert">): Promise<RunRevert> => {
+  const revert = async (
+    input: OperationInput<"runs.revert"> & { readonly expect: TreeId },
+  ): Promise<RunRevertOutcome> => {
     pool.alive();
-    const { commits, live, from } = await runTrees(input);
+    const { commits, live, from, cwd } = await runTrees(input);
     if (commits.length === 0) return { kind: "not_found" };
     if (live !== undefined) return { kind: "busy", run: live };
     const vcs = options.workspace?.vcs;
     const to = lastResultTree(commits);
-    if (vcs === undefined || from === undefined || to === undefined) return { kind: "no_tree" };
-    const paths = (await vcs.diffTrees({ from, to })).map((file) => file.path);
-    const restored = await vcs.restoreTree({ tree: from, paths });
-    return restored.kind === "restored"
-      ? { kind: "reverted", files: restored.files }
-      : { kind: "failed", reason: restored.reason };
+    if (vcs === undefined || from === undefined || to === undefined || cwd === null) {
+      return { kind: "no_tree" };
+    }
+    const files = await vcs.diffTrees({ cwd, from, to });
+    const restored = await vcs.restoreTree({
+      cwd,
+      from,
+      expect: input.expect,
+      paths: files,
+    });
+    switch (restored.kind) {
+      case "restored":
+        return { kind: "reverted", files: restored.files };
+      case "conflict":
+      case "failed":
+        return restored;
+      default: {
+        const _exhaustive: never = restored;
+        return _exhaustive;
+      }
+    }
   };
 
   return { snapshot, metadata, list, context, diff, revert };

@@ -150,6 +150,7 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
     const priorRequests = setup.requests.length;
     // Bypass SDK reconciliation to wake the already-bound runner through the shared store.
     await submit(stored, {
+      preparation: { kind: "none" },
       head: "main",
       lane: "steer",
       body: { kind: "message", message: { role: "user", content: "after", timestamp: Date.now() } },

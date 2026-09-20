@@ -186,6 +186,26 @@ test("JsonValue refuses undefined at any depth and accepts nested JSON", () => {
   assert.ok(!Value.Check(schemas.JsonValue, undefined));
 });
 
+test("failure delays and file patch counts are nonnegative integers where required", () => {
+  assert.ok(
+    Value.Check(schemas.Failure, { class: "rate_limit", message: "wait", retryAfterMs: 0 }),
+  );
+  assert.ok(
+    !Value.Check(schemas.Failure, { class: "rate_limit", message: "wait", retryAfterMs: -1 }),
+  );
+  const patch = {
+    kind: "file_patch",
+    op: "edit",
+    path: "file.ts",
+    added: 1,
+    removed: 0,
+    patch: "diff",
+  };
+  assert.ok(Value.Check(schemas.ToolClass, patch));
+  assert.ok(!Value.Check(schemas.ToolClass, { ...patch, added: -1 }));
+  assert.ok(!Value.Check(schemas.ToolClass, { ...patch, removed: 0.5 }));
+});
+
 test("optional-input operations accept undefined and void operations accept only undefined", () => {
   assert.ok(Value.Check(OPERATIONS["sessions.list"].input, undefined));
   assert.ok(Value.Check(OPERATIONS["sessions.list"].input, { limit: 2 }));

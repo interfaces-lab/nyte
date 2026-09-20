@@ -203,7 +203,12 @@ test.each([false, true])(
       compaction: settings,
       retry,
     });
-    await submit(session, { head: "main", lane: "now", body: message(user("continue")) });
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      lane: "now",
+      body: message(user("continue")),
+    });
     const options = { head: "main", landing, signal: controller.signal };
     await step(session, turn, options);
     const outcome = await step(session, turn, options);
@@ -327,7 +332,12 @@ test.each([false, true])(
         return stream(assistant("summary", { usage: usage(200) }));
       },
     });
-    await submit(session, { head: "main", lane: "now", body: message(user("continue")) });
+    await submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      lane: "now",
+      body: message(user("continue")),
+    });
     const options = { head: "main", landing };
     await step(session, turn, options);
     assert.equal((await step(session, turn, options)).kind, "continue");

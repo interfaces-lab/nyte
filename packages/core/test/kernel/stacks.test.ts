@@ -77,7 +77,12 @@ test("deleting a head drops everything it owns unless a runner holds it", async 
   const session = await openSession();
   const [tip] = await seedHead(session, "main", [message(user("a"))]);
   await createHead(session, { head: "review", from: { head: "main" } });
-  await submit(session, { head: "review", lane: "now", body: message(user("queued")) });
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "review",
+    lane: "now",
+    body: message(user("queued")),
+  });
   await session.refs.update([{ name: runRef("review"), from: null, to: tip ?? "" }], {
     reason: "test",
   });

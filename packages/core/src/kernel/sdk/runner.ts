@@ -8,6 +8,7 @@ import { isTerminalPhase, validateHeadName } from "@nyte-ai/protocol";
 import type { Api, Model } from "@nyte-ai/schema";
 import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
 import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.ts";
+import { revokeDelegations } from "../delegation-record.ts";
 import { failedAssistant } from "./requests.ts";
 import { parseHeadRef, isHeadName, parseQueueRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
@@ -246,7 +247,7 @@ export function createRunners(input: {
         landing: executionLanding,
         telemetry: options.telemetry,
         signal,
-        ...(vcs === undefined ? {} : { tree: () => vcs.tree() }),
+        ...(vcs === undefined || cwd === undefined ? {} : { tree: () => vcs.tree({ cwd }) }),
         steps: (run) =>
           unavailableModel(run.config) === undefined ? bound.stepsFor(run) : undefined,
         resolveConfig: (config) =>
@@ -530,6 +531,7 @@ export function createRunners(input: {
           return;
         }
         if (pooled.runner !== undefined) {
+          if (pooled.parent !== undefined) await input.delegation.childRunChanged(id, pooled);
           pooled.wake?.();
           return;
         }
@@ -573,7 +575,7 @@ export function createRunners(input: {
       const written = (await session.objects.put([next]))[0];
       if (written === undefined) throw new Error(`Writing abort for ${name} returned no oid`);
       const outcome = await session.refs.update(
-        [{ name, from: oid, to: written }],
+        [...(await revokeDelegations(session, run.id)), { name, from: oid, to: written }],
         attributed({ reason: "abort" }, options.actor),
       );
       if (outcome.ok) {

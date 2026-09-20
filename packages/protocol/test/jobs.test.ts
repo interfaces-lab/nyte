@@ -80,7 +80,7 @@ test("completion commits carry a command's or a child's report through the wire"
       kind: "delegate",
       session: sessionId("child"),
       title: "Map the repository",
-      request: "request-commit",
+      request: { kind: "commit", oid: "request-commit" },
       end: { kind: "failed", reason: "provider" },
       report: { kind: "text", text: "Three files.", commit: "answer-commit" },
     },
@@ -88,7 +88,7 @@ test("completion commits carry a command's or a child's report through the wire"
       kind: "delegate",
       session: sessionId("child"),
       title: "Map the repository",
-      request: "request-commit",
+      request: { kind: "change", oid: "request-change" },
       end: { kind: "cancelled" },
       report: { kind: "none" },
     },
@@ -116,19 +116,24 @@ test("completion commits carry a command's or a child's report through the wire"
     assert.ok(!Value.Check(schemas.CommitBody, invalid));
 });
 
-test("delegation tool classes name the child session", () => {
+test("delegation tool classes name one child or an await set", () => {
   for (const valid of [
-    { kind: "delegate", role: "create", session: "child" },
-    { kind: "delegate", role: "send", session: "child" },
-    { kind: "delegate", role: "await", session: "child" },
+    { kind: "delegate", role: "create", target: { kind: "one", session: "child" } },
+    { kind: "delegate", role: "send", target: { kind: "one", session: "child" } },
+    {
+      kind: "delegate",
+      role: "await",
+      target: { kind: "many", sessions: ["first", "second"], mode: "all" },
+    },
   ])
     assert.ok(Value.Check(schemas.ToolClass, valid));
   for (const invalid of [
     { kind: "spawn", title: "x" },
     { kind: "delegate_call", role: "send", session: "child" },
-    { kind: "delegate", role: "spawn", session: "child" },
-    { kind: "delegate", role: "await", jobId: "j" },
-    { kind: "delegate", role: "send", session: "" },
+    { kind: "delegate", role: "spawn", target: { kind: "one", session: "child" } },
+    { kind: "delegate", role: "await", target: { kind: "many", sessions: [], mode: "all" } },
+    { kind: "delegate", role: "await", target: { kind: "many", sessions: ["child"] } },
+    { kind: "delegate", role: "send", target: { kind: "one", session: "" } },
   ])
     assert.ok(!Value.Check(schemas.ToolClass, invalid));
 });

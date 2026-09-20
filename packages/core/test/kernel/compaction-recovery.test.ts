@@ -188,7 +188,12 @@ test.each(["save", "publish"])(
           return stream;
         },
       });
-      await submit(session, { head: "main", lane: "now", body: message(user("continue")) });
+      await submit(session, {
+        preparation: { kind: "none" },
+        head: "main",
+        lane: "now",
+        body: message(user("continue")),
+      });
       await step(session, turn, { head: "main", landing });
       const tip = await session.refs.read(headRef("main"));
       const seq = await session.events.last();

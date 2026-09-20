@@ -255,6 +255,10 @@ export interface Messages {
 // Runs
 // ---------------------------------------------------------------------------
 
+export type RunRevertOutcome =
+  | RunRevert
+  | { readonly kind: "conflict"; readonly paths: readonly string[] };
+
 export interface Runs {
   current(input: {
     readonly sessionId: SessionId;
@@ -278,7 +282,9 @@ export interface Runs {
     readonly head?: HeadName;
   }): Promise<ContextStatus>;
   diff(input: OperationInput<"runs.diff">): Promise<RunDiff>;
-  revert(input: OperationInput<"runs.revert">): Promise<RunRevert>;
+  revert(
+    input: OperationInput<"runs.revert"> & { readonly expect: TreeId },
+  ): Promise<RunRevertOutcome>;
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +328,8 @@ type InWorkspace<V extends Operation> = Omit<OperationInput<V>, "sessionId"> & {
   readonly cwd: string;
 };
 
+export type VcsMutationOutcome<Outcome> = Outcome | { readonly kind: "stale" };
+
 /**
  * Version control at a directory. Every operation takes the `cwd` the SDK
  * resolved from the session or the host's workspace; the backend decides what
@@ -333,25 +341,42 @@ export interface VcsBackend {
   contents(input: InWorkspace<"workspace.vcs.contents">): Promise<VcsContents>;
   log(input: InWorkspace<"workspace.vcs.log">): Promise<VcsLog>;
   refs(input: { readonly cwd: string }): Promise<VcsRefs>;
-  stage(input: InWorkspace<"workspace.vcs.stage">): Promise<VcsPathsOutcome>;
-  /** Tracked paths go back to HEAD; untracked ones leave the tree without being unlinked. */
-  discard(input: InWorkspace<"workspace.vcs.discard">): Promise<VcsPathsOutcome>;
-  commit(input: InWorkspace<"workspace.vcs.commit">): Promise<VcsCommitOutcome>;
-  createBranch(input: InWorkspace<"workspace.vcs.createBranch">): Promise<VcsBranchOutcome>;
-  push(input: InWorkspace<"workspace.vcs.push">): Promise<VcsPushOutcome>;
-  /** The workspace's current tree, recorded on commits as provenance. */
-  tree(): Promise<TreeOutcome>;
+  stage(
+    input: InWorkspace<"workspace.vcs.stage"> & { readonly expect: { readonly revision: string } },
+  ): Promise<VcsMutationOutcome<VcsPathsOutcome>>;
+  discard(
+    input: InWorkspace<"workspace.vcs.discard"> & {
+      readonly expect: { readonly revision: string };
+    },
+  ): Promise<VcsMutationOutcome<VcsPathsOutcome>>;
+  commit(
+    input: InWorkspace<"workspace.vcs.commit"> & {
+      readonly expect: { readonly revision: string };
+    },
+  ): Promise<VcsMutationOutcome<VcsCommitOutcome>>;
+  createBranch(
+    input: InWorkspace<"workspace.vcs.createBranch"> & {
+      readonly expect: { readonly revision: string };
+    },
+  ): Promise<VcsMutationOutcome<VcsBranchOutcome>>;
+  push(
+    input: InWorkspace<"workspace.vcs.push"> & { readonly expect: { readonly revision: string } },
+  ): Promise<VcsMutationOutcome<VcsPushOutcome>>;
+  tree(input: { readonly cwd: string }): Promise<TreeOutcome>;
   diffTrees(input: {
+    readonly cwd: string;
     readonly from: TreeId;
     readonly to: TreeId;
     readonly paths?: readonly string[];
   }): Promise<readonly FileDiff[]>;
-  /** Put `paths` back as `tree` had them; a path absent from `tree` is removed. */
   restoreTree(input: {
-    readonly tree: TreeId;
-    readonly paths: readonly string[];
+    readonly cwd: string;
+    readonly from: TreeId;
+    readonly expect: TreeId;
+    readonly paths: readonly FileDiff[];
   }): Promise<
     | { readonly kind: "restored"; readonly files: readonly string[] }
+    | { readonly kind: "conflict"; readonly paths: readonly string[] }
     | { readonly kind: "failed"; readonly reason: string }
   >;
 }
@@ -394,12 +419,32 @@ export interface Workspace {
     contents(input: OperationInput<"workspace.vcs.contents">): Promise<VcsContents>;
     log(input: OperationInput<"workspace.vcs.log">): Promise<VcsLog>;
     refs(input?: OperationInput<"workspace.vcs.refs">): Promise<VcsRefs>;
-    stage(input: OperationInput<"workspace.vcs.stage">): Promise<VcsPathsOutcome>;
-    /** Refused with `busy` while the session's head has a live run. */
-    discard(input: OperationInput<"workspace.vcs.discard">): Promise<VcsDiscardOutcome>;
-    commit(input: OperationInput<"workspace.vcs.commit">): Promise<VcsCommitOutcome>;
-    createBranch(input: OperationInput<"workspace.vcs.createBranch">): Promise<VcsBranchOutcome>;
-    push(input: OperationInput<"workspace.vcs.push">): Promise<VcsPushOutcome>;
+    stage(
+      input: OperationInput<"workspace.vcs.stage"> & {
+        readonly expect: { readonly revision: string };
+      },
+    ): Promise<VcsMutationOutcome<VcsPathsOutcome>>;
+    /** Refused with `busy` while any head in this workspace has a live run. */
+    discard(
+      input: OperationInput<"workspace.vcs.discard"> & {
+        readonly expect: { readonly revision: string };
+      },
+    ): Promise<VcsMutationOutcome<VcsDiscardOutcome>>;
+    commit(
+      input: OperationInput<"workspace.vcs.commit"> & {
+        readonly expect: { readonly revision: string };
+      },
+    ): Promise<VcsMutationOutcome<VcsCommitOutcome>>;
+    createBranch(
+      input: OperationInput<"workspace.vcs.createBranch"> & {
+        readonly expect: { readonly revision: string };
+      },
+    ): Promise<VcsMutationOutcome<VcsBranchOutcome>>;
+    push(
+      input: OperationInput<"workspace.vcs.push"> & {
+        readonly expect: { readonly revision: string };
+      },
+    ): Promise<VcsMutationOutcome<VcsPushOutcome>>;
   };
 }
 

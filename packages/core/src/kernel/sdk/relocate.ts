@@ -41,7 +41,7 @@ export function createRelocation(input: {
     session: Session,
     head: HeadName,
     run: Run | undefined,
-  ): Promise<boolean> => landsNow(run, await pending(session, head), drain);
+  ): Promise<boolean> => landsNow(session, run, await pending(session, head), drain);
 
   const sessionCwd = async (input: {
     readonly sessionId: SessionId;

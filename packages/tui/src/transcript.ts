@@ -1736,8 +1736,15 @@ class ToolCard {
     if (this.current.kind !== "tool") return;
     const { theme } = this.transcript;
     const agents = this.transcript.tasks().flatMap((task) => (task.kind === "agent" ? [task] : []));
-    const task = agents.find((candidate) => candidate.state.sessionId === delegation.session);
-    const name = task === undefined ? delegation.session : taskLabel(task);
+    const sessions =
+      delegation.target.kind === "one" ? [delegation.target.session] : delegation.target.sessions;
+    const tasks = sessions.map((session) =>
+      agents.find((candidate) => candidate.state.sessionId === session),
+    );
+    const task = tasks[0];
+    const name = tasks
+      .map((candidate, index) => (candidate === undefined ? sessions[index] : taskLabel(candidate)))
+      .join(", ");
     const phase = this.phase();
     if (delegation.role !== "create") {
       const mark = statusMark(phaseStatus(phase));

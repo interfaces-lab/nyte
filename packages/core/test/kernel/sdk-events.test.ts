@@ -64,6 +64,8 @@ const run: Run = {
   kind: "run",
   id: "run_1",
   head: "main",
+  origin: { kind: "user" },
+  root: "run_1",
   phase: { kind: "waiting" },
   startedAt: 1,
   attempts: 2,
@@ -331,6 +333,8 @@ test("a session's row folds its facts, its branch config, and its newest message
   assert.deepEqual(runInfo({ ...run, abortRequested: true }, lease), {
     runId: "run_1",
     head: "main",
+    origin: { kind: "user" },
+    root: "run_1",
     phase: { kind: "waiting" },
     startedAt: 1,
     attempts: 2,

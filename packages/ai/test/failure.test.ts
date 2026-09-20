@@ -70,12 +70,49 @@ describe("classifyAssistantFailure", () => {
     });
   });
 
+  test("structured status takes precedence over error text", () => {
+    for (const [status, text, expected] of [
+      [429, "billing quota exceeded", "rate_limit"],
+      [401, "service unavailable", "auth"],
+      [403, "network timeout", "auth"],
+      [402, "network timeout", "quota"],
+      [413, "service unavailable", "context_window"],
+      [500, "invalid api key", "overloaded"],
+      [529, "authentication failed", "overloaded"],
+    ] as const) {
+      const message = {
+        ...failed(text),
+        diagnostics: [{ type: "provider", timestamp: 0, details: { status } }],
+      };
+      assert.equal(classifyAssistantFailure(message).class, expected, String(status));
+    }
+  });
+
+  for (const [retryable, terminal, text, expected] of [
+    ["overloaded", "auth", "authentication service unavailable", "overloaded"],
+    ["overloaded", "quota", "billing service unavailable", "overloaded"],
+    ["network", "auth", "authentication network error", "network"],
+    ["network", "quota", "billing network error", "network"],
+  ] as const) {
+    test(`${retryable} text takes precedence over ${terminal}`, () => {
+      assert.equal(classifyAssistantFailure(failed(text)).class, expected);
+    });
+  }
+
   test("a provider-requested retry delay is read from the text", () => {
+    const failure = classifyAssistantFailure(
+      failed("Server requested 30s retry delay. 429 Too Many Requests"),
+    );
+    assert.equal(failure.class, "rate_limit");
+    assert.equal(failure.retryAfterMs, 30_000);
+  });
+
+  test("a retry delay rejected by the provider is not made durable", () => {
     const failure = classifyAssistantFailure(
       failed("Server requested 30s retry delay (max: 15s). 429 Too Many Requests"),
     );
     assert.equal(failure.class, "rate_limit");
-    assert.equal(failure.retryAfterMs, 30_000);
+    assert.ok(!("retryAfterMs" in failure));
   });
 
   test("silent overflow needs the model window", () => {

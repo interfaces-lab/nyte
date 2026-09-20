@@ -84,7 +84,12 @@ test("retry and terminal phases clear only their run", () => {
   ];
   const parts = events.reduce(foldLiveParts, EMPTY_LIVE_PARTS);
   for (const phase of [
-    { kind: "retry", at: 99, failure: { class: "provider", message: "retry" } },
+    {
+      kind: "retry",
+      at: 99,
+      retries: 1,
+      failure: { class: "provider", message: "retry" },
+    },
     { kind: "done" },
     { kind: "aborted" },
     { kind: "failed", failure: { class: "provider", message: "failed" } },
@@ -93,7 +98,16 @@ test("retry and terminal phases clear only their run", () => {
       seq: 3,
       kind: "run",
       head: "main",
-      run: { runId: "r1", head: "main", startedAt: 0, attempts: 1, config: {}, phase },
+      run: {
+        runId: "r1",
+        head: "main",
+        origin: { kind: "user" },
+        root: "r1",
+        startedAt: 0,
+        attempts: 1,
+        config: {},
+        phase,
+      },
     });
     assert.deepEqual(after.map(livePartKey), ["text:r2:1:0"]);
   }

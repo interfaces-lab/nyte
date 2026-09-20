@@ -89,6 +89,8 @@ const runWith = (config: Run["config"] = {}, id = "run_1"): Run => ({
   kind: "run",
   id,
   head: "main",
+  origin: { kind: "user" },
+  root: id,
   phase: { kind: "respond" },
   startedAt: 1,
   attempts: 0,

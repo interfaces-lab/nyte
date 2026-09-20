@@ -242,12 +242,18 @@ characters. Read jobs with `jobs.list` and refresh on `job` events. Job data is 
 session snapshot.
 
 Job records and output are durable, but work does not survive the owning host closing. Host close or
-recovery marks abandoned work `interrupted` without rerunning it. A terminal background job submits
-its end and output as an idempotent completion on the originating head, through core's private
-`background` lane; a child's answered request lands on its parent the same way. A completion can
-join an active run at a response boundary, but cannot start model work on its own. Without an
-active run, it waits for user input. Clients do not add that lane to their landing policy or send
-completion messages themselves.
+recovery marks abandoned work `interrupted` without rerunning it. A terminal background job changes
+its completion from `owed` to `claimed`, submits its end and output under an idempotency key on the
+originating head, then records `delivered`. Recovery retries `claimed` delivery with the same key.
+`runs.abort` suppresses only a completion still `owed`; one already `claimed` finishes exactly once.
+Completions use core's private `background` lane, and a child's answered request lands on its parent
+the same way. User input starts model work. A delegate's answer can also start one continuation when
+an un-stopped run authorized that request. The send writes its authorization while asserting the
+exact parent run ref in the same CAS, and landing consumes the authorization once. Stop either wins
+that assertion before the child submission or revokes the stored authorization. Command completions,
+participant child requests, and unauthorized delegate answers wait for user input when no run is
+active. Clients do not add that lane to their landing policy or send completion messages
+themselves.
 
 Children inherit workspace trust and are not offered tools marked
 `availability: "foreground"`.
@@ -281,22 +287,30 @@ commit. `heads.merge` fast-forwards a current stacked child into its parent.
 
 Every event carries `seq`. A client keeps the last one it applied as its cursor.
 
-| Kind                                    | Fold                                                                                             |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                                         |
-| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                                |
-| `run`                                   | The head's `RunInfo` and phase. A terminal phase drops the run's overlay.                        |
-| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                                            |
-| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.                           |
-| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.                      |
-| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result.                |
-| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away. A deleted fact carries no `value`. |
-| `compaction`                            | Checkpoint work in flight on that head; `compaction: null` means it ended.                       |
-| `config_queued`                         | A configuration choice joined the queue before anything landed.                                  |
-| `activation_changed`                    | Host-local activation state, replayed once per watch and not ordered by `seq`.                   |
-| `synced`                                | Replay is over; what follows is live.                                                            |
-| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                                |
-| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.                    |
+| Kind                                    | Fold                                                                                                   |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `commit`                                | `appendTranscriptCommit`; `undefined` means re-snapshot.                                               |
+| `head_moved`                            | The tip the next commits will follow. Clear any provisional text.                                      |
+| `run`                                   | The head's `RunInfo`, including `origin`, `root`, and phase. A terminal phase drops the run's overlay. |
+| `job`                                   | Upsert `event.job` by job ID, or refresh `jobs.list`.                                                  |
+| `queued` / `landed` / `queue_cancelled` | The pending gutter. Pending is also a store read, never client memory.                                 |
+| `text_delta` / `reasoning_delta`        | Provisional text keyed by `(runId, attempt, index)`; the commit settles it.                            |
+| `tool_progress` / `effect`              | A call's live output and durable state: intent, waiting, expired, signal, result.                      |
+| `stack` / `fact` / `deleted`            | Head metadata, a small session value, the session going away. A deleted fact carries no `value`.       |
+| `compaction`                            | Checkpoint work in flight on that head; `compaction: null` means it ended.                             |
+| `config_queued`                         | A configuration choice joined the queue before anything landed.                                        |
+| `activation_changed`                    | Host-local activation state, replayed once per watch and not ordered by `seq`.                         |
+| `synced`                                | Replay is over; what follows is live.                                                                  |
+| `diagnostic` / `plugins_changed`        | A notice to show, and the plugin list to re-read.                                                      |
+| `notification` / `status_changed`       | A plugin asking for attention, and the status items to show beside the model.                          |
+
+A user run has `origin: { kind: "user" }` and uses its own `runId` as `root`. A continuation
+origin names the child session and its request as `{ kind: "commit", oid }` after landing or
+`{ kind: "change", oid }` when stopped first. It keeps the requesting run's root. The root
+identifies the aggregate response-attempt budget across the chain. Core reserves each attempt in
+that root's counter before the provider call, so concurrent continuations cannot both spend the
+last slot. Retry phases carry `retry { at, retries, failure }`, where `retries` is the consecutive
+retry count.
 
 The checkpoint a compaction writes arrives as an ordinary `commit`. The `compaction` event is
 progress, not a second history.
