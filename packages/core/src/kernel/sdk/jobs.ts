@@ -4,7 +4,6 @@ import {
   isTerminalPhase,
   schemas,
   type JobActionOutcome,
-  type JobEnd,
   type JobInfo,
   type JobReport,
 } from "@nyte-ai/protocol";
@@ -24,7 +23,7 @@ import { factRef, runRef } from "../names.ts";
 import { listEffects, signalEffect } from "../effects.ts";
 import { toolProgress } from "../turn.ts";
 import { withLeaseRenewal } from "../lease.ts";
-import type { Lease } from "../model.ts";
+import type { Lease, Oid } from "../model.ts";
 import type { Session } from "../store.ts";
 
 export const JOB_PREFIX = "refs/jobs/";
@@ -37,12 +36,12 @@ const BACKGROUND_PEEK_MS = 1_500;
 const jobRecord = Type.Object({
   info: schemas.JobInfo,
   result: Type.Optional(schemas.ToolResultMessage),
-  /**
-   * What the job owes its head: nothing (foreground work answers through its
-   * parked call; a user job answers through `job` events), a completion, or
-   * one already landed.
-   */
-  completion: Type.Enum(["none", "owed", "delivered"]),
+  completion: Type.Union([
+    Type.Object({ kind: Type.Literal("none") }),
+    Type.Object({ kind: Type.Literal("owed") }),
+    Type.Object({ kind: Type.Literal("claimed") }),
+    Type.Object({ kind: Type.Literal("delivered"), change: schemas.Oid }),
+  ]),
 });
 type JobRecord = Static<typeof jobRecord>;
 const checkJobRecord = Compile(jobRecord);
@@ -57,10 +56,6 @@ function jobId(runId: string, callId: string): string {
     .update(JSON.stringify([runId, callId]))
     .digest("hex")
     .slice(0, 24)}`;
-}
-
-function ended(phase: JobInfo["phase"]): JobEnd | undefined {
-  return phase.kind === "running" ? undefined : phase;
 }
 
 /**
@@ -97,7 +92,7 @@ export function createJobs(input: {
   readonly notify: (
     job: Extract<JobReport, { readonly kind: "command" }>,
     head: string,
-  ) => Promise<void>;
+  ) => Promise<Oid>;
   readonly diagnostic: (cause: unknown) => Promise<void>;
 }) {
   const live = new Map<string, LiveJob>();
@@ -170,33 +165,43 @@ export function createJobs(input: {
   };
 
   const deliver = (record: JobRecord): Promise<void> => {
-    const end = ended(record.info.phase);
-    if (closing || record.completion !== "owed" || end === undefined) return Promise.resolve();
+    if (
+      closing ||
+      (record.completion.kind !== "owed" && record.completion.kind !== "claimed") ||
+      record.info.phase.kind === "running"
+    )
+      return Promise.resolve();
     const id = record.info.id;
     const pending = deliveries.get(id);
     if (pending !== undefined) return pending;
     const task = (async () => {
-      const current = await read(id);
-      if (current === undefined || current.record.completion !== "owed" || closing) return;
-      // Claim before notifying; a failed notify releases the claim, and the
-      // submission key makes the retry one message, not two.
-      const claimed = await update(id, (current) => ({ ...current, completion: "delivered" }));
-      if (claimed === undefined) return;
-      try {
-        await input.notify(
-          {
-            kind: "command",
-            id,
-            command: claimed.info.command,
-            end,
-            output: claimed.info.output,
-          },
-          claimed.info.head,
-        );
-      } catch (cause) {
-        await update(id, (current) => ({ ...current, completion: "owed" }));
-        throw cause;
-      }
+      const claimed = await update(id, (current) =>
+        current.completion.kind === "owed" && current.info.phase.kind !== "running" && !closing
+          ? { ...current, completion: { kind: "claimed" } }
+          : current,
+      );
+      if (
+        claimed === undefined ||
+        claimed.completion.kind !== "claimed" ||
+        claimed.info.phase.kind === "running" ||
+        closing
+      )
+        return;
+      const change = await input.notify(
+        {
+          kind: "command",
+          id,
+          command: claimed.info.command,
+          end: claimed.info.phase,
+          output: claimed.info.output,
+        },
+        claimed.info.head,
+      );
+      await update(id, (current) =>
+        current.completion.kind === "claimed"
+          ? { ...current, completion: { kind: "delivered", change } }
+          : current,
+      );
     })().finally(() => deliveries.delete(id));
     deliveries.set(id, task);
     return task;
@@ -207,7 +212,9 @@ export function createJobs(input: {
     if (stored === undefined) return;
     const job = stored.record.info;
     if (job.phase.kind !== "running") live.get(id)?.controller.abort();
-    if (stored.record.completion === "owed" || job.phase.kind !== "running") await signal(job);
+    if (stored.record.completion.kind === "owed" || job.phase.kind !== "running") {
+      await signal(job);
+    }
     await deliver(stored.record);
   };
 
@@ -221,7 +228,7 @@ export function createJobs(input: {
         ? current
         : {
             ...current,
-            completion: current.info.origin.kind === "user" ? current.completion : "owed",
+            completion: current.info.origin.kind === "user" ? current.completion : { kind: "owed" },
             info: {
               ...current.info,
               phase: { kind: "running", mode: "background" },
@@ -245,15 +252,20 @@ export function createJobs(input: {
   ) => {
     const next = await update(
       id,
-      (record) =>
-        record.info.phase.kind !== "running"
-          ? record
-          : {
-              ...record,
-              info: { ...record.info, phase: { kind }, updatedAt: Date.now() },
-              // An owner that stops its own jobs has nothing to learn from them.
-              ...(options?.quiet ? { completion: "none" } : {}),
-            },
+      (record) => {
+        const completion =
+          options?.quiet && record.completion.kind === "owed"
+            ? { kind: "none" as const }
+            : record.completion;
+        if (record.info.phase.kind !== "running") {
+          return completion === record.completion ? record : { ...record, completion };
+        }
+        return {
+          ...record,
+          completion,
+          info: { ...record.info, phase: { kind }, updatedAt: Date.now() },
+        };
+      },
       options?.lease,
     );
     await sync(id);
@@ -355,7 +367,7 @@ export function createJobs(input: {
         : { kind: "wait" };
     }
     // Background work already answered its call with the receipt; its end is a completion.
-    if (completion !== "none") return { kind: "settle", result: receipt(info) };
+    if (completion.kind !== "none") return { kind: "settle", result: receipt(info) };
     if (result !== undefined) {
       const settled = { content: result.content, details: result.details };
       const titled = result.title === undefined ? settled : { ...settled, title: result.title };
@@ -425,7 +437,7 @@ export function createJobs(input: {
     // Nobody is told when a user job ends; its card reads the job ref.
     const record: JobRecord = {
       info,
-      completion: owner.kind === "run" && background ? "owed" : "none",
+      completion: owner.kind === "run" && background ? { kind: "owed" } : { kind: "none" },
     };
     const runtime: LiveJob = {
       controller,
@@ -626,7 +638,6 @@ export function createJobs(input: {
     return { info, runtime, produced: produced.promise };
   };
 
-  /** The command tool behind the wrapper, so a user job runs it without the parking wrapper. */
   let commandTool: AgentTool | undefined;
 
   const wrap = (tool: AgentTool): AgentTool => {

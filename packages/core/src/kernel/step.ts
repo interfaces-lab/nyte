@@ -1,7 +1,15 @@
 import { setTimeout } from "node:timers/promises";
 import { isTerminalPhase, type Landing, type TreeId, type TreeOutcome } from "@nyte-ai/protocol";
 import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
-import { admissionFor, admits, isUserInput, nextBatch, startsResponse } from "./admission.ts";
+import {
+  admissionFor,
+  admits,
+  firstResponse,
+  isUserInput,
+  nextBatch,
+  startsResponse,
+} from "./admission.ts";
+import { authorizedContinuation, revokeDelegations } from "./delegation-record.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
 import { branchConfig, contextMessages } from "@nyte-ai/client";
 import { listEffects, waitingBatchReady } from "./effects.ts";
@@ -11,6 +19,7 @@ import { LeaseLost, withLeaseRenewal } from "./lease.ts";
 import {
   DELETED_REF,
   cancelledRef,
+  chainRef,
   headRef,
   isLaneName,
   newRunId,
@@ -193,6 +202,33 @@ function commitsFor(
   return { commits, tip: previous };
 }
 
+interface ChainCounter {
+  readonly oid: string;
+  readonly attempts: number;
+}
+
+async function readChain(session: Session, root: string): Promise<ChainCounter> {
+  const oid = await session.refs.read(chainRef(root));
+  if (oid === null) throw new Error(`Missing chain counter for ${root}`);
+  const object = await session.objects.get(oid);
+  if (
+    object?.kind !== "blob" ||
+    typeof object.value !== "object" ||
+    object.value === null ||
+    Array.isArray(object.value) ||
+    typeof object.value.attempts !== "number" ||
+    !Number.isInteger(object.value.attempts) ||
+    object.value.attempts < 0
+  ) {
+    throw new Error(`Corrupt chain counter for ${root}`);
+  }
+  return { oid, attempts: object.value.attempts };
+}
+
+async function revocationUpdates(session: Session, run: Run): Promise<readonly RefUpdate[]> {
+  return run.phase.kind === "failed" ? revokeDelegations(session, run.id) : [];
+}
+
 /** Completed work ahead of the batch's first input: what may join while that input's answer is still due. */
 function leadingCompletions(changes: readonly PendingChange[]): readonly PendingChange[] {
   const end = changes.findIndex((item) => item.change.body.kind !== "completion");
@@ -218,7 +254,12 @@ async function land(
   );
   const changes = request.take === "completions" ? leadingCompletions(batch) : batch;
   const admission = admissionFor(run);
-  if (!admits(admission, changes)) return { kind: "idle" };
+  const starter = firstResponse(changes);
+  const continuation =
+    admission.kind === "idle" && starter !== undefined
+      ? await authorizedContinuation(context.session, starter)
+      : undefined;
+  if (!admits(admission, changes, continuation !== undefined)) return { kind: "idle" };
 
   const baseName = queueBaseRef(context.options.head, lane);
   const base = await context.session.refs.read(baseName);
@@ -247,6 +288,7 @@ async function land(
   }
   let nextRun: Run;
   let landed: ReturnType<typeof commitsFor>;
+  let chainUpdate: RefUpdate | undefined;
   if (live !== undefined) {
     // The batch joins the run in progress. The run object is unchanged: a stop
     // is never consumed by a landing, and a stopping run lands nothing.
@@ -254,7 +296,7 @@ async function land(
     nextRun = live;
   } else if (run !== undefined && !changes.some(startsResponse)) {
     // Configuration on an idle head applies under the run that ended,
-    // whose phase is history. A new run is only ever started by user input.
+    // whose phase is history. It does not start model work.
     landed = commitsFor(changes, context.tip, run.id, context.now);
     nextRun = run;
   } else {
@@ -262,15 +304,36 @@ async function land(
     landed = commitsFor(changes, context.tip, id, context.now, await currentTree(context.options));
     const prior = await branch(context.session.objects, context.tip);
     const config = branchConfig([...prior.map((entry) => entry.commit), ...landed.commits]);
+    const origin =
+      continuation === undefined
+        ? { kind: "user" as const }
+        : {
+            kind: "continuation" as const,
+            session: continuation.session,
+            request: continuation.request,
+          };
+    const root = continuation?.root ?? id;
     nextRun = {
       kind: "run",
       id,
       head: context.options.head,
-      phase: changes.some(isUserInput) ? { kind: "respond" } : { kind: "done" },
+      origin,
+      root,
+      phase:
+        continuation !== undefined || changes.some(isUserInput)
+          ? { kind: "respond" }
+          : { kind: "done" },
       startedAt: context.now(),
       attempts: 0,
       config: context.options.resolveConfig?.(config) ?? config,
     };
+    if (continuation === undefined) {
+      const [counter] = await context.session.objects.put([
+        { kind: "blob", value: { attempts: 0 } },
+      ]);
+      if (counter === undefined) throw new Error("Chain counter write returned no object");
+      chainUpdate = { name: chainRef(root), from: null, to: counter };
+    }
   }
 
   await context.session.objects.put([...landed.commits, nextRun]);
@@ -280,6 +343,8 @@ async function land(
     { name: headRef(context.options.head), from: context.tip, to: landed.tip },
     { name: baseName, from: base, to: last.oid },
     { name: runRef(context.options.head), from: context.runOid, to: hashObject(nextRun) },
+    ...(chainUpdate === undefined ? [] : [chainUpdate]),
+    ...(continuation === undefined ? [] : [continuation.consume]),
     ...changes.map((item) => ({ name: cancelledRef(item.oid), from: null, to: null })),
   ];
   const outcome = await publish(context.session, {
@@ -314,6 +379,7 @@ async function storeRun(
     lease: context.lease,
     updates: [
       ...assertions,
+      ...(await revocationUpdates(context.session, run)),
       { name: runRef(context.options.head), from: context.runOid, to: hashObject(run) },
     ],
     reason,
@@ -434,7 +500,12 @@ function responsePhase(
     case "tools":
       return { kind: "tools" };
     case "retry":
-      return { kind: "retry", at: outcome.at, failure: outcome.failure };
+      return {
+        kind: "retry",
+        at: outcome.at,
+        retries: outcome.retries,
+        failure: outcome.failure,
+      };
     case "failed":
       return { kind: "failed", failure: outcome.failure };
     case "aborted":
@@ -542,13 +613,6 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     if (outcome.kind !== "idle") return outcome;
   }
 
-  const ceiling = isStepCeilingResolver(context.options.steps)
-    ? context.options.steps(context.run)
-    : context.options.steps;
-  if (ceiling !== undefined && context.run.attempts >= ceiling) {
-    return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
-  }
-
   const commits = await contextCommits(context.session.objects, context.tip);
   const messages = contextMessages(commits.map((entry) => entry.commit));
   const last = messages[messages.length - 1];
@@ -565,6 +629,27 @@ async function respond(context: StepContext): Promise<StepOutcome> {
       const outcome = await storeRun(context, resolved, "resolve config");
       return outcome.kind === "finished" ? { kind: "continue" } : outcome;
     }
+  }
+
+  const chain = await readChain(context.session, context.run.root);
+  const ceiling = isStepCeilingResolver(context.options.steps)
+    ? context.options.steps(context.run)
+    : context.options.steps;
+  if (ceiling !== undefined && chain.attempts >= ceiling) {
+    return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
+  }
+  const [counter] = await context.session.objects.put([
+    { kind: "blob", value: { attempts: chain.attempts + 1 } },
+  ]);
+  if (counter === undefined) throw new Error("Chain counter write returned no object");
+  const reservation = await publish(context.session, {
+    lease: context.lease,
+    updates: [{ name: chainRef(context.run.root), from: chain.oid, to: counter }],
+    reason: "reserve response",
+  });
+  if (reservation === "fenced") return { kind: "fenced" };
+  if (reservation === "conflict") {
+    return endRun(context, { kind: "failed", failure: runnerFailure("step ceiling") }, "fail");
   }
 
   const called = await callTurn(context, false, (emit, signal) =>
@@ -603,6 +688,7 @@ async function respond(context: StepContext): Promise<StepOutcome> {
     lease: context.lease,
     updates: [
       ...outputUpdates,
+      ...(await revocationUpdates(context.session, next)),
       { name: runRef(context.options.head), from: context.runOid, to: hashObject(next) },
     ],
     reason: "respond",
@@ -688,6 +774,7 @@ async function publishTools(
     lease: context.lease,
     updates: [
       headUpdate,
+      ...(await revocationUpdates(context.session, next)),
       { name: runRef(context.options.head), from: context.runOid, to: hashObject(next) },
       ...effectClears,
     ],

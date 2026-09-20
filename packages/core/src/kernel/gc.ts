@@ -1,3 +1,5 @@
+import { Value } from "typebox/value";
+import { delegationRecordSchema } from "./delegation-record.ts";
 import type { Obj, Oid, Seq } from "./model.ts";
 import type { Session } from "./store.ts";
 
@@ -20,8 +22,13 @@ function references(object: Obj): readonly Oid[] {
     case "stack":
       return object.base === null ? [] : [object.base];
     case "run":
-    case "blob":
       return [];
+    case "blob":
+      return Value.Check(delegationRecordSchema, object.value) &&
+        object.value.answer.kind === "ready" &&
+        object.value.answer.source.kind === "run"
+        ? [object.value.answer.source.oid]
+        : [];
     default: {
       const _exhaustive: never = object;
       return _exhaustive;

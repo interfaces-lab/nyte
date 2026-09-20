@@ -99,7 +99,9 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
     case "shell":
       return toolClass.command;
     case "delegate":
-      return toolClass.session;
+      return toolClass.target.kind === "one"
+        ? toolClass.target.session
+        : toolClass.target.sessions.join(", ");
     case "custom":
       return undefined;
     default: {

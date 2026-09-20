@@ -17,6 +17,8 @@ import type {
   Commit,
   CommitBody,
   Oid,
+  RunId,
+  RunOrigin,
   RunPhase,
   Selection,
   Seq,
@@ -37,6 +39,8 @@ export type {
   FailureClass,
   ModelRef,
   Oid,
+  RunId,
+  RunOrigin,
   RunPhase,
   Selection,
   Seq,
@@ -74,9 +78,11 @@ export type RunConfig = BranchConfig;
 /** One head being advanced. The run ref holds the current phase; every phase is a new object. */
 export interface Run {
   readonly kind: "run";
-  readonly id: string;
+  readonly id: RunId;
   /** Branch name, not ref name. */
   readonly head: string;
+  readonly origin: RunOrigin;
+  readonly root: RunId;
   readonly phase: RunPhase;
   readonly startedAt: number;
   /** Assistant responses attempted so far: the step ceiling and the delta key. */

@@ -51,6 +51,7 @@ import {
   SettingInfo,
   Skill,
   ThinkingLevel,
+  TreeId,
   UserContent,
   VcsBranchOutcome,
   VcsCommitOutcome,
@@ -90,6 +91,7 @@ const sessionHead = strict({ sessionId: SessionId, head: Type.Optional(HeadName)
 const modelRef = strict({ provider: Type.String(), id: Type.String() });
 /** A session's directory, else the host's own workspace. */
 const vcsSession = { sessionId: Type.Optional(SessionId) };
+const vcsExpect = strict({ revision: Type.String() });
 const vcsPaths = Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 });
 
 export const OPERATIONS = Object.freeze({
@@ -215,7 +217,12 @@ export const OPERATIONS = Object.freeze({
     RunDiff,
   ),
   "runs.revert": operation(
-    strict({ sessionId: SessionId, head: Type.Optional(HeadName), runId: Type.String() }),
+    strict({
+      sessionId: SessionId,
+      head: Type.Optional(HeadName),
+      runId: Type.String(),
+      expect: TreeId,
+    }),
     RunRevert,
   ),
 
@@ -258,15 +265,19 @@ export const OPERATIONS = Object.freeze({
   ),
   "workspace.vcs.refs": operation(optional(strict(vcsSession)), VcsRefs),
   "workspace.vcs.stage": operation(
-    strict({ ...vcsSession, paths: vcsPaths, staged: Type.Boolean() }),
+    strict({ ...vcsSession, paths: vcsPaths, staged: Type.Boolean(), expect: vcsExpect }),
     VcsPathsOutcome,
   ),
-  "workspace.vcs.discard": operation(strict({ ...vcsSession, paths: vcsPaths }), VcsDiscardOutcome),
+  "workspace.vcs.discard": operation(
+    strict({ ...vcsSession, paths: vcsPaths, expect: vcsExpect }),
+    VcsDiscardOutcome,
+  ),
   "workspace.vcs.commit": operation(
     strict({
       ...vcsSession,
       message: Type.String({ minLength: 1, maxLength: 20_000, pattern: "\\S" }),
       target: VcsCommitTarget,
+      expect: vcsExpect,
     }),
     VcsCommitOutcome,
   ),
@@ -275,11 +286,12 @@ export const OPERATIONS = Object.freeze({
       ...vcsSession,
       name: Type.String({ minLength: 1, maxLength: 255 }),
       checkout: Type.Boolean(),
+      expect: vcsExpect,
     }),
     VcsBranchOutcome,
   ),
   "workspace.vcs.push": operation(
-    strict({ ...vcsSession, setUpstream: Type.Boolean() }),
+    strict({ ...vcsSession, setUpstream: Type.Boolean(), expect: vcsExpect }),
     VcsPushOutcome,
   ),
   /**

@@ -7,18 +7,46 @@
 import assert from "node:assert/strict";
 import { dirname } from "node:path";
 import { contentText, createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
-import { isTerminalPhase, type SessionId } from "@nyte-ai/protocol";
+import {
+  isTerminalPhase,
+  sessionId,
+  type DelegateRequest,
+  type JobReport,
+  type SessionId,
+} from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { expect, test } from "vitest";
+import {
+  putDelegationRecord,
+  readDelegation,
+  type DelegationRecord,
+} from "../../src/kernel/delegation-record.ts";
 import { branch } from "../../src/kernel/graph.ts";
-import { headRef } from "../../src/kernel/names.ts";
-import { pending } from "../../src/kernel/queue.ts";
+import type { Run } from "../../src/kernel/model.ts";
+import { trimStream } from "../../src/kernel/gc.ts";
+import { delegationPrefix, delegationRef, headRef, runRef } from "../../src/kernel/names.ts";
+import { pending, submit } from "../../src/kernel/queue.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { SessionEvent } from "../../src/kernel/sdk/types.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { toolResultText } from "../../src/kernel/loop/tool-result.ts";
+import { step } from "../../src/kernel/step.ts";
+import type { Refs, Session, Store } from "../../src/kernel/store.ts";
+import type { RespondOutcome, ToolBatchOutcome, Turn } from "../../src/kernel/turn.ts";
 import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
-import { assistant, call, only, openStore, storePath, within } from "./helpers.ts";
+import {
+  assistant,
+  call,
+  granted,
+  landing,
+  message,
+  only,
+  openSession,
+  openStore,
+  storePath,
+  user,
+  within,
+} from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -35,12 +63,47 @@ const model: Model<Api> = {
 const MODEL = `${model.provider}/${model.id}`;
 const poll = { timeout: 5_000, interval: 10 };
 
+type RefUpdateHook = (input: {
+  readonly session: Session;
+  readonly updates: Parameters<Refs["update"]>[0];
+  readonly options: Parameters<Refs["update"]>[1];
+  readonly proceed: () => ReturnType<Refs["update"]>;
+}) => ReturnType<Refs["update"]>;
+
+function hookedStore(store: Store, hook: RefUpdateHook): Store {
+  const wrap = (session: Session): Session => ({
+    id: session.id,
+    objects: session.objects,
+    leases: session.leases,
+    events: session.events,
+    refs: {
+      read: (name) => session.refs.read(name),
+      list: (prefix) => session.refs.list(prefix),
+      update: (updates, options) =>
+        hook({
+          session,
+          updates,
+          options,
+          proceed: () => session.refs.update(updates, options),
+        }),
+    },
+    close: () => session.close(),
+  });
+  return {
+    create: async (options) => wrap(await store.create(options)),
+    open: async (id) => wrap(await store.open(id)),
+    list: () => store.list(),
+    delete: (id) => store.delete(id),
+    close: () => store.close(),
+  };
+}
+
 /**
  * One script for every session. A user message `do <tool> <json>` makes the
  * parent call that tool; a session holding a tool result repeats it; anything
  * else is answered as `answer: <text>`, held while its gate is closed.
  */
-async function fixture() {
+async function fixture(hook: RefUpdateHook = ({ proceed }) => proceed()) {
   const path = storePath();
   const cwd = dirname(path);
   const gates = new Map<string, PromiseWithResolvers<void>>();
@@ -95,8 +158,9 @@ async function fixture() {
     });
     return stream;
   };
+  const store = openStore(path);
   const nyte = await createNyte({
-    store: openStore(path),
+    store: hookedStore(store, hook),
     streamFn,
     model,
     models: {
@@ -133,7 +197,7 @@ async function fixture() {
     for await (const event of nyte.watch({ sessionId: parent, signal: watching.signal }))
       events.push(event);
   })();
-  const store = openStore(path);
+  const reader = openStore(path);
   const idle = async (id: SessionId) => {
     await expect
       .poll(async () => (await within(nyte.runs.wait({ sessionId: id }), 5_000)).kind, poll)
@@ -170,20 +234,50 @@ async function fixture() {
       return only(children.items);
     },
     async childCommits(id: SessionId) {
-      const session = await store.open(id);
+      const session = await reader.open(id);
       return branch(session.objects, await session.refs.read(headRef("main")));
     },
     async queuedCompletions() {
-      const session = await store.open(parent);
+      const session = await reader.open(parent);
       return (await pending(session, "main")).flatMap((item) =>
         item.change.body.kind === "completion" && item.change.body.job.kind === "delegate"
           ? [item.change.body.job]
           : [],
       );
     },
+    async rewindDeliveryMark(child: SessionId, request: DelegateRequest) {
+      const session = await reader.open(parent);
+      const prefix = delegationPrefix(child);
+      const records = await Promise.all(
+        (await session.refs.list(prefix)).map((ref) => readDelegation(session, ref, prefix)),
+      );
+      const stored = only(
+        records.filter(
+          (candidate) =>
+            candidate.record.answer.kind === "ready" &&
+            candidate.record.answer.request.kind === request.kind &&
+            candidate.record.answer.request.oid === request.oid,
+        ),
+      );
+      assert.equal(stored.record.delivery.kind, "delivered");
+      const record: DelegationRecord = {
+        ...stored.record,
+        delivery: { kind: "owed" },
+      };
+      const oid = await putDelegationRecord(session, record);
+      const outcome = await session.refs.update([{ name: stored.ref, from: stored.oid, to: oid }], {
+        reason: "simulate crash before delivery mark",
+      });
+      assert.equal(outcome.ok, true);
+      return stored;
+    },
+    async trimChild(id: SessionId) {
+      const session = await reader.open(id);
+      await trimStream(session, { keepAfterSeq: await session.events.last() });
+    },
     /** Every child completion the parent has, landed or still queued. */
     async completions() {
-      const session = await store.open(parent);
+      const session = await reader.open(parent);
       const landed = (
         await branch(session.objects, await session.refs.read(headRef("main")))
       ).flatMap((item) =>
@@ -205,6 +299,100 @@ async function fixture() {
   };
 }
 
+class ResponseScript implements Turn {
+  readonly answers: RespondOutcome[];
+  calls = 0;
+
+  constructor(answers: readonly RespondOutcome[]) {
+    this.answers = [...answers];
+  }
+
+  async respond(): Promise<RespondOutcome> {
+    const answer = this.answers.shift();
+    if (answer === undefined) assert.fail("respond was called without a scripted answer");
+    this.calls += 1;
+    return answer;
+  }
+
+  async tools(): Promise<ToolBatchOutcome> {
+    return assert.fail("tools was called in a response-only script");
+  }
+}
+
+function completed(text: string): RespondOutcome {
+  return { kind: "complete", message: assistant(text) };
+}
+
+function failed(reason: string): RespondOutcome {
+  return {
+    kind: "failed",
+    message: assistant(reason, { stop: "error", error: reason }),
+    failure: { class: "runner", message: reason },
+  };
+}
+
+async function storedRunAt(session: Session, head: string): Promise<Run | undefined> {
+  const oid = await session.refs.read(runRef(head));
+  if (oid === null) return undefined;
+  const object = await session.objects.get(oid);
+  return object?.kind === "run" ? object : undefined;
+}
+
+function storedRun(session: Session): Promise<Run | undefined> {
+  return storedRunAt(session, "main");
+}
+
+async function writeDelegation(input: {
+  readonly session: Session;
+  readonly child: SessionId;
+  readonly change: string;
+  readonly request: DelegateRequest;
+  readonly runId: string;
+  readonly head: string;
+  readonly continuation: DelegationRecord["continuation"];
+}): Promise<void> {
+  const record: DelegationRecord = {
+    runId: input.runId,
+    callId: `call-${input.change}`,
+    head: input.head,
+    at: Date.now(),
+    continuation: input.continuation,
+    delivery: { kind: "delivered", change: `completion-${input.change}` },
+    answer: { kind: "ready", request: input.request, source: { kind: "cancelled" } },
+  };
+  const oid = await putDelegationRecord(input.session, record);
+  const outcome = await input.session.refs.update(
+    [{ name: delegationRef(input.child, input.change), from: null, to: oid }],
+    { reason: "test delegation" },
+  );
+  assert.equal(outcome.ok, true);
+}
+
+function delegateReport(child: SessionId, request: DelegateRequest): JobReport {
+  return {
+    kind: "delegate",
+    session: child,
+    title: child,
+    request,
+    end: { kind: "completed" },
+    report: { kind: "none" },
+  };
+}
+
+async function queueDelegate(
+  session: Session,
+  child: SessionId,
+  request: DelegateRequest,
+  head: string,
+): Promise<void> {
+  await submit(session, {
+    preparation: { kind: "none" },
+    head,
+    lane: "now",
+    body: { kind: "completion", job: delegateReport(child, request) },
+  });
+}
+
 test("create makes a persistent child session the parent names; it is not a job", async () => {
   const f = await fixture();
   try {
@@ -223,7 +411,7 @@ test("create makes a persistent child session the parent names; it is not a job"
     expect(part.class).toEqual({
       kind: "delegate",
       role: "create",
-      session: child.sessionId,
+      target: { kind: "one", session: child.sessionId },
     });
     expect(said).toContain(`Created agent helper as ${child.sessionId}`);
     expect(await f.nyte.jobs.list({ sessionId: f.parent })).toEqual([]);
@@ -235,7 +423,7 @@ test("create makes a persistent child session the parent names; it is not a job"
   }
 });
 
-test("send lands on the child and its answer reaches the parent once, as a completion naming both commits", async () => {
+test("a delegate answer continues the run that authorized its request", async () => {
   const f = await fixture();
   try {
     await f.command("create", { title: "helper", model: MODEL });
@@ -245,24 +433,24 @@ test("send lands on the child and its answer reaches the parent once, as a compl
     expect(sent.part.class).toEqual({
       kind: "delegate",
       role: "send",
-      session: child.sessionId,
+      target: { kind: "one", session: child.sessionId },
     });
-    expect(sent.said).toContain("Sent to agent helper");
+    const parentRun = await f.nyte.runs.current({ sessionId: f.parent });
+    assert.ok(parentRun);
     await expect
       .poll(
         async () => (await f.nyte.runs.current({ sessionId: child.sessionId }))?.phase.kind,
         poll,
       )
       .toBe("respond");
-    const childRequest = only(f.requests.filter((request) => request.text === "first question"));
-    expect(childRequest.tools).not.toContain("clarify");
-    expect(childRequest.tools).not.toContain("task");
-    expect(await f.queuedCompletions()).toEqual([]);
 
     release();
     await f.idle(child.sessionId);
-    await expect.poll(() => f.queuedCompletions(), poll).toHaveLength(1);
-    const completion = only(await f.queuedCompletions());
+    await expect
+      .poll(async () => (await f.nyte.runs.current({ sessionId: f.parent }))?.origin.kind, poll)
+      .toBe("continuation");
+    await f.idle(f.parent);
+
     const commits = await f.childCommits(child.sessionId);
     const request = commits.find(
       (item) =>
@@ -276,33 +464,38 @@ test("send lands on the child and its answer reaches the parent once, as a compl
     );
     assert.ok(request && answer);
     expect(request.commit.author).toEqual({ clientId: f.parent, device: "delegate" });
+    const completion = only(await f.completions());
     expect(completion).toEqual({
       kind: "delegate",
       session: child.sessionId,
       title: "helper",
-      request: request.oid,
+      request: { kind: "commit", oid: request.oid },
       end: { kind: "completed" },
       report: { kind: "text", text: "answer: first question", commit: answer.oid },
     });
-
-    // The completion waits for the user; the next message hears it once.
-    expect(f.requests.filter((request) => request.completions.length > 0)).toEqual([]);
-    await f.nyte.messages.send({ sessionId: f.parent, content: "hello" });
-    await f.idle(f.parent);
-    const heard = only(f.requests.filter((request) => request.completions.length > 0));
+    const continued = await f.nyte.runs.current({ sessionId: f.parent });
+    expect(continued).toMatchObject({
+      origin: {
+        kind: "continuation",
+        session: child.sessionId,
+        request: { kind: "commit", oid: request.oid },
+      },
+      root: parentRun.root,
+      phase: { kind: "done" },
+    });
+    const heard = only(f.requests.filter((item) => item.completions.length > 0));
     expect(heard.completions).toEqual([
       `Background agent helper (${child.sessionId}) finished. Its report:\n\nanswer: first question`,
     ]);
     expect(await f.queuedCompletions()).toEqual([]);
-    expect(await f.completions()).toHaveLength(1);
 
-    // A second request earns a second completion; the child keeps its context.
     await f.command("send", { agent: child.sessionId, message: "second question" });
     await f.idle(child.sessionId);
     await expect.poll(() => f.completions(), poll).toHaveLength(2);
-    expect(new Set((await f.completions()).map((item) => item.request)).size).toBe(2);
-    const second = only(f.requests.filter((request) => request.text === "second question"));
-    expect(second.completions).toEqual([]);
+    expect(
+      new Set((await f.completions()).map((item) => `${item.request.kind}:${item.request.oid}`))
+        .size,
+    ).toBe(2);
     const childTurns = await f.nyte.messages.list({ sessionId: child.sessionId });
     expect(
       childTurns.flatMap((turn) =>
@@ -310,6 +503,224 @@ test("send lands on the child and its answer reaches the parent once, as a compl
       ),
     ).toHaveLength(2);
   } finally {
+    await f.close();
+  }
+});
+
+test("an abort that wins the parent-run assertion prevents the child submission", async () => {
+  const assertionEntered = Promise.withResolvers<void>();
+  const releaseAssertion = Promise.withResolvers<void>();
+  let blockAuthorization = false;
+  const f = await fixture(async ({ updates, proceed }) => {
+    if (
+      blockAuthorization &&
+      updates.some((update) => update.name.startsWith("refs/delegations/")) &&
+      updates.some((update) => update.name === runRef("main") && update.from === update.to)
+    ) {
+      assertionEntered.resolve();
+      await releaseAssertion.promise;
+    }
+    return proceed();
+  });
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    blockAuthorization = true;
+    await f.nyte.messages.send({
+      sessionId: f.parent,
+      content: `do send ${JSON.stringify({ agent: child.sessionId, message: "too late" })}`,
+    });
+    await within(assertionEntered.promise);
+    expect((await f.nyte.runs.abort({ sessionId: f.parent })).kind).toBe("requested");
+    releaseAssertion.resolve();
+    await f.idle(f.parent);
+
+    expect(await f.nyte.messages.list({ sessionId: child.sessionId })).toEqual([]);
+    expect(await f.completions()).toEqual([]);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("aborted");
+  } finally {
+    releaseAssertion.resolve();
+    await f.close();
+  }
+});
+
+test("a failed child publication abandons its prepared delegation request", async () => {
+  const failPublications = new Set<string>();
+  const f = await fixture(async ({ session, updates, proceed }) => {
+    if (
+      failPublications.has(session.id) &&
+      updates.some(
+        (update) => update.name.startsWith("refs/queues/main/") && update.name.endsWith("/tip"),
+      )
+    ) {
+      failPublications.delete(session.id);
+      throw new Error("crash before child publication");
+    }
+    return proceed();
+  });
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    failPublications.add(child.sessionId);
+    const sent = await f.command("send", {
+      agent: child.sessionId,
+      message: "orphaned request",
+    });
+    expect(sent.part.result?.isError).toBe(true);
+    expect(await f.nyte.messages.list({ sessionId: child.sessionId })).toEqual([]);
+
+    await f.command("stop", { agent: child.sessionId });
+    expect(await f.completions()).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("reconcile delivers once after a crash between completion submit and delivery mark", async () => {
+  const f = await fixture();
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    await f.command("send", { agent: child.sessionId, message: "crash window" });
+    await f.idle(child.sessionId);
+    await f.idle(f.parent);
+    const first = only(await f.completions());
+    await f.rewindDeliveryMark(child.sessionId, first.request);
+
+    await f.nyte.sessions.configure({
+      sessionId: child.sessionId,
+      thinkingLevel: "off",
+    });
+    expect(await f.completions()).toEqual([first]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("delivery reads the retained terminal run after the child event stream is trimmed", async () => {
+  const deliveryParents = new Set<string>();
+  let failDelivery = false;
+  const f = await fixture(async ({ session, updates, proceed }) => {
+    if (
+      failDelivery &&
+      deliveryParents.has(session.id) &&
+      updates.some(
+        (update) =>
+          update.name.startsWith("refs/queues/main/background/") && update.name.endsWith("/tip"),
+      )
+    ) {
+      failDelivery = false;
+      throw new Error("crash before completion publication");
+    }
+    return proceed();
+  });
+  deliveryParents.add(f.parent);
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    const release = f.hold("trimmed answer");
+    await f.command("send", { agent: child.sessionId, message: "trimmed answer" });
+    failDelivery = true;
+    release();
+    await f.idle(child.sessionId);
+    expect(await f.completions()).toEqual([]);
+    await f.trimChild(child.sessionId);
+
+    await f.nyte.sessions.configure({
+      sessionId: child.sessionId,
+      thinkingLevel: "off",
+    });
+    await expect
+      .poll(() => f.completions(), poll)
+      .toEqual([
+        expect.objectContaining({
+          session: child.sessionId,
+          end: { kind: "completed" },
+        }),
+      ]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("a participant's message to a child does not authorize a continuation", async () => {
+  const f = await fixture();
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    const parentBefore = await f.nyte.runs.current({ sessionId: f.parent });
+    const release = f.hold("participant question");
+    await f.nyte.messages.send({
+      sessionId: child.sessionId,
+      content: "participant question",
+    });
+    await expect
+      .poll(
+        async () => (await f.nyte.runs.current({ sessionId: child.sessionId }))?.phase.kind,
+        poll,
+      )
+      .toBe("respond");
+    release();
+    await f.idle(child.sessionId);
+    await expect.poll(() => f.queuedCompletions(), poll).toHaveLength(1);
+    const unchanged = await f.nyte.runs.current({ sessionId: f.parent });
+    expect(unchanged?.runId).toBe(parentBefore?.runId);
+    expect(unchanged?.origin.kind).toBe("user");
+
+    await f.nyte.messages.send({ sessionId: f.parent, content: "continue with the report" });
+    await f.idle(f.parent);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.origin.kind).toBe("user");
+  } finally {
+    await f.close();
+  }
+});
+
+test("a keyed participant receipt loss abandons the unpublished child request", async () => {
+  const blockedChildren = new Set<string>();
+  const updateEntered = Promise.withResolvers<void>();
+  const releaseUpdate = Promise.withResolvers<void>();
+  const f = await fixture(async ({ session, updates, proceed }) => {
+    if (
+      blockedChildren.has(session.id) &&
+      updates.some(
+        (update) => update.name.startsWith("refs/queues/main/") && update.name.endsWith("/tip"),
+      )
+    ) {
+      blockedChildren.delete(session.id);
+      updateEntered.resolve();
+      await releaseUpdate.promise;
+    }
+    return proceed();
+  });
+  try {
+    await f.command("create", { title: "helper", model: MODEL });
+    const child = await f.child();
+    blockedChildren.add(child.sessionId);
+    const losing = f.nyte.messages.send({
+      sessionId: child.sessionId,
+      content: "losing request",
+      key: "same-request",
+    });
+    await within(updateEntered.promise);
+    const winner = await f.nyte.messages.send({
+      sessionId: child.sessionId,
+      content: "winning request",
+      key: "same-request",
+    });
+    releaseUpdate.resolve();
+    const lost = await losing;
+    expect(new Set([winner.change, lost.change]).size).toBe(1);
+    await f.idle(child.sessionId);
+
+    const read = await f.command("read", { agent: child.sessionId, turns: 10 });
+    expect(read.said).toContain("User: winning request");
+    expect(read.said).not.toContain("losing request");
+    const beforeStop = await f.completions();
+    expect(beforeStop).toHaveLength(1);
+    await f.command("stop", { agent: child.sessionId });
+    expect(await f.completions()).toEqual(beforeStop);
+  } finally {
+    releaseUpdate.resolve();
     await f.close();
   }
 });
@@ -329,7 +740,7 @@ test("await returns phases at its deadline without settling the child, and the r
     expect(timedOut.part.class).toEqual({
       kind: "delegate",
       role: "await",
-      session: child.sessionId,
+      target: { kind: "many", sessions: [child.sessionId], mode: "all" },
     });
     expect(timedOut.part.result?.isError).toBe(false);
     expect(timedOut.said).toContain(`Agent helper (${child.sessionId}) is respond; no report yet.`);
@@ -358,6 +769,34 @@ test("await returns phases at its deadline without settling the child, and the r
   }
 });
 
+test("await classifies every target and its mode", async () => {
+  const f = await fixture();
+  try {
+    await f.command("create", { title: "first", model: MODEL });
+    const first = await f.child();
+    await f.command("create", { title: "second", model: MODEL });
+    const children = await f.nyte.sessions.list({ parent: f.parent });
+    const second = children.items.find((item) => item.sessionId !== first.sessionId);
+    assert.ok(second);
+    const awaited = await f.command("await", {
+      agents: [first.sessionId, second.sessionId],
+      mode: "any",
+      timeoutMs: 0,
+    });
+    expect(awaited.part.class).toEqual({
+      kind: "delegate",
+      role: "await",
+      target: {
+        kind: "many",
+        sessions: [first.sessionId, second.sessionId],
+        mode: "any",
+      },
+    });
+  } finally {
+    await f.close();
+  }
+});
+
 test("a parked await wakes when the child answers", async () => {
   const f = await fixture();
   try {
@@ -375,7 +814,11 @@ test("a parked await wakes when the child answers", async () => {
       turn.kind === "turn" ? turn.parts : [],
     );
     expect(parts.find((part) => part.kind === "tool")).toMatchObject({
-      class: { kind: "delegate", role: "create", session: child.sessionId },
+      class: {
+        kind: "delegate",
+        role: "create",
+        target: { kind: "one", session: child.sessionId },
+      },
       result: { isError: false, output: expect.stringContaining("answer: prompt") },
     });
   } finally {
@@ -383,10 +826,10 @@ test("a parked await wakes when the child answers", async () => {
   }
 });
 
-test("aborting the parent mid-task keeps the call classed as the child's create while the child runs on", async () => {
+test("aborting the parent revokes its child's continuation", async () => {
   const f = await fixture();
   try {
-    f.hold("prompt");
+    const release = f.hold("prompt");
     await f.nyte.messages.send({
       sessionId: f.parent,
       content: `do task ${JSON.stringify({ prompt: "prompt", title: "worker", model: MODEL, waitMs: 60_000 })}`,
@@ -399,11 +842,23 @@ test("aborting the parent mid-task keeps the call classed as the child's create 
       turn.kind === "turn" ? turn.parts.filter((part) => part.kind === "tool") : [],
     );
     expect(parts.at(-1)).toMatchObject({
-      class: { kind: "delegate", role: "create", session: child.sessionId },
+      class: {
+        kind: "delegate",
+        role: "create",
+        target: { kind: "one", session: child.sessionId },
+      },
       result: { isError: true, output: expect.stringContaining("cancelled") },
     });
     const running = await f.nyte.runs.current({ sessionId: child.sessionId });
     assert.ok(running && !isTerminalPhase(running.phase));
+
+    release();
+    await f.idle(child.sessionId);
+    await expect.poll(() => f.queuedCompletions(), poll).toHaveLength(1);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.phase.kind).toBe("aborted");
+    await f.nyte.messages.send({ sessionId: f.parent, content: "use the finished report" });
+    await f.idle(f.parent);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.origin.kind).toBe("user");
   } finally {
     await f.close();
   }
@@ -431,7 +886,11 @@ test("aborting the parent cancels its parked await and leaves the child running;
     );
     // A failed call keeps its call-time class.
     expect(parts.at(-1)).toMatchObject({
-      class: { kind: "delegate", role: "await", session: child.sessionId },
+      class: {
+        kind: "delegate",
+        role: "await",
+        target: { kind: "many", sessions: [child.sessionId], mode: "all" },
+      },
       result: { isError: true, output: expect.stringContaining("cancelled") },
     });
     const running = await f.nyte.runs.current({ sessionId: child.sessionId });
@@ -442,7 +901,7 @@ test("aborting the parent cancels its parked await and leaves the child running;
     expect(stopped.part.class).toEqual({
       kind: "delegate",
       role: "stop",
-      session: child.sessionId,
+      target: { kind: "one", session: child.sessionId },
     });
     await expect
       .poll(
@@ -473,7 +932,7 @@ test("read answers with the child's latest turns and phase without parking", asy
     expect(read.part.class).toEqual({
       kind: "delegate",
       role: "read",
-      session: child.sessionId,
+      target: { kind: "one", session: child.sessionId },
     });
     expect(read.said).toContain(`Agent helper (${child.sessionId}) is done.`);
     expect(read.said).toContain("User: what is up");
@@ -491,7 +950,7 @@ test("read answers with the child's latest turns and phase without parking", asy
   }
 });
 
-test("a task whose child outlasts waitMs returns the child's phase; the report follows as a completion", async () => {
+test("a task whose child outlasts waitMs continues when its report arrives", async () => {
   const f = await fixture();
   try {
     const release = f.hold("Investigate the build\nin detail");
@@ -505,13 +964,13 @@ test("a task whose child outlasts waitMs returns the child's phase; the report f
     expect(part.class).toEqual({
       kind: "delegate",
       role: "create",
-      session: child.sessionId,
+      target: { kind: "one", session: child.sessionId },
     });
     expect(said).toContain(`Agent Investigate the build (${child.sessionId}) is respond`);
     release();
     await f.idle(child.sessionId);
     await expect
-      .poll(() => f.queuedCompletions(), poll)
+      .poll(() => f.completions(), poll)
       .toEqual([
         expect.objectContaining({
           session: child.sessionId,
@@ -522,7 +981,270 @@ test("a task whose child outlasts waitMs returns the child's phase; the report f
           }),
         }),
       ]);
+    await f.idle(f.parent);
+    expect((await f.nyte.runs.current({ sessionId: f.parent }))?.origin).toMatchObject({
+      kind: "continuation",
+      session: child.sessionId,
+    });
   } finally {
     await f.close();
   }
+});
+
+test("a failed parent revokes its outstanding continuation before the child answers", async () => {
+  const session = await openSession("failed-parent");
+  const script = new ResponseScript([failed("parent failed")]);
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("start")),
+  });
+  expect((await step(session, script, { head: "main", landing })).kind).toBe("continue");
+  const parent = await storedRun(session);
+  assert.ok(parent);
+  const child = sessionId("failed-child");
+  const request = { kind: "commit", oid: "failed-request" } satisfies DelegateRequest;
+  await writeDelegation({
+    session,
+    child,
+    change: "failed-change",
+    request,
+    runId: parent.id,
+    head: "main",
+    continuation: { kind: "authorized", root: parent.root },
+  });
+
+  expect((await step(session, script, { head: "main", landing })).kind).toBe("finished");
+  expect((await storedRun(session))?.phase.kind).toBe("failed");
+
+  await queueDelegate(session, child, request, "main");
+  expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+    "idle",
+  );
+  expect((await storedRun(session))?.id).toBe(parent.id);
+
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("continue")),
+  });
+  expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+    "continue",
+  );
+  expect((await storedRun(session))?.origin.kind).toBe("user");
+});
+
+test("command and unauthorized delegate completions never start an idle run", async () => {
+  const commandSession = await openSession("command-completion");
+  await submit(commandSession, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: {
+      kind: "completion",
+      job: {
+        kind: "command",
+        id: "command",
+        command: "true",
+        end: { kind: "completed" },
+        output: "",
+      },
+    },
+  });
+  expect((await step(commandSession, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+    "idle",
+  );
+  expect(await storedRun(commandSession)).toBeUndefined();
+
+  for (const kind of ["input", "consumed"] as const) {
+    const session = await openSession(`delegate-${kind}`);
+    const child = sessionId(`child-${kind}`);
+    const request = { kind: "commit", oid: `request-${kind}` } satisfies DelegateRequest;
+    await writeDelegation({
+      session,
+      child,
+      change: `change-${kind}`,
+      request,
+      runId: "ended-parent",
+      head: "main",
+      continuation: { kind },
+    });
+    await queueDelegate(session, child, request, "main");
+    expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+      "idle",
+    );
+    expect(await storedRun(session)).toBeUndefined();
+  }
+
+  const missingSession = await openSession("delegate-missing");
+  const missingChild = sessionId("child-missing");
+  const missingRequest = {
+    kind: "commit",
+    oid: "request-missing",
+  } satisfies DelegateRequest;
+  await queueDelegate(missingSession, missingChild, missingRequest, "main");
+  expect((await step(missingSession, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+    "idle",
+  );
+  expect(await storedRun(missingSession)).toBeUndefined();
+});
+
+test("one chain budget covers two outstanding children and user input starts a fresh root", async () => {
+  const session = await openSession("chain-budget");
+  const script = new ResponseScript([
+    completed("parent"),
+    completed("first continuation"),
+    completed("fresh user root"),
+  ]);
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("start")),
+  });
+  await step(session, script, { head: "main", landing, steps: 2 });
+  const parent = await storedRun(session);
+  assert.ok(parent);
+  const firstChild = sessionId("first-child");
+  const secondChild = sessionId("second-child");
+  const firstRequest = { kind: "commit", oid: "first-request" } satisfies DelegateRequest;
+  const secondRequest = { kind: "commit", oid: "second-request" } satisfies DelegateRequest;
+  await writeDelegation({
+    session,
+    child: firstChild,
+    change: "first-change",
+    request: firstRequest,
+    runId: parent.id,
+    head: "main",
+    continuation: { kind: "authorized", root: parent.root },
+  });
+  await writeDelegation({
+    session,
+    child: secondChild,
+    change: "second-change",
+    request: secondRequest,
+    runId: parent.id,
+    head: "main",
+    continuation: { kind: "authorized", root: parent.root },
+  });
+  await step(session, script, { head: "main", landing, steps: 2 });
+  expect((await storedRun(session))?.phase.kind).toBe("done");
+
+  await queueDelegate(session, firstChild, firstRequest, "main");
+  await step(session, script, { head: "main", landing, steps: 2 });
+  const firstContinuation = await storedRun(session);
+  assert.ok(firstContinuation);
+  expect(firstContinuation).toMatchObject({
+    origin: { kind: "continuation", session: firstChild, request: firstRequest },
+    root: parent.root,
+    phase: { kind: "respond" },
+  });
+  await step(session, script, { head: "main", landing, steps: 2 });
+  expect((await storedRun(session))?.phase.kind).toBe("done");
+
+  await queueDelegate(session, secondChild, secondRequest, "main");
+  await step(session, script, { head: "main", landing, steps: 2 });
+  const secondContinuation = await storedRun(session);
+  assert.ok(secondContinuation);
+  expect(secondContinuation).toMatchObject({
+    origin: { kind: "continuation", session: secondChild, request: secondRequest },
+    root: parent.root,
+    phase: { kind: "respond" },
+  });
+  await step(session, script, { head: "main", landing, steps: 2 });
+  expect((await storedRun(session))?.phase.kind).toBe("failed");
+  expect(script.calls).toBe(2);
+
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("fresh")),
+  });
+  await step(session, script, { head: "main", landing, steps: 2 });
+  const fresh = await storedRun(session);
+  assert.ok(fresh);
+  expect(fresh.origin).toEqual({ kind: "user" });
+  expect(fresh.root).toBe(fresh.id);
+  expect(fresh.root).not.toBe(parent.root);
+  await step(session, script, { head: "main", landing, steps: 2 });
+  expect((await storedRun(session))?.phase.kind).toBe("done");
+  expect(script.calls).toBe(3);
+});
+
+test("two steps racing one authorization publish one continuation", async () => {
+  const session = await openSession("continuation-race");
+  const parentScript = new ResponseScript([completed("parent")]);
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("start")),
+  });
+  await step(session, parentScript, { head: "main", landing });
+  const parent = await storedRun(session);
+  assert.ok(parent);
+  await step(session, parentScript, { head: "main", landing });
+  const child = sessionId("race-child");
+  const request = { kind: "commit", oid: "race-request" } satisfies DelegateRequest;
+  await writeDelegation({
+    session,
+    child,
+    change: "race-change",
+    request,
+    runId: parent.id,
+    head: "main",
+    continuation: { kind: "authorized", root: parent.root },
+  });
+  await queueDelegate(session, child, request, "main");
+
+  const lease = granted(await session.leases.acquire(headRef("main"), 30_000));
+  const gate = Promise.withResolvers<void>();
+  let arrived = 0;
+  const beforeStep = async (): Promise<void> => {
+    arrived += 1;
+    if (arrived === 2) gate.resolve();
+    await gate.promise;
+  };
+  try {
+    await Promise.all([
+      step(session, new ResponseScript([completed("continued")]), {
+        head: "main",
+        landing,
+        lease,
+        beforeStep,
+      }),
+      step(session, new ResponseScript([completed("continued")]), {
+        head: "main",
+        landing,
+        lease,
+        beforeStep,
+      }),
+    ]);
+  } finally {
+    await session.leases.release(lease);
+  }
+
+  const continuationIds = new Set<string>();
+  for (const event of await session.events.read({ afterSeq: 0 })) {
+    if (event.kind !== "ref" || event.name !== runRef("main") || event.to === null) continue;
+    const object = await session.objects.get(event.to);
+    if (object?.kind === "run" && object.origin.kind === "continuation") {
+      continuationIds.add(object.id);
+    }
+  }
+  expect(continuationIds.size).toBe(1);
+  const current = await storedRun(session);
+  expect(current).toMatchObject({
+    origin: { kind: "continuation", session: child, request },
+    root: parent.root,
+  });
+  const commits = await branch(session.objects, await session.refs.read(headRef("main")));
+  expect(
+    commits.filter(
+      (item) => item.commit.body.kind === "completion" && item.commit.body.job.kind === "delegate",
+    ),
+  ).toHaveLength(1);
 });

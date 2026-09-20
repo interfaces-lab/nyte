@@ -341,7 +341,7 @@ for (const selected of [opus, astra]) {
       assert.deepEqual(tool.class, {
         kind: "delegate",
         role: "create",
-        session: child.sessionId,
+        target: { kind: "one", session: child.sessionId },
       });
     } finally {
       await nyte.close();

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { treeId, type RunInfo } from "@nyte-ai/protocol";
-import type { TreeId, TreeOutcome } from "@nyte-ai/protocol";
+import type { FileDiff, TreeId, TreeOutcome } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { branch } from "../../src/kernel/graph.ts";
 import { headRef } from "../../src/kernel/names.ts";
@@ -83,13 +83,21 @@ const NO_VCS = { kind: "failed", reason: "fake" } as const;
 
 function fakeVcs(): VcsBackend & {
   readonly trees: TreeId[];
-  readonly restored: { tree: TreeId; paths: readonly string[] }[];
+  readonly restores: {
+    readonly from: TreeId;
+    readonly expect: TreeId;
+    readonly paths: readonly FileDiff[];
+  }[];
 } {
   const trees: TreeId[] = [];
-  const restored: { tree: TreeId; paths: readonly string[] }[] = [];
+  const restores: {
+    readonly from: TreeId;
+    readonly expect: TreeId;
+    readonly paths: readonly FileDiff[];
+  }[] = [];
   return {
     trees,
-    restored,
+    restores,
     snapshot: async () => ({ kind: "none" }),
     diff: async () => [],
     contents: async ({ path }) => ({ path, old: null, new: null, binary: false, truncated: false }),
@@ -107,10 +115,20 @@ function fakeVcs(): VcsBackend & {
     },
     diffTrees: async ({ from, to }) => [
       { path: `${from.slice(-1)}-${to.slice(-1)}.txt`, kind: "added", added: 1, removed: 0, patch },
+      {
+        path: `renamed-${to.slice(-1)}.txt`,
+        from: `renamed-${from.slice(-1)}.txt`,
+        kind: "renamed",
+        added: 0,
+        removed: 0,
+        patch: "",
+      },
     ],
     async restoreTree(input) {
-      restored.push({ tree: input.tree, paths: input.paths });
-      return { kind: "restored", files: [...input.paths] };
+      restores.push({ from: input.from, expect: input.expect, paths: input.paths });
+      const paths = input.paths.map((file) => file.path);
+      if (input.expect !== trees.at(-1)) return { kind: "conflict", paths };
+      return { kind: "restored", files: paths };
     },
   };
 }
@@ -168,10 +186,13 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
     if (liveDiff.kind !== "tree") return;
     assert.equal(liveDiff.from, vcs.trees[0]);
     assert.equal(liveDiff.to, vcs.trees[1]);
-    assert.deepEqual(await nyte.runs.revert({ sessionId, runId: run.runId }), {
-      kind: "busy",
-      run,
+    const blocked = await nyte.runs.revert({
+      sessionId,
+      runId: run.runId,
+      expect: liveDiff.to,
     });
+    assert.equal(blocked.kind, "busy");
+    if (blocked.kind === "busy") assert.equal(blocked.run.runId, run.runId);
 
     gate.resolve();
     assert.deepEqual(await nyte.runs.wait({ sessionId }), { kind: "idle" });
@@ -186,17 +207,36 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
     assert.equal(answer?.tree, undefined);
 
     const diff = await nyte.runs.diff({ sessionId, runId: run.runId });
+    assert.equal(diff.kind, "tree");
+    if (diff.kind !== "tree") return;
     assert.deepEqual(diff, {
       kind: "tree",
       from: vcs.trees[0],
       to: vcs.trees[2],
-      files: [{ path: "1-3.txt", kind: "added", added: 1, removed: 0, patch }],
+      files: [
+        { path: "1-3.txt", kind: "added", added: 1, removed: 0, patch },
+        {
+          path: "renamed-3.txt",
+          from: "renamed-1.txt",
+          kind: "renamed",
+          added: 0,
+          removed: 0,
+          patch: "",
+        },
+      ],
     });
-    assert.deepEqual(await nyte.runs.revert({ sessionId, runId: run.runId }), {
+    assert.deepEqual(
+      await nyte.runs.revert({ sessionId, runId: run.runId, expect: vcs.trees[1] }),
+      { kind: "conflict", paths: ["1-3.txt", "renamed-3.txt"] },
+    );
+    assert.deepEqual(await nyte.runs.revert({ sessionId, runId: run.runId, expect: diff.to }), {
       kind: "reverted",
-      files: ["1-3.txt"],
+      files: ["1-3.txt", "renamed-3.txt"],
     });
-    assert.deepEqual(vcs.restored, [{ tree: vcs.trees[0], paths: ["1-3.txt"] }]);
+    assert.deepEqual(vcs.restores, [
+      { from: vcs.trees[0], expect: vcs.trees[1], paths: diff.files },
+      { from: vcs.trees[0], expect: vcs.trees[2], paths: diff.files },
+    ]);
     assert.deepEqual(await nyte.runs.diff({ sessionId, runId: "nope" }), { kind: "not_found" });
   } finally {
     gate.resolve();
@@ -224,7 +264,9 @@ test("without a backend runs.diff answers recorded from file_patch facts and rev
       kind: "recorded",
       files: [],
     });
-    assert.deepEqual(await nyte.runs.revert({ sessionId, runId }), { kind: "no_tree" });
+    assert.deepEqual(await nyte.runs.revert({ sessionId, runId, expect: treeId("0".repeat(40)) }), {
+      kind: "no_tree",
+    });
   } finally {
     await nyte.close();
   }

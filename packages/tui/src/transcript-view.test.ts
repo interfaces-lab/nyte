@@ -142,6 +142,8 @@ function state(
       ? {
           runId: "live-run",
           head: MAIN,
+          origin: { kind: "user" },
+          root: "live-run",
           phase: { kind: "respond" },
           startedAt: items.at(-1)?.startedAt ?? 0,
           attempts: 1,

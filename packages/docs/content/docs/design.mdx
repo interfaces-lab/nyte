@@ -52,18 +52,19 @@ these, the change is wrong, whatever else it improves.
 Each mechanism on this page answers one fact I cannot change. That is what keeps the mechanism
 count down. One per fact, and a new mechanism needs a new fact behind it.
 
-| Fact                                                   | Mechanism                                                                    | Section                                 |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------- |
-| The process can die at any moment, or never existed    | Every uncertain tool call moves an effect ref from intent to result          | [Runs](#runs)                           |
-| Any process may be the one that continues a run        | A runner keeps nothing in memory across a step                               | [Many runners](#many-runners-one-store) |
-| Writers race constantly                                | Multi-ref CAS, internal submission retry, and fenced runner publishes        | [Admission](#admission-is-open)         |
-| Providers cache the context prefix                     | Boundary lanes land at response boundaries; idle lanes wait for an idle head | [Admission](#admission-is-open)         |
-| The outside world will not join a database transaction | Per-effect replay policy instead of impossible exactly-once execution        | [Runs](#runs)                           |
-| A commit id is unknown while its message is streaming  | Deltas key on run, attempt, and content index                                | [Events and views](#events-and-views)   |
-| Clients may return after retained events have expired  | The event floor rejects the cursor and the client takes a snapshot           | [Events and views](#events-and-views)   |
-| A network client can fail between Enter and a receipt  | A local outbox retries one idempotency key                                   | [Admission](#admission-is-open)         |
-| Users change their minds                               | History is a tree and a head is a movable ref                                | [Heads](#heads-are-named-refs)          |
-| A participant may never answer a parked call           | An optional deadline lives on the waiting effect and wakes through the step  | [Runs](#runs)                           |
+| Fact                                                   | Mechanism                                                                       | Section                                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------- | --------------------------------------- |
+| The process can die at any moment, or never existed    | Every uncertain tool call moves an effect ref from intent to result             | [Runs](#runs)                           |
+| Any process may be the one that continues a run        | A runner keeps nothing in memory across a step                                  | [Many runners](#many-runners-one-store) |
+| Writers race constantly                                | Multi-ref CAS, internal submission retry, and fenced runner publishes           | [Admission](#admission-is-open)         |
+| Providers cache the context prefix                     | Boundary lanes land at response boundaries; idle lanes wait for an idle head    | [Admission](#admission-is-open)         |
+| The outside world will not join a database transaction | Per-effect replay policy instead of impossible exactly-once execution           | [Runs](#runs)                           |
+| A commit id is unknown while its message is streaming  | Deltas key on run, attempt, and content index                                   | [Events and views](#events-and-views)   |
+| Clients may return after retained events have expired  | The event floor rejects the cursor and the client takes a snapshot              | [Events and views](#events-and-views)   |
+| A network client can fail between Enter and a receipt  | A local outbox retries one idempotency key                                      | [Admission](#admission-is-open)         |
+| Users change their minds                               | History is a tree and a head is a movable ref                                   | [Heads](#heads-are-named-refs)          |
+| A participant may never answer a parked call           | An optional deadline lives on the waiting effect and wakes through the step     | [Runs](#runs)                           |
+| A child may answer after its parent stopped            | Per-request continuation authorization, consumed by landing and revoked by Stop | [Agents](#agents)                       |
 
 ### Roles
 
@@ -195,9 +196,11 @@ refs/stacks/<head>             Stack { parent, base }
 refs/queues/<head>/<lane>/tip  newest submitted Change in the lane
 refs/queues/<head>/<lane>/base last landed Change; pending is (base, tip]
 refs/runs/<head>               current Run object and phase
+refs/chains/<root>             Blob { attempts } shared by every run in one delegated chain
 refs/compactions/<head>        checkpoint work in flight under the head lease
 refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
 refs/jobs/<job>                Blob recording one background job
+refs/delegations/<child>/<change> Blob recording one child request, continuation authorization, and delivery
 refs/keys/<key>                idempotency receipt naming the Change
 refs/facts/<key>               Blob holding a small session value
 refs/cancelled/<change>        Blob tombstone for a withdrawn Change
@@ -355,8 +358,10 @@ A run is one head being advanced. `refs/runs/<head>` points to the current immut
 Each phase change writes a new run object and moves that ref. The run id stays stable across all
 of them.
 
-A run records `id`, `head`, `phase`, `startedAt`, `attempts`, and the branch configuration folded
-when the run began. The SDK runner resolves its model and thinking defaults into that configuration
+A run records `id`, `head`, `origin`, `root`, `phase`, `startedAt`, `attempts`, and the branch
+configuration folded when the run began. A user run has `origin: { kind: "user" }` and is its own
+root. A delegate continuation names the child session and request in `origin` and inherits the
+requesting run's root. The SDK runner resolves its model and thinking defaults into that configuration
 before publishing the run. Before responding, it also resolves legacy runs and records any fallback
 required when a successor host cannot supply the recorded model. Observers read these inputs from
 the run; their own host defaults say nothing about another host's execution. An idle head's snapshot
@@ -385,15 +390,15 @@ The step first settles any checkpoint work left in `refs/compactions/<head>`, th
 run, and deletion refs. A session being deleted makes every step `idle`. Otherwise the step follows
 this table:
 
-| Run phase        | Pending change        | Step does                                                                                                   | Publish CAS                                    |
-| ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| none or terminal | none                  | return `idle`                                                                                               | none                                           |
-| none or terminal | some                  | land from the first policy lane; start in `respond` with a message, otherwise `done`                        | head, queue base, run                          |
-| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                                           | head, lane base                                |
-| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                                           | assistant commit at head, next run phase       |
-| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                                          | result commits, effect cleanup, next run phase |
-| `waiting`        | any                   | wake on a signal, expiry, completed result batch, deadline, or abort; otherwise return `waiting { until? }` | the same publish as `tools` when it wakes      |
-| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                                                    | none until responding                          |
+| Run phase        | Pending change        | Step does                                                                                                                                                                            | Publish CAS                                    |
+| ---------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| none or terminal | none                  | return `idle`                                                                                                                                                                        | none                                           |
+| none or terminal | some                  | land from the first policy lane; start a user run from user input, or consume one delegate authorization and start its continuation; otherwise land configuration without model work | head, queue base, run, chain or authorization  |
+| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                                                                                                                    | head, lane base                                |
+| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                                                                                                                    | assistant commit at head, next run phase       |
+| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                                                                                                                   | result commits, effect cleanup, next run phase |
+| `waiting`        | any                   | wake on a signal, expiry, completed result batch, deadline, or abort; otherwise return `waiting { until? }`                                                                          | the same publish as `tools` when it wakes      |
+| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                                                                                                                             | none until responding                          |
 
 Three small rules sit inside the `respond` row. First, an abort request already on the run stores
 `aborted` without calling the model. Second, if the projected context ends in something other than
@@ -407,10 +412,14 @@ an abort request written through the run ref, another run ref change, or session
 the CAS fail. The runner re-reads and ends or continues according to current refs. It **must not**
 force stale output.
 
-A step ceiling is checked before `turn.respond`. The ceiling may be a fixed number or a function of
-the run, which is how an agent declares its own limit. Reaching it stores a failed run. Pending
-input is never consumed by failure, abort, or supersession. A later step starts a new run and
-lands it.
+A step ceiling is checked before `turn.respond`. Every run has `origin` and
+`root`: a user run is its own root, while a continuation inherits the requesting
+run's root. `refs/chains/<root>` points to `Blob { attempts }`. Before each
+provider call, the step reserves one attempt by moving that ref in its own CAS.
+A reservation conflict ends the losing run at the ceiling instead of retrying.
+A new user message starts a new root and counter. Reaching the ceiling stores a
+runner failure. Pending input is never consumed by failure, abort, or
+supersession.
 
 ### The effect sandwich
 
@@ -455,9 +464,13 @@ that for an HTTP call is lying.
 ### Wait and wake
 
 A waiting run needs no live process and no held lease. Its run ref and effect refs contain
-everything needed to resume. `runs.reply` targets a call id and its exact `waitId`, optionally checks
-a run id, and uses the effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and
-`not_found`.
+everything needed to resume. A ref event or deadline wakes a runner to read that state; waking is
+not permission to start a new run. User input grants that permission. A delegate answer also grants
+it when the request record still carries authorization from an un-stopped run, and landing consumes
+that authorization once. Stop revokes outstanding request authorizations.
+
+`runs.reply` targets a call id and its exact `waitId`, optionally checks a run id, and uses the
+effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and `not_found`.
 
 On the next acquired step, a `waiting` run calls tools again if any effect has a signal or expiry,
 all effects already hold results, its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
@@ -505,7 +518,8 @@ the same way tool results do, never from a bigger shape in core.
 
 A retryable provider failure produces a complete assistant error message and a `retry` outcome.
 The step commits that assistant message with its `failure`, increments `attempts`, and writes the run
-phase as `retry { at, failure }`. Before `at`, a step returns the durable deadline. At or after `at`,
+phase as `retry { at, retries, failure }`. `retries` counts consecutive retryable failures and resets
+after a successful response. Before `at`, a step returns the durable deadline. At or after `at`,
 it calls `respond` again. `drive` waits in process. A step-at-a-time host schedules another entry.
 
 Whether a failure is retryable, and any provider-requested minimum delay, are functions of the
@@ -607,11 +621,14 @@ Cancellation is one-way for a run. The runner cancels the call in flight, preser
 settles admitted tool work, and ends the run as `aborted`. A queued user message starts a new run
 in the same conversation; it never clears the stopped run's flag.
 
-Only explicit user input starts model work. Background completions can join an active run at
-its next response boundary, but cannot start a run when the head is idle, completed, failed, or
-stopped. They remain queued across reopen and join the next user input's context before its
-answer. Configuration can still land without starting model work.
-A head with no active run and only deferred completions is `idle` to `runs.wait`.
+User input starts model work. So does a delegate's answer to a request an un-stopped run
+authorized. The idle landing CAS consumes that request's authorization once, beside the head,
+queue base, and new run refs. A model send creates its authorization in a CAS that asserts the
+exact parent run ref with `to === from`; if Stop moves that ref first, no child change publishes.
+Stop and requester failure rewrite outstanding authorizations to `input`. Command completions,
+participant child requests, and delegate answers whose authorization
+was revoked or consumed remain queued until user input. Configuration can still land without
+starting model work. A head with only deferred, unauthorized completions is `idle` to `runs.wait`.
 Compaction can continue an already-authorized run, but cannot revive a cancelled one.
 
 Each store transaction is atomic. If submit throws because the disk is full or the connection is
@@ -856,11 +873,19 @@ A panel draws a child from its `SessionInfo`: `parent`, `name`, and its `main` h
 The parent's tools are `task` (create, send, and await in one call), `create`, `send`, `await`,
 `read`, and `stop`. `send` enqueues a user message on the child's `main` head as the parent, in
 the idle lane when the child is idle and the boundary lane when it is live, so the child's landing
-rules decide when it is heard; each send is recorded as a request in the parent session. When the
-child run that landed a request ends, one `completion` lands on the parent head carrying
-`JobReport.delegate`: the child, its title, the `request` commit, how the run ended, and the
-child's last assistant commit as its report. One request, one completion; a second `send` earns
-a second. Durable child completion **must** travel through stored state, never through a
+rules decide when it is heard. Before publishing the child change, the parent writes a request
+record with the owning run, call, head, delivery state, and continuation state. The same CAS
+asserts that the parent run ref still points to the exact run object `send` read. If Stop wins
+that race, `send` abandons the prepared request and the child receives nothing. Model `send` and
+`task` authorize one continuation under the parent run's root; a participant message to the child
+records `input` instead. When the child run that landed a request ends, one `completion` lands on
+the parent head carrying `JobReport.delegate`: the child, its title, the `request` identity
+(`commit` when landed, `change` when stopped first), how the run ended, and the child's last
+assistant commit as its report. The request record captures the terminal child run object's oid,
+so delivery reads the end without depending on the trimmable event stream. Garbage collection
+keeps that run object while the record remains reachable. Delivery submits first under its stable
+key and then marks the record delivered, so recovery closes a crash between those writes without
+duplicating the completion. One request, one completion; a second `send` earns a second. Durable child completion **must** travel through stored state, never through a
 process-local registry the model queries. The SDK installs the delegation tools only in root
 sessions, so delegation depth is 1. A client presents a parked wait as background work rather
 than as a request for user input.
@@ -871,8 +896,9 @@ the report also arrives as its completion. `read` returns the child's phase and 
 without parking. `stop` cancels the child and its running work through the same durable
 cancellation clients use, and the child answers no further messages. Only children the calling
 session created can be addressed; unknown ids return a tool error. Stopping a child does not abort
-the parent run, and aborting the parent run cancels only its parked waits: the children keep
-working and their reports wait for the next user message.
+the parent run. Aborting the parent cancels its parked waits and revokes every outstanding
+continuation authorization that run owns. The children keep working, but later reports from those
+requests wait for user input. A parent run that fails revokes its authorizations too.
 
 ## The SDK
 
@@ -947,10 +973,12 @@ A `failed` outcome is not one shape. `CompactOutcome` and `MoveOutcome` both car
 their message, so a client distinguishes an internal failure from `inactive`, `busy`, `conflict`,
 `fenced`, or a stopped summary without matching on prose. The message is for a human.
 
-`RunInfo` is not a terminal-state union. It carries `runId`, `head`, the kernel `RunPhase`,
-`startedAt`, `attempts`, the `config` the run folded when it began, optional `abortRequested`,
-optional `awaitingReply` while a `waiting` run is parked on a participant rather than on background
-work, and the current lease owner and expiry when a lease exists.
+`RunInfo` is not a terminal-state union. It carries `runId`, `head`, `origin`, `root`, the kernel
+`RunPhase`, `startedAt`, `attempts`, the `config` the run folded when it began, optional
+`abortRequested`, optional `awaitingReply` while a `waiting` run is parked on a participant rather
+than on background work, and the current lease owner and expiry when a lease exists. A user run's
+origin is `{ kind: "user" }` and its root equals its run id. A continuation origin names the child
+session and delegate request, while `root` remains the requesting chain's root.
 
 ### Events
 

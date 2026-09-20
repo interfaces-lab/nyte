@@ -70,6 +70,8 @@ function run(startedAt: number): RunInfo {
   return {
     runId: "run-1",
     head: MAIN,
+    origin: { kind: "user" },
+    root: "run-1",
     phase: { kind: "respond" },
     startedAt,
     attempts: 1,

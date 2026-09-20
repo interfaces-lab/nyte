@@ -556,6 +556,7 @@ function createWatchIterator(dependencies: WatchIteratorDependencies): AsyncIter
 
 export {
   foldEvent,
+  snapshotOf,
   stateFromSnapshot,
   stateWithMetadata,
   tipMismatch,

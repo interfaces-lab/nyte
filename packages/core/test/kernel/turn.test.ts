@@ -108,6 +108,7 @@ interface Bench {
     readonly signal?: AbortSignal;
     readonly abort?: true;
     readonly attempts?: number;
+    readonly phase?: Run["phase"];
     readonly now?: number;
   }): TurnInput;
 }
@@ -120,6 +121,8 @@ async function bench(): Promise<Bench> {
     kind: "run",
     id: "run_1",
     head: "main",
+    origin: { kind: "user" },
+    root: "run_1",
     phase: { kind: "respond" },
     startedAt: 1,
     attempts: 0,
@@ -135,11 +138,13 @@ async function bench(): Promise<Bench> {
       const activeRun: Run = options.abort
         ? {
             ...run,
+            phase: options.phase ?? run.phase,
             attempts: options.attempts ?? 0,
             abortRequested: true,
           }
         : {
             ...run,
+            phase: options.phase ?? run.phase,
             attempts: options.attempts ?? 0,
           };
       return {
@@ -221,7 +226,17 @@ test("a response with tool calls asks for the tool phase; a failed provider retr
   const first = await turn.respond(b.input({ attempts: 0 }));
   assert.equal(first.kind, "retry");
   if (first.kind === "retry") assert.ok(first.at > Date.now() - 1);
-  const second = await turn.respond(b.input({ attempts: 1 }));
+  const second = await turn.respond(
+    b.input({
+      attempts: 1,
+      phase: {
+        kind: "retry",
+        at: 0,
+        retries: 1,
+        failure: { class: "rate_limit", message: "rate limited" },
+      },
+    }),
+  );
   assert.equal(second.kind, "failed");
   if (second.kind === "failed") assert.match(second.failure.message, /rate limited/u);
 
@@ -229,6 +244,27 @@ test("a response with tool calls asks for the tool phase; a failed provider retr
     b.input(),
   );
   assert.equal(aborted.kind, "aborted");
+});
+
+test("successful tool turns reset provider retry backoff to attempt one", async () => {
+  const b = await bench();
+  const turn = turnWith(
+    scripted([
+      assistant("", {
+        stop: "error",
+        error: "Server requested 30s retry delay (max: 15s). 429 Too Many Requests",
+      }),
+    ]).streamFn,
+    [],
+    { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1_000 } },
+  );
+  const before = Date.now();
+  const outcome = await turn.respond(b.input({ attempts: 3 }));
+  assert.equal(outcome.kind, "retry");
+  if (outcome.kind !== "retry") return;
+  assert.equal(outcome.retries, 1);
+  assert.ok(outcome.at >= before + 1_000);
+  assert.ok(outcome.at <= Date.now() + 1_000);
 });
 
 test("a tool runs once inside its effect, reports progress, and settles with its result", async () => {
@@ -259,6 +295,46 @@ test("a tool runs once inside its effect, reports progress, and settles with its
   const again = await turn.tools({ ...b.input(), assistant: askTool() });
   assert.equal(again.kind, "complete");
   assert.equal(executions, 1, "a settled effect is reused, never re-run");
+});
+
+test("settled presentation uses arguments replaced by before-tool", async () => {
+  const b = await bench();
+  const pathParameters = Type.Object({ path: Type.String() });
+  const pathTool = bindTool({
+    name: "path",
+    description: "reads a path",
+    parameters: pathParameters,
+    present: ({ path }) => ({ kind: "file_read", path }),
+    execute: async (_id, { path }) => ({
+      content: [{ type: "text", text: path }],
+      details: {},
+    }),
+  });
+  const requested = assistant("", {
+    calls: [call("path-call", "path", { path: "model.txt" })],
+  });
+  const outcome = await turnWith(scripted([]).streamFn, [pathTool], {
+    loop: { beforeToolCall: async () => ({ args: { path: "approved.txt" } }) },
+  }).tools({ ...b.input(), assistant: requested });
+  assert.equal(outcome.kind, "complete");
+  if (outcome.kind !== "complete") return;
+  assert.deepEqual(outcome.calls["path-call"], { kind: "file_read", path: "approved.txt" });
+});
+
+test("settled calls without a presenter are classified as custom", async () => {
+  const b = await bench();
+  const requested = assistant("", {
+    calls: [call("known", "test", { value: "x" }), call("missing", "missing", {})],
+  });
+  const outcome = await turnWith(scripted([]).streamFn, [
+    tool(async () => ({ content: [{ type: "text", text: "done" }], details: {} })),
+  ]).tools({ ...b.input(), assistant: requested });
+  assert.equal(outcome.kind, "complete");
+  if (outcome.kind !== "complete") return;
+  assert.deepEqual(outcome.calls, {
+    known: { kind: "custom", label: "test" },
+    missing: { kind: "custom", label: "missing" },
+  });
 });
 
 test("after-tool patches survive a waiting sibling and recovery without running the hook again", async () => {
@@ -586,7 +662,7 @@ test("builtin factories execute approved arguments after durable intent and jobs
   const diagnostics: unknown[] = [];
   const jobs = createJobs({
     session: b.session,
-    notify: async () => {},
+    notify: async () => "unused",
     diagnostic: async (cause) => {
       diagnostics.push(cause);
     },

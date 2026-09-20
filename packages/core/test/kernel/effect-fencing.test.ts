@@ -69,7 +69,12 @@ async function fixture(ids = ["call"]) {
       },
     });
   const bootstrap = makeTurn({ execute: async () => result });
-  await submit(session, { head: "main", lane: "now", body: message(user("go")) });
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    lane: "now",
+    body: message(user("go")),
+  });
   const advance = (turn: ReturnType<typeof makeTurn>, owner = held) =>
     step(session, turn, { head: "main", landing, lease: owner });
   assert.equal((await advance(bootstrap)).kind, "continue");

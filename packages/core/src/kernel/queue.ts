@@ -170,6 +170,14 @@ function comparePending(left: PendingChange, right: PendingChange): number {
   return left.oid < right.oid ? -1 : left.oid > right.oid ? 1 : 0;
 }
 
+export type SubmissionPreparation =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "prepared";
+      readonly publish: (change: Oid) => Promise<void>;
+      readonly abandon: (change: Oid) => Promise<void>;
+    };
+
 export async function submit(
   session: Session,
   options: {
@@ -178,6 +186,8 @@ export async function submit(
     /** The lane the change waits in. The runner's landing policy says when that lane lands. */
     readonly lane: string;
     readonly key?: string;
+    /** Cross-session metadata published before the change and abandoned unless the change publishes. */
+    readonly preparation: SubmissionPreparation;
     readonly actor?: Actor;
   },
 ): Promise<SubmitOutcome> {
@@ -204,28 +214,39 @@ export async function submit(
     const change: Change =
       options.actor === undefined ? keyed : { ...keyed, author: options.actor };
     const oid = onlyOid(await session.objects.put([change]));
-    const updates: RefUpdate[] = [{ name: tipName, from: tip, to: oid }];
-    if (receiptName !== undefined) {
-      updates.push({ name: receiptName, from: null, to: oid });
-    }
-
-    const updateOptions =
-      options.actor === undefined
-        ? { reason: "submit" }
-        : { reason: "submit", actor: options.actor };
-    const outcome = await session.refs.update(updates, updateOptions);
-    if (outcome.ok) return { kind: "queued", change: oid };
-    if (outcome.reason === "fenced") {
-      throw new Error("Unexpected fenced queue submission");
-    }
-    if (outcome.name === tipName) continue;
-    if (receiptName !== undefined && outcome.name === receiptName) {
-      if (outcome.actual === null) {
-        throw new Error(`Key ref ${receiptName} conflicted without an existing oid`);
+    let published = false;
+    try {
+      if (options.preparation.kind === "prepared") await options.preparation.publish(oid);
+      const updates: RefUpdate[] = [{ name: tipName, from: tip, to: oid }];
+      if (receiptName !== undefined) {
+        updates.push({ name: receiptName, from: null, to: oid });
       }
-      return { kind: "duplicate", change: outcome.actual };
+
+      const updateOptions =
+        options.actor === undefined
+          ? { reason: "submit" }
+          : { reason: "submit", actor: options.actor };
+      const outcome = await session.refs.update(updates, updateOptions);
+      if (outcome.ok) {
+        published = true;
+        return { kind: "queued", change: oid };
+      }
+      if (outcome.reason === "fenced") {
+        throw new Error("Unexpected fenced queue submission");
+      }
+      if (outcome.name === tipName) continue;
+      if (receiptName !== undefined && outcome.name === receiptName) {
+        if (outcome.actual === null) {
+          throw new Error(`Key ref ${receiptName} conflicted without an existing oid`);
+        }
+        return { kind: "duplicate", change: outcome.actual };
+      }
+      throw new Error(`Unexpected queue submission conflict on ${outcome.name}`);
+    } finally {
+      if (!published && options.preparation.kind === "prepared") {
+        await options.preparation.abandon(oid);
+      }
     }
-    throw new Error(`Unexpected queue submission conflict on ${outcome.name}`);
   }
 
   throw new Error(`Queue submission did not settle after ${String(MAX_SUBMIT_ATTEMPTS)} attempts`);

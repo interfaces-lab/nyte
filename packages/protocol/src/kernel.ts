@@ -69,11 +69,17 @@ export type ToolClass =
   | { readonly kind: "file_read"; readonly path: string }
   | { readonly kind: "list"; readonly path: string }
   | { readonly kind: "shell"; readonly command: string }
-  /** A call on a child session. `create` names the child the call owns; `await` names its first agent. */
+  /** A call on one child session, or an await over several children. */
   | {
       readonly kind: "delegate";
       readonly role: "create" | "send" | "await" | "read" | "stop";
-      readonly session: SessionId;
+      readonly target:
+        | { readonly kind: "one"; readonly session: SessionId }
+        | {
+            readonly kind: "many";
+            readonly sessions: readonly [SessionId, ...SessionId[]];
+            readonly mode: "any" | "all";
+          };
     }
   | { readonly kind: "custom"; readonly label: string };
 
@@ -146,11 +152,28 @@ export interface BranchConfig {
   readonly agent?: string;
 }
 
+export type DelegateRequest =
+  | { readonly kind: "commit"; readonly oid: Oid }
+  | { readonly kind: "change"; readonly oid: Oid };
+
+export type RunOrigin =
+  | { readonly kind: "user" }
+  | {
+      readonly kind: "continuation";
+      readonly session: SessionId;
+      readonly request: DelegateRequest;
+    };
+
 export type RunPhase =
   | { readonly kind: "respond" }
   | { readonly kind: "tools" }
   | { readonly kind: "waiting" }
-  | { readonly kind: "retry"; readonly at: number; readonly failure: Failure }
+  | {
+      readonly kind: "retry";
+      readonly at: number;
+      readonly retries: number;
+      readonly failure: Failure;
+    }
   | { readonly kind: "done" }
   | { readonly kind: "aborted" }
   | { readonly kind: "failed"; readonly failure: Failure };

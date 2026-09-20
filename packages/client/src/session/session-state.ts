@@ -91,6 +91,22 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
   };
 }
 
+export function snapshotOf(state: SessionState): SessionSnapshot {
+  return {
+    session: state.info,
+    head: state.head,
+    config: state.config,
+    context: state.context,
+    seq: state.seq,
+    tip: state.transcript.tip,
+    transcript: state.transcript.items,
+    pending: state.pending,
+    ...(state.run === undefined ? {} : { run: state.run }),
+    ...(state.compaction === undefined ? {} : { compaction: state.compaction }),
+    parked: state.parked,
+  };
+}
+
 /** The call a composer answers: the newest ask. Background waits never take the composer over. */
 export function waitingCall(
   state: Pick<SessionState, "sessionId" | "parked">,

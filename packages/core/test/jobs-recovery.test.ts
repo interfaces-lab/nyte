@@ -26,6 +26,8 @@ async function fixture() {
     kind: "run",
     id: "run",
     head: "main",
+    origin: { kind: "user" },
+    root: "run",
     phase: { kind: "tools" },
     startedAt: Date.now(),
     attempts: 0,
@@ -38,12 +40,14 @@ async function fixture() {
   const managers: ReturnType<typeof createJobs>[] = [];
   const notify = async (job: JobReport, head: string) => {
     const outcome = await submit(session, {
+      preparation: { kind: "none" },
       head,
       lane: "background",
-      key: `background-${job.kind === "command" ? job.id : job.request}`,
+      key: `background-${job.kind === "command" ? job.id : job.request.oid}`,
       body: { kind: "completion", job },
     });
     if (outcome.kind === "queued") notifications.push(job);
+    return outcome.change;
   };
   const manager = (
     connection = session,
@@ -73,7 +77,7 @@ async function fixture() {
     };
     const oid = only(
       await session.objects.put([
-        { kind: "blob", value: toJsonValue({ info, completion: "owed" }) },
+        { kind: "blob", value: toJsonValue({ info, completion: { kind: "owed" } }) },
       ]),
     );
     await session.refs.update([{ name: JOB_PREFIX + info.id, from: null, to: oid }], {
@@ -296,30 +300,72 @@ test("close waits for admission already in flight and never starts its side effe
   }
 });
 
-test("recovery retries failed delivery idempotently", async () => {
+test("recovery retries a claimed completion without publishing it twice", async () => {
   const f = await fixture();
   const admitted = f.manager();
+  let attempts = 0;
   let fail = true;
   const jobs = f.manager(f.peer, {
     notify: async (job, head) => {
-      await f.notify(job, head);
+      attempts += 1;
+      const change = await f.notify(job, head);
       if (fail) throw new Error("receipt write lost");
+      return change;
     },
     diagnostic: async () => {
       throw new Error("diagnostic store also unavailable");
     },
   });
   try {
-    const info = await f.seed({ kind: "cancelled" });
+    await f.seed({ kind: "cancelled" });
     await jobs.recover();
-    expect((await f.stored(info.id)).completion).toBe("owed");
+    expect(await pending(f.session, "main")).toHaveLength(1);
     expect(f.notifications).toHaveLength(1);
     fail = false;
     await Promise.all([jobs.recover(), admitted.recover()]);
-    expect((await f.stored(info.id)).completion).toBe("delivered");
+    expect(attempts).toBe(2);
     expect(await pending(f.session, "main")).toHaveLength(1);
     expect(f.notifications).toHaveLength(1);
   } finally {
+    await f.close();
+  }
+});
+
+test("quiet interruption suppresses a terminal completion before delivery claims it", async () => {
+  const f = await fixture();
+  const jobs = f.manager(f.peer);
+  try {
+    await f.seed({ kind: "completed" });
+    await jobs.interruptOwned({ runId: f.run.id, kind: "cancelled" });
+    expect(f.notifications).toEqual([]);
+    expect(await pending(f.session, "main")).toEqual([]);
+  } finally {
+    await f.close();
+  }
+});
+
+test("quiet interruption lets an already claimed completion finish once", async () => {
+  const f = await fixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const jobs = f.manager(f.peer, {
+    notify: async (job, head) => {
+      entered.resolve();
+      await release.promise;
+      return f.notify(job, head);
+    },
+  });
+  try {
+    await f.seed({ kind: "completed" });
+    const recovering = jobs.recover();
+    await within(entered.promise);
+    const interrupting = jobs.interruptOwned({ runId: f.run.id, kind: "cancelled" });
+    release.resolve();
+    await Promise.all([recovering, interrupting]);
+    expect(f.notifications).toHaveLength(1);
+    expect(await pending(f.session, "main")).toHaveLength(1);
+  } finally {
+    release.resolve();
     await f.close();
   }
 });
@@ -437,7 +483,13 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
     const wake = remote.wrap(work.tool).wake;
     assert.ok(wake);
     const waking = wake(
-      { runId: f.run.id, toolCallId: "call", resultEntryId: "result", args: { command: "work" } },
+      {
+        runId: f.run.id,
+        head: f.run.head,
+        toolCallId: "call",
+        resultEntryId: "result",
+        args: { command: "work" },
+      },
       { aborted: true, expired: false, signal: new AbortController().signal },
     );
     await within(entered.promise);
@@ -448,7 +500,7 @@ test("an abort wake racing promotion still cancels the promoted work", async () 
       result: { details: { jobId: job.id } },
     });
     expect(only(await owner.list())).toMatchObject({ phase: { kind: "cancelled" } });
-    expect((await f.stored(job.id)).completion).not.toBe("none");
+    expect((await f.stored(job.id)).completion.kind).not.toBe("none");
     expect(signal.aborted).toBe(true);
   } finally {
     resume.resolve();

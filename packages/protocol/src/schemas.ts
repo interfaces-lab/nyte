@@ -47,6 +47,7 @@ import type {
   Commit as CommitType,
   CommitBody as CommitBodyType,
   ModelRef as ModelRefType,
+  RunOrigin as RunOriginType,
   RunPhase as RunPhaseType,
   ToolClass as ToolClassType,
   ToolProgress as ToolProgressType,
@@ -455,6 +456,18 @@ export const JobInfo = typed<JobInfoType>()(
   }),
 );
 
+const DelegateRequest = Type.Union([
+  open({ kind: Type.Literal("commit"), oid: Oid }),
+  open({ kind: Type.Literal("change"), oid: Oid }),
+]);
+
+export const RunOrigin = typed<RunOriginType>()(
+  Type.Union([
+    open({ kind: Type.Literal("user") }),
+    open({ kind: Type.Literal("continuation"), session: SessionId, request: DelegateRequest }),
+  ]),
+);
+
 export const JobReport = typed<JobReportType>()(
   Type.Union([
     open({
@@ -468,7 +481,7 @@ export const JobReport = typed<JobReportType>()(
       kind: Type.Literal("delegate"),
       session: SessionId,
       title: Type.String(),
-      request: Oid,
+      request: DelegateRequest,
       end: JobEnd,
       report: Type.Union([
         open({ kind: Type.Literal("text"), text: Type.String(), commit: Oid }),
@@ -510,7 +523,7 @@ export const Failure = typed<FailureType>()(
   open({
     class: FailureClass,
     message: Type.String(),
-    retryAfterMs: Type.Optional(Type.Number()),
+    retryAfterMs: Type.Optional(Type.Number({ minimum: 0 })),
   }),
 );
 
@@ -522,8 +535,8 @@ export const ToolClass = typed<ToolClassType>()(
       kind: Type.Literal("file_patch"),
       op: Type.Union([Type.Literal("edit"), Type.Literal("write")]),
       path: Type.String(),
-      added: Type.Number(),
-      removed: Type.Number(),
+      added: Type.Integer({ minimum: 0 }),
+      removed: Type.Integer({ minimum: 0 }),
       patch: Type.String(),
     }),
     open({ kind: Type.Literal("file_read"), path: Type.String() }),
@@ -532,7 +545,16 @@ export const ToolClass = typed<ToolClassType>()(
     open({
       kind: Type.Literal("delegate"),
       role: literals(["create", "send", "await", "read", "stop"]),
-      session: SessionId,
+      target: Type.Union([
+        open({ kind: Type.Literal("one"), session: SessionId }),
+        open({
+          kind: Type.Literal("many"),
+          sessions: Unsafe<readonly [SessionIdType, ...SessionIdType[]]>(
+            Type.Array(SessionId, { minItems: 1 }),
+          ),
+          mode: literals(["any", "all"]),
+        }),
+      ]),
     }),
     open({ kind: Type.Literal("custom"), label: Type.String() }),
   ]),
@@ -560,7 +582,12 @@ export const RunPhase = typed<RunPhaseType>()(
     open({ kind: Type.Literal("respond") }),
     open({ kind: Type.Literal("tools") }),
     open({ kind: Type.Literal("waiting") }),
-    open({ kind: Type.Literal("retry"), at: Type.Number(), failure: Failure }),
+    open({
+      kind: Type.Literal("retry"),
+      at: Type.Number(),
+      retries: Type.Integer({ minimum: 1 }),
+      failure: Failure,
+    }),
     open({ kind: Type.Literal("done") }),
     open({ kind: Type.Literal("aborted") }),
     open({ kind: Type.Literal("failed"), failure: Failure }),
@@ -609,6 +636,8 @@ export const RunInfo = typed<RunInfoType>()(
   open({
     runId: Type.String(),
     head: HeadName,
+    origin: RunOrigin,
+    root: Type.String(),
     phase: RunPhase,
     startedAt: Type.Number(),
     attempts: Type.Number(),
@@ -767,17 +796,31 @@ export const ContextStatus = typed<ContextStatusType>()(
 );
 
 export const FileChange = typed<FileChangeType>()(
-  open({ path: Type.String(), added: Type.Number(), removed: Type.Number() }),
+  open({
+    path: Type.String(),
+    added: Type.Integer({ minimum: 0 }),
+    removed: Type.Integer({ minimum: 0 }),
+  }),
 );
 
 export const FileDiff = typed<FileDiffType>()(
-  open({
-    path: Type.String(),
-    kind: Type.Enum(["added", "modified", "deleted", "renamed"]),
-    added: Type.Number(),
-    removed: Type.Number(),
-    patch: Type.String(),
-  }),
+  Type.Union([
+    open({
+      path: Type.String(),
+      kind: literals(["added", "modified", "deleted"]),
+      added: Type.Integer({ minimum: 0 }),
+      removed: Type.Integer({ minimum: 0 }),
+      patch: Type.String(),
+    }),
+    open({
+      path: Type.String(),
+      from: Type.String(),
+      kind: Type.Literal("renamed"),
+      added: Type.Integer({ minimum: 0 }),
+      removed: Type.Integer({ minimum: 0 }),
+      patch: Type.String(),
+    }),
+  ]),
 );
 
 const sessionMetadata = {
@@ -865,6 +908,7 @@ export const RunRevert = typed<RunRevertType>()(
   Type.Union([
     open({ kind: Type.Literal("reverted"), files: list(Type.String()) }),
     open({ kind: Type.Literal("busy"), run: RunInfo }),
+    open({ kind: Type.Literal("conflict"), paths: list(Type.String()) }),
     open({ kind: Type.Literal("no_tree") }),
     open({ kind: Type.Literal("not_found") }),
     open({ kind: Type.Literal("failed"), reason: Type.String() }),
@@ -1081,8 +1125,8 @@ export const VcsDiff = typed<VcsDiffType>()(
   open({
     path: Type.String(),
     kind: VcsFileKind,
-    added: Type.Integer(),
-    removed: Type.Integer(),
+    added: Type.Integer({ minimum: 0 }),
+    removed: Type.Integer({ minimum: 0 }),
     patch: Type.String(),
   }),
 );
@@ -1127,6 +1171,7 @@ export const VcsCommitTarget = typed<VcsCommitTargetType>()(
 );
 
 const VcsFailed = open({ kind: Type.Literal("failed"), reason: Type.String() });
+const VcsStale = open({ kind: Type.Literal("stale") });
 
 export const VcsPathsOutcome = typed<VcsPathsOutcomeType>()(
   Type.Union([
@@ -1136,6 +1181,7 @@ export const VcsPathsOutcome = typed<VcsPathsOutcomeType>()(
       skipped: list(open({ path: Type.String(), reason: Type.String() })),
     }),
     VcsFailed,
+    VcsStale,
   ]),
 );
 
@@ -1148,6 +1194,7 @@ export const VcsCommitOutcome = typed<VcsCommitOutcomeType>()(
     open({ kind: Type.Literal("committed"), oid: Type.String(), summary: Type.String() }),
     open({ kind: Type.Literal("nothing_to_commit") }),
     VcsFailed,
+    VcsStale,
   ]),
 );
 
@@ -1157,6 +1204,7 @@ export const VcsBranchOutcome = typed<VcsBranchOutcomeType>()(
     open({ kind: Type.Literal("exists") }),
     open({ kind: Type.Literal("invalid_name"), reason: Type.String() }),
     VcsFailed,
+    VcsStale,
   ]),
 );
 
@@ -1167,6 +1215,7 @@ export const VcsPushOutcome = typed<VcsPushOutcomeType>()(
     open({ kind: Type.Literal("no_upstream"), branch: Type.String() }),
     open({ kind: Type.Literal("rejected"), reason: Type.String() }),
     VcsFailed,
+    VcsStale,
   ]),
 );
 

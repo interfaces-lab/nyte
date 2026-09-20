@@ -3,7 +3,7 @@ import { test } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { sessionId, type NyteOptions } from "../../src/kernel/sdk/types.ts";
-import { runRef } from "../../src/kernel/names.ts";
+import { chainRef, runRef } from "../../src/kernel/names.ts";
 import type { Run } from "../../src/kernel/model.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
@@ -80,16 +80,25 @@ test.each(["new", "legacy"])(
           kind: "run",
           id: "resumed",
           head: "main",
+          origin: { kind: "user" },
+          root: "resumed",
           phase: { kind: "respond" },
           startedAt: 0,
           attempts: 0,
           config: {},
         };
-        const [oid] = await session.objects.put([run]);
-        assert.ok(oid);
-        await session.refs.update([{ name: runRef("main"), from: null, to: oid }], {
-          reason: "test",
-        });
+        const [oid, counter] = await session.objects.put([
+          run,
+          { kind: "blob", value: { attempts: 0 } },
+        ]);
+        assert.ok(oid && counter);
+        await session.refs.update(
+          [
+            { name: runRef("main"), from: null, to: oid },
+            { name: chainRef(run.root), from: null, to: counter },
+          ],
+          { reason: "test" },
+        );
       } else {
         await reader.messages.send({ sessionId: id, content: "hello" });
       }
@@ -159,6 +168,8 @@ test("legacy assistant metadata reveals the model without inventing reasoning or
     kind: "run",
     id: "legacy-run",
     head: "main",
+    origin: { kind: "user" },
+    root: "legacy-run",
     phase: { kind: "done" },
     startedAt: 0,
     attempts: 1,

@@ -12,8 +12,10 @@ import type { JsonValue, ModelThinkingLevel, UserMessage } from "@nyte-ai/schema
 import type {
   Actor,
   Commit,
+  DelegateRequest,
   ModelRef,
   Oid,
+  RunOrigin,
   RunPhase,
   Seq,
   ToolProgress,
@@ -246,6 +248,8 @@ export interface PendingItem {
 export interface RunInfo {
   readonly runId: RunId;
   readonly head: HeadName;
+  readonly origin: RunOrigin;
+  readonly root: RunId;
   readonly phase: RunPhase;
   readonly startedAt: number;
   readonly attempts: number;
@@ -306,8 +310,8 @@ export type JobReport =
       readonly kind: "delegate";
       readonly session: SessionId;
       readonly title: string;
-      /** The child commit the parent's send landed as; one completion per request answered. */
-      readonly request: Oid;
+      /** The child commit the send landed as, or its change when it was stopped first. */
+      readonly request: DelegateRequest;
       readonly end: JobEnd;
       readonly report:
         | { readonly kind: "text"; readonly text: string; readonly commit: Oid }
@@ -361,6 +365,7 @@ export type RunDiff =
 export type RunRevert =
   | { readonly kind: "reverted"; readonly files: readonly string[] }
   | { readonly kind: "busy"; readonly run: RunInfo }
+  | { readonly kind: "conflict"; readonly paths: readonly string[] }
   /** The run has no tree pair to restore from. */
   | { readonly kind: "no_tree" }
   | { readonly kind: "not_found" }

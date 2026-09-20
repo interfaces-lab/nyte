@@ -238,8 +238,13 @@ function toolTitle(toolClass: ToolClass, settled: boolean): string {
       return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
     case "file_patch":
       return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
-    case "delegate":
-      return `${delegateVerb(toolClass.role, settled)} ${toolClass.session}`;
+    case "delegate": {
+      const target =
+        toolClass.target.kind === "one"
+          ? toolClass.target.session
+          : toolClass.target.sessions.join(", ");
+      return `${delegateVerb(toolClass.role, settled)} ${target}`;
+    }
     case "custom":
       return toolClass.label;
     default: {

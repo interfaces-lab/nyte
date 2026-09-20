@@ -124,6 +124,8 @@ for (const checkpoints of [0, 2]) {
           kind: "run",
           id: "side-run",
           head: "side",
+          origin: { kind: "user" },
+          root: "side-run",
           phase: { kind: "respond" },
           config: { ...config, thinkingLevel: "medium" },
           startedAt: 1_000,
@@ -135,11 +137,13 @@ for (const checkpoints of [0, 2]) {
           reason: "test",
         });
         await submit(f.session, {
+          preparation: { kind: "none" },
           head: "main",
           lane: "queue",
           body: { kind: "config", thinkingLevel: "xhigh" },
         });
         await submit(f.session, {
+          preparation: { kind: "none" },
           head,
           lane: "queue",
           body: message(user("still pending")),

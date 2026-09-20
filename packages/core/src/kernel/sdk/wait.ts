@@ -70,7 +70,9 @@ export async function waitForHead(
           if (run?.kind === "run" && !isTerminalPhase(run.phase)) return undefined;
           // The runner lands a lane only when the head admits its next batch. An
           // idle head keeps completed background work queued until user input.
-          if (landsNow(run?.kind === "run" ? run : undefined, queued, drain)) return undefined;
+          if (await landsNow(session, run?.kind === "run" ? run : undefined, queued, drain)) {
+            return undefined;
+          }
           settled = { kind: "idle" };
         }
         // Publication and lease release are separate writes. Neither idle nor

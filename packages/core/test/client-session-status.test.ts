@@ -3,7 +3,16 @@ import { sessionMark } from "@nyte-ai/client";
 import type { HeadInfo, RunPhase } from "@nyte-ai/protocol";
 
 function head(phase: RunPhase, awaitingReply?: true): HeadInfo {
-  const run = { runId: "run", head: "main", phase, startedAt: 0, attempts: 1, config: {} };
+  const run = {
+    runId: "run",
+    head: "main",
+    origin: { kind: "user" } as const,
+    root: "run",
+    phase,
+    startedAt: 0,
+    attempts: 1,
+    config: {},
+  };
   return {
     head: "main",
     tip: null,
@@ -18,7 +27,14 @@ test("clients derive execution state without treating background waits as a repl
   expect(sessionMark({ heads: [head({ kind: "waiting" })] })).toBe("working");
   expect(
     sessionMark({
-      heads: [head({ kind: "retry", at: 10, failure: { class: "provider", message: "retry" } })],
+      heads: [
+        head({
+          kind: "retry",
+          at: 10,
+          retries: 1,
+          failure: { class: "provider", message: "retry" },
+        }),
+      ],
     }),
   ).toBe("retry");
   expect(

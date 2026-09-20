@@ -103,10 +103,19 @@ export interface FileChange {
 export type FileDiffKind = "added" | "modified" | "deleted" | "renamed";
 
 /** One file of a run's diff. A binary file counts zero lines and carries the patch git prints. */
-export interface FileDiff {
-  readonly path: string;
-  readonly kind: FileDiffKind;
-  readonly added: number;
-  readonly removed: number;
-  readonly patch: string;
-}
+export type FileDiff =
+  | {
+      readonly path: string;
+      readonly kind: Exclude<FileDiffKind, "renamed">;
+      readonly added: number;
+      readonly removed: number;
+      readonly patch: string;
+    }
+  | {
+      readonly path: string;
+      readonly from: string;
+      readonly kind: "renamed";
+      readonly added: number;
+      readonly removed: number;
+      readonly patch: string;
+    };

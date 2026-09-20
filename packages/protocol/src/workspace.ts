@@ -139,25 +139,29 @@ export type VcsPathsOutcome =
       readonly paths: readonly string[];
       readonly skipped: readonly { readonly path: string; readonly reason: string }[];
     }
-  | { readonly kind: "failed"; readonly reason: string };
+  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "stale" };
 
 export type VcsCommitOutcome =
   | { readonly kind: "committed"; readonly oid: string; readonly summary: string }
   | { readonly kind: "nothing_to_commit" }
-  | { readonly kind: "failed"; readonly reason: string };
+  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "stale" };
 
 export type VcsBranchOutcome =
   | { readonly kind: "created" }
   | { readonly kind: "exists" }
   | { readonly kind: "invalid_name"; readonly reason: string }
-  | { readonly kind: "failed"; readonly reason: string };
+  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "stale" };
 
 export type VcsPushOutcome =
   | { readonly kind: "pushed"; readonly remote: string; readonly branch: string }
   | { readonly kind: "up_to_date" }
   | { readonly kind: "no_upstream"; readonly branch: string }
   | { readonly kind: "rejected"; readonly reason: string }
-  | { readonly kind: "failed"; readonly reason: string };
+  | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "stale" };
 
 /** A discard waits for the session's live run; the run would write over it. */
 export type VcsDiscardOutcome = VcsPathsOutcome | { readonly kind: "busy"; readonly run: RunInfo };

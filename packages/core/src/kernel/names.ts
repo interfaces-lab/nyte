@@ -7,6 +7,7 @@
  *   refs/queues/<head>/<lane>/tip  newest submitted change in that lane
  *   refs/queues/<head>/<lane>/base last landed change; pending is (base, tip]
  *   refs/runs/<head>               the branch's current run
+ *   refs/chains/<root>             aggregate response attempts for one delegated chain
  *   refs/compactions/<head>        active checkpoint work under the head lease
  *   refs/effects/<run>/<call>      one tool call's durable state
  *   refs/keys/<key>                idempotency receipt for a submission
@@ -31,6 +32,7 @@ const HEADS = "refs/heads/";
 const STACKS = "refs/stacks/";
 const QUEUES = "refs/queues/";
 const RUNS = "refs/runs/";
+const CHAINS = "refs/chains/";
 const COMPACTIONS = "refs/compactions/";
 const EFFECTS = "refs/effects/";
 const KEYS = "refs/keys/";
@@ -85,6 +87,10 @@ export function parseQueueRef(name: RefName): QueueRefParts | undefined {
 
 export function runRef(head: string): RefName {
   return RUNS + head;
+}
+
+export function chainRef(root: string): RefName {
+  return CHAINS + root;
 }
 
 export function compactionRef(head: string): RefName {
@@ -164,6 +170,8 @@ export function cancelledRef(change: Oid): RefName {
 
 export const HEAD_PREFIX = HEADS;
 export const STACK_PREFIX = STACKS;
+export const CHAIN_PREFIX = CHAINS;
+export const DELEGATION_PREFIX = DELEGATIONS;
 export const FACT_PREFIX = FACTS;
 export const CANCELLED_PREFIX = CANCELLED;
 

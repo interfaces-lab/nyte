@@ -266,7 +266,11 @@ export class TaskIndex {
     this.parent = state;
     if (event?.kind === "commit") {
       for (const call of Object.values(event.item.commit.calls ?? {})) {
-        if (call.kind === "delegate") void this.follow(call.session);
+        if (call.kind === "delegate") {
+          const sessions =
+            call.target.kind === "one" ? [call.target.session] : call.target.sessions;
+          for (const session of sessions) void this.follow(session);
+        }
       }
       return;
     }

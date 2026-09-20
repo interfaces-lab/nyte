@@ -11,7 +11,12 @@
  * `bindTurn` builds a `Turn` over `agent-loop.ts`, the pi-derived loop; tests
  * hand `step` a fake.
  */
-import { classifyAssistantFailure, isRetryableFailureClass, retryDelayMs } from "@nyte-ai/ai";
+import {
+  classifyAssistantFailure,
+  isRetryableFailureClass,
+  retryDelayMs,
+  validateToolArguments,
+} from "@nyte-ai/ai";
 import type { Api, Model, RetryPolicy, SimpleStreamOptions } from "@nyte-ai/ai";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import { schemas } from "@nyte-ai/protocol";
@@ -148,6 +153,7 @@ export type RespondOutcome =
       readonly kind: "retry";
       readonly message: AssistantMessage;
       readonly at: number;
+      readonly retries: number;
       readonly failure: Failure;
     }
   | { readonly kind: "failed"; readonly message: AssistantMessage; readonly failure: Failure }
@@ -286,14 +292,14 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
           return checkpoint;
         }
       }
-      const at = retryAt({
+      const retry = retrySchedule({
         policy: options.retry ?? DEFAULT_RETRY_POLICY,
         run: input.run,
         failure,
       });
-      return at === undefined
+      return retry === undefined
         ? { kind: "failed", message, failure }
-        : { kind: "retry", message, at, failure };
+        : { kind: "retry", message, ...retry, failure };
     }
     case "toolUse":
     case "stop":
@@ -311,7 +317,11 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
                 presentCall(
                   options.tools.find((tool) => tool.name === part.name),
                   part,
-                  input.run.id,
+                  input.run,
+                  callArguments(
+                    options.tools.find((tool) => tool.name === part.name),
+                    part,
+                  ),
                 ),
               ]),
             ),
@@ -405,17 +415,23 @@ async function runTools(
   input: TurnInput & { readonly assistant: AssistantMessage },
 ): Promise<ToolBatchOutcome> {
   const toolCalls = input.assistant.content.filter((part) => part.type === "toolCall");
+  const effectiveArguments = new Map<string, { readonly value: unknown }>();
   const settled = (messages: readonly ToolResultMessage[]): ToolBatchResults => ({
     messages,
     calls: Object.fromEntries(
       messages.flatMap((message) => {
         const call = toolCalls.find((part) => part.id === message.toolCallId);
+        if (call === undefined) return [];
         const tool = options.tools.find((candidate) => candidate.name === message.toolName);
-        if (call === undefined || tool?.present === undefined) return [];
+        const effective = effectiveArguments.get(call.id);
+        const args: CallArguments =
+          effective === undefined
+            ? { kind: "invalid" }
+            : { kind: "validated", value: effective.value };
         const result = message.isError
           ? undefined
           : { content: message.content, details: message.details };
-        return [[message.toolCallId, presentCall(tool, call, input.run.id, result)]];
+        return [[message.toolCallId, presentCall(tool, call, input.run, args, result)]];
       }),
     ),
   });
@@ -434,8 +450,22 @@ async function runTools(
   const callerBeforeToolCall = options.loop?.beforeToolCall;
   const callerAfterToolCall = options.loop?.afterToolCall;
   const config = agentConfig(options, input.telemetry, {
-    beforeToolCall: async (hookContext, signal) =>
-      callerBeforeToolCall?.(hookContext, signal ?? input.signal),
+    beforeToolCall: async (hookContext, signal) => {
+      const outcome = await callerBeforeToolCall?.(hookContext, signal ?? input.signal);
+      if (outcome?.args === undefined) {
+        effectiveArguments.set(hookContext.toolCall.id, { value: hookContext.args });
+        return outcome;
+      }
+      const tool = options.tools.find((candidate) => candidate.name === hookContext.toolCall.name);
+      if (tool === undefined) throw new Error(`Tool ${hookContext.toolCall.name} not found`);
+      effectiveArguments.set(hookContext.toolCall.id, {
+        value: validateToolArguments(tool, {
+          ...hookContext.toolCall,
+          arguments: outcome.args,
+        }),
+      });
+      return outcome;
+    },
     afterToolCall: async (hookContext, signal) => {
       if (state.stopped !== undefined || !settling.has(hookContext.toolCall.id)) return undefined;
       return callerAfterToolCall?.(hookContext, signal ?? input.signal);
@@ -487,18 +517,38 @@ async function runTools(
  * once it settled without error). A tool without `present`, an unknown tool,
  * or arguments the tool's parse refuses answer `custom` under the tool's label.
  */
+type CallArguments =
+  | { readonly kind: "validated"; readonly value: unknown }
+  | { readonly kind: "invalid" };
+
+function callArguments(tool: AgentTool | undefined, call: AgentToolCall): CallArguments {
+  if (tool === undefined) return { kind: "invalid" };
+  try {
+    const prepared =
+      tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
+    if (typeof prepared !== "object" || prepared === null || Array.isArray(prepared)) {
+      return { kind: "invalid" };
+    }
+    return {
+      kind: "validated",
+      value: validateToolArguments(tool, { ...call, arguments: prepared }),
+    };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
+
 function presentCall(
   tool: AgentTool | undefined,
   call: AgentToolCall,
-  runId: string,
+  run: Pick<Run, "id" | "head">,
+  args: CallArguments,
   result?: AgentToolResult<unknown>,
 ): ToolClass {
   const custom: ToolClass = { kind: "custom", label: tool?.label ?? call.name };
-  if (tool?.present === undefined) return custom;
+  if (tool?.present === undefined || args.kind === "invalid") return custom;
   try {
-    const args =
-      tool.prepareArguments === undefined ? call.arguments : tool.prepareArguments(call.arguments);
-    return tool.present(args, { runId, callId: call.id }, result);
+    return tool.present(args.value, { runId: run.id, head: run.head, callId: call.id }, result);
   } catch {
     return custom;
   }
@@ -578,21 +628,17 @@ function emitToolProgress(input: TurnInput, event: AgentEvent): void {
   });
 }
 
-function retryAt(options: {
+function retrySchedule(options: {
   readonly policy: RetryPolicy;
   readonly run: Run;
   readonly failure: Failure;
-}): number | undefined {
-  if (!options.policy.enabled || options.run.attempts >= options.policy.maxRetries) {
-    return undefined;
-  }
+}): { readonly at: number; readonly retries: number } | undefined {
+  const previousRetries = options.run.phase.kind === "retry" ? options.run.phase.retries : 0;
+  if (!options.policy.enabled || previousRetries >= options.policy.maxRetries) return undefined;
   if (!isRetryableFailureClass(options.failure.class)) return undefined;
-  const retryAttempt = options.run.attempts + 1;
-  const delay = Math.max(
-    retryDelayMs(options.policy, retryAttempt),
-    options.failure.retryAfterMs ?? 0,
-  );
-  return Date.now() + delay;
+  const retries = previousRetries + 1;
+  const delay = Math.max(retryDelayMs(options.policy, retries), options.failure.retryAfterMs ?? 0);
+  return { at: Date.now() + delay, retries };
 }
 
 function durableTools(options: {
@@ -687,7 +733,7 @@ function durableTools(options: {
         case "blocked": {
           if (!executionSignal.aborted) return waiting();
           if (tool.wake !== undefined) {
-            const outcome = await tool.wake(waitingCall(view), {
+            const outcome = await tool.wake(waitingCall(view, options.input.run.head), {
               signal: executionSignal,
               aborted: true,
               expired: false,
@@ -714,7 +760,7 @@ function durableTools(options: {
             );
           }
           const outcome = await tool.wake(
-            waitingCall(view),
+            waitingCall(view, options.input.run.head),
             view.effect.state === "expired"
               ? {
                   signal: executionSignal,
@@ -910,9 +956,10 @@ async function parkCall(options: {
   }
 }
 
-function waitingCall(view: EffectView): WaitingCall {
+function waitingCall(view: EffectView, head: string): WaitingCall {
   return {
     runId: view.intent.runId,
+    head,
     toolCallId: view.intent.callId,
     resultEntryId: view.ref,
     args: view.intent.args,

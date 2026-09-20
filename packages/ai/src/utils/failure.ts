@@ -96,7 +96,6 @@ const AUTH_PATTERN = pattern([
 ]);
 
 const RATE_LIMIT_PATTERN = pattern([
-  "\\b429\\b",
   "rate[_ .-]?limit",
   "too many requests",
   "throttl",
@@ -142,17 +141,49 @@ const NETWORK_PATTERN = pattern([
   "http2 request did not get a response",
 ]);
 
-const RETRY_DELAY_PATTERN = /server requested ([0-9]+(?:\.[0-9]+)?)s retry delay/i;
+const RETRY_DELAY_PATTERN =
+  /server requested ([0-9]+(?:\.[0-9]+)?)s retry delay(?: \(max: ([0-9]+(?:\.[0-9]+)?)s\))?/i;
+
+function classForStatus(status: number): FailureClass | undefined {
+  if (status === 429) return "rate_limit";
+  if (status === 401 || status === 403) return "auth";
+  if (status === 402) return "quota";
+  if (status === 413) return "context_window";
+  if (status >= 500 && status <= 599) return "overloaded";
+  return undefined;
+}
+
+function structuredClass(message: AssistantMessage): FailureClass | undefined {
+  for (const diagnostic of message.diagnostics ?? []) {
+    for (const value of [
+      diagnostic.details?.status,
+      diagnostic.details?.statusCode,
+      diagnostic.error?.code,
+    ]) {
+      const status =
+        typeof value === "number"
+          ? value
+          : typeof value === "string" && /^\d{3}$/u.test(value)
+            ? Number(value)
+            : Number.NaN;
+      if (!Number.isInteger(status)) continue;
+      const failureClass = classForStatus(status);
+      if (failureClass !== undefined) return failureClass;
+    }
+  }
+  return undefined;
+}
 
 function classOf(text: string): FailureClass {
   if (!NOT_CONTEXT_WINDOW_PATTERN.test(text) && CONTEXT_WINDOW_PATTERNS.some((p) => p.test(text))) {
     return "context_window";
   }
-  if (QUOTA_PATTERN.test(text)) return "quota";
-  if (AUTH_PATTERN.test(text)) return "auth";
   if (RATE_LIMIT_PATTERN.test(text)) return "rate_limit";
   if (OVERLOADED_PATTERN.test(text)) return "overloaded";
   if (NETWORK_PATTERN.test(text)) return "network";
+  if (QUOTA_PATTERN.test(text)) return "quota";
+  if (AUTH_PATTERN.test(text)) return "auth";
+  if (/\b429\b/u.test(text)) return "rate_limit";
   return "provider";
 }
 
@@ -165,7 +196,9 @@ function retryAfterMs(message: AssistantMessage): number | undefined {
   }
   const match = message.errorMessage?.match(RETRY_DELAY_PATTERN);
   const seconds = match === null || match === undefined ? Number.NaN : Number(match[1]);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1_000 : undefined;
+  const maximum = match === null || match === undefined ? Number.NaN : Number(match[2]);
+  if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+  return Number.isFinite(maximum) && maximum > 0 && seconds > maximum ? undefined : seconds * 1_000;
 }
 
 /** Input tokens fill the window: z.ai accepts overflow silently, Xiaomi truncates and stops on `length` with nothing produced. */
@@ -199,7 +232,7 @@ export function classifyAssistantFailure(
     };
   }
   const text = message.errorMessage ?? "Unknown error";
-  const failure: Failure = { class: classOf(text), message: text };
+  const failure: Failure = { class: structuredClass(message) ?? classOf(text), message: text };
   const delay = retryAfterMs(message);
   return delay === undefined ? failure : { ...failure, retryAfterMs: delay };
 }

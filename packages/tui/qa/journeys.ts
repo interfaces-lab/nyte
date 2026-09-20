@@ -448,6 +448,12 @@ const long: Scenario = {
             action: { kind: "reply", text: "Sibling completed naturally" },
           },
           {
+            name: "sibling report continuation",
+            model: FIXTURE_CHILD_MODEL,
+            prompt: "Background agent",
+            action: { kind: "reply", text: "Parent received sibling report" },
+          },
+          {
             name: "restart probe",
             model: FIXTURE_CHILD_MODEL,
             prompt: "restart probe",
@@ -522,7 +528,7 @@ const long: Scenario = {
         const count = (name: string) =>
           provider.requests.filter((item) => item.script === name).length;
         const chatRequests = () => provider.requests.filter((item) => item.script !== TITLE_SCRIPT);
-        /** A finished background job waits for the next message; it never starts a run of its own. */
+        /** A finished command waits for the next message; it never starts a run of its own. */
         const assertNoRunAfter = (request: number) =>
           assert.deepEqual(
             chatRequests()
@@ -1117,7 +1123,14 @@ const long: Scenario = {
                 screen.text.includes("Parent survived selected cancellation") && idle(screen),
               deadline(),
             );
-            assertNoRunAfter(completed.id);
+            const continuation = await provider.waitForRequest(
+              (item) => item.script === "sibling report continuation",
+            );
+            await provider.waitForStage(continuation.id, "completed");
+            await terminal.waitForScreen(
+              (screen) => screen.text.includes("Parent received sibling report") && idle(screen),
+              deadline(),
+            );
           },
         );
         let sessionId = "";
