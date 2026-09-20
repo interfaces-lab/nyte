@@ -1,17 +1,17 @@
 /**
- * One delegation. A settled `create` is the subagent's card: its title over
- * its status, with the model beside the title once the child session is
- * listed. The status comes from the chat's child sessions, since a create
- * settles while its subagent keeps working; until the child is listed the
- * tool's own phase stands in. Every other call on a child (`send`, `await`,
- * `read`, `stop`), and a create still waiting for its child, is one compact
- * line that links to the same child, never a second card. Same law as other
- * tool calls: no status icon, the shimmer is the running state.
+ * One delegation. A `create` is the subagent's card from its first frame:
+ * the child's name over its status, with the model beside the name once the
+ * child session is listed. The status comes from the chat's child sessions,
+ * since a create settles while its subagent keeps working; until the child is
+ * listed the tool's own phase stands in and the session id is the name. Every
+ * other call on a child (`send`, `await`, `read`, `stop`) is one compact line
+ * that links to the same child, never a second card. Same law as other tool
+ * calls: no status icon, the shimmer is the running state.
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import type { ReactElement } from "react";
-import type { RunConfig, SessionId, ToolClass } from "@nyte-ai/protocol";
+import type { RunConfig, SessionId, SessionInfo, ToolClass } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
 import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
@@ -23,10 +23,7 @@ import { useSubagentInspector } from "./subagent-inspector.ts";
 import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 
-export type DelegateToolClass = Extract<
-  ToolClass,
-  { readonly kind: "spawn" | "delegate_call" | "delegate" }
->;
+export type DelegateToolClass = Extract<ToolClass, { readonly kind: "delegate" }>;
 
 const PHASE_STATUS = {
   running: "Working",
@@ -49,15 +46,22 @@ function SubagentModel({
   return <span {...stylex.props(toolCallStyles.detail)}>{name}</span>;
 }
 
+/** The child's row in the chat's session list; nothing until it is listed. */
+function useChild(session: SessionId): SessionInfo | undefined {
+  const inspector = useSubagentInspector();
+  const children = useChildSessions(inspector?.sessionId);
+  return children.data?.find((candidate) => candidate.sessionId === session);
+}
+
 function OpenAgentButton({
   title,
   session,
 }: {
   title: string;
-  session: SessionId | undefined;
+  session: SessionId;
 }): ReactElement | null {
   const inspector = useSubagentInspector();
-  if (inspector === undefined || session === undefined) return null;
+  if (inspector === undefined) return null;
   return (
     <button
       type="button"
@@ -72,21 +76,18 @@ function OpenAgentButton({
 }
 
 export function SubagentCallView({
-  title,
   session,
   phase,
   output,
   density,
 }: {
-  title: string;
   session: SessionId;
   phase: ToolPhase;
   output: string | undefined;
   density: ToolCallDensity;
 }): ReactElement {
-  const inspector = useSubagentInspector();
-  const children = useChildSessions(inspector?.sessionId);
-  const child = children.data?.find((candidate) => candidate.sessionId === session);
+  const child = useChild(session);
+  const title = child?.name ?? session;
   const state = child === undefined ? undefined : agentState(child);
   const running = state === undefined ? phase === "running" : state === "working";
   const failed = state === undefined ? phase === "failed" : state === "failed";
@@ -144,25 +145,7 @@ export function SubagentCallView({
   );
 }
 
-function lineTarget(toolClass: DelegateToolClass): {
-  readonly label: string;
-  readonly session: SessionId | undefined;
-} {
-  switch (toolClass.kind) {
-    case "spawn":
-      return { label: toolClass.title, session: undefined };
-    case "delegate_call":
-      return { label: toolClass.session, session: toolClass.session };
-    case "delegate":
-      return { label: toolClass.title, session: toolClass.session };
-    default: {
-      const _exhaustive: never = toolClass;
-      return _exhaustive;
-    }
-  }
-}
-
-/** A call on a child: the verb, then the child's name, or its id until the result names it. */
+/** A call on a child: the verb, then the child's name, or its id until the child is listed. */
 export function SubagentLineView({
   toolClass,
   phase,
@@ -172,7 +155,8 @@ export function SubagentLineView({
   phase: ToolPhase;
   density: ToolCallDensity;
 }): ReactElement {
-  const { label, session } = lineTarget(toolClass);
+  const { session } = toolClass;
+  const label = useChild(session)?.name ?? session;
   return (
     <div {...stylex.props(toolCallStyles.row)}>
       <div

@@ -60,9 +60,6 @@ export function toolVerb(toolClass: ToolClass, phase: ToolPhase): string {
       return toolClass.op === "edit"
         ? phased(phase, { running: "Editing", done: "Edited", noun: "Edit" })
         : phased(phase, { running: "Writing", done: "Wrote", noun: "Write" });
-    case "spawn":
-      return phased(phase, { running: "Creating", done: "Created", noun: "Delegation" });
-    case "delegate_call":
     case "delegate":
       return delegateVerb(toolClass.role, phase);
     case "custom":

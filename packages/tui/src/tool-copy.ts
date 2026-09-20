@@ -49,9 +49,6 @@ export function toolLabel(toolClass: ToolClass, phase: ToolPhase): string {
       return toolClass.op === "edit"
         ? phased(phase, { running: "editing", done: "edited", noun: "edit" })
         : phased(phase, { running: "writing", done: "wrote", noun: "write" });
-    case "spawn":
-      return phased(phase, { running: "creating", done: "created", noun: "create" });
-    case "delegate_call":
     case "delegate":
       return phased(phase, delegateWords(toolClass.role));
     case "custom":
@@ -101,10 +98,7 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
       return toolClass.path;
     case "shell":
       return toolClass.command;
-    case "spawn":
     case "delegate":
-      return toolClass.title;
-    case "delegate_call":
       return toolClass.session;
     case "custom":
       return undefined;
@@ -117,12 +111,7 @@ export function toolSubject(toolClass: ToolClass): string | undefined {
 
 /** The status row for the tools still running: subagent waits win, otherwise the newest call. */
 export function runningActivityLabel(running: readonly ToolClass[]): string | undefined {
-  const delegates = running.filter(
-    (toolClass) =>
-      toolClass.kind === "spawn" ||
-      toolClass.kind === "delegate_call" ||
-      toolClass.kind === "delegate",
-  ).length;
+  const delegates = running.filter((toolClass) => toolClass.kind === "delegate").length;
   if (delegates > 1) return "Waiting for subagents";
   if (delegates === 1) return "Waiting for subagent";
   const newest = running.at(-1);
@@ -137,8 +126,6 @@ export function runningActivityLabel(running: readonly ToolClass[]): string | un
     case "file_write":
     case "file_patch":
       return "Editing files";
-    case "spawn":
-    case "delegate_call":
     case "delegate":
       return "Waiting for subagent";
     case "custom":

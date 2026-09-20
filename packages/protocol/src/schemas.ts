@@ -516,17 +516,10 @@ export const ToolClass = typed<ToolClassType>()(
     open({ kind: Type.Literal("file_read"), path: Type.String() }),
     open({ kind: Type.Literal("list"), path: Type.String() }),
     open({ kind: Type.Literal("shell"), command: Type.String() }),
-    open({ kind: Type.Literal("spawn"), title: Type.String() }),
-    open({
-      kind: Type.Literal("delegate_call"),
-      role: literals(["send", "await", "read", "stop"]),
-      session: SessionId,
-    }),
     open({
       kind: Type.Literal("delegate"),
       role: literals(["create", "send", "await", "read", "stop"]),
       session: SessionId,
-      title: Type.String(),
     }),
     open({ kind: Type.Literal("custom"), label: Type.String() }),
   ]),

@@ -9,7 +9,7 @@ import {
   type Model,
   type ModelThinkingLevel,
 } from "@nyte-ai/schema";
-import { type JobReport, type RunPhase, type SessionId } from "@nyte-ai/protocol";
+import { type JobReport, type RunPhase, type SessionId, type ToolClass } from "@nyte-ai/protocol";
 import { completionText, isJsonObject } from "@nyte-ai/client";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
@@ -17,6 +17,7 @@ import {
   ToolWait,
   type AgentTool,
   type AgentToolResult,
+  type ToolPresentContext,
   type ToolWakeContext,
 } from "../../kernel/loop/types.ts";
 import { ToolError, toolResultContent } from "../../kernel/loop/tool-result.ts";
@@ -205,12 +206,9 @@ export function taskModelParameters(models: readonly Pick<Model<Api>, "provider"
 
 export interface AgentDetails {
   readonly agent: SessionId;
-  readonly title: string;
 }
 
 export interface AwaitDetails {
-  /** The first agent's name; what the transcript shows for the call. */
-  readonly title: string;
   readonly agents: readonly AgentStatus[];
 }
 
@@ -310,7 +308,7 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
         "\n\n",
       ),
     ),
-    details: { title: first === undefined ? "" : statusTitle(first), agents: statuses },
+    details: { agents: statuses },
     ...(first === undefined ? {} : { title: statusTitle(first) }),
   };
   const failed =
@@ -331,6 +329,11 @@ function wakeEnd(context: ToolWakeContext): WaitEnd {
 
 /** Installed only in root sessions. */
 export function subagentsPlugin(host: SubagentHost) {
+  const presentChild = (_input: unknown, context: ToolPresentContext): ToolClass => ({
+    kind: "delegate",
+    role: "create",
+    session: host.childOf(context.runId, context.callId),
+  });
   /** Park on `agents` until `mode` is satisfied, `timeoutMs` passes, or the user's input needs the turn. */
   const awaitAgents = async (
     agents: readonly SessionId[],
@@ -366,15 +369,7 @@ Returns the report when the agent finishes in time; otherwise returns the agent'
 If the user sends something while you wait, this returns early so you can answer them. Never poll, sleep, or relaunch a task to check progress.`,
     parameters: taskParameters,
     replay: "never",
-    present: (input, result) =>
-      result === undefined
-        ? { kind: "spawn", title: taskTitle(input) }
-        : {
-            kind: "delegate",
-            role: "create",
-            session: result.details.agent,
-            title: result.details.title,
-          },
+    present: presentChild,
     prepareArguments(value) {
       if (!Value.Check(taskParameters, value)) {
         throw new Error(
@@ -421,10 +416,7 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking. Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop.`,
     parameters: createParameters,
     replay: "never",
-    present: (input, result) =>
-      result === undefined
-        ? { kind: "spawn", title: input.title }
-        : { kind: "delegate", role: "create", session: result.details.agent, title: input.title },
+    present: presentChild,
     prepareArguments(value) {
       if (!Value.Check(createParameters, value)) {
         throw new Error(
@@ -449,7 +441,7 @@ If the user sends something while you wait, this returns early so you can answer
         content: toolResultContent(
           `Created agent ${input.title} as ${agent}. Send it a message to start it.`,
         ),
-        details: { agent, title: input.title },
+        details: { agent },
         title: input.title,
       };
     },
@@ -460,10 +452,7 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Sends a message to an agent this session created. The agent answers in its own session, with its earlier turns as context; its report arrives as a "Background" message once it finishes. Set waitMs to wait for the answer here, up to that long; without it this returns a receipt at once. If the user sends something while you wait, this returns early so you can answer them.`,
     parameters: sendParameters,
     replay: "never",
-    present: (input, result) =>
-      result === undefined
-        ? { kind: "delegate_call", role: "send", session: input.agent }
-        : { kind: "delegate", role: "send", session: input.agent, title: result.details.title },
+    present: (input) => ({ kind: "delegate", role: "send", session: input.agent }),
     prepareArguments(value) {
       if (!Value.Check(sendParameters, value)) {
         throw new Error(
@@ -484,7 +473,7 @@ If the user sends something while you wait, this returns early so you can answer
       if (sent.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
-          details: { agent: input.agent, title: "", agents: [] },
+          details: { agent: input.agent, agents: [] },
         });
       }
       if (sent.kind === "stopped") {
@@ -492,7 +481,7 @@ If the user sends something while you wait, this returns early so you can answer
           content: toolResultContent(
             `Agent ${sent.title} (${input.agent}) was stopped and answers no further messages.`,
           ),
-          details: { agent: input.agent, title: sent.title, agents: [] },
+          details: { agent: input.agent, agents: [] },
         });
       }
       if (input.waitMs === undefined) {
@@ -500,7 +489,7 @@ If the user sends something while you wait, this returns early so you can answer
           content: toolResultContent(
             `Sent to agent ${sent.title} (${input.agent}). Its report arrives as a "Background" message; call await with its id if you need it before you reply.`,
           ),
-          details: { agent: input.agent, title: sent.title, agents: [] },
+          details: { agent: input.agent, agents: [] },
           title: sent.title,
         };
       }
@@ -520,12 +509,10 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Waits for agents this session created: until any or all of them have answered their latest message, or until timeoutMs passes. Returns each agent's report where it has one and its phase otherwise; the agents keep working either way, so call await again when you need them. Reports also arrive on their own as "Background" messages. If the user sends something while you wait, this returns early so you can answer them.`,
     parameters: awaitParameters,
     replay: "never",
-    present: (input, result) => {
+    present: (input) => {
       const session = input.agents[0];
       if (session === undefined) throw new Error("Await names no agent");
-      return result === undefined
-        ? { kind: "delegate_call", role: "await", session }
-        : { kind: "delegate", role: "await", session, title: result.details.title };
+      return { kind: "delegate", role: "await", session };
     },
     prepareArguments(value) {
       if (!Value.Check(awaitParameters, value)) {
@@ -551,10 +538,7 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Reads an agent's latest turns (default ${DEFAULT_READ_TURNS}) and its phase, without waiting. Use it to check on an agent that is still working or to revisit what it said.`,
     parameters: readParameters,
     replay: "safe",
-    present: (input, result) =>
-      result === undefined
-        ? { kind: "delegate_call", role: "read", session: input.agent }
-        : { kind: "delegate", role: "read", session: input.agent, title: result.details.title },
+    present: (input) => ({ kind: "delegate", role: "read", session: input.agent }),
     prepareArguments(value) {
       if (!Value.Check(readParameters, value)) {
         throw new Error("Read arguments are invalid. Provide an agent id; turns is optional.");
@@ -569,14 +553,14 @@ If the user sends something while you wait, this returns early so you can answer
       if (outcome.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
-          details: { agent: input.agent, title: "", phase: "idle" },
+          details: { agent: input.agent, phase: "idle" },
         });
       }
       return {
         content: toolResultContent(
           `Agent ${outcome.title} (${input.agent}) is ${outcome.phase}.\n\n${outcome.text === "" ? "(no turns yet)" : outcome.text}`,
         ),
-        details: { agent: input.agent, title: outcome.title, phase: outcome.phase },
+        details: { agent: input.agent, phase: outcome.phase },
         title: outcome.title,
       };
     },
@@ -588,10 +572,7 @@ If the user sends something while you wait, this returns early so you can answer
       "Stops an agent this session created: cancels its running work and everything queued for it. The agent answers no further messages. Stopping an agent does not stop this run.",
     parameters: stopParameters,
     replay: "never",
-    present: (input, result) =>
-      result === undefined
-        ? { kind: "delegate_call", role: "stop", session: input.agent }
-        : { kind: "delegate", role: "stop", session: input.agent, title: result.details.title },
+    present: (input) => ({ kind: "delegate", role: "stop", session: input.agent }),
     prepareArguments(value) {
       if (!Value.Check(stopParameters, value)) {
         throw new Error("Stop arguments are invalid. Provide an agent id.");
@@ -604,12 +585,12 @@ If the user sends something while you wait, this returns early so you can answer
       if (outcome.kind === "not_found") {
         throw new ToolError({
           content: toolResultContent(`No agent ${input.agent} belongs to this session.`),
-          details: { agent: input.agent, title: "" },
+          details: { agent: input.agent },
         });
       }
       return {
         content: toolResultContent(`Agent ${outcome.title} (${input.agent}) stopped.`),
-        details: { agent: input.agent, title: outcome.title },
+        details: { agent: input.agent },
         title: outcome.title,
       };
     },

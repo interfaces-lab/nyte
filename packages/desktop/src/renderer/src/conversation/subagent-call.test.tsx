@@ -75,13 +75,13 @@ const turn: RenderedTurn = {
     {
       kind: "tool",
       callId: "task",
-      class: { kind: "delegate", role: "create", session: child, title: "Map the workbench" },
+      class: { kind: "delegate", role: "create", session: child },
       result: { commit: "created", output: "Started Map the workbench", isError: false },
     },
     {
       kind: "tool",
       callId: "wait",
-      class: { kind: "delegate", role: "await", session: child, title: "Map the workbench" },
+      class: { kind: "delegate", role: "await", session: child },
       result: { commit: "waited", output: "Three panels found.", isError: false },
     },
   ],

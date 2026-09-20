@@ -116,21 +116,19 @@ test("completion commits carry a command's or a child's report through the wire"
     assert.ok(!Value.Check(schemas.CommitBody, invalid));
 });
 
-test("delegation tool classes name the child once it exists", () => {
+test("delegation tool classes name the child session", () => {
   for (const valid of [
-    { kind: "spawn", title: "Map the repository" },
-    { kind: "delegate_call", role: "send", session: "child" },
-    { kind: "delegate", role: "create", session: "child", title: "Map the repository" },
-    { kind: "delegate", role: "await", session: "child", title: "Map the repository" },
+    { kind: "delegate", role: "create", session: "child" },
+    { kind: "delegate", role: "send", session: "child" },
+    { kind: "delegate", role: "await", session: "child" },
   ])
     assert.ok(Value.Check(schemas.ToolClass, valid));
   for (const invalid of [
-    { kind: "spawn" },
-    { kind: "delegate", role: "spawn", title: "x" },
+    { kind: "spawn", title: "x" },
+    { kind: "delegate_call", role: "send", session: "child" },
+    { kind: "delegate", role: "spawn", session: "child" },
     { kind: "delegate", role: "await", jobId: "j" },
-    { kind: "delegate_call", role: "create", session: "child" },
-    { kind: "delegate", role: "send", session: "child" },
-    { kind: "delegate", role: "send", session: "", title: "x" },
+    { kind: "delegate", role: "send", session: "" },
   ])
     assert.ok(!Value.Check(schemas.ToolClass, invalid));
 });

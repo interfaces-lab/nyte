@@ -43,7 +43,7 @@ function writeTool(gate: { readonly release: Promise<void> }): AgentTool {
       await gate.release;
       return { content: [{ type: "text", text: "ok" }], details: {} };
     },
-    present: ({ path }, result) =>
+    present: ({ path }, _context, result) =>
       result === undefined
         ? { kind: "file_write", path }
         : { kind: "file_patch", op: "write", path, added: 1, removed: 0, patch },

@@ -238,12 +238,8 @@ function toolTitle(toolClass: ToolClass, settled: boolean): string {
       return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
     case "file_patch":
       return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
-    case "spawn":
-      return `${settled ? "Created" : "Creating"} ${toolClass.title}`;
-    case "delegate_call":
-      return `${delegateVerb(toolClass.role, settled)} ${toolClass.session}`;
     case "delegate":
-      return `${delegateVerb(toolClass.role, settled)} ${toolClass.title}`;
+      return `${delegateVerb(toolClass.role, settled)} ${toolClass.session}`;
     case "custom":
       return toolClass.label;
     default: {

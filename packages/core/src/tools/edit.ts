@@ -95,7 +95,7 @@ export function createEditTool(cwd: string): AgentTool<typeof editParameters, Ed
       "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
     parameters: editParameters,
     prepareArguments: prepareEditInput,
-    present: ({ path }, result) =>
+    present: ({ path }, _context, result) =>
       result === undefined
         ? { kind: "file_edit", path }
         : { kind: "file_patch", op: "edit", path, ...result.details },
