@@ -7,8 +7,9 @@
  */
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { lstat, readFile, readlink } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createTwoFilesPatch } from "diff";
 import { parsePatchFacts, worktreeFiles } from "@nyte-ai/client";
 import type { VcsBackend } from "@nyte-ai/core";
@@ -28,7 +29,8 @@ import type {
   VcsScope,
   VcsSnapshot,
 } from "@nyte-ai/protocol";
-import { createTreeSnapshot } from "./tree-snapshot.ts";
+import { nyteHome } from "./paths.ts";
+import { createTreeSnapshot, sanitizedGitEnv, withFileLeaseLock } from "./tree-snapshot.ts";
 
 interface GitResult {
   readonly stdout: string;
@@ -50,16 +52,43 @@ class GitCommandError extends Error {
   }
 }
 
-function runGit(cwd: string, args: readonly string[]): Promise<GitResult> {
+function runGit(
+  cwd: string,
+  args: readonly string[],
+  options: {
+    readonly env?: Readonly<Record<string, string>>;
+    readonly input?: string;
+  } = {},
+): Promise<GitResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn("git", ["-c", "core.quotepath=false", ...args], {
-      cwd,
-      // A push that needs credentials must fail instead of waiting on a terminal nobody sees.
-      env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      "git",
+      [
+        "--literal-pathspecs",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "diff.external=",
+        "-c",
+        "core.pager=cat",
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "core.quotepath=false",
+        ...args,
+      ],
+      {
+        cwd,
+        env: sanitizedGitEnv(options.env),
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
+    child.stdin.on("error", (cause) => {
+      if (!isFileError(cause, new Set(["EPIPE"]))) reject(cause);
+    });
+    child.stdin.end(options.input ?? "");
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     child.on("error", reject);
@@ -120,11 +149,44 @@ function checkedRevision(revision: string): string {
   return revision;
 }
 
+function isFileError(cause: unknown, codes: ReadonlySet<string>): boolean {
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    typeof cause.code === "string" &&
+    codes.has(cause.code)
+  );
+}
+
+const MISSING_PATH = new Set(["ENOENT", "ENOTDIR"]);
+
 function safeWorkspacePath(cwd: string, path: string): string {
+  if (path === "" || path.startsWith("-") || isAbsolute(path)) {
+    throw new Error(`Path is outside the workspace: ${path}`);
+  }
   const absolute = resolve(cwd, path);
   const within = relative(cwd, absolute);
-  if (path === "" || isAbsolute(within) || within === ".." || within.startsWith("../")) {
+  if (isAbsolute(within) || within === ".." || within.startsWith(`..${sep}`)) {
     throw new Error(`Path is outside the workspace: ${path}`);
+  }
+  return absolute;
+}
+
+async function validatedWorkspacePath(cwd: string, path: string): Promise<string> {
+  const root = await realpath(cwd);
+  const absolute = safeWorkspacePath(root, path);
+  let current = root;
+  for (const component of relative(root, absolute).split(sep)) {
+    current = join(current, component);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error(`Path contains a symbolic link: ${path}`);
+      }
+    } catch (cause) {
+      if (isFileError(cause, MISSING_PATH)) continue;
+      throw cause;
+    }
   }
   return absolute;
 }
@@ -184,10 +246,6 @@ function worktreeKind(code: string): Exclude<VcsFileKind, "conflicted"> | undefi
   return undefined;
 }
 
-function fileOf(path: string, kind: Exclude<VcsFileKind, "conflicted">, from: string): VcsFile {
-  return kind === "renamed" ? { path, kind, from } : { path, kind };
-}
-
 function parseStatus(output: string): Omit<StatusRead, "raw"> {
   const records = output.split("\0");
   const staged: VcsFile[] = [];
@@ -211,9 +269,19 @@ function parseStatus(output: string): Omit<StatusRead, "raw"> {
       continue;
     }
     const indexChange = indexKind(code.slice(0, 1));
-    if (indexChange !== undefined) staged.push(fileOf(path, indexChange, from));
+    if (indexChange !== undefined) {
+      staged.push(
+        indexChange === "renamed" ? { path, kind: indexChange, from } : { path, kind: indexChange },
+      );
+    }
     const worktreeChange = worktreeKind(code.slice(1, 2));
-    if (worktreeChange !== undefined) unstaged.push(fileOf(path, worktreeChange, from));
+    if (worktreeChange !== undefined) {
+      unstaged.push(
+        worktreeChange === "renamed"
+          ? { path, kind: worktreeChange, from }
+          : { path, kind: worktreeChange },
+      );
+    }
   }
   return { head, staged, unstaged };
 }
@@ -239,7 +307,7 @@ async function readStatus(cwd: string): Promise<StatusRead | undefined> {
 
 async function fileRevisionPart(cwd: string, path: string): Promise<string> {
   try {
-    const metadata = await lstat(safeWorkspacePath(cwd, path), { bigint: true });
+    const metadata = await lstat(safeWorkspacePath(cwd, `./${path}`), { bigint: true });
     return [
       path,
       metadata.dev,
@@ -249,8 +317,9 @@ async function fileRevisionPart(cwd: string, path: string): Promise<string> {
       metadata.mtimeNs,
       metadata.ctimeNs,
     ].join(":");
-  } catch {
-    return `${path}:missing`;
+  } catch (cause) {
+    if (isFileError(cause, MISSING_PATH)) return `${path}:missing`;
+    throw cause;
   }
 }
 
@@ -283,7 +352,15 @@ async function reviewBase(
 ): Promise<VcsHead["base"]> {
   if (branch.kind === "detached") return null;
   const origin = await createdFrom(cwd, branch.name);
-  if (origin !== undefined) return { name: origin, source: "reflog" };
+  if (origin !== undefined) {
+    const forkPoint = await gitValue(cwd, [
+      "merge-base",
+      "--fork-point",
+      checkedRevision(origin),
+      "HEAD",
+    ]);
+    return forkPoint === undefined ? null : { name: forkPoint, source: "reflog" };
+  }
   const remoteHead = await gitValue(cwd, [
     "symbolic-ref",
     "--quiet",
@@ -334,17 +411,32 @@ async function snapshot(cwd: string): Promise<VcsSnapshot> {
 // ---------------------------------------------------------------------------
 
 async function untrackedPatch(cwd: string, path: string): Promise<string> {
-  const absolute = safeWorkspacePath(cwd, path);
+  const absolute = await validatedWorkspacePath(cwd, path);
   const metadata = await lstat(absolute);
+  if (!metadata.isFile()) throw new Error(`Diff paths must be files: ${path}`);
   if (metadata.size > MAX_PREVIEW_BYTES) return `File is too large to preview: b/${path}\n`;
-  const contents = metadata.isSymbolicLink()
-    ? Buffer.from(await readlink(absolute), "utf8")
-    : await readFile(absolute);
-  if (contents.includes(0)) return `Binary file b/${path}\n`;
+  let numstat: GitResult;
+  try {
+    numstat = await runGit(cwd, [
+      "diff",
+      "--no-index",
+      "--numstat",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--",
+      devNull,
+      absolute,
+    ]);
+  } catch (cause) {
+    if (!(cause instanceof GitCommandError) || cause.result.code !== 1) throw cause;
+    numstat = cause.result;
+  }
+  if (numstat.stdout.startsWith("-\t-\t")) return `Binary file b/${path}\n`;
+  const contents = await readFile(absolute);
   return createTwoFilesPatch("/dev/null", `b/${path}`, "", contents.toString("utf8"), "", "");
 }
 
-const DIFF_FLAGS = ["--no-ext-diff", "--no-color", "--find-renames"];
+const DIFF_FLAGS = ["--no-ext-diff", "--no-textconv", "--no-color", "--find-renames"];
 
 const MISSING_HEAD = ["unknown revision", "bad revision", "ambiguous argument 'HEAD'"];
 
@@ -405,7 +497,16 @@ function parseNameStatus(output: string): readonly VcsFile[] {
 
 async function nameStatus(cwd: string, args: readonly string[]): Promise<readonly VcsFile[]> {
   return parseNameStatus(
-    (await runGit(cwd, [...args, "--name-status", "--find-renames", "-z"])).stdout,
+    (
+      await runGit(cwd, [
+        ...args,
+        "--name-status",
+        "--find-renames",
+        "--no-ext-diff",
+        "--no-textconv",
+        "-z",
+      ])
+    ).stdout,
   );
 }
 
@@ -488,7 +589,7 @@ async function diff(
     readonly ignoreWhitespace?: boolean;
   },
 ): Promise<readonly VcsDiff[]> {
-  for (const path of input.paths ?? []) safeWorkspacePath(cwd, path);
+  for (const path of input.paths ?? []) await validatedWorkspacePath(cwd, path);
   const read = await scopeRead(cwd, input.scope, input.ignoreWhitespace === true ? ["-w"] : []);
   const wanted = input.paths === undefined ? undefined : new Set(input.paths);
   const files = read.files.filter((file) => wanted === undefined || wanted.has(file.path));
@@ -530,14 +631,15 @@ const MISSING_BLOB = [
 type Side = { readonly kind: "revision"; readonly spec: string } | { readonly kind: "worktree" };
 
 async function readSide(cwd: string, path: string, side: Side): Promise<Buffer | null> {
-  const absolute = safeWorkspacePath(cwd, path);
+  safeWorkspacePath(cwd, path);
   if (side.kind === "worktree") {
+    const absolute = await validatedWorkspacePath(cwd, path);
     try {
       const metadata = await lstat(absolute);
-      if (metadata.isSymbolicLink()) return Buffer.from(await readlink(absolute), "utf8");
       return metadata.isFile() ? readFile(absolute) : null;
-    } catch {
-      return null;
+    } catch (cause) {
+      if (isFileError(cause, MISSING_PATH)) return null;
+      throw cause;
     }
   }
   try {
@@ -583,17 +685,78 @@ async function contentSides(cwd: string, scope: VcsScope): Promise<readonly [Sid
   }
 }
 
+async function binaryForScope(cwd: string, path: string, scope: VcsScope): Promise<boolean> {
+  const args = (() => {
+    switch (scope.kind) {
+      case "worktree":
+        return ["diff", "--numstat", "--no-ext-diff", "--no-textconv", "HEAD", "--", path];
+      case "staged":
+        return ["diff", "--cached", "--numstat", "--no-ext-diff", "--no-textconv", "--", path];
+      case "unstaged":
+        return ["diff", "--numstat", "--no-ext-diff", "--no-textconv", "--", path];
+      case "commit": {
+        const oid = checkedRevision(scope.oid);
+        return ["diff", "--numstat", "--no-ext-diff", "--no-textconv", `${oid}^`, oid, "--", path];
+      }
+      case "branch":
+        return [
+          "diff",
+          "--numstat",
+          "--no-ext-diff",
+          "--no-textconv",
+          checkedRevision(scope.base),
+          "--",
+          path,
+        ];
+      default: {
+        const _exhaustive: never = scope;
+        return _exhaustive;
+      }
+    }
+  })();
+  try {
+    const output = (await runGit(cwd, args)).stdout;
+    if (output.startsWith("-\t-\t")) return true;
+    if (output !== "" || (scope.kind !== "worktree" && scope.kind !== "unstaged")) return false;
+    const absolute = await validatedWorkspacePath(cwd, path);
+    try {
+      return (
+        await runGit(cwd, [
+          "diff",
+          "--no-index",
+          "--numstat",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--",
+          devNull,
+          absolute,
+        ])
+      ).stdout.startsWith("-\t-\t");
+    } catch (cause) {
+      if (cause instanceof GitCommandError && cause.result.code === 1) {
+        return cause.result.stdout.startsWith("-\t-\t");
+      }
+      throw cause;
+    }
+  } catch (cause) {
+    if (!isMissingHead(cause)) throw cause;
+    return false;
+  }
+}
+
 async function contents(
   cwd: string,
   input: { readonly scope: VcsScope; readonly path: string },
 ): Promise<VcsContents> {
+  await validatedWorkspacePath(cwd, input.path);
   const [oldSide, newSide] = await contentSides(cwd, input.scope);
-  const [old, current] = await Promise.all([
+  const [old, current, gitBinary] = await Promise.all([
     readSide(cwd, input.path, oldSide),
     readSide(cwd, input.path, newSide),
+    binaryForScope(cwd, input.path, input.scope),
   ]);
   const sides = [old, current].filter((side) => side !== null);
-  const binary = sides.some((side) => side.includes(0));
+  const binary = gitBinary || sides.some((side) => side.includes(0));
   const truncated = !binary && sides.some((side) => side.byteLength > MAX_PREVIEW_BYTES);
   const text = (side: Buffer | null) =>
     side === null ? null : binary ? "" : side.subarray(0, MAX_PREVIEW_BYTES).toString("utf8");
@@ -669,13 +832,32 @@ async function refs(cwd: string): Promise<VcsRefs> {
 // Writes
 // ---------------------------------------------------------------------------
 
-/** Every path is checked before anything is touched, so traversal fails the whole call. */
-function checkPaths(
+async function stale(cwd: string, revision: string): Promise<boolean> {
+  const current = await snapshot(cwd);
+  return current.kind !== "repository" || current.revision !== revision;
+}
+
+async function withMutationLock<Result>(
+  cwd: string,
+  revision: string,
+  operation: () => Promise<Result>,
+): Promise<Result | { readonly kind: "stale" }> {
+  const topLevel = await gitValue(cwd, ["rev-parse", "--show-toplevel"]);
+  const root = await realpath(topLevel ?? cwd);
+  const shadow = join(nyteHome(), "snapshots", createHash("sha256").update(root).digest("hex"));
+  await mkdir(shadow, { recursive: true, mode: 0o700 });
+  return withFileLeaseLock(join(shadow, "mutate.lock"), async () => {
+    if (await stale(cwd, revision)) return { kind: "stale" };
+    return operation();
+  });
+}
+
+async function checkPaths(
   cwd: string,
   paths: readonly string[],
-): { readonly kind: "failed"; readonly reason: string } | undefined {
+): Promise<{ readonly kind: "failed"; readonly reason: string } | undefined> {
   try {
-    for (const path of paths) safeWorkspacePath(cwd, path);
+    for (const path of paths) await validatedWorkspacePath(cwd, path);
     return undefined;
   } catch (cause) {
     return { kind: "failed", reason: failureReason(cause, "A path is outside the workspace.") };
@@ -697,52 +879,90 @@ async function eachPath(
   return { kind: "applied", paths: applied, skipped };
 }
 
-function stageArgs(path: string, staged: boolean, born: boolean): readonly string[] {
-  if (staged) return ["add", "--", path];
-  // Before the first commit there is no committed side to restore an index entry from.
-  if (born) return ["restore", "--staged", "--", path];
-  return ["rm", "--cached", "--force", "--quiet", "--", path];
-}
-
 async function stage(
   cwd: string,
-  input: { readonly paths: readonly string[]; readonly staged: boolean },
-): Promise<VcsPathsOutcome> {
-  const refused = checkPaths(cwd, input.paths);
+  input: {
+    readonly paths: readonly string[];
+    readonly staged: boolean;
+    readonly expect: { readonly revision: string };
+  },
+): Promise<VcsPathsOutcome | { readonly kind: "stale" }> {
+  const refused = await checkPaths(cwd, input.paths);
   if (refused !== undefined) return refused;
-  const born = input.staged ? true : await succeeds(cwd, ["rev-parse", "--verify", "HEAD"]);
-  return eachPath(input.paths, (path) =>
-    runGit(cwd, stageArgs(path, input.staged, born)).then(
-      () => undefined,
-      (cause: unknown) => failureReason(cause, "Git refused this path."),
-    ),
-  );
+  return withMutationLock(cwd, input.expect.revision, async () => {
+    const born = input.staged ? true : await succeeds(cwd, ["rev-parse", "--verify", "HEAD"]);
+    return eachPath(input.paths, (path) =>
+      runGit(
+        cwd,
+        input.staged
+          ? ["add", "--", path]
+          : born
+            ? ["restore", "--staged", "--", path]
+            : ["rm", "--cached", "--force", "--quiet", "--", path],
+      ).then(
+        () => undefined,
+        (cause: unknown) => failureReason(cause, "Git refused this path."),
+      ),
+    );
+  });
 }
 
 type Discard = (absolutePath: string) => Promise<void>;
 
 async function discard(
   cwd: string,
-  input: { readonly paths: readonly string[] },
+  input: {
+    readonly paths: readonly string[];
+    readonly expect: { readonly revision: string };
+  },
   trash: Discard,
-): Promise<VcsPathsOutcome> {
-  const refused = checkPaths(cwd, input.paths);
+): Promise<VcsPathsOutcome | { readonly kind: "stale" }> {
+  const refused = await checkPaths(cwd, input.paths);
   if (refused !== undefined) return refused;
-  const status = await readStatus(cwd);
-  const kinds = new Map(
-    (status === undefined ? [] : worktreeFiles(status)).map((file) => [file.path, file.kind]),
-  );
-  return eachPath(input.paths, async (path) => {
-    const kind = kinds.get(path);
-    if (kind === undefined) return "This file has no changes to discard.";
-    try {
-      if (kind === "untracked") await trash(safeWorkspacePath(cwd, path));
-      else await runGit(cwd, ["restore", "--source=HEAD", "--staged", "--worktree", "--", path]);
-      return undefined;
-    } catch (cause) {
-      // A file git or the trash refuses leaves the rest of the batch alone.
-      return failureReason(cause, "Discard failed.");
-    }
+  return withMutationLock(cwd, input.expect.revision, async () => {
+    const status = await readStatus(cwd);
+    const files = new Map(
+      (status === undefined ? [] : worktreeFiles(status)).map((file) => [file.path, file]),
+    );
+    const trashPath = async (path: string) => {
+      const absolute = await validatedWorkspacePath(cwd, path);
+      try {
+        const metadata = await lstat(absolute);
+        if (metadata.isDirectory()) throw new Error(`Discard paths must be files: ${path}`);
+        await trash(absolute);
+      } catch (cause) {
+        if (!isFileError(cause, MISSING_PATH)) throw cause;
+      }
+    };
+    return eachPath(input.paths, async (path) => {
+      const file = files.get(path);
+      if (file === undefined) return "This file has no changes to discard.";
+      try {
+        const inHead = await succeeds(cwd, ["cat-file", "-e", `HEAD:${path}`]);
+        if (file.kind === "renamed") {
+          await trashPath(file.path);
+          await runGit(cwd, ["rm", "--cached", "--force", "--quiet", "--", file.path]);
+          await runGit(cwd, [
+            "restore",
+            "--source=HEAD",
+            "--staged",
+            "--worktree",
+            "--",
+            file.from,
+          ]);
+        } else if (file.kind === "untracked" || !inHead) {
+          await trashPath(path);
+          if (file.kind !== "untracked") {
+            await runGit(cwd, ["rm", "--cached", "--force", "--quiet", "--", path]);
+          }
+        } else {
+          await runGit(cwd, ["restore", "--source=HEAD", "--staged", "--worktree", "--", path]);
+        }
+        return undefined;
+      } catch (cause) {
+        return failureReason(cause, "Discard failed.");
+      }
+    });
   });
 }
 
@@ -753,70 +973,142 @@ const NOTHING_TO_COMMIT = [
   "nothing added to commit",
 ];
 
+async function commitPaths(
+  cwd: string,
+  message: string,
+  paths: readonly string[],
+): Promise<"committed" | "nothing_to_commit"> {
+  const directory = await mkdtemp(join(tmpdir(), "nyte-index-"));
+  const index = join(directory, "index");
+  const env = { GIT_INDEX_FILE: index };
+  try {
+    const selected = new Set(paths);
+    const staged = await nameStatus(cwd, ["diff", "--cached"]);
+    for (const file of staged) {
+      if (file.kind === "renamed" && (selected.has(file.path) || selected.has(file.from))) {
+        selected.add(file.path);
+        selected.add(file.from);
+      }
+    }
+    const expandedPaths = [...selected];
+    const head = await gitValue(cwd, ["rev-parse", "--verify", "HEAD"]);
+    const emptyTree =
+      head === undefined ? (await runGit(cwd, ["mktree"], { input: "" })).stdout.trim() : "";
+    await runGit(cwd, ["read-tree", head ?? emptyTree], { env });
+    const entries = await runGit(cwd, ["ls-files", "--stage", "-z", "--", ...expandedPaths]);
+    if (entries.stdout !== "") {
+      await runGit(cwd, ["update-index", "-z", "--index-info"], {
+        env,
+        input: entries.stdout,
+      });
+    }
+    const listed = new Set(
+      entries.stdout.split("\0").flatMap((entry) => {
+        const separator = entry.indexOf("\t");
+        return separator < 0 ? [] : [entry.slice(separator + 1)];
+      }),
+    );
+    for (const path of expandedPaths) {
+      if (!listed.has(path))
+        await runGit(cwd, ["update-index", "--force-remove", "--", path], { env });
+    }
+    const tree = (await runGit(cwd, ["write-tree"], { env })).stdout.trim();
+    const baseTree =
+      head === undefined
+        ? emptyTree
+        : (await runGit(cwd, ["rev-parse", `${head}^{tree}`])).stdout.trim();
+    if (tree === baseTree) return "nothing_to_commit";
+    const created = await runGit(
+      cwd,
+      ["commit-tree", tree, ...(head === undefined ? [] : ["-p", head]), "-F", "-"],
+      { input: message },
+    );
+    await runGit(cwd, [
+      "update-ref",
+      "HEAD",
+      created.stdout.trim(),
+      ...(head === undefined ? [] : [head]),
+    ]);
+    return "committed";
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 async function commit(
   cwd: string,
   input: {
     readonly message: string;
+    readonly expect: { readonly revision: string };
     readonly target:
       | { readonly kind: "staged" }
       | { readonly kind: "all" }
       | { readonly kind: "paths"; readonly paths: readonly string[] };
   },
-): Promise<VcsCommitOutcome> {
+): Promise<VcsCommitOutcome | { readonly kind: "stale" }> {
   if (input.message.trim() === "")
     return { kind: "failed", reason: "Write a commit message first." };
   const target = input.target;
-  const refused = checkPaths(cwd, target.kind === "paths" ? target.paths : []);
+  const refused = await checkPaths(cwd, target.kind === "paths" ? target.paths : []);
   if (refused !== undefined) return refused;
-  // The message is one argument; no shell ever sees it.
-  const args = [
-    "commit",
-    ...(target.kind === "all" ? ["--all"] : []),
-    "-m",
-    input.message,
-    ...(target.kind === "paths" ? ["--", ...target.paths] : []),
-  ];
-  try {
-    await runGit(cwd, args);
-  } catch (cause) {
-    if (!(cause instanceof GitCommandError)) throw cause;
-    const output = `${cause.result.stdout}\n${cause.result.stderr}`;
-    if (NOTHING_TO_COMMIT.some((phrase) => output.includes(phrase)))
-      return { kind: "nothing_to_commit" };
-    // A rejected hook, a signing or identity problem, and a conflict all land here.
-    return { kind: "failed", reason: commandReason(cause.result, "The commit failed.") };
-  }
-  const shown = await runGit(cwd, ["show", "--no-patch", "--format=%H%x1f%s", "HEAD"]);
-  const [oid, summary] = shown.stdout.trim().split("\u001f");
-  if (oid === undefined || summary === undefined) {
-    return { kind: "failed", reason: "The commit was made but could not be read back." };
-  }
-  return { kind: "committed", oid, summary };
+  return withMutationLock(cwd, input.expect.revision, async () => {
+    try {
+      if (target.kind === "paths") {
+        const outcome = await commitPaths(cwd, input.message, target.paths);
+        if (outcome === "nothing_to_commit") return { kind: "nothing_to_commit" };
+      } else {
+        await runGit(cwd, [
+          "commit",
+          ...(target.kind === "all" ? ["--all"] : []),
+          "-m",
+          input.message,
+        ]);
+      }
+    } catch (cause) {
+      if (!(cause instanceof GitCommandError)) throw cause;
+      const output = `${cause.result.stdout}\n${cause.result.stderr}`;
+      if (NOTHING_TO_COMMIT.some((phrase) => output.includes(phrase)))
+        return { kind: "nothing_to_commit" };
+      return { kind: "failed", reason: commandReason(cause.result, "The commit failed.") };
+    }
+    const shown = await runGit(cwd, ["show", "--no-patch", "--format=%H%x1f%s", "HEAD"]);
+    const [oid, summary] = shown.stdout.trim().split("\u001f");
+    if (oid === undefined || summary === undefined) {
+      return { kind: "failed", reason: "The commit was made but could not be read back." };
+    }
+    return { kind: "committed", oid, summary };
+  });
 }
 
 async function createBranch(
   cwd: string,
-  input: { readonly name: string; readonly checkout: boolean },
-): Promise<VcsBranchOutcome> {
-  const name = input.name;
-  // A leading dash would read as an option; `check-ref-format` owns every other rule.
-  if (name.startsWith("-")) {
-    return { kind: "invalid_name", reason: "A branch name cannot start with a dash." };
-  }
-  if (!(await succeeds(cwd, ["check-ref-format", `refs/heads/${name}`]))) {
-    return { kind: "invalid_name", reason: "Git does not accept this branch name." };
-  }
-  if (await succeeds(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`])) {
-    return { kind: "exists" };
-  }
-  try {
-    await runGit(cwd, input.checkout ? ["checkout", "-b", name] : ["branch", name]);
-    return { kind: "created" };
-  } catch (cause) {
-    if (!(cause instanceof GitCommandError)) throw cause;
-    if (cause.result.stderr.includes("already exists")) return { kind: "exists" };
-    return { kind: "failed", reason: commandReason(cause.result, "The branch was not created.") };
-  }
+  input: {
+    readonly name: string;
+    readonly checkout: boolean;
+    readonly expect: { readonly revision: string };
+  },
+): Promise<VcsBranchOutcome | { readonly kind: "stale" }> {
+  return withMutationLock(cwd, input.expect.revision, async () => {
+    const name = input.name;
+    // A leading dash would read as an option; `check-ref-format` owns every other rule.
+    if (name.startsWith("-")) {
+      return { kind: "invalid_name", reason: "A branch name cannot start with a dash." };
+    }
+    if (!(await succeeds(cwd, ["check-ref-format", `refs/heads/${name}`]))) {
+      return { kind: "invalid_name", reason: "Git does not accept this branch name." };
+    }
+    if (await succeeds(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`])) {
+      return { kind: "exists" };
+    }
+    try {
+      await runGit(cwd, input.checkout ? ["checkout", "-b", name] : ["branch", name]);
+      return { kind: "created" };
+    } catch (cause) {
+      if (!(cause instanceof GitCommandError)) throw cause;
+      if (cause.result.stderr.includes("already exists")) return { kind: "exists" };
+      return { kind: "failed", reason: commandReason(cause.result, "The branch was not created.") };
+    }
+  });
 }
 
 const PUSH_REJECTED = ["[rejected]", "non-fast-forward", "fetch first", "Updates were rejected"];
@@ -828,14 +1120,30 @@ function rejectionReason(result: GitResult): string {
   return line ?? "The remote rejected this push. Pull first, then push again.";
 }
 
+async function validPushName(cwd: string, remote: string, branch: string): Promise<boolean> {
+  return (
+    (await succeeds(cwd, ["check-ref-format", `refs/remotes/${remote}/placeholder`])) &&
+    (await succeeds(cwd, ["check-ref-format", `refs/heads/${branch}`]))
+  );
+}
+
 async function runPush(
   cwd: string,
-  args: readonly string[],
   remote: string,
   branch: string,
+  setUpstream: boolean,
 ): Promise<VcsPushOutcome> {
+  if (!(await validPushName(cwd, remote, branch))) {
+    return { kind: "failed", reason: "Git does not accept the remote or branch name." };
+  }
   try {
-    const result = await runGit(cwd, args);
+    const result = await runGit(cwd, [
+      "push",
+      ...(setUpstream ? ["--set-upstream"] : []),
+      "--",
+      remote,
+      branch,
+    ]);
     const output = `${result.stdout}\n${result.stderr}`;
     return output.includes("Everything up-to-date")
       ? { kind: "up_to_date" }
@@ -853,38 +1161,43 @@ async function runPush(
 /** No force, ever: a rejected push is answered, never retried with a wider flag. */
 async function push(
   cwd: string,
-  input: { readonly setUpstream: boolean },
-): Promise<VcsPushOutcome> {
-  const branch = await gitValue(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  if (branch === undefined) {
-    return {
-      kind: "failed",
-      reason: "HEAD is detached, so there is no branch to push. Check out a branch first.",
-    };
-  }
-  const upstream = await gitValue(cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"]);
-  if (upstream !== undefined) {
-    const remote = await gitValue(cwd, ["config", "--get", `branch.${branch}.remote`]);
-    return runPush(cwd, ["push"], remote ?? upstream.split("/")[0] ?? "origin", branch);
-  }
-  if (!input.setUpstream) return { kind: "no_upstream", branch };
-  const remotes =
-    (await gitValue(cwd, ["remote"]))
-      ?.split("\n")
-      .map((name) => name.trim())
-      .filter((name) => name !== "") ?? [];
-  const only = remotes.length === 1 ? remotes[0] : undefined;
-  // Publishing a branch must name one remote; guessing among several would push somewhere unasked.
-  if (only === undefined) {
-    return {
-      kind: "failed",
-      reason:
-        remotes.length === 0
-          ? "This repository has no remote. Add one, then push."
-          : `This repository has several remotes (${remotes.join(", ")}). Push to one of them from a terminal.`,
-    };
-  }
-  return runPush(cwd, ["push", "--set-upstream", only, branch], only, branch);
+  input: {
+    readonly setUpstream: boolean;
+    readonly expect: { readonly revision: string };
+  },
+): Promise<VcsPushOutcome | { readonly kind: "stale" }> {
+  return withMutationLock(cwd, input.expect.revision, async () => {
+    const branch = await gitValue(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    if (branch === undefined) {
+      return {
+        kind: "failed",
+        reason: "HEAD is detached, so there is no branch to push. Check out a branch first.",
+      };
+    }
+    const upstream = await gitValue(cwd, ["rev-parse", "--abbrev-ref", "@{upstream}"]);
+    if (upstream !== undefined) {
+      const remote = await gitValue(cwd, ["config", "--get", `branch.${branch}.remote`]);
+      return runPush(cwd, remote ?? upstream.split("/")[0] ?? "origin", branch, false);
+    }
+    if (!input.setUpstream) return { kind: "no_upstream", branch };
+    const remotes =
+      (await gitValue(cwd, ["remote"]))
+        ?.split("\n")
+        .map((name) => name.trim())
+        .filter((name) => name !== "") ?? [];
+    const only = remotes.length === 1 ? remotes[0] : undefined;
+    // Publishing a branch must name one remote; guessing among several would push somewhere unasked.
+    if (only === undefined) {
+      return {
+        kind: "failed",
+        reason:
+          remotes.length === 0
+            ? "This repository has no remote. Add one, then push."
+            : `This repository has several remotes (${remotes.join(", ")}). Push to one of them from a terminal.`,
+      };
+    }
+    return runPush(cwd, only, branch, true);
+  });
 }
 
 export interface GitVcsOptions {
@@ -902,8 +1215,8 @@ export interface GitVcsOptions {
  * directory it is called with.
  */
 export function createGitVcs(cwd: string, options: GitVcsOptions = {}): VcsBackend {
-  // Run provenance lives in a shadow repository the host owns, never in this `.git`.
-  const snapshots = createTreeSnapshot(cwd, options);
+  safeWorkspacePath(cwd, ".");
+  const snapshots = createTreeSnapshot(options);
   return {
     tree: snapshots.tree,
     diffTrees: snapshots.diffTrees,
@@ -914,7 +1227,10 @@ export function createGitVcs(cwd: string, options: GitVcsOptions = {}): VcsBacke
     log: (input) => log(input.cwd, input),
     refs: (input) => refs(input.cwd),
     stage: (input) => stage(input.cwd, input),
-    discard: (input) => discard(input.cwd, input, snapshots.discard),
+    discard: (input) =>
+      discard(input.cwd, input, (absolutePath) =>
+        snapshots.discard({ cwd: input.cwd, absolutePath }),
+      ),
     commit: (input) => commit(input.cwd, input),
     createBranch: (input) => createBranch(input.cwd, input),
     push: (input) => push(input.cwd, input),

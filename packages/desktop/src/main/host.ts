@@ -254,6 +254,7 @@ const ACCOUNT_LIMITS_TIMEOUT_MS = 10_000;
 
 /** The bridge's own SDK subset: `landing` is a protocol operation the desktop never carries. */
 const SDK_OPERATIONS: ReadonlySet<string> = new Set(SDK_OPERATION_PATHS);
+const TRUSTED_RUN_OPERATIONS: ReadonlySet<string> = new Set(["runs.diff", "runs.revert"]);
 
 function isSdkOperation(path: CallPath): path is SdkOperationPath {
   return SDK_OPERATIONS.has(path);
@@ -534,22 +535,56 @@ export class DesktopHost {
         this.attachSession(open, decoded.sessionId);
         return open.sdk.messages.send(decoded);
       }
-      // Repository writes are host mutations, gated on trust like a file save.
+      case "workspace.vcs.snapshot":
+      case "workspace.vcs.diff":
+      case "workspace.vcs.contents":
+      case "workspace.vcs.log":
+      case "workspace.vcs.refs":
       case "workspace.vcs.stage":
       case "workspace.vcs.discard":
       case "workspace.vcs.commit":
       case "workspace.vcs.createBranch":
       case "workspace.vcs.push": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const open = await this.owner(decoded.sessionId);
-        if (open.kind === "project") await this.requireTrust(open.workspace.path);
+        const sessionId =
+          decoded !== undefined && "sessionId" in decoded ? decoded.sessionId : undefined;
+        const open = await this.owner(sessionId);
+        if (open.kind === "project") {
+          const cwd =
+            sessionId === undefined
+              ? open.workspace.path
+              : await open.sdk.sessionCwd({ sessionId });
+          if (cwd === undefined) {
+            throw new ExpectedHostError({
+              code: "not_found",
+              message: "The session workspace could not be resolved",
+            });
+          }
+          await this.requireTrust(cwd);
+        }
         return dispatch(open.sdk, path, decoded);
       }
       default: {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const open = await this.owner(
-          decoded !== undefined && "sessionId" in decoded ? decoded.sessionId : undefined,
-        );
+        const sessionId =
+          decoded !== undefined && "sessionId" in decoded ? decoded.sessionId : undefined;
+        const open = await this.owner(sessionId);
+        if (TRUSTED_RUN_OPERATIONS.has(path) && open.kind === "project") {
+          if (sessionId === undefined) {
+            throw new ExpectedHostError({
+              code: "not_found",
+              message: "The session workspace could not be resolved",
+            });
+          }
+          const cwd = await open.sdk.sessionCwd({ sessionId });
+          if (cwd === undefined) {
+            throw new ExpectedHostError({
+              code: "not_found",
+              message: "The session workspace could not be resolved",
+            });
+          }
+          await this.requireTrust(cwd);
+        }
         return dispatch(open.sdk, path, decoded);
       }
     }
@@ -1235,6 +1270,23 @@ export class DesktopHost {
     const owner = (sessionId?: SessionId): OpenLocalTarget =>
       sessionId === undefined ? cursor.open : (cursor.sessionOwners.get(sessionId) ?? cursor.open);
     const sdk = (sessionId?: SessionId) => owner(sessionId).sdk;
+    const trustedSdk = async (sessionId?: SessionId): Promise<Nyte> => {
+      const open = owner(sessionId);
+      if (open.kind === "project") {
+        const cwd =
+          sessionId === undefined ? open.workspace.path : await open.sdk.sessionCwd({ sessionId });
+        if (cwd === undefined) {
+          throw new ExpectedHostError({
+            code: "not_found",
+            message: "The session workspace could not be resolved",
+          });
+        }
+        await this.requireTrust(cwd);
+      }
+      return open.sdk;
+    };
+    const trustedVcs = async (sessionId?: SessionId): Promise<Nyte["workspace"]["vcs"]> =>
+      (await trustedSdk(sessionId)).workspace.vcs;
     const remember = (sessionId: SessionId, open: OpenLocalTarget): void => {
       cursor.sessionOwners.set(sessionId, open);
       this.sessionOwners.set(sessionId, open);
@@ -1284,8 +1336,8 @@ export class DesktopHost {
         reply: (input) => sdk(input.sessionId).runs.reply(input),
         compact: (input) => sdk(input.sessionId).runs.compact(input),
         context: (input) => sdk(input.sessionId).runs.context(input),
-        diff: (input) => sdk(input.sessionId).runs.diff(input),
-        revert: (input) => sdk(input.sessionId).runs.revert(input),
+        diff: async (input) => (await trustedSdk(input.sessionId)).runs.diff(input),
+        revert: async (input) => (await trustedSdk(input.sessionId)).runs.revert(input),
       },
       jobs: {
         list: (input) => sdk(input.sessionId).jobs.list(input),
@@ -1313,16 +1365,16 @@ export class DesktopHost {
         forget: (input) => this.forgetShareWorkspace(cursor, input),
         files: (input) => sdk(input?.sessionId).workspace.files(input),
         vcs: {
-          snapshot: (input) => sdk(input?.sessionId).workspace.vcs.snapshot(input),
-          diff: (input) => sdk(input.sessionId).workspace.vcs.diff(input),
-          contents: (input) => sdk(input.sessionId).workspace.vcs.contents(input),
-          log: (input) => sdk(input.sessionId).workspace.vcs.log(input),
-          refs: (input) => sdk(input?.sessionId).workspace.vcs.refs(input),
-          stage: (input) => sdk(input.sessionId).workspace.vcs.stage(input),
-          discard: (input) => sdk(input.sessionId).workspace.vcs.discard(input),
-          commit: (input) => sdk(input.sessionId).workspace.vcs.commit(input),
-          createBranch: (input) => sdk(input.sessionId).workspace.vcs.createBranch(input),
-          push: (input) => sdk(input.sessionId).workspace.vcs.push(input),
+          snapshot: async (input) => (await trustedVcs(input?.sessionId)).snapshot(input),
+          diff: async (input) => (await trustedVcs(input.sessionId)).diff(input),
+          contents: async (input) => (await trustedVcs(input.sessionId)).contents(input),
+          log: async (input) => (await trustedVcs(input.sessionId)).log(input),
+          refs: async (input) => (await trustedVcs(input?.sessionId)).refs(input),
+          stage: async (input) => (await trustedVcs(input.sessionId)).stage(input),
+          discard: async (input) => (await trustedVcs(input.sessionId)).discard(input),
+          commit: async (input) => (await trustedVcs(input.sessionId)).commit(input),
+          createBranch: async (input) => (await trustedVcs(input.sessionId)).createBranch(input),
+          push: async (input) => (await trustedVcs(input.sessionId)).push(input),
         },
       },
       provider: {

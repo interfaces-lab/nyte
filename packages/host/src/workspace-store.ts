@@ -19,6 +19,7 @@ import type { WorkspaceInfo } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
+import { withFileLeaseLock } from "./tree-snapshot.ts";
 
 const WorkspaceRowSchema = Type.Object({
   trusted: Type.Boolean(),
@@ -52,8 +53,12 @@ export function workspaceName(path: string): string {
   return segments.at(-1) ?? path;
 }
 
+function isFileError(cause: unknown, code: string): boolean {
+  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+}
+
 function isMissingFileError(cause: unknown): cause is { readonly code: "ENOENT" } {
-  return typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
+  return isFileError(cause, "ENOENT");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -141,13 +146,15 @@ export class WorkspaceStore {
   }
 
   trust(cwd: string): Promise<TrustedWorkspace> {
-    return this.serialized(async () => {
-      const realPath = await workspaceDirectory(cwd);
-      const rows = await this.read();
-      rows[realPath] = { trusted: true, lastOpenedAt: rows[realPath]?.lastOpenedAt ?? 0 };
-      await this.write(rows);
-      return trusted(realPath);
-    });
+    return this.serialized(() =>
+      this.locked(async () => {
+        const realPath = await workspaceDirectory(cwd);
+        const rows = await this.read();
+        rows[realPath] = { trusted: true, lastOpenedAt: rows[realPath]?.lastOpenedAt ?? 0 };
+        await this.write(rows);
+        return trusted(realPath);
+      }),
+    );
   }
 
   /** Known workspaces, newest first. */
@@ -170,30 +177,37 @@ export class WorkspaceStore {
     });
   }
 
-  /** Record a selection even when the folder is unavailable. Existing symlinks collapse. */
   touch(path: string, now = Date.now()): Promise<void> {
-    return this.serialized(async () => {
-      const realPath = await realpath(resolve(path)).catch(() => resolve(path));
-      const rows = await this.read();
-      rows[realPath] = { trusted: rows[realPath]?.trusted ?? false, lastOpenedAt: now };
-      const kept = Object.entries(rows)
-        .toSorted(([, a], [, b]) => b.lastOpenedAt - a.lastOpenedAt)
-        .filter(([, row], index) => row.trusted || index < this.limit);
-      await this.write(Object.fromEntries(kept));
-    });
+    return this.serialized(() =>
+      this.locked(async () => {
+        const realPath = await realpath(resolve(path)).catch(() => resolve(path));
+        const rows = await this.read();
+        rows[realPath] = { trusted: rows[realPath]?.trusted ?? false, lastOpenedAt: now };
+        const kept = Object.entries(rows)
+          .toSorted(([, a], [, b]) => b.lastOpenedAt - a.lastOpenedAt)
+          .filter(([, row], index) => row.trusted || index < this.limit);
+        await this.write(Object.fromEntries(kept));
+      }),
+    );
   }
 
-  /** Remove a workspace, dropping its trust with it. Works for paths that no longer exist. */
   forget(path: string): Promise<void> {
-    return this.serialized(async () => {
-      const resolved = resolve(path);
-      const realPath = await realpath(resolved).catch(() => undefined);
-      const rows = await this.read();
-      const before = Object.keys(rows).length;
-      delete rows[resolved];
-      if (realPath !== undefined) delete rows[realPath];
-      if (Object.keys(rows).length !== before) await this.write(rows);
-    });
+    return this.serialized(() =>
+      this.locked(async () => {
+        const resolved = resolve(path);
+        const realPath = await realpath(resolved).catch(() => undefined);
+        const rows = await this.read();
+        const before = Object.keys(rows).length;
+        delete rows[resolved];
+        if (realPath !== undefined) delete rows[realPath];
+        if (Object.keys(rows).length !== before) await this.write(rows);
+      }),
+    );
+  }
+
+  private async locked<Result>(operation: () => Promise<Result>): Promise<Result> {
+    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    return withFileLeaseLock(`${this.path}.lock`, operation);
   }
 
   private serialized<T>(operation: () => Promise<T>): Promise<T> {
