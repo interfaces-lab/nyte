@@ -1,10 +1,14 @@
-import { changesFromTurns, parsePatchFacts } from "@nyte-ai/client";
-import type { FileChange, RunId, Turn, VcsDiff, VcsStatus } from "@nyte-ai/protocol";
+import { changesFromTurns, worktreeFiles } from "@nyte-ai/client";
 import type {
-  DesktopVcsCommit,
-  DesktopVcsDiffInput,
-  DesktopVcsSnapshot,
-} from "../../../shared/ipc.ts";
+  FileChange,
+  RunId,
+  Turn,
+  VcsCommitInfo,
+  VcsDiff,
+  VcsFile,
+  VcsSnapshot,
+} from "@nyte-ai/protocol";
+import type { VcsDiffRequest } from "../queries.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
 type TurnChangesScope = Extract<WorkbenchChangesScope, { kind: "turn" }>;
@@ -123,17 +127,20 @@ export function changesScopeValue(scope: WorkbenchChangesScope): string {
 export function diffRequestForScope(
   scope: WorkbenchChangesScope,
   options?: { readonly paths?: readonly string[]; readonly ignoreWhitespace?: boolean },
-): DesktopVcsDiffInput | undefined {
-  const narrowing = { paths: options?.paths, ignoreWhitespace: options?.ignoreWhitespace };
+): VcsDiffRequest | undefined {
+  const narrowing = {
+    paths: options?.paths === undefined ? undefined : [...options.paths],
+    ignoreWhitespace: options?.ignoreWhitespace,
+  };
   switch (scope.kind) {
     case "uncommitted":
-      return { scope: "worktree", ...narrowing };
+      return { scope: { kind: "worktree" }, ...narrowing };
     case "staged":
-      return { scope: "staged", ...narrowing };
+      return { scope: { kind: "staged" }, ...narrowing };
     case "unstaged":
-      return { scope: "unstaged", ...narrowing };
+      return { scope: { kind: "unstaged" }, ...narrowing };
     case "commit":
-      return { scope: "commit", commit: scope.oid, ...narrowing };
+      return { scope: { kind: "commit", oid: scope.oid }, ...narrowing };
     case "turn":
       return undefined;
     default: {
@@ -143,16 +150,32 @@ export function diffRequestForScope(
   }
 }
 
-/** Totals over a scope's patches. Unparsable patches contribute nothing. */
+/** Totals over a scope's patches. */
 export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
   return diffs.reduce<ChangeScopeStats>(
-    (total, diff) => {
-      const facts = parsePatchFacts(diff.patch);
-      if (facts === undefined) return total;
-      return { added: total.added + facts.added, removed: total.removed + facts.removed };
-    },
+    (total, diff) => ({ added: total.added + diff.added, removed: total.removed + diff.removed }),
     { added: 0, removed: 0 },
   );
+}
+
+/** The files a working-tree scope lists. */
+export function scopeFiles(
+  snapshot: VcsSnapshot | undefined,
+  scope: "uncommitted" | "staged" | "unstaged",
+): readonly VcsFile[] | undefined {
+  if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
+  switch (scope) {
+    case "uncommitted":
+      return worktreeFiles(snapshot);
+    case "staged":
+      return snapshot.staged;
+    case "unstaged":
+      return snapshot.unstaged;
+    default: {
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
+  }
 }
 
 /** Diffs already read for the working-tree scopes; each is absent until read. */
@@ -165,7 +188,7 @@ export interface WorkingTreeDiffs {
 function workingTreeOption(
   scope: WorkbenchChangesScope,
   label: string,
-  files: VcsStatus["files"] | undefined,
+  files: readonly VcsFile[] | undefined,
   diffs: readonly VcsDiff[] | undefined,
 ): ChangesScopeOption {
   return {
@@ -177,30 +200,26 @@ function workingTreeOption(
   };
 }
 
-/**
- * Uncommitted, and the index split when the snapshot carries it. A snapshot
- * built from the status alone offers Uncommitted only, so a caller never shows
- * a Staged entry it has no records for.
- */
+/** Uncommitted, then the index split. */
 export function workingTreeScopeOptions(
-  snapshot: DesktopVcsSnapshot | undefined,
+  snapshot: VcsSnapshot | undefined,
   diffs: WorkingTreeDiffs = {},
 ): readonly ChangesScopeOption[] {
-  const options = [
+  return [
     workingTreeOption(
       { kind: "uncommitted" },
       "Uncommitted",
-      snapshot?.status.files,
+      scopeFiles(snapshot, "uncommitted"),
       diffs.uncommitted,
     ),
+    workingTreeOption({ kind: "staged" }, "Staged", scopeFiles(snapshot, "staged"), diffs.staged),
+    workingTreeOption(
+      { kind: "unstaged" },
+      "Unstaged",
+      scopeFiles(snapshot, "unstaged"),
+      diffs.unstaged,
+    ),
   ];
-  if (snapshot?.staged !== undefined)
-    options.push(workingTreeOption({ kind: "staged" }, "Staged", snapshot.staged, diffs.staged));
-  if (snapshot?.unstaged !== undefined)
-    options.push(
-      workingTreeOption({ kind: "unstaged" }, "Unstaged", snapshot.unstaged, diffs.unstaged),
-    );
-  return options;
 }
 
 /**
@@ -208,13 +227,13 @@ export function workingTreeScopeOptions(
  * `statsByOid` carries only the commits already read.
  */
 export function commitScopeOptions(
-  commits: readonly DesktopVcsCommit[],
+  commits: readonly VcsCommitInfo[],
   statsByOid: ReadonlyMap<string, ChangeScopeStats> = new Map(),
 ): readonly ChangesScopeOption[] {
   return commits.map((commit) => ({
     scope: { kind: "commit", oid: commit.oid },
     label: commit.subject,
-    detail: `${commit.shortOid} · ${commit.author}`,
+    detail: `${commit.oid.slice(0, 7)} · ${commit.author}`,
     stats: statsByOid.get(commit.oid),
     fileCount: undefined,
   }));
@@ -272,24 +291,25 @@ export interface BranchReadout {
   readonly behind: number;
 }
 
-export function branchReadout(snapshot: DesktopVcsSnapshot | undefined): BranchReadout | undefined {
+export function branchReadout(snapshot: VcsSnapshot | undefined): BranchReadout | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
   const head = snapshot.head;
-  if (head === undefined) {
-    // A snapshot built from the status alone knows the branch name and nothing else.
-    const branch = snapshot.status.branch;
-    return branch === undefined
-      ? undefined
-      : { label: branch, detached: false, unborn: false, upstream: undefined, ahead: 0, behind: 0 };
+  if (head.branch.kind === "detached") {
+    return {
+      label: (head.oid ?? "").slice(0, 7),
+      detached: true,
+      unborn: head.oid === null,
+      upstream: undefined,
+      ahead: 0,
+      behind: 0,
+    };
   }
-  const branch = head.branch ?? snapshot.status.branch;
-  const detached = branch === undefined;
   return {
-    label: branch ?? (head.oid ?? "").slice(0, 7),
-    detached,
+    label: head.branch.name,
+    detached: false,
     unborn: head.oid === null,
-    upstream: head.upstream,
-    ahead: head.ahead,
-    behind: head.behind,
+    upstream: head.branch.upstream?.name,
+    ahead: head.branch.upstream?.ahead ?? 0,
+    behind: head.branch.upstream?.behind ?? 0,
   };
 }

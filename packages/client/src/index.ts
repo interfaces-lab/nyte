@@ -312,7 +312,18 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
       select: operation("workspace.select"),
       forget: operation("workspace.forget"),
       files: operation("workspace.files"),
-      vcs: { diff: operation("workspace.vcs.diff") },
+      vcs: {
+        snapshot: operation("workspace.vcs.snapshot"),
+        diff: operation("workspace.vcs.diff"),
+        contents: operation("workspace.vcs.contents"),
+        log: operation("workspace.vcs.log"),
+        refs: operation("workspace.vcs.refs"),
+        stage: operation("workspace.vcs.stage"),
+        discard: operation("workspace.vcs.discard"),
+        commit: operation("workspace.vcs.commit"),
+        createBranch: operation("workspace.vcs.createBranch"),
+        push: operation("workspace.vcs.push"),
+      },
     },
     provider: {
       models: {
@@ -569,6 +580,7 @@ export {
   appendTurnChanges,
   changesFromTurns,
   EMPTY_CHANGES,
+  worktreeFiles,
   type ChangesState,
   type FileChange,
 } from "./views/changes.ts";

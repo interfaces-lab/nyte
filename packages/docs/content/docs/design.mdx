@@ -890,7 +890,8 @@ Nyte
   runs       current · abort · wait · reply · compact · context · changes
   jobs       list · start · background · cancel
   heads      list · create · move · delete · merge
-  workspace  list · current · select · forget · files · vcs.status · vcs.diff
+  workspace  list · current · select · forget · files
+             vcs.snapshot · vcs.diff · vcs.contents · vcs.log · vcs.refs · vcs.stage · vcs.discard · vcs.commit · vcs.createBranch · vcs.push
   provider   models.list · models.default
   plugins    catalog · list · commands.list · commands.run · settings.list · settings.apply · resources.list · status.list
   watch({ sessionId, afterSeq? } | { sessionId, live: true })
@@ -906,7 +907,9 @@ Nyte
 
 `NyteOptions` always supplies `store`, `streamFn`, `models`, and a fallback `model`. It may supply
 `landing` (the lanes this host serves; absent means `steer` and `queue`), `actor`, `thinkingLevel`,
-`compaction`, stream options, `telemetry`, `onDiagnostic`, VCS, and a workspace registry. Static
+`compaction`, stream options, `telemetry`, `onDiagnostic`, and a workspace backend (registry,
+`@` file discovery, and a `vcs` backend that answers every `workspace.vcs` operation at the
+directory the SDK resolves per call; `@nyte-ai/host` supplies git). Static
 composition supplies `plugins` and `env`. Lazy composition supplies `resolveActivation` and must
 not also supply static plugins or env.
 

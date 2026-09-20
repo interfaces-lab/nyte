@@ -15,7 +15,7 @@ import { Toolbar } from "@nyte-ai/ui/toolbar";
 import * as stylex from "@stylexjs/stylex";
 import { useState } from "react";
 import type { ReactElement } from "react";
-import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { VcsSnapshot } from "@nyte-ai/protocol";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon, PanelToggleIcon } from "../components/icons.tsx";
 import {
@@ -30,8 +30,8 @@ import {
 import type { IconName } from "../components/icons.tsx";
 import { focus, IconButton, ToggleIconButton } from "../components/ui";
 import { macPlatform } from "../platform.ts";
-import { useVcsLog, useVcsScopedDiffs } from "../queries.ts";
-import type { VcsScopedDiffsIdentity } from "../queries.ts";
+import { useVcsDiff, useVcsLog } from "../queries.ts";
+import type { VcsDiffRead } from "../queries.ts";
 import { menu, workbench } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import { ChangesCommitBar, isWorkingTreeScope } from "./changes-commit-bar.tsx";
@@ -58,7 +58,7 @@ const MAX_COMMIT_PAGES = 10;
 
 /** The repository a scope is read against; absent outside a Git working tree. */
 export interface ChangesRepository {
-  readonly repositoryId: string;
+  readonly root: string;
   readonly revision: string;
 }
 
@@ -284,14 +284,14 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
   );
 }
 
-function scopedDiffsIdentity(
+function diffRead(
   repository: ChangesRepository | undefined,
   scope: WorkbenchChangesScope,
   ignoreWhitespace: boolean,
-): VcsScopedDiffsIdentity | undefined {
+): VcsDiffRead | undefined {
   const request = diffRequestForScope(scope, { ignoreWhitespace });
   if (repository === undefined || request === undefined) return undefined;
-  return { repositoryId: repository.repositoryId, revision: repository.revision, request };
+  return { ...repository, request };
 }
 
 /**
@@ -304,21 +304,19 @@ function WorkingTreeScopeItems({
   repository,
   ignoreWhitespace,
 }: {
-  readonly snapshot: DesktopVcsSnapshot | undefined;
+  readonly snapshot: VcsSnapshot | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly ignoreWhitespace: boolean;
 }): ReactElement {
-  const uncommitted = useVcsScopedDiffs(
-    scopedDiffsIdentity(repository, { kind: "uncommitted" }, ignoreWhitespace),
-    repository !== undefined,
+  const enabled = repository !== undefined;
+  const uncommitted = useVcsDiff(
+    diffRead(repository, { kind: "uncommitted" }, ignoreWhitespace),
+    enabled,
   );
-  const staged = useVcsScopedDiffs(
-    scopedDiffsIdentity(repository, { kind: "staged" }, ignoreWhitespace),
-    repository !== undefined && snapshot?.staged !== undefined,
-  );
-  const unstaged = useVcsScopedDiffs(
-    scopedDiffsIdentity(repository, { kind: "unstaged" }, ignoreWhitespace),
-    repository !== undefined && snapshot?.unstaged !== undefined,
+  const staged = useVcsDiff(diffRead(repository, { kind: "staged" }, ignoreWhitespace), enabled);
+  const unstaged = useVcsDiff(
+    diffRead(repository, { kind: "unstaged" }, ignoreWhitespace),
+    enabled,
   );
   const options = workingTreeScopeOptions(snapshot, {
     uncommitted: uncommitted.data,
@@ -429,7 +427,7 @@ export interface ChangesToolbarProps {
   /** Counts and file total for the scope on screen; the menu reads the rest itself. */
   readonly scopeStats: ChangeScopeStats | undefined;
   readonly scopeFileCount: number | undefined;
-  readonly snapshot: DesktopVcsSnapshot | undefined;
+  readonly snapshot: VcsSnapshot | undefined;
   readonly repository: ChangesRepository | undefined;
   readonly branch: BranchReadout | undefined;
   readonly turnOptions: readonly TurnChangeOption[];

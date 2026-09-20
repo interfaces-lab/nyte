@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runProviderCommand } from "./github.ts";
-import { createGitVcs } from "./vcs.ts";
 import { createShellEnvironmentRepair } from "./shell-environment.ts";
 
 const directories: string[] = [];
@@ -121,12 +120,9 @@ printf 'goodbye\\n'
     expect(env.PATH).toBe("/inherited");
   });
 
-  it("makes recovered executables available to GitHub and VCS commands", async () => {
+  it("makes recovered executables available to GitHub commands", async () => {
     const local = await fixture('PATH="$HOME" /bin/sh -c "$2"');
     await writeFile(join(local.directory, "gh"), "#!/bin/sh\nprintf 'fixture-gh'\n", {
-      mode: 0o755,
-    });
-    await writeFile(join(local.directory, "git"), "#!/bin/sh\nprintf '## fixture-branch\\000'\n", {
       mode: 0o755,
     });
     vi.stubEnv("SHELL", local.shell);
@@ -141,10 +137,6 @@ printf 'goodbye\\n'
         timeoutMs: 1_000,
       }),
     ).toEqual({ kind: "completed", code: 0, stdout: "fixture-gh", stderr: "" });
-    expect(await createGitVcs(local.directory).status()).toEqual({
-      branch: "fixture-branch",
-      files: [],
-    });
   });
 });
 

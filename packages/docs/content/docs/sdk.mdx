@@ -316,6 +316,9 @@ progress, not a second history.
 4. Pass that list, `streamFn`, `store`, and `env.cwd` into `createNyte`, or pass `resolveActivation`
    to load plugins the first time a session activates.
 5. Call `attach()` in the process that should run tools.
+6. Supply `workspace.vcs` (`createGitVcs` from `@nyte-ai/host`) so `nyte.workspace.vcs` answers
+   snapshot, diff, contents, log, refs, stage, discard, commit, createBranch, and push for the
+   session's directory. Without it, reads answer empty and writes answer `failed`.
 
 Trust is not a sandbox and not a per-call approval. After trust, project plugins and unrestricted
 filesystem tools load.

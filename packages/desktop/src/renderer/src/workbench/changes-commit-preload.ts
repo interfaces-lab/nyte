@@ -1,37 +1,34 @@
 // Standalone browser-test preload for the Changes tab's commit surface.
 // Import before any renderer module reads window.nyte.
-import type { VcsStatus } from "@nyte-ai/protocol";
 import type {
-  DesktopVcsCommitInput,
-  DesktopVcsCommitResult,
-  DesktopVcsCreateBranch,
-  DesktopVcsCreateBranchInput,
-  DesktopVcsLog,
-  DesktopVcsPullRequestResult,
-  DesktopVcsPush,
-  DesktopVcsPushInput,
-  DesktopVcsRefs,
-  DesktopVcsSnapshot,
-  NyteBridge,
-} from "../../../shared/ipc.ts";
+  VcsBranchOutcome,
+  VcsCommitOutcome,
+  VcsCommitTarget,
+  VcsFile,
+  VcsLog,
+  VcsPushOutcome,
+  VcsRefs,
+  VcsSnapshot,
+} from "@nyte-ai/protocol";
+import type { GitHubPullRequestOutcome, NyteBridge } from "../../../shared/ipc.ts";
 import { bridgeError } from "../../../shared/errors.ts";
 
 export const CHANGED = "src/working.ts";
 
 /** The scripted repository, the answers it gives, and what the bar asked of it. */
 interface CommitScript {
-  files: VcsStatus["files"];
+  files: VcsFile[];
   revision: number;
   upstream: string | undefined;
-  commits: DesktopVcsCommitInput[];
-  pushes: DesktopVcsPushInput[];
-  branches: DesktopVcsCreateBranchInput[];
+  commits: { readonly message: string; readonly target: VcsCommitTarget }[];
+  pushes: { readonly setUpstream: boolean }[];
+  branches: { readonly name: string; readonly checkout: boolean }[];
   pullRequests: { readonly title: string }[];
   /** Answers for the next call of each route; the last entry repeats. */
-  commitResults: DesktopVcsCommitResult[];
-  pushResults: DesktopVcsPush[];
-  branchResults: DesktopVcsCreateBranch[];
-  pullRequestResults: DesktopVcsPullRequestResult[];
+  commitResults: VcsCommitOutcome[];
+  pushResults: VcsPushOutcome[];
+  branchResults: VcsBranchOutcome[];
+  pullRequestResults: GitHubPullRequestOutcome[];
   /** Refuse the next commit the way a trust gate does. */
   refuseCommit: boolean;
 }
@@ -55,29 +52,36 @@ function nextAnswer<T>(answers: T[], fallback: T): T {
   return answers.length > 1 ? (answers.shift() ?? fallback) : (answers[0] ?? fallback);
 }
 
-const vcsSnapshot = async (): Promise<DesktopVcsSnapshot> => ({
+const vcsSnapshot = async (): Promise<VcsSnapshot> => ({
   kind: "repository",
-  repositoryId: "changes-commit-repo",
+  root: "changes-commit-repo",
   revision: `revision-${String(commitScript.revision)}`,
-  status: { branch: "main", files: commitScript.files },
   head: {
     oid: "c0ffee0",
-    branch: "main",
-    upstream: commitScript.upstream,
-    ahead: 1,
-    behind: 0,
+    branch: {
+      kind: "named",
+      name: "main",
+      upstream:
+        commitScript.upstream === undefined
+          ? null
+          : { name: commitScript.upstream, ahead: 1, behind: 0 },
+    },
+    base: null,
   },
   staged: [],
   unstaged: commitScript.files,
 });
 
-const scopedDiff: NyteBridge["host"]["vcs"]["diff"] = async (input) =>
+const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) =>
   (input.paths ?? commitScript.files.map((file) => file.path)).map((path) => ({
     path,
+    kind: "modified",
+    added: 1,
+    removed: 0,
     patch: [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,2 @@", " old", "+new", ""].join("\n"),
   }));
 
-const commit: NyteBridge["host"]["vcs"]["commit"] = async (input) => {
+const commit: NyteBridge["workspace"]["vcs"]["commit"] = async (input) => {
   if (commitScript.refuseCommit) {
     commitScript.refuseCommit = false;
     // The bridge rejects with plain error data, exactly as the preload does.
@@ -88,11 +92,10 @@ const commit: NyteBridge["host"]["vcs"]["commit"] = async (input) => {
       }),
     );
   }
-  commitScript.commits.push(input);
-  const result = nextAnswer<DesktopVcsCommitResult>(commitScript.commitResults, {
+  commitScript.commits.push({ message: input.message, target: input.target });
+  const result = nextAnswer<VcsCommitOutcome>(commitScript.commitResults, {
     kind: "committed",
     oid: "1234567890abcdef",
-    shortOid: "1234567",
     summary: input.message,
   });
   if (result.kind === "committed") {
@@ -102,59 +105,56 @@ const commit: NyteBridge["host"]["vcs"]["commit"] = async (input) => {
   return result;
 };
 
-const push: NyteBridge["host"]["vcs"]["push"] = async (input) => {
-  commitScript.pushes.push(input);
-  return nextAnswer<DesktopVcsPush>(commitScript.pushResults, {
+const push: NyteBridge["workspace"]["vcs"]["push"] = async (input) => {
+  commitScript.pushes.push({ setUpstream: input.setUpstream });
+  return nextAnswer<VcsPushOutcome>(commitScript.pushResults, {
     kind: "pushed",
     remote: "origin",
     branch: "main",
   });
 };
 
-const createBranch: NyteBridge["host"]["vcs"]["createBranch"] = async (input) => {
-  commitScript.branches.push(input);
-  return nextAnswer<DesktopVcsCreateBranch>(commitScript.branchResults, { kind: "created" });
+const createBranch: NyteBridge["workspace"]["vcs"]["createBranch"] = async (input) => {
+  commitScript.branches.push({ name: input.name, checkout: input.checkout });
+  return nextAnswer<VcsBranchOutcome>(commitScript.branchResults, { kind: "created" });
 };
 
-const createPullRequest: NyteBridge["host"]["vcs"]["createPullRequest"] = async (input) => {
+const createPullRequest: NyteBridge["host"]["github"]["createPullRequest"] = async (input) => {
   commitScript.pullRequests.push({ title: input.title });
-  return nextAnswer<DesktopVcsPullRequestResult>(commitScript.pullRequestResults, {
+  return nextAnswer<GitHubPullRequestOutcome>(commitScript.pullRequestResults, {
     kind: "created",
     url: "https://github.com/nyte/nyte/pull/7",
   });
 };
 
-const log = async (): Promise<DesktopVcsLog> => ({ commits: [], hasMore: false });
-const refs = async (): Promise<DesktopVcsRefs> => ({
-  current: "main",
-  local: ["main"],
-  remote: [],
-});
+const log = async (): Promise<VcsLog> => ({ commits: [], hasMore: false });
+const refs = async (): Promise<VcsRefs> => ({ local: ["main"], remote: [] });
 
 Object.defineProperty(window, "nyte", {
   configurable: true,
   value: {
     sessions: { snapshot: () => new Promise(() => {}) },
     watch: () => () => {},
-    workspace: { vcs: { diff: async () => [] } },
+    workspace: {
+      vcs: {
+        snapshot: vcsSnapshot,
+        diff,
+        log,
+        refs,
+        discard: async () => ({ kind: "applied", paths: [], skipped: [] }),
+        stage: async () => ({ kind: "applied", paths: [], skipped: [] }),
+        commit,
+        push,
+        createBranch,
+      },
+    },
     host: {
       state: () => new Promise(() => {}),
       catalog: () => new Promise(() => {}),
       setThemePreference: () => {},
       openExternal: async () => undefined,
       files: { list: async () => [] },
-      vcs: {
-        snapshot: vcsSnapshot,
-        diff: scopedDiff,
-        log,
-        refs,
-        revert: async () => ({ reverted: [], skipped: [] }),
-        stage: async () => ({ staged: [], skipped: [] }),
-        commit,
-        push,
-        createBranch,
-        createPullRequest,
-      },
+      github: { createPullRequest },
     },
     plugins: { catalog: () => new Promise(() => {}) },
   },

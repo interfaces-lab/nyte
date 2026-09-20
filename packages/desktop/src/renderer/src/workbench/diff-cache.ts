@@ -12,7 +12,7 @@ interface ParsedDiffCacheEntry {
 const parsedDiffs = new Map<string, ParsedDiffCacheEntry>();
 
 function diffIdentityKey(identity: VcsDiffIdentity): string {
-  return JSON.stringify([identity.repositoryId, identity.revision, identity.path]);
+  return JSON.stringify([identity.root, identity.revision, identity.path]);
 }
 
 /** Parse once per stable repository revision and path, including failed parses. */

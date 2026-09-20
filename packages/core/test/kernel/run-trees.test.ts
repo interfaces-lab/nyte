@@ -79,6 +79,8 @@ function script(): StreamFn {
   };
 }
 
+const NO_VCS = { kind: "failed", reason: "fake" } as const;
+
 function fakeVcs(): VcsBackend & {
   readonly trees: TreeId[];
   readonly restored: { tree: TreeId; paths: readonly string[] }[];
@@ -88,8 +90,16 @@ function fakeVcs(): VcsBackend & {
   return {
     trees,
     restored,
-    status: async () => ({ files: [] }),
+    snapshot: async () => ({ kind: "none" }),
     diff: async () => [],
+    contents: async ({ path }) => ({ path, old: null, new: null, binary: false, truncated: false }),
+    log: async () => ({ commits: [], hasMore: false }),
+    refs: async () => ({ local: [], remote: [] }),
+    stage: async () => NO_VCS,
+    discard: async () => NO_VCS,
+    commit: async () => NO_VCS,
+    createBranch: async () => NO_VCS,
+    push: async () => NO_VCS,
     async tree(): Promise<TreeOutcome> {
       const id = treeId(String(trees.length + 1).padStart(40, "0"));
       trees.push(id);

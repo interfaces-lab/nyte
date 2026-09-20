@@ -13,7 +13,7 @@ import { Type } from "typebox";
 import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import { testRenderer } from "../../../../test/renderer.ts";
-import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { VcsDiff, VcsSnapshot } from "@nyte-ai/protocol";
 import {
   branchReadout,
   changesScopeLabel,
@@ -222,22 +222,34 @@ const patch = (path: string): string =>
     "\n",
   );
 
-const repository: DesktopVcsSnapshot = {
+const diffOf = (path: string): VcsDiff => ({
+  path,
+  kind: "modified",
+  added: 2,
+  removed: 1,
+  patch: patch(path),
+});
+
+const repository: VcsSnapshot = {
   kind: "repository",
-  repositoryId: "repo",
+  root: "repo",
   revision: "rev-1",
-  status: { branch: "main", files: [{ path: "src/a.ts", kind: "modified" }] },
-  head: { oid: "c0ffee0badc0ffee", branch: "main", upstream: "origin/main", ahead: 2, behind: 1 },
+  head: {
+    oid: "c0ffee0badc0ffee",
+    branch: {
+      kind: "named",
+      name: "main",
+      upstream: { name: "origin/main", ahead: 2, behind: 1 },
+    },
+    base: null,
+  },
   staged: [{ path: "src/a.ts", kind: "modified" }],
   unstaged: [],
 };
 
-test("working-tree options carry the index split only when the snapshot holds it", () => {
+test("working-tree options count each scope's files and the diffs already read", () => {
   assert.deepEqual(
-    workingTreeScopeOptions(repository, {
-      uncommitted: [{ path: "src/a.ts", patch: patch("src/a.ts") }],
-      staged: [],
-    }),
+    workingTreeScopeOptions(repository, { uncommitted: [diffOf("src/a.ts")], staged: [] }),
     [
       {
         scope: { kind: "uncommitted" },
@@ -264,32 +276,16 @@ test("working-tree options carry the index split only when the snapshot holds it
     ],
   );
 
-  const statusOnly: DesktopVcsSnapshot = {
-    kind: "repository",
-    repositoryId: "repo",
-    revision: "rev-1",
-    status: { files: [] },
-  };
-  assert.deepEqual(
-    workingTreeScopeOptions(statusOnly).map((option) => option.scope.kind),
-    ["uncommitted"],
-  );
   assert.deepEqual(
     workingTreeScopeOptions(undefined).map((option) => option.fileCount),
-    [undefined],
+    [undefined, undefined, undefined],
   );
 });
 
 test("a commit option names the commit and takes counts only once its diff is read", () => {
   const commits = [
-    {
-      oid: "c0ffee0badc0ffee",
-      shortOid: "c0ffee0",
-      subject: "Fix the thing",
-      author: "Ada",
-      committedAt: 1,
-    },
-    { oid: "deadbeef", shortOid: "deadbee", subject: "Start", author: "Ada", committedAt: 0 },
+    { oid: "c0ffee0badc0ffee", subject: "Fix the thing", author: "Ada", committedAt: 1 },
+    { oid: "deadbeef", subject: "Start", author: "Ada", committedAt: 0 },
   ];
   assert.deepEqual(commitScopeOptions(commits, new Map([["deadbeef", { added: 3, removed: 0 }]])), [
     {
@@ -311,32 +307,31 @@ test("a commit option names the commit and takes counts only once its diff is re
 
 test("every scope maps to the read that answers it", () => {
   assert.deepEqual(diffRequestForScope({ kind: "uncommitted" }), {
-    scope: "worktree",
+    scope: { kind: "worktree" },
     paths: undefined,
     ignoreWhitespace: undefined,
   });
   assert.deepEqual(diffRequestForScope({ kind: "staged" }, { ignoreWhitespace: true }), {
-    scope: "staged",
+    scope: { kind: "staged" },
     paths: undefined,
     ignoreWhitespace: true,
   });
   assert.deepEqual(diffRequestForScope({ kind: "unstaged" }, { paths: ["src/a.ts"] }), {
-    scope: "unstaged",
+    scope: { kind: "unstaged" },
     paths: ["src/a.ts"],
     ignoreWhitespace: undefined,
   });
   assert.deepEqual(diffRequestForScope({ kind: "commit", oid: "c0ffee" }), {
-    scope: "commit",
-    commit: "c0ffee",
+    scope: { kind: "commit", oid: "c0ffee" },
     paths: undefined,
     ignoreWhitespace: undefined,
   });
   // A turn's changes are folded from the transcript, so no VCS read serves it.
   assert.equal(diffRequestForScope({ kind: "turn", turnId: "turn-1" }), undefined);
 
-  assert.deepEqual(diffScopeStats([{ path: "src/a.ts", patch: "not a patch" }]), {
-    added: 0,
-    removed: 0,
+  assert.deepEqual(diffScopeStats([diffOf("src/a.ts"), diffOf("src/b.ts")]), {
+    added: 4,
+    removed: 2,
   });
 });
 
@@ -375,8 +370,7 @@ test("the branch readout reports tracking, detachment and an unborn head", () =>
   assert.deepEqual(
     branchReadout({
       ...repository,
-      status: { files: [] },
-      head: { oid: "c0ffee0badc0ffee", ahead: 0, behind: 0 },
+      head: { oid: "c0ffee0badc0ffee", branch: { kind: "detached" }, base: null },
     }),
     {
       label: "c0ffee0",
@@ -388,20 +382,12 @@ test("the branch readout reports tracking, detachment and an unborn head", () =>
     },
   );
   assert.deepEqual(
-    branchReadout({ ...repository, head: { oid: null, branch: "main", ahead: 0, behind: 0 } })
-      ?.unborn,
-    true,
-  );
-  // A snapshot built from the status alone still names the branch.
-  assert.deepEqual(branchReadout({ ...repository, head: undefined })?.label, "main");
-  assert.equal(branchReadout(undefined), undefined);
-  assert.equal(
     branchReadout({
-      kind: "not_repository",
-      repositoryId: "none",
-      revision: "not-repository",
-      status: { files: [] },
+      ...repository,
+      head: { oid: null, branch: { kind: "named", name: "main", upstream: null }, base: null },
     }),
-    undefined,
+    { label: "main", detached: false, unborn: true, upstream: undefined, ahead: 0, behind: 0 },
   );
+  assert.equal(branchReadout(undefined), undefined);
+  assert.equal(branchReadout({ kind: "none" }), undefined);
 });

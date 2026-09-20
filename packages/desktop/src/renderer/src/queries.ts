@@ -30,16 +30,14 @@ import type {
   SessionInfo,
   SettingInfo,
   VcsDiff,
+  VcsLog,
+  VcsRefs,
+  VcsSnapshot,
   WorkspaceInfo,
 } from "@nyte-ai/protocol";
 import { localSessions } from "../../shared/ipc.ts";
 import type {
   DesktopCatalog,
-  DesktopVcsDiffInput,
-  DesktopVcsLog,
-  DesktopVcsLogInput,
-  DesktopVcsRefs,
-  DesktopVcsSnapshot,
   HostState,
   MobileShareState,
   PreferenceChange,
@@ -284,24 +282,19 @@ export function useChildSessions(sessionId: SessionId | undefined) {
 }
 
 export function useVcsSnapshot(enabled: boolean) {
-  return useQuery<DesktopVcsSnapshot>({
+  return useQuery<VcsSnapshot>({
     queryKey: keys.vcsSnapshot,
-    queryFn: () => nyte.host.vcs.snapshot(),
+    queryFn: () => nyte.workspace.vcs.snapshot(),
     enabled,
     refetchInterval: enabled ? 5_000 : false,
   });
 }
 
+/** One parsed patch's cache identity: which checkout, at which revision, which path. */
 export interface VcsDiffIdentity {
-  readonly repositoryId: string;
+  readonly root: string;
   readonly revision: string;
   readonly path: string;
-}
-
-interface VcsDiffsIdentity {
-  readonly repositoryId: string;
-  readonly revision: string;
-  readonly paths: readonly string[];
 }
 
 /**
@@ -309,23 +302,13 @@ interface VcsDiffsIdentity {
  * invalidates, so a run or a save refreshes history and refs with the status.
  */
 export const vcsKeys = {
-  scopedDiffs: (
-    repositoryId: string,
+  diff: (
+    root: string,
     revision: string,
     scopeKey: string,
     pathsKey: string,
     ignoreWhitespace: boolean,
-  ) =>
-    [
-      "vcs",
-      "diffs",
-      "scoped",
-      repositoryId,
-      revision,
-      scopeKey,
-      pathsKey,
-      ignoreWhitespace,
-    ] as const,
+  ) => ["vcs", "diffs", root, revision, scopeKey, pathsKey, ignoreWhitespace] as const,
   log: (limit: number, before: string | null) => ["vcs", "log", limit, before] as const,
   refs: ["vcs", "refs"] as const,
   runDiff: (sessionId: SessionId, runId: RunId) => ["vcs", "run-diff", sessionId, runId] as const,
@@ -346,10 +329,29 @@ export function useRunDiff(sessionId: SessionId | undefined, runId: RunId | unde
   });
 }
 
-export interface VcsScopedDiffsIdentity {
-  readonly repositoryId: string;
+export type VcsDiffRequest = Parameters<typeof nyte.workspace.vcs.diff>[0];
+
+export interface VcsDiffRead {
+  readonly root: string;
   readonly revision: string;
-  readonly request: DesktopVcsDiffInput;
+  readonly request: VcsDiffRequest;
+}
+
+function scopeKey(scope: VcsDiffRequest["scope"]): string {
+  switch (scope.kind) {
+    case "worktree":
+    case "staged":
+    case "unstaged":
+      return scope.kind;
+    case "commit":
+      return `commit:${scope.oid}`;
+    case "branch":
+      return `branch:${scope.base}`;
+    default: {
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
+  }
 }
 
 /**
@@ -357,66 +359,43 @@ export interface VcsScopedDiffsIdentity {
  * side of the index, or one commit. A commit read still carries the working
  * revision, so a scope switch never paints a diff from a stale snapshot.
  */
-export function useVcsScopedDiffs(identity: VcsScopedDiffsIdentity | undefined, enabled: boolean) {
-  const request = identity?.request;
-  const scopeKey =
-    request === undefined
-      ? ""
-      : request.scope === "commit"
-        ? `commit:${request.commit ?? ""}`
-        : request.scope;
+export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
+  const request = read?.request;
   const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
-  const ignoreWhitespace = request?.ignoreWhitespace === true;
   return useQuery<readonly VcsDiff[]>({
     queryKey:
-      identity === undefined
-        ? vcsKeys.scopedDiffs("unavailable", "unavailable", "", "", false)
-        : vcsKeys.scopedDiffs(
-            identity.repositoryId,
-            identity.revision,
-            scopeKey,
+      read === undefined
+        ? vcsKeys.diff("unavailable", "unavailable", "", "", false)
+        : vcsKeys.diff(
+            read.root,
+            read.revision,
+            scopeKey(read.request.scope),
             pathsKey,
-            ignoreWhitespace,
+            read.request.ignoreWhitespace === true,
           ),
-    queryFn: () => (request === undefined ? [] : nyte.host.vcs.diff(request)),
-    // A commit scope without a commit would read the whole working tree instead.
-    enabled:
-      enabled &&
-      request !== undefined &&
-      (request.scope !== "commit" || (request.commit ?? "") !== ""),
+    queryFn: () => (request === undefined ? [] : nyte.workspace.vcs.diff(request)),
+    enabled: enabled && request !== undefined,
   });
 }
 
 /** A page of history, newest first. `before` continues strictly older than that commit. */
-export function useVcsLog(input: DesktopVcsLogInput, enabled: boolean) {
-  return useQuery<DesktopVcsLog>({
+export function useVcsLog(
+  input: { readonly limit: number; readonly before?: string },
+  enabled: boolean,
+) {
+  return useQuery<VcsLog>({
     queryKey: vcsKeys.log(input.limit, input.before ?? null),
-    queryFn: () => nyte.host.vcs.log(input),
+    queryFn: () => nyte.workspace.vcs.log(input),
     enabled,
   });
 }
 
-/** Local and remote short ref names, and the branch HEAD is on. */
+/** Local and remote short ref names. */
 export function useVcsRefs(enabled: boolean) {
-  return useQuery<DesktopVcsRefs>({
+  return useQuery<VcsRefs>({
     queryKey: vcsKeys.refs,
-    queryFn: () => nyte.host.vcs.refs(),
+    queryFn: () => nyte.workspace.vcs.refs(),
     enabled,
-  });
-}
-
-export function useVcsDiffs(identity: VcsDiffsIdentity | undefined, enabled: boolean) {
-  const pathsKey = identity === undefined ? "" : [...identity.paths].toSorted().join("\0");
-  return useQuery<readonly VcsDiff[]>({
-    queryKey:
-      identity === undefined
-        ? keys.vcsDiffs("unavailable", "unavailable", "")
-        : keys.vcsDiffs(identity.repositoryId, identity.revision, pathsKey),
-    queryFn: async () => {
-      if (identity === undefined) return [];
-      return nyte.workspace.vcs.diff({ paths: [...identity.paths] });
-    },
-    enabled: enabled && identity !== undefined && identity.paths.length > 0,
   });
 }
 

@@ -1,13 +1,15 @@
 // Standalone browser-test preload for the changes panel's data layer.
 // Import before any renderer module reads window.nyte.
 import { sessionId } from "@nyte-ai/protocol";
-import type { SessionSnapshot, Turn, VcsStatus } from "@nyte-ai/protocol";
 import type {
-  DesktopVcsLog,
-  DesktopVcsRefs,
-  DesktopVcsSnapshot,
-  NyteBridge,
-} from "../../../shared/ipc.ts";
+  SessionSnapshot,
+  Turn,
+  VcsFile,
+  VcsLog,
+  VcsRefs,
+  VcsSnapshot,
+} from "@nyte-ai/protocol";
+import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const changesSession = sessionId("changes-scope-session");
 
@@ -71,21 +73,27 @@ export function snapshotWith(transcript: readonly Turn[]): SessionSnapshot {
   };
 }
 
-const workingTree: DesktopVcsSnapshot = {
+const workingTree: VcsSnapshot = {
   kind: "repository",
-  repositoryId: "changes-scope-repo",
+  root: "changes-scope-repo",
   revision: "revision-1",
-  status: { branch: "main", files: [{ path: "src/working.ts", kind: "modified" }] },
-  head: { oid: "c0ffee0", branch: "main", upstream: "origin/main", ahead: 1, behind: 0 },
+  head: {
+    oid: "c0ffee0",
+    branch: {
+      kind: "named",
+      name: "main",
+      upstream: { name: "origin/main", ahead: 1, behind: 0 },
+    },
+    base: null,
+  },
   staged: [],
   unstaged: [{ path: "src/working.ts", kind: "modified" }],
 };
 
-const commits: DesktopVcsLog = {
+const commits: VcsLog = {
   commits: [
     {
       oid: "c0ffee0",
-      shortOid: "c0ffee0",
       subject: "Add the working file",
       author: "Scripted Author",
       committedAt: 1,
@@ -101,14 +109,13 @@ interface ChangesScopeScript {
   unwatches: number;
   vcsReads: number;
   diffReads: number;
-  scopedDiffReads: number;
   logReads: number;
   refReads: number;
   transcript: readonly Turn[];
   /** Hold the next read open until `releaseSnapshot` runs. */
   hangSnapshot: boolean;
   failSnapshot: boolean;
-  vcsFiles: VcsStatus["files"];
+  vcsFiles: VcsFile[];
   release: (() => void) | undefined;
 }
 
@@ -118,13 +125,12 @@ export const changesScopeScript: ChangesScopeScript = {
   unwatches: 0,
   vcsReads: 0,
   diffReads: 0,
-  scopedDiffReads: 0,
   logReads: 0,
   refReads: 0,
   transcript: [firstTurn, secondTurn, thirdTurn],
   hangSnapshot: false,
   failSnapshot: false,
-  vcsFiles: workingTree.status.files,
+  vcsFiles: [{ path: "src/working.ts", kind: "modified" }],
   release: undefined,
 };
 
@@ -150,38 +156,34 @@ const metadata: NyteBridge["sessions"]["metadata"] = async () => {
   return { session: held.session, head: held.head, config: held.config, context: held.context };
 };
 
-const vcsSnapshot = async (): Promise<DesktopVcsSnapshot> => {
+const vcsSnapshot = async (): Promise<VcsSnapshot> => {
   changesScopeScript.vcsReads += 1;
-  return {
-    ...workingTree,
-    status: { branch: "main", files: changesScopeScript.vcsFiles },
-    staged: [],
-    unstaged: changesScopeScript.vcsFiles,
-  };
+  return { ...workingTree, staged: [], unstaged: changesScopeScript.vcsFiles };
 };
 
+// The read answers from the same scripted status: staged is empty, and every
+// other scope shows the working files.
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
   changesScopeScript.diffReads += 1;
-  return (input?.paths ?? []).map((path) => ({ path, patch: patchOf(path, "working") }));
-};
-
-// The scoped read answers from the same scripted status: staged is empty, and
-// every other scope shows the working files.
-const scopedDiff: NyteBridge["host"]["vcs"]["diff"] = async (input) => {
-  changesScopeScript.scopedDiffReads += 1;
-  if (input.scope === "staged") return [];
+  if (input.scope.kind === "staged") return [];
   const paths = input.paths ?? changesScopeScript.vcsFiles.map((file) => file.path);
-  return paths.map((path) => ({ path, patch: patchOf(path, "working") }));
+  return paths.map((path) => ({
+    path,
+    kind: "modified",
+    added: 1,
+    removed: 0,
+    patch: patchOf(path, "working"),
+  }));
 };
 
-const log: NyteBridge["host"]["vcs"]["log"] = async (): Promise<DesktopVcsLog> => {
+const log = async (): Promise<VcsLog> => {
   changesScopeScript.logReads += 1;
   return commits;
 };
 
-const refs: NyteBridge["host"]["vcs"]["refs"] = async (): Promise<DesktopVcsRefs> => {
+const refs = async (): Promise<VcsRefs> => {
   changesScopeScript.refReads += 1;
-  return { current: "main", local: ["main"], remote: ["origin/main"] };
+  return { local: ["main"], remote: ["origin/main"] };
 };
 
 const watch: NyteBridge["watch"] = (input, _onEvent, _onEnd) => {
@@ -202,12 +204,11 @@ Object.defineProperty(window, "nyte", {
       background: async () => {},
     },
     watch,
-    workspace: { vcs: { diff } },
+    workspace: { vcs: { snapshot: vcsSnapshot, diff, log, refs } },
     host: {
       state: () => new Promise(() => {}),
       catalog: () => new Promise(() => {}),
       setThemePreference: () => {},
-      vcs: { snapshot: vcsSnapshot, diff: scopedDiff, log, refs },
     },
     plugins: { catalog: () => new Promise(() => {}) },
   },

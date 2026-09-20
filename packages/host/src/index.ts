@@ -58,6 +58,7 @@ export {
   type TreeSnapshot,
   type TreeSnapshotOptions,
 } from "./tree-snapshot.ts";
+export { createGitVcs, type GitVcsOptions } from "./git.ts";
 export { InvalidRipgrepPattern } from "./ripgrep.ts";
 
 export type DeferredPluginTarget =

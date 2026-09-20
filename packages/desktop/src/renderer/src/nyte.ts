@@ -97,7 +97,6 @@ export const sessionClient: SessionObserverClient = { sessions: nyte.sessions, w
 export type {
   DesktopCatalog,
   DesktopModelOption,
-  DesktopVcsSnapshot,
   GitHubAccount,
   GitHubProviderState,
   GitHubPullRequest,

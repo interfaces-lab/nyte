@@ -53,28 +53,28 @@ function shortFile(secondLine: string, lastButOne: string): string {
 }
 
 const loadDiffFiles = createDiffFilesLoader({
-  repositoryId: "repo",
+  root: "/repo",
   revision: "abc123",
-  base: "head",
+  scope: { kind: "worktree" },
   readContents: () =>
     Promise.resolve({
       path: "app.ts",
-      old: { contents: wholeFile("two", "fortyone") },
-      new: { contents: wholeFile("TWO", "FORTYONE") },
+      old: wholeFile("two", "fortyone"),
+      new: wholeFile("TWO", "FORTYONE"),
       binary: false,
       truncated: false,
     }),
 });
 
 const loadShortFile = createDiffFilesLoader({
-  repositoryId: "repo",
+  root: "/repo",
   revision: "abc123",
-  base: "head",
+  scope: { kind: "worktree" },
   readContents: () =>
     Promise.resolve({
       path: "app.ts",
-      old: { contents: shortFile("two", "fifteen") },
-      new: { contents: shortFile("TWO", "FIFTEEN") },
+      old: shortFile("two", "fifteen"),
+      new: shortFile("TWO", "FIFTEEN"),
       binary: false,
       truncated: false,
     }),

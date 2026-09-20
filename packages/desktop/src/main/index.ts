@@ -123,6 +123,7 @@ const hostDependencies = {
   emitWatchEvent: (envelope) => send(WATCH_EVENT_CHANNEL, envelope),
   openExternal: (url) => void shell.openExternal(url),
   revealPath: (path) => shell.showItemInFolder(path),
+  trashPath: (path) => shell.trashItem(path),
   showContextMenu: (input) => showContextMenu({ window: mainWindow, input }),
   browser: browserSurfaces,
   listFonts: localFonts,

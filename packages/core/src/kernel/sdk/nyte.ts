@@ -66,10 +66,13 @@ import {
   type SendReceipt,
   type SessionEvent,
   type SessionId,
+  type VcsBackend,
   type WaitOutcome,
   type WorkspaceBackend,
   type WorkspaceSelection,
 } from "./types.ts";
+
+const NO_VCS = { kind: "failed", reason: "no version control backend" } as const;
 
 interface Attachment {
   readonly sessions?: ReadonlySet<SessionId>;
@@ -197,6 +200,19 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   });
   const delegation = createDelegation({ options, pool, runners, landing });
   const relocation = createRelocation({ options, pool, runners, delegation });
+
+  /** One session names its own directory; without one, the folder a new session would start in. */
+  const workspaceCwd = async (sessionId: SessionId | undefined): Promise<string | undefined> => {
+    pool.alive();
+    return sessionId === undefined ? pool.cwdForNewSession() : relocation.sessionCwd({ sessionId });
+  };
+  const vcsAt = async (
+    sessionId: SessionId | undefined,
+  ): Promise<{ readonly backend: VcsBackend; readonly cwd: string } | undefined> => {
+    const backend = options.workspace?.vcs;
+    const cwd = await workspaceCwd(sessionId);
+    return backend === undefined || cwd === undefined ? undefined : { backend, cwd };
+  };
   const summaries = createSummaries({ options, pool, resolveModel: resolveModelRef });
   const reads = createReads({ options, pool, resolveModel: resolveModelRef });
 
@@ -639,21 +655,61 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
        */
       async files(input) {
         pool.alive();
-        const cwd =
-          input?.sessionId === undefined
-            ? await pool.cwdForNewSession()
-            : await relocation.sessionCwd({ sessionId: input.sessionId });
+        const cwd = await workspaceCwd(input?.sessionId);
         if (cwd === undefined) return [];
         return (await options.workspace?.files({ cwd, query: input?.query })) ?? [];
       },
       vcs: {
-        async status() {
-          pool.alive();
-          return options.workspace?.vcs?.status();
+        async snapshot(input) {
+          const at = await vcsAt(input?.sessionId);
+          return at === undefined ? { kind: "none" } : at.backend.snapshot({ cwd: at.cwd });
         },
         async diff(input) {
-          pool.alive();
-          return (await options.workspace?.vcs?.diff(input)) ?? [];
+          const at = await vcsAt(input.sessionId);
+          return at === undefined ? [] : at.backend.diff({ ...input, cwd: at.cwd });
+        },
+        async contents(input) {
+          const at = await vcsAt(input.sessionId);
+          if (at === undefined) {
+            return { path: input.path, old: null, new: null, binary: false, truncated: false };
+          }
+          return at.backend.contents({ ...input, cwd: at.cwd });
+        },
+        async log(input) {
+          const at = await vcsAt(input.sessionId);
+          return at === undefined
+            ? { commits: [], hasMore: false }
+            : at.backend.log({ ...input, cwd: at.cwd });
+        },
+        async refs(input) {
+          const at = await vcsAt(input?.sessionId);
+          return at === undefined ? { local: [], remote: [] } : at.backend.refs({ cwd: at.cwd });
+        },
+        async stage(input) {
+          const at = await vcsAt(input.sessionId);
+          return at === undefined ? NO_VCS : at.backend.stage({ ...input, cwd: at.cwd });
+        },
+        async discard(input) {
+          const at = await vcsAt(input.sessionId);
+          if (at === undefined) return NO_VCS;
+          // A live run would write over the restored files; `runs.revert` refuses the same way.
+          if (input.sessionId !== undefined) {
+            const run = await pool.currentRun((await pool.open(input.sessionId)).session, MAIN);
+            if (run !== undefined && !isTerminalPhase(run.phase)) return { kind: "busy", run };
+          }
+          return at.backend.discard({ ...input, cwd: at.cwd });
+        },
+        async commit(input) {
+          const at = await vcsAt(input.sessionId);
+          return at === undefined ? NO_VCS : at.backend.commit({ ...input, cwd: at.cwd });
+        },
+        async createBranch(input) {
+          const at = await vcsAt(input.sessionId);
+          return at === undefined ? NO_VCS : at.backend.createBranch({ ...input, cwd: at.cwd });
+        },
+        async push(input) {
+          const at = await vcsAt(input.sessionId);
+          return at === undefined ? NO_VCS : at.backend.push({ ...input, cwd: at.cwd });
         },
       },
     },

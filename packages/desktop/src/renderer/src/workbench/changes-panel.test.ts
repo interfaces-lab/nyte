@@ -3,8 +3,8 @@ import { afterAll, afterEach, describe, test, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parsePatchFacts } from "@nyte-ai/client";
-import type { Turn, VcsDiff } from "@nyte-ai/protocol";
-import type { DesktopVcsDiffInput, DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { Turn, VcsDiff, VcsSnapshot } from "@nyte-ai/protocol";
+import type { VcsDiffRequest } from "../queries.ts";
 import { turnChangeOptions, visibleTurnOptions } from "./change-scopes.ts";
 import { ChangesPanel, revertConfirmation } from "./changes-panel.tsx";
 import { changesViewOptions } from "./changes-view-options.ts";
@@ -17,11 +17,11 @@ import { fileListLabel } from "./file-list-label.ts";
 // here is one the panel itself asked for.
 const reads = vi.hoisted(() => ({
   vcs: { data: undefined, error: null } as {
-    data: DesktopVcsSnapshot | undefined;
+    data: VcsSnapshot | undefined;
     error: Error | null;
   },
   diffs: [] as readonly VcsDiff[],
-  requests: [] as { request: DesktopVcsDiffInput | undefined; enabled: boolean }[],
+  requests: [] as { request: VcsDiffRequest | undefined; enabled: boolean }[],
 }));
 
 vi.hoisted(() => {
@@ -47,16 +47,11 @@ afterAll(() => vi.unstubAllGlobals());
 vi.mock("../queries.ts", () => ({
   useSessionSnapshot: () => ({ data: undefined, error: null }),
   useVcsSnapshot: () => reads.vcs,
-  useVcsDiffs: () => ({ data: [], isLoading: false, isError: false }),
-  useVcsScopedDiffs: (
-    identity: { readonly request: DesktopVcsDiffInput } | undefined,
-    enabled: boolean,
-  ) => {
-    reads.requests.push({ request: identity?.request, enabled });
+  useVcsDiff: (read: { readonly request: VcsDiffRequest } | undefined, enabled: boolean) => {
+    reads.requests.push({ request: read?.request, enabled });
     return { data: reads.diffs, isLoading: false, isError: false };
   },
   useVcsLog: () => ({ data: { commits: [], hasMore: false }, isPending: false }),
-  useVcsRefs: () => ({ data: { local: [], remote: [] } }),
   useRunDiff: () => ({ data: undefined, isLoading: false, isError: false }),
   refreshVcs: () => undefined,
 }));
@@ -194,16 +189,6 @@ test("a failed edit contributes no row while a later settled one survives", () =
   assert.deepEqual(option?.stats, { added: 1, removed: 0 });
 });
 
-const repositorySnapshot: DesktopVcsSnapshot = {
-  kind: "repository",
-  repositoryId: "repo",
-  revision: "rev-1",
-  status: { branch: "main", files: [{ path: "src/working.ts", kind: "modified" }] },
-  head: { oid: "c0ffee0badc0ffee", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 },
-  staged: [{ path: "src/staged.ts", kind: "added" }],
-  unstaged: [{ path: "src/working.ts", kind: "modified" }],
-};
-
 const commitPatch = [
   "--- a/src/committed.ts",
   "+++ b/src/committed.ts",
@@ -215,12 +200,37 @@ const commitPatch = [
   "",
 ].join("\n");
 
+const repositorySnapshot: VcsSnapshot = {
+  kind: "repository",
+  root: "repo",
+  revision: "rev-1",
+  head: {
+    oid: "c0ffee0badc0ffee",
+    branch: {
+      kind: "named",
+      name: "main",
+      upstream: { name: "origin/main", ahead: 0, behind: 0 },
+    },
+    base: null,
+  },
+  staged: [{ path: "src/staged.ts", kind: "added" }],
+  unstaged: [{ path: "src/working.ts", kind: "modified" }],
+};
+
+const committed: VcsDiff = {
+  path: "src/committed.ts",
+  kind: "modified",
+  added: 2,
+  removed: 1,
+  patch: commitPatch,
+};
+
 function renderScope(
   scope: WorkbenchChangesScope,
   diffs: readonly VcsDiff[] = [],
 ): {
   readonly markup: string;
-  readonly reads: readonly { request: DesktopVcsDiffInput | undefined; enabled: boolean }[];
+  readonly reads: readonly { request: VcsDiffRequest | undefined; enabled: boolean }[];
 } {
   reads.vcs = { data: repositorySnapshot, error: null };
   reads.diffs = diffs;
@@ -267,7 +277,11 @@ describe("working-tree scopes", () => {
     assert.deepEqual(renderedPaths(staged.markup), ["src/staged.ts"]);
     assert.deepEqual(staged.reads, [
       {
-        request: { scope: "staged", paths: ["src/staged.ts"], ignoreWhitespace: false },
+        request: {
+          scope: { kind: "staged" },
+          paths: ["src/staged.ts"],
+          ignoreWhitespace: false,
+        },
         enabled: true,
       },
     ]);
@@ -275,19 +289,20 @@ describe("working-tree scopes", () => {
     const unstaged = renderScope({ kind: "unstaged" });
     assert.equal(shownScope(unstaged.markup), "Unstaged");
     assert.deepEqual(renderedPaths(unstaged.markup), ["src/working.ts"]);
-    assert.equal(unstaged.reads[0]?.request?.scope, "unstaged");
+    assert.equal(unstaged.reads[0]?.request?.scope.kind, "unstaged");
 
     const uncommitted = renderScope({ kind: "uncommitted" });
     assert.equal(shownScope(uncommitted.markup), "Uncommitted");
-    assert.equal(uncommitted.reads[0]?.request?.scope, "worktree");
+    assert.deepEqual(renderedPaths(uncommitted.markup), ["src/staged.ts", "src/working.ts"]);
+    assert.equal(uncommitted.reads[0]?.request?.scope.kind, "worktree");
   });
 
   test("ignoring whitespace changes the read, not the scope", () => {
     changesViewOptions.setOptions("repo", { ignoreWhitespace: true });
     const { reads: requests } = renderScope({ kind: "uncommitted" });
     assert.deepEqual(requests[0]?.request, {
-      scope: "worktree",
-      paths: ["src/working.ts"],
+      scope: { kind: "worktree" },
+      paths: ["src/staged.ts", "src/working.ts"],
       ignoreWhitespace: true,
     });
   });
@@ -321,13 +336,12 @@ describe("working-tree scopes", () => {
 describe("commit scope", () => {
   test("builds its rows and counts from the commit's own diff", () => {
     const { markup, reads: requests } = renderScope({ kind: "commit", oid: "c0ffee0badc0ffee" }, [
-      { path: "src/committed.ts", patch: commitPatch },
+      committed,
     ]);
     assert.deepEqual(requests, [
       {
         request: {
-          scope: "commit",
-          commit: "c0ffee0badc0ffee",
+          scope: { kind: "commit", oid: "c0ffee0badc0ffee" },
           paths: undefined,
           ignoreWhitespace: false,
         },
@@ -359,15 +373,15 @@ describe("revert", () => {
     const { markup } = renderScope({ kind: "uncommitted" });
 
     assert.deepEqual(revertAffordances(markup), [
+      { path: "src/staged.ts", disabled: false },
       { path: "src/working.ts", disabled: false },
+      { path: "src/staged.ts", disabled: false },
       { path: "src/working.ts", disabled: false },
     ]);
   });
 
   test("a commit scope has nothing to revert to, so its affordances stay disabled", () => {
-    const { markup } = renderScope({ kind: "commit", oid: "c0ffee0badc0ffee" }, [
-      { path: "src/committed.ts", patch: commitPatch },
-    ]);
+    const { markup } = renderScope({ kind: "commit", oid: "c0ffee0badc0ffee" }, [committed]);
 
     assert.deepEqual(revertAffordances(markup), [
       { path: "src/committed.ts", disabled: true },

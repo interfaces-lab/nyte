@@ -32,6 +32,7 @@ import type { NyteClient } from "@nyte-ai/client";
 import { WorkerStore } from "@nyte-ai/core/store";
 import type { Store } from "@nyte-ai/core/store";
 import {
+  createGitVcs,
   createHost,
   createWorkspaceStore,
   discoverMentionFiles,
@@ -83,14 +84,13 @@ import type { CommandRunner, CommandResult, GitHubProvider } from "./github.ts";
 import { CALL_INPUT_SCHEMAS } from "./ipc-inputs.ts";
 import { ExpectedHostError, ipcFailure, retainDiagnostic } from "./errors.ts";
 import type { IpcFailure } from "../shared/errors.ts";
+import { ensureShellEnvironment } from "./shell-environment.ts";
 import { catalogForUsage, UsageScanner } from "./usage-scan.ts";
 import type { StoreLocation, UsageScan, UsageScanReader } from "./usage-scan.ts";
 import { readAccountUsage } from "@nyte-ai/host/usage";
 import type { AccountUsage } from "@nyte-ai/host/usage";
 import { projectUsageReport } from "./usage.ts";
 import type { StoreRead } from "./usage.ts";
-import { createGitVcs } from "./vcs.ts";
-import type { DesktopGitVcs } from "./vcs.ts";
 import { startMobileShare } from "./mobile-share.ts";
 import type { MobileShare } from "./mobile-share.ts";
 import { findTailnetAddress } from "./tailnet.ts";
@@ -131,6 +131,8 @@ export interface DesktopHostDependencies {
   openExternal(url: string): void;
   /** Show a file or folder in the system file manager. */
   revealPath(path: string): void;
+  /** Where a discarded untracked file goes; the app uses the OS trash. Absent, the host's own trash. */
+  readonly trashPath?: (path: string) => Promise<void>;
   /** Native right-click menu, with the renderer's own signature. */
   showContextMenu: HostBridge["contextMenu"];
   browser: BrowserSurfaces;
@@ -161,7 +163,6 @@ interface OpenHomeTarget extends OpenTargetBase {
 interface OpenProjectTarget extends OpenTargetBase {
   readonly kind: "project";
   readonly workspace: WorkspaceInfo;
-  readonly vcs: DesktopGitVcs;
 }
 
 type CloudAvailability = Extract<
@@ -352,49 +353,7 @@ export class DesktopHost {
         return this.logout(CALL_INPUT_SCHEMAS[path].Parse(input).provider);
       case "host.setPreference":
         return this.setPreference(CALL_INPUT_SCHEMAS[path].Parse(input));
-      case "host.vcs.snapshot":
-        CALL_INPUT_SCHEMAS[path].Parse(input);
-        return this.requireProject().vcs.snapshot();
-      case "host.vcs.contents":
-        return this.requireProject().vcs.contents(CALL_INPUT_SCHEMAS[path].Parse(input));
-      case "host.vcs.diff":
-        return this.requireProject().vcs.scopedDiff(CALL_INPUT_SCHEMAS[path].Parse(input));
-      case "host.vcs.log":
-        return this.requireProject().vcs.log(CALL_INPUT_SCHEMAS[path].Parse(input));
-      case "host.vcs.refs":
-        CALL_INPUT_SCHEMAS[path].Parse(input);
-        return this.requireProject().vcs.refs();
-      case "host.vcs.revert": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject();
-        await this.requireTrust(project.workspace.path);
-        return project.vcs.revert(decoded);
-      }
-      case "host.vcs.stage": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject();
-        await this.requireTrust(project.workspace.path);
-        return project.vcs.stage(decoded);
-      }
-      case "host.vcs.commit": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject();
-        await this.requireTrust(project.workspace.path);
-        return project.vcs.commit(decoded);
-      }
-      case "host.vcs.createBranch": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject();
-        await this.requireTrust(project.workspace.path);
-        return project.vcs.createBranch(decoded);
-      }
-      case "host.vcs.push": {
-        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const project = this.requireProject();
-        await this.requireTrust(project.workspace.path);
-        return project.vcs.push(decoded);
-      }
-      case "host.vcs.createPullRequest": {
+      case "host.github.createPullRequest": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const project = this.requireProject();
         await this.requireTrust(project.workspace.path);
@@ -574,6 +533,17 @@ export class DesktopHost {
         const open = await this.owner(decoded.sessionId);
         this.attachSession(open, decoded.sessionId);
         return open.sdk.messages.send(decoded);
+      }
+      // Repository writes are host mutations, gated on trust like a file save.
+      case "workspace.vcs.stage":
+      case "workspace.vcs.discard":
+      case "workspace.vcs.commit":
+      case "workspace.vcs.createBranch":
+      case "workspace.vcs.push": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const open = await this.owner(decoded.sessionId);
+        if (open.kind === "project") await this.requireTrust(open.workspace.path);
+        return dispatch(open.sdk, path, decoded);
       }
       default: {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
@@ -895,7 +865,13 @@ export class DesktopHost {
       worker: this.dependencies.storeWorker,
     });
     await store.ready();
-    const vcs = projectCwd === undefined ? undefined : createGitVcs(projectCwd);
+    // Git spawns read the repaired PATH; the repair is one shared attempt per process.
+    if (projectCwd !== undefined) await ensureShellEnvironment();
+    const trashPath = this.dependencies.trashPath;
+    const vcs =
+      projectCwd === undefined
+        ? undefined
+        : createGitVcs(projectCwd, trashPath === undefined ? {} : { discard: trashPath });
     let sdk: Nyte | undefined;
     let stopPluginWatch: Disposer | undefined;
     try {
@@ -976,12 +952,10 @@ export class DesktopHost {
         this.openTargets.set(null, open);
         return open;
       }
-      if (vcs === undefined) throw new Error("Project VCS was not composed");
       const open = {
         ...base,
         kind: "project",
         workspace: target.workspace,
-        vcs,
       } satisfies OpenProjectTarget;
       this.openTargets.set(target.workspace.path, open);
       return open;
@@ -1339,8 +1313,16 @@ export class DesktopHost {
         forget: (input) => this.forgetShareWorkspace(cursor, input),
         files: (input) => sdk(input?.sessionId).workspace.files(input),
         vcs: {
-          status: () => cursor.open.sdk.workspace.vcs.status(),
-          diff: (input) => cursor.open.sdk.workspace.vcs.diff(input),
+          snapshot: (input) => sdk(input?.sessionId).workspace.vcs.snapshot(input),
+          diff: (input) => sdk(input.sessionId).workspace.vcs.diff(input),
+          contents: (input) => sdk(input.sessionId).workspace.vcs.contents(input),
+          log: (input) => sdk(input.sessionId).workspace.vcs.log(input),
+          refs: (input) => sdk(input?.sessionId).workspace.vcs.refs(input),
+          stage: (input) => sdk(input.sessionId).workspace.vcs.stage(input),
+          discard: (input) => sdk(input.sessionId).workspace.vcs.discard(input),
+          commit: (input) => sdk(input.sessionId).workspace.vcs.commit(input),
+          createBranch: (input) => sdk(input.sessionId).workspace.vcs.createBranch(input),
+          push: (input) => sdk(input.sessionId).workspace.vcs.push(input),
         },
       },
       provider: {
