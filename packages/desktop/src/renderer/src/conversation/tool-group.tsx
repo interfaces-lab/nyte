@@ -20,8 +20,9 @@ import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { toolGroupStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
+import { Countdown } from "./countdown.tsx";
 import { Prose } from "./prose.tsx";
-import type { WorkTurnPart } from "./transcript-presentation.ts";
+import type { LiveWaits, WorkTurnPart } from "./transcript-presentation.ts";
 import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow.ts";
 import { WorkGroupWindow, opensWorkGroup, workGroupScrollport } from "./work-group-window.tsx";
 import { workGroupBody } from "./work-group-body.ts";
@@ -96,6 +97,7 @@ export function WorkGroupView({
   durationMs,
   running,
   density,
+  waits,
 }: {
   parts: readonly WorkTurnPart[];
   live?: LiveSnapshot;
@@ -104,11 +106,20 @@ export function WorkGroupView({
   durationMs: number;
   running: boolean;
   density: ToolCallDensity;
+  /** The trailing group carries the run's live waits on its children. */
+  waits?: LiveWaits;
 }): ReactElement {
   // The timer marks the frame it saw; any newer live frame makes that mark stale.
   const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
   const stale = live !== undefined && staleFrame === live;
-  const { active, summary } = presentWorkGroup({ parts, durationMs, running, live, stale });
+  const { active, summary } = presentWorkGroup({
+    parts,
+    durationMs,
+    running,
+    live,
+    stale,
+    awaiting: waits?.awaited.size ?? 0,
+  });
   useEffect(() => {
     if (!active || live === undefined) return undefined;
     const timer = window.setTimeout(() => setStaleFrame(live), STALE_AFTER_MS);
@@ -210,6 +221,11 @@ export function WorkGroupView({
       <span {...stylex.props(toolGroupStyles.verb)}>{summary.verb}</span>
       {summary.detail !== undefined && (
         <span {...stylex.props(toolGroupStyles.summary)}>{summary.detail}</span>
+      )}
+      {active && waits?.until !== undefined && (
+        <span {...stylex.props(toolGroupStyles.summary)}>
+          <Countdown until={waits.until} />
+        </span>
       )}
       {(summary.added > 0 || summary.removed > 0) && (
         <span {...stylex.props(toolGroupStyles.stats)}>

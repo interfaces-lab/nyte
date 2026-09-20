@@ -10,7 +10,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { FileChange, ParkedCall, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { filesChangedLabel } from "../workbench/change-tree.ts";
@@ -39,7 +39,13 @@ import { USER_MESSAGE_PREVIEW_LINES, turnStyles } from "./styles.stylex.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { WorkGroupView } from "./tool-group.tsx";
 import { failureNotice } from "./tool-copy.ts";
-import { displayTranscriptParts, userDisplayText } from "./transcript-presentation.ts";
+import {
+  NO_WAITS,
+  displayTranscriptParts,
+  liveWaits,
+  userDisplayText,
+} from "./transcript-presentation.ts";
+import type { LiveWaits } from "./transcript-presentation.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import type { DesktopCatalog, DesktopModelOption } from "../nyte.ts";
 
@@ -499,6 +505,7 @@ function TurnPartView({
   cwd,
   toolCalls,
   running,
+  waits,
   onEditUser,
   branchModel,
 }: {
@@ -507,6 +514,7 @@ function TurnPartView({
   cwd: string | undefined;
   toolCalls: ToolCallDensity;
   running: boolean;
+  waits: LiveWaits;
   onEditUser?: (
     part: UserTurnPart,
     content: UserTurnPart["content"],
@@ -539,6 +547,7 @@ function TurnPartView({
           cwd={cwd}
           active={running}
           density={toolCalls}
+          waits={waits}
         />
       );
     default: {
@@ -557,6 +566,7 @@ export const TurnView = memo(function TurnView({
   branchModel,
   onOpenChanges,
   running = false,
+  parked,
 }: {
   turn: RenderedTurn;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
@@ -571,13 +581,19 @@ export const TurnView = memo(function TurnView({
   /** Absent in read-only views, which then omit the changes card. */
   onOpenChanges?: (target: TurnChangesTarget) => void;
   running?: boolean;
+  /** The run's parked calls; only the trailing turn has live waits. */
+  parked?: readonly ParkedCall[];
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
   const changes = useMemo(() => changesFromTurns([turn]), [turn]);
+  const waits = useMemo(
+    () => (turn.kind === "turn" ? liveWaits(turn.parts, parked, running) : NO_WAITS),
+    [turn, parked, running],
+  );
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
   const display = useMemo(
-    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts) : []),
-    [turn],
+    () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts, waits.hidden) : []),
+    [turn, waits],
   );
   switch (turn.kind) {
     case "turn": {
@@ -606,6 +622,7 @@ export const TurnView = memo(function TurnView({
                   durationMs={turn.durationMs}
                   running={running && trailing}
                   density={appearance.toolCalls}
+                  waits={trailing ? waits : undefined}
                 />
               );
             }
@@ -627,11 +644,24 @@ export const TurnView = memo(function TurnView({
                 cwd={cwd}
                 toolCalls={appearance.toolCalls}
                 running={running}
+                waits={waits}
                 onEditUser={onEditUser}
                 branchModel={branchModel}
               />
             );
           })}
+          {waits.hidden.size > 0 && display.at(-1)?.kind !== "work" && (
+            <WorkGroupView
+              parts={[]}
+              live={live}
+              liveTools={liveTools}
+              cwd={cwd}
+              durationMs={turn.durationMs}
+              running={running}
+              density={appearance.toolCalls}
+              waits={waits}
+            />
+          )}
           {turn.failure !== undefined && <Notice {...failureNotice(turn.failure)} />}
           {!running && changes.length > 0 && onOpenChanges !== undefined && (
             <TurnChangesCard

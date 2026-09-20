@@ -9,11 +9,13 @@ export interface WorkGroupPresentationInput {
   readonly running: boolean;
   readonly live?: LiveSnapshot;
   readonly stale: boolean;
+  /** Children the run is blocked on through waits drawn as status rather than rows. */
+  readonly awaiting: number;
 }
 
 /** What the run is waiting on: delegations win, then the newest running call. */
-function activityLabel(running: readonly ToolClass[]): string | undefined {
-  const delegates = running.filter((toolClass) => toolClass.kind === "delegate").length;
+function activityLabel(running: readonly ToolClass[], awaiting: number): string | undefined {
+  const delegates = awaiting + running.filter((toolClass) => toolClass.kind === "delegate").length;
   if (delegates > 1) return "Waiting for subagents";
   if (delegates === 1) return "Waiting for subagent";
   const newest = running.at(-1);
@@ -45,6 +47,7 @@ export function presentWorkGroup({
   running,
   live,
   stale,
+  awaiting,
 }: WorkGroupPresentationInput) {
   let added = 0;
   let removed = 0;
@@ -73,7 +76,7 @@ export function presentWorkGroup({
   }
   const newest = live?.order.at(-1);
   const verb =
-    activityLabel(runningClasses) ??
+    activityLabel(runningClasses, awaiting) ??
     (live !== undefined && live.tools.size > 0
       ? "Working"
       : newest?.kind === "thinking"

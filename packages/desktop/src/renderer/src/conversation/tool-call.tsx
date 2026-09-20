@@ -25,6 +25,7 @@ import { SubagentCallView, SubagentLineView } from "./subagent-call.tsx";
 import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 import { toolPhase } from "./transcript-presentation.ts";
+import type { LiveWaits } from "./transcript-presentation.ts";
 
 function tidyPath(path: string, cwd: string | undefined): string {
   if (cwd !== undefined && path.startsWith(`${cwd}/`)) return path.slice(cwd.length + 1);
@@ -118,12 +119,15 @@ export const ToolCallView = memo(function ToolCallView({
   cwd,
   active = false,
   density = "compact",
+  waits,
 }: {
   part: ToolTurnPart;
   progress: ToolProgress | undefined;
   cwd: string | undefined;
   active?: boolean;
   density?: ToolCallDensity;
+  /** The run's live waits on its children; only the trailing turn has any. */
+  waits?: LiveWaits;
 }): ReactElement {
   const phase = toolPhase(part, active);
   // Hunks are parsed once per part; the counts beside them are the class's own.
@@ -151,9 +155,15 @@ export const ToolCallView = memo(function ToolCallView({
         phase={phase}
         output={body.kind === "output" ? body.text : undefined}
         density={density}
+        awaited={waits?.awaited.has(toolClass.session) ?? false}
       />
     ) : (
-      <SubagentLineView toolClass={toolClass} phase={phase} density={density} />
+      <SubagentLineView
+        toolClass={toolClass}
+        phase={phase}
+        density={density}
+        until={waits?.deadlines.get(part.callId)}
+      />
     );
   }
   const verb = toolVerb(toolClass, phase);

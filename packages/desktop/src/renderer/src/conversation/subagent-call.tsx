@@ -5,8 +5,9 @@
  * since a create settles while its subagent keeps working; until the child is
  * listed the tool's own phase stands in and the session id is the name. Every
  * other call on a child (`send`, `await`, `read`, `stop`) is one compact line
- * that links to the same child, never a second card. Same law as other tool
- * calls: no status icon, the shimmer is the running state.
+ * that links to the same child, never a second card; while the run is blocked
+ * on it, the line's place is taken by the card's "Waiting" status. Same law as
+ * other tool calls: no status icon, the shimmer is the running state.
  */
 import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
@@ -17,6 +18,7 @@ import { focus, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useCatalog, useChildSessions } from "../queries.ts";
 import { AGENT_STATE_LABEL, agentState } from "./agent-status.ts";
+import { Countdown } from "./countdown.tsx";
 import { modelDisplayName } from "./model-picker-state.ts";
 import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
 import { useSubagentInspector } from "./subagent-inspector.ts";
@@ -80,18 +82,26 @@ export function SubagentCallView({
   phase,
   output,
   density,
+  awaited,
 }: {
   session: SessionId;
   phase: ToolPhase;
   output: string | undefined;
   density: ToolCallDensity;
+  /** The run is blocked on this child. */
+  awaited: boolean;
 }): ReactElement {
   const child = useChild(session);
   const title = child?.name ?? session;
   const state = child === undefined ? undefined : agentState(child);
-  const running = state === undefined ? phase === "running" : state === "working";
+  const blocking = awaited && state !== "completed" && state !== "failed" && state !== "stopped";
+  const running = blocking || (state === undefined ? phase === "running" : state === "working");
   const failed = state === undefined ? phase === "failed" : state === "failed";
-  const status = state === undefined ? PHASE_STATUS[phase] : AGENT_STATE_LABEL[state];
+  const status = blocking
+    ? "Waiting"
+    : state === undefined
+      ? PHASE_STATUS[phase]
+      : AGENT_STATE_LABEL[state];
   const expandable = output !== undefined;
   const content = (open: boolean): ReactElement => (
     <>
@@ -150,10 +160,13 @@ export function SubagentLineView({
   toolClass,
   phase,
   density,
+  until,
 }: {
   toolClass: DelegateToolClass;
   phase: ToolPhase;
   density: ToolCallDensity;
+  /** When the parked call wakes unanswered; counts down beside the name. */
+  until: number | undefined;
 }): ReactElement {
   const { session } = toolClass;
   const label = useChild(session)?.name ?? session;
@@ -175,6 +188,11 @@ export function SubagentLineView({
         <span title={label} {...stylex.props(toolCallStyles.detail)}>
           {label}
         </span>
+        {phase === "running" && until !== undefined && (
+          <span {...stylex.props(toolCallStyles.detail)}>
+            <Countdown until={until} />
+          </span>
+        )}
       </div>
       <OpenAgentButton title={label} session={session} />
     </div>

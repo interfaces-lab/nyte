@@ -20,7 +20,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type { SessionId, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
-import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { VcsSnapshot } from "@nyte-ai/protocol";
 import type { Lane } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
@@ -97,7 +97,7 @@ import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { Selections } from "../conversation/selection.tsx";
 import { parkedSelections } from "../conversation/selection.ts";
-import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
+import { displayTranscriptParts, liveWaits } from "../conversation/transcript-presentation.ts";
 import {
   conversationMessages,
   estimateRowSize,
@@ -567,18 +567,10 @@ function TranscriptPlane({
   );
 }
 
-function repositoryBranch(snapshot: DesktopVcsSnapshot | undefined): string | undefined {
-  if (snapshot === undefined) return undefined;
-  switch (snapshot.kind) {
-    case "not_repository":
-      return undefined;
-    case "repository":
-      return snapshot.status.branch;
-    default: {
-      const _exhaustive: never = snapshot;
-      return _exhaustive;
-    }
-  }
+function repositoryBranch(snapshot: VcsSnapshot | undefined): string | undefined {
+  if (snapshot === undefined || snapshot.kind === "none") return undefined;
+  const { branch } = snapshot.head;
+  return branch.kind === "named" ? branch.name : undefined;
 }
 
 function displayWorkspacePath(path: string): string {
@@ -837,16 +829,21 @@ function SessionConversation({
       ),
     [turns],
   );
-  // A turn that ends in a work group already draws the run's indicator there.
-  // One that ends in prose needs it below the prose, or the model looks idle
-  // while it prepares its next step.
-  const settledWork = useMemo(
-    () =>
-      lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work",
-    [lastTurn],
-  );
+  // A turn that ends in a work group already draws the run's indicator there,
+  // as does one whose live wait on its children is drawn as status. One that
+  // ends in prose needs it below the prose, or the model looks idle while it
+  // prepares its next step.
+  const parked = snapshot.data?.parked;
+  const settledWork = useMemo(() => {
+    if (lastTurn?.kind !== "turn") return false;
+    const waits = liveWaits(lastTurn.parts, parked, working);
+    return (
+      waits.hidden.size > 0 ||
+      displayTranscriptParts(lastTurn.parts, waits.hidden).at(-1)?.kind === "work"
+    );
+  }, [lastTurn, parked, working]);
   const retrying = live.runState === "retrying" ? live.retry.message : undefined;
-  const selections = parkedSelections(snapshot.data?.parked).length;
+  const selections = parkedSelections(parked).length;
   const rows = useMemo(
     () =>
       transcriptRows({
@@ -951,6 +948,7 @@ function SessionConversation({
             branchModel={branchModel}
             onOpenChanges={!working && row.turn === latestChangedTurn ? openChanges : undefined}
             running={working && row.trailing}
+            parked={row.trailing ? parked : undefined}
           />
         );
       case "landing":
@@ -975,7 +973,7 @@ function SessionConversation({
         return (
           <Selections
             sessionId={sessionId}
-            parked={snapshot.data?.parked}
+            parked={parked}
             disabled={snapshot.isError || navigating}
           />
         );
