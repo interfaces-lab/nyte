@@ -1,4 +1,4 @@
-import { changesFromTurns, worktreeFiles } from "@nyte-ai/client";
+import { worktreeFiles } from "@nyte-ai/client";
 import type {
   FileChange,
   RunId,
@@ -18,18 +18,20 @@ export interface ChangeScopeStats {
   readonly removed: number;
 }
 
-/**
- * One entry of the scope menu. `stats` and `fileCount` are absent while the
- * read that would produce them has not answered, which a caller shows as a
- * blank instead of a zero it cannot vouch for.
- */
+export type ChangeScopeRead =
+  | { readonly kind: "pending" }
+  | {
+      readonly kind: "ready";
+      readonly stats: ChangeScopeStats;
+      readonly fileCount: number;
+    };
+
 export interface ChangesScopeOption {
   readonly scope: WorkbenchChangesScope;
   readonly label: string;
   /** Second line: a commit's short oid and author, or a branch's upstream. */
   readonly detail: string | undefined;
-  readonly stats: ChangeScopeStats | undefined;
-  readonly fileCount: number | undefined;
+  readonly read: ChangeScopeRead;
 }
 
 export interface TurnChangeOption {
@@ -51,27 +53,49 @@ function changeStats(changes: readonly FileChange[]): TurnChangeOption["stats"] 
   );
 }
 
+export interface TranscriptChangesProjection {
+  readonly declared: readonly FileChange[];
+  readonly options: readonly TurnChangeOption[];
+}
+
+function addChange(changes: Map<string, FileChange>, change: FileChange): void {
+  const previous = changes.get(change.path);
+  changes.set(change.path, {
+    path: change.path,
+    added: (previous?.added ?? 0) + change.added,
+    removed: (previous?.removed ?? 0) + change.removed,
+  });
+}
+
 /** Newest first; each file carries the exact patches that produced its counts, in order. */
-export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOption[] {
+export function transcriptChanges(turns: readonly Turn[]): TranscriptChangesProjection {
   const turnCount = turns.reduce((count, turn) => (turn.kind === "turn" ? count + 1 : count), 0);
   const options: TurnChangeOption[] = [];
+  const declared = new Map<string, FileChange>();
+  const declaredCommits = new Set<string>();
   let ordinal = 0;
   for (const turn of turns) {
     if (turn.kind !== "turn") continue;
     ordinal += 1;
     const patches = new Map<string, string[]>();
+    const turnChanges = new Map<string, FileChange>();
     const folded = new Set<string>();
     for (const part of turn.parts) {
       if (part.kind !== "tool" || part.class.kind !== "file_patch") continue;
       if (part.result === undefined || part.result.isError || folded.has(part.result.commit))
         continue;
       folded.add(part.result.commit);
-      const { path, patch } = part.class;
+      const { path, patch, added, removed } = part.class;
       const previous = patches.get(path);
       if (previous === undefined) patches.set(path, [patch]);
       else previous.push(patch);
+      addChange(turnChanges, { path, added, removed });
+      if (!declaredCommits.has(part.result.commit)) {
+        declaredCommits.add(part.result.commit);
+        addChange(declared, { path, added, removed });
+      }
     }
-    const files = changesFromTurns([turn]).map((change) => ({
+    const files = [...turnChanges.values()].map((change) => ({
       change,
       patch: (patches.get(change.path) ?? []).join("\n"),
     }));
@@ -83,7 +107,11 @@ export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOp
       files,
     });
   }
-  return options.reverse();
+  return { declared: [...declared.values()], options: options.reverse() };
+}
+
+export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOption[] {
+  return transcriptChanges(turns).options;
 }
 
 export function turnHasChanges(option: TurnChangeOption): boolean {
@@ -195,8 +223,10 @@ function workingTreeOption(
     scope,
     label,
     detail: undefined,
-    stats: diffs === undefined ? undefined : diffScopeStats(diffs),
-    fileCount: files?.length,
+    read:
+      files === undefined || diffs === undefined
+        ? { kind: "pending" }
+        : { kind: "ready", stats: diffScopeStats(diffs), fileCount: files.length },
   };
 }
 
@@ -228,14 +258,13 @@ export function workingTreeScopeOptions(
  */
 export function commitScopeOptions(
   commits: readonly VcsCommitInfo[],
-  statsByOid: ReadonlyMap<string, ChangeScopeStats> = new Map(),
+  readByOid: ReadonlyMap<string, ChangeScopeRead> = new Map(),
 ): readonly ChangesScopeOption[] {
   return commits.map((commit) => ({
     scope: { kind: "commit", oid: commit.oid },
     label: commit.subject,
     detail: `${commit.oid.slice(0, 7)} · ${commit.author}`,
-    stats: statsByOid.get(commit.oid),
-    fileCount: undefined,
+    read: readByOid.get(commit.oid) ?? { kind: "pending" },
   }));
 }
 
@@ -245,8 +274,7 @@ export function turnScopeOption(option: TurnChangeOption): ChangesScopeOption {
     scope: option.scope,
     label: option.label,
     detail: undefined,
-    stats: option.stats,
-    fileCount: option.files.length,
+    read: { kind: "ready", stats: option.stats, fileCount: option.files.length },
   };
 }
 

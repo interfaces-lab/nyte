@@ -26,7 +26,7 @@ import { Button, focus, IconButton } from "../components/ui";
 import { Icon } from "../components/icons.tsx";
 import type { IconName } from "../components/icons.tsx";
 import { nyte } from "../nyte.ts";
-import { refreshVcs } from "../queries.ts";
+import { refreshVcs, refreshVcsSnapshot } from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
 import type { BranchReadout } from "./change-scopes.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
@@ -172,6 +172,8 @@ export function createBranchResultMessage(result: VcsBranchOutcome, name: string
       };
     case "failed":
       return { tone: "error", text: "Couldn’t create the branch.", detail: result.reason };
+    case "stale":
+      return { tone: "error", text: "Changes changed. Review them and try again." };
   }
 }
 
@@ -186,6 +188,8 @@ export function commitResultMessage(result: VcsCommitOutcome): CommitBarResult {
       };
     case "failed":
       return { tone: "error", text: "The commit didn’t go through.", detail: result.reason };
+    case "stale":
+      return { tone: "error", text: "Changes changed. Review them and try again." };
   }
 }
 
@@ -209,6 +213,8 @@ export function pushResultMessage(result: VcsPushOutcome): CommitBarResult {
       };
     case "failed":
       return { tone: "error", text: "The push didn’t go through.", detail: result.reason };
+    case "stale":
+      return { tone: "error", text: "Changes changed. Review them and try again." };
   }
 }
 
@@ -362,6 +368,7 @@ const styles = stylex.create({
 export interface ChangesCommitBarProps {
   readonly scope: WorkbenchChangesScope;
   readonly branch: BranchReadout | undefined;
+  readonly revision: string;
   readonly fileCount: number;
 }
 
@@ -376,6 +383,7 @@ interface RunOptions {
 export function ChangesCommitBar({
   scope,
   branch,
+  revision,
   fileCount,
 }: ChangesCommitBarProps): ReactElement {
   const [message, setMessage] = useState("");
@@ -391,6 +399,7 @@ export function ChangesCommitBar({
 
   const run = async (chosen: CommitAction, options: RunOptions = {}): Promise<void> => {
     const plan = commitActionPlan(chosen);
+    let expect = { revision };
     setRunning(true);
     setResult(undefined);
     setInterrupted(undefined);
@@ -405,13 +414,26 @@ export function ChangesCommitBar({
     try {
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
-        const created = await nyte.workspace.vcs.createBranch({ name, checkout: true });
+        const created = await nyte.workspace.vcs.createBranch({
+          name,
+          checkout: true,
+          expect,
+        });
         const outcome = createBranchResultMessage(created, name);
         if (created.kind !== "created") {
+          if (created.kind === "stale") refreshVcs();
           settle(outcome);
           return;
         }
         refreshVcs();
+        if (plan.commit || plan.push) {
+          const snapshot = await refreshVcsSnapshot();
+          if (snapshot.kind !== "repository") {
+            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
+            return;
+          }
+          expect = { revision: snapshot.revision };
+        }
         // The prompt stays until the branch exists, so a taken or invalid name
         // can be corrected without retyping either field.
         setBranchPrompt(undefined);
@@ -422,23 +444,35 @@ export function ChangesCommitBar({
         const committed = await nyte.workspace.vcs.commit({
           message,
           target: commitTargetFor(scope),
+          expect,
         });
         const outcome = commitResultMessage(committed);
         if (committed.kind !== "committed") {
+          if (committed.kind === "stale") refreshVcs();
           settle(outcome);
           return;
         }
         refreshVcs();
+        if (plan.push) {
+          const snapshot = await refreshVcsSnapshot();
+          if (snapshot.kind !== "repository") {
+            settle({ tone: "error", text: "This workspace is no longer a Git repository." });
+            return;
+          }
+          expect = { revision: snapshot.revision };
+        }
         setMessage("");
         reported.push(outcome.text);
       }
       if (plan.push) {
         const pushed = await nyte.workspace.vcs.push({
           setUpstream: options.setUpstream === true,
+          expect,
         });
         const outcome = pushResultMessage(pushed);
         if (outcome.tone === "error") {
-          setInterrupted(chosen);
+          if (pushed.kind === "stale") refreshVcs();
+          else setInterrupted(chosen);
           settle(outcome);
           return;
         }

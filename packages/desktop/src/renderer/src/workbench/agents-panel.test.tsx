@@ -47,6 +47,8 @@ function agent(id: SessionId, name: string, phase: RunPhase | undefined): Sessio
               run: {
                 runId: "child-run",
                 head: "main",
+                origin: { kind: "user" },
+                root: "child-run",
                 phase,
                 startedAt: 1,
                 attempts: 1,
@@ -125,7 +127,7 @@ describe("agents panel", () => {
     const client = new QueryClient();
     const noSession = renderToStaticMarkup(
       <QueryClientProvider client={client}>
-        <AgentsPanel owner="test" sessionId={undefined} />
+        <AgentsPanel owner="test" sessionId={undefined} visible />
       </QueryClientProvider>,
     );
     expect(noSession).toContain("Open a chat to follow its subagents.");

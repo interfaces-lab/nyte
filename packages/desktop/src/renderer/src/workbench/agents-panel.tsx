@@ -21,7 +21,11 @@ import type { AgentState } from "../conversation/agent-status.ts";
 import { LiveTurn } from "../conversation/live-turn.tsx";
 import { modelDisplayName } from "../conversation/model-picker-state.ts";
 import { TurnView } from "../conversation/turn-view.tsx";
-import { displayTranscriptParts } from "../conversation/transcript-presentation.ts";
+import {
+  NO_WAITS,
+  displayTranscriptParts,
+  liveWaits,
+} from "../conversation/transcript-presentation.ts";
 import { rendersInTranscript } from "../conversation/transcript-rows.ts";
 import { useSessionLive } from "../live.ts";
 import type { LiveSnapshot } from "../live.ts";
@@ -251,8 +255,14 @@ function AgentTranscript({
   const startedAt = agent.heads[0]?.run?.startedAt;
   const now = useNow(working);
   const lastTurn = turns.at(-1);
+  const lastWaits =
+    lastTurn?.kind === "turn"
+      ? liveWaits(lastTurn.parts, snapshot.data?.parked, working)
+      : NO_WAITS;
   const settledWork =
-    lastTurn?.kind === "turn" && displayTranscriptParts(lastTurn.parts).at(-1)?.kind === "work";
+    lastTurn?.kind === "turn" &&
+    (lastWaits.hidden.size > 0 ||
+      displayTranscriptParts(lastTurn.parts, lastWaits.hidden).at(-1)?.kind === "work");
   const model = modelDisplayName(catalog.data, snapshot.data?.config.model);
   const scrollRef = useRef<HTMLDivElement>(null);
   const currentPosition = useRef(position);
@@ -326,6 +336,7 @@ function AgentTranscript({
               live={working && index === turns.length - 1 ? live : undefined}
               cwd={cwd}
               running={working && index === turns.length - 1}
+              waits={index === turns.length - 1 ? lastWaits : NO_WAITS}
             />
           ))}
           <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />
@@ -532,11 +543,11 @@ function VisibleAgentsPanel({
 export function AgentsPanel({
   owner,
   sessionId,
-  visible = true,
+  visible,
 }: {
   readonly owner: string;
   readonly sessionId: SessionId | undefined;
-  readonly visible?: boolean;
+  readonly visible: boolean;
 }): ReactElement | null {
   const [positions] = useState(createAgentReadingPositions);
   const action = useAgentAction(sessionId);

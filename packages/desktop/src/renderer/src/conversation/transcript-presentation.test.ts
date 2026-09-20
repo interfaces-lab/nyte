@@ -93,12 +93,20 @@ describe("transcript presentation", () => {
     const spawn: TurnPart = {
       kind: "tool",
       callId: "task",
-      class: { kind: "delegate", role: "create", session: sessionId("child") },
+      class: {
+        kind: "delegate",
+        role: "create",
+        target: { kind: "one", session: sessionId("child") },
+      },
     };
     const wait: TurnPart = {
       kind: "tool",
       callId: "wait",
-      class: { kind: "delegate", role: "await", session: sessionId("child") },
+      class: {
+        kind: "delegate",
+        role: "await",
+        target: { kind: "many", sessions: [sessionId("child")], mode: "all" },
+      },
     };
     assert.deepEqual(displayTranscriptParts([read("a"), spawn, read("b"), wait]), [
       { kind: "work", parts: [read("a")] },

@@ -820,7 +820,7 @@ export function Sidebar(): ReactElement {
           open
           pending={false}
           error={undefined}
-          description="The chat disappears now. You can undo from the notification before it closes; after that, deletion is permanent."
+          description="The chat disappears now. Undo from the notification before it closes."
           returnFocusRef={confirmationReturnRef}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) closeConfirmation();

@@ -7,13 +7,28 @@ export interface WorkGroupPresentationInput {
   readonly parts: readonly WorkTurnPart[];
   readonly durationMs: number;
   readonly running: boolean;
-  readonly live?: LiveSnapshot;
+  readonly live?: Pick<LiveSnapshot, "order" | "tools">;
   readonly stale: boolean;
-  /** Children the run is blocked on through waits drawn as status rather than rows. */
   readonly awaiting: number;
 }
 
-/** What the run is waiting on: delegations win, then the newest running call. */
+export type DurableWorkGroupPresentation =
+  | {
+      readonly active: false;
+      readonly summary: {
+        readonly verb: "Worked";
+        readonly detail: string | undefined;
+        readonly added: number;
+        readonly removed: number;
+      };
+    }
+  | {
+      readonly active: true;
+      readonly runningClasses: readonly ToolClass[];
+      readonly added: number;
+      readonly removed: number;
+    };
+
 function activityLabel(running: readonly ToolClass[], awaiting: number): string | undefined {
   const delegates = awaiting + running.filter((toolClass) => toolClass.kind === "delegate").length;
   if (delegates > 1) return "Waiting for subagents";
@@ -41,14 +56,14 @@ function activityLabel(running: readonly ToolClass[], awaiting: number): string 
   }
 }
 
-export function presentWorkGroup({
+export function durableWorkGroupPresentation({
   parts,
   durationMs,
   running,
-  live,
-  stale,
-  awaiting,
-}: WorkGroupPresentationInput) {
+}: Pick<
+  WorkGroupPresentationInput,
+  "parts" | "durationMs" | "running"
+>): DurableWorkGroupPresentation {
   let added = 0;
   let removed = 0;
   const runningClasses: ToolClass[] = [];
@@ -60,8 +75,6 @@ export function presentWorkGroup({
     }
     if (toolPhase(part, running) === "running") runningClasses.push(part.class);
   }
-  // Missing tool results can survive an interrupted run. Only the live run
-  // controls group activity; errors remain on their individual tool rows.
   if (!running) {
     const duration = formatRunDuration(durationMs);
     return {
@@ -74,9 +87,24 @@ export function presentWorkGroup({
       },
     };
   }
+  return { active: true, runningClasses, added, removed };
+}
+
+export function liveWorkGroupPresentation({
+  durable,
+  live,
+  stale,
+  awaiting,
+}: {
+  readonly durable: DurableWorkGroupPresentation;
+  readonly live?: Pick<LiveSnapshot, "order" | "tools">;
+  readonly stale: boolean;
+  readonly awaiting: number;
+}) {
+  if (!durable.active) return durable;
   const newest = live?.order.at(-1);
   const verb =
-    activityLabel(runningClasses, awaiting) ??
+    activityLabel(durable.runningClasses, awaiting) ??
     (live !== undefined && live.tools.size > 0
       ? "Working"
       : newest?.kind === "thinking"
@@ -86,5 +114,17 @@ export function presentWorkGroup({
           : stale
             ? "This is taking a bit longer"
             : "Preparing next move");
-  return { active: true, summary: { verb, detail: undefined, added, removed } };
+  return {
+    active: true,
+    summary: { verb, detail: undefined, added: durable.added, removed: durable.removed },
+  };
+}
+
+export function presentWorkGroup(input: WorkGroupPresentationInput) {
+  return liveWorkGroupPresentation({
+    durable: durableWorkGroupPresentation(input),
+    live: input.live,
+    stale: input.stale,
+    awaiting: input.awaiting,
+  });
 }

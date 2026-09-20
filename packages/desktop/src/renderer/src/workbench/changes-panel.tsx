@@ -3,7 +3,7 @@ import * as stylex from "@stylexjs/stylex";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import type { FileChange, SessionId, Turn, VcsFile, VcsFileKind } from "@nyte-ai/protocol";
-import { changesFromTurns, parsePatchFacts } from "@nyte-ai/client";
+import { parsePatchFacts } from "@nyte-ai/client";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
@@ -24,7 +24,7 @@ import {
   changesScopeValue,
   diffRequestForScope,
   scopeFiles,
-  turnChangeOptions,
+  transcriptChanges,
   turnScopeOption,
   workingTreeScopeOptions,
 } from "./change-scopes.ts";
@@ -95,6 +95,17 @@ const styles = stylex.create({
   },
 });
 
+function memoizedPatchFacts(parse: (patch: string) => ReturnType<typeof parsePatchFacts>) {
+  const cache = new Map<string, ReturnType<typeof parsePatchFacts>>();
+  return (patch: string) => {
+    const cached = cache.get(patch);
+    if (cached !== undefined) return cached;
+    const parsed = parse(patch);
+    cache.set(patch, parsed);
+    return parsed;
+  };
+}
+
 function queryError(error: Error | null): string | undefined {
   if (error === null) return undefined;
   const message = error.message;
@@ -137,14 +148,20 @@ function changeRows(
 
 function emptyScopeText(scope: WorkbenchChangesScope): string {
   switch (scope.kind) {
+    case "uncommitted":
+      return "Working tree is clean";
     case "staged":
       return "Nothing is staged";
     case "unstaged":
       return "No unstaged changes";
+    case "turn":
+      return "This turn made no file changes";
     case "commit":
       return "This commit changed no files";
-    default:
-      return "Working tree is clean";
+    default: {
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
   }
 }
 
@@ -231,11 +248,10 @@ function ChangesPanelView({
   turns,
   turnsError,
 }: ChangesPanelViewProps): ReactElement {
-  // The declared changes are a fold of the transcript this panel already
-  // holds; asking the session for them again would reread the whole branch.
-  const declared = useMemo(() => changesFromTurns(turns), [turns]);
+  const transcriptProjection = useMemo(() => transcriptChanges(turns), [turns]);
+  const declared = transcriptProjection.declared;
+  const turnOptions = transcriptProjection.options;
   const snapshot = useVcsSnapshot(true);
-  const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const filterInput = useRef<HTMLInputElement>(null);
   // The affordance that opened the confirmation, so closing it returns focus there.
   const revertReturnRef = useRef<HTMLButtonElement | null>(null);
@@ -300,10 +316,11 @@ function ChangesPanelView({
   // Whitespace and the scope change the bytes of a patch for the same revision
   // and path, so the parse cache is keyed by the read that produced it.
   const diffRevision = `${revision ?? ""}\u0000${activeScopeValue}\u0000${options.ignoreWhitespace ? "ignore-ws" : "raw"}`;
-  const parseDiff = (path: string, patch: string) =>
-    root === undefined
-      ? parsePatchFacts(patch)
-      : parseCachedDiff({ root, revision: diffRevision, path }, patch);
+  const [parseLocalPatch] = useState(() => memoizedPatchFacts(parsePatchFacts));
+  const parseDiff = (path: string, patch: string) => {
+    if (root !== undefined) return parseCachedDiff({ root, revision: diffRevision, path }, patch);
+    return parseLocalPatch(patch);
+  };
 
   // The exact per-run diff, from the trees the run's commits recorded; the
   // turn's own file_patch facts stand in until it answers.
@@ -499,7 +516,19 @@ function ChangesPanelView({
     setReverting(true);
     setRevertError(undefined);
     try {
-      const result = await nyte.workspace.vcs.discard({ paths: [target.path] });
+      if (revision === undefined) {
+        setRevertError("Refresh changes and try again.");
+        return;
+      }
+      const result = await nyte.workspace.vcs.discard({
+        paths: [target.path],
+        expect: { revision },
+      });
+      if (result.kind === "stale") {
+        refreshVcs();
+        setRevertError("Changes changed. Review them and try again.");
+        return;
+      }
       if (result.kind !== "applied") {
         setRevertError(
           result.kind === "failed" ? result.reason : "A run is still writing to this workspace.",

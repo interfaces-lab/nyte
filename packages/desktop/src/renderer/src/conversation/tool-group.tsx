@@ -10,6 +10,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import type { RunId } from "@nyte-ai/protocol";
 import { turnPartId } from "@nyte-ai/client";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon } from "../components/icons.tsx";
@@ -27,16 +28,88 @@ import { FOLLOW_RESUME_MS, followOnScroll, overflows } from "./tool-group-follow
 import { WorkGroupWindow, opensWorkGroup, workGroupScrollport } from "./work-group-window.tsx";
 import { workGroupBody } from "./work-group-body.ts";
 import { createWorkGroupEntries } from "./work-group-entries.ts";
-import { presentWorkGroup } from "./work-group-presentation.ts";
+import {
+  durableWorkGroupPresentation,
+  liveWorkGroupPresentation,
+} from "./work-group-presentation.ts";
 import type { WorkGroupReveal } from "./work-group-body.ts";
 
-/** One row of the episode, keyed by core's part identity so rows never remount as output settles. */
 type WorkEntry =
   | { readonly key: string; readonly kind: "part"; readonly part: WorkTurnPart }
   | { readonly key: string; readonly kind: "live-thinking"; readonly text: string };
 
 function workEntryKey(part: WorkTurnPart): string {
   return part.kind === "tool" ? part.callId : turnPartId(part);
+}
+
+type ThinkingPart = Extract<WorkTurnPart, { readonly kind: "thinking" }>;
+
+type ThinkingKeyInput =
+  | {
+      readonly kind: "live";
+      readonly runId: RunId;
+      readonly attempt: number;
+      readonly contentIndex: number;
+    }
+  | {
+      readonly kind: "settled";
+      readonly runId: RunId | undefined;
+      readonly part: ThinkingPart;
+    };
+
+function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyInput) => string {
+  const settled = new Map<string, string>();
+  for (const part of parts) {
+    if (part.kind !== "thinking") continue;
+    const key = workEntryKey(part);
+    settled.set(key, key);
+  }
+  const pending = new Map<
+    string,
+    {
+      readonly runId: RunId;
+      readonly attempt: number;
+      readonly contentIndex: number;
+      readonly key: string;
+    }
+  >();
+
+  return (input): string => {
+    switch (input.kind) {
+      case "live": {
+        const identity = livePartKey(input.runId, input.attempt, input.contentIndex);
+        const key = `thinking:${identity}`;
+        pending.set(identity, { ...input, key });
+        return key;
+      }
+      case "settled": {
+        const durable = workEntryKey(input.part);
+        const existing = settled.get(durable);
+        if (existing !== undefined) return existing;
+        if (input.runId === undefined) {
+          settled.set(durable, durable);
+          return durable;
+        }
+        const matches = [...pending].filter(
+          ([, candidate]) =>
+            candidate.runId === input.runId && candidate.contentIndex === input.part.contentIndex,
+        );
+        const match = matches.length === 1 ? matches[0] : undefined;
+        if (match === undefined) {
+          settled.set(durable, durable);
+          return durable;
+        }
+        const [identity, candidate] = match;
+        pending.delete(identity);
+        settled.set(durable, candidate.key);
+        return candidate.key;
+      }
+      default: {
+        const _exhaustive: never = input;
+        return _exhaustive;
+      }
+    }
+  };
 }
 
 function WorkEntryView({
@@ -91,6 +164,7 @@ const STALE_AFTER_MS = 15_000;
 
 export function WorkGroupView({
   parts,
+  runId,
   live,
   liveTools,
   cwd,
@@ -100,6 +174,7 @@ export function WorkGroupView({
   waits,
 }: {
   parts: readonly WorkTurnPart[];
+  runId: RunId | undefined;
   live?: LiveSnapshot;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
@@ -112,31 +187,66 @@ export function WorkGroupView({
   // The timer marks the frame it saw; any newer live frame makes that mark stale.
   const [staleFrame, setStaleFrame] = useState<LiveSnapshot | undefined>();
   const stale = live !== undefined && staleFrame === live;
-  const { active, summary } = presentWorkGroup({
-    parts,
-    durationMs,
-    running,
-    live,
-    stale,
-    awaiting: waits?.awaited.size ?? 0,
-  });
+  const liveOrder = live?.order;
+  const liveThoughts = live?.thinking;
+  const presentationTools = live?.tools;
+  const presentationLive = useMemo(
+    () =>
+      liveOrder === undefined || presentationTools === undefined
+        ? undefined
+        : { order: liveOrder, tools: presentationTools },
+    [liveOrder, presentationTools],
+  );
+  const awaiting = waits?.awaited.size ?? 0;
+  const durablePresentation = useMemo(
+    () => durableWorkGroupPresentation({ parts, durationMs, running }),
+    [durationMs, parts, running],
+  );
+  const { active, summary } = useMemo(
+    () =>
+      liveWorkGroupPresentation({
+        durable: durablePresentation,
+        live: presentationLive,
+        stale,
+        awaiting,
+      }),
+    [awaiting, durablePresentation, presentationLive, stale],
+  );
   useEffect(() => {
     if (!active || live === undefined) return undefined;
     const timer = window.setTimeout(() => setStaleFrame(live), STALE_AFTER_MS);
     return () => window.clearTimeout(timer);
   }, [active, live]);
   const [joinEntries] = useState(() => createWorkGroupEntries<WorkEntry>());
-  const settledEntries = useMemo(
-    () => parts.map((part): WorkEntry => ({ key: workEntryKey(part), kind: "part", part })),
-    [parts],
+  const [thinkingKey] = useState(() => createThinkingKey(parts));
+  const liveThinking = useMemo(
+    () =>
+      liveOrder?.flatMap((ref): WorkEntry[] => {
+        if (ref.kind !== "thinking") return [];
+        const liveKey = livePartKey(ref.runId, ref.attempt, ref.index);
+        const key = thinkingKey({
+          kind: "live",
+          runId: ref.runId,
+          attempt: ref.attempt,
+          contentIndex: ref.index,
+        });
+        const text = liveThoughts?.get(liveKey) ?? "";
+        return text === "" ? [] : [{ key, kind: "live-thinking", text }];
+      }) ?? [],
+    [liveOrder, liveThoughts, thinkingKey],
   );
-  const liveThinking =
-    live?.order.flatMap((ref): WorkEntry[] => {
-      if (ref.kind !== "thinking") return [];
-      const key = livePartKey(ref.runId, ref.attempt, ref.index);
-      const text = live.thinking.get(key) ?? "";
-      return text === "" ? [] : [{ key: `live-thinking:${key}`, kind: "live-thinking", text }];
-    }) ?? [];
+  const settledEntries = useMemo(
+    () =>
+      parts.map((part): WorkEntry => ({
+        key:
+          part.kind === "thinking"
+            ? thinkingKey({ kind: "settled", runId, part })
+            : workEntryKey(part),
+        kind: "part",
+        part,
+      })),
+    [parts, runId, thinkingKey],
+  );
   const entries = joinEntries(settledEntries, liveThinking);
   // The first settled part names the group; later parts append after it.
   const first = parts[0];

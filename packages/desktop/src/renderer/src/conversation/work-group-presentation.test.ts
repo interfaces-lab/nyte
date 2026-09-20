@@ -16,7 +16,11 @@ const defaults = {
 
 const read: ToolClass = { kind: "file_read", path: "/project/src/a.ts" };
 const shell: ToolClass = { kind: "shell", command: "pwd" };
-const spawn: ToolClass = { kind: "delegate", role: "create", session: sessionId("child") };
+const spawn: ToolClass = {
+  kind: "delegate",
+  role: "create",
+  target: { kind: "one", session: sessionId("child") },
+};
 const patch: ToolClass = {
   kind: "file_patch",
   op: "edit",

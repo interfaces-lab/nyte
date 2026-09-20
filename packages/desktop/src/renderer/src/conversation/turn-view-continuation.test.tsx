@@ -1,5 +1,6 @@
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NO_WAITS } from "./transcript-presentation.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
 
@@ -40,7 +41,14 @@ afterAll(() => vi.unstubAllGlobals());
 
 function render(turn: RenderedTurn): string {
   return renderToStaticMarkup(
-    <TurnView turn={turn} liveTools={new Map()} cwd={undefined} onOpenChanges={() => {}} />,
+    <TurnView
+      turn={turn}
+      liveTools={new Map()}
+      cwd={undefined}
+      onOpenChanges={() => {}}
+      running={false}
+      waits={NO_WAITS}
+    />,
   );
 }
 

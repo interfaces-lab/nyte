@@ -8,7 +8,16 @@ import { IDLE, livePartKey, liveRun, projectLive } from "./live-fold.ts";
 const RUN = "run-1";
 
 function run(phase: RunPhase, runId = RUN): RunInfo {
-  return { runId, head: "main", phase, startedAt: 1_000, attempts: 1, config: {} };
+  return {
+    runId,
+    head: "main",
+    origin: { kind: "user" },
+    root: runId,
+    phase,
+    startedAt: 1_000,
+    attempts: 1,
+    config: {},
+  };
 }
 
 function textDelta(seq: number, attempt: number, index: number, delta: string): SessionEvent {
@@ -135,7 +144,12 @@ describe("live projection: run phases", () => {
     const retrying = projectLive(
       streaming,
       streaming.parts,
-      run({ kind: "retry", at: 5_000, failure: { class: "rate_limit", message: "429" } }),
+      run({
+        kind: "retry",
+        at: 5_000,
+        retries: 1,
+        failure: { class: "rate_limit", message: "429" },
+      }),
     );
     assert.notEqual(retrying, streaming);
     assert.equal(retrying.runState, "retrying");

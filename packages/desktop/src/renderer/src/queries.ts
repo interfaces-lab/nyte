@@ -92,7 +92,6 @@ function useSessionProjection() {
   };
 }
 
-/** How long cached content of a session counts as current for a paint before a fresh read. */
 export const SNAPSHOT_WARM_MS = 1_000;
 
 const readHost = () => nyte.host.state();
@@ -279,6 +278,12 @@ export function useChildSessions(sessionId: SessionId | undefined) {
     refetchInterval: (query) =>
       query.state.data?.some((child) => agentState(child) === "working") === true ? 2_000 : false,
   });
+}
+
+export async function refreshVcsSnapshot(): Promise<VcsSnapshot> {
+  const snapshot = await nyte.workspace.vcs.snapshot();
+  queryClient.setQueryData(keys.vcsSnapshot, snapshot);
+  return snapshot;
 }
 
 export function useVcsSnapshot(enabled: boolean) {

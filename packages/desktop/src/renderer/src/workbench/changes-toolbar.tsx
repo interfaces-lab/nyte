@@ -45,6 +45,7 @@ import {
 } from "./change-scopes.ts";
 import type {
   BranchReadout,
+  ChangeScopeRead,
   ChangeScopeStats,
   ChangesScopeOption,
   TurnChangeOption,
@@ -275,7 +276,9 @@ function ScopeRadioItem({ option }: { readonly option: ChangesScopeOption }): Re
           {option.detail !== undefined && (
             <span {...stylex.props(styles.scopeDetail)}>{option.detail}</span>
           )}
-          <ScopeMeta stats={option.stats} fileCount={option.fileCount} />
+          {option.read.kind === "ready" && (
+            <ScopeMeta stats={option.read.stats} fileCount={option.read.fileCount} />
+          )}
         </>
       }
     >
@@ -338,12 +341,12 @@ function WorkingTreeScopeItems({
  */
 function CommitScopeItems({
   repository,
-  statsByOid,
+  readByOid,
   before,
   page,
 }: {
   readonly repository: ChangesRepository | undefined;
-  readonly statsByOid: ReadonlyMap<string, ChangeScopeStats>;
+  readonly readByOid: ReadonlyMap<string, ChangeScopeRead>;
   readonly before: string | undefined;
   readonly page: number;
 }): ReactElement {
@@ -362,14 +365,14 @@ function CommitScopeItems({
           {log.isPending ? "Reading history…" : "No commits yet"}
         </MenuItem>
       )}
-      {commitScopeOptions(commits, statsByOid).map((option) => (
+      {commitScopeOptions(commits, readByOid).map((option) => (
         <ScopeRadioItem key={changesScopeValue(option.scope)} option={option} />
       ))}
       {hasMore &&
         (showNextPage ? (
           <CommitScopeItems
             repository={repository}
-            statsByOid={statsByOid}
+            readByOid={readByOid}
             before={oldest.oid}
             page={page + 1}
           />
@@ -469,9 +472,11 @@ export function ChangesToolbar({
   const selectedTurnId = scope.kind === "turn" ? scope.turnId : undefined;
   const visibleTurns = visibleTurnOptions(turnOptions, showAllTurns, selectedTurnId);
   const hasEmptyTurns = turnOptions.some((option) => !turnHasChanges(option));
-  const commitStats: ReadonlyMap<string, ChangeScopeStats> =
+  const commitReads: ReadonlyMap<string, ChangeScopeRead> =
     scope.kind === "commit" && scopeStats !== undefined
-      ? new Map([[scope.oid, scopeStats]])
+      ? new Map([
+          [scope.oid, { kind: "ready", stats: scopeStats, fileCount: scopeFileCount } as const],
+        ])
       : new Map();
   const selectScope = (value: string): void => {
     for (const candidate of [
@@ -525,7 +530,7 @@ export function ChangesToolbar({
                 <MenuRadioGroup value={scopeKey} onValueChange={selectScope}>
                   <CommitScopeItems
                     repository={repository}
-                    statsByOid={commitStats}
+                    readByOid={commitReads}
                     before={undefined}
                     page={1}
                   />
@@ -634,7 +639,12 @@ export function ChangesToolbar({
         />
       </Toolbar.Root>
       {repository !== undefined && isWorkingTreeScope(scope) && (
-        <ChangesCommitBar scope={scope} branch={branch} fileCount={scopeFileCount ?? 0} />
+        <ChangesCommitBar
+          scope={scope}
+          branch={branch}
+          revision={repository.revision}
+          fileCount={scopeFileCount ?? 0}
+        />
       )}
     </>
   );

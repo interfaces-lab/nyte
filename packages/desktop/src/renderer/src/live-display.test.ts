@@ -193,7 +193,16 @@ function running(phase: Extract<SessionEvent, { kind: "run" }>["run"]["phase"], 
     kind: "run",
     seq,
     head: "main",
-    run: { runId: "r1", head: "main", phase, config: {}, attempts: 1, startedAt: 1 },
+    run: {
+      runId: "r1",
+      head: "main",
+      origin: { kind: "user" },
+      root: "r1",
+      phase,
+      config: {},
+      attempts: 1,
+      startedAt: 1,
+    },
   } satisfies SessionEvent;
 }
 
@@ -645,6 +654,8 @@ test("a metadata read after a run event updates the session's phase in the sideb
           run: {
             runId: "r1",
             head: "main",
+            origin: { kind: "user" },
+            root: "r1",
             phase: { kind: "tools" },
             startedAt: 1_000,
             attempts: 1,

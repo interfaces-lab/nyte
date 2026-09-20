@@ -27,7 +27,16 @@ function session(
       {
         head: "main",
         tip: null,
-        run: { runId: `run-${startedAt}`, head: "main", phase, startedAt, attempts: 1, config: {} },
+        run: {
+          runId: `run-${startedAt}`,
+          head: "main",
+          origin: { kind: "user" },
+          root: `run-${startedAt}`,
+          phase,
+          startedAt,
+          attempts: 1,
+          config: {},
+        },
       },
     ],
   };

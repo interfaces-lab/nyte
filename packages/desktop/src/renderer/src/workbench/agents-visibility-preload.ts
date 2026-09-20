@@ -22,6 +22,8 @@ const runningAgent: SessionInfo = {
       run: {
         runId: "visibility-run",
         head: "main",
+        origin: { kind: "user" },
+        root: "visibility-run",
         phase: { kind: "tools" },
         startedAt: Date.now(),
         attempts: 1,
