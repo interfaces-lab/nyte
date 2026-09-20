@@ -8,8 +8,8 @@ import { homedir } from "node:os";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type {
-  DesktopVcsPullRequestInput,
-  DesktopVcsPullRequestResult,
+  GitHubPullRequestInput,
+  GitHubPullRequestOutcome,
   GitHubAccount,
   GitHubProviderState,
   GitHubPullRequest,
@@ -402,13 +402,11 @@ export interface GitHubProvider {
    * repository without a GitHub remote, and an existing pull request are
    * answered rather than run into.
    */
-  readonly createPullRequest: (
-    input: DesktopVcsPullRequestInput,
-  ) => Promise<DesktopVcsPullRequestResult>;
+  readonly createPullRequest: (input: GitHubPullRequestInput) => Promise<GitHubPullRequestOutcome>;
 }
 
 /** The state a pull request request can be refused from, before `gh pr create` runs. */
-function refusal(state: GitHubProviderState): DesktopVcsPullRequestResult | undefined {
+function refusal(state: GitHubProviderState): GitHubPullRequestOutcome | undefined {
   if (state.kind === "cli_missing") return { kind: "cli_missing" };
   if (state.kind === "signed_out") return { kind: "signed_out" };
   if (state.kind === "error") return { kind: "failed", message: state.message };
@@ -422,9 +420,9 @@ function refusal(state: GitHubProviderState): DesktopVcsPullRequestResult | unde
 async function createPullRequest(
   cwd: string,
   state: GitHubProviderState,
-  input: DesktopVcsPullRequestInput,
+  input: GitHubPullRequestInput,
   run: CommandRunner,
-): Promise<DesktopVcsPullRequestResult> {
+): Promise<GitHubPullRequestOutcome> {
   const refused = refusal(state);
   if (refused !== undefined) return refused;
   if (state.kind !== "ready" || state.repository === undefined) {

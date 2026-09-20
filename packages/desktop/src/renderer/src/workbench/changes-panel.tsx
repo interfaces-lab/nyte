@@ -2,7 +2,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { FileChange, SessionId, Turn, VcsStatus } from "@nyte-ai/protocol";
+import type { FileChange, SessionId, Turn, VcsFile, VcsFileKind } from "@nyte-ai/protocol";
 import { changesFromTurns, parsePatchFacts } from "@nyte-ai/client";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
@@ -13,7 +13,7 @@ import {
   refreshVcs,
   useRunDiff,
   useSessionSnapshot,
-  useVcsScopedDiffs,
+  useVcsDiff,
   useVcsSnapshot,
 } from "../queries.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -23,6 +23,7 @@ import {
   changesScopeLabel,
   changesScopeValue,
   diffRequestForScope,
+  scopeFiles,
   turnChangeOptions,
   turnScopeOption,
   workingTreeScopeOptions,
@@ -44,13 +45,11 @@ import {
   type UncommittedPatch,
 } from "./stacked-diff.ts";
 
-type StatusFile = VcsStatus["files"][number];
-
 /** A file the working tree or the index reports, folded with what turns declared. */
 interface WorkingChangeRow {
   readonly source: "working";
   readonly path: string;
-  readonly status: StatusFile["kind"];
+  readonly status: VcsFileKind;
   readonly inWorkingTree: boolean;
   readonly change: FileChange | undefined;
 }
@@ -115,7 +114,7 @@ function uncommittedPatchState(
 }
 
 function changeRows(
-  files: VcsStatus["files"] | undefined,
+  files: readonly VcsFile[] | undefined,
   declared: readonly FileChange[],
 ): readonly WorkingChangeRow[] {
   const remaining = new Map(declared.map((change) => [change.path, change]));
@@ -258,11 +257,9 @@ function ChangesPanelView({
   const activeScope: WorkbenchChangesScope =
     scope.kind === "turn" && selectedTurn === undefined ? UNCOMMITTED_SCOPE : scope;
   const activeScopeValue = changesScopeValue(activeScope);
-  const repositoryId =
-    snapshot.data?.kind === "repository" ? snapshot.data.repositoryId : undefined;
+  const root = snapshot.data?.kind === "repository" ? snapshot.data.root : undefined;
   const revision = snapshot.data?.kind === "repository" ? snapshot.data.revision : undefined;
-  const repository =
-    repositoryId === undefined || revision === undefined ? undefined : { repositoryId, revision };
+  const repository = root === undefined || revision === undefined ? undefined : { root, revision };
   useSyncExternalStore(
     changesViewed.subscribe,
     changesViewed.getSnapshot,
@@ -276,16 +273,11 @@ function ChangesPanelView({
   // Options follow the repository; a turn shares the layout chosen for the tree
   // it belongs to. Review marks do not: the same path carries a different patch
   // in each scope, and a mark from one must not read as stale in another.
-  const optionsScopeId = repositoryId ?? "workspace";
+  const optionsScopeId = root ?? "workspace";
   const options = changesViewOptions.options(optionsScopeId);
 
-  const statusFiles =
-    activeScope.kind === "staged"
-      ? snapshot.data?.staged
-      : activeScope.kind === "unstaged"
-        ? snapshot.data?.unstaged
-        : snapshot.data?.status.files;
   const workingScope = activeScope.kind !== "turn" && activeScope.kind !== "commit";
+  const statusFiles = workingScope ? scopeFiles(snapshot.data, activeScope.kind) : undefined;
   const workingRows = useMemo(
     () =>
       workingScope
@@ -298,7 +290,7 @@ function ChangesPanelView({
     paths: workingScope ? workingPaths : undefined,
     ignoreWhitespace: options.ignoreWhitespace,
   });
-  const diffs = useVcsScopedDiffs(
+  const diffs = useVcsDiff(
     repository === undefined || diffRequest === undefined
       ? undefined
       : { ...repository, request: diffRequest },
@@ -309,9 +301,9 @@ function ChangesPanelView({
   // and path, so the parse cache is keyed by the read that produced it.
   const diffRevision = `${revision ?? ""}\u0000${activeScopeValue}\u0000${options.ignoreWhitespace ? "ignore-ws" : "raw"}`;
   const parseDiff = (path: string, patch: string) =>
-    repositoryId === undefined
+    root === undefined
       ? parsePatchFacts(patch)
-      : parseCachedDiff({ repositoryId, revision: diffRevision, path }, patch);
+      : parseCachedDiff({ root, revision: diffRevision, path }, patch);
 
   // The exact per-run diff, from the trees the run's commits recorded; the
   // turn's own file_patch facts stand in until it answers.
@@ -338,16 +330,13 @@ function ChangesPanelView({
             removed: change.removed,
           }))
       : activeScope.kind === "commit"
-        ? (diffs.data ?? []).map((diff): PatchChangeRow => {
-            const parsed = parseDiff(diff.path, diff.patch);
-            return {
-              source: "patch",
-              path: diff.path,
-              patch: diff.patch,
-              added: parsed?.added ?? 0,
-              removed: parsed?.removed ?? 0,
-            };
-          })
+        ? (diffs.data ?? []).map((diff): PatchChangeRow => ({
+            source: "patch",
+            path: diff.path,
+            patch: diff.patch,
+            added: diff.added,
+            removed: diff.removed,
+          }))
         : [];
   const rows: readonly ChangeRow[] = workingScope ? workingRows : patchRows;
   const groups = changeFileGroups(rows.map((row) => row.path));
@@ -452,15 +441,15 @@ function ChangesPanelView({
   const expandable = repository !== undefined && workingScope;
   const loadDiffFiles = useMemo(
     () =>
-      expandable && repositoryId !== undefined && revision !== undefined
+      expandable && root !== undefined && revision !== undefined
         ? createDiffFilesLoader({
-            readContents: (input) => nyte.host.vcs.contents(input),
-            repositoryId,
+            readContents: (input) => nyte.workspace.vcs.contents(input),
+            root,
             revision,
-            base: "head",
+            scope: { kind: "worktree" },
           })
         : undefined,
-    [expandable, repositoryId, revision],
+    [expandable, root, revision],
   );
   const sidebarFiles: readonly ChangesSidebarFile[] = stackOrder.flatMap((path) => {
     const row = rowByPath.get(path);
@@ -510,7 +499,13 @@ function ChangesPanelView({
     setReverting(true);
     setRevertError(undefined);
     try {
-      const result = await nyte.host.vcs.revert({ paths: [target.path] });
+      const result = await nyte.workspace.vcs.discard({ paths: [target.path] });
+      if (result.kind !== "applied") {
+        setRevertError(
+          result.kind === "failed" ? result.reason : "A run is still writing to this workspace.",
+        );
+        return;
+      }
       const skipped = result.skipped.find((entry) => entry.path === target.path);
       if (skipped !== undefined) {
         setRevertError(skipped.reason);

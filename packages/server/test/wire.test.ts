@@ -5,6 +5,10 @@
  * what a remote client can do to a host that has not attached a runner.
  */
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, test } from "vitest";
 import { createNyteClient, NyteTransportError, NyteWireError } from "@nyte-ai/client";
 import {
@@ -15,7 +19,9 @@ import {
   type SessionActivationResolver,
   type SessionEvent,
   type SessionId,
+  type WorkspaceBackend,
 } from "@nyte-ai/core";
+import { createGitVcs } from "@nyte-ai/host";
 import { CallReplySchema, sessionId, type ServerDescription } from "@nyte-ai/protocol";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { Value } from "typebox/value";
@@ -56,12 +62,15 @@ interface FixtureOptions {
   readonly server?: Partial<Omit<NyteServerOptions, "sdk">>;
   readonly token?: string;
   readonly resolveActivation?: SessionActivationResolver;
+  /** A directory to serve, with its version control. */
+  readonly workspace?: { readonly cwd: string; readonly backend: WorkspaceBackend };
 }
 
 async function fixture(options: FixtureOptions = {}) {
   const store = new SqliteStore(":memory:", { watchPollIntervalMs: 5 });
   const base = {
     store,
+    workspace: options.workspace?.backend,
     streamFn: () => {
       throw new Error("These scenes never reach a model");
     },
@@ -74,7 +83,7 @@ async function fixture(options: FixtureOptions = {}) {
   };
   const nyte = await createNyte(
     options.resolveActivation === undefined
-      ? { ...base, plugins: [], env: { cwd: "/tmp/nowhere" } }
+      ? { ...base, plugins: [], env: { cwd: options.workspace?.cwd ?? "/tmp/nowhere" } }
       : { ...base, resolveActivation: options.resolveActivation },
   );
   cleanups.push(
@@ -243,6 +252,31 @@ test("create, read, list, snapshot, and rename a session through the client", as
   assert.deepEqual(snapshot.transcript, []);
   assert.ok(Number.isInteger(snapshot.seq));
   assert.deepEqual(await client.landing(), (await fixture()).nyte.landing);
+});
+
+test("workspace.vcs.snapshot dispatches over HTTP against the host's repository", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "nyte-wire-vcs-"));
+  cleanups.push(() => rm(cwd, { recursive: true, force: true }));
+  execFileSync("git", ["init", "--quiet", "--initial-branch=main"], { cwd });
+  const backend: WorkspaceBackend = {
+    list: async () => [],
+    touch: async () => undefined,
+    forget: async () => undefined,
+    files: async () => [],
+    vcs: createGitVcs(cwd),
+  };
+  const { client } = await fixture({ workspace: { cwd, backend } });
+
+  const snapshot = await client.workspace.vcs.snapshot();
+
+  assert.equal(snapshot.kind, "repository");
+  if (snapshot.kind !== "repository") return;
+  assert.equal(snapshot.root, await realpath(cwd));
+  assert.deepEqual(snapshot.head, {
+    oid: null,
+    branch: { kind: "named", name: "main", upstream: null },
+    base: null,
+  });
 });
 
 test("a session id with dots, slashes, and percent signs survives the query string", async () => {

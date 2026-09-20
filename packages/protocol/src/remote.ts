@@ -58,7 +58,16 @@ export interface RemoteWorkspace {
   readonly forget: OperationFn<"workspace.forget">;
   readonly files: OperationFn<"workspace.files">;
   readonly vcs: {
+    readonly snapshot: OperationFn<"workspace.vcs.snapshot">;
     readonly diff: OperationFn<"workspace.vcs.diff">;
+    readonly contents: OperationFn<"workspace.vcs.contents">;
+    readonly log: OperationFn<"workspace.vcs.log">;
+    readonly refs: OperationFn<"workspace.vcs.refs">;
+    readonly stage: OperationFn<"workspace.vcs.stage">;
+    readonly discard: OperationFn<"workspace.vcs.discard">;
+    readonly commit: OperationFn<"workspace.vcs.commit">;
+    readonly createBranch: OperationFn<"workspace.vcs.createBranch">;
+    readonly push: OperationFn<"workspace.vcs.push">;
   };
 }
 

@@ -111,54 +111,53 @@ export class ChangesViewedStore {
   };
 
   /** A file counts as viewed only while its patch still matches the reviewed digest. */
-  fileState(repositoryId: string, file: ViewedFile): ViewedState {
-    return markState(this.#viewed[repositoryId]?.files[file.path], file.digest);
+  fileState(root: string, file: ViewedFile): ViewedState {
+    return markState(this.#viewed[root]?.files[file.path], file.digest);
   }
 
-  markViewed(repositoryId: string, file: ViewedFile): void {
-    this.markAllViewed(repositoryId, [file]);
+  markViewed(root: string, file: ViewedFile): void {
+    this.markAllViewed(root, [file]);
   }
 
-  markAllViewed(repositoryId: string, files: readonly ViewedFile[]): void {
+  markAllViewed(root: string, files: readonly ViewedFile[]): void {
     if (files.length === 0) return;
-    const pending = files.filter((file) => this.fileState(repositoryId, file) !== "viewed");
+    const pending = files.filter((file) => this.fileState(root, file) !== "viewed");
     if (pending.length === 0) return;
     const at = this.#now();
-    const files_ = { ...this.#viewed[repositoryId]?.files };
+    const files_ = { ...this.#viewed[root]?.files };
     for (const file of pending) files_[file.path] = { digest: file.digest, at };
-    this.#commit(repositoryId, files_);
+    this.#commit(root, files_);
   }
 
-  clearViewed(repositoryId: string, path: string): void {
-    this.clearAllViewed(repositoryId, [path]);
+  clearViewed(root: string, path: string): void {
+    this.clearAllViewed(root, [path]);
   }
 
-  clearAllViewed(repositoryId: string, paths: readonly string[]): void {
-    const current = this.#viewed[repositoryId];
+  clearAllViewed(root: string, paths: readonly string[]): void {
+    const current = this.#viewed[root];
     if (current === undefined) return;
     const marked = paths.filter((path) => current.files[path] !== undefined);
     if (marked.length === 0) return;
     const files = { ...current.files };
     for (const path of marked) delete files[path];
-    this.#commit(repositoryId, files);
+    this.#commit(root, files);
   }
 
   /** Tri-state for a master checkbox: a stale mark does not count as reviewed. */
-  summary(repositoryId: string, files: readonly ViewedFile[]): ViewedSummary {
+  summary(root: string, files: readonly ViewedFile[]): ViewedSummary {
     if (files.length === 0) return "none";
-    const viewed = files.filter((file) => this.fileState(repositoryId, file) === "viewed").length;
+    const viewed = files.filter((file) => this.fileState(root, file) === "viewed").length;
     if (viewed === 0) return "none";
     return viewed === files.length ? "all" : "some";
   }
 
-  #commit(repositoryId: string, files: Record<string, ViewedMark>): void {
+  #commit(root: string, files: Record<string, ViewedMark>): void {
     const bounded = this.#evictOldest(files);
     const next = this.#prune({
       ...this.#viewed,
-      [repositoryId]: { touchedAt: this.#now(), files: bounded },
+      [root]: { touchedAt: this.#now(), files: bounded },
     });
-    this.#viewed =
-      Object.keys(bounded).length === 0 ? this.#withoutRepository(next, repositoryId) : next;
+    this.#viewed = Object.keys(bounded).length === 0 ? this.#withoutRepository(next, root) : next;
     try {
       this.#storage?.setItem(STORAGE_KEY, JSON.stringify(this.#viewed));
     } catch {
@@ -167,9 +166,9 @@ export class ChangesViewedStore {
     for (const listener of this.#listeners) listener();
   }
 
-  #withoutRepository(viewed: ChangesViewed, repositoryId: string): ChangesViewed {
+  #withoutRepository(viewed: ChangesViewed, root: string): ChangesViewed {
     const next = { ...viewed };
-    delete next[repositoryId];
+    delete next[root];
     return next;
   }
 

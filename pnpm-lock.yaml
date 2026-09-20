@@ -740,6 +740,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.43.0
         version: 1.43.0
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       typebox:
         specifier: 1.3.7
         version: 1.3.7
@@ -995,6 +998,9 @@ importers:
       '@nyte-ai/client':
         specifier: workspace:*
         version: link:../client
+      '@nyte-ai/host':
+        specifier: workspace:*
+        version: link:../host
       '@nyte-ai/schema':
         specifier: workspace:*
         version: link:../schema

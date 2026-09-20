@@ -37,6 +37,7 @@ import {
   PluginInfo,
   RedeliverOutcome,
   ReplyOutcome,
+  Revision,
   RunDiff,
   RunInfo,
   RunRevert,
@@ -51,7 +52,18 @@ import {
   Skill,
   ThinkingLevel,
   UserContent,
+  VcsBranchOutcome,
+  VcsCommitOutcome,
+  VcsCommitTarget,
+  VcsContents,
   VcsDiff,
+  VcsDiscardOutcome,
+  VcsLog,
+  VcsPathsOutcome,
+  VcsPushOutcome,
+  VcsRefs,
+  VcsScope,
+  VcsSnapshot,
   WorkspaceInfo,
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
@@ -76,6 +88,9 @@ const none = Type.Undefined();
 const sessionOnly = strict({ sessionId: SessionId });
 const sessionHead = strict({ sessionId: SessionId, head: Type.Optional(HeadName) });
 const modelRef = strict({ provider: Type.String(), id: Type.String() });
+/** A session's directory, else the host's own workspace. */
+const vcsSession = { sessionId: Type.Optional(SessionId) };
+const vcsPaths = Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 });
 
 export const OPERATIONS = Object.freeze({
   landing: operation(none, Landing),
@@ -219,9 +234,53 @@ export const OPERATIONS = Object.freeze({
   "workspace.current": operation(none, WorkspaceSelection),
   "workspace.select": operation(WorkspaceSelectInput, WorkspaceSelectOutcome),
   "workspace.forget": operation(strict({ path: Type.String() }), Type.Void()),
+  "workspace.vcs.snapshot": operation(optional(strict(vcsSession)), VcsSnapshot),
   "workspace.vcs.diff": operation(
-    optional(strict({ paths: Type.Optional(Type.Array(Type.String())) })),
+    strict({
+      ...vcsSession,
+      scope: VcsScope,
+      paths: Type.Optional(Type.Array(NonEmptyString, { maxItems: 1000 })),
+      ignoreWhitespace: Type.Optional(Type.Boolean()),
+    }),
     list(VcsDiff),
+  ),
+  "workspace.vcs.contents": operation(
+    strict({ ...vcsSession, scope: VcsScope, path: NonEmptyString }),
+    VcsContents,
+  ),
+  "workspace.vcs.log": operation(
+    strict({
+      ...vcsSession,
+      limit: Type.Integer({ minimum: 1, maximum: 1000 }),
+      before: Type.Optional(Revision),
+    }),
+    VcsLog,
+  ),
+  "workspace.vcs.refs": operation(optional(strict(vcsSession)), VcsRefs),
+  "workspace.vcs.stage": operation(
+    strict({ ...vcsSession, paths: vcsPaths, staged: Type.Boolean() }),
+    VcsPathsOutcome,
+  ),
+  "workspace.vcs.discard": operation(strict({ ...vcsSession, paths: vcsPaths }), VcsDiscardOutcome),
+  "workspace.vcs.commit": operation(
+    strict({
+      ...vcsSession,
+      message: Type.String({ minLength: 1, maxLength: 20_000, pattern: "\\S" }),
+      target: VcsCommitTarget,
+    }),
+    VcsCommitOutcome,
+  ),
+  "workspace.vcs.createBranch": operation(
+    strict({
+      ...vcsSession,
+      name: Type.String({ minLength: 1, maxLength: 255 }),
+      checkout: Type.Boolean(),
+    }),
+    VcsBranchOutcome,
+  ),
+  "workspace.vcs.push": operation(
+    strict({ ...vcsSession, setUpstream: Type.Boolean() }),
+    VcsPushOutcome,
   ),
   /**
    * Files `@` can name in the workspace a session runs in. A remote client

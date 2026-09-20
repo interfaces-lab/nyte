@@ -15,7 +15,10 @@ import { treeId } from "@nyte-ai/protocol";
 import type { FileDiff, FileDiffKind, TreeId, TreeOutcome } from "@nyte-ai/protocol";
 import { nyteHome } from "./paths.ts";
 
-export type TreeSnapshot = Pick<VcsBackend, "tree" | "diffTrees" | "restoreTree">;
+export type TreeSnapshot = Pick<VcsBackend, "tree" | "diffTrees" | "restoreTree"> & {
+  /** Where a file leaving the tree goes: the caller's `discard`, else the shadow trash. */
+  readonly discard: (absolutePath: string) => Promise<void>;
+};
 
 export interface TreeSnapshotOptions {
   /**
@@ -278,5 +281,5 @@ export function createTreeSnapshot(
       },
     );
 
-  return { tree, diffTrees, restoreTree };
+  return { tree, diffTrees, restoreTree, discard };
 }

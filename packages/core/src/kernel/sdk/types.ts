@@ -18,6 +18,7 @@ import type { Api, Model, Skill } from "@nyte-ai/schema";
 import type { TelemetryContext } from "@nyte-ai/telemetry";
 import type {
   AbortOutcome,
+  Operation,
   OperationInput,
   ApplyOutcome,
   CancelOutcome,
@@ -60,8 +61,16 @@ import type {
   TreeId,
   TreeOutcome,
   Turn,
+  VcsBranchOutcome,
+  VcsCommitOutcome,
+  VcsContents,
   VcsDiff,
-  VcsStatus,
+  VcsDiscardOutcome,
+  VcsLog,
+  VcsPathsOutcome,
+  VcsPushOutcome,
+  VcsRefs,
+  VcsSnapshot,
   WaitOutcome,
   WorkspaceInfo,
   WorkspaceSelectInput,
@@ -141,8 +150,22 @@ export {
   type TreeId,
   type TreeOutcome,
   type Turn,
+  type VcsBranchOutcome,
+  type VcsCommitInfo,
+  type VcsCommitOutcome,
+  type VcsCommitTarget,
+  type VcsContents,
   type VcsDiff,
-  type VcsStatus,
+  type VcsDiscardOutcome,
+  type VcsFile,
+  type VcsFileKind,
+  type VcsHead,
+  type VcsLog,
+  type VcsPathsOutcome,
+  type VcsPushOutcome,
+  type VcsRefs,
+  type VcsScope,
+  type VcsSnapshot,
   type WaitOutcome,
   type WorkspaceInfo,
   type WorkspaceSelectInput,
@@ -294,9 +317,28 @@ export interface Heads {
 // Workspace and provider
 // ---------------------------------------------------------------------------
 
+/** One operation's input with the directory the host resolved for it. */
+type InWorkspace<V extends Operation> = Omit<OperationInput<V>, "sessionId"> & {
+  readonly cwd: string;
+};
+
+/**
+ * Version control at a directory. Every operation takes the `cwd` the SDK
+ * resolved from the session or the host's workspace; the backend decides what
+ * repository, if any, contains it.
+ */
 export interface VcsBackend {
-  status(): Promise<VcsStatus>;
-  diff(input?: { readonly paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
+  snapshot(input: { readonly cwd: string }): Promise<VcsSnapshot>;
+  diff(input: InWorkspace<"workspace.vcs.diff">): Promise<readonly VcsDiff[]>;
+  contents(input: InWorkspace<"workspace.vcs.contents">): Promise<VcsContents>;
+  log(input: InWorkspace<"workspace.vcs.log">): Promise<VcsLog>;
+  refs(input: { readonly cwd: string }): Promise<VcsRefs>;
+  stage(input: InWorkspace<"workspace.vcs.stage">): Promise<VcsPathsOutcome>;
+  /** Tracked paths go back to HEAD; untracked ones leave the tree without being unlinked. */
+  discard(input: InWorkspace<"workspace.vcs.discard">): Promise<VcsPathsOutcome>;
+  commit(input: InWorkspace<"workspace.vcs.commit">): Promise<VcsCommitOutcome>;
+  createBranch(input: InWorkspace<"workspace.vcs.createBranch">): Promise<VcsBranchOutcome>;
+  push(input: InWorkspace<"workspace.vcs.push">): Promise<VcsPushOutcome>;
   /** The workspace's current tree, recorded on commits as provenance. */
   tree(): Promise<TreeOutcome>;
   diffTrees(input: {
@@ -342,9 +384,22 @@ export interface Workspace {
     readonly sessionId?: SessionId;
     readonly query?: string;
   }): Promise<readonly MentionFile[]>;
+  /**
+   * Version control where a session runs, or where a new one would start.
+   * Without a backend, reads answer empty and writes answer `failed`.
+   */
   vcs: {
-    status(): Promise<VcsStatus | undefined>;
-    diff(input?: { readonly paths?: readonly string[] }): Promise<readonly VcsDiff[]>;
+    snapshot(input?: OperationInput<"workspace.vcs.snapshot">): Promise<VcsSnapshot>;
+    diff(input: OperationInput<"workspace.vcs.diff">): Promise<readonly VcsDiff[]>;
+    contents(input: OperationInput<"workspace.vcs.contents">): Promise<VcsContents>;
+    log(input: OperationInput<"workspace.vcs.log">): Promise<VcsLog>;
+    refs(input?: OperationInput<"workspace.vcs.refs">): Promise<VcsRefs>;
+    stage(input: OperationInput<"workspace.vcs.stage">): Promise<VcsPathsOutcome>;
+    /** Refused with `busy` while the session's head has a live run. */
+    discard(input: OperationInput<"workspace.vcs.discard">): Promise<VcsDiscardOutcome>;
+    commit(input: OperationInput<"workspace.vcs.commit">): Promise<VcsCommitOutcome>;
+    createBranch(input: OperationInput<"workspace.vcs.createBranch">): Promise<VcsBranchOutcome>;
+    push(input: OperationInput<"workspace.vcs.push">): Promise<VcsPushOutcome>;
   };
 }
 

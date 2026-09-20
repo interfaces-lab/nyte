@@ -14,12 +14,12 @@ import * as stylex from "@stylexjs/stylex";
 import { Fragment, useState } from "react";
 import type { ReactElement } from "react";
 import type {
-  DesktopVcsCommitInput,
-  DesktopVcsCommitResult,
-  DesktopVcsCreateBranch,
-  DesktopVcsPullRequestResult,
-  DesktopVcsPush,
-} from "../../../shared/ipc.ts";
+  VcsBranchOutcome,
+  VcsCommitOutcome,
+  VcsCommitTarget,
+  VcsPushOutcome,
+} from "@nyte-ai/protocol";
+import type { GitHubPullRequestOutcome } from "../../../shared/ipc.ts";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
 import { Button, focus, IconButton } from "../components/ui";
@@ -158,10 +158,7 @@ export interface CommitBarResult {
   readonly offerPublish?: boolean;
 }
 
-export function createBranchResultMessage(
-  result: DesktopVcsCreateBranch,
-  name: string,
-): CommitBarResult {
+export function createBranchResultMessage(result: VcsBranchOutcome, name: string): CommitBarResult {
   switch (result.kind) {
     case "created":
       return { tone: "success", text: `Created branch ${name} and switched to it.` };
@@ -178,10 +175,10 @@ export function createBranchResultMessage(
   }
 }
 
-export function commitResultMessage(result: DesktopVcsCommitResult): CommitBarResult {
+export function commitResultMessage(result: VcsCommitOutcome): CommitBarResult {
   switch (result.kind) {
     case "committed":
-      return { tone: "success", text: `Committed ${result.shortOid}: ${result.summary}` };
+      return { tone: "success", text: `Committed ${result.oid.slice(0, 7)}: ${result.summary}` };
     case "nothing_to_commit":
       return {
         tone: "error",
@@ -192,7 +189,7 @@ export function commitResultMessage(result: DesktopVcsCommitResult): CommitBarRe
   }
 }
 
-export function pushResultMessage(result: DesktopVcsPush): CommitBarResult {
+export function pushResultMessage(result: VcsPushOutcome): CommitBarResult {
   switch (result.kind) {
     case "pushed":
       return { tone: "success", text: `Pushed ${result.branch} to ${result.remote}.` };
@@ -215,7 +212,7 @@ export function pushResultMessage(result: DesktopVcsPush): CommitBarResult {
   }
 }
 
-export function pullRequestResultMessage(result: DesktopVcsPullRequestResult): CommitBarResult {
+export function pullRequestResultMessage(result: GitHubPullRequestOutcome): CommitBarResult {
   switch (result.kind) {
     case "created":
       return { tone: "success", text: "Opened a pull request.", url: result.url };
@@ -267,11 +264,8 @@ export function actionFailureMessage(cause: unknown): CommitBarResult {
  * What a commit covers. The staged scope commits the index as it stands;
  * every other working-tree scope commits each tracked change with it.
  */
-export function commitInputFor(
-  scope: WorkbenchChangesScope,
-  message: string,
-): DesktopVcsCommitInput {
-  return scope.kind === "staged" ? { message } : { message, all: true };
+export function commitTargetFor(scope: WorkbenchChangesScope): VcsCommitTarget {
+  return scope.kind === "staged" ? { kind: "staged" } : { kind: "all" };
 }
 
 /** A pull request needs a title; the message's first line is it, then the branch. */
@@ -411,7 +405,7 @@ export function ChangesCommitBar({
     try {
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
-        const created = await nyte.host.vcs.createBranch({ name, checkout: true });
+        const created = await nyte.workspace.vcs.createBranch({ name, checkout: true });
         const outcome = createBranchResultMessage(created, name);
         if (created.kind !== "created") {
           settle(outcome);
@@ -425,7 +419,10 @@ export function ChangesCommitBar({
         reported.push(outcome.text);
       }
       if (plan.commit && options.skipCommit !== true) {
-        const committed = await nyte.host.vcs.commit(commitInputFor(scope, message));
+        const committed = await nyte.workspace.vcs.commit({
+          message,
+          target: commitTargetFor(scope),
+        });
         const outcome = commitResultMessage(committed);
         if (committed.kind !== "committed") {
           settle(outcome);
@@ -436,9 +433,9 @@ export function ChangesCommitBar({
         reported.push(outcome.text);
       }
       if (plan.push) {
-        const pushed = await nyte.host.vcs.push(
-          options.setUpstream === true ? { setUpstream: true } : {},
-        );
+        const pushed = await nyte.workspace.vcs.push({
+          setUpstream: options.setUpstream === true,
+        });
         const outcome = pushResultMessage(pushed);
         if (outcome.tone === "error") {
           setInterrupted(chosen);
@@ -449,7 +446,7 @@ export function ChangesCommitBar({
         reported.push(outcome.text);
       }
       if (plan.pullRequest) {
-        const opened = await nyte.host.vcs.createPullRequest({
+        const opened = await nyte.host.github.createPullRequest({
           title: pullRequestTitle(message, branch),
         });
         const outcome = pullRequestResultMessage(opened);

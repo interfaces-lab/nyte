@@ -1,13 +1,13 @@
 import { expect, test } from "vitest";
 import { createDiffFilesLoader } from "./diff-expansion.ts";
-import type { DesktopVcsContents } from "../../../shared/ipc.ts";
+import type { VcsContents } from "@nyte-ai/protocol";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import { testRenderer } from "../../../../test/renderer.ts";
 
-const BOTH_SIDES: DesktopVcsContents = {
+const BOTH_SIDES: VcsContents = {
   path: "app.ts",
-  old: { contents: "one\ntwo\n" },
-  new: { contents: "one\nTWO\n" },
+  old: "one\ntwo\n",
+  new: "one\nTWO\n",
   binary: false,
   truncated: false,
 };
@@ -28,9 +28,9 @@ function fileDiff(overrides: Partial<FileDiffMetadata> = {}): FileDiffMetadata {
 }
 
 const source = {
-  repositoryId: "repo",
+  root: "/repo",
   revision: "abc123",
-  base: "head",
+  scope: { kind: "worktree" },
 } as const;
 
 test("a changed file loads both sides, keyed per side so the two cannot share a cache entry", async () => {
@@ -52,7 +52,7 @@ test("a changed file loads both sides, keyed per side so the two cannot share a 
 });
 
 test("a revision or repository change gives the same path a different cache key", async () => {
-  const read = (): Promise<DesktopVcsContents> => Promise.resolve(BOTH_SIDES);
+  const read = (): Promise<VcsContents> => Promise.resolve(BOTH_SIDES);
   const first = await createDiffFilesLoader({ ...source, readContents: read })(fileDiff());
   const later = await createDiffFilesLoader({
     ...source,
@@ -64,11 +64,11 @@ test("a revision or repository change gives the same path a different cache key"
 });
 
 test("the loader waits on the read rather than resolving with a half-loaded file", async () => {
-  let release = (contents: DesktopVcsContents): void => void contents;
+  let release = (contents: VcsContents): void => void contents;
   const loader = createDiffFilesLoader({
     ...source,
     readContents: () =>
-      new Promise<DesktopVcsContents>((resolve) => {
+      new Promise<VcsContents>((resolve) => {
         release = resolve;
       }),
   });

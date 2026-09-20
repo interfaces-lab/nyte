@@ -10,22 +10,21 @@
  * inside Electron, and this module is exercised without it.
  */
 import type { FileContents, FileDiffLoadedFiles, FileDiffMetadata } from "@pierre/diffs";
-import type {
-  DesktopVcsBase,
-  DesktopVcsContents,
-  DesktopVcsContentsInput,
-} from "../../../shared/ipc.ts";
+import type { VcsContents, VcsScope } from "@nyte-ai/protocol";
 
-/** `window.nyte.host.vcs.contents`, passed in so this module stays testable. */
-export type DiffContentsReader = (input: DesktopVcsContentsInput) => Promise<DesktopVcsContents>;
+/** `nyte.workspace.vcs.contents`, passed in so this module stays testable. */
+export type DiffContentsReader = (input: {
+  readonly scope: VcsScope;
+  readonly path: string;
+}) => Promise<VcsContents>;
 
 export interface DiffExpansionSource {
   readonly readContents: DiffContentsReader;
-  /** Repository identity, so two checkouts of one path cannot share a cache entry. */
-  readonly repositoryId: string;
+  /** The repository root, so two checkouts of one path cannot share a cache entry. */
+  readonly root: string;
   /** Revision the working copy is compared against; contents change with it. */
   readonly revision: string;
-  readonly base: DesktopVcsBase;
+  readonly scope: VcsScope;
 }
 
 export type DiffFilesLoader = (fileDiff: FileDiffMetadata) => Promise<FileDiffLoadedFiles>;
@@ -44,7 +43,7 @@ function fileSide(
   return {
     name: path,
     contents,
-    cacheKey: `${source.repositoryId}@${source.revision}:${source.base}:${side}:${path}`,
+    cacheKey: `${source.root}@${source.revision}:${source.scope.kind}:${side}:${path}`,
   };
 }
 
@@ -57,7 +56,7 @@ function fileSide(
 export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoader {
   return async (fileDiff) => {
     const path = fileDiff.name;
-    const current = await source.readContents({ path, base: source.base });
+    const current = await source.readContents({ scope: source.scope, path });
     if (current.binary) throw new Error(`Cannot expand ${path}: the file is binary`);
     // Only the head of a large file crosses IPC. Hydrating with it would let
     // Pierre recompute the diff against a file that stops early and report the
@@ -65,7 +64,7 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
     if (current.truncated) throw new Error(`Cannot expand ${path}: the file was read only in part`);
     if (current.new === null) throw new Error(`Cannot expand ${path}: it has no current contents`);
 
-    const newFile = fileSide(source, path, "new", current.new.contents);
+    const newFile = fileSide(source, path, "new", current.new);
     // A pure rename has no content change, and Pierre wants the old side left
     // out rather than duplicated.
     if (fileDiff.type === "rename-pure") return { oldFile: null, newFile };
@@ -76,11 +75,11 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
     const previous =
       previousPath === path
         ? current
-        : await source.readContents({ path: previousPath, base: source.base });
+        : await source.readContents({ scope: source.scope, path: previousPath });
     if (previous.binary || previous.truncated || previous.old === null) {
       throw new Error(`Cannot expand ${path}: ${previousPath} has no previous contents`);
     }
 
-    return { oldFile: fileSide(source, previousPath, "old", previous.old.contents), newFile };
+    return { oldFile: fileSide(source, previousPath, "old", previous.old), newFile };
   };
 }

@@ -17,7 +17,7 @@ import { useRemoteChat } from "./remote-chat.ts";
 import { fileStatus, recordedEdits, type RecordedEdit } from "./turn-changes.ts";
 import { controls, useTheme, spacing, textStyles, tokens } from "../theme.ts";
 
-type Source = "agent" | "mac";
+type Source = "agent" | "mac" | "uncommitted";
 
 type Line =
   | { kind: "hunk"; text: string }
@@ -104,13 +104,27 @@ export function ChangesScreen({
   const conversationPaths = useMemo(() => [...edits.keys()], [edits]);
 
   const macDiffsQuery = useQuery({
-    queryKey: ["mac-diffs", conversationPaths],
+    queryKey: ["mac-diffs", sessionId, conversationPaths],
     enabled: source === "mac",
     queryFn: () =>
       client.workspace.vcs.diff({
+        sessionId,
+        scope: { kind: "worktree" },
         paths: conversationPaths.length === 0 ? undefined : conversationPaths,
       }),
   });
+  const snapshotQuery = useQuery({
+    queryKey: ["vcs-snapshot", sessionId],
+    enabled: source === "uncommitted",
+    queryFn: () => client.workspace.vcs.snapshot({ sessionId }),
+  });
+  const uncommitted =
+    snapshotQuery.data?.kind === "repository"
+      ? [
+          ...snapshotQuery.data.staged.map((file) => ({ ...file, where: "Staged" })),
+          ...snapshotQuery.data.unstaged.map((file) => ({ ...file, where: "Unstaged" })),
+        ]
+      : [];
   const macDiffs:
     | { kind: "loading" }
     | { kind: "failed"; message: string }
@@ -166,20 +180,45 @@ export function ChangesScreen({
         style={{ marginHorizontal: spacing.gutter, marginTop: spacing.sm }}
       >
         <Picker
-          selection={source === "agent" ? 0 : 1}
-          onSelectionChange={(selection) => setSource(selection === 1 ? "mac" : "agent")}
+          selection={source === "agent" ? 0 : source === "mac" ? 1 : 2}
+          onSelectionChange={(selection) =>
+            setSource(selection === 1 ? "mac" : selection === 2 ? "uncommitted" : "agent")
+          }
           modifiers={[pickerStyle("segmented")]}
         >
           <Text modifiers={[tag(0)]}>Agent edits</Text>
           <Text modifiers={[tag(1)]}>On Mac</Text>
+          <Text modifiers={[tag(2)]}>Uncommitted</Text>
         </Picker>
       </Host>
       <html.p style={[textStyles.caption, styles.caption]}>
         {source === "agent"
           ? "Edits the agent reported. Commands that changed files outside edit tools aren't included."
-          : "Current uncommitted changes on your Mac for these files. Can include edits made outside this conversation."}
+          : source === "mac"
+            ? "Current uncommitted changes on your Mac for these files. Can include edits made outside this conversation."
+            : "Every file changed on your Mac since the last commit."}
       </html.p>
-      {source === "agent" ? (
+      {source === "uncommitted" ? (
+        snapshotQuery.status === "pending" ? (
+          <html.div style={styles.state}>
+            <ActivityIndicator color={theme.muted} />
+          </html.div>
+        ) : uncommitted.length === 0 ? (
+          <EmptyState title="Nothing to commit" description="The working tree is clean." />
+        ) : (
+          uncommitted.map((file) => (
+            <html.div key={`${file.where}:${file.path}`} style={styles.fileHeader}>
+              <html.div style={styles.badge}>
+                <html.span style={styles.badgeText}>{file.kind[0]?.toUpperCase()}</html.span>
+              </html.div>
+              <html.div style={styles.fileHeaderText}>
+                <html.span style={[textStyles.secondary, styles.fileName]}>{file.path}</html.span>
+                <html.span style={textStyles.caption}>{file.where}</html.span>
+              </html.div>
+            </html.div>
+          ))
+        )
+      ) : source === "agent" ? (
         chat.state === undefined ? (
           <html.div style={styles.state}>
             <ActivityIndicator color={theme.muted} />

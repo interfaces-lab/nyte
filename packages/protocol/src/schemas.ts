@@ -102,8 +102,21 @@ import type {
 import type {
   MentionFile as MentionFileType,
   ModelInfo as ModelInfoType,
+  VcsBranchOutcome as VcsBranchOutcomeType,
+  VcsCommitOutcome as VcsCommitOutcomeType,
+  VcsCommitTarget as VcsCommitTargetType,
+  VcsContents as VcsContentsType,
   VcsDiff as VcsDiffType,
-  VcsStatus as VcsStatusType,
+  VcsDiscardOutcome as VcsDiscardOutcomeType,
+  VcsFile as VcsFileType,
+  VcsFileKind as VcsFileKindType,
+  VcsHead as VcsHeadType,
+  VcsLog as VcsLogType,
+  VcsPathsOutcome as VcsPathsOutcomeType,
+  VcsPushOutcome as VcsPushOutcomeType,
+  VcsRefs as VcsRefsType,
+  VcsScope as VcsScopeType,
+  VcsSnapshot as VcsSnapshotType,
   WorkspaceInfo as WorkspaceInfoType,
   WorkspaceSelectInput as WorkspaceSelectInputType,
   WorkspaceSelectOutcome as WorkspaceSelectOutcomeType,
@@ -1002,19 +1015,160 @@ export const WorkspaceSelectOutcome = typed<WorkspaceSelectOutcomeType>()(
   ]),
 );
 
-export const VcsStatus = typed<VcsStatusType>()(
+/** A commit-ish a caller names. A leading `-` would read as a git option. */
+export const Revision = Type.String({
+  minLength: 1,
+  maxLength: 256,
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._/^~@{}-]*$",
+});
+
+export const VcsScope = typed<VcsScopeType>()(
+  Type.Union([
+    strict({ kind: Type.Literal("worktree") }),
+    strict({ kind: Type.Literal("staged") }),
+    strict({ kind: Type.Literal("unstaged") }),
+    strict({ kind: Type.Literal("commit"), oid: Revision }),
+    strict({ kind: Type.Literal("branch"), base: Revision }),
+  ]),
+);
+
+const VcsFileKind = typed<VcsFileKindType>()(
+  literals(["added", "modified", "deleted", "renamed", "untracked", "conflicted"]),
+);
+
+export const VcsFile = typed<VcsFileType>()(
+  Type.Union([
+    open({
+      path: Type.String(),
+      kind: literals(["added", "modified", "deleted", "untracked", "conflicted"]),
+    }),
+    open({ path: Type.String(), kind: Type.Literal("renamed"), from: Type.String() }),
+  ]),
+);
+
+export const VcsHead = typed<VcsHeadType>()(
   open({
-    branch: Type.Optional(Type.String()),
-    files: Type.Array(
+    oid: nullable(Type.String()),
+    branch: Type.Union([
       open({
-        path: Type.String(),
-        kind: literals(["added", "modified", "deleted", "untracked"]),
+        kind: Type.Literal("named"),
+        name: Type.String(),
+        upstream: nullable(
+          open({ name: Type.String(), ahead: Type.Integer(), behind: Type.Integer() }),
+        ),
       }),
-    ),
+      open({ kind: Type.Literal("detached") }),
+    ]),
+    base: nullable(open({ name: Type.String(), source: literals(["reflog", "default"]) })),
   }),
 );
 
-export const VcsDiff = typed<VcsDiffType>()(open({ path: Type.String(), patch: Type.String() }));
+export const VcsSnapshot = typed<VcsSnapshotType>()(
+  Type.Union([
+    open({ kind: Type.Literal("none") }),
+    open({
+      kind: Type.Literal("repository"),
+      root: Type.String(),
+      revision: Type.String(),
+      head: VcsHead,
+      staged: list(VcsFile),
+      unstaged: list(VcsFile),
+    }),
+  ]),
+);
+
+export const VcsDiff = typed<VcsDiffType>()(
+  open({
+    path: Type.String(),
+    kind: VcsFileKind,
+    added: Type.Integer(),
+    removed: Type.Integer(),
+    patch: Type.String(),
+  }),
+);
+
+export const VcsContents = typed<VcsContentsType>()(
+  open({
+    path: Type.String(),
+    old: nullable(Type.String()),
+    new: nullable(Type.String()),
+    binary: Type.Boolean(),
+    truncated: Type.Boolean(),
+  }),
+);
+
+export const VcsLog = typed<VcsLogType>()(
+  open({
+    commits: list(
+      open({
+        oid: Type.String(),
+        subject: Type.String(),
+        author: Type.String(),
+        committedAt: Type.Number(),
+      }),
+    ),
+    hasMore: Type.Boolean(),
+  }),
+);
+
+export const VcsRefs = typed<VcsRefsType>()(
+  open({ local: list(Type.String()), remote: list(Type.String()) }),
+);
+
+export const VcsCommitTarget = typed<VcsCommitTargetType>()(
+  Type.Union([
+    strict({ kind: Type.Literal("staged") }),
+    strict({ kind: Type.Literal("all") }),
+    strict({
+      kind: Type.Literal("paths"),
+      paths: Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
+    }),
+  ]),
+);
+
+const VcsFailed = open({ kind: Type.Literal("failed"), reason: Type.String() });
+
+export const VcsPathsOutcome = typed<VcsPathsOutcomeType>()(
+  Type.Union([
+    open({
+      kind: Type.Literal("applied"),
+      paths: list(Type.String()),
+      skipped: list(open({ path: Type.String(), reason: Type.String() })),
+    }),
+    VcsFailed,
+  ]),
+);
+
+export const VcsDiscardOutcome = typed<VcsDiscardOutcomeType>()(
+  Type.Union([VcsPathsOutcome, open({ kind: Type.Literal("busy"), run: RunInfo })]),
+);
+
+export const VcsCommitOutcome = typed<VcsCommitOutcomeType>()(
+  Type.Union([
+    open({ kind: Type.Literal("committed"), oid: Type.String(), summary: Type.String() }),
+    open({ kind: Type.Literal("nothing_to_commit") }),
+    VcsFailed,
+  ]),
+);
+
+export const VcsBranchOutcome = typed<VcsBranchOutcomeType>()(
+  Type.Union([
+    open({ kind: Type.Literal("created") }),
+    open({ kind: Type.Literal("exists") }),
+    open({ kind: Type.Literal("invalid_name"), reason: Type.String() }),
+    VcsFailed,
+  ]),
+);
+
+export const VcsPushOutcome = typed<VcsPushOutcomeType>()(
+  Type.Union([
+    open({ kind: Type.Literal("pushed"), remote: Type.String(), branch: Type.String() }),
+    open({ kind: Type.Literal("up_to_date") }),
+    open({ kind: Type.Literal("no_upstream"), branch: Type.String() }),
+    open({ kind: Type.Literal("rejected"), reason: Type.String() }),
+    VcsFailed,
+  ]),
+);
 
 export const MentionFile = typed<MentionFileType>()(
   open({

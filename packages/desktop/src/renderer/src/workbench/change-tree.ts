@@ -3,6 +3,7 @@
  * folder. Headers use a short unique tail (`src / kernel`) so the
  * narrow column keeps the basename and +/- readable.
  */
+import type { VcsFileKind } from "@nyte-ai/protocol";
 
 interface ChangeFileGroup {
   readonly path: string;
@@ -81,15 +82,12 @@ export function changeFileGroups(paths: readonly string[]): readonly ChangeFileG
 export type ChangeFileTone = "added" | "deleted" | "modified";
 
 export function changeFileTone(
-  input:
-    | { readonly status: "added" | "deleted" | "modified" | "untracked" }
-    | { readonly added: number; readonly removed: number },
+  input: { readonly status: ChangeStatus } | { readonly added: number; readonly removed: number },
 ): ChangeFileTone | undefined {
   if ("status" in input) {
     if (input.status === "deleted") return "deleted";
     if (input.status === "added" || input.status === "untracked") return "added";
-    if (input.status === "modified") return "modified";
-    return undefined;
+    return "modified";
   }
   if (input.added === 0 && input.removed > 0) return "deleted";
   if (input.removed === 0 && input.added > 0) return "added";
@@ -101,8 +99,8 @@ export function filesChangedLabel(count: number): string {
   return count === 1 ? "1 File Changed" : `${String(count)} Files Changed`;
 }
 
-/** The working-tree change kinds the rail renders, matching `VcsStatus["files"][number]["kind"]`. */
-export type ChangeStatus = "added" | "modified" | "deleted" | "untracked";
+/** The working-tree change kinds the rail renders. */
+export type ChangeStatus = VcsFileKind;
 
 /**
  * Viewed state lives in the panel's store, so the caller passes the lookup in

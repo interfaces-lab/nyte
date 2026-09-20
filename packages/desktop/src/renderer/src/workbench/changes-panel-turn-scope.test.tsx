@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { parsePatchFacts } from "@nyte-ai/client";
 import { sessionId } from "@nyte-ai/protocol";
 import type { Turn } from "@nyte-ai/protocol";
-import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { VcsSnapshot } from "@nyte-ai/protocol";
 import { ChangesPanel } from "./changes-panel.tsx";
 import type { WorkbenchChangesScope } from "./controller.ts";
 
@@ -23,7 +23,7 @@ interface SessionRead {
 }
 
 interface VcsRead {
-  readonly data: DesktopVcsSnapshot | undefined;
+  readonly data: VcsSnapshot | undefined;
   readonly error: Error | null;
 }
 
@@ -57,10 +57,8 @@ afterAll(() => vi.unstubAllGlobals());
 vi.mock("../queries.ts", () => ({
   useSessionSnapshot: () => reads.session,
   useVcsSnapshot: () => reads.vcs,
-  useVcsDiffs: () => ({ data: [], isLoading: false, isError: false }),
-  useVcsScopedDiffs: () => ({ data: [], isLoading: false, isError: false }),
+  useVcsDiff: () => ({ data: [], isLoading: false, isError: false }),
   useVcsLog: () => ({ data: { commits: [], hasMore: false }, isLoading: false, isError: false }),
-  useVcsRefs: () => ({ data: { local: [], remote: [] }, isLoading: false, isError: false }),
   useRunDiff: () => ({ data: undefined, isLoading: false, isError: false }),
   refreshVcs: () => undefined,
 }));
@@ -113,12 +111,15 @@ const turnAlpha = changedTurn("turn-alpha", [patchAlpha]);
 const turnBeta = changedTurn("turn-beta", [patchBeta]);
 const quietTurn = changedTurn("turn-quiet", []);
 const transcript = [turnAlpha, turnBeta];
-const repository: DesktopVcsSnapshot = {
+const repository: VcsSnapshot = {
   kind: "repository",
-  repositoryId: "repo",
+  root: "repo",
   revision: "rev-1",
-  status: { branch: "main", files: [] },
-  head: { oid: "abcdef1", branch: "main", upstream: "origin/main", ahead: 0, behind: 0 },
+  head: {
+    oid: "abcdef1",
+    branch: { kind: "named", name: "main", upstream: { name: "origin/main", ahead: 0, behind: 0 } },
+    base: null,
+  },
   staged: [],
   unstaged: [],
 };

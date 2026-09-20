@@ -129,7 +129,7 @@ export async function run(): Promise<string> {
       "The commit carries the typed message",
     );
     check(
-      commitScript.commits[0]?.all === true,
+      commitScript.commits[0]?.target.kind === "all",
       "An uncommitted scope commits every tracked change",
     );
     await until(() => commitScript.pushes.length === 1, "the push call");

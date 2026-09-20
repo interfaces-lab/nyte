@@ -31,7 +31,7 @@ import {
   commitActionDisabledReason,
   commitActionLabel,
   commitActionPlan,
-  commitInputFor,
+  commitTargetFor,
   commitResultMessage,
   createBranchResultMessage,
   DEFAULT_COMMIT_ACTION,
@@ -100,11 +100,8 @@ describe("commit actions", () => {
   });
 
   test("a staged scope commits the index; every other working scope commits tracked changes", () => {
-    expect(commitInputFor({ kind: "staged" }, "subject")).toEqual({ message: "subject" });
-    expect(commitInputFor({ kind: "uncommitted" }, "subject")).toEqual({
-      message: "subject",
-      all: true,
-    });
+    expect(commitTargetFor({ kind: "staged" })).toEqual({ kind: "staged" });
+    expect(commitTargetFor({ kind: "uncommitted" })).toEqual({ kind: "all" });
   });
 
   test("a pull request is titled by the message's first line, then by the branch", () => {
@@ -170,7 +167,6 @@ describe("what each outcome says", () => {
       commitResultMessage({
         kind: "committed",
         oid: "1234567890",
-        shortOid: "1234567",
         summary: "fix a thing",
       }),
     ).toEqual({ tone: "success", text: "Committed 1234567: fix a thing" });

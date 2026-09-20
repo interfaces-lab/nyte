@@ -2,6 +2,7 @@
 import type { Api, Model, ModelCostRates, ModelThinkingLevel } from "@nyte-ai/schema";
 import { Type } from "typebox";
 import type { Static } from "typebox";
+import type { RunInfo } from "./sdk.ts";
 
 /** One known workspace. `name` is derived presentation, never stored. */
 export interface WorkspaceInfo {
@@ -30,18 +31,136 @@ export type WorkspaceSelectOutcome =
   | { readonly kind: "untrusted"; readonly path: string }
   | { readonly kind: "failed"; readonly message: string };
 
-export interface VcsStatus {
-  readonly branch?: string;
-  readonly files: readonly {
-    readonly path: string;
-    readonly kind: "added" | "modified" | "deleted" | "untracked";
-  }[];
+/**
+ * Which comparison a version-control read asks for. `worktree` is everything
+ * since HEAD, staged or not; `staged` is the index against HEAD; `unstaged` is
+ * the worktree against the index; `commit` is one commit against its parent;
+ * `branch` is the worktree against its merge base with `base`.
+ */
+export type VcsScope =
+  | { readonly kind: "worktree" }
+  | { readonly kind: "staged" }
+  | { readonly kind: "unstaged" }
+  | { readonly kind: "commit"; readonly oid: string }
+  | { readonly kind: "branch"; readonly base: string };
+
+export type VcsFileKind = "added" | "modified" | "deleted" | "renamed" | "untracked" | "conflicted";
+
+export type VcsFile =
+  | { readonly path: string; readonly kind: Exclude<VcsFileKind, "renamed"> }
+  | { readonly path: string; readonly kind: "renamed"; readonly from: string };
+
+/**
+ * Where the checkout stands. `oid` is `null` on an unborn branch, which has a
+ * name but no commit yet. `base` is a review base the backend could infer.
+ */
+export interface VcsHead {
+  readonly oid: string | null;
+  readonly branch:
+    | {
+        readonly kind: "named";
+        readonly name: string;
+        readonly upstream: {
+          readonly name: string;
+          readonly ahead: number;
+          readonly behind: number;
+        } | null;
+      }
+    | { readonly kind: "detached" };
+  readonly base: { readonly name: string; readonly source: "reflog" | "default" } | null;
 }
+
+/**
+ * The repository as it stands. `root` is its identity and `revision` changes
+ * with any of HEAD, the index, or the working tree, so a client keys caches
+ * on the pair. One path can appear in both lists with different kinds.
+ */
+export type VcsSnapshot =
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "repository";
+      readonly root: string;
+      readonly revision: string;
+      readonly head: VcsHead;
+      readonly staged: readonly VcsFile[];
+      readonly unstaged: readonly VcsFile[];
+    };
 
 export interface VcsDiff {
   readonly path: string;
+  readonly kind: VcsFileKind;
+  readonly added: number;
+  readonly removed: number;
   readonly patch: string;
 }
+
+/**
+ * Both sides of one file. A side is `null` where the file does not exist:
+ * `old` for added or untracked files, `new` for deleted ones. Binary files
+ * carry empty sides.
+ */
+export interface VcsContents {
+  readonly path: string;
+  readonly old: string | null;
+  readonly new: string | null;
+  readonly binary: boolean;
+  readonly truncated: boolean;
+}
+
+export interface VcsCommitInfo {
+  readonly oid: string;
+  readonly subject: string;
+  readonly author: string;
+  /** Epoch milliseconds. */
+  readonly committedAt: number;
+}
+
+/** One page of history, newest first. */
+export interface VcsLog {
+  readonly commits: readonly VcsCommitInfo[];
+  readonly hasMore: boolean;
+}
+
+/** Short ref names: `main`, `origin/main`. */
+export interface VcsRefs {
+  readonly local: readonly string[];
+  readonly remote: readonly string[];
+}
+
+export type VcsCommitTarget =
+  | { readonly kind: "staged" }
+  | { readonly kind: "all" }
+  | { readonly kind: "paths"; readonly paths: readonly string[] };
+
+/** What a per-path write did. A path git refused is `skipped`; the rest applied. */
+export type VcsPathsOutcome =
+  | {
+      readonly kind: "applied";
+      readonly paths: readonly string[];
+      readonly skipped: readonly { readonly path: string; readonly reason: string }[];
+    }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export type VcsCommitOutcome =
+  | { readonly kind: "committed"; readonly oid: string; readonly summary: string }
+  | { readonly kind: "nothing_to_commit" }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export type VcsBranchOutcome =
+  | { readonly kind: "created" }
+  | { readonly kind: "exists" }
+  | { readonly kind: "invalid_name"; readonly reason: string }
+  | { readonly kind: "failed"; readonly reason: string };
+
+export type VcsPushOutcome =
+  | { readonly kind: "pushed"; readonly remote: string; readonly branch: string }
+  | { readonly kind: "up_to_date" }
+  | { readonly kind: "no_upstream"; readonly branch: string }
+  | { readonly kind: "rejected"; readonly reason: string }
+  | { readonly kind: "failed"; readonly reason: string };
+
+/** A discard waits for the session's live run; the run would write over it. */
+export type VcsDiscardOutcome = VcsPathsOutcome | { readonly kind: "busy"; readonly run: RunInfo };
 
 /**
  * One file or folder `@` can name. The host discovers these in the workspace it

@@ -72,12 +72,6 @@ const model = strict({ provider: nonEmpty, id: nonEmpty });
 const fileVersion = Type.String({ pattern: "^[a-f0-9]{64}$" });
 /** A local calendar day. Anything else would fold history onto the wrong dates. */
 const usageDay = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
-/** A commit-ish the renderer names. A leading `-` would read as a git option. */
-const revision = Type.String({
-  minLength: 1,
-  maxLength: 200,
-  pattern: "^[A-Za-z0-9][A-Za-z0-9._/^~@{}-]*$",
-});
 
 export const WORKSPACE_EDITOR_INPUT_SCHEMAS = {
   search: compile(
@@ -135,7 +129,16 @@ export const CALL_INPUT_SCHEMAS = {
   "heads.move": compile(OPERATIONS["heads.move"].input),
   "workspace.list": compile(OPERATIONS["workspace.list"].input),
   "workspace.forget": compile(OPERATIONS["workspace.forget"].input),
+  "workspace.vcs.snapshot": compile(OPERATIONS["workspace.vcs.snapshot"].input),
   "workspace.vcs.diff": compile(OPERATIONS["workspace.vcs.diff"].input),
+  "workspace.vcs.contents": compile(OPERATIONS["workspace.vcs.contents"].input),
+  "workspace.vcs.log": compile(OPERATIONS["workspace.vcs.log"].input),
+  "workspace.vcs.refs": compile(OPERATIONS["workspace.vcs.refs"].input),
+  "workspace.vcs.stage": compile(OPERATIONS["workspace.vcs.stage"].input),
+  "workspace.vcs.discard": compile(OPERATIONS["workspace.vcs.discard"].input),
+  "workspace.vcs.commit": compile(OPERATIONS["workspace.vcs.commit"].input),
+  "workspace.vcs.createBranch": compile(OPERATIONS["workspace.vcs.createBranch"].input),
+  "workspace.vcs.push": compile(OPERATIONS["workspace.vcs.push"].input),
   "provider.models.default": compile(OPERATIONS["provider.models.default"].input),
   "plugins.catalog": compile(OPERATIONS["plugins.catalog"].input),
   "plugins.list": compile(OPERATIONS["plugins.list"].input),
@@ -187,56 +190,7 @@ export const CALL_INPUT_SCHEMAS = {
       }),
     ]),
   ),
-  "host.vcs.snapshot": compile(noInput),
-  "host.vcs.contents": compile(strict({ path: nonEmpty, base: Type.Enum(["head", "index"]) })),
-  "host.vcs.diff": compile(
-    Type.Union([
-      strict({
-        scope: Type.Enum(["worktree", "staged", "unstaged"]),
-        paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
-        ignoreWhitespace: Type.Optional(Type.Boolean()),
-      }),
-      strict({
-        scope: Type.Literal("commit"),
-        commit: revision,
-        paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
-        ignoreWhitespace: Type.Optional(Type.Boolean()),
-      }),
-    ]),
-  ),
-  "host.vcs.log": compile(
-    strict({
-      limit: Type.Integer({ minimum: 1, maximum: 1000 }),
-      before: Type.Optional(revision),
-    }),
-  ),
-  "host.vcs.refs": compile(noInput),
-  "host.vcs.revert": compile(
-    strict({ paths: Type.Array(nonEmpty, { minItems: 1, maxItems: 1000 }) }),
-  ),
-  "host.vcs.stage": compile(
-    strict({
-      paths: Type.Array(nonEmpty, { minItems: 1, maxItems: 1000 }),
-      staged: Type.Boolean(),
-    }),
-  ),
-  "host.vcs.commit": compile(
-    strict({
-      // A message of only whitespace never reaches git.
-      message: Type.String({ minLength: 1, maxLength: 20_000, pattern: "\\S" }),
-      all: Type.Optional(Type.Boolean()),
-      paths: Type.Optional(Type.Array(nonEmpty, { maxItems: 1000 })),
-    }),
-  ),
-  "host.vcs.createBranch": compile(
-    strict({
-      // `git check-ref-format` is the real check; this only bounds the operand.
-      name: Type.String({ minLength: 1, maxLength: 255 }),
-      checkout: Type.Boolean(),
-    }),
-  ),
-  "host.vcs.push": compile(strict({ setUpstream: Type.Optional(Type.Boolean()) })),
-  "host.vcs.createPullRequest": compile(
+  "host.github.createPullRequest": compile(
     strict({
       title: Type.String({ minLength: 1, maxLength: 512, pattern: "\\S" }),
       body: Type.Optional(Type.String({ maxLength: 65_536 })),

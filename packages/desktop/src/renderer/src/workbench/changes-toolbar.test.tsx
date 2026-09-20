@@ -8,7 +8,7 @@
  */
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { DesktopVcsSnapshot } from "../../../shared/ipc.ts";
+import type { VcsHead, VcsSnapshot } from "@nyte-ai/protocol";
 import { branchReadout } from "./change-scopes.ts";
 import { ChangesToolbar, changesShortcutAction, changesShortcutLabel } from "./changes-toolbar.tsx";
 import type { ChangesShortcutAction } from "./changes-toolbar.tsx";
@@ -58,12 +58,19 @@ function keyEvent(input: Partial<ShortcutInput>): ShortcutInput {
   };
 }
 
-const repository: DesktopVcsSnapshot = {
+const repository: Extract<VcsSnapshot, { kind: "repository" }> = {
   kind: "repository",
-  repositoryId: "repo",
+  root: "repo",
   revision: "rev-1",
-  status: { branch: "main", files: [{ path: "src/a.ts", kind: "modified" }] },
-  head: { oid: "c0ffee0badc0ffee", branch: "main", upstream: "origin/main", ahead: 2, behind: 1 },
+  head: {
+    oid: "c0ffee0badc0ffee",
+    branch: {
+      kind: "named",
+      name: "main",
+      upstream: { name: "origin/main", ahead: 2, behind: 1 },
+    },
+    base: null,
+  },
   staged: [],
   unstaged: [{ path: "src/a.ts", kind: "modified" }],
 };
@@ -75,7 +82,7 @@ function render({
   stats = { added: 0, removed: 0 },
   fileCount,
 }: {
-  readonly snapshot?: DesktopVcsSnapshot | undefined;
+  readonly snapshot?: VcsSnapshot | undefined;
   readonly scope?: WorkbenchChangesScope;
   readonly scopeLabel?: string;
   readonly stats?: { readonly added: number; readonly removed: number };
@@ -90,7 +97,7 @@ function render({
       snapshot={snapshot}
       repository={
         snapshot?.kind === "repository"
-          ? { repositoryId: snapshot.repositoryId, revision: snapshot.revision }
+          ? { root: snapshot.root, revision: snapshot.revision }
           : undefined
       }
       branch={undefined}
@@ -112,12 +119,8 @@ function labels(markup: string): readonly string[] {
   return [...markup.matchAll(/aria-label="([^"]*)"/g)].map((match) => match[1] ?? "");
 }
 
-function renderBranch(head: DesktopVcsSnapshot["head"], branchInStatus?: string): string {
-  const snapshot: DesktopVcsSnapshot = {
-    ...repository,
-    status: branchInStatus === undefined ? { files: [] } : { branch: branchInStatus, files: [] },
-    head,
-  };
+function renderBranch(head: VcsHead): string {
+  const snapshot: VcsSnapshot = { ...repository, head };
   return renderToStaticMarkup(
     <ChangesToolbar
       scope={{ kind: "uncommitted" }}
@@ -125,7 +128,7 @@ function renderBranch(head: DesktopVcsSnapshot["head"], branchInStatus?: string)
       scopeStats={undefined}
       scopeFileCount={0}
       snapshot={snapshot}
-      repository={{ repositoryId: "repo", revision: "rev-1" }}
+      repository={{ root: "repo", revision: "rev-1" }}
       branch={branchReadout(snapshot)}
       turnOptions={[]}
       viewOptions={defaultChangesViewOptions}
@@ -209,12 +212,7 @@ describe("changes toolbar header", () => {
     });
     expect(labels(commit)).not.toContain("Commit message");
     const outsideGit = render({
-      snapshot: {
-        kind: "not_repository",
-        repositoryId: "none",
-        revision: "not-repository",
-        status: { files: [] },
-      },
+      snapshot: { kind: "none" },
     });
     expect(labels(outsideGit)).not.toContain("Commit message");
   });
@@ -239,19 +237,32 @@ describe("changes toolbar header", () => {
 
 describe("branch readout", () => {
   test("reports tracking, detachment and an unborn head without offering a checkout", () => {
-    const tracking = renderBranch(
-      { oid: "c0ffee0badc0ffee", branch: "main", upstream: "origin/main", ahead: 2, behind: 1 },
-      "main",
-    );
+    const tracking = renderBranch({
+      oid: "c0ffee0badc0ffee",
+      branch: {
+        kind: "named",
+        name: "main",
+        upstream: { name: "origin/main", ahead: 2, behind: 1 },
+      },
+      base: null,
+    });
     expect(labels(tracking)).toContain("On branch main, tracking origin/main, 2 ahead, 1 behind");
     expect(tracking).toContain("↑2");
     expect(tracking).toContain("↓1");
 
-    const detached = renderBranch({ oid: "c0ffee0badc0ffee", ahead: 0, behind: 0 });
+    const detached = renderBranch({
+      oid: "c0ffee0badc0ffee",
+      branch: { kind: "detached" },
+      base: null,
+    });
     expect(labels(detached)).toContain("Detached at c0ffee0");
     expect(detached).toContain("detached");
 
-    const unborn = renderBranch({ oid: null, branch: "main", ahead: 0, behind: 0 }, "main");
+    const unborn = renderBranch({
+      oid: null,
+      branch: { kind: "named", name: "main", upstream: null },
+      base: null,
+    });
     expect(labels(unborn)).toContain("On branch main, no commits yet");
 
     // Reading only: the readout is text, and no control switches branches.
@@ -260,12 +271,7 @@ describe("branch readout", () => {
 
   test("a workspace that is not a repository shows no branch", () => {
     const markup = render({
-      snapshot: {
-        kind: "not_repository",
-        repositoryId: "none",
-        revision: "not-repository",
-        status: { files: [] },
-      },
+      snapshot: { kind: "none" },
     });
     expect(labels(markup).some((label) => /branch|detached/i.test(label))).toBe(false);
   });

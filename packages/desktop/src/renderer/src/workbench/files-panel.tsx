@@ -3,6 +3,7 @@ import type { ContextMenuItem, ContextMenuOpenContext } from "@pierre/trees";
 import { create, props } from "@stylexjs/stylex";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
+import { worktreeFiles } from "@nyte-ai/client";
 import { errorMessage } from "../../../shared/errors.ts";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { Menu, MenuItem, MenuSeparator, MenuSwitchItem } from "../components/menu.tsx";
@@ -236,9 +237,15 @@ export function FilesPanel({
   }, [model, paths, tabs.revealPath, tabs.revealRevision]);
   useLayoutEffect(() => {
     model.setGitStatus(
-      vcs.data?.status.files.map((file) => ({ path: file.path, status: file.kind })),
+      vcs.data?.kind === "repository"
+        ? worktreeFiles(vcs.data).map((file) => ({
+            path: file.path,
+            // The tree has no conflict mark; a conflict is a modification to resolve.
+            status: file.kind === "conflicted" ? "modified" : file.kind,
+          }))
+        : undefined,
     );
-  }, [model, vcs.data?.status.files]);
+  }, [model, vcs.data]);
 
   const discard = async (): Promise<void> => {
     if (discardPath === undefined) return;
