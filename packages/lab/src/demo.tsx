@@ -1,5 +1,7 @@
+import "./shell/host-stub";
 import { StrictMode, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Tooltip } from "@nyte-ai/ui/tooltip";
 import "@fontsource-variable/inter/opsz.css";
 import "@fontsource-variable/inter/opsz-italic.css";
@@ -7,9 +9,11 @@ import "@nyte-ai/ui/platform-tokens.css";
 import "../../desktop/src/renderer/src/theme/global.css";
 import "./tokens/palette.css";
 import "./tokens/calendar.css";
+import "./tokens/shadow.css";
 import "./tokens/demo.css";
 import { DesktopDemo } from "./shell/desktop-demo";
-import { auditSurface } from "./shell/audit-state";
+import { auditSurface, workbenchState } from "./shell/audit-state";
+import { queryClient } from "../../desktop/src/renderer/src/queries.ts";
 
 function subscribe(onChange: () => void) {
   const observer = new MutationObserver(onChange);
@@ -32,23 +36,29 @@ function Demo() {
   );
   const reveal = Number.isFinite(revealValue) ? Math.max(0, Math.min(1, revealValue)) : 1;
   return (
-    <Tooltip.Provider delay={400}>
-      <DesktopDemo
-        sidebarVisible={reveal > 0}
-        onSidebar={() => {
-          root.dataset.labSidebar = reveal > 0 ? "false" : "true";
-        }}
-        surface={auditSurface(root.dataset.labSurface)}
-        onSurface={(surface) => {
-          root.dataset.labSurface = surface;
-        }}
-        grid={{
-          columns: root.dataset.labColumns === "true",
-          rows: root.dataset.labRows === "true",
-          revision,
-        }}
-      />
-    </Tooltip.Provider>
+    <QueryClientProvider client={queryClient}>
+      <Tooltip.Provider delay={400}>
+        <DesktopDemo
+          sidebarVisible={reveal > 0}
+          onSidebar={() => {
+            root.dataset.labSidebar = reveal > 0 ? "false" : "true";
+          }}
+          surface={auditSurface(root.dataset.labSurface)}
+          onSurface={(surface) => {
+            root.dataset.labSurface = surface;
+          }}
+          workbench={workbenchState(root.dataset.labWorkbench)}
+          onWorkbench={(state) => {
+            root.dataset.labWorkbench = state;
+          }}
+          grid={{
+            columns: root.dataset.labColumns === "true",
+            rows: root.dataset.labRows === "true",
+            revision,
+          }}
+        />
+      </Tooltip.Provider>
+    </QueryClientProvider>
   );
 }
 

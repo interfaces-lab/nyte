@@ -765,6 +765,9 @@ importers:
       '@stylexjs/stylex':
         specifier: 0.19.0
         version: 0.19.0
+      '@tanstack/react-query':
+        specifier: 5.102.5
+        version: 5.102.5(react@19.3.0)
       central-icons:
         specifier: npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319
         version: '@central-icons-react/round-outlined-radius-2-stroke-1.5@1.1.319(react@19.3.0)'

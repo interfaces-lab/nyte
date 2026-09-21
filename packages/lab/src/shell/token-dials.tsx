@@ -1,13 +1,13 @@
-import { create, props } from "@stylexjs/stylex";
-import { DialRoot, DialStore, useDialKitController } from "dialkit";
+import { DialStore, useDialKitController } from "dialkit";
 import type { DialKitController } from "dialkit";
-import "dialkit/styles.css";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Appearance, TokenSet } from "./chrome";
-import { tokenConfig, strings } from "./token-catalog";
+import { readTokenBaselines, tokenConfig, strings } from "./token-catalog";
 import type { TokenBaselines } from "./token-catalog";
 
 type ProfileValues = DialKitController<ReturnType<typeof tokenConfig>>["values"];
+
+const properties = new Map<string, string>(strings);
 
 function disabled(group: Record<string, { override: boolean }>) {
   const updates: Record<string, { override: boolean }> = {};
@@ -31,7 +31,11 @@ function useProfile(baseline: TokenBaselines[TokenSet], set: TokenSet, appearanc
           controller.setValues({
             geometry: disabled(current.geometry),
             palette: disabled(current.palette),
-            typographyAndShadows: disabled(current.typographyAndShadows),
+            shadows: {
+              ink: disabled(current.shadows.ink),
+              stacks: disabled(current.shadows.stacks),
+            },
+            typography: disabled(current.typography),
             material: disabled(current.material),
           });
         }
@@ -52,47 +56,47 @@ function overrides(values: ProfileValues) {
   for (const [name, setting] of Object.entries(values.palette)) {
     if (setting.override && CSS.supports("color", setting.value)) result[name] = setting.value;
   }
-  for (const [name, property] of strings) {
-    const setting = values.typographyAndShadows[name];
-    if (setting?.override && CSS.supports(property, setting.value)) result[name] = setting.value;
+  for (const [name, setting] of Object.entries(values.typography)) {
+    const property = properties.get(name);
+    if (property !== undefined && setting.override && CSS.supports(property, setting.value))
+      result[name] = setting.value;
+  }
+  for (const [name, setting] of Object.entries(values.shadows.ink)) {
+    if (setting.override && CSS.supports("color", setting.value)) result[name] = setting.value;
+  }
+  for (const [name, setting] of Object.entries(values.shadows.stacks)) {
+    if (setting.override && CSS.supports("box-shadow", setting.value)) result[name] = setting.value;
+  }
+  /*
+   * Depth is a bare multiplier rather than a length, and it is the one control
+   * with no override toggle: shadow.css rests at 1, so writing the number
+   * unconditionally keeps the slider and the surface in step.
+   */
+  for (const [name, value] of Object.entries(values.shadows.depth)) {
+    if (Number.isFinite(value)) result[name] = `${value}`;
   }
   return result;
 }
 
-const styles = create({
-  dock: {
-    position: "fixed",
-    zIndex: 1100,
-    insetBlockStart: 12,
-    insetBlockEnd: 100,
-    insetInlineEnd: 12,
-    width: "min(440px, calc(100vw - 24px))",
-    overflowY: "auto",
-    borderRadius: 12,
-    backgroundColor: "#202022",
-    color: "#ddd",
-    boxShadow: "0 16px 48px #0006",
-    font: "12px/18px system-ui, sans-serif",
-  },
-  hidden: { display: "none" },
-  note: { margin: 0, padding: "12px 16px", color: "#a1a1aa" },
-});
-
+/*
+ * Two profiles over one fixture. Override off inherits the desktop token and
+ * each toggle keeps its value while off, so A and B can disagree on a token
+ * without either forgetting what it had. Values persist per appearance, which
+ * is also why the appearance keys this component: remounting re-reads the
+ * baselines the dials start from.
+ */
 export function TokenDials({
   preview,
-  baselines,
   active,
   onActive,
   appearance,
-  open,
 }: {
   preview: Document;
-  baselines: TokenBaselines;
   active: TokenSet;
   onActive: (set: TokenSet) => void;
   appearance: Appearance;
-  open: boolean;
 }) {
+  const [baselines] = useState<TokenBaselines>(() => readTokenBaselines(preview, appearance));
   const desktop = useProfile(baselines.nyte, "nyte", appearance);
   const calendar = useProfile(baselines.calendar, "calendar", appearance);
   const applied = useRef<string[]>([]);
@@ -131,14 +135,5 @@ export function TokenDials({
     [appearance, onActive],
   );
 
-  return (
-    <aside aria-label="DialKit controls" {...props(styles.dock, !open && styles.hidden)}>
-      <p {...props(styles.note)}>
-        Override off inherits the desktop token. Each toggle retains its value when off. A and B
-        keep separate values and versions, saved per appearance. Enter a slider to type a number;
-        geometry steps are 0.01px. Sidebar reveal never changes the rail width.
-      </p>
-      {open && <DialRoot mode="inline" theme="dark" defaultOpen productionEnabled />}
-    </aside>
-  );
+  return null;
 }

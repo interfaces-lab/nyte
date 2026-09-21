@@ -1,0 +1,34 @@
+/*
+ * Shadow colour and shadow depth are two decisions, and the desktop tokens
+ * only expose one of them. `--nyte-shadow-primary` already drives every
+ * shadow's colour through the secondary and tertiary mixes; this file
+ * re-expresses the composites so one multiplier drives every offset, blur and
+ * spread alongside it.
+ *
+ * DERIVED: `--lab-shadow-depth` has no counterpart in tokens.css. At 1 each
+ * composite below is value for value what the desktop ships, so the dial rests
+ * on the shipped design rather than replacing it.
+ *
+ * The inset sheen in the modal stack stays fixed. It is a highlight on the
+ * panel's own edge, not a cast shadow, so depth has no claim on it.
+ */
+:root {
+  --lab-shadow-depth: 1;
+
+  --nyte-box-shadow-soft: 0 0 calc(8px * var(--lab-shadow-depth))
+    calc(2px * var(--lab-shadow-depth)) var(--nyte-shadow-tertiary);
+  --nyte-box-shadow-lg:
+    inset 0 0 4px #ffffff0d, 0 0 calc(3px * var(--lab-shadow-depth)) var(--nyte-shadow-secondary),
+    0 calc(16px * var(--lab-shadow-depth)) calc(24px * var(--lab-shadow-depth))
+      var(--nyte-shadow-tertiary);
+  --nyte-shadow-popover:
+    0 calc(4px * var(--lab-shadow-depth)) calc(16px * var(--lab-shadow-depth))
+      var(--nyte-shadow-tertiary),
+    0 calc(1px * var(--lab-shadow-depth)) calc(2px * var(--lab-shadow-depth))
+      var(--nyte-shadow-tertiary);
+  --nyte-shadow-workbench: 0 0 calc(8px * var(--lab-shadow-depth))
+    calc(2px * var(--lab-shadow-depth))
+    color-mix(in srgb, var(--nyte-shadow-primary) 40%, transparent);
+  --nyte-conversation-user-shadow: 0 calc(1px * var(--lab-shadow-depth))
+    calc(2px * var(--lab-shadow-depth)) rgb(0 0 0 / 5%);
+}

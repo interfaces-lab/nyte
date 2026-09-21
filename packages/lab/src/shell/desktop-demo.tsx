@@ -5,19 +5,18 @@ import { useRef, useState } from "react";
 import { sidebarStyles } from "../../../desktop/src/renderer/src/chrome/sidebar.stylex.ts";
 import { titlebarStyles } from "../../../desktop/src/renderer/src/chrome/titlebar.stylex.ts";
 import { threadStyles } from "../../../desktop/src/renderer/src/screens/thread.stylex.ts";
-import { workbenchStyles } from "../../../desktop/src/renderer/src/workbench/workbench.stylex.ts";
 import {
   composerStyles,
   proseStyles,
   turnStyles,
 } from "../../../desktop/src/renderer/src/conversation/styles.stylex.ts";
 import { Icon, PanelToggleIcon } from "../../../desktop/src/renderer/src/components/icons.tsx";
-import type { IconName } from "../../../desktop/src/renderer/src/components/icons.tsx";
 import { Hint, IconButton, Kbd, focus } from "../../../desktop/src/renderer/src/components/ui.tsx";
 import { t } from "../../../desktop/src/renderer/src/theme/vars.stylex.ts";
 import { Spinner } from "../../../desktop/src/renderer/src/components/spinner.tsx";
 import { PaneMenu, SessionContext, DemoPopover, DemoDialog } from "./demo-surfaces";
-import type { AuditSurface } from "./audit-state";
+import { WorkbenchDemo, PanelToggle } from "./workbench-demo";
+import type { AuditSurface, WorkbenchState } from "./audit-state";
 import { GridOverlay } from "./grid-overlay";
 import type { GridMetrics } from "./grid-overlay";
 
@@ -47,7 +46,6 @@ const fixture = create({
   main: { backgroundColor: t.bgBase },
   transcript: { paddingBlockStart: 16, paddingBlockEnd: 8 },
   flowRow: { position: "relative" },
-  hidden: { display: "none" },
   sidebarSeat: {
     display: "flex",
     flexShrink: 0,
@@ -113,19 +111,7 @@ const fixture = create({
     },
   },
   activity: { color: t.textAccent },
-  workbench: {
-    width: "var(--nyte-workbench-rail-width)",
-    minWidth: "var(--nyte-workbench-rail-width)",
-  },
 });
-
-const navigation = [
-  { label: "Files", icon: "file" },
-  { label: "Changes", icon: "git-branch" },
-  { label: "Browser", icon: "globe" },
-  { label: "Terminal", icon: "console" },
-  { label: "Agents", icon: "robot" },
-] satisfies { label: string; icon: IconName }[];
 
 const sessionTitles = [
   "Audit Fable desktop layout",
@@ -142,15 +128,18 @@ export function DesktopDemo({
   onSidebar,
   surface,
   onSurface,
+  workbench,
+  onWorkbench,
   grid,
 }: {
   sidebarVisible: boolean;
   onSidebar: () => void;
   surface: AuditSurface;
   onSurface: (surface: AuditSurface) => void;
+  workbench: WorkbenchState;
+  onWorkbench: (state: WorkbenchState) => void;
   grid: GridMetrics;
 }) {
-  const [workbenchVisible, setWorkbenchVisible] = useState(true);
   const [sessions, setSessions] = useState<readonly string[]>(sessionTitles);
   const [selected, setSelected] = useState<string>(sessionTitles[2]);
   const [pinned, setPinned] = useState<ReadonlySet<string>>(new Set());
@@ -169,7 +158,6 @@ export function DesktopDemo({
     if (selected === title) setSelected(remaining[0] ?? "New chat");
   };
   const [reply, setReply] = useState("");
-  const [openTab, setOpenTab] = useState<string>();
 
   return (
     <div id="lab-shell" data-desktop-demo="" {...props(fixture.root)}>
@@ -222,13 +210,7 @@ export function DesktopDemo({
         <span {...props(titlebarStyles.actionTrack)}>
           <Hint
             content="Toggle workbench"
-            trigger={
-              <IconButton
-                label="Toggle workbench"
-                onClick={() => setWorkbenchVisible(!workbenchVisible)}
-                icon={<PanelToggleIcon side="right" visible={workbenchVisible} />}
-              />
-            }
+            trigger={<PanelToggle state={workbench} onState={onWorkbench} />}
           />
         </span>
       </header>
@@ -524,72 +506,7 @@ export function DesktopDemo({
             </div>
           </div>
         </main>
-        <div
-          hidden={!workbenchVisible}
-          {...props(workbenchStyles.root, fixture.workbench, !workbenchVisible && fixture.hidden)}
-        >
-          <nav aria-label="Workbench navigation" {...props(workbenchStyles.rail)}>
-            <section {...props(workbenchStyles.railSection)}>
-              <div data-grid-row="workbench-heading" {...props(workbenchStyles.railHeading)}>
-                <span {...props(workbenchStyles.railHeadingText)}>Open Tabs</span>
-                <Button
-                  unstyled
-                  aria-label="Collapse workbench"
-                  onClick={() => setWorkbenchVisible(false)}
-                  {...props(workbenchStyles.chevron, focus.ring)}
-                >
-                  <span {...props(workbenchStyles.doubleChevron)}>
-                    <Icon name="chevron-right" size={11} />
-                    <span {...props(workbenchStyles.doubleChevronTrail)}>
-                      <Icon name="chevron-right" size={11} />
-                    </span>
-                  </span>
-                </Button>
-              </div>
-              {openTab !== undefined && (
-                <Button
-                  unstyled
-                  onClick={() => setOpenTab(undefined)}
-                  {...props(workbenchStyles.railRow)}
-                >
-                  <span {...props(workbenchStyles.railLabel)}>{openTab}</span>
-                  <Icon name="x" size={14} />
-                </Button>
-              )}
-            </section>
-            <section {...props(workbenchStyles.railSection)}>
-              <div data-grid-row="workbench-heading" {...props(workbenchStyles.railHeading)}>
-                <span {...props(workbenchStyles.railHeadingText)}>On nyte</span>
-              </div>
-              {navigation.map((item) => (
-                <Button
-                  unstyled
-                  key={item.label}
-                  data-grid-row="workbench"
-                  onClick={() => setOpenTab(item.label)}
-                  {...props(workbenchStyles.railRow, focus.ring)}
-                >
-                  <span data-grid-column="workbench.icons" {...props(workbenchStyles.railIcon)}>
-                    <Icon name={item.icon} size={14} />
-                  </span>
-                  <span
-                    data-grid-text=""
-                    data-grid-column="workbench.labels"
-                    {...props(workbenchStyles.railLabel)}
-                  >
-                    {item.label}
-                  </span>
-                  {item.label === "Changes" && (
-                    <span {...props(workbenchStyles.railStats)}>
-                      <span {...props(workbenchStyles.railAdded)}>+149</span>
-                      <span {...props(workbenchStyles.railRemoved)}>-35</span>
-                    </span>
-                  )}
-                </Button>
-              ))}
-            </section>
-          </nav>
-        </div>
+        <WorkbenchDemo state={workbench} onState={onWorkbench} />
       </div>
       <DemoDialog
         surface={surface}

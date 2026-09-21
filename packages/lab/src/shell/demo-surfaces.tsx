@@ -5,8 +5,11 @@ import type { ReactElement, RefObject } from "react";
 import {
   Menu,
   MenuItem,
+  MenuGroup,
   MenuSeparator,
   MenuSubmenu,
+  MenuCheckboxItem,
+  MenuSwitchItem,
   MenuRadioGroup,
   MenuRadioItem,
   ContextMenu,
@@ -32,8 +35,16 @@ function dismiss(surface: AuditSurface, onSurface: SurfaceProps["onSurface"]) {
     onSurface("none");
 }
 
+/*
+ * The menu carries every row anatomy the desktop ships: a group heading, a
+ * shortcut column, a checkmark, a switch, a disabled row, a submenu with a
+ * trailing value, and the danger row. A menu dial is only worth moving if
+ * every slot it touches is on screen at once.
+ */
 export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
   const [workspace, setWorkspace] = useState("nyte");
+  const [wrap, setWrap] = useState(true);
+  const [whitespace, setWhitespace] = useState(false);
   return (
     <Menu
       label="Pane actions"
@@ -46,16 +57,31 @@ export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
         else dismiss(surface === "submenu" ? "submenu" : "menu", onSurface);
       }}
     >
-      <MenuItem icon="split-down" meta="⌘D" onSelect={() => onSurface("none")}>
-        Split down
-      </MenuItem>
-      <MenuItem icon="split-right" meta="⇧⌘D" onSelect={() => onSurface("none")}>
-        Split right
-      </MenuItem>
+      <MenuGroup label="Pane">
+        <MenuItem icon="split-down" meta="⌘D" onSelect={() => onSurface("none")}>
+          Split down
+        </MenuItem>
+        <MenuItem icon="split-right" meta="⇧⌘D" onSelect={() => onSurface("none")}>
+          Split right
+        </MenuItem>
+        <MenuItem icon="expand" meta="⌃⌘F" disabled onSelect={() => {}}>
+          Enter full screen
+        </MenuItem>
+      </MenuGroup>
+      <MenuSeparator />
+      <MenuGroup label="View">
+        <MenuCheckboxItem icon="list" checked={wrap} onCheckedChange={setWrap}>
+          Wrap long lines
+        </MenuCheckboxItem>
+        <MenuSwitchItem icon="eye" checked={whitespace} onCheckedChange={setWhitespace}>
+          Show whitespace
+        </MenuSwitchItem>
+      </MenuGroup>
       <MenuSeparator />
       <MenuSubmenu
         label="Move to"
         icon="folder"
+        value={workspace}
         open={surface === "submenu" ? true : undefined}
         onOpenChange={(open) => {
           if (!open && surface === "submenu" && document.hasFocus()) onSurface("menu");
@@ -68,8 +94,14 @@ export function PaneMenu({ surface, onSurface, trigger }: SurfaceProps) {
           <MenuRadioItem value="website" closeOnClick={false}>
             website
           </MenuRadioItem>
+          <MenuRadioItem value="protocol" closeOnClick={false}>
+            protocol
+          </MenuRadioItem>
         </MenuRadioGroup>
       </MenuSubmenu>
+      <MenuItem icon="copy" meta="⇧⌘C" onSelect={() => onSurface("none")}>
+        Copy transcript
+      </MenuItem>
       <MenuSeparator />
       <MenuItem icon="trash" danger closeOnClick={false} onSelect={() => onSurface("dialog")}>
         Delete chat

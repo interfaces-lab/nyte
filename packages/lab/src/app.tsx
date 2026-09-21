@@ -1,33 +1,29 @@
 import { create, props } from "@stylexjs/stylex";
-import { useDialKitController } from "dialkit";
+import { DialRoot, useDialKitController } from "dialkit";
+import "dialkit/styles.css";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Page, Strip } from "./shell/chrome";
-import type { Appearance, BackdropKind, TokenSet } from "./shell/chrome";
+import { Page } from "./shell/chrome";
 import { TokenDials } from "./shell/token-dials";
-import { readTokenBaselines } from "./shell/token-catalog";
-import type { TokenBaselines } from "./shell/token-catalog";
-import { previewConfig } from "./shell/preview-controls";
-import { auditSurface } from "./shell/audit-state";
-import type { AuditSurface } from "./shell/audit-state";
+import { appearanceOf, backdropOf, previewConfig, tokenSetOf } from "./shell/preview-controls";
+import { auditSurface, workbenchState } from "./shell/audit-state";
 
 const styles = create({
   frame: { width: "100%", height: "100%", display: "block", borderWidth: 0, borderStyle: "none" },
 });
 
 export function App() {
-  const [appearance, setAppearance] = useState<Appearance>("dark");
-  const [tokens, setTokens] = useState<TokenSet>("nyte");
-  const [backdrop, setBackdrop] = useState<BackdropKind>("flat");
-  const [surface, setSurface] = useState<AuditSurface>("none");
-  const [panelOpen, setPanelOpen] = useState(true);
   const [preview, setPreview] = useState<Document | null>(null);
-  const [baselines, setBaselines] = useState<TokenBaselines | null>(null);
   const controls = useDialKitController("Preview", previewConfig, {
-    id: "nyte-lab-preview-v1",
+    id: "nyte-lab-preview-v2",
     persist: true,
   });
   const { sidebar, guides } = controls.values;
   const setPreviewValues = controls.setValues;
+  const appearance = appearanceOf(controls.values.appearance);
+  const tokens = tokenSetOf(controls.values.tokens);
+  const backdrop = backdropOf(controls.values.backdrop);
+  const surface = auditSurface(controls.values.surface);
+  const workbench = workbenchState(controls.values.workbench);
   const requestedReveal = sidebar.scrub.enabled
     ? sidebar.scrub.position / 100
     : sidebar.expanded
@@ -63,24 +59,50 @@ export function App() {
     root.dataset.labSidebarReveal = String(reveal);
     root.dataset.labColumns = String(guides.columns);
     root.dataset.labRows = String(guides.rows);
-    if (root.dataset.labSurface !== surface) root.dataset.labSurface = surface;
-  }, [preview, appearance, tokens, sidebar, guides, reveal, surface]);
+    if (root.dataset.labWorkbench !== workbench) root.dataset.labWorkbench = workbench;
+    /*
+     * A context menu has no open state the fixture can be told to adopt; it is
+     * opened by a right click on a row. Asking for one sends the click and lets
+     * the menu report the surface back, which is the same path a person takes.
+     */
+    if (root.dataset.labSurface === surface) return;
+    const target =
+      surface === "context" ? preview?.querySelector("[data-demo-context-target]") : null;
+    if (target == null) {
+      root.dataset.labSurface = surface;
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    target.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: rect.left + 100,
+        clientY: rect.top + 12,
+      }),
+    );
+  }, [preview, appearance, tokens, sidebar, guides, reveal, surface, workbench]);
 
   useLayoutEffect(() => {
     if (preview === null) return;
     const root = preview.documentElement;
-    const observer = new MutationObserver((records) => {
-      setSurface(auditSurface(root.dataset.labSurface));
-      setTokens(root.dataset.labTokens === "calendar" ? "calendar" : "nyte");
-      if (records.some((record) => record.attributeName === "data-lab-sidebar")) {
-        setPreviewValues({
-          sidebar: { expanded: root.dataset.labSidebar !== "false", scrub: { enabled: false } },
-        });
-      }
+    const observer = new MutationObserver(() => {
+      setPreviewValues({
+        surface: auditSurface(root.dataset.labSurface),
+        workbench: workbenchState(root.dataset.labWorkbench),
+        tokens: tokenSetOf(root.dataset.labTokens ?? ""),
+        sidebar: { expanded: root.dataset.labSidebar !== "false", scrub: { enabled: false } },
+      });
     });
     observer.observe(root, {
       attributes: true,
-      attributeFilter: ["data-lab-surface", "data-lab-sidebar", "data-lab-tokens"],
+      attributeFilter: [
+        "data-lab-surface",
+        "data-lab-sidebar",
+        "data-lab-tokens",
+        "data-lab-workbench",
+      ],
     });
     return () => observer.disconnect();
   }, [preview, setPreviewValues]);
@@ -90,36 +112,16 @@ export function App() {
       if (!event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.code === "Digit1" || event.code === "Digit2") {
         event.preventDefault();
-        setTokens(event.code === "Digit1" ? "nyte" : "calendar");
+        setPreviewValues({ tokens: event.code === "Digit1" ? "nyte" : "calendar" });
       }
     };
     document.addEventListener("keydown", switchSet);
     return () => document.removeEventListener("keydown", switchSet);
-  }, []);
-
-  const showSurface = (value: AuditSurface) => {
-    if (value === "context" && preview !== null) {
-      const target = preview.querySelector("[data-demo-context-target]");
-      if (target !== null) {
-        const rect = target.getBoundingClientRect();
-        target.dispatchEvent(
-          new MouseEvent("contextmenu", {
-            bubbles: true,
-            cancelable: true,
-            button: 2,
-            clientX: rect.left + 100,
-            clientY: rect.top + 12,
-          }),
-        );
-        return;
-      }
-    }
-    setSurface(value);
-  };
+  }, [setPreviewValues]);
 
   return (
     <>
-      <Page backdrop={backdrop} inspecting={panelOpen}>
+      <Page backdrop={backdrop}>
         <iframe
           ref={iframe}
           title="Desktop audit fixture"
@@ -127,47 +129,20 @@ export function App() {
           {...props(styles.frame)}
           onLoad={(event) => {
             const document = event.currentTarget.contentDocument;
-            if (document !== null) {
-              setBaselines(readTokenBaselines(document, appearance));
-              setPreview(document);
-            }
+            if (document !== null) setPreview(document);
           }}
         />
       </Page>
-      <Strip
-        appearance={appearance}
-        tokens={tokens}
-        backdrop={backdrop}
-        sidebarVisible={reveal > 0}
-        columns={guides.columns}
-        rows={guides.rows}
-        tokensOpen={panelOpen}
-        surface={surface}
-        onSurface={showSurface}
-        onTokenSet={setTokens}
-        onBackdrop={setBackdrop}
-        onAppearance={(value) => {
-          if (preview !== null) setBaselines(readTokenBaselines(preview, value));
-          setAppearance(value);
-        }}
-        onSidebar={() =>
-          setPreviewValues({ sidebar: { expanded: reveal === 0, scrub: { enabled: false } } })
-        }
-        onColumns={() => setPreviewValues({ guides: { columns: !guides.columns } })}
-        onRows={() => setPreviewValues({ guides: { rows: !guides.rows } })}
-        onTokens={() => setPanelOpen(!panelOpen)}
-      />
-      {preview !== null && baselines !== null && (
+      {preview !== null && (
         <TokenDials
           key={appearance}
           preview={preview}
-          baselines={baselines}
           active={tokens}
-          onActive={setTokens}
+          onActive={(set) => setPreviewValues({ tokens: set })}
           appearance={appearance}
-          open={panelOpen}
         />
       )}
+      <DialRoot theme="dark" defaultOpen productionEnabled />
     </>
   );
 }

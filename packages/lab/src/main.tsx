@@ -7,6 +7,7 @@ import "@fontsource-variable/inter/opsz-italic.css";
 import "@nyte-ai/ui/platform-tokens.css";
 import "../../desktop/src/renderer/src/theme/global.css";
 import "./tokens/calendar.css";
+import "./tokens/shadow.css";
 import { App } from "./app";
 
 /*

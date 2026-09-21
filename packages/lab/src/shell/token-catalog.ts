@@ -4,6 +4,7 @@ import type { Appearance, TokenSet } from "./chrome";
 
 export const lengths = [
   ["--nyte-titlebar-height", "Titlebar height"],
+  ["--nyte-glyph-box", "Status glyph box"],
   ["--nyte-sidebar-row-height", "Sidebar row height"],
   ["--nyte-sidebar-row-gap", "Sidebar row gap"],
   ["--nyte-sidebar-row-padding-inline", "Sidebar row padding"],
@@ -12,11 +13,17 @@ export const lengths = [
   ["--nyte-conversation-gutter", "Conversation gutter"],
   ["--nyte-conversation-turn-gap", "Turn gap"],
   ["--nyte-prose-paragraph-gap", "Paragraph gap"],
-  ["--nyte-workbench-rail-width", "Workbench width"],
+  ["--nyte-workbench-rail-width", "Workbench rail width"],
   ["--nyte-workbench-row-height", "Workbench row height"],
   ["--nyte-workbench-row-gap", "Workbench row gap"],
   ["--nyte-workbench-row-padding-inline", "Workbench row padding"],
   ["--nyte-workbench-rail-gap", "Workbench section gap"],
+  ["--nyte-workbench-heading-height", "Workbench heading height"],
+  ["--nyte-workbench-panel-width", "Workbench panel width"],
+  ["--nyte-workbench-header-height", "Workbench header height"],
+  ["--nyte-workbench-file-list-width", "Changes file list width"],
+  ["--nyte-pane-sash-size", "Pane sash size"],
+  ["--nyte-diff-line-height", "Diff line height"],
   ["--nyte-font-size-base", "UI font size"],
   ["--nyte-font-size-lg", "Conversation font size"],
   ["--nyte-line-height-lg", "Conversation line height"],
@@ -27,7 +34,9 @@ export const lengths = [
   ["--nyte-sidebar-meta-width", "Sidebar timestamp lane"],
   ["--nyte-sidebar-trailing-width", "Sidebar action lane"],
   ["--nyte-radius-base", "Row radius"],
+  ["--nyte-radius-lg", "Menu row radius source"],
   ["--nyte-radius-xl", "Message / popover radius"],
+  ["--nyte-radius-2xl", "Menu radius source"],
   ["--nyte-dialog-width", "Dialog width"],
   ["--nyte-dialog-padding", "Dialog padding"],
   ["--nyte-dialog-gap", "Dialog gap"],
@@ -43,6 +52,9 @@ export const lengths = [
   ["--nyte-menu-item-gap", "Menu column gap"],
   ["--nyte-menu-item-padding-inline", "Menu row inline padding"],
   ["--nyte-menu-item-padding-block", "Menu row block padding"],
+  ["--nyte-menu-max-height", "Menu maximum height"],
+  ["--nyte-model-menu-width", "Model menu width"],
+  ["--nyte-parameter-menu-width", "Parameter menu width"],
 ] as const;
 export const colors = [
   ["--nyte-base", "Palette ink"],
@@ -57,28 +69,49 @@ export const colors = [
   ["--nyte-icon-primary", "Primary icons"],
   ["--nyte-icon-secondary", "Icons"],
   ["--nyte-icon-tertiary", "Tertiary icons"],
+  ["--nyte-text-quaternary", "Disabled text"],
   ["--nyte-stroke-primary", "Strong borders"],
+  ["--nyte-stroke-tertiary", "Faint borders"],
+  ["--nyte-stroke-quaternary", "Hairlines"],
   ["--nyte-bg-tertiary", "Hover fill"],
   ["--nyte-bg-quaternary", "Selected fill"],
+  ["--nyte-bg-scrim", "Dialog scrim"],
   ["--nyte-conversation-user-shell-background", "Message shell fill"],
   ["--nyte-conversation-user-background", "Message fill"],
   ["--nyte-conversation-user-ring", "Message border"],
   ["--nyte-stroke-secondary", "Borders"],
   ["--nyte-text-success", "Added lines"],
   ["--nyte-text-danger", "Removed lines"],
+  ["--nyte-diff-added-line-background", "Added line fill"],
+  ["--nyte-diff-removed-line-background", "Removed line fill"],
 ] as const;
 
-export const strings = [
-  ["--nyte-font-family-sans", "font-family"],
+export const strings = [["--nyte-font-family-sans", "font-family"]] as const;
+
+/*
+ * Shadows get their own group because colour and depth are separate
+ * decisions. The ink drives every cast shadow through the secondary and
+ * tertiary mixes in tokens.css; the depth multiplier drives every offset and
+ * blur through src/tokens/shadow.css. The three composites below stay
+ * available for pasting a stack wholesale, and override an earlier dial when
+ * they are on.
+ */
+export const shadowColors = [["--nyte-shadow-primary", "Shadow ink"]] as const;
+export const shadowScales = [["--lab-shadow-depth", "Shadow depth"]] as const;
+export const shadowStrings = [
   ["--nyte-shadow-popover", "box-shadow"],
   ["--nyte-shadow-modal", "box-shadow"],
+  ["--nyte-shadow-workbench", "box-shadow"],
 ] as const;
+
 export const opacityToken = "--nyte-sidebar-material-opacity";
 const calendarNames = new Set(
   Array.from(calendarCss.matchAll(/(--nyte-[\w-]+)\s*:/g), (match) => match[1]),
 );
 const tokenNames: string[] = [
-  ...[...lengths, ...colors, ...strings].map(([name]) => name),
+  ...[...lengths, ...colors, ...strings, ...shadowColors, ...shadowScales, ...shadowStrings].map(
+    ([name]) => name,
+  ),
   opacityToken,
 ];
 
@@ -90,6 +123,7 @@ type NumberControl = {
   override: boolean;
   value: [number, number, number, number];
 };
+type ScaleControl = [number, number, number, number];
 type ColorControl = { _collapsed: boolean; override: boolean; value: ColorConfig };
 type StringControl = { _collapsed: boolean; override: boolean; value: TextConfig };
 
@@ -134,11 +168,16 @@ export function readTokenBaselines(preview: Document, appearance: Appearance): T
         result[set][name] = value;
       }
       result[set][opacityToken] = parseFloat(computed.getPropertyValue(opacityToken));
-      for (const [name] of colors) {
+      for (const [name] of shadowScales) {
+        const value = parseFloat(computed.getPropertyValue(name));
+        result[set][name] = Number.isFinite(value) ? value : 1;
+      }
+      for (const [name] of [...colors, ...shadowColors]) {
         probe.style.color = `var(${name})`;
         result[set][name] = pickerColor(view.getComputedStyle(probe).color);
       }
-      for (const [name] of strings) result[set][name] = computed.getPropertyValue(name).trim();
+      for (const [name] of [...strings, ...shadowStrings])
+        result[set][name] = computed.getPropertyValue(name).trim();
     }
   } finally {
     probe.remove();
@@ -157,17 +196,22 @@ export function readTokenBaselines(preview: Document, appearance: Appearance): T
 export function tokenConfig(baseline: TokenBaseline, set: TokenSet) {
   const geometry: Record<string, NumberControl> = {};
   const palette: Record<string, ColorControl> = {};
-  const typographyAndShadows: Record<string, StringControl> = {};
+  const typography: Record<string, StringControl> = {};
+  const ink: Record<string, ColorControl> = {};
+  const depth: Record<string, ScaleControl> = {};
+  const stacks: Record<string, StringControl> = {};
   for (const [name] of lengths) {
     const value = baseline[name];
     if (typeof value !== "number") continue;
     const max = /measure|dialog-width/.test(name)
       ? 1600
-      : name.endsWith("-width")
-        ? 640
-        : /font-size/.test(name)
-          ? 48
-          : 128;
+      : /max-height/.test(name)
+        ? 1200
+        : name.endsWith("-width")
+          ? 640
+          : /font-size/.test(name)
+            ? 48
+            : 128;
     geometry[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
@@ -186,7 +230,31 @@ export function tokenConfig(baseline: TokenBaseline, set: TokenSet) {
   for (const [name] of strings) {
     const value = baseline[name];
     if (typeof value !== "string") continue;
-    typographyAndShadows[name] = {
+    typography[name] = {
+      _collapsed: true,
+      override: set === "calendar" && calendarNames.has(name),
+      value: { type: "text", default: value },
+    };
+  }
+  for (const [name] of shadowColors) {
+    const value = baseline[name];
+    if (typeof value !== "string") continue;
+    ink[name] = {
+      _collapsed: true,
+      override: set === "calendar" && calendarNames.has(name),
+      value: { type: "color", default: value },
+    };
+  }
+  /* Depth has no override toggle. It rests at the shipped 1, so the slider is
+   * the whole control and a second switch beside it would say nothing. */
+  for (const [name] of shadowScales) {
+    const value = baseline[name];
+    depth[name] = [typeof value === "number" ? value : 1, 0, 4, 0.05];
+  }
+  for (const [name] of shadowStrings) {
+    const value = baseline[name];
+    if (typeof value !== "string") continue;
+    stacks[name] = {
       _collapsed: true,
       override: set === "calendar" && calendarNames.has(name),
       value: { type: "text", default: value },
@@ -203,7 +271,8 @@ export function tokenConfig(baseline: TokenBaseline, set: TokenSet) {
   return {
     geometry,
     palette,
-    typographyAndShadows,
+    shadows: { ink, depth, stacks },
+    typography,
     material,
     disableAll: { type: "action", label: "Disable all overrides" },
     reset: { type: "action", label: "Reset this profile" },
