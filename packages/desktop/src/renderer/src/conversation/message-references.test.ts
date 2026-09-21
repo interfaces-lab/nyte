@@ -9,7 +9,7 @@ import {
   inlineCodeReference,
   messageDraftText,
   messageParts,
-  referencePromptText,
+  referenceLabel,
   referenceText,
   skillInstruction,
 } from "./message-references.ts";
@@ -126,80 +126,106 @@ test("sidebar draft previews preserve visible skills without exposing token synt
   assert.equal(draftPreviewText("  \n  "), "Draft");
 });
 
-describe("clipboard chips", () => {
-  const body = "one\ntwo\nthree\nfour";
-
-  test("a paste becomes a chip at four lines or 512 characters, never for a URL", () => {
-    assert.equal(clipboardReferenceFromPaste("one\ntwo\nthree"), undefined);
-    assert.deepEqual(clipboardReferenceFromPaste(body), { kind: "clipboard", body });
-    assert.equal(clipboardReferenceFromPaste("x".repeat(511)), undefined);
-    assert.deepEqual(clipboardReferenceFromPaste("x".repeat(512)), {
-      kind: "clipboard",
-      body: "x".repeat(512),
-    });
-    assert.equal(clipboardReferenceFromPaste("https://example.com/a/b"), undefined);
-    assert.equal(clipboardReferenceFromPaste("http://example.com/a/b"), undefined);
-    assert.equal(clipboardReferenceFromPaste(`https://example.com/${"a".repeat(500)}`), undefined);
-    assert.equal(clipboardReferenceFromPaste("www.example.com"), undefined);
-    assert.equal(clipboardReferenceFromPaste(""), undefined);
+describe("clipboard paste classification", () => {
+  test.each([
+    { rule: "empty text stays inline", text: "" },
+    { rule: "ordinary sentences stay inline", text: "word ".repeat(200) },
+    { rule: "line count alone does not create a chip", text: "line\n".repeat(100) },
+    { rule: "10,000 characters stay inline", text: "x".repeat(10_000) },
+    { rule: "CRLF is normalized before measuring", text: "a\r\n".repeat(4_000) },
+    { rule: "trailing newlines are removed before measuring", text: `${"x".repeat(10_000)}\n\n` },
+  ])("$rule", ({ text }) => {
+    assert.equal(clipboardReferenceFromPaste(text), undefined);
   });
 
-  test("a restored clipboard token is a chip and a long draft without one is not", () => {
-    const pasted = clipboardReferenceFromPaste(body);
-    assert.deepEqual(pasted, { kind: "clipboard", body });
-    if (pasted === undefined) return;
-    const draft = `see ${referenceText(pasted)} please`;
-    const parts = messageParts(draft, { form: "draft", complete: true });
-    assert.equal(parts[1]?.kind, "reference");
-    if (parts[1]?.kind !== "reference") return;
-    assert.equal(parts[1].reference.kind, "clipboard");
-    if (parts[1].reference.kind !== "clipboard") return;
-    assert.equal(parts[1].reference.body, body);
-    assert.equal(referencePromptText(pasted), body);
-    assert.equal(draftPreviewText(draft), "see Clipboard (4 lines) please");
-    const longLine = clipboardReferenceFromPaste("x".repeat(512));
-    assert.deepEqual(longLine, { kind: "clipboard", body: "x".repeat(512) });
-    if (longLine === undefined) return;
-    assert.equal(draftPreviewText(referenceText(longLine)), "Clipboard (1 line)");
+  test.each([
+    { rule: "10,001 characters become a chip", body: "x".repeat(10_001) },
+    { rule: "long URLs have no exemption", body: `https://example.com/${"a".repeat(10_000)}` },
+    { rule: "length counts UTF-16 code units", body: "😀".repeat(5_001) },
+  ])("$rule", ({ body }) => {
+    assert.deepEqual(clipboardReferenceFromPaste(body), { kind: "clipboard", body });
+  });
+});
 
-    const long = `${"line\n".repeat(20)}plain`;
+describe("clipboard paste normalization", () => {
+  const text = "x".repeat(10_001);
+
+  test.each([
+    { rule: "CRLF becomes LF", input: `${text}\r\nsecond`, body: `${text}\nsecond` },
+    { rule: "all trailing newlines are removed", input: `${text}\n\n`, body: text },
+    { rule: "leading newlines are preserved", input: `\n${text}`, body: `\n${text}` },
+    { rule: "spaces and tabs are preserved", input: ` \t${text}\t `, body: ` \t${text}\t ` },
+    { rule: "lone carriage returns are preserved", input: `${text}\r`, body: `${text}\r` },
+  ])("$rule", ({ input, body }) => {
+    assert.deepEqual(clipboardReferenceFromPaste(input), { kind: "clipboard", body });
+  });
+});
+
+describe("clipboard chips", () => {
+  const clipboard = { kind: "clipboard", body: "one\ntwo\nthree\nfour" } as const;
+
+  test.each([
+    { body: "word", label: "Clipboard (1 line)" },
+    { body: "one\n\nthree", label: "Clipboard (3 lines)" },
+  ])("labels $label", ({ body, label }) => {
+    assert.equal(referenceLabel({ kind: "clipboard", body }), label);
+  });
+
+  test("restores a clipboard token between plain text", () => {
+    const token = referenceText(clipboard);
+    assert.deepEqual(messageParts(`see ${token} please`, { form: "draft" }), [
+      { kind: "text", text: "see " },
+      { kind: "reference", reference: clipboard, source: token },
+      { kind: "text", text: " please" },
+    ]);
+  });
+
+  test("a complete clipboard token needs no following delimiter", () => {
+    const token = referenceText(clipboard);
+    assert.deepEqual(messageParts(token, { form: "draft", complete: false }), [
+      { kind: "reference", reference: clipboard, source: token },
+    ]);
+  });
+
+  test("a long draft without a clipboard token stays text", () => {
+    const text = "line\n".repeat(3_000);
+    assert.deepEqual(messageParts(text, { form: "draft" }), [{ kind: "text", text }]);
+  });
+
+  test("the draft preview shows the label instead of the token", () => {
     assert.equal(
-      messageParts(long, { form: "draft", complete: true }).every((part) => part.kind === "text"),
-      true,
+      draftPreviewText(`see ${referenceText(clipboard)} please`),
+      "see Clipboard (4 lines) please",
     );
   });
 
-  test("a clipboard token round-trips quotes, backslashes, and newlines", () => {
-    const special = `"quoted"\nC:\\temp\nthird\nfourth`;
-    const pasted = clipboardReferenceFromPaste(special);
-    assert.deepEqual(pasted, { kind: "clipboard", body: special });
-    if (pasted === undefined) return;
-    const token = referenceText(pasted);
-    assert.equal(token.includes("\n"), false);
-    const parts = messageParts(`x ${token} y`, { form: "draft", complete: true });
-    assert.equal(parts[1]?.kind, "reference");
-    if (parts[1]?.kind !== "reference") return;
-    assert.equal(parts[1].reference.kind, "clipboard");
-    if (parts[1].reference.kind !== "clipboard") return;
-    assert.equal(parts[1].reference.body, special);
-    assert.equal(messageParts(token, { form: "draft", complete: false })[0]?.kind, "reference");
+  test.each([
+    { rule: "quotes", body: '"quoted"' },
+    { rule: "backslashes", body: "C:\\temp" },
+    { rule: "newlines", body: "one\ntwo" },
+  ])("round-trips $rule through a token", ({ body }) => {
+    const reference = { kind: "clipboard", body } as const;
+    const token = referenceText(reference);
+    assert.deepEqual(messageParts(token, { form: "draft" }), [
+      { kind: "reference", reference, source: token },
+    ]);
   });
 
-  test("a token-shaped string in a sent message stays text", () => {
-    const pasted = clipboardReferenceFromPaste(body);
-    assert.deepEqual(pasted, { kind: "clipboard", body });
-    if (pasted === undefined) return;
-    const token = referenceText(pasted);
-    assert.deepEqual(messageParts(token, { form: "message" }), [{ kind: "text", text: token }]);
-    assert.deepEqual(messageParts("@clipboard/2:{}", { form: "draft", complete: true }), [
-      { kind: "text", text: "@clipboard/2:{}" },
-    ]);
-    assert.deepEqual(messageParts('@clipboard/2:""', { form: "draft", complete: true }), [
-      { kind: "text", text: '@clipboard/2:""' },
-    ]);
-    assert.deepEqual(messageParts('@clipboard/12:"short"', { form: "draft", complete: true }), [
-      { kind: "text", text: '@clipboard/12:"short"' },
-    ]);
+  test("a multiline body encodes into a single-line token", () => {
+    assert.equal(referenceText(clipboard).includes("\n"), false);
+  });
+
+  test("a clipboard token in a sent message stays literal", () => {
+    const text = referenceText(clipboard);
+    assert.deepEqual(messageParts(text, { form: "message" }), [{ kind: "text", text }]);
+  });
+
+  test.each([
+    { rule: "non-string payload", text: "@clipboard/2:{}" },
+    { rule: "empty body", text: '@clipboard/2:""' },
+    { rule: "truncated payload", text: '@clipboard/12:"short"' },
+  ])("leaves a $rule as plain text", ({ text }) => {
+    assert.deepEqual(messageParts(text, { form: "draft" }), [{ kind: "text", text }]);
   });
 });
 

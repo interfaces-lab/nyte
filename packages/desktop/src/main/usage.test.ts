@@ -34,6 +34,8 @@ function assistant(at: number, model: string, spend: Usage, provider = "anthropi
     kind: "commit",
     parent: null,
     at,
+    calls: {},
+    outcome: { kind: "ok" },
     body: {
       kind: "message",
       message: {
@@ -275,6 +277,8 @@ describe("usage fold", () => {
       kind: "commit",
       parent: null,
       at: AT,
+      call: { kind: "custom", label: "task" },
+      tree: null,
       body: {
         kind: "message",
         message: {
@@ -304,6 +308,7 @@ describe("usage fold", () => {
       kind: "commit",
       parent: null,
       at: AT,
+      start: { kind: "none" },
       body: {
         kind: "message",
         message: { role: "user", content: "hello", timestamp: AT },

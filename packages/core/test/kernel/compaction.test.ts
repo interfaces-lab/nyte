@@ -25,7 +25,7 @@ import {
   assistant,
   call,
   commit,
-  landing,
+  drain,
   lease,
   message,
   openSession,
@@ -275,19 +275,20 @@ test("the step commits a checkpoint the turn asked for and asks again over the s
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("latest")),
   });
-  await step(session, turn, { head: "main", landing });
+  await step(session, turn, { head: "main", drain });
   const runBefore = await session.refs.read(runRef("main"));
 
-  assert.equal((await step(session, turn, { head: "main", landing })).kind, "continue");
+  assert.equal((await step(session, turn, { head: "main", drain })).kind, "continue");
   const tip = await session.refs.read(headRef("main"));
   const tipCommit = tip === null ? undefined : await session.objects.get(tip);
   assert.equal(tipCommit?.kind === "commit" ? tipCommit.body.kind : undefined, "checkpoint");
   assert.equal(await session.refs.read(runRef("main")), runBefore);
 
-  assert.equal((await step(session, turn, { head: "main", landing })).kind, "finished");
+  assert.equal((await step(session, turn, { head: "main", drain })).kind, "finished");
   assert.ok(request);
   const messages = JSON.stringify(request.messages);
   assert.match(messages, /SHORTER/u);

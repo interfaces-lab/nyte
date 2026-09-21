@@ -5,7 +5,15 @@
  * core re-exports them under their old names. The mutable kernel vocabulary
  * (refs, leases, changes, effects) stays in core.
  */
-import type { JsonValue, Message, ProviderCheckpointMaterial, Usage } from "@nyte-ai/schema";
+import type {
+  AssistantMessage,
+  JsonValue,
+  Message,
+  ProviderCheckpointMaterial,
+  ToolResultMessage,
+  Usage,
+  UserMessage,
+} from "@nyte-ai/schema";
 import type { Failure } from "@nyte-ai/schema";
 import { Value } from "typebox/value";
 import { TreeId as TreeIdSchema } from "./schemas.ts";
@@ -83,46 +91,90 @@ export type ToolClass =
     }
   | { readonly kind: "custom"; readonly label: string };
 
-/** One point in a conversation. Model context is linear, so it has one parent. */
-export interface Commit {
+/** Fields every conversation commit carries. */
+export interface CommitBase {
   readonly kind: "commit";
   readonly parent: Oid | null;
-  /** Provenance only: commits this one summarizes or carries over. Never context. */
-  readonly imports?: readonly Oid[];
   /** The change this commit landed, when a submission produced it. */
   readonly change?: Oid;
-  /**
-   * The submission key the landed change carried. Correlation for the client
-   * that sent it, never authorization; it stays out of the message content.
-   */
+  /** Correlation for the client that submitted the landed change. */
   readonly key?: string;
-  /** The run that wrote this commit, when a runner did. Provenance for per-run views. */
+  /** The run that wrote this commit, when a runner did. */
   readonly run?: string;
-  /**
-   * Call id to class: every call of an assistant message, or the settled class
-   * of the one call a tool result answers. Provenance, never context.
-   */
-  readonly calls?: Readonly<Record<string, ToolClass>>;
-  /** Why an assistant message stopped with `error` or `aborted`. Provenance, never context. */
-  readonly failure?: Failure;
-  /**
-   * The workspace tree when this commit was written: a run's first commit and
-   * each tool-result commit carry one, when the host has a VCS backend.
-   * Provenance, never context.
-   */
-  readonly tree?: TreeId;
-  readonly body: CommitBody;
   readonly at: number;
   readonly author?: Actor;
 }
 
+export type CommitStart =
+  | { readonly kind: "none" }
+  | { readonly kind: "run"; readonly tree: TreeId | null };
+
+export type CommitOutcome =
+  | { readonly kind: "ok" }
+  | { readonly kind: "failed"; readonly failure: Failure };
+
+export type Commit = CommitBase &
+  (
+    | {
+        readonly body: {
+          readonly kind: "message";
+          readonly message: UserMessage;
+          readonly agent?: string;
+        };
+        readonly start: CommitStart;
+      }
+    | {
+        readonly body: { readonly kind: "message"; readonly message: AssistantMessage };
+        readonly calls: Readonly<Record<string, ToolClass>>;
+        readonly outcome: CommitOutcome;
+      }
+    | {
+        readonly body: { readonly kind: "message"; readonly message: ToolResultMessage };
+        readonly call: ToolClass;
+        readonly tree: TreeId | null;
+      }
+    | {
+        readonly body: { readonly kind: "completion"; readonly job: JobReport };
+        readonly start: CommitStart;
+      }
+    | {
+        readonly body: {
+          readonly kind: "checkpoint";
+          readonly summary: string;
+          readonly retainedTail: readonly Message[];
+          readonly material?: ProviderCheckpointMaterial;
+          readonly tokensBefore: number;
+          readonly usage?: Usage;
+        };
+      }
+    | {
+        readonly body: {
+          readonly kind: "summary";
+          readonly text: string;
+          readonly usage?: Usage;
+        };
+        /** Commits summarized into this one. Provenance only, never context. */
+        readonly imports: readonly Oid[];
+      }
+    | {
+        readonly body: {
+          readonly kind: "config";
+          readonly model?: ModelRef;
+          readonly thinkingLevel?: string;
+          readonly agent?: string;
+        };
+      }
+  );
+
 export type CommitBody =
   | {
       readonly kind: "message";
-      readonly message: Message;
-      /** Agent selection travels with its message through submit, cancel, and redelivery. */
+      readonly message: UserMessage;
+      /** Agent selection travels with a submitted user message. */
       readonly agent?: string;
     }
+  | { readonly kind: "message"; readonly message: AssistantMessage }
+  | { readonly kind: "message"; readonly message: ToolResultMessage }
   /** Background work's report, consumed by the model without impersonating user input. */
   | { readonly kind: "completion"; readonly job: JobReport }
   /** A context checkpoint. Projection starts at the newest one. */

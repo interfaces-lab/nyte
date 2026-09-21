@@ -47,6 +47,27 @@ function fileSide(
   };
 }
 
+function textSide(
+  side: VcsContents["old"],
+  path: string,
+  position: "current" | "previous",
+): string {
+  switch (side.kind) {
+    case "text":
+      return side.text;
+    case "absent":
+      throw new Error(`Cannot expand ${path}: it has no ${position} contents`);
+    case "binary":
+      throw new Error(`Cannot expand ${path}: the file is binary`);
+    case "truncated":
+      throw new Error(`Cannot expand ${path}: the file was read only in part`);
+    default: {
+      const _exhaustive: never = side;
+      return _exhaustive;
+    }
+  }
+}
+
 /**
  * Builds the loader Pierre calls when a reader asks for more context.
  *
@@ -57,14 +78,7 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
   return async (fileDiff) => {
     const path = fileDiff.name;
     const current = await source.readContents({ scope: source.scope, path });
-    if (current.binary) throw new Error(`Cannot expand ${path}: the file is binary`);
-    // Only the head of a large file crosses IPC. Hydrating with it would let
-    // Pierre recompute the diff against a file that stops early and report the
-    // remainder as deleted, so a cut file stays collapsed instead.
-    if (current.truncated) throw new Error(`Cannot expand ${path}: the file was read only in part`);
-    if (current.new === null) throw new Error(`Cannot expand ${path}: it has no current contents`);
-
-    const newFile = fileSide(source, path, "new", current.new);
+    const newFile = fileSide(source, path, "new", textSide(current.new, path, "current"));
     // A pure rename has no content change, and Pierre wants the old side left
     // out rather than duplicated.
     if (fileDiff.type === "rename-pure") return { oldFile: null, newFile };
@@ -76,10 +90,7 @@ export function createDiffFilesLoader(source: DiffExpansionSource): DiffFilesLoa
       previousPath === path
         ? current
         : await source.readContents({ scope: source.scope, path: previousPath });
-    if (previous.binary || previous.truncated || previous.old === null) {
-      throw new Error(`Cannot expand ${path}: ${previousPath} has no previous contents`);
-    }
-
-    return { oldFile: fileSide(source, previousPath, "old", previous.old), newFile };
+    const old = textSide(previous.old, previousPath, "previous");
+    return { oldFile: fileSide(source, previousPath, "old", old), newFile };
   };
 }

@@ -4,8 +4,8 @@
  *
  *   refs/heads/<head>              tip of a branch
  *   refs/stacks/<head>             where the branch sits: parent head and base commit
- *   refs/queues/<head>/<lane>/tip  newest submitted change in that lane
- *   refs/queues/<head>/<lane>/base last landed change; pending is (base, tip]
+ *   refs/inbox/<head>/<delivery>/tip  newest submitted change for that delivery
+ *   refs/inbox/<head>/<delivery>/base last landed change; pending is (base, tip]
  *   refs/runs/<head>               the branch's current run
  *   refs/chains/<root>             aggregate response attempts for one delegated chain
  *   refs/compactions/<head>        active checkpoint work under the head lease
@@ -16,12 +16,12 @@
  *   refs/cancelled/<change>        a submitted change withdrawn before it landed
  *   refs/deleted                   the session is being deleted; runs may not publish
  *
- * Heads and lanes are names the caller chooses. The kernel knows the families,
- * never a particular head or lane; which lane lands when is the runner's
- * landing policy, and the default head is the SDK's.
+ * Each head has two inbox chains. `steer` lands at every boundary and when
+ * idle. `next` lands only when idle. The default head belongs to the SDK.
  */
 import { randomUUID } from "node:crypto";
 import { isHeadName } from "@nyte-ai/protocol";
+import type { Delivery } from "@nyte-ai/protocol";
 import type { Oid, RefName } from "./model.ts";
 
 export { isHeadName };
@@ -30,7 +30,7 @@ export const DELETED_REF: RefName = "refs/deleted";
 
 const HEADS = "refs/heads/";
 const STACKS = "refs/stacks/";
-const QUEUES = "refs/queues/";
+const INBOX = "refs/inbox/";
 const RUNS = "refs/runs/";
 const CHAINS = "refs/chains/";
 const COMPACTIONS = "refs/compactions/";
@@ -48,41 +48,39 @@ export function stackRef(head: string): RefName {
   return STACKS + head;
 }
 
-export function queueTipRef(head: string, lane: string): RefName {
-  return `${QUEUES}${head}/${lane}/tip`;
+export function inboxTipRef(head: string, delivery: Delivery): RefName {
+  return `${INBOX}${head}/${delivery}/tip`;
 }
 
-export function queueBaseRef(head: string, lane: string): RefName {
-  return `${QUEUES}${head}/${lane}/base`;
+export function inboxBaseRef(head: string, delivery: Delivery): RefName {
+  return `${INBOX}${head}/${delivery}/base`;
 }
 
-/** Every queue ref of one head, for `refs.list`: how the lanes a head has are found. */
-export function queuePrefix(head: string): string {
-  return `${QUEUES}${head}/`;
+export function inboxPrefix(head: string): string {
+  return `${INBOX}${head}/`;
 }
 
-export interface QueueRefParts {
+export interface InboxRefParts {
   readonly head: string;
-  readonly lane: string;
+  readonly delivery: Delivery;
   readonly position: "tip" | "base";
 }
 
-/** The head, lane, and end a `refs/queues/*` name addresses, or undefined for any other ref. */
-export function parseQueueRef(name: RefName): QueueRefParts | undefined {
-  if (!name.startsWith(QUEUES)) return undefined;
-  const parts = name.slice(QUEUES.length).split("/");
-  const [head, lane, position] = parts;
+export function parseInboxRef(name: RefName): InboxRefParts | undefined {
+  if (!name.startsWith(INBOX)) return undefined;
+  const parts = name.slice(INBOX.length).split("/");
+  const [head, delivery, position] = parts;
   if (
     parts.length !== 3 ||
     head === undefined ||
-    lane === undefined ||
+    delivery === undefined ||
     !isHeadName(head) ||
-    !isLaneName(lane) ||
+    !isDelivery(delivery) ||
     (position !== "tip" && position !== "base")
   ) {
     return undefined;
   }
-  return { head, lane, position };
+  return { head, delivery, position };
 }
 
 export function runRef(head: string): RefName {
@@ -209,9 +207,8 @@ export function isRefName(value: string): boolean {
     );
 }
 
-/** A lane name is one ref component too: the segment between the head and `tip` or `base`. */
-export function isLaneName(value: string): boolean {
-  return !value.includes("/") && isRefName(value);
+export function isDelivery(value: string): value is Delivery {
+  return value === "steer" || value === "next";
 }
 
 export function newRunId(): string {

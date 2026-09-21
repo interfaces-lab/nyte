@@ -22,18 +22,12 @@ export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
   const landing = page.url === `${cloudRoute}/introduction`;
   const section = cloudSectionFor(page.url);
   const { previous, next } = findNeighbour(cloudSource.getPageTree(), page.url);
-  // Heading titles arrive as rendered elements (inline code survives), so they
-  // pass through to the client rail as-is.
-  const toc = page.data.toc
-    .filter((entry) => entry.depth <= 3)
-    .map((entry) => ({ title: entry.title, url: entry.url, depth: entry.depth }));
 
   return (
     <>
-      <ShellMain skin="cloud">
-        <article className="cloud-article">
+      <ShellMain>
+        <article className="shell-article">
           <ShellHead
-            skin="cloud"
             eyebrow={section}
             title={landing ? "Cloud" : page.data.title}
             lede={page.data.description}
@@ -50,13 +44,13 @@ export default async function Page(props: PageProps<"/cloud/[[...slug]]">) {
               </div>
             ) : null}
           </ShellHead>
-          <div className="cloud-prose">
+          <div className="shell-prose">
             <MDX components={cloudMdxComponents()} />
           </div>
-          <ShellPager skin="cloud" previous={previous} next={next} />
+          <ShellPager previous={previous} next={next} />
         </article>
       </ShellMain>
-      <ShellToc skin="cloud" entries={toc} />
+      <ShellToc entries={page.data.toc.filter((entry) => entry.depth <= 3)} />
     </>
   );
 }

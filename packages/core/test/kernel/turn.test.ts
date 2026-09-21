@@ -155,7 +155,9 @@ async function bench(): Promise<Bench> {
         now: options.now ?? 1,
         attempt: (options.attempts ?? 0) + 1,
         commits: [{ oid: "opening", commit: opening }],
-        emit: (event) => events.push(event),
+        emit: (event) => {
+          events.push(event);
+        },
         signal: options.signal ?? new AbortController().signal,
       };
     },
@@ -467,7 +469,7 @@ test("a failed settlement stays handled while a later policy decision is pending
     {
       loop: {
         beforeToolCall: async ({ toolCall }) => {
-          if (toolCall.id === "later") {
+          if (toolCall.id === "next") {
             await release.promise;
             return { block: true, reason: "rejected by policy" };
           }
@@ -485,7 +487,7 @@ test("a failed settlement stays handled while a later policy decision is pending
   const batch = turn.tools({
     ...b.input(),
     assistant: assistant("", {
-      calls: [call("first", "test", { value: "x" }), call("later", "test", { value: "y" })],
+      calls: [call("first", "test", { value: "x" }), call("next", "test", { value: "y" })],
     }),
   });
   try {

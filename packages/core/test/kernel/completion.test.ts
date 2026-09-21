@@ -26,14 +26,16 @@ test("completion joins the next response without swallowing or impersonating que
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "input",
+      kind: "user",
+      delivery: "next",
       body: message(user(content)),
     });
   }
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    kind: "report",
+    delivery: "steer",
     body: {
       kind: "completion",
       job: {
@@ -51,13 +53,7 @@ test("completion joins the next response without swallowing or impersonating que
   ]);
   const options = {
     head: "main",
-    landing: {
-      lanes: [
-        { lane: "input", lands: "boundary" },
-        { lane: "results", lands: "boundary" },
-      ],
-      drain: "one",
-    },
+    drain: "one",
   } satisfies Parameters<typeof drive>[2];
   await drive(session, turn, options);
   expect(requests).toEqual([
@@ -104,13 +100,15 @@ test("stopping the response to a landed completion keeps it out of the request t
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "input",
+    kind: "user",
+    delivery: "next",
     body: message(user("question")),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    kind: "report",
+    delivery: "steer",
     body: {
       kind: "completion",
       job: {
@@ -124,13 +122,7 @@ test("stopping the response to a landed completion keeps it out of the request t
   });
   const options = {
     head: "main",
-    landing: {
-      lanes: [
-        { lane: "input", lands: "boundary" },
-        { lane: "results", lands: "boundary" },
-      ],
-      drain: "one",
-    },
+    drain: "one",
   } satisfies Parameters<typeof drive>[2];
   await drive(session, turn, options);
   const stopped = transcriptFromCommits(
@@ -146,7 +138,8 @@ test("stopping the response to a landed completion keeps it out of the request t
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "input",
+    kind: "user",
+    delivery: "next",
     body: message(user("again")),
   });
   await drive(session, turn, options);

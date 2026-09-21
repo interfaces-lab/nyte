@@ -1,6 +1,6 @@
 /**
  * Follow-ups core is still holding, drawn between the transcript and the
- * composer: the store's pending changes in the queue lane, and the outbox's
+ * composer: the store's pending changes in the queue delivery, and the outbox's
  * rows on their way to it. Steer messages take the other shape, in
  * `pending-tail.ts`.
  *
@@ -14,13 +14,13 @@
  */
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { CliRenderer } from "@opentui/core";
-import type { Lane, PendingItem } from "@nyte-ai/core";
+import type { Delivery, PendingItem } from "@nyte-ai/core";
 import type { UserMessage } from "@nyte-ai/schema";
 import { GLYPHS, pendingHint } from "./constants.ts";
 import { extractFileAttachments } from "./composer.ts";
 import { basename } from "node:path";
 import { userText } from "./format.ts";
-import type { LaneRoles } from "./lanes.ts";
+import type { DeliveryChoices } from "./lanes.ts";
 import type { OutboxEntry } from "./outbox.ts";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
@@ -45,8 +45,8 @@ export function gutterRows(
   ];
 }
 
-export function rowLane(row: GutterRow): Lane {
-  return row.kind === "pending" ? row.item.lane : row.entry.lane;
+export function rowDelivery(row: GutterRow): Delivery {
+  return row.kind === "pending" ? row.item.delivery : row.entry.delivery;
 }
 
 export function rowContent(row: GutterRow): UserMessage["content"] {
@@ -86,16 +86,16 @@ export interface RowMark {
   readonly tone: string;
 }
 
-/** The glyph and word for a lane, by the role the landing policy gives it. */
-export function laneMark(lane: Lane, roles: LaneRoles, theme: CliTheme): RowMark {
-  if (lane === roles.steer) return { glyph: GLYPHS.steer, label: lane, tone: theme.accent };
-  return { glyph: GLYPHS.queue, label: lane, tone: theme.warning };
+/** The glyph and word for a delivery. */
+export function deliveryMark(delivery: Delivery, roles: DeliveryChoices, theme: CliTheme): RowMark {
+  if (delivery === roles.steer) return { glyph: GLYPHS.steer, label: delivery, tone: theme.accent };
+  return { glyph: GLYPHS.queue, label: delivery, tone: theme.warning };
 }
 
-export function rowMark(row: GutterRow, roles: LaneRoles, theme: CliTheme): RowMark {
+export function rowMark(row: GutterRow, roles: DeliveryChoices, theme: CliTheme): RowMark {
   switch (row.kind) {
     case "pending":
-      return laneMark(row.item.lane, roles, theme);
+      return deliveryMark(row.item.delivery, roles, theme);
     case "sending": {
       const attempts = row.entry.attempts;
       return {
@@ -158,7 +158,7 @@ export class PendingGutter {
   private readonly renderer: CliRenderer;
   private readonly theme: CliTheme;
   private readonly nextId: (prefix?: string) => string;
-  private roles: LaneRoles;
+  private roles: DeliveryChoices;
   private items: readonly GutterRow[] = [];
   private readonly rows: TextRenderable[] = [];
   private drag: { readonly item: PendingItem; readonly index: number; moving: boolean } | undefined;
@@ -166,7 +166,7 @@ export class PendingGutter {
   constructor(
     renderer: CliRenderer,
     theme: CliTheme,
-    roles: LaneRoles,
+    roles: DeliveryChoices,
     nextId: (prefix?: string) => string,
   ) {
     this.renderer = renderer;
@@ -195,7 +195,7 @@ export class PendingGutter {
     this.repaint();
   }
 
-  setRoles(roles: LaneRoles): void {
+  setRoles(roles: DeliveryChoices): void {
     this.roles = roles;
     this.repaint();
   }
@@ -261,7 +261,7 @@ export class PendingGutter {
           (candidate) => event.y >= candidate.y && event.y < candidate.y + candidate.height,
         );
         const target = this.items[index];
-        if (target?.kind === "pending" && target.item.lane !== drag.item.lane) return;
+        if (target?.kind === "pending" && target.item.delivery !== drag.item.delivery) return;
         if (index === drag.index) return;
         this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
         event.preventDefault();

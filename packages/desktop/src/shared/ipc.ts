@@ -13,7 +13,6 @@ import type {
  * start/stop pair around a push channel, cursor semantics unchanged.
  */
 import type {
-  Landing,
   RemoteNyte,
   Seq,
   SessionEvent,
@@ -804,7 +803,6 @@ export interface HostBridge {
 
 /** What `window.nyte` is: the SDK verbatim, plus watch-over-push and the host. */
 export interface NyteBridge {
-  readonly landing: Landing;
   readonly sessions: SessionsBridge;
   readonly messages: MessagesBridge;
   readonly jobs: RemoteNyte["jobs"];

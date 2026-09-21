@@ -4,16 +4,19 @@ import { createWorkbenchController, activeWorkbenchTab, workbenchViewKey } from 
 
 test("the workbench toggle recovers an unavailable expanded tab and then closes it", () => {
   const controller = createWorkbenchController();
-  const key = workbenchViewKey({ paneKey: "stage", target: { kind: "home" } });
+  const view = workbenchViewKey({ paneKey: "stage", target: { kind: "home" } });
   const scope = { kind: "pathless" } as const;
-  controller.actions.openTab(key, "files");
-  assert.equal(activeWorkbenchTab(controller.getView(key), scope), null);
-  controller.actions.toggleWorkbench(key, scope);
-  assert.equal(controller.getView(key).expanded, true);
-  assert.equal(activeWorkbenchTab(controller.getView(key), scope), "browser");
-  assert.deepEqual(controller.getView(key).openTabs, ["files", "browser"]);
-  controller.actions.toggleWorkbench(key, scope);
-  assert.equal(controller.getView(key).expanded, false);
-  controller.actions.toggleWorkbench(key, scope);
-  assert.equal(controller.getView(key).expanded, true);
+  controller.actions.openTab({ view, tab: { kind: "files" }, activate: true });
+  assert.equal(activeWorkbenchTab(controller.getView(view), scope), null);
+  controller.actions.toggleWorkbench({ view, scope });
+  assert.equal(controller.getView(view).expanded, true);
+  assert.equal(activeWorkbenchTab(controller.getView(view), scope)?.kind, "browser");
+  assert.deepEqual(
+    controller.getView(view).tabs.map((tab) => tab.kind),
+    ["files", "browser"],
+  );
+  controller.actions.toggleWorkbench({ view, scope });
+  assert.equal(controller.getView(view).expanded, false);
+  controller.actions.toggleWorkbench({ view, scope });
+  assert.equal(controller.getView(view).expanded, true);
 });

@@ -22,9 +22,9 @@ User input starts model work. So does a delegate's answer to a request an un-sto
 
 ## Delegated work
 
-`task` waits for its report by default. Use `background: true` only for work the parent can continue without. When that report becomes necessary, `wait_task({ jobId })` waits for the existing job and resumes the same parent run. It does not spawn a replacement task or require polling. `stop_task({ jobId })` cancels the task; cancelling a wait alone only stops the observation. Aborting a run still cancels every job that run owns.
+`task` waits up to its `waitMs` and returns the report when the agent finishes in time. Otherwise it returns the agent id while the agent keeps working. Use `await({ agents: [agent], mode: "all", timeoutMs })` when that report becomes necessary. `stop({ agent })` cancels the agent; cancelling an await alone only stops that observation. Aborting a run cancels its parked waits but leaves agents running.
 
-A parked task holds the turn, so it yields when the user sends something that is waiting on this run: `wait_task` returns with the task still running, and a foreground task moves to background and returns its job id. The task keeps running either way, and its report arrives as a completion. A report a wait already carried is not repeated as a completion.
+A parked task or await holds the turn until it finishes, times out, or yields to new user input. On a yield, the tool returns while the agent keeps running. Its report later arrives as a completion. A report the wait already carried is not repeated as a completion.
 
 ## Images
 

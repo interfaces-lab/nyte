@@ -38,7 +38,7 @@ import {
   assistant,
   call,
   granted,
-  landing,
+  drain,
   message,
   only,
   openSession,
@@ -388,7 +388,8 @@ async function queueDelegate(
   await submit(session, {
     preparation: { kind: "none" },
     head,
-    lane: "now",
+    delivery: "steer",
+    kind: "answer",
     body: { kind: "completion", job: delegateReport(child, request) },
   });
 }
@@ -550,7 +551,7 @@ test("a failed child publication abandons its prepared delegation request", asyn
     if (
       failPublications.has(session.id) &&
       updates.some(
-        (update) => update.name.startsWith("refs/queues/main/") && update.name.endsWith("/tip"),
+        (update) => update.name.startsWith("refs/inbox/main/") && update.name.endsWith("/tip"),
       )
     ) {
       failPublications.delete(session.id);
@@ -606,7 +607,7 @@ test("delivery reads the retained terminal run after the child event stream is t
       deliveryParents.has(session.id) &&
       updates.some(
         (update) =>
-          update.name.startsWith("refs/queues/main/background/") && update.name.endsWith("/tip"),
+          update.name.startsWith("refs/inbox/main/steer/") && update.name.endsWith("/tip"),
       )
     ) {
       failDelivery = false;
@@ -683,7 +684,7 @@ test("a keyed participant receipt loss abandons the unpublished child request", 
     if (
       blockedChildren.has(session.id) &&
       updates.some(
-        (update) => update.name.startsWith("refs/queues/main/") && update.name.endsWith("/tip"),
+        (update) => update.name.startsWith("refs/inbox/main/") && update.name.endsWith("/tip"),
       )
     ) {
       blockedChildren.delete(session.id);
@@ -997,10 +998,11 @@ test("a failed parent revokes its outstanding continuation before the child answ
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("start")),
   });
-  expect((await step(session, script, { head: "main", landing })).kind).toBe("continue");
+  expect((await step(session, script, { head: "main", drain })).kind).toBe("continue");
   const parent = await storedRun(session);
   assert.ok(parent);
   const child = sessionId("failed-child");
@@ -1015,22 +1017,21 @@ test("a failed parent revokes its outstanding continuation before the child answ
     continuation: { kind: "authorized", root: parent.root },
   });
 
-  expect((await step(session, script, { head: "main", landing })).kind).toBe("finished");
+  expect((await step(session, script, { head: "main", drain })).kind).toBe("finished");
   expect((await storedRun(session))?.phase.kind).toBe("failed");
 
   await queueDelegate(session, child, request, "main");
-  expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
-    "idle",
-  );
+  expect((await step(session, new ResponseScript([]), { head: "main", drain })).kind).toBe("idle");
   expect((await storedRun(session))?.id).toBe(parent.id);
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: message(user("continue")),
   });
-  expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+  expect((await step(session, new ResponseScript([]), { head: "main", drain })).kind).toBe(
     "continue",
   );
   expect((await storedRun(session))?.origin.kind).toBe("user");
@@ -1041,7 +1042,8 @@ test("command and unauthorized delegate completions never start an idle run", as
   await submit(commandSession, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "report",
     body: {
       kind: "completion",
       job: {
@@ -1053,7 +1055,7 @@ test("command and unauthorized delegate completions never start an idle run", as
       },
     },
   });
-  expect((await step(commandSession, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+  expect((await step(commandSession, new ResponseScript([]), { head: "main", drain })).kind).toBe(
     "idle",
   );
   expect(await storedRun(commandSession)).toBeUndefined();
@@ -1072,7 +1074,7 @@ test("command and unauthorized delegate completions never start an idle run", as
       continuation: { kind },
     });
     await queueDelegate(session, child, request, "main");
-    expect((await step(session, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+    expect((await step(session, new ResponseScript([]), { head: "main", drain })).kind).toBe(
       "idle",
     );
     expect(await storedRun(session)).toBeUndefined();
@@ -1085,7 +1087,7 @@ test("command and unauthorized delegate completions never start an idle run", as
     oid: "request-missing",
   } satisfies DelegateRequest;
   await queueDelegate(missingSession, missingChild, missingRequest, "main");
-  expect((await step(missingSession, new ResponseScript([]), { head: "main", landing })).kind).toBe(
+  expect((await step(missingSession, new ResponseScript([]), { head: "main", drain })).kind).toBe(
     "idle",
   );
   expect(await storedRun(missingSession)).toBeUndefined();
@@ -1101,10 +1103,11 @@ test("one chain budget covers two outstanding children and user input starts a f
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("start")),
   });
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   const parent = await storedRun(session);
   assert.ok(parent);
   const firstChild = sessionId("first-child");
@@ -1129,11 +1132,11 @@ test("one chain budget covers two outstanding children and user input starts a f
     head: "main",
     continuation: { kind: "authorized", root: parent.root },
   });
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("done");
 
   await queueDelegate(session, firstChild, firstRequest, "main");
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   const firstContinuation = await storedRun(session);
   assert.ok(firstContinuation);
   expect(firstContinuation).toMatchObject({
@@ -1141,11 +1144,11 @@ test("one chain budget covers two outstanding children and user input starts a f
     root: parent.root,
     phase: { kind: "respond" },
   });
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("done");
 
   await queueDelegate(session, secondChild, secondRequest, "main");
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   const secondContinuation = await storedRun(session);
   assert.ok(secondContinuation);
   expect(secondContinuation).toMatchObject({
@@ -1153,23 +1156,24 @@ test("one chain budget covers two outstanding children and user input starts a f
     root: parent.root,
     phase: { kind: "respond" },
   });
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("failed");
   expect(script.calls).toBe(2);
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("fresh")),
   });
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   const fresh = await storedRun(session);
   assert.ok(fresh);
   expect(fresh.origin).toEqual({ kind: "user" });
   expect(fresh.root).toBe(fresh.id);
   expect(fresh.root).not.toBe(parent.root);
-  await step(session, script, { head: "main", landing, steps: 2 });
+  await step(session, script, { head: "main", drain, steps: 2 });
   expect((await storedRun(session))?.phase.kind).toBe("done");
   expect(script.calls).toBe(3);
 });
@@ -1180,13 +1184,14 @@ test("two steps racing one authorization publish one continuation", async () => 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("start")),
   });
-  await step(session, parentScript, { head: "main", landing });
+  await step(session, parentScript, { head: "main", drain });
   const parent = await storedRun(session);
   assert.ok(parent);
-  await step(session, parentScript, { head: "main", landing });
+  await step(session, parentScript, { head: "main", drain });
   const child = sessionId("race-child");
   const request = { kind: "commit", oid: "race-request" } satisfies DelegateRequest;
   await writeDelegation({
@@ -1212,13 +1217,13 @@ test("two steps racing one authorization publish one continuation", async () => 
     await Promise.all([
       step(session, new ResponseScript([completed("continued")]), {
         head: "main",
-        landing,
+        drain,
         lease,
         beforeStep,
       }),
       step(session, new ResponseScript([completed("continued")]), {
         head: "main",
-        landing,
+        drain,
         lease,
         beforeStep,
       }),

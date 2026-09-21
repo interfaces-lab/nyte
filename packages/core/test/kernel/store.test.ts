@@ -28,6 +28,24 @@ import {
 
 const blob = (value: string): Obj => ({ kind: "blob", value: { value } });
 
+test("a change keeps its idempotency key across the store boundary", async () => {
+  const session = await openSession();
+  const change: Change = {
+    type: "change",
+    kind: "user",
+    delivery: "steer",
+    previous: null,
+    body: { kind: "message", message: { role: "user", content: "hello", timestamp: 1 } },
+    at: 1,
+    key: "send-once",
+  };
+
+  const [oid] = await session.objects.put([change]);
+
+  assert.ok(oid);
+  assert.deepEqual(await session.objects.get(oid), change);
+});
+
 test("an object reads back as it was written and has one id whatever the key order", async () => {
   const session = await openSession();
   const [a] = await session.objects.put([
@@ -329,13 +347,15 @@ test("sessions are created, listed, reopened, and deleted with everything they o
 
 test("one hundred concurrent compare-and-swap writers all land in one chain", async () => {
   const session = await openSession();
-  const tipRef = "refs/queues/main/steer/tip";
+  const tipRef = "refs/inbox/main/steer/tip";
   await Promise.all(
     Array.from({ length: 100 }, async (_, index) => {
       for (;;) {
         const tip = await session.refs.read(tipRef);
         const change: Change = {
-          kind: "change",
+          type: "change",
+          kind: "passive",
+          delivery: "steer",
           previous: tip,
           body: { kind: "config", thinkingLevel: String(index) },
           at: index,
@@ -352,7 +372,9 @@ test("one hundred concurrent compare-and-swap writers all land in one chain", as
   let cursor = await session.refs.read(tipRef);
   while (cursor !== null) {
     const object = await session.objects.get(cursor);
-    if (object?.kind !== "change") assert.fail("chain must hold changes");
+    if (object === undefined || !("type" in object) || object.type !== "change") {
+      assert.fail("chain must hold changes");
+    }
     length += 1;
     cursor = object.previous;
   }
@@ -401,4 +423,18 @@ test("two connections may create the same store at the same moment", async () =>
   await first.create({ id: "a" });
   await second.create({ id: "b" });
   assert.deepEqual((await first.list()).map((item) => item.id).toSorted(), ["a", "b"]);
+});
+
+test("a closed session rejects new work and repeated close is harmless", async () => {
+  const session = await openSession("closed");
+  const unstartedWatch = session.events.watch({ afterSeq: 0 })[Symbol.asyncIterator]();
+  const startingWatch = session.events.watch({ afterSeq: 0 })[Symbol.asyncIterator]();
+  const pending = startingWatch.next();
+  await Promise.all([session.close(), session.close()]);
+  assert.equal((await pending).done, true);
+  assert.equal((await unstartedWatch.next()).done, true);
+  await session.close();
+
+  await assert.rejects(session.refs.read("refs/heads/main"), /Session is closed: closed/u);
+  assert.throws(() => session.events.watch({ afterSeq: 0 }), /Session is closed: closed/u);
 });

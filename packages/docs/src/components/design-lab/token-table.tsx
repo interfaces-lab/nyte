@@ -47,7 +47,7 @@ function Choice({
       onClick={onPick}
     >
       <Chip row={row} value={value} />
-      <span {...stylex.props(table.value)}>{preview(row, value)}</span>
+      {row.kind !== "scalar" && <span {...stylex.props(table.value)}>{preview(row, value)}</span>}
     </button>
   );
 }

@@ -1,8 +1,8 @@
 import { worktreeFiles } from "@nyte-ai/client";
 import type {
   FileChange,
-  RunId,
   Turn,
+  TurnRun,
   VcsCommitInfo,
   VcsDiff,
   VcsFile,
@@ -37,20 +37,10 @@ export interface ChangesScopeOption {
 export interface TurnChangeOption {
   readonly scope: TurnChangesScope;
   /** The run whose exact diff `runs.diff` answers; a turn of only a request has none yet. */
-  readonly run: RunId | undefined;
+  readonly run: TurnRun;
   readonly label: string;
   readonly stats: { readonly added: number; readonly removed: number };
   readonly files: readonly { readonly change: FileChange; readonly patch: string }[];
-}
-
-function changeStats(changes: readonly FileChange[]): TurnChangeOption["stats"] {
-  return changes.reduce(
-    (total, change) => ({
-      added: total.added + change.added,
-      removed: total.removed + change.removed,
-    }),
-    { added: 0, removed: 0 },
-  );
 }
 
 export interface TranscriptChangesProjection {
@@ -103,7 +93,13 @@ export function transcriptChanges(turns: readonly Turn[]): TranscriptChangesProj
       scope: { kind: "turn", turnId: turn.id },
       run: turn.run,
       label: ordinal === turnCount ? "Latest" : `Turn ${String(ordinal)}`,
-      stats: changeStats(files.map((file) => file.change)),
+      stats: files.reduce(
+        (total, file) => ({
+          added: total.added + file.change.added,
+          removed: total.removed + file.change.removed,
+        }),
+        { added: 0, removed: 0 },
+      ),
       files,
     });
   }
@@ -156,10 +152,11 @@ export function diffRequestForScope(
   scope: WorkbenchChangesScope,
   options?: { readonly paths?: readonly string[]; readonly ignoreWhitespace?: boolean },
 ): VcsDiffRequest | undefined {
-  const narrowing = {
-    paths: options?.paths === undefined ? undefined : [...options.paths],
-    ignoreWhitespace: options?.ignoreWhitespace,
+  const base = {
+    target: { kind: "workspace" } as const,
+    ignoreWhitespace: options?.ignoreWhitespace ?? false,
   };
+  const narrowing = options?.paths === undefined ? base : { ...base, paths: [...options.paths] };
   switch (scope.kind) {
     case "uncommitted":
       return { scope: { kind: "worktree" }, ...narrowing };
@@ -181,7 +178,10 @@ export function diffRequestForScope(
 /** Totals over a scope's patches. */
 export function diffScopeStats(diffs: readonly VcsDiff[]): ChangeScopeStats {
   return diffs.reduce<ChangeScopeStats>(
-    (total, diff) => ({ added: total.added + diff.added, removed: total.removed + diff.removed }),
+    (total, diff) => ({
+      added: total.added + (diff.kind === "text" ? diff.added : 0),
+      removed: total.removed + (diff.kind === "text" ? diff.removed : 0),
+    }),
     { added: 0, removed: 0 },
   );
 }
@@ -305,39 +305,37 @@ export function changesScopeLabel(
   }
 }
 
-/**
- * The branch line above the scope menu. `detached` means HEAD points at a
- * commit with no branch, where `label` is the short oid. An unborn HEAD keeps
- * its branch name and reports no ahead or behind counts.
- */
-export interface BranchReadout {
-  readonly label: string;
-  readonly detached: boolean;
-  readonly unborn: boolean;
-  readonly upstream: string | undefined;
-  readonly ahead: number;
-  readonly behind: number;
-}
+/** The branch line above the scope menu, preserving HEAD's protocol variant. */
+export type BranchReadout =
+  | { readonly kind: "detached"; readonly label: string }
+  | { readonly kind: "unborn"; readonly label: string }
+  | {
+      readonly kind: "attached";
+      readonly label: string;
+      readonly upstream: string | null;
+      readonly ahead: number;
+      readonly behind: number;
+    };
 
 export function branchReadout(snapshot: VcsSnapshot | undefined): BranchReadout | undefined {
   if (snapshot === undefined || snapshot.kind !== "repository") return undefined;
   const head = snapshot.head;
-  if (head.branch.kind === "detached") {
-    return {
-      label: (head.oid ?? "").slice(0, 7),
-      detached: true,
-      unborn: head.oid === null,
-      upstream: undefined,
-      ahead: 0,
-      behind: 0,
-    };
+  switch (head.kind) {
+    case "detached":
+      return { kind: head.kind, label: head.oid.slice(0, 7) };
+    case "unborn":
+      return { kind: head.kind, label: head.branch };
+    case "attached":
+      return {
+        kind: head.kind,
+        label: head.branch,
+        upstream: head.upstream?.name ?? null,
+        ahead: head.upstream?.ahead ?? 0,
+        behind: head.upstream?.behind ?? 0,
+      };
+    default: {
+      const _exhaustive: never = head;
+      return _exhaustive;
+    }
   }
-  return {
-    label: head.branch.name,
-    detached: false,
-    unborn: head.oid === null,
-    upstream: head.branch.upstream?.name,
-    ahead: head.branch.upstream?.ahead ?? 0,
-    behind: head.branch.upstream?.behind ?? 0,
-  };
 }

@@ -1,0 +1,39 @@
+:root[data-lab-tokens="calendar"] {
+  --nyte-base: var(--text-primary);
+  --nyte-chrome-base: var(--surface-page);
+  --nyte-editor-base: var(--surface-page);
+  --nyte-sidebar-base: var(--surface-wash);
+  --nyte-bg-raised: var(--surface-elevated);
+  --nyte-sidebar-material-opacity: 100%;
+  --nyte-text-primary: var(--text-primary);
+  --nyte-text-secondary: var(--text-secondary);
+  --nyte-text-tertiary: var(--text-tertiary);
+  --nyte-icon-primary: var(--icon-primary);
+  --nyte-icon-secondary: var(--icon-secondary);
+  --nyte-icon-tertiary: var(--icon-secondary);
+  --nyte-stroke-primary: var(--stroke-primary);
+  --nyte-stroke-secondary: var(--stroke-secondary);
+  --nyte-bg-tertiary: var(--state-hover);
+  --nyte-bg-quaternary: var(--state-hover);
+  --nyte-font-family-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI",
+    Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif;
+  --nyte-sidebar-width: 264px;
+  --nyte-sidebar-row-padding-inline: 8px;
+  --nyte-sidebar-row-gap: 8px;
+  --nyte-titlebar-height: 44px;
+  --nyte-dialog-radius: 12px;
+  --nyte-dialog-padding: 24px;
+  --nyte-menu-radius: 10px;
+  --nyte-menu-item-radius: 6px;
+  --nyte-menu-item-height: 30px;
+  --nyte-menu-item-padding-inline: 6px;
+  --nyte-menu-item-padding-block: 5px;
+  --nyte-menu-item-gap: 6px;
+  --nyte-shadow-popover: var(--shadow-md);
+  --nyte-shadow-modal: var(--shadow-lg);
+  --nyte-line-height-base: 18px;
+  --nyte-conversation-user-shell-background: var(--surface-page);
+  --nyte-conversation-user-background: var(--surface-elevated);
+  --nyte-conversation-user-ring: var(--stroke-secondary);
+}

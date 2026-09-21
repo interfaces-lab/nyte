@@ -27,8 +27,7 @@ export const CONVERSATION_MENTION: MessageReference = {
   id: "current-conversation",
 };
 const CONVERSATION_MENTION_TEXT = "@current-conversation";
-const CLIPBOARD_PASTE_MIN_LINES = 4;
-const CLIPBOARD_PASTE_MIN_CHARS = 512;
+const CLIPBOARD_PASTE_MAX_INLINE_CHARS = 10_000;
 const CLIPBOARD_TOKEN_PREFIX = "@clipboard/";
 
 /** `[$name](path)`: the persisted skill link the transcript already hides. */
@@ -50,12 +49,6 @@ const SKILL_INSTRUCTION_PATTERN = /^Use the (?<name>\S+) skill\.(?=\n\n|$)/u;
 
 export function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
-}
-
-/** Trailing newline is not a line. */
-export function clipboardLineCount(body: string): number {
-  if (body === "") return 0;
-  return body.replace(/\r?\n$/u, "").split(/\r?\n/u).length;
 }
 
 /** Length-prefixed JSON so a body with newlines stays one TextNode. */
@@ -104,24 +97,10 @@ function nextClipboardToken(
   return undefined;
 }
 
-function isSingleUrlPaste(text: string): boolean {
-  const trimmed = text.trim();
-  if (clipboardLineCount(trimmed) !== 1) return false;
-  return (
-    trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("www.")
-  );
-}
-
 export function clipboardReferenceFromPaste(text: string): ClipboardReference | undefined {
-  if (text === "") return undefined;
-  if (isSingleUrlPaste(text)) return undefined;
-  if (
-    clipboardLineCount(text) < CLIPBOARD_PASTE_MIN_LINES &&
-    text.length < CLIPBOARD_PASTE_MIN_CHARS
-  ) {
-    return undefined;
-  }
-  return { kind: "clipboard", body: text };
+  const normalized = text.replace(/\r\n/gu, "\n").replace(/\n+$/u, "");
+  if (normalized.length <= CLIPBOARD_PASTE_MAX_INLINE_CHARS) return undefined;
+  return { kind: "clipboard", body: normalized };
 }
 
 /** The token a reference occupies in a draft. */
@@ -151,7 +130,7 @@ export function referenceLabel(reference: MessageReference): string {
     case "mention":
       return "Current conversation";
     case "clipboard": {
-      const lines = clipboardLineCount(reference.body);
+      const lines = reference.body.split("\n").length;
       return `Clipboard (${String(lines)} ${lines === 1 ? "line" : "lines"})`;
     }
     default: {

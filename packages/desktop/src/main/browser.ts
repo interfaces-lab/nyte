@@ -132,10 +132,25 @@ interface Surface {
   bounds: BrowserBoundsMessage["bounds"];
   visible: boolean;
   attached: boolean;
+  /** Set once by destroy. Native events still arrive afterwards and must not touch state. */
+  destroyed: boolean;
+  /** Agent operations in flight. Throttling is off only while this is above zero. */
+  operations: number;
+  /** Tick of the last agent operation, so reclamation drops the longest-idle page first. */
+  lastUse: number;
   blocked: number;
   error: BrowserSurfaceState["error"];
   owner: BrowserOwner;
 }
+
+/**
+ * How many idle agent-only hidden pages stay warm. Beyond this the longest-idle one
+ * is closed and its session sees `closed` on its next call, exactly as if it had
+ * never opened a page. A starting point, not a measured limit.
+ */
+const WARM_POOL_LIMIT = 6;
+
+const CLOSED = { kind: "failed", failure: { kind: "closed" } } as const;
 
 function guestUserAgent(): string {
   return app.userAgentFallback
@@ -149,6 +164,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   const byWebContents = new Map<number, Surface>();
   let blocker: Blocker | undefined;
   let blockerReady: Promise<void> | undefined;
+  let useClock = 0;
 
   /** Per-owner guest sessions, keyed by partition name. */
   const guestSessions = new Map<string, GuestSession>();
@@ -264,6 +280,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   };
 
   const publish = (surface: Surface): void => {
+    if (surface.destroyed) return;
     dependencies.emit({ kind: "browser_changed", surface: surface.id, state: stateOf(surface) });
   };
 
@@ -279,6 +296,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   };
 
   const apply = (surface: Surface): void => {
+    if (surface.destroyed) return;
     const window = dependencies.window();
     if (window === undefined || window.isDestroyed()) return;
     if (!surface.attached) {
@@ -306,8 +324,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     surface.error = undefined;
     void ensureBlocker().then(() => {
       const contents = surface.view.webContents;
-      if (!contents.isDestroyed()) return contents.loadURL(url).catch(() => undefined);
-      return undefined;
+      if (surface.destroyed || contents.isDestroyed()) return undefined;
+      return contents.loadURL(url).catch(() => undefined);
     });
   };
 
@@ -330,7 +348,10 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       apply(surface);
       publish(surface);
     });
-    contents.on("did-stop-loading", () => publish(surface));
+    contents.on("did-stop-loading", () => {
+      publish(surface);
+      reclaimIdle();
+    });
     contents.on("did-navigate", () => {
       guestSession.upgrades.delete(contents.id);
       publish(surface);
@@ -382,8 +403,6 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         nodeIntegration: false,
         webSecurity: true,
         spellcheck: false,
-        // Keep timers running while hidden so an agent's page stays responsive.
-        backgroundThrottling: false,
         devTools: false,
       },
     });
@@ -396,6 +415,9 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       bounds: { x: 0, y: 0, width: 0, height: 0 },
       visible: false,
       attached: false,
+      destroyed: false,
+      operations: 0,
+      lastUse: ++useClock,
       blocked: 0,
       error: undefined,
       owner,
@@ -407,6 +429,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   };
 
   const destroy = (surface: Surface): void => {
+    if (surface.destroyed) return;
+    surface.destroyed = true;
     surfaces.delete(surface.id);
     const contents = surface.view.webContents;
     byWebContents.delete(contents.id);
@@ -415,7 +439,66 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     if (surface.attached && window !== undefined && !window.isDestroyed()) {
       window.contentView.removeChildView(surface.view);
     }
+    surface.attached = false;
     if (!contents.isDestroyed()) contents.close();
+  };
+
+  /**
+   * An idle page nobody is looking at: no panel holds it, it is not placed, not
+   * loading, and no agent call is running against it. View-held pages are never
+   * candidates.
+   */
+  const reclaimable = (surface: Surface): boolean => {
+    if (surface.operations > 0 || surface.visible || hasViewHolder(surface.holderState)) {
+      return false;
+    }
+    const contents = surface.view.webContents;
+    return contents.isDestroyed() || !contents.isLoading();
+  };
+
+  const reclaimIdle = (): void => {
+    const idle = [...surfaces.values()].filter(reclaimable).sort((a, b) => a.lastUse - b.lastUse);
+    for (const surface of idle.slice(0, Math.max(0, idle.length - WARM_POOL_LIMIT))) {
+      destroy(surface);
+    }
+  };
+
+  /** Drop a holder; the surface closes when none remain, and idle pages are trimmed. */
+  const dropHolder = (surface: Surface, holder: BrowserHolder): void => {
+    if (release(surface.holderState, holder)) {
+      destroy(surface);
+      return;
+    }
+    apply(surface);
+    reclaimIdle();
+  };
+
+  /**
+   * Background throttling is off only while an agent call runs against this
+   * surface. Electron never throttles a visible page, so this only changes what a
+   * hidden page does between calls. Calls may overlap; the count, not a lock, owns it.
+   */
+  const operate = async <T>(
+    surface: Surface,
+    run: (contents: WebContents) => Promise<T>,
+  ): Promise<T> => {
+    const contents = surface.view.webContents;
+    surface.operations += 1;
+    surface.lastUse = ++useClock;
+    try {
+      if (surface.operations === 1 && !contents.isDestroyed()) {
+        contents.setBackgroundThrottling(false);
+      }
+      reclaimIdle();
+      return await run(contents);
+    } finally {
+      surface.operations -= 1;
+      surface.lastUse = ++useClock;
+      if (surface.operations === 0 && !surface.destroyed && !contents.isDestroyed()) {
+        contents.setBackgroundThrottling(true);
+      }
+      reclaimIdle();
+    }
   };
 
   /** Resolve a surface for an agent session, or fail. */
@@ -426,136 +509,116 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
   const agent: BrowserAgent = {
     async open(input) {
       const target = webUrl(input.url);
-      if (target === undefined) {
-        return {
-          kind: "failed",
-          failure: { kind: "closed" },
-        };
-      }
+      if (target === undefined) return CLOSED;
 
       const surfId = sessionSurfaceId(input.session);
       const holder: BrowserHolder = `session:${input.session}`;
-      let surface = surfaces.get(surfId);
-
-      if (surface === undefined) {
-        surface = create(surfId, input.owner);
-      }
-
+      const surface = surfaces.get(surfId) ?? create(surfId, input.owner);
       surface.holderState.holders.add(holder);
 
-      const contents = surface.view.webContents;
-      if (contents.isDestroyed()) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      return operate(surface, async (contents) => {
+        if (contents.isDestroyed()) return CLOSED;
 
-      if (contents.getURL() !== target || surface.error !== undefined) {
-        load(surface, target);
-      }
+        if (contents.getURL() !== target || surface.error !== undefined) {
+          load(surface, target);
+        }
 
-      apply(surface);
+        apply(surface);
 
-      // Tell the renderer so it can reveal the Browser tab for this surface.
-      dependencies.emit({
-        kind: "browser_agent_opened",
-        surface: surfId,
-        url: target,
-        state: stateOf(surface),
+        // Tell the renderer so it can reveal the Browser tab for this surface.
+        dependencies.emit({
+          kind: "browser_agent_opened",
+          surface: surfId,
+          url: target,
+          state: stateOf(surface),
+        });
+
+        await waitForSettle(contents, input.signal);
+        if (contents.isDestroyed()) return CLOSED;
+
+        const state = await takeSnapshot(contents, surface.runtime);
+        return { kind: "ok", state };
       });
-
-      await waitForSettle(contents, input.signal);
-
-      const state = await takeSnapshot(contents, surface.runtime);
-      return { kind: "ok", state };
     },
 
     async snapshot(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      const contents = surface.view.webContents;
-      if (contents.isDestroyed()) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
-
-      const state = await takeSnapshot(contents, surface.runtime, input.ref);
-      return { kind: "ok", state };
+      return operate(surface, async (contents) => {
+        if (contents.isDestroyed()) return CLOSED;
+        const state = await takeSnapshot(contents, surface.runtime, input.ref);
+        return { kind: "ok", state };
+      });
     },
 
     async click(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      return performClick(
-        surface.view.webContents,
-        surface.runtime,
-        input.ref,
-        input.button ?? "left",
-        input.double ?? false,
-        isWindowShown(),
-        input.signal,
+      return operate(surface, (contents) =>
+        performClick(
+          contents,
+          surface.runtime,
+          input.ref,
+          input.button ?? "left",
+          input.double ?? false,
+          isWindowShown(),
+          input.signal,
+        ),
       );
     },
 
     async type(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      return performType(
-        surface.view.webContents,
-        surface.runtime,
-        input.ref,
-        input.text,
-        input.clear ?? false,
-        input.submit ?? false,
-        isWindowShown(),
-        input.signal,
+      return operate(surface, (contents) =>
+        performType(
+          contents,
+          surface.runtime,
+          input.ref,
+          input.text,
+          input.clear ?? false,
+          input.submit ?? false,
+          isWindowShown(),
+          input.signal,
+        ),
       );
     },
 
     async press(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      return performPress(
-        surface.view.webContents,
-        surface.runtime,
-        input.key,
-        input.ref,
-        isWindowShown(),
-        input.signal,
+      return operate(surface, (contents) =>
+        performPress(
+          contents,
+          surface.runtime,
+          input.key,
+          input.ref,
+          isWindowShown(),
+          input.signal,
+        ),
       );
     },
 
     async scroll(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      return performScroll(
-        surface.view.webContents,
-        surface.runtime,
-        input,
-        isWindowShown(),
-        input.signal,
+      return operate(surface, (contents) =>
+        performScroll(contents, surface.runtime, input, isWindowShown(), input.signal),
       );
     },
 
     async wait(input) {
       const surface = surfaceForSession(input.session);
-      if (surface === undefined) {
-        return { kind: "failed", failure: { kind: "closed" } };
-      }
+      if (surface === undefined) return CLOSED;
 
-      return performWait(surface.view.webContents, surface.runtime, input, input.signal);
+      return operate(surface, (contents) =>
+        performWait(contents, surface.runtime, input, input.signal),
+      );
     },
 
     console(input) {
@@ -575,11 +638,8 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
         return { kind: "threw", message: "No page is open for this session" };
       }
 
-      return performEvaluate(
-        surface.view.webContents,
-        surface.runtime,
-        input.expression,
-        input.ref,
+      return operate(surface, (contents) =>
+        performEvaluate(contents, surface.runtime, input.expression, input.ref),
       );
     },
 
@@ -587,21 +647,13 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       const surface = surfaceForSession(input.session);
       if (surface === undefined) return undefined;
 
-      return performCapture(surface.view.webContents);
+      return operate(surface, performCapture);
     },
 
     release(input) {
-      const surfId = sessionSurfaceId(input.session);
-      const surface = surfaces.get(surfId);
+      const surface = surfaces.get(sessionSurfaceId(input.session));
       if (surface === undefined) return;
-
-      const holder: BrowserHolder = `session:${input.session}`;
-      const shouldDestroy = release(surface.holderState, holder);
-      if (shouldDestroy) {
-        destroy(surface);
-      } else {
-        apply(surface);
-      }
+      dropHolder(surface, `session:${input.session}`);
     },
 
     sessionSurfaceId(sessionId) {
@@ -690,13 +742,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
       const surface = surfaces.get(id);
       if (surface === undefined) return;
       // Renderer close releases the view holder, not an immediate destroy.
-      const shouldDestroy = release(surface.holderState, `view:${id}`);
-      if (shouldDestroy) {
-        destroy(surface);
-      } else {
-        // Surface survives (agent holds it); move off-screen.
-        apply(surface);
-      }
+      dropHolder(surface, `view:${id}`);
     },
     retain({ surface: id, holder, owner }) {
       const surfaceOwner = owner ?? { kind: "home" };
@@ -707,12 +753,7 @@ export function createBrowserSurfaces(dependencies: BrowserSurfacesDependencies)
     release({ surface: id, holder }) {
       const surface = surfaces.get(id);
       if (surface === undefined) return;
-      const shouldDestroy = release(surface.holderState, holder);
-      if (shouldDestroy) {
-        destroy(surface);
-      } else {
-        apply(surface);
-      }
+      dropHolder(surface, holder);
     },
     async captureFrame({ surface: id }) {
       const surface = surfaces.get(id);

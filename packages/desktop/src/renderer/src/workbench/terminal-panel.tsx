@@ -1,15 +1,16 @@
-import type { JobInfo, SessionId } from "@nyte-ai/protocol";
+import type { JobInfo } from "@nyte-ai/protocol";
 import * as stylex from "@stylexjs/stylex";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
 import { errorMessage } from "../../../shared/errors";
 import { Icon } from "../components/icons";
 import { Button } from "../components/ui";
 import { nyte } from "../nyte.ts";
 import { keys } from "../queries.ts";
+import type { WorkbenchTabId } from "./controller.ts";
 import { mountTerminal } from "./terminal-runtime";
-import { isJobTerminal, terminalActions, useTerminals } from "./terminal-store";
+import { isJobTerminal, terminalActions, useTerminal } from "./terminal-store";
 import type { TerminalTab } from "./terminal-store";
 import { terminalStyles as styles } from "./terminal.stylex";
 
@@ -76,8 +77,8 @@ function TerminalStatus({
           </div>
         );
       default: {
-        const exhaustive: never = tab.state.kind;
-        return exhaustive;
+        const _exhaustive: never = tab.state.kind;
+        return _exhaustive;
       }
     }
   }
@@ -113,45 +114,44 @@ function TerminalStatus({
         </div>
       );
     default: {
-      const exhaustive: never = tab.state;
-      return exhaustive;
+      const _exhaustive: never = tab.state;
+      return _exhaustive;
     }
   }
 }
 
 export function TerminalPanel({
-  owner,
-  sessionId,
+  tabId,
   workspacePath,
   visible,
 }: {
-  readonly owner: string;
-  readonly sessionId: SessionId | undefined;
+  readonly tabId: WorkbenchTabId;
   readonly workspacePath: string | null;
   readonly visible: boolean;
 }): ReactElement {
-  const { tabs, activeId } = useTerminals(owner);
-  const observesJobs =
-    sessionId !== undefined &&
-    tabs.some((tab) => isJobTerminal(tab) && tab.source.sessionId === sessionId);
+  const tab = useTerminal(tabId);
+  const jobSessionId = tab !== undefined && isJobTerminal(tab) ? tab.source.sessionId : null;
+  const jobRunning = tab !== undefined && isJobTerminal(tab) && tab.state.kind === "running";
   const jobs = useQuery({
-    queryKey: keys.jobs(sessionId),
-    queryFn: async (): Promise<readonly JobInfo[]> => {
-      const list = sessionId === undefined ? [] : await nyte.jobs.list({ sessionId });
-      if (sessionId !== undefined) terminalActions.syncJobs(owner, sessionId, list);
-      return list;
-    },
-    enabled: observesJobs,
-    refetchInterval: observesJobs ? 2_000 : false,
+    queryKey: keys.jobs(jobSessionId ?? undefined),
+    queryFn: (): Promise<readonly JobInfo[]> =>
+      jobSessionId === null ? Promise.resolve([]) : nyte.jobs.list({ sessionId: jobSessionId }),
+    enabled: jobSessionId !== null,
+    refetchInterval: jobRunning ? 2_000 : false,
   });
-  const selected = tabs.find((tab) => tab.id === activeId);
+  // The conversation reads the same key; the store follows the settled data
+  // no matter whose reader ran.
+  useEffect(() => {
+    if (jobSessionId === null || jobs.data === undefined) return;
+    terminalActions.syncJobs(jobSessionId, jobs.data);
+  }, [jobSessionId, jobs.data]);
   const [error, setError] = useState<string>();
 
-  const restart = async (tab: TerminalTab): Promise<void> => {
+  const restart = async (current: TerminalTab): Promise<void> => {
     setError(undefined);
     try {
-      await terminalActions.close(tab.id);
-      await terminalActions.create(owner, workspacePath);
+      await terminalActions.close(current.id);
+      await terminalActions.create({ id: current.id, workspacePath });
     } catch (cause) {
       setError(errorMessage(cause));
     }
@@ -159,42 +159,27 @@ export function TerminalPanel({
 
   return (
     <section aria-label="Terminal" {...stylex.props(styles.root)}>
-      {selected === undefined ? (
+      {tab === undefined ? (
         <div {...stylex.props(styles.empty)}>
           <Icon name="console" size={24} />
-          <span>
-            Open a terminal in {workspacePath === null ? "your home folder" : "this workspace"}.
-          </span>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void terminalActions.create(owner, workspacePath);
-            }}
-          >
-            <Icon name="plus" size={14} />
-            New Terminal
-          </Button>
+          <span>Terminal unavailable.</span>
         </div>
       ) : (
         <div {...stylex.props(styles.body)}>
-          {tabs.map((tab) => (
-            <div key={tab.id} {...stylex.props(styles.panel, tab.id !== activeId && styles.hidden)}>
-              <TerminalStatus
-                tab={tab}
-                restart={() => {
-                  void restart(tab);
-                }}
-              />
-              {(isJobTerminal(tab)
-                ? tab.rendering.kind !== "failed"
-                : tab.state.kind !== "failed") && (
-                <TerminalCanvas id={tab.id} visible={visible && tab.id === activeId} />
-              )}
-            </div>
-          ))}
+          <div {...stylex.props(styles.panel)}>
+            <TerminalStatus
+              tab={tab}
+              restart={() => {
+                void restart(tab);
+              }}
+            />
+            {(isJobTerminal(tab)
+              ? tab.rendering.kind !== "failed"
+              : tab.state.kind !== "failed") && <TerminalCanvas id={tab.id} visible={visible} />}
+          </div>
         </div>
       )}
-      {jobs.isError && selected !== undefined && isJobTerminal(selected) && (
+      {jobs.isError && tab !== undefined && isJobTerminal(tab) && (
         <div role="alert" {...stylex.props(styles.state, styles.failure)}>
           <span>Couldn’t refresh command output. Showing the last received output.</span>
           <Button variant="secondary" onClick={() => void jobs.refetch()}>

@@ -50,6 +50,7 @@ export class OutputAccumulator {
   private readonly maxRollingBytes: number;
   private readonly tempFilePrefix: string;
   private readonly decoder = new TextDecoder();
+  private readonly tempFileError: Promise<Error>;
 
   private rawChunks: Buffer[] = [];
   private tailText = "";
@@ -62,45 +63,63 @@ export class OutputAccumulator {
   private currentLineBytes = 0;
   private hasOpenLine = false;
   private finished = false;
+  private appending = false;
 
   private tempFilePath: string | undefined;
   private tempFileStream: WriteStream | undefined;
+  private tempFileFailure: Error | undefined;
+  private resolveTempFileError: (error: Error) => void = () => {};
 
   constructor(options: OutputAccumulatorOptions = {}) {
     this.maxLines = options.maxLines ?? DEFAULT_MAX_LINES;
     this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
     this.maxRollingBytes = Math.max(this.maxBytes * 2, 1);
     this.tempFilePrefix = options.tempFilePrefix ?? "nyte-output";
+    this.tempFileError = new Promise((resolve) => {
+      this.resolveTempFileError = resolve;
+    });
   }
 
-  append(data: Buffer): void {
+  async append(data: Buffer): Promise<void> {
     if (this.finished) {
       throw new Error("Cannot append to a finished output accumulator");
     }
+    if (this.appending) {
+      throw new Error("Output accumulator appends must be awaited");
+    }
 
-    this.totalRawBytes += data.length;
-    this.appendDecodedText(this.decoder.decode(data, { stream: true }));
+    this.appending = true;
+    try {
+      this.totalRawBytes += data.length;
+      this.appendDecodedText(this.decoder.decode(data, { stream: true }));
 
-    if (this.tempFileStream || this.shouldUseTempFile()) {
-      this.ensureTempFile();
-      this.tempFileStream?.write(data);
-    } else if (data.length > 0) {
-      this.rawChunks.push(data);
+      if (this.tempFileStream || this.shouldUseTempFile()) {
+        await this.ensureTempFile();
+        await this.writeTempFile(data);
+      } else if (data.length > 0) {
+        this.rawChunks.push(data);
+      }
+    } finally {
+      this.appending = false;
     }
   }
 
-  finish(): void {
+  async finish(): Promise<void> {
     if (this.finished) {
       return;
     }
+    if (this.appending) {
+      throw new Error("Cannot finish while an output append is pending");
+    }
+
     this.finished = true;
     this.appendDecodedText(this.decoder.decode());
     if (this.shouldUseTempFile()) {
-      this.ensureTempFile();
+      await this.ensureTempFile();
     }
   }
 
-  snapshot(options: { persistIfTruncated?: boolean } = {}): OutputSnapshot {
+  snapshot(): OutputSnapshot {
     const tailTruncation = truncateTail(this.getSnapshotText(), {
       maxLines: this.maxLines,
       maxBytes: this.maxBytes,
@@ -119,10 +138,6 @@ export class OutputAccumulator {
       maxBytes: this.maxBytes,
     };
 
-    if (options.persistIfTruncated && truncation.truncated) {
-      this.ensureTempFile();
-    }
-
     return {
       content: truncation.content,
       truncation,
@@ -130,13 +145,18 @@ export class OutputAccumulator {
     };
   }
 
+  waitForTempFileError(): Promise<Error> {
+    return this.tempFileError;
+  }
+
   async closeTempFile(): Promise<void> {
-    if (!this.tempFileStream) {
+    const stream = this.tempFileStream;
+    if (!stream) {
       return;
     }
-
-    const stream = this.tempFileStream;
-    this.tempFileStream = undefined;
+    if (this.tempFileFailure) {
+      throw this.tempFileFailure;
+    }
 
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error) => {
@@ -151,6 +171,7 @@ export class OutputAccumulator {
       stream.once("finish", onFinish);
       stream.end();
     });
+    this.tempFileStream = undefined;
   }
 
   getLastLineBytes(): number {
@@ -223,15 +244,58 @@ export class OutputAccumulator {
     );
   }
 
-  private ensureTempFile(): void {
-    if (this.tempFilePath) {
+  private async ensureTempFile(): Promise<void> {
+    if (this.tempFileStream) {
+      if (this.tempFileFailure) throw this.tempFileFailure;
       return;
     }
+
     this.tempFilePath = defaultTempFilePath(this.tempFilePrefix);
-    this.tempFileStream = createWriteStream(this.tempFilePath);
-    for (const chunk of this.rawChunks) {
-      this.tempFileStream.write(chunk);
-    }
+    const stream = createWriteStream(this.tempFilePath);
+    this.tempFileStream = stream;
+    stream.on("error", (error) => {
+      if (this.tempFileFailure) return;
+      this.tempFileFailure = error;
+      this.resolveTempFileError(error);
+    });
+
+    const chunks = this.rawChunks;
     this.rawChunks = [];
+    for (const chunk of chunks) {
+      await this.writeTempFile(chunk);
+    }
+  }
+
+  private async writeTempFile(data: Buffer): Promise<void> {
+    if (data.length === 0) return;
+    if (this.tempFileFailure) throw this.tempFileFailure;
+    const stream = this.tempFileStream;
+    if (!stream) throw new Error("Output temp file is not open");
+
+    let accepted = true;
+    const writeComplete = new Promise<void>((resolve, reject) => {
+      accepted = stream.write(data, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    if (accepted) {
+      await writeComplete;
+      return;
+    }
+
+    const drained = new Promise<void>((resolve, reject) => {
+      const onDrain = () => {
+        stream.off("error", onError);
+        resolve();
+      };
+      const onError = (error: Error) => {
+        stream.off("drain", onDrain);
+        reject(error);
+      };
+      stream.once("drain", onDrain);
+      stream.once("error", onError);
+    });
+    await Promise.all([writeComplete, drained]);
   }
 }

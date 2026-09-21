@@ -3,7 +3,7 @@ import { Dialog } from "@nyte-ai/ui/dialog";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
 import { overlayRef } from "../components/overlay-occlusion.ts";
-import { focus } from "../components/ui.tsx";
+import { focus, Hint } from "../components/ui.tsx";
 import { layer } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 
@@ -109,14 +109,18 @@ export function ImagePreview({
 }): ReactElement {
   return (
     <Dialog.Root>
-      <Dialog.Trigger
-        type="button"
-        aria-label={`Preview ${name}`}
-        title={name}
-        {...props(styles.trigger, focus.ring)}
-      >
-        <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
-      </Dialog.Trigger>
+      <Hint
+        content={name}
+        trigger={
+          <Dialog.Trigger
+            type="button"
+            aria-label={`Preview ${name}`}
+            {...props(styles.trigger, focus.ring)}
+          >
+            <img src={src} alt={name} {...props(styles.thumbnail, compact && styles.compact)} />
+          </Dialog.Trigger>
+        }
+      />
       <Dialog.Portal>
         <Dialog.Backdrop ref={overlayRef} {...props(styles.backdrop)} />
         <Dialog.Popup {...props(styles.popup)}>

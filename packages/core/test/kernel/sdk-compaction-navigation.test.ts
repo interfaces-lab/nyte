@@ -346,6 +346,7 @@ test("summary navigation carries abandoned work onto the destination; plain navi
     assert.equal(summaryObject?.kind, "commit");
     if (summaryObject?.kind !== "commit") return;
     assert.equal(summaryObject.parent, null);
+    assert.ok("imports" in summaryObject);
     assert.deepEqual(summaryObject.imports, summarizedOids.slice(1));
     assert.equal(summaryObject.body.kind, "summary");
     if (summaryObject.body.kind === "summary") {
@@ -436,6 +437,7 @@ test("summary navigation to a user message writes the summary under that message
     assert.equal(summaryObject?.kind, "commit");
     if (summaryObject?.kind !== "commit") return;
     assert.equal(summaryObject.parent, firstAnswer);
+    assert.ok("imports" in summaryObject);
     assert.deepEqual(summaryObject.imports, [secondAnswer]);
     assert.equal((await nyte.heads.list({ sessionId: id }))[0]?.tip, moved.summary);
     assert.deepEqual(

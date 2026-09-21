@@ -15,11 +15,19 @@ import { TOKEN_ROWS } from "./token-map";
 
 type Appearance = "light" | "dark";
 
+/*
+ * Dial rest positions are light mode's shipped values. Dark ships 0.9 alpha,
+ * 120% brightness and a 0.055 hairline of its own, which is why an untouched
+ * dial must write nothing at all.
+ */
+const DIAL_REST = { alpha: 0.8, blur: 12, brightness: 100, radius: 12, hairline: 0.08 } as const;
+
 const SURFACES = [
   { id: "none", label: "None" },
   { id: "popover", label: "Popover" },
   { id: "context", label: "Context menu" },
   { id: "dialog", label: "Dialog" },
+  { id: "stacked", label: "All layers" },
 ] as const satisfies readonly { readonly id: Surface; readonly label: string }[];
 
 const DESKS = [
@@ -31,7 +39,8 @@ const DESKS = [
 export function Lab(): ReactElement {
   const [appearance, setAppearance] = useState<Appearance>("light");
   const [desk, setDesk] = useState<string>("photo");
-  const [surface, setSurface] = useState<Surface>("popover");
+  const [surface, setSurface] = useState<Surface>("stacked");
+  const [waxOn, setWaxOn] = useState(true);
   const [sources, setSources] = useState<Readonly<Record<string, Source>>>({});
 
   /*
@@ -39,11 +48,11 @@ export function Lab(): ReactElement {
    * argument, so it goes on dials. Defaults are Notion's shipped values.
    */
   const dials = useDialKit("Material", {
-    alpha: [0.8, 0.5, 1, 0.01],
-    blur: [12, 0, 32, 1],
-    brightness: [100, 80, 140, 1],
-    radius: [12, 0, 20, 1],
-    hairline: [0.08, 0, 0.3, 0.005],
+    alpha: [DIAL_REST.alpha, 0.5, 1, 0.01],
+    blur: [DIAL_REST.blur, 0, 32, 1],
+    brightness: [DIAL_REST.brightness, 80, 140, 1],
+    radius: [DIAL_REST.radius, 0, 20, 1],
+    hairline: [DIAL_REST.hairline, 0, 0.3, 0.005],
   });
 
   /*
@@ -51,13 +60,23 @@ export function Lab(): ReactElement {
    * custom properties is not assignable to `CSSProperties`, and the repo bans
    * casts. A scoped rule is also what the real app would ship.
    */
-  const overrides: Record<string, string> = {
-    "--nds-wax-alpha": String(dials.alpha),
-    "--nds-wax-blur": `${String(dials.blur)}px`,
-    "--nds-wax-brightness": `${String(dials.brightness)}%`,
-    "--nds-wax-radius": `${String(dials.radius)}px`,
-    "--nds-stroke-alpha": String(dials.hairline),
-  };
+  const overrides: Record<string, string> = {};
+
+  /*
+   * Only a moved dial is written. The rule sits at ID specificity, so emitting
+   * a default would outrank the dark block and stop it ever showing its own
+   * alpha, brightness and hairline.
+   */
+  if (dials.alpha !== DIAL_REST.alpha) overrides["--nds-wax-alpha"] = String(dials.alpha);
+  if (dials.blur !== DIAL_REST.blur) overrides["--nds-wax-blur"] = `${String(dials.blur)}px`;
+  if (dials.brightness !== DIAL_REST.brightness) {
+    overrides["--nds-wax-brightness"] = `${String(dials.brightness)}%`;
+  }
+  if (dials.radius !== DIAL_REST.radius)
+    overrides["--nds-wax-radius"] = `${String(dials.radius)}px`;
+  if (dials.hairline !== DIAL_REST.hairline) {
+    overrides["--nds-stroke-alpha"] = String(dials.hairline);
+  }
 
   for (const row of TOKEN_ROWS) {
     if ((sources[row.id] ?? "nds") === "nyte") overrides[row.cssVar] = row.nyte;
@@ -73,10 +92,10 @@ export function Lab(): ReactElement {
       <header {...stylex.props(lab.header)}>
         <h1 {...stylex.props(lab.heading)}>Nyte on Notion Calendar's tokens</h1>
         <p {...stylex.props(lab.lede)}>
-          The desktop's own layout — traffic-light lane, rail with primary actions and account row,
-          a pane carrying its own header, the transcript on its 840px measure — painted with NDS.
-          The table below swaps one token at a time back to what Nyte ships, so you can see which
-          decision is actually doing the work. The material is on dials, bottom right.
+          Nyte's layout, Notion's tokens — the nine-hue ramps, surfaces, text, strokes, shadows and
+          states, lifted exactly. Surfaces are opaque the way Notion ships them; the material is on
+          the floating panel alone, at 80% over <code>blur(12px)</code>. The table swaps one token
+          at a time back to what Nyte ships. Dials for the material are bottom right.
         </p>
       </header>
 
@@ -131,6 +150,15 @@ export function Lab(): ReactElement {
             ))}
           </div>
         </div>
+
+        <label {...stylex.props(lab.control, lab.checkbox)}>
+          <input
+            type="checkbox"
+            checked={waxOn}
+            onChange={(event) => setWaxOn(event.target.checked)}
+          />
+          <span {...stylex.props(lab.controlLabel)}>Material on floating surfaces</span>
+        </label>
       </div>
 
       <div
@@ -146,6 +174,7 @@ export function Lab(): ReactElement {
             id="design-lab-frame"
             data-nds
             data-appearance={appearance}
+            data-wax={waxOn}
             {...stylex.props(frame.window)}
           >
             <AppShell surface={surface} onSurfaceChange={setSurface} />
@@ -163,15 +192,16 @@ export function Lab(): ReactElement {
 
       <ol {...stylex.props(lab.notes)}>
         <li {...stylex.props(lab.note)}>
-          <strong>One material, three surfaces.</strong> Popover, context menu and dialog share{" "}
-          <code>wax.surface</code>. Nothing decides per component whether it is translucent, which
-          is how they stay consistent when one of them moves.
+          <strong>Layering.</strong> <em>All layers</em> stacks four: desk → window → context menu →
+          submenu, with a dialog and its scrim over the lot. Every floating surface is the same{" "}
+          <code>wax.surface</code>, so the stack is a property of the token, not four separate
+          decisions.
         </li>
         <li {...stylex.props(lab.note)}>
-          <strong>Mixed ramps.</strong> NDS steps 30 and 100–400 are alpha, 50 and 500–900 are
-          solid. Washes composite anywhere; text and fills have contrast you can reason about.
-          Nyte's ramp is alpha the whole way, so it has nothing to fall back to when transparency is
-          off.
+          <strong>Mixed ramps, in light.</strong> Steps 30 and 100–400 are alpha, 50 and 500–900
+          solid, so washes composite anywhere and fills have contrast you can reason about. Dark
+          inverts it on 63 of 198 steps and its gray ramp is solid throughout, so this is a
+          light-mode property, not a system one.
         </li>
         <li {...stylex.props(lab.note)}>
           <strong>Try hover alone.</strong> Flip only <em>State · hover</em> to Nyte and run the
@@ -184,13 +214,14 @@ export function Lab(): ReactElement {
           ramps and the states.
         </li>
         <li {...stylex.props(lab.note)}>
-          <strong>Cost.</strong> Three <code>backdrop-filter</code> surfaces is real GPU work per
-          frame in Electron, and the one thing here Nyte does not pay for today. Worth profiling
-          against a long transcript before committing.
+          <strong>Cost.</strong> Only one waxed surface is ever mounted here, so this page does not
+          measure the real bill. In the app a menu over a live transcript is per-frame GPU work Nyte
+          pays nothing for today. Profile before committing.
         </li>
         <li {...stylex.props(lab.note)}>
-          <strong>Not measured here.</strong> Contrast ratios. Several NDS steps are alpha over an
-          unknown backdrop, so WCAG has to be checked against real surfaces rather than the token.
+          <strong>Not measured here.</strong> Contrast ratios, and twelve tokens marked DERIVED in
+          <code> tokens.css</code> that Notion does not ship — both selected states among them,
+          which is what the hover argument above rests on.
         </li>
       </ol>
 

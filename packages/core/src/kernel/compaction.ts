@@ -1067,6 +1067,7 @@ export async function retainCompactionUsage(
       kind: "commit",
       parent: input.parent,
       body: { kind: "summary", text: "", usage: input.usage },
+      imports: [],
       // Distinct compaction invocations can report identical usage in the same ms.
       run: uuidv7(),
       at: Date.now(),

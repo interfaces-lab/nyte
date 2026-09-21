@@ -6,9 +6,7 @@
  */
 import { afterAll, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { parsePatchFiles } from "@pierre/diffs";
 import { DiffView } from "./diff-view.tsx";
-import { parsePatchFacts } from "@nyte-ai/client";
 
 vi.hoisted(() => {
   const query = { matches: false, addEventListener: () => {}, removeEventListener: () => {} };
@@ -39,26 +37,15 @@ const secondEdit = ["--- src/a.ts", "+++ src/a.ts", "@@ -2 +2,2 @@", " one", "+t
 /** What change-scopes.ts produces when one turn edits the same file twice. */
 const repeatedFile = `${firstEdit}\n${secondEdit}`;
 
-test("one patch holding two diffs of the same path parses as two files", () => {
-  const files = parsePatchFiles(repeatedFile).flatMap((parsed) => parsed.files);
-  expect(files.length).toBe(2);
-  expect(files.map((file) => file.name)).toEqual(["src/a.ts", "src/a.ts"]);
-  expect(files.map((file) => file.type)).toEqual(["change", "change"]);
-});
-
 test("a file edited twice in one turn renders both edits instead of throwing", () => {
-  const parsed = parsePatchFacts(repeatedFile);
-  expect(parsed).toBeDefined();
   const markup = renderToStaticMarkup(
     <DiffView
       path="src/a.ts"
-      diff={parsed ?? { patch: "", added: 0, removed: 0 }}
+      diff={{ patch: repeatedFile, added: 2, removed: 0 }}
       variant="stack"
     />,
   );
-  expect(markup).not.toContain("Something went wrong");
-  // Two diff hosts, one per edit, each with its own numbering.
-  expect(markup.split("diffs-container").length - 1).toBeGreaterThanOrEqual(2);
+  expect(markup.match(/<diffs-container/g) ?? []).toHaveLength(2);
 });
 
 test("an unparseable patch degrades to its raw text rather than taking the panel down", () => {

@@ -10,11 +10,13 @@ test(
         new URL("./thread-render.browser-test.tsx", import.meta.url),
         `window.threadRenderEmit = undefined;
 window.nyte = {
-  landing: { lanes: [{ lane: "steer", lands: "boundary" }, { lane: "queue", lands: "idle" }], drain: "one" },
   host: { setThemePreference() {} },
   sessions: {
     snapshot: async () => window.threadRenderSnapshot,
     metadata: async () => window.threadRenderMetadata
+  },
+  runs: {
+    diff: async ({ runs }) => runs.map((run) => ({ run, diff: { kind: "recorded", files: [] } }))
   },
   watch(_input, emit) {
     window.threadRenderEmit = emit;

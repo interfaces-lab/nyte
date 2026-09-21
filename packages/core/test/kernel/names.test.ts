@@ -9,13 +9,13 @@ import {
   parseHeadRef,
   headRef,
   isHeadName,
-  isLaneName,
+  isDelivery,
   isRefName,
   keyRef,
-  parseQueueRef,
-  queueBaseRef,
-  queuePrefix,
-  queueTipRef,
+  parseInboxRef,
+  inboxBaseRef,
+  inboxPrefix,
+  inboxTipRef,
   runRef,
   stackRef,
 } from "../../src/kernel/names.ts";
@@ -23,24 +23,23 @@ import {
 test("every ref family has its documented place", () => {
   assert.equal(headRef("main"), "refs/heads/main");
   assert.equal(stackRef("review"), "refs/stacks/review");
-  assert.equal(queueTipRef("main", "steer"), "refs/queues/main/steer/tip");
-  assert.equal(queueBaseRef("main", "queue"), "refs/queues/main/queue/base");
-  assert.equal(queueTipRef("main", "anything-goes"), "refs/queues/main/anything-goes/tip");
-  assert.ok(queueTipRef("main", "x").startsWith(queuePrefix("main")));
-  assert.equal(queueTipRef("main-2", "x").startsWith(queuePrefix("main")), false);
-  assert.deepEqual(parseQueueRef("refs/queues/main/urgent/base"), {
+  assert.equal(inboxTipRef("main", "steer"), "refs/inbox/main/steer/tip");
+  assert.equal(inboxBaseRef("main", "next"), "refs/inbox/main/next/base");
+  assert.ok(inboxTipRef("main", "steer").startsWith(inboxPrefix("main")));
+  assert.equal(inboxTipRef("main-2", "next").startsWith(inboxPrefix("main")), false);
+  assert.deepEqual(parseInboxRef("refs/inbox/main/next/base"), {
     head: "main",
-    lane: "urgent",
+    delivery: "next",
     position: "base",
   });
   for (const name of [
-    "refs/queues/main/urgent",
-    "refs/queues/main/urgent/middle",
-    "refs/queues/main//tip",
-    "refs/queues/a/b/c/tip",
+    "refs/inbox/main/next",
+    "refs/inbox/main/next/middle",
+    "refs/inbox/main//tip",
+    "refs/inbox/a/b/c/tip",
     "refs/heads/main",
   ]) {
-    assert.equal(parseQueueRef(name), undefined, name);
+    assert.equal(parseInboxRef(name), undefined, name);
   }
   assert.equal(runRef("main"), "refs/runs/main");
   assert.equal(effectRef("run_1", "call-2"), "refs/effects/run_1/call-2");
@@ -56,7 +55,7 @@ test("every ref family has its documented place", () => {
 test("ref names follow git's rules", () => {
   for (const name of [
     "refs/heads/main",
-    "refs/queues/main/steer/tip",
+    "refs/inbox/main/steer/tip",
     "refs/effects/run_1/call-2",
   ]) {
     assert.equal(isRefName(name), true, name);
@@ -86,7 +85,8 @@ test("ref names follow git's rules", () => {
   }
   assert.equal(isHeadName("review"), true);
   assert.equal(isHeadName("a/b"), false);
-  assert.equal(isLaneName("urgent"), true);
-  assert.equal(isLaneName("a/b"), false);
-  assert.equal(isLaneName(""), false);
+  assert.equal(isDelivery("steer"), true);
+  assert.equal(isDelivery("next"), true);
+  assert.equal(isDelivery("urgent"), false);
+  assert.equal(isDelivery(""), false);
 });

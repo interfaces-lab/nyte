@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { hashObject } from "../../src/kernel/hash.ts";
-import type { Commit, CommitBody, Oid, ToolClass } from "../../src/kernel/model.ts";
+import type { Commit, CommitBody, Failure, Oid, ToolClass } from "../../src/kernel/model.ts";
 import {
   appendTranscriptCommit,
   changesFromTurns,
@@ -17,10 +17,22 @@ import {
   transcriptFromCommits,
   type Turn,
 } from "@nyte-ai/client";
-import { assistant, call, commit, message, toolResult, usage, user } from "./helpers.ts";
+import {
+  assistant,
+  assistantCommit,
+  call,
+  commit,
+  message,
+  toolResult,
+  toolResultCommit,
+  usage,
+  user,
+} from "./helpers.ts";
 
 type Item = { readonly oid: Oid; readonly commit: Commit };
-type Stamped = { readonly body: CommitBody } & Pick<Commit, "calls" | "failure">;
+type Stamped =
+  | { readonly body: CommitBody; readonly calls: Readonly<Record<string, ToolClass>> }
+  | { readonly body: CommitBody; readonly failure: Failure };
 
 /** A branch as the store would hand it back: oldest first, each commit naming its parent. */
 function branch(
@@ -32,12 +44,51 @@ function branch(
   let at = options.at ?? 1_000;
   for (const entry of bodies) {
     const stamped = "body" in entry ? entry : { body: entry };
-    const value = commit(parent, stamped.body, {
-      at,
-      run: options.run,
-      calls: stamped.calls,
-      failure: stamped.failure,
-    });
+    const fields = { at, ...(options.run === undefined ? {} : { run: options.run }) };
+    let value: Commit;
+    if ("calls" in stamped) {
+      const body = stamped.body;
+      if (body.kind !== "message") assert.fail("call classes require a message commit");
+      switch (body.message.role) {
+        case "assistant":
+          value = assistantCommit(
+            parent,
+            { kind: "message", message: body.message },
+            { ...fields, calls: stamped.calls },
+          );
+          break;
+        case "toolResult": {
+          const callClass = stamped.calls[body.message.toolCallId];
+          value = toolResultCommit(
+            parent,
+            { kind: "message", message: body.message },
+            {
+              ...fields,
+              ...(callClass === undefined ? {} : { call: callClass }),
+            },
+          );
+          break;
+        }
+        case "user":
+          assert.fail("user commits do not carry call classes");
+        default: {
+          const _exhaustive: never = body.message;
+          value = _exhaustive;
+        }
+      }
+    } else if ("failure" in stamped) {
+      const body = stamped.body;
+      if (body.kind !== "message" || body.message.role !== "assistant") {
+        assert.fail("failures belong to assistant commits");
+      }
+      value = assistantCommit(
+        parent,
+        { kind: "message", message: body.message },
+        { ...fields, failure: stamped.failure },
+      );
+    } else {
+      value = commit(parent, stamped.body, fields);
+    }
     const oid = hashObject(value);
     items.push({ oid, commit: value });
     parent = oid;
@@ -63,7 +114,7 @@ const filePatch = (path: string, added: number, removed: number): ToolClass => (
   patch: `--- a/${path}\n+++ b/${path}\n`,
 });
 
-test("a turn is the user's message, the assistant's parts, and each tool call paired with its result", () => {
+test("a turn stamps each part with its commit time and pairs each tool call with its result", () => {
   const items = branch([
     message(user("read a.txt")),
     {
@@ -77,7 +128,10 @@ test("a turn is the user's message, the assistant's parts, and each tool call pa
       }),
       calls: { c1: { kind: "file_read", path: "a.txt" } },
     },
-    message(toolResult("c1", "read", "hello world", { details: { path: "a.txt" } })),
+    {
+      body: message(toolResult("c1", "read", "hello world", { details: { path: "a.txt" } })),
+      calls: { c1: { kind: "file_read", path: "a.txt" } },
+    },
     message(assistant("it says hello")),
   ]);
   const turns = transcriptFromCommits(items);
@@ -86,6 +140,11 @@ test("a turn is the user's message, the assistant's parts, and each tool call pa
   assert.equal(turn.id, items[0]?.oid);
   assert.equal(turn.failure, undefined);
   assert.deepEqual(partKinds(turn), ["user", "thinking", "assistant", "tool", "assistant"]);
+  assert.deepEqual(
+    turn.parts.map((part) => part.at),
+    [1_000, 2_000, 2_000, 3_000, 4_000],
+  );
+  assert.deepEqual(turn.run, { kind: "none" });
   const tool = turn.parts[3];
   assert.ok(tool?.kind === "tool");
   assert.deepEqual(tool.class, { kind: "file_read", path: "a.txt" });
@@ -218,7 +277,10 @@ test("the tree is a forest with the selected path marked and every head labelled
   left.oid = hashObject(left.commit);
   const right = { oid: "", commit: commit(forkPoint, message(user("right")), { at: 3_000 }) };
   right.oid = hashObject(right.commit);
-  const orphan = { oid: "", commit: commit("0".repeat(64), message(user("lost"))) };
+  const orphan = {
+    oid: "",
+    commit: commit("0".repeat(64), message(user("lost")), { at: 9_000 }),
+  };
   orphan.oid = hashObject(orphan.commit);
 
   const tree = projectTree([...trunk, left, right, orphan], {

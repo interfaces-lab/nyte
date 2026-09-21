@@ -1,0 +1,250 @@
+---
+title: Select
+description: "A form control for choosing a predefined value from a dropdown list"
+---
+
+```ts title="Import"
+import { Select } from "@nyte-ai/ui/select";
+```
+
+A trigger that opens a list of options and writes the chosen one back into a form. No Nyte styling
+here.
+
+## Usage
+
+- Select has no filtering beyond typeahead, which highlights the item matching what you type. For a
+  searchable list use [Autocomplete](/cloud/components/autocomplete).
+- Give the control an accessible name with `Select.Label`, or an `aria-label` on `Select.Trigger`
+  when no visible label is rendered.
+- `name` on the root submits the value through a hidden input. `required`, `readOnly`, and `disabled`
+  behave like native form attributes.
+- `Select.Value` renders the raw value. Pass `items` to the root to render the matching label
+  instead, or pass a function child to `Select.Value` to format it.
+- `placeholder` on `Select.Value` shows while nothing is selected. To let the user clear the value,
+  render an item whose value is `null`.
+- `multiple` on the root turns `value` into an array.
+- `Select.Positioner` overlaps the trigger by default so the selected item's text lines up with the
+  trigger's value text. `data-side` is `"none"` while that mode is active, and `side` and `align` are
+  ignored. Set `alignItemWithTrigger={false}` to position the popup like any other dropdown.
+- That overlap mode is skipped for touch input, and falls back to normal positioning when the
+  viewport is too short. A smaller `min-height` on the positioner falls back less often.
+
+## Anatomy
+
+```tsx
+<Select.Root>
+  <Select.Label />
+  <Select.Trigger>
+    <Select.Value />
+    <Select.Icon />
+  </Select.Trigger>
+
+  <Select.Portal>
+    <Select.Backdrop />
+    <Select.Positioner>
+      <Select.Popup>
+        <Select.ScrollUpArrow />
+        <Select.Arrow />
+        <Select.List>
+          <Select.Item>
+            <Select.ItemText />
+            <Select.ItemIndicator />
+          </Select.Item>
+          <Select.Separator />
+          <Select.Group>
+            <Select.GroupLabel />
+          </Select.Group>
+        </Select.List>
+        <Select.ScrollDownArrow />
+      </Select.Popup>
+    </Select.Positioner>
+  </Select.Portal>
+</Select.Root>
+```
+
+## Examples
+
+<Preview>
+  <SelectDemo />
+</Preview>
+
+```tsx title="Labels from items"
+const themes = [
+  { value: "system", label: "System default" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+<Select.Root items={themes} defaultValue="system">
+  <div>
+    <Select.Label>Theme</Select.Label>
+    <Select.Trigger>
+      <Select.Value />
+      <Select.Icon>
+        <IconChevronGrabberVertical size={12} />
+      </Select.Icon>
+    </Select.Trigger>
+  </div>
+  <Select.Portal>
+    <Select.Positioner>
+      <Select.Popup>
+        <Select.List>
+          {themes.map((theme) => (
+            <Select.Item key={theme.value} value={theme.value}>
+              <Select.ItemText>{theme.label}</Select.ItemText>
+              <Select.ItemIndicator>
+                <IconCheckmark1Small size={12} />
+              </Select.ItemIndicator>
+            </Select.Item>
+          ))}
+        </Select.List>
+      </Select.Popup>
+    </Select.Positioner>
+  </Select.Portal>
+</Select.Root>;
+```
+
+```tsx title="Formatting the value"
+<Select.Value>{(value: string | null) => labels[value ?? "none"]}</Select.Value>
+```
+
+Pass `value` with `onValueChange` to control the selection. The handler receives `null` when the
+user picks an item whose value is `null`.
+
+```tsx title="Controlled value"
+const [theme, setTheme] = useState("system");
+
+<Select.Root
+  items={themes}
+  value={theme}
+  onValueChange={(value) => {
+    if (value !== null) setTheme(value);
+  }}
+>
+  {/* Trigger and popup as above */}
+</Select.Root>;
+```
+
+Group the items by nesting them in objects that carry an `items` array. `Select.Value` still
+resolves the label of the selected item. The heading text is a property you render yourself.
+
+```tsx title="Grouped items"
+const groups = [
+  { label: "Light", items: [{ value: "paper", label: "Paper" }] },
+  { label: "Dark", items: [{ value: "night", label: "Night" }] },
+];
+
+<Select.Root items={groups} defaultValue="paper">
+  {/* Trigger as above */}
+  <Select.Portal>
+    <Select.Positioner>
+      <Select.Popup>
+        <Select.List>
+          {groups.map((group) => (
+            <Select.Group key={group.label}>
+              <Select.GroupLabel>{group.label}</Select.GroupLabel>
+              {group.items.map((theme) => (
+                <Select.Item key={theme.value} value={theme.value}>
+                  <Select.ItemText>{theme.label}</Select.ItemText>
+                </Select.Item>
+              ))}
+            </Select.Group>
+          ))}
+        </Select.List>
+      </Select.Popup>
+    </Select.Positioner>
+  </Select.Portal>
+</Select.Root>;
+```
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/select/Root.md</include>
+
+### Label
+
+<include>../../base-ui-reference/select/Label.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/select/Trigger.md</include>
+
+### Value
+
+<include>../../base-ui-reference/select/Value.md</include>
+
+### Icon
+
+<include>../../base-ui-reference/select/Icon.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/select/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/select/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/select/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/select/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/select/Arrow.md</include>
+
+### List
+
+<include>../../base-ui-reference/select/List.md</include>
+
+### Item
+
+<include>../../base-ui-reference/select/Item.md</include>
+
+### ItemText
+
+<include>../../base-ui-reference/select/ItemText.md</include>
+
+### ItemIndicator
+
+<include>../../base-ui-reference/select/ItemIndicator.md</include>
+
+### Group
+
+<include>../../base-ui-reference/select/Group.md</include>
+
+### GroupLabel
+
+<include>../../base-ui-reference/select/GroupLabel.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/select/Separator.md</include>
+
+### ScrollUpArrow
+
+<include>../../base-ui-reference/select/ScrollUpArrow.md</include>
+
+### ScrollDownArrow
+
+<include>../../base-ui-reference/select/ScrollDownArrow.md</include>
+
+## Accessibility
+
+- `Select.Label` is associated with the trigger. It renders a `<div>`, so clicking it focuses the
+  trigger without opening the popup.
+- `Select.Trigger` renders `role="combobox"`, `Select.List` renders `role="listbox"`, and each
+  `Select.Item` renders `role="option"` with `aria-selected`.
+- Arrow keys move the highlight, Enter selects, Escape closes the popup.
+- Typing matches item text. `label` on an item overrides the text that typeahead matches.
+- Items expose `data-selected`, `data-highlighted`, and `data-disabled` for styling those states.
+- `Select.GroupLabel` is associated with its parent group.
+- The scroll arrows scroll the popup on hover and do not render for touch input.

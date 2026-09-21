@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 import { errorMessage } from "../../../shared/errors.ts";
 import type { HostEvent } from "../../../shared/ipc.ts";
 import { nyte } from "../nyte.ts";
+import { WORKBENCH_STAGE_PANE_KEY, workbenchViewKey } from "./controller.ts";
+import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 
 type ShellTerminalState =
   | { readonly kind: "starting" }
@@ -18,8 +20,7 @@ type TerminalRenderingState =
   | { readonly kind: "failed"; readonly message: string };
 
 interface TerminalTabFields {
-  readonly id: string;
-  readonly owner: string;
+  readonly id: WorkbenchTabId;
   readonly title: string;
   readonly cwd: string;
 }
@@ -58,29 +59,27 @@ export interface TerminalOutput {
 }
 
 interface TerminalSnapshot {
-  readonly tabs: readonly TerminalTab[];
-  readonly active: ReadonlyMap<string, string>;
+  readonly tabs: ReadonlyMap<WorkbenchTabId, TerminalTab>;
 }
 
-let snapshot: TerminalSnapshot = { tabs: [], active: new Map() };
+let snapshot: TerminalSnapshot = { tabs: new Map() };
 const listeners = new Set<() => void>();
-const output = new Map<string, TerminalOutput>();
-const queued = new Map<string, string[]>();
-const creating = new Map<string, Promise<void>>();
+const output = new Map<WorkbenchTabId, TerminalOutput>();
+const queued = new Map<WorkbenchTabId, string[]>();
+const creating = new Map<WorkbenchTabId, Promise<void>>();
 
-function publish(tabs: readonly TerminalTab[], active = snapshot.active): void {
-  snapshot = { tabs, active };
+function publish(tabs: ReadonlyMap<WorkbenchTabId, TerminalTab>): void {
+  snapshot = { tabs };
   for (const listener of listeners) listener();
 }
 
-function update(id: string, change: (tab: TerminalTab) => TerminalTab): void {
-  const tabs = snapshot.tabs.map((tab) => {
-    if (tab.id !== id) return tab;
-    const next = change(tab);
-    output.get(id)?.update(next);
-    return next;
-  });
-  publish(tabs);
+function update(id: WorkbenchTabId, change: (tab: TerminalTab) => TerminalTab): void {
+  const tab = snapshot.tabs.get(id);
+  if (tab === undefined) return;
+  const next = change(tab);
+  if (next === tab) return;
+  output.get(id)?.update(next);
+  publish(new Map(snapshot.tabs).set(id, next));
 }
 
 function getSnapshot(): TerminalSnapshot {
@@ -92,47 +91,33 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-interface OwnerTerminals {
-  readonly tabs: readonly TerminalTab[];
-  readonly activeId: string | null;
-}
-
-export function useTerminals(owner: string): OwnerTerminals {
+export function useTerminal(id: WorkbenchTabId): TerminalTab | undefined {
   const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const owned = current.tabs.filter((tab) => tab.owner === owner);
-  const id = current.active.get(owner);
-  return { tabs: owned, activeId: owned.find((tab) => tab.id === id)?.id ?? owned[0]?.id ?? null };
+  return current.tabs.get(id);
 }
 
-export function getTerminal(id: string): TerminalTab | undefined {
-  return snapshot.tabs.find((tab) => tab.id === id);
+export function useTerminalRuntime(): ReadonlyMap<WorkbenchTabId, TerminalTab> {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).tabs;
 }
 
-export function getTerminals(owner: string): readonly TerminalTab[] {
-  return snapshot.tabs.filter((tab) => tab.owner === owner);
-}
-
-export function getActiveTerminal(owner: string): TerminalTab | undefined {
-  const owned = getTerminals(owner);
-  const id = snapshot.active.get(owner);
-  return owned.find((tab) => tab.id === id) ?? owned[0];
-}
-
-export function getJobTerminal(
-  owner: string,
-  sessionId: SessionId,
-  jobId: JobInfo["id"],
-): JobTerminalTab | undefined {
-  return snapshot.tabs.find(
-    (tab): tab is JobTerminalTab =>
-      isJobTerminal(tab) &&
-      tab.owner === owner &&
-      tab.source.sessionId === sessionId &&
-      tab.source.jobId === jobId,
+export function useJobTerminals(sessionId: SessionId): readonly TerminalTab[] {
+  const current = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return [...current.tabs.values()].filter(
+    (tab) => isJobTerminal(tab) && tab.source.sessionId === sessionId,
   );
 }
 
-export function attachTerminalOutput(id: string, sink: TerminalOutput): void {
+export function getTerminal(id: WorkbenchTabId): TerminalTab | undefined {
+  return snapshot.tabs.get(id);
+}
+
+export function getJobTerminal(jobId: JobInfo["id"]): JobTerminalTab | undefined {
+  return [...snapshot.tabs.values()].find(
+    (tab): tab is JobTerminalTab => isJobTerminal(tab) && tab.source.jobId === jobId,
+  );
+}
+
+export function attachTerminalOutput(id: WorkbenchTabId, sink: TerminalOutput): void {
   output.set(id, sink);
   const tab = getTerminal(id);
   if (tab !== undefined && isJobTerminal(tab)) {
@@ -164,7 +149,7 @@ export function applyTerminalEvent(
   }
 }
 
-function writeJobOutput(id: string, previous: string, next: string): void {
+function writeJobOutput(id: WorkbenchTabId, previous: string, next: string): void {
   if (previous === next) return;
   const sink = output.get(id);
   if (sink === undefined) return;
@@ -172,24 +157,23 @@ function writeJobOutput(id: string, previous: string, next: string): void {
     sink.write(next.slice(previous.length));
     return;
   }
-  // Jobs publish bounded snapshots, not byte offsets. A replacement may also share a suffix.
   sink.replace(next);
 }
 
-function syncJobs(owner: string, sessionId: SessionId, jobs: readonly JobInfo[]): void {
+function syncJobs(sessionId: SessionId, jobs: readonly JobInfo[]): void {
   const commands = new Map(jobs.map((job) => [job.id, job]));
+  const tabs = new Map(snapshot.tabs);
   let changed = false;
-  const tabs = snapshot.tabs.map((tab): TerminalTab => {
-    if (!isJobTerminal(tab) || tab.owner !== owner || tab.source.sessionId !== sessionId)
-      return tab;
+  for (const tab of snapshot.tabs.values()) {
+    if (!isJobTerminal(tab) || tab.source.sessionId !== sessionId) continue;
     const job = commands.get(tab.source.jobId);
-    if (job === undefined) return tab;
+    if (job === undefined) continue;
     if (
       tab.title === job.command &&
       tab.state.kind === job.phase.kind &&
       tab.source.output === job.output
     ) {
-      return tab;
+      continue;
     }
     changed = true;
     const next: JobTerminalTab = {
@@ -198,47 +182,38 @@ function syncJobs(owner: string, sessionId: SessionId, jobs: readonly JobInfo[])
       source: { ...tab.source, output: job.output },
       state: { kind: job.phase.kind },
     };
+    tabs.set(tab.id, next);
     output.get(tab.id)?.update(next);
     writeJobOutput(tab.id, tab.source.output, job.output);
-    return next;
-  });
+  }
   if (changed) publish(tabs);
 }
 
-function remove(id: string): void {
-  const index = snapshot.tabs.findIndex((tab) => tab.id === id);
-  const tab = snapshot.tabs[index];
+function remove(id: WorkbenchTabId): void {
   output.get(id)?.dispose();
   output.delete(id);
   queued.delete(id);
-  const tabs = snapshot.tabs.filter((entry) => entry.id !== id);
-  const active = new Map(snapshot.active);
-  if (tab !== undefined && active.get(tab.owner) === id) {
-    const neighbor =
-      tabs.slice(0, index).findLast((entry) => entry.owner === tab.owner) ??
-      tabs.find((entry) => entry.owner === tab.owner);
-    if (neighbor === undefined) active.delete(tab.owner);
-    else active.set(tab.owner, neighbor.id);
-  }
-  publish(tabs, active);
+  const tabs = new Map(snapshot.tabs);
+  tabs.delete(id);
+  publish(tabs);
 }
 
 export const terminalActions = {
-  create(owner: string, workspacePath: string | null): Promise<void> {
-    const id = crypto.randomUUID();
+  create({
+    id,
+    workspacePath,
+  }: {
+    readonly id: WorkbenchTabId;
+    readonly workspacePath: string | null;
+  }): Promise<void> {
     publish(
-      [
-        ...snapshot.tabs,
-        {
-          id,
-          owner,
-          title: "Terminal",
-          cwd: workspacePath ?? "",
-          source: { kind: "shell" },
-          state: { kind: "starting" },
-        },
-      ],
-      new Map(snapshot.active).set(owner, id),
+      new Map(snapshot.tabs).set(id, {
+        id,
+        title: "Terminal",
+        cwd: workspacePath ?? "",
+        source: { kind: "shell" },
+        state: { kind: "starting" },
+      }),
     );
     const pending = nyte.host.terminal
       .create({ id, workspacePath })
@@ -264,37 +239,33 @@ export const terminalActions = {
     creating.set(id, pending);
     return pending;
   },
-  openJob(owner: string, sessionId: SessionId, job: JobInfo): string {
-    const existing = getJobTerminal(owner, sessionId, job.id);
-    if (existing !== undefined) {
-      syncJobs(owner, sessionId, [job]);
-      publish(snapshot.tabs, new Map(snapshot.active).set(owner, existing.id));
-      return existing.id;
+  openJob({
+    id,
+    sessionId,
+    job,
+  }: {
+    readonly id: WorkbenchTabId;
+    readonly sessionId: SessionId;
+    readonly job: JobInfo;
+  }): void {
+    const existing = snapshot.tabs.get(id);
+    if (existing !== undefined && isJobTerminal(existing)) {
+      syncJobs(sessionId, [job]);
+      return;
     }
-    const id = crypto.randomUUID();
     publish(
-      [
-        ...snapshot.tabs,
-        {
-          id,
-          owner,
-          title: job.command,
-          cwd: "",
-          source: { kind: "job", sessionId, jobId: job.id, output: job.output },
-          state: { kind: job.phase.kind },
-          rendering: { kind: "ready" },
-        },
-      ],
-      new Map(snapshot.active).set(owner, id),
+      new Map(snapshot.tabs).set(id, {
+        id,
+        title: job.command,
+        cwd: "",
+        source: { kind: "job", sessionId, jobId: job.id, output: job.output },
+        state: { kind: job.phase.kind },
+        rendering: { kind: "ready" },
+      }),
     );
-    return id;
   },
   syncJobs,
-  select(owner: string, id: string): void {
-    if (!snapshot.tabs.some((tab) => tab.id === id && tab.owner === owner)) return;
-    publish(snapshot.tabs, new Map(snapshot.active).set(owner, id));
-  },
-  title(id: string, title: string): void {
+  title(id: WorkbenchTabId, title: string): void {
     const clean = Array.from(title)
       .filter((character) => character.charCodeAt(0) > 31 && character.charCodeAt(0) !== 127)
       .join("")
@@ -307,7 +278,7 @@ export const terminalActions = {
       return { ...current, title: clean };
     });
   },
-  fail(id: string, message: string): void {
+  fail(id: WorkbenchTabId, message: string): void {
     const tab = getTerminal(id);
     if (tab === undefined) return;
     if (isJobTerminal(tab)) {
@@ -323,16 +294,15 @@ export const terminalActions = {
     });
     void nyte.host.terminal.close({ id }).catch(() => undefined);
   },
-  retryRender(id: string): void {
+  retryRender(id: WorkbenchTabId): void {
     update(id, (tab) => {
       if (isShellTerminal(tab)) return tab;
       return { ...tab, rendering: { kind: "ready" } };
     });
   },
-  async close(id: string): Promise<void> {
+  async close(id: WorkbenchTabId): Promise<void> {
     const tab = getTerminal(id);
     if (tab !== undefined && isJobTerminal(tab)) {
-      // Closing an agent-controlled workbench binding does not dispose its process.
       remove(id);
       return;
     }
@@ -341,3 +311,53 @@ export const terminalActions = {
     remove(id);
   },
 };
+
+export function openSessionJobTerminal({
+  controller,
+  displayedSessionId,
+  jobSessionId,
+  job,
+  activate,
+}: {
+  readonly controller: Pick<WorkbenchController, "actions">;
+  readonly displayedSessionId: SessionId;
+  readonly jobSessionId: SessionId;
+  readonly job: JobInfo;
+  readonly activate: boolean;
+}): WorkbenchTabId {
+  return openJobTerminal({
+    controller,
+    view: workbenchViewKey({
+      paneKey: WORKBENCH_STAGE_PANE_KEY,
+      target: { kind: "session", sessionId: displayedSessionId },
+    }),
+    sessionId: jobSessionId,
+    job,
+    activate,
+  });
+}
+
+export function openJobTerminal({
+  controller,
+  view,
+  sessionId,
+  job,
+  activate,
+}: {
+  readonly controller: Pick<WorkbenchController, "actions">;
+  readonly view: WorkbenchViewKey;
+  readonly sessionId: SessionId;
+  readonly job: JobInfo;
+  readonly activate: boolean;
+}): WorkbenchTabId {
+  const id = controller.actions.openTab({
+    view,
+    tab: {
+      kind: "terminal",
+      owner: { kind: "agent", sessionId, jobId: job.id },
+    },
+    activate,
+  });
+  terminalActions.openJob({ id, sessionId, job });
+  return id;
+}

@@ -1,0 +1,574 @@
+/*
+ * The doc shell: one stylesheet for /docs and /cloud. Elements carry
+ * `shell-*` classes, so a rule written here lands in both sections and the
+ * two cannot drift. Section-local surfaces (Cloud previews and CTAs, docs
+ * cards and TUI figures) stay in cloud.css and docs.css, which load after
+ * this file.
+ *
+ * Geometry is Cloud's: 1072 inner, 1312 once the rail fits, 24 pad, 240
+ * sidebar, 72 gutter, 710 article. Colour, type, motion, and hairlines are
+ * @nyte-ai/ui platform tokens. Inter for chrome and prose, Geist Mono on code.
+ */
+
+.shell {
+  --shell-side: 240px;
+  --shell-toc: 200px;
+  --shell-gutter: 72px;
+  --shell-article: 710px;
+  --shell-inner: 1072px;
+  --shell-pad: 24px;
+  --shell-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  background: var(--nyte-color-background);
+  color: var(--nyte-color-foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.shell :focus-visible {
+  outline: 1px solid var(--nyte-color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.shell a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---- frame ----------------------------------------------------------- */
+
+.shell-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1;
+  width: min(100%, var(--shell-inner));
+  min-height: 0;
+  margin-inline: auto;
+  padding-inline: var(--shell-pad);
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .shell-frame {
+    grid-template-columns: var(--shell-side) minmax(0, 1fr);
+    column-gap: var(--shell-gutter);
+  }
+}
+
+@media (min-width: 1400px) {
+  .shell {
+    --shell-inner: 1312px;
+  }
+
+  .shell-frame {
+    grid-template-columns: var(--shell-side) minmax(0, 1fr) var(--shell-toc);
+  }
+}
+
+/* ---- sidebar --------------------------------------------------------- */
+
+.shell-side {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shell-side {
+    display: block;
+  }
+}
+
+.shell-side .shell-scroll {
+  padding: 48px 0 96px;
+}
+
+.shell-side-label {
+  margin: 0;
+  padding: 6px 0;
+  color: var(--nyte-color-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+  letter-spacing: -0.01px;
+}
+
+.shell-side-group {
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.shell-side ul,
+.shell-side li {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shell-side-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 0;
+  color: var(--nyte-color-muted-foreground);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: -0.09px;
+  line-height: 1;
+  transition: color 120ms var(--nyte-motion-ease-out);
+}
+
+.shell-side-row:hover {
+  color: var(--nyte-color-foreground);
+}
+
+.shell-side-row[aria-current="page"] {
+  color: var(--nyte-color-foreground);
+  font-weight: 500;
+}
+
+/* ---- article --------------------------------------------------------- */
+
+.shell-main .shell-scroll {
+  padding: 54px 0 128px;
+}
+
+.shell-article {
+  max-width: var(--shell-article);
+}
+
+.shell-head {
+  margin: 0 0 40px;
+}
+
+.shell-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 19px;
+  letter-spacing: -0.01px;
+  color: var(--nyte-color-muted-foreground);
+}
+
+.shell-head .shell-eyebrow {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.shell-title {
+  margin: 0 0 16px;
+  overflow: visible;
+  color: var(--nyte-color-foreground);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+  letter-spacing: -0.45px;
+  text-wrap: balance;
+}
+
+.shell-lede {
+  margin: 0;
+  padding: 0 0 32px;
+  max-width: 640px;
+  color: var(--nyte-color-foreground);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 24px;
+  letter-spacing: -0.18px;
+  text-wrap: pretty;
+}
+
+/* ---- prose ----------------------------------------------------------- */
+
+.shell-prose > :first-child {
+  margin-top: 0;
+}
+
+.shell-prose p {
+  margin: 0 0 21px;
+  text-wrap: pretty;
+}
+
+.shell-prose h2,
+.shell-prose h3,
+.shell-prose h4 {
+  position: relative;
+  scroll-margin-top: calc(var(--site-nav-height) + 24px);
+  color: var(--nyte-color-foreground);
+  font-weight: 500;
+  letter-spacing: -0.28px;
+  text-wrap: balance;
+}
+
+.shell-prose h2 {
+  margin: 48px 0 12px;
+  font-size: 20px;
+  line-height: 23px;
+}
+
+.shell-prose h3 {
+  margin: 32px 0 8px;
+  font-size: 16px;
+  line-height: 19px;
+}
+
+.shell-prose h4 {
+  margin: 21px 0 8px;
+  color: var(--nyte-color-muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 21px;
+}
+
+.shell-prose a {
+  color: var(--nyte-color-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--nyte-color-accent) 40%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms var(--nyte-motion-ease-out);
+}
+
+.shell-prose a:hover {
+  text-decoration-color: var(--nyte-color-accent);
+}
+
+.shell-prose strong {
+  font-weight: 600;
+}
+
+.shell-prose em {
+  color: var(--nyte-color-muted-foreground);
+}
+
+.shell-prose ul,
+.shell-prose ol {
+  margin: 0 0 21px;
+  padding-left: 21px;
+}
+
+.shell-prose ul {
+  list-style: disc;
+}
+
+.shell-prose ol {
+  list-style: decimal;
+}
+
+.shell-prose li {
+  margin: 0 0 5px;
+  padding-left: 3px;
+}
+
+.shell-prose li::marker {
+  color: var(--nyte-color-tertiary-foreground);
+}
+
+.shell-prose blockquote {
+  margin: 0 0 21px;
+  padding: 3px 0 3px 21px;
+  border-left: 0.5px solid var(--nyte-color-border);
+  color: var(--nyte-color-muted-foreground);
+}
+
+.shell-prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.shell-prose hr {
+  margin: 34px 0;
+  border: 0;
+  border-top: 0.5px solid var(--nyte-color-border);
+}
+
+.shell-prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.shell-prose :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--nyte-color-border-weak);
+  font-family: var(--shell-mono);
+  font-size: 0.87em;
+  font-variant-ligatures: none;
+  overflow-wrap: anywhere;
+}
+
+/* ---- code blocks ----------------------------------------------------- */
+
+.shell-code {
+  margin: 0 0 21px;
+  border: 0.5px solid var(--nyte-color-border);
+  border-radius: 8px;
+  background: var(--nyte-color-sidebar);
+  overflow: hidden;
+}
+
+.shell-code-body {
+  position: relative;
+}
+
+.shell-code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--nyte-color-muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 120ms var(--nyte-motion-ease-out),
+    background-color 120ms var(--nyte-motion-ease-out),
+    color 120ms var(--nyte-motion-ease-out);
+}
+
+.shell-code:hover .shell-code-copy,
+.shell-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.shell-code-copy:hover {
+  background: var(--nyte-color-border-weak);
+  color: var(--nyte-color-foreground);
+}
+
+.shell-code pre {
+  margin: 0;
+  padding: 13px 34px 13px 13px;
+  overflow-x: auto;
+  font-family: var(--shell-mono);
+  font-size: 13px;
+  line-height: 21px;
+  font-variant-ligatures: none;
+  tab-size: 2;
+}
+
+.shell-code code {
+  font: inherit;
+}
+
+.shell-code .shiki span {
+  color: var(--shiki-light);
+}
+
+.dark .shell-code .shiki span {
+  color: var(--shiki-dark);
+}
+
+.shell-code .highlighted {
+  background: var(--nyte-color-avatar-blue-background);
+  margin-inline: -13px;
+  padding-inline: 13px;
+}
+
+/* ---- on this page ---------------------------------------------------- */
+
+.shell-toc {
+  display: none;
+}
+
+.shell-toc .shell-scroll {
+  padding: 54px 0 96px;
+}
+
+@media (min-width: 1400px) {
+  .shell-toc {
+    display: block;
+  }
+}
+
+.shell-toc .shell-eyebrow {
+  display: block;
+  margin: 0 0 13px 13px;
+}
+
+.shell-toc ol {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 0.5px solid var(--nyte-color-border);
+}
+
+.shell-toc a {
+  position: relative;
+  display: block;
+  padding: 3px 0 3px 13px;
+  color: var(--nyte-color-tertiary-foreground);
+  font-size: 13px;
+  line-height: 21px;
+  text-wrap: balance;
+  transition: color 120ms var(--nyte-motion-ease-out);
+}
+
+.shell-toc a[data-depth="3"] {
+  padding-left: 26px;
+}
+
+.shell-toc a[data-depth="4"] {
+  padding-left: 39px;
+}
+
+.shell-toc a:hover {
+  color: var(--nyte-color-foreground);
+}
+
+/* The tail: a segment of the rail lights up beside the current heading. */
+.shell-toc a::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 5px;
+  bottom: 5px;
+  width: 1.5px;
+  border-radius: 999px;
+  background: var(--nyte-color-accent);
+  opacity: 0;
+  transition: opacity 160ms var(--nyte-motion-ease-out);
+}
+
+.shell-toc a[aria-current="true"] {
+  color: var(--nyte-color-accent);
+}
+
+.shell-toc a[aria-current="true"]::before {
+  opacity: 1;
+}
+
+/* ---- footer nav ------------------------------------------------------ */
+
+.shell-pager {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
+  margin-top: 89px;
+  padding-top: 34px;
+  border-top: 0.5px solid var(--nyte-color-border);
+}
+
+.shell-pager a {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px;
+  border: 0.5px solid var(--nyte-color-border);
+  border-radius: 13px;
+  transition: border-color 120ms var(--nyte-motion-ease-out);
+}
+
+.shell-pager a:hover {
+  border-color: var(--nyte-color-tertiary-foreground);
+}
+
+.shell-pager a[data-dir="next"] {
+  grid-column: 2;
+  text-align: right;
+}
+
+.shell-pager strong {
+  font-weight: 500;
+}
+
+@media (max-width: 1023px) {
+  .shell {
+    --shell-pad: 20px;
+  }
+
+  .shell-main .shell-scroll {
+    padding: 20px 0 64px;
+  }
+
+  .shell-head {
+    margin-bottom: 24px;
+  }
+
+  .shell-title {
+    font-size: 28px;
+    line-height: 34px;
+  }
+
+  .shell-pager {
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 48px;
+  }
+
+  .shell-pager a[data-dir="next"] {
+    grid-column: 1;
+  }
+}
+
+@media (hover: none) {
+  .shell-code-copy {
+    opacity: 1;
+  }
+}
+
+/* ---- tables ---------------------------------------------------------- */
+
+.shell-prose table {
+  width: 100%;
+  margin: 0 0 34px;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 21px;
+}
+
+.shell-prose thead th {
+  padding: 0 13px 8px 0;
+  border-bottom: 0.5px solid var(--nyte-color-border);
+  color: var(--nyte-color-tertiary-foreground);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01px;
+  text-align: left;
+  vertical-align: bottom;
+}
+
+.shell-prose tbody td {
+  padding: 8px 13px 8px 0;
+  border-bottom: 0.5px solid var(--nyte-color-border-weak);
+  vertical-align: top;
+}
+
+.shell-prose tbody tr:last-child td {
+  border-bottom-color: var(--nyte-color-border);
+}
+
+/*
+ * A props table is prop, type, description. Left nowrap so a name never
+ * breaks; everything else wraps, or a long union takes the width the
+ * description needs and the row grows to eight lines of nothing.
+ */
+.shell-prose td code,
+.shell-prose th code {
+  overflow-wrap: anywhere;
+}
+
+.shell-prose tbody td:first-child code {
+  white-space: nowrap;
+}
+
+.shell-table-scroll {
+  margin: 0 0 34px;
+  overflow-x: auto;
+}
+
+.shell-table-scroll table {
+  margin: 0;
+  min-width: 100%;
+}

@@ -1,7 +1,7 @@
 /**
  * A create and the later wait on it are two calls on one child. The
  * transcript draws the child once: the create is the agent card, the await a
- * compact line that links to the same child. While the wait is live it is run
+ * compact line for the same child. While the wait is live it is run
  * status, not a row: the cards say "Waiting" and the header counts down.
  */
 import { afterAll, expect, test, vi } from "vitest";
@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { sessionId } from "@nyte-ai/protocol";
 import type { ParkedCall, SessionId, SessionInfo, ToolTurnPart, TurnPart } from "@nyte-ai/protocol";
-import { SubagentInspectorProvider } from "./subagent-inspector.ts";
+import { SubagentSessionsProvider } from "./subagent-sessions.ts";
 import { NO_WAITS, liveWaits } from "./transcript-presentation.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { TurnView } from "./turn-view.tsx";
@@ -73,18 +73,21 @@ const childSession: SessionInfo = {
 const turn: RenderedTurn = {
   kind: "turn",
   id: "turn",
+  run: { kind: "none" },
   startedAt: 1,
   durationMs: 0,
   parts: [
     {
       kind: "tool",
       callId: "task",
+      at: 1,
       class: { kind: "delegate", role: "create", target: { kind: "one", session: child } },
       result: { commit: "created", output: "Started Map the workbench", isError: false },
     },
     {
       kind: "tool",
       callId: "wait",
+      at: 1,
       class: {
         kind: "delegate",
         role: "await",
@@ -98,20 +101,20 @@ const turn: RenderedTurn = {
 test("a create and its await draw one agent card and one compact line", () => {
   const client = new QueryClient();
   client.setQueryData(["sessions", "children", parent], [childSession]);
-  const inspect = vi.fn();
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentInspectorProvider
-        value={{ sessionId: parent, children: new Map([[child, childSession]]), inspect }}
+      <SubagentSessionsProvider
+        value={{ children: new Map([[child, childSession]]), open: () => {} }}
       >
         <TurnView
           turn={turn}
+          runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
           running={false}
           waits={NO_WAITS}
         />
-      </SubagentInspectorProvider>
+      </SubagentSessionsProvider>
     </QueryClientProvider>,
   );
   client.clear();
@@ -119,7 +122,6 @@ test("a create and its await draw one agent card and one compact line", () => {
   expect(html.match(/>Completed</g)?.length).toBe(1);
   expect(html.match(/>Map the workbench</g)?.length).toBe(2);
   expect(html).toContain(">Waited for<");
-  expect(html.match(/aria-label="Open Map the workbench in the Agents panel"/g)?.length).toBe(2);
 });
 
 const agents = [
@@ -131,12 +133,14 @@ const agents = [
 const createAgent = (session: (typeof agents)[number]): ToolTurnPart => ({
   kind: "tool",
   callId: `create:${session}`,
+  at: 1,
   class: { kind: "delegate", role: "create", target: { kind: "one", session } },
   result: { commit: `created:${session}`, output: `Started ${session}`, isError: false },
 });
 const awaitAll: ToolTurnPart = {
   kind: "tool",
   callId: "wait-all",
+  at: 1,
   class: {
     kind: "delegate",
     role: "await",
@@ -156,6 +160,7 @@ const prose: TurnPart = {
   commit: "a",
   contentIndex: 0,
   text: "Four agents are mapping the panels.",
+  at: 1,
 };
 const workingRun = { ...childSession.heads[0]?.run, phase: { kind: "tools" } } as const;
 
@@ -177,21 +182,28 @@ function render(
     client.getQueryData<readonly SessionInfo[]>(["sessions", "children", parent]) ?? [];
   const html = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <SubagentInspectorProvider
+      <SubagentSessionsProvider
         value={{
-          sessionId: parent,
           children: new Map(children.map((session) => [session.sessionId, session])),
-          inspect: vi.fn(),
+          open: () => {},
         }}
       >
         <TurnView
-          turn={{ kind: "turn", id: "turn", startedAt: 1, durationMs: 0, parts: [...parts] }}
+          turn={{
+            kind: "turn",
+            id: "turn",
+            run: { kind: "none" },
+            startedAt: 1,
+            durationMs: 0,
+            parts: [...parts],
+          }}
+          runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
           running={options.running}
           waits={liveWaits(parts, options.parked, options.running)}
         />
-      </SubagentInspectorProvider>
+      </SubagentSessionsProvider>
     </QueryClientProvider>,
   );
   client.clear();
@@ -206,7 +218,6 @@ test("a live await on agents created in the turn is run status, not a row", () =
     parked: [parkedWait],
   });
   vi.useRealTimers();
-  expect(html.match(/aria-label="Open Agent \w+ in the Agents panel"/g)?.length).toBe(4);
   expect(html.match(/>Waiting</g)?.length).toBe(4);
   expect(html).not.toContain(">Waiting for<");
   expect(html).toContain(">Waiting for subagents<");

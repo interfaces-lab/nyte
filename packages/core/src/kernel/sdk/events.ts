@@ -21,8 +21,8 @@ import {
   STACK_PREFIX,
   decodeFactKey,
   parseCompactionRef,
-  parseQueueRef,
-  type QueueRefParts,
+  parseInboxRef,
+  type InboxRefParts,
 } from "../names.ts";
 import { pendingItem, runInfo } from "./snapshot.ts";
 import { JOB_PREFIX, parseJobRecord } from "./jobs.ts";
@@ -40,7 +40,7 @@ type ChangeItem = { readonly oid: Oid; readonly change: Change };
 type EffectIntent = Extract<Effect, { readonly state: "intent" }>;
 
 function isChange(object: Obj | undefined): object is Change {
-  return object?.kind === "change";
+  return object !== undefined && "type" in object && object.type === "change";
 }
 
 function isEffect(object: Obj | undefined): object is Effect {
@@ -164,7 +164,7 @@ async function projectHeadRef(
 
 async function projectQueueRef(
   event: Extract<Event, { readonly kind: "ref" }>,
-  parts: QueueRefParts,
+  parts: InboxRefParts,
   read: ReadObject,
 ): Promise<readonly SessionEvent[]> {
   switch (parts.position) {
@@ -175,7 +175,7 @@ async function projectQueueRef(
         if (change.body.kind === "config") {
           return [{ seq: event.seq, kind: "config_queued", head: parts.head, change: oid }];
         }
-        const item = pendingItem({ oid, change, lane: parts.lane });
+        const item = pendingItem({ oid, change, delivery: parts.delivery });
         return item === undefined
           ? []
           : [{ seq: event.seq, kind: "queued", head: parts.head, item }];
@@ -234,7 +234,7 @@ async function projectRef(
   const head = suffix(event.name, HEAD_PREFIX);
   if (head !== undefined && !head.includes("/")) return projectHeadRef(event, head, read);
 
-  const queue = parseQueueRef(event.name);
+  const queue = parseInboxRef(event.name);
   if (queue !== undefined) return projectQueueRef(event, queue, read);
 
   const cancelled = suffix(event.name, CANCELLED_PREFIX);

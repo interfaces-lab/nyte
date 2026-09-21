@@ -168,16 +168,21 @@ test("cancelling a pending message also cancels its agent selection", async () =
   }
 });
 
-test("redelivery moves the selected agent with its message to the new lane", async () => {
+test("redelivery moves the selected agent with its message to the new delivery", async () => {
   const { nyte, requests } = await open();
   try {
     const { sessionId: id } = await nyte.sessions.create();
-    const moved = await nyte.messages.send({ sessionId: id, content: "moved", agent: "agent-a" });
+    const moved = await nyte.messages.send({
+      sessionId: id,
+      content: "moved",
+      agent: "agent-a",
+      delivery: "steer",
+    });
     await nyte.messages.send({ sessionId: id, content: "first", agent: "agent-b" });
     const redelivered = await nyte.messages.redeliver({
       sessionId: id,
       change: moved.change,
-      lane: "queue",
+      delivery: "next",
     });
     assert.equal(redelivered.kind, "redelivered");
     nyte.attach();
@@ -206,9 +211,14 @@ test.each(["agent-a", "agent-b"])(
       await nyte.messages.send({ sessionId: id, content: "first", agent: "agent-a" });
       nyte.attach();
       await within(started.promise);
-      // A configuration change ahead of the message shares its landing batch.
+      // A configuration change ahead of the message shares its drain batch.
       await nyte.sessions.configure({ sessionId: id, thinkingLevel: "high" });
-      const sent = await nyte.messages.send({ sessionId: id, content: "steering", agent });
+      const sent = await nyte.messages.send({
+        sessionId: id,
+        content: "steering",
+        agent,
+        delivery: "steer",
+      });
       assert.ok(
         (await nyte.messages.pending({ sessionId: id })).some(
           (item) => item.change === sent.change,

@@ -1,10 +1,10 @@
 /** The change stack: what is pending, in what order, and what lands next. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { queueBaseRef } from "../../src/kernel/names.ts";
+import { inboxBaseRef } from "../../src/kernel/names.ts";
 import {
   cancel,
-  listLanes,
+  listDeliveries,
   nextToLand,
   pending,
   pendingIn,
@@ -21,7 +21,8 @@ test("invalid heads, string or not, cannot write objects, refs, or events, inclu
   const first = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("seed"),
     key: "k",
   });
@@ -37,7 +38,8 @@ test("invalid heads, string or not, cannot write objects, refs, or events, inclu
         submit(session, {
           preparation: { kind: "none" },
           head,
-          lane: "now",
+          delivery: "steer",
+          kind: "user",
           body: say("bad"),
           key,
         }),
@@ -45,7 +47,7 @@ test("invalid heads, string or not, cannot write objects, refs, or events, inclu
       );
     }
     await assert.rejects(
-      redeliver(session, { head, lane: "later", change: first.change }),
+      redeliver(session, { head, delivery: "next", change: first.change }),
       TypeError,
     );
     assert.deepEqual(await state(), before);
@@ -53,11 +55,12 @@ test("invalid heads, string or not, cannot write objects, refs, or events, inclu
   for (const head of [123, ["main"], { toString: () => "main" }]) {
     for (const key of [undefined, "k"]) {
       await assert.rejects(
-        // @ts-expect-error Exercise invalid JavaScript input at the admission boundary.
         submit(session, {
           preparation: { kind: "none" },
+          // @ts-expect-error Exercise invalid JavaScript input at the admission boundary.
           head,
-          lane: "now",
+          delivery: "steer",
+          kind: "user",
           body: say("bad"),
           key,
         }),
@@ -75,10 +78,11 @@ test.each(["日本語", "é+😀", "a!#$%&'()+,;=]{}", "a\u2028.b", "a.\u2029"])
     const sent = await submit(session, {
       preparation: { kind: "none" },
       head,
-      lane: "now",
+      delivery: "steer",
+      kind: "user",
       body: say("hello"),
     });
-    assert.deepEqual(await listLanes(session, head), ["now"]);
+    assert.deepEqual(await listDeliveries(session, head), ["steer"]);
     assert.deepEqual(
       (await pending(session, head)).map((item) => item.oid),
       [sent.change],
@@ -99,12 +103,13 @@ test("one hundred concurrent submitters lose nothing and keep one order", async 
       submit(session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "now",
+        delivery: "steer",
+        kind: "user",
         body: say(String(index)),
       }),
     ),
   );
-  const items = await pendingIn(session, { head: "main", lane: "now" });
+  const items = await pendingIn(session, { head: "main", delivery: "steer" });
   assert.equal(items.length, 100);
   assert.deepEqual(
     new Set(items.map((item) => item.oid)),
@@ -121,10 +126,22 @@ test("two connections submitting at once still form one chain", async () => {
   const b = await openStore(path).open("q");
   await Promise.all([
     ...Array.from({ length: 20 }, (_, i) =>
-      submit(a, { preparation: { kind: "none" }, head: "main", lane: "now", body: say(`a${i}`) }),
+      submit(a, {
+        preparation: { kind: "none" },
+        head: "main",
+        delivery: "steer",
+        kind: "user",
+        body: say(`a${i}`),
+      }),
     ),
     ...Array.from({ length: 20 }, (_, i) =>
-      submit(b, { preparation: { kind: "none" }, head: "main", lane: "now", body: say(`b${i}`) }),
+      submit(b, {
+        preparation: { kind: "none" },
+        head: "main",
+        delivery: "steer",
+        kind: "user",
+        body: say(`b${i}`),
+      }),
     ),
   ]);
   assert.equal((await pending(a, "main")).length, 40);
@@ -135,7 +152,8 @@ test("a retried submission with the same key is the first one, not a second mess
   const first = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
     key: "k1",
   });
@@ -143,7 +161,8 @@ test("a retried submission with the same key is the first one, not a second mess
   const retry = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
     key: "k1",
   });
@@ -157,14 +176,16 @@ test("a change carries its submission key, and a redelivered copy keeps it under
   const keyed = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
     key: "k1",
   });
   const bare = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   const keyOf = async (change: string) =>
@@ -172,22 +193,23 @@ test("a change carries its submission key, and a redelivered copy keeps it under
   assert.equal(await keyOf(keyed.change), "k1");
   assert.equal(await keyOf(bare.change), undefined);
 
-  const moved = await redeliver(session, { head: "main", change: keyed.change, lane: "later" });
+  const moved = await redeliver(session, { head: "main", change: keyed.change, delivery: "next" });
   assert.equal(moved.kind, "redelivered");
   if (moved.kind !== "redelivered") return;
   assert.notEqual(moved.change, keyed.change);
   const items = await pending(session, "main");
-  const byLane = (lane: string) =>
-    items.filter((item) => item.lane === lane).map((item) => [item.oid, item.change.key]);
-  assert.deepEqual(byLane("later"), [[moved.change, "k1"]]);
-  assert.deepEqual(byLane("now"), [[bare.change, undefined]]);
+  const byDelivery = (delivery: PendingChange["delivery"]) =>
+    items.filter((item) => item.delivery === delivery).map((item) => [item.oid, item.change.key]);
+  assert.deepEqual(byDelivery("next"), [[moved.change, "k1"]]);
+  assert.deepEqual(byDelivery("steer"), [[bare.change, undefined]]);
   assert.equal(items.length, 2);
   // The receipt ref still answers the key with the original submission.
   assert.deepEqual(
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "now",
+      delivery: "steer",
+      kind: "user",
       body: say("hi"),
       key: "k1",
     }),
@@ -195,30 +217,32 @@ test("a change carries its submission key, and a redelivered copy keeps it under
   );
 });
 
-test("lanes are independent chains, consulted in whatever order the caller names them", async () => {
+test("deliveries are independent chains, consulted in whatever order the caller names them", async () => {
   const session = await openSession();
   const later = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
+    kind: "user",
     body: say("after"),
-    lane: "later",
+    delivery: "next",
   });
   await sleep(2);
   const now = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
-    body: say("now"),
+    delivery: "steer",
+    kind: "user",
+    body: say("steer"),
   });
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => [item.oid, item.lane]),
+    (await pending(session, "main")).map((item) => [item.oid, item.delivery]),
     [
-      [later.change, "later"],
-      [now.change, "now"],
+      [later.change, "next"],
+      [now.change, "steer"],
     ],
   );
-  const live = { head: "main", lanes: ["now"] as const };
-  const idle = { head: "main", lanes: ["now", "later"] as const };
+  const live = { head: "main", deliveries: ["steer"] as const };
+  const idle = { head: "main", deliveries: ["steer", "next"] as const };
   assert.equal((await nextToLand(session, live))?.oid, now.change);
   assert.equal((await nextToLand(session, idle))?.oid, now.change);
   await cancel(session, { head: "main", change: now.change });
@@ -229,16 +253,34 @@ test("lanes are independent chains, consulted in whatever order the caller names
 test("a cancelled change leaves the pending list and its neighbours keep their ids", async () => {
   const session = await openSession();
   const outcomes = await Promise.all([
-    submit(session, { preparation: { kind: "none" }, head: "main", lane: "now", body: say("a") }),
-    submit(session, { preparation: { kind: "none" }, head: "main", lane: "now", body: say("b") }),
-    submit(session, { preparation: { kind: "none" }, head: "main", lane: "now", body: say("c") }),
+    submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "user",
+      body: say("a"),
+    }),
+    submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "user",
+      body: say("b"),
+    }),
+    submit(session, {
+      preparation: { kind: "none" },
+      head: "main",
+      delivery: "steer",
+      kind: "user",
+      body: say("c"),
+    }),
   ]);
-  const before = (await pendingIn(session, { head: "main", lane: "now" })).map((i) => i.oid);
+  const before = (await pendingIn(session, { head: "main", delivery: "steer" })).map((i) => i.oid);
   const middle = before[1] ?? "";
   assert.deepEqual(await cancel(session, { head: "main", change: middle }), { kind: "cancelled" });
   assert.deepEqual(await cancel(session, { head: "main", change: middle }), { kind: "cancelled" });
   assert.deepEqual(
-    (await pendingIn(session, { head: "main", lane: "now" })).map((item) => item.oid),
+    (await pendingIn(session, { head: "main", delivery: "steer" })).map((item) => item.oid),
     before.filter((oid) => oid !== middle),
   );
   assert.equal((await pending(session, "main")).length, 2);
@@ -248,27 +290,29 @@ test("a cancelled change leaves the pending list and its neighbours keep their i
   assert.equal(new Set(outcomes.map((outcome) => outcome.change)).size, 3);
 });
 
-test("landing skips cancelled changes, and a landed change can no longer be cancelled", async () => {
+test("drain skips cancelled changes, and a landed change can no longer be cancelled", async () => {
   const session = await openSession();
   const first = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("first"),
   });
   const second = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("second"),
   });
   await cancel(session, { head: "main", change: first.change });
-  const next = await nextToLand(session, { head: "main", lanes: ["now"] });
+  const next = await nextToLand(session, { head: "main", deliveries: ["steer"] });
   assert.equal(next?.oid, second.change);
   assert.deepEqual(next?.skipped, [first.change]);
 
   const landed = await session.refs.update(
-    [{ name: queueBaseRef("main", "now"), from: null, to: second.change }],
+    [{ name: inboxBaseRef("main", "steer"), from: null, to: second.change }],
     { reason: "land" },
   );
   assert.equal(landed.ok, true);
@@ -278,13 +322,13 @@ test("landing skips cancelled changes, and a landed change can no longer be canc
     kind: "landed",
   });
   assert.deepEqual(
-    await redeliver(session, { head: "main", change: second.change, lane: "later" }),
+    await redeliver(session, { head: "main", change: second.change, delivery: "next" }),
     { kind: "landed" },
   );
   assert.deepEqual(
     await redeliver(session, {
       head: "main",
-      lane: "now",
+      delivery: "steer",
       change: second.change,
       content: "too late",
     }),
@@ -294,47 +338,38 @@ test("landing skips cancelled changes, and a landed change can no longer be canc
   assert.equal(await session.events.last(), cursor);
 });
 
-test("moving a change between lanes is one atomic update that keeps it pending", async () => {
+test("moving a change between deliveries is one atomic update that keeps it pending", async () => {
   const session = await openSession();
   const parked = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    body: say("later"),
-    lane: "later",
+    kind: "user",
+    body: say("next"),
+    delivery: "next",
   });
-  const moved = await redeliver(session, { head: "main", change: parked.change, lane: "now" });
+  const moved = await redeliver(session, {
+    head: "main",
+    change: parked.change,
+    delivery: "steer",
+  });
   assert.equal(moved.kind, "redelivered");
   if (moved.kind !== "redelivered") return;
   const items = await pending(session, "main");
   assert.deepEqual(
-    items.map((item) => [item.oid, item.lane]),
-    [[moved.change, "now"]],
+    items.map((item) => [item.oid, item.delivery]),
+    [[moved.change, "steer"]],
   );
-  assert.equal(messageText(items[0]), "later");
+  assert.equal(messageText(items[0]), "next");
 
-  assert.deepEqual(await redeliver(session, { head: "main", change: moved.change, lane: "now" }), {
-    kind: "unchanged",
-  });
   assert.deepEqual(
-    await redeliver(session, { head: "main", change: "0".repeat(64), lane: "now" }),
+    await redeliver(session, { head: "main", change: moved.change, delivery: "steer" }),
+    {
+      kind: "unchanged",
+    },
+  );
+  assert.deepEqual(
+    await redeliver(session, { head: "main", change: "0".repeat(64), delivery: "steer" }),
     { kind: "not_found" },
-  );
-
-  // A lane is a name: the first change moved into one the head never used creates it.
-  const parkedAgain = await redeliver(session, {
-    head: "main",
-    change: moved.change,
-    lane: "urgent",
-  });
-  assert.equal(parkedAgain.kind, "redelivered");
-  assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["urgent"],
-  );
-  assert.deepEqual(await listLanes(session, "main"), ["later", "now", "urgent"]);
-  await assert.rejects(
-    submit(session, { preparation: { kind: "none" }, head: "main", lane: "a/b", body: say("x") }),
-    TypeError,
   );
 });
 
@@ -345,24 +380,27 @@ test("editing a queued message preserves its position and the untouched prefix",
   const first = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("first"),
   });
   const middle = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("middle"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("last"),
   });
   const outcome = await redeliver(session, {
     head: "main",
-    lane: "later",
+    delivery: "next",
     change: middle.change,
     content: "edited middle",
   });
@@ -370,10 +408,13 @@ test("editing a queued message preserves its position and the untouched prefix",
   const items = await pending(observer, "main");
   assert.deepEqual(items.map(messageText), ["first", "edited middle", "last"]);
   assert.equal(items[0]?.oid, first.change);
-  assert.equal((await nextToLand(observer, { head: "main", lanes: ["later"] }))?.oid, first.change);
+  assert.equal(
+    (await nextToLand(observer, { head: "main", deliveries: ["next"] }))?.oid,
+    first.change,
+  );
   await cancel(observer, { head: "main", change: first.change });
   assert.equal(
-    messageText(await nextToLand(observer, { head: "main", lanes: ["later"] })),
+    messageText(await nextToLand(observer, { head: "main", deliveries: ["next"] })),
     "edited middle",
   );
 });
@@ -383,32 +424,38 @@ test("reordering uses queue order even when the moved message is newer", async (
   const first = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("first"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("second"),
   });
   const last = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("last"),
   });
   const moved = await redeliver(session, {
     head: "main",
-    lane: "later",
+    delivery: "next",
     change: last.change,
     before: first.change,
   });
   assert.equal(moved.kind, "redelivered");
   assert.deepEqual((await pending(session, "main")).map(messageText), ["last", "first", "second"]);
-  assert.equal(messageText(await nextToLand(session, { head: "main", lanes: ["later"] })), "last");
+  assert.equal(
+    messageText(await nextToLand(session, { head: "main", deliveries: ["next"] })),
+    "last",
+  );
   if (moved.kind !== "redelivered") assert.fail("Expected redelivery");
-  await redeliver(session, { head: "main", lane: "later", change: moved.change, before: null });
+  await redeliver(session, { head: "main", delivery: "next", change: moved.change, before: null });
   assert.deepEqual((await pending(session, "main")).map(messageText), ["first", "second", "last"]);
 });
 
@@ -419,13 +466,14 @@ test("an edit racing cancellation cannot restore the cancelled original or dupli
   const submitted = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("original"),
   });
   const [edited] = await Promise.all([
     redeliver(session, {
       head: "main",
-      lane: "later",
+      delivery: "next",
       change: submitted.change,
       content: "edited",
     }),

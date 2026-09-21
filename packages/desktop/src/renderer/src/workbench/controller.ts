@@ -1,9 +1,3 @@
-/**
- * Window-lifetime workbench state. The controller lives outside route leaves,
- * so a pane can change sessions without throwing away loaded panel state.
- *
- * Based on https://github.com/interfaces-lab/honk/blob/main/packages/app/src/workbench-controller.ts
- */
 import { useSyncExternalStore } from "react";
 import type { Oid, SessionId } from "@nyte-ai/protocol";
 import { Type } from "typebox";
@@ -14,25 +8,47 @@ export const WORKBENCH_WIDTH_DEFAULT = 500;
 const WORKBENCH_WIDTH_MIN = 384;
 export const WORKBENCH_CENTER_WIDTH_MIN = 424;
 export const WORKBENCH_STAGE_PANE_KEY = "stage";
-/** Read by the title bar to draw the column seam above the open panel. */
 export const WORKBENCH_ACTIVE_WIDTH_VARIABLE = "--nyte-active-workbench-width";
 
-export type WorkbenchTabId = "files" | "changes" | "browser" | "terminal" | "agents";
-type WorkbenchScrollableTabId = "changes";
-export type WorkbenchViewKey = string & { readonly __brand: "WorkbenchViewKey" };
-/**
- * Which set of changes the Changes panel shows. `uncommitted` is the whole
- * working tree; `staged` and `unstaged` are the two sides of the index;
- * `turn` is one conversation turn's declared edits; `commit` is one commit
- * against its parent. Only `uncommitted` survives a restart: the others name
- * a turn, a commit or an index state that a later window may not hold.
- */
+export type WorkbenchTabId = string;
+export type WorkbenchViewKey = string;
+export type WorkbenchTabKind = WorkbenchTab["kind"];
+
 export type WorkbenchChangesScope =
   | { readonly kind: "uncommitted" }
   | { readonly kind: "staged" }
   | { readonly kind: "unstaged" }
   | { readonly kind: "turn"; readonly turnId: Oid }
   | { readonly kind: "commit"; readonly oid: string };
+
+export type TerminalOwner =
+  | { readonly kind: "user" }
+  | { readonly kind: "agent"; readonly sessionId: SessionId; readonly jobId: string };
+
+export type WorkbenchTab =
+  | { readonly id: WorkbenchTabId; readonly kind: "terminal"; readonly owner: TerminalOwner }
+  | {
+      readonly id: WorkbenchTabId;
+      readonly kind: "file";
+      readonly path: string;
+      readonly preview: boolean;
+    }
+  | {
+      readonly id: WorkbenchTabId;
+      readonly kind: "changes";
+      readonly scope: WorkbenchChangesScope;
+      readonly selectedPath: string | null;
+      readonly pathRevealRevision: number;
+      readonly scrollTop: number;
+    }
+  | { readonly id: WorkbenchTabId; readonly kind: "browser"; readonly url: string }
+  | { readonly id: WorkbenchTabId; readonly kind: "files" };
+
+export type WorkbenchTabInput = WorkbenchTab extends infer Tab
+  ? Tab extends WorkbenchTab
+    ? Omit<Tab, "id">
+    : never
+  : never;
 
 export function sameChangesScope(
   left: WorkbenchChangesScope,
@@ -85,27 +101,15 @@ interface WorkbenchViewIdentity {
   readonly target: WorkbenchTarget;
 }
 
-const PATHLESS_TABS = Object.freeze(["browser", "terminal", "agents"] satisfies WorkbenchTabId[]);
+const PATHLESS_TABS = Object.freeze(["browser", "terminal"] satisfies WorkbenchTabKind[]);
 const PROJECT_TABS = Object.freeze([
   "files",
   "changes",
   "browser",
   "terminal",
-  "agents",
-] satisfies WorkbenchTabId[]);
-/** Tabs that survive a restart. Terminals and agents belong to this window's live processes and sessions. */
-type PersistedTab = Exclude<WorkbenchTabId, "terminal" | "agents">;
-const PERSISTED_TABS: ReadonlySet<WorkbenchTabId> = new Set<PersistedTab>([
-  "files",
-  "changes",
-  "browser",
-]);
+] satisfies WorkbenchTabKind[]);
 
-function isPersistedTab(tab: WorkbenchTabId): tab is PersistedTab {
-  return PERSISTED_TABS.has(tab);
-}
-
-export function workbenchTabs(scope: WorkbenchScope): readonly WorkbenchTabId[] {
+export function workbenchTabs(scope: WorkbenchScope): readonly WorkbenchTabKind[] {
   switch (scope.kind) {
     case "pathless":
       return PATHLESS_TABS;
@@ -118,24 +122,20 @@ export function workbenchTabs(scope: WorkbenchScope): readonly WorkbenchTabId[] 
   }
 }
 
-export function workbenchTabAvailable(scope: WorkbenchScope, tab: WorkbenchTabId): boolean {
-  switch (tab) {
+export function workbenchTabAvailable(scope: WorkbenchScope, kind: WorkbenchTabKind): boolean {
+  switch (kind) {
     case "browser":
     case "terminal":
-    case "agents":
       return true;
+    case "file":
     case "files":
     case "changes":
       return scope.kind === "project";
     default: {
-      const _exhaustive: never = tab;
+      const _exhaustive: never = kind;
       return _exhaustive;
     }
   }
-}
-
-interface WorkbenchScrollState {
-  readonly changes: number;
 }
 
 type WorkbenchWidthBounds =
@@ -143,23 +143,41 @@ type WorkbenchWidthBounds =
   | { readonly kind: "overlay"; readonly min: number; readonly max: number };
 
 export interface WorkbenchViewState {
+  readonly tabs: readonly WorkbenchTab[];
+  readonly active: WorkbenchTabId | null;
   readonly expanded: boolean;
-  /** Which surface stands in for the panel while it is closed. Not persisted. */
   readonly collapsed: "floating" | "compact";
-  readonly activeTab: WorkbenchTabId | null;
   readonly maximized: boolean;
-  readonly openTabs: readonly WorkbenchTabId[];
-  readonly changesScope: WorkbenchChangesScope;
-  readonly selectedPath: string | undefined;
-  readonly pathRevealRevision: number;
   readonly width: number;
-  readonly scrollTop: WorkbenchScrollState;
-  readonly browserUrl: string | undefined;
 }
 
 interface WorkbenchSnapshot {
   readonly views: ReadonlyMap<WorkbenchViewKey, WorkbenchViewState>;
 }
+
+type ChangesPatch = Omit<Extract<WorkbenchTab, { readonly kind: "changes" }>, "id" | "kind">;
+type FilePatch = Omit<Extract<WorkbenchTab, { readonly kind: "file" }>, "id" | "kind" | "path">;
+type BrowserPatch = Omit<Extract<WorkbenchTab, { readonly kind: "browser" }>, "id" | "kind">;
+
+export type WorkbenchTabUpdate =
+  | {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly kind: "changes";
+      readonly patch: ChangesPatch;
+    }
+  | {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly kind: "file";
+      readonly patch: FilePatch;
+    }
+  | {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly kind: "browser";
+      readonly patch: BrowserPatch;
+    };
 
 export interface WorkbenchPersistence {
   read(): PersistedWorkbenchSnapshot | undefined;
@@ -171,96 +189,134 @@ export interface WorkbenchController {
   readonly getSnapshot: () => WorkbenchSnapshot;
   readonly getView: (key: WorkbenchViewKey) => WorkbenchViewState;
   readonly actions: {
-    readonly openTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
-    readonly closeTab: (key: WorkbenchViewKey, tab: WorkbenchTabId) => void;
-    readonly toggle: (key: WorkbenchViewKey) => void;
-    readonly toggleCollapsed: (key: WorkbenchViewKey) => void;
-    readonly toggleWorkbench: (key: WorkbenchViewKey, scope: WorkbenchScope) => void;
-    readonly toggleMaximized: (key: WorkbenchViewKey) => void;
-    readonly selectChangesScope: (key: WorkbenchViewKey, scope: WorkbenchChangesScope) => void;
-    readonly selectPath: (key: WorkbenchViewKey, path: string | undefined) => void;
-    readonly revealPath: (key: WorkbenchViewKey, path: string) => void;
-    readonly setWidth: (key: WorkbenchViewKey, width: number) => void;
-    readonly setScrollTop: (
-      key: WorkbenchViewKey,
-      tab: WorkbenchScrollableTabId,
-      scrollTop: number,
-    ) => void;
-    readonly setBrowserUrl: (key: WorkbenchViewKey, url: string | undefined) => void;
+    readonly openTab: (input: {
+      readonly view: WorkbenchViewKey;
+      readonly tab: WorkbenchTabInput;
+      readonly activate: boolean;
+    }) => WorkbenchTabId;
+    readonly activateTab: (input: {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+    }) => void;
+    readonly closeTab: (input: {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+    }) => void;
+    readonly moveTab: (input: {
+      readonly view: WorkbenchViewKey;
+      readonly id: WorkbenchTabId;
+      readonly index: number;
+    }) => void;
+    readonly updateTab: (input: WorkbenchTabUpdate) => void;
+    readonly toggle: (input: { readonly view: WorkbenchViewKey }) => void;
+    readonly toggleCollapsed: (input: { readonly view: WorkbenchViewKey }) => void;
+    readonly toggleWorkbench: (input: {
+      readonly view: WorkbenchViewKey;
+      readonly scope: WorkbenchScope;
+    }) => void;
+    readonly toggleMaximized: (input: { readonly view: WorkbenchViewKey }) => void;
+    readonly setWidth: (input: { readonly view: WorkbenchViewKey; readonly width: number }) => void;
   };
 }
 
-const STORAGE_KEY = "nyte:desktop:workbench:v5";
-const LEGACY_STORAGE_KEY = "nyte:desktop:workbench:v4";
+const STORAGE_KEY = "nyte:desktop:workbench:v6";
 const VIEW_IDENTITIES = new Map<WorkbenchViewKey, WorkbenchViewIdentity>();
-const EMPTY_SCROLL = Object.freeze({ changes: 0 });
 const DEFAULT_VIEW = Object.freeze({
+  tabs: Object.freeze([]),
+  active: null,
   expanded: false,
   collapsed: "floating",
-  activeTab: null,
   maximized: false,
-  openTabs: Object.freeze([]),
-  changesScope: Object.freeze({ kind: "uncommitted" }),
-  selectedPath: undefined,
-  pathRevealRevision: 0,
   width: WORKBENCH_WIDTH_DEFAULT,
-  scrollTop: EMPTY_SCROLL,
-  browserUrl: undefined,
 }) satisfies WorkbenchViewState;
 
 const strict = { additionalProperties: false };
 const nonEmpty = Type.String({ minLength: 1 });
-const legacyWorkbenchView = Type.Object(
+const persistedFileTab = Type.Object(
   {
-    key: nonEmpty,
-    visible: Type.Optional(Type.Boolean()),
-    expanded: Type.Boolean(),
-    activeTab: Type.Enum(["changes", "browser"]),
-    selectedPath: Type.Optional(nonEmpty),
-    width: Type.Number(),
-    scrollTop: Type.Object({ changes: Type.Number({ minimum: 0 }) }, strict),
-    browserUrl: Type.Optional(nonEmpty),
+    id: nonEmpty,
+    kind: Type.Literal("file"),
+    path: nonEmpty,
+    preview: Type.Boolean(),
   },
   strict,
 );
-
-const legacyWorkbenchSnapshot = Type.Object(
-  { version: Type.Literal(4), views: Type.Array(legacyWorkbenchView) },
+const persistedChangesTab = Type.Object(
+  {
+    id: nonEmpty,
+    kind: Type.Literal("changes"),
+    scope: Type.Object({ kind: Type.Literal("uncommitted") }, strict),
+    selectedPath: Type.Union([nonEmpty, Type.Null()]),
+    pathRevealRevision: Type.Integer({ minimum: 0 }),
+    scrollTop: Type.Number({ minimum: 0 }),
+  },
   strict,
 );
-
-const persistedTab = Type.Enum(["files", "changes", "browser", "terminal"]);
+const persistedBrowserTab = Type.Object(
+  { id: nonEmpty, kind: Type.Literal("browser"), url: nonEmpty },
+  strict,
+);
+const persistedFilesTab = Type.Object({ id: nonEmpty, kind: Type.Literal("files") }, strict);
+const persistedTab = Type.Union([
+  persistedFileTab,
+  persistedChangesTab,
+  persistedBrowserTab,
+  persistedFilesTab,
+]);
 const persistedWorkbenchView = Type.Object(
   {
     key: nonEmpty,
+    tabs: Type.Array(persistedTab),
+    active: Type.Union([nonEmpty, Type.Null()]),
     expanded: Type.Boolean(),
     maximized: Type.Boolean(),
-    activeTab: Type.Union([persistedTab, Type.Null()]),
-    openTabs: Type.Array(persistedTab, { uniqueItems: true }),
-    selectedPath: Type.Optional(nonEmpty),
     width: Type.Number(),
-    scrollTop: Type.Object({ changes: Type.Number({ minimum: 0 }) }, strict),
-    browserUrl: Type.Optional(nonEmpty),
   },
   strict,
 );
 const persistedWorkbenchSnapshot = Type.Object(
-  { version: Type.Literal(5), views: Type.Array(persistedWorkbenchView) },
+  { version: Type.Literal(6), views: Type.Array(persistedWorkbenchView) },
   strict,
 );
 
 type PersistedWorkbenchSnapshot = Static<typeof persistedWorkbenchSnapshot>;
+type PersistedTab = Static<typeof persistedTab>;
+
+function persistedTabFor(tab: WorkbenchTab): PersistedTab | undefined {
+  switch (tab.kind) {
+    case "file":
+    case "browser":
+    case "files":
+      return tab;
+    case "changes":
+      return { ...tab, scope: { kind: "uncommitted" } };
+    case "terminal":
+      return undefined;
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
 
 export function activeWorkbenchTab(
   view: WorkbenchViewState,
   scope: WorkbenchScope,
-): WorkbenchTabId | null {
-  const tabs = view.openTabs.filter((tab) => workbenchTabAvailable(scope, tab));
-  return tabs.find((tab) => tab === view.activeTab) ?? tabs[0] ?? null;
+): WorkbenchTab | null {
+  if (view.active === null) return null;
+  const active = view.tabs.find((tab) => tab.id === view.active);
+  if (active !== undefined && workbenchTabAvailable(scope, active.kind)) return active;
+  return view.tabs.find((tab) => workbenchTabAvailable(scope, tab.kind)) ?? null;
 }
 
-export function workbenchTabLabel(tab: WorkbenchTabId): string {
-  switch (tab) {
+export function workbenchTabLabel(tab: WorkbenchTab | WorkbenchTabKind): string {
+  if (typeof tab !== "string" && tab.kind === "file") {
+    return tab.path.split(/[\\/]/).at(-1) ?? tab.path;
+  }
+  const kind = typeof tab === "string" ? tab : tab.kind;
+  switch (kind) {
+    case "file":
+      return "File";
     case "files":
       return "Files";
     case "changes":
@@ -269,10 +325,33 @@ export function workbenchTabLabel(tab: WorkbenchTabId): string {
       return "Browser";
     case "terminal":
       return "Terminal";
-    case "agents":
-      return "Agents";
     default: {
-      const _exhaustive: never = tab;
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+export function defaultWorkbenchTab(kind: WorkbenchTabKind): WorkbenchTabInput {
+  switch (kind) {
+    case "files":
+      return { kind: "files" };
+    case "changes":
+      return {
+        kind: "changes",
+        scope: { kind: "uncommitted" },
+        selectedPath: null,
+        pathRevealRevision: 0,
+        scrollTop: 0,
+      };
+    case "browser":
+      return { kind: "browser", url: "about:blank" };
+    case "terminal":
+      return { kind: "terminal", owner: { kind: "user" } };
+    case "file":
+      throw new Error("A file tab requires a path");
+    default: {
+      const _exhaustive: never = kind;
       return _exhaustive;
     }
   }
@@ -305,32 +384,20 @@ export function clampWorkbenchWidthToBounds(width: number, bounds: WorkbenchWidt
   return Math.min(bounds.max, Math.max(bounds.min, normalized));
 }
 
-/** Decode localStorage once; the controller never receives transport data. */
 export function decodePersistedWorkbenchSnapshot(
   serialized: string,
 ): PersistedWorkbenchSnapshot | undefined {
   try {
     const parsed: unknown = JSON.parse(serialized);
-    if (Value.Check(persistedWorkbenchSnapshot, parsed)) {
-      return parsed.views.every((view) =>
-        view.activeTab === null
-          ? view.openTabs.length === 0 && !view.expanded
-          : view.openTabs.includes(view.activeTab),
-      )
-        ? parsed
-        : undefined;
-    }
-    if (Value.Check(legacyWorkbenchSnapshot, parsed)) {
-      return {
-        version: 5,
-        views: parsed.views.map(({ visible: _visible, ...view }) => ({
-          ...view,
-          maximized: false,
-          openTabs: [view.activeTab],
-        })),
-      };
-    }
-    return undefined;
+    if (!Value.Check(persistedWorkbenchSnapshot, parsed)) return undefined;
+    const valid = parsed.views.every((view) => {
+      const ids = new Set(view.tabs.map((tab) => tab.id));
+      return (
+        ids.size === view.tabs.length &&
+        (view.active === null ? view.tabs.length === 0 && !view.expanded : ids.has(view.active))
+      );
+    });
+    return valid ? parsed : undefined;
   } catch {
     return undefined;
   }
@@ -339,24 +406,19 @@ export function decodePersistedWorkbenchSnapshot(
 function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): WorkbenchSnapshot {
   const views = new Map<WorkbenchViewKey, WorkbenchViewState>();
   for (const stored of persisted?.views ?? []) {
-    // SAFETY: the persistence schema proved that this storage key is non-empty.
-    const key = stored.key as WorkbenchViewKey;
-    const openTabs = Object.freeze(stored.openTabs.filter(isPersistedTab));
-    const activeTab = openTabs.find((tab) => tab === stored.activeTab) ?? openTabs[0] ?? null;
+    const tabs: readonly WorkbenchTab[] = stored.tabs;
+    const active = tabs.some((tab) => tab.id === stored.active)
+      ? stored.active
+      : (tabs[0]?.id ?? null);
     views.set(
-      key,
+      stored.key,
       Object.freeze({
-        expanded: stored.expanded && activeTab !== null,
+        tabs: Object.freeze(tabs.map((tab) => Object.freeze(tab))),
+        active,
+        expanded: stored.expanded && active !== null,
         collapsed: "floating",
-        activeTab,
         maximized: stored.maximized,
-        openTabs,
-        changesScope: Object.freeze({ kind: "uncommitted" }),
-        selectedPath: stored.selectedPath,
-        pathRevealRevision: 0,
         width: clampWorkbenchWidth(stored.width),
-        scrollTop: Object.freeze(stored.scrollTop),
-        browserUrl: stored.browserUrl,
       }),
     );
   }
@@ -365,21 +427,20 @@ function restoreSnapshot(persisted: PersistedWorkbenchSnapshot | undefined): Wor
 
 function persistable(snapshot: WorkbenchSnapshot): PersistedWorkbenchSnapshot {
   return {
-    version: 5,
+    version: 6,
     views: [...snapshot.views].map(([key, view]) => {
-      // Shells belong to this window's PTY host and do not survive an app restart.
-      const openTabs = view.openTabs.filter(isPersistedTab);
-      const activeTab = openTabs.find((tab) => tab === view.activeTab) ?? openTabs[0] ?? null;
+      const tabs = view.tabs.flatMap((tab) => {
+        const persisted = persistedTabFor(tab);
+        return persisted === undefined ? [] : [persisted];
+      });
+      const active = tabs.find((tab) => tab.id === view.active)?.id ?? tabs[0]?.id ?? null;
       return {
         key,
-        expanded: view.expanded && activeTab !== null,
-        activeTab,
+        tabs,
+        active,
+        expanded: view.expanded && active !== null,
         maximized: view.maximized,
-        openTabs,
-        selectedPath: view.selectedPath,
         width: view.width,
-        scrollTop: view.scrollTop,
-        browserUrl: view.browserUrl,
       };
     }),
   };
@@ -390,10 +451,7 @@ function browserPersistence(): WorkbenchPersistence | undefined {
   return {
     read() {
       try {
-        const raw =
-          window.localStorage.getItem(STORAGE_KEY) ??
-          window.localStorage.getItem(LEGACY_STORAGE_KEY) ??
-          window.localStorage.getItem("nyte:desktop:workbench:v3");
+        const raw = window.localStorage.getItem(STORAGE_KEY);
         return raw === null ? undefined : decodePersistedWorkbenchSnapshot(raw);
       } catch {
         return undefined;
@@ -403,7 +461,7 @@ function browserPersistence(): WorkbenchPersistence | undefined {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
       } catch {
-        // A blocked or full localStorage must not erase the in-memory view.
+        return;
       }
     },
   };
@@ -430,8 +488,7 @@ export function workbenchViewKey(input: {
       return _exhaustive;
     }
   }
-  // SAFETY: the non-empty pane key and discriminated target are encoded into a stable key.
-  const key = `${encodeURIComponent(input.paneKey)}:${targetKey}` as WorkbenchViewKey;
+  const key = `${encodeURIComponent(input.paneKey)}:${targetKey}`;
   if (!VIEW_IDENTITIES.has(key)) {
     VIEW_IDENTITIES.set(
       key,
@@ -448,9 +505,54 @@ export function workbenchViewIdentity(key: WorkbenchViewKey): WorkbenchViewIdent
 function freezeView(view: WorkbenchViewState): WorkbenchViewState {
   return Object.freeze({
     ...view,
-    openTabs: Object.freeze([...view.openTabs]),
-    scrollTop: Object.freeze({ ...view.scrollTop }),
+    tabs: Object.freeze(view.tabs.map((tab) => Object.freeze(tab))),
   });
+}
+
+function sameTab(tab: WorkbenchTab, input: WorkbenchTabInput): boolean {
+  if (tab.kind !== input.kind) return false;
+  switch (tab.kind) {
+    case "file":
+      return input.kind === "file" && tab.path === input.path;
+    case "terminal":
+      return (
+        input.kind === "terminal" &&
+        tab.owner.kind === "agent" &&
+        input.owner.kind === "agent" &&
+        tab.owner.sessionId === input.owner.sessionId &&
+        tab.owner.jobId === input.owner.jobId
+      );
+    case "browser":
+      return input.kind === "browser" && tab.url === input.url;
+    case "changes":
+    case "files":
+      return true;
+    default: {
+      const _exhaustive: never = tab;
+      return _exhaustive;
+    }
+  }
+}
+
+function sameTabUpdate(tab: WorkbenchTab, input: WorkbenchTabUpdate): boolean {
+  switch (input.kind) {
+    case "changes":
+      return (
+        tab.kind === "changes" &&
+        sameChangesScope(tab.scope, input.patch.scope) &&
+        tab.selectedPath === input.patch.selectedPath &&
+        tab.pathRevealRevision === input.patch.pathRevealRevision &&
+        tab.scrollTop === input.patch.scrollTop
+      );
+    case "file":
+      return tab.kind === "file" && tab.preview === input.patch.preview;
+    case "browser":
+      return tab.kind === "browser" && tab.url === input.patch.url;
+    default: {
+      const _exhaustive: never = input;
+      return _exhaustive;
+    }
+  }
 }
 
 export function createWorkbenchController(persistence?: WorkbenchPersistence): WorkbenchController {
@@ -460,9 +562,7 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
   const publish = (key: WorkbenchViewKey, view: WorkbenchViewState): void => {
     const views = new Map(snapshot.views);
     views.set(key, freezeView(view));
-    snapshot = Object.freeze({
-      views,
-    });
+    snapshot = Object.freeze({ views });
     persistence?.write(persistable(snapshot));
     for (const listener of listeners) listener();
   };
@@ -476,109 +576,128 @@ export function createWorkbenchController(persistence?: WorkbenchPersistence): W
     if (next !== current) publish(key, next);
   };
 
-  const visit = (current: WorkbenchViewState, tab: WorkbenchTabId): readonly WorkbenchTabId[] =>
-    current.openTabs.includes(tab) ? current.openTabs : [...current.openTabs, tab];
-
   const actions: WorkbenchController["actions"] = {
-    openTab(key, tab) {
-      update(key, (current) =>
-        current.expanded && current.activeTab === tab && current.openTabs.includes(tab)
-          ? current
-          : {
-              ...current,
-              expanded: true,
-              activeTab: tab,
-              openTabs: visit(current, tab),
-            },
+    openTab({ view, tab, activate }) {
+      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
+      const existing = current.tabs.find((candidate) => sameTab(candidate, tab));
+      if (existing !== undefined) {
+        if (activate && (current.active !== existing.id || !current.expanded)) {
+          publish(view, { ...current, active: existing.id, expanded: true });
+        }
+        return existing.id;
+      }
+      const id = crypto.randomUUID();
+      const next = { id, ...tab } satisfies WorkbenchTab;
+      publish(view, {
+        ...current,
+        tabs: [...current.tabs, next],
+        active: activate ? id : current.active,
+        expanded: activate ? true : current.expanded,
+      });
+      return id;
+    },
+    activateTab({ view, id }) {
+      update(view, (current) =>
+        current.tabs.some((tab) => tab.id === id) && (current.active !== id || !current.expanded)
+          ? { ...current, active: id, expanded: true }
+          : current,
       );
     },
-    closeTab(key, tab) {
-      update(key, (current) => {
-        const index = current.openTabs.indexOf(tab);
+    closeTab({ view, id }) {
+      update(view, (current) => {
+        const index = current.tabs.findIndex((tab) => tab.id === id);
         if (index === -1) return current;
-        const openTabs = current.openTabs.filter((candidate) => candidate !== tab);
-        const activeTab =
-          current.activeTab === tab
-            ? (openTabs[index] ?? openTabs[index - 1] ?? null)
-            : current.activeTab;
+        const tabs = current.tabs.filter((tab) => tab.id !== id);
+        const active =
+          current.active === id ? (tabs[index]?.id ?? tabs[index - 1]?.id ?? null) : current.active;
         return {
           ...current,
-          openTabs,
-          activeTab,
-          expanded: current.expanded && activeTab !== null,
+          tabs,
+          active,
+          expanded: current.expanded && active !== null,
         };
       });
     },
-    toggle(key) {
-      update(key, (current) => {
-        const activeTab = current.activeTab ?? "browser";
-        return {
-          ...current,
-          expanded: !current.expanded,
-          activeTab,
-          openTabs: visit(current, activeTab),
-        };
+    moveTab({ view, id, index }) {
+      update(view, (current) => {
+        const from = current.tabs.findIndex((tab) => tab.id === id);
+        if (from === -1) return current;
+        const target = Math.max(0, Math.min(current.tabs.length - 1, Math.round(index)));
+        if (from === target) return current;
+        const tabs = [...current.tabs];
+        const [tab] = tabs.splice(from, 1);
+        if (tab === undefined) return current;
+        tabs.splice(target, 0, tab);
+        return { ...current, tabs };
       });
     },
-    toggleCollapsed(key) {
-      update(key, (current) => ({
+    updateTab(input) {
+      update(input.view, (current) => {
+        const tab = current.tabs.find((candidate) => candidate.id === input.id);
+        if (tab === undefined || tab.kind !== input.kind || sameTabUpdate(tab, input))
+          return current;
+        const tabs = current.tabs.map((candidate): WorkbenchTab => {
+          if (candidate !== tab) return candidate;
+          switch (input.kind) {
+            case "changes":
+              return candidate.kind === "changes"
+                ? { id: candidate.id, kind: "changes", ...input.patch }
+                : candidate;
+            case "file":
+              return candidate.kind === "file"
+                ? { ...candidate, preview: input.patch.preview }
+                : candidate;
+            case "browser":
+              return candidate.kind === "browser"
+                ? { id: candidate.id, kind: "browser", ...input.patch }
+                : candidate;
+            default: {
+              const _exhaustive: never = input;
+              return _exhaustive;
+            }
+          }
+        });
+        return { ...current, tabs };
+      });
+    },
+    toggle({ view }) {
+      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
+      if (current.expanded) {
+        publish(view, { ...current, expanded: false });
+        return;
+      }
+      if (current.active !== null && current.tabs.some((tab) => tab.id === current.active)) {
+        publish(view, { ...current, expanded: true });
+        return;
+      }
+      const first = current.tabs[0];
+      if (first !== undefined) {
+        publish(view, { ...current, active: first.id, expanded: true });
+        return;
+      }
+      actions.openTab({ view, tab: defaultWorkbenchTab("browser"), activate: true });
+    },
+    toggleCollapsed({ view }) {
+      update(view, (current) => ({
         ...current,
         collapsed: current.collapsed === "floating" ? "compact" : "floating",
       }));
     },
-    toggleMaximized(key) {
-      update(key, (current) => ({ ...current, maximized: !current.maximized }));
+    toggleMaximized({ view }) {
+      update(view, (current) => ({ ...current, maximized: !current.maximized }));
     },
-    toggleWorkbench(key, scope) {
-      const current = snapshot.views.get(key) ?? DEFAULT_VIEW;
+    toggleWorkbench({ view, scope }) {
+      const current = snapshot.views.get(view) ?? DEFAULT_VIEW;
       if (current.expanded && activeWorkbenchTab(current, scope) === null) {
-        actions.openTab(key, "browser");
+        actions.openTab({ view, tab: defaultWorkbenchTab("browser"), activate: true });
         return;
       }
-      actions.toggle(key);
+      actions.toggle({ view });
     },
-    selectChangesScope(key, scope) {
-      update(key, (current) => {
-        return sameChangesScope(current.changesScope, scope)
-          ? current
-          : {
-              ...current,
-              changesScope: scope,
-              selectedPath: undefined,
-              scrollTop: { ...current.scrollTop, changes: 0 },
-            };
-      });
-    },
-    selectPath(key, path) {
-      update(key, (current) =>
-        current.selectedPath === path ? current : { ...current, selectedPath: path },
-      );
-    },
-    revealPath(key, path) {
-      update(key, (current) => ({
-        ...current,
-        selectedPath: path,
-        pathRevealRevision: current.pathRevealRevision + 1,
-      }));
-    },
-    setWidth(key, width) {
+    setWidth({ view, width }) {
       const nextWidth = clampWorkbenchWidth(width);
-      update(key, (current) =>
+      update(view, (current) =>
         current.width === nextWidth ? current : { ...current, width: nextWidth },
-      );
-    },
-    setScrollTop(key, tab, scrollTop) {
-      const nextScroll = Math.max(0, scrollTop);
-      update(key, (current) =>
-        current.scrollTop[tab] === nextScroll
-          ? current
-          : { ...current, scrollTop: { ...current.scrollTop, [tab]: nextScroll } },
-      );
-    },
-    setBrowserUrl(key, url) {
-      const nextUrl = url === "" ? undefined : url;
-      update(key, (current) =>
-        current.browserUrl === nextUrl ? current : { ...current, browserUrl: nextUrl },
       );
     },
   };

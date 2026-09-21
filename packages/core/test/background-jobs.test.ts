@@ -335,7 +335,7 @@ for (const background of [false, true]) {
         ),
       ).toBe(true);
       expect(
-        f.events.filter((event) => event.kind === "queued" && event.item.lane === "background"),
+        f.events.filter((event) => event.kind === "queued" && event.item.delivery === "steer"),
       ).toHaveLength(0);
       expect((await f.nyte.runs.current({ sessionId: f.parent }))?.runId).toBe(job.origin.runId);
       const transcript = await f.nyte.messages.list({ sessionId: f.parent });
@@ -636,10 +636,10 @@ test("a user job runs without a run: streams, lists, backgrounds, cancels, survi
     });
     await expect.poll(() => alive(pid), poll).toBe("dead");
     expect(only(await f.nyte.jobs.list({ sessionId: f.parent })).phase.kind).toBe("cancelled");
-    // A user job is never a completion: no background lane item, no model turn.
+    // A user job is never a completion: no background delivery item, no model turn.
     expect(await f.nyte.messages.pending({ sessionId: f.parent })).toEqual([]);
     expect(
-      f.events.filter((event) => event.kind === "queued" && event.item.lane === "background"),
+      f.events.filter((event) => event.kind === "queued" && event.item.delivery === "steer"),
     ).toHaveLength(0);
     expect(f.requests.filter((request) => request.text.startsWith("Background "))).toEqual([]);
 

@@ -102,14 +102,24 @@ test("compaction activity survives HTTP snapshots and SSE replay through publica
         { role: "user", content: "Continue the work.", timestamp: 2 },
       ] satisfies Message[]) {
         const from = await session.refs.read("refs/heads/main");
-        const [oid] = await session.objects.put([
-          {
-            kind: "commit",
-            parent: from,
-            body: { kind: "message", message },
-            at: message.timestamp,
-          },
-        ]);
+        const commit =
+          message.role === "user"
+            ? {
+                kind: "commit" as const,
+                parent: from,
+                body: { kind: "message" as const, message },
+                start: { kind: "none" as const },
+                at: message.timestamp,
+              }
+            : {
+                kind: "commit" as const,
+                parent: from,
+                body: { kind: "message" as const, message },
+                calls: {},
+                outcome: { kind: "ok" as const },
+                at: message.timestamp,
+              };
+        const [oid] = await session.objects.put([commit]);
         assert.ok(oid);
         assert.ok(
           (

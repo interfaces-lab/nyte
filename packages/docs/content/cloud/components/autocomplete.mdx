@@ -1,0 +1,257 @@
+---
+title: Autocomplete
+description: "A text input that suggests matching items as you type"
+---
+
+```ts title="Import"
+import { Autocomplete } from "@nyte-ai/ui/autocomplete";
+```
+
+An input that filters a list of items against what the user types. The input accepts free-form text,
+so the suggestions only optionally complete it. No Nyte styling here.
+
+## Usage
+
+- Pass the data to `items` on the root and render each entry from a function child on
+  `Autocomplete.List`. Inside a group, render the group's entries with `Autocomplete.Collection`.
+- Each `Autocomplete.Item` takes a `value` identifying it. Pass the item being rendered so props like
+  `itemToStringValue` receive it.
+- `mode` decides how filtering and inline completion work. `"list"` filters items and leaves the
+  input alone. `"both"` filters and completes the input from the highlighted item. `"inline"`
+  completes without filtering. `"none"` does neither.
+- `filter` replaces the matching function. `filteredItems` hands filtering to you entirely, and
+  `Autocomplete.useFilter()` gives you the default `Intl.Collator` matcher to build on.
+- `limit` caps the number of items rendered. Tell the reader what was cut with
+  `Autocomplete.Status`.
+- `autoHighlight` highlights the first match as the user types. Set it to `"always"` when the list is
+  rendered inline, so a highlight is always present.
+- `inline` on the root renders the list without the popup. Pass `open` unconditionally alongside it.
+- `grid` on the root moves the highlight across rows and columns. Wrap each row in
+  `Autocomplete.Row`.
+- Keep `Autocomplete.Status` and `Autocomplete.Empty` mounted. Their content is announced politely,
+  so update or conditionally render their children instead of hiding the element.
+- `virtualized` tells the list that you render the items yourself with a virtualizer such as
+  `@tanstack/react-virtual`.
+
+## Anatomy
+
+```tsx
+<Autocomplete.Root>
+  <Autocomplete.InputGroup>
+    <Autocomplete.Input />
+    <Autocomplete.Trigger />
+    <Autocomplete.Icon />
+    <Autocomplete.Clear />
+    <Autocomplete.Value />
+  </Autocomplete.InputGroup>
+
+  <Autocomplete.Portal>
+    <Autocomplete.Backdrop />
+    <Autocomplete.Positioner>
+      <Autocomplete.Popup>
+        <Autocomplete.Arrow />
+
+        <Autocomplete.Status />
+        <Autocomplete.Empty />
+
+        <Autocomplete.List>
+          <Autocomplete.Row>
+            <Autocomplete.Item />
+          </Autocomplete.Row>
+
+          <Autocomplete.Separator />
+
+          <Autocomplete.Group>
+            <Autocomplete.GroupLabel />
+            <Autocomplete.Collection />
+          </Autocomplete.Group>
+        </Autocomplete.List>
+      </Autocomplete.Popup>
+    </Autocomplete.Positioner>
+  </Autocomplete.Portal>
+</Autocomplete.Root>
+```
+
+## Examples
+
+<Preview>
+  <AutocompleteDemo />
+</Preview>
+
+```tsx title="Filtering a flat list"
+<Autocomplete.Root items={models}>
+  <Autocomplete.InputGroup>
+    <Autocomplete.Input placeholder="Search models" aria-label="Search models" />
+    <Autocomplete.Clear aria-label="Clear">
+      <IconCrossSmall size={12} />
+    </Autocomplete.Clear>
+  </Autocomplete.InputGroup>
+  <Autocomplete.Portal>
+    <Autocomplete.Positioner sideOffset={4}>
+      <Autocomplete.Popup>
+        <Autocomplete.Empty>No models match</Autocomplete.Empty>
+        <Autocomplete.List>
+          {(model: string) => (
+            <Autocomplete.Item key={model} value={model}>
+              {model}
+            </Autocomplete.Item>
+          )}
+        </Autocomplete.List>
+      </Autocomplete.Popup>
+    </Autocomplete.Positioner>
+  </Autocomplete.Portal>
+</Autocomplete.Root>
+```
+
+Group the items by nesting them in objects that carry an `items` array. `Autocomplete.Group` takes
+the group's entries and `Autocomplete.Collection` renders them, so filtering still applies.
+
+```tsx title="Grouped items"
+const groups = [
+  { label: "Anthropic", items: ["claude-opus-4-6", "claude-sonnet-4-6"] },
+  { label: "Google", items: ["gemini-3-pro"] },
+];
+
+<Autocomplete.Root items={groups}>
+  {/* Input group as above */}
+  <Autocomplete.Portal>
+    <Autocomplete.Positioner sideOffset={4}>
+      <Autocomplete.Popup>
+        <Autocomplete.List>
+          {(group: { label: string; items: string[] }) => (
+            <Autocomplete.Group key={group.label} items={group.items}>
+              <Autocomplete.GroupLabel>{group.label}</Autocomplete.GroupLabel>
+              <Autocomplete.Collection>
+                {(model: string) => (
+                  <Autocomplete.Item key={model} value={model}>
+                    {model}
+                  </Autocomplete.Item>
+                )}
+              </Autocomplete.Collection>
+            </Autocomplete.Group>
+          )}
+        </Autocomplete.List>
+      </Autocomplete.Popup>
+    </Autocomplete.Positioner>
+  </Autocomplete.Portal>
+</Autocomplete.Root>;
+```
+
+`value` with `onValueChange` controls the input text.
+
+```tsx title="Controlled input"
+const [query, setQuery] = useState("");
+
+<Autocomplete.Root items={models} value={query} onValueChange={setQuery}>
+  {/* Input group and popup as above */}
+</Autocomplete.Root>;
+```
+
+## Props
+
+The part tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/autocomplete/Root.md</include>
+
+### InputGroup
+
+<include>../../base-ui-reference/autocomplete/InputGroup.md</include>
+
+### Input
+
+<include>../../base-ui-reference/autocomplete/Input.md</include>
+
+### Trigger
+
+<include>../../base-ui-reference/autocomplete/Trigger.md</include>
+
+### Icon
+
+<include>../../base-ui-reference/autocomplete/Icon.md</include>
+
+### Clear
+
+<include>../../base-ui-reference/autocomplete/Clear.md</include>
+
+### Value
+
+<include>../../base-ui-reference/autocomplete/Value.md</include>
+
+### Portal
+
+<include>../../base-ui-reference/autocomplete/Portal.md</include>
+
+### Backdrop
+
+<include>../../base-ui-reference/autocomplete/Backdrop.md</include>
+
+### Positioner
+
+<include>../../base-ui-reference/autocomplete/Positioner.md</include>
+
+### Popup
+
+<include>../../base-ui-reference/autocomplete/Popup.md</include>
+
+### Arrow
+
+<include>../../base-ui-reference/autocomplete/Arrow.md</include>
+
+### List
+
+<include>../../base-ui-reference/autocomplete/List.md</include>
+
+### Item
+
+<include>../../base-ui-reference/autocomplete/Item.md</include>
+
+### Row
+
+<include>../../base-ui-reference/autocomplete/Row.md</include>
+
+### Collection
+
+<include>../../base-ui-reference/autocomplete/Collection.md</include>
+
+### Group
+
+<include>../../base-ui-reference/autocomplete/Group.md</include>
+
+### GroupLabel
+
+<include>../../base-ui-reference/autocomplete/GroupLabel.md</include>
+
+### Separator
+
+<include>../../base-ui-reference/autocomplete/Separator.md</include>
+
+### Empty
+
+<include>../../base-ui-reference/autocomplete/Empty.md</include>
+
+### Status
+
+<include>../../base-ui-reference/autocomplete/Status.md</include>
+
+### useFilter
+
+<include>../../base-ui-reference/autocomplete/useFilter.md</include>
+
+### useFilteredItems
+
+<include>../../base-ui-reference/autocomplete/useFilteredItems.md</include>
+
+## Accessibility
+
+- Name the input with a `<label>` element or an `aria-label`.
+- `Autocomplete.Input` renders `role="combobox"`, `Autocomplete.List` renders `role="listbox"`, and
+  each `Autocomplete.Item` renders `role="option"`.
+- Arrow Down and Up move the highlight through the items. `loopFocus` wraps at the ends. Escape
+  closes the popup.
+- `mode` sets `aria-autocomplete` on the input to `list`, `both`, `inline`, or `none`.
+- `Autocomplete.Status` and `Autocomplete.Empty` announce their content politely, which covers async
+  loading and empty results.
+- Items expose `data-highlighted` and `data-disabled` for styling those states.
+- `Autocomplete.GroupLabel` is associated with its parent group.

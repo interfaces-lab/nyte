@@ -19,7 +19,7 @@ import type { MouseEvent, ReactElement } from "react";
 import { composer, frame, pane, rail, thread } from "./shell.stylex";
 import { dialog, menu, wax } from "./surfaces.stylex";
 
-export type Surface = "none" | "popover" | "context" | "dialog";
+export type Surface = "none" | "popover" | "context" | "dialog" | "stacked";
 
 const PRIMARY = [
   { id: "new", Glyph: IconPlusMedium, label: "New Chat", shortcut: "\u2318N" },
@@ -205,6 +205,102 @@ export function AppShell({
                       the transcript, so the fix belongs in the constructor rather than the view.
                     </p>
                   </div>
+
+                  <div {...stylex.props(thread.userPrompt)}>
+                    Fix both, and make sure the TUI renders it too.
+                  </div>
+
+                  <div {...stylex.props(thread.turn)}>
+                    <p {...stylex.props(thread.thinking)}>
+                      Thought for 4s · two constructors, one renderer
+                    </p>
+                    <p {...stylex.props(thread.para)}>
+                      The desktop reads <code>result.stderr</code> already, so only the protocol
+                      type and the TUI transcript need touching.
+                    </p>
+                    <div {...stylex.props(thread.technical)}>
+                      grep · &quot;ok: false&quot; packages
+                      <span {...stylex.props(thread.ok)}>4 files</span>
+                    </div>
+                    <div {...stylex.props(thread.diff)}>
+                      <div {...stylex.props(thread.diffHeader)}>
+                        packages/protocol/src/tool.ts
+                        <span {...stylex.props(thread.diffStat)}>
+                          <span {...stylex.props(thread.statAdd)}>+2</span>
+                        </span>
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>
+                        {"+  /** Captured when the tool writes to stderr. */"}
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>
+                        {"+  readonly stderr?: string;"}
+                      </div>
+                    </div>
+                    <div {...stylex.props(thread.diff)}>
+                      <div {...stylex.props(thread.diffHeader)}>
+                        packages/tui/src/transcript.ts
+                        <span {...stylex.props(thread.diffStat)}>
+                          <span {...stylex.props(thread.statAdd)}>+6</span>
+                          <span {...stylex.props(thread.statDel)}>−2</span>
+                        </span>
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffDel)}>
+                        {"-  if (!result.ok) return dim(`exit ${result.code}`);"}
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>
+                        {"+  if (!result.ok) {"}
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>
+                        {"+    const detail = result.stderr?.trimEnd();"}
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>
+                        {"+    return detail ? red(detail) : dim(`exit ${result.code}`);"}
+                      </div>
+                      <div {...stylex.props(thread.diffLine, thread.diffAdd)}>{"+  }"}</div>
+                    </div>
+                    <div {...stylex.props(thread.technical)}>
+                      bash · pnpm --dir packages/core test
+                      <span {...stylex.props(thread.ok)}>42 passed</span>
+                    </div>
+                    <div {...stylex.props(thread.changesCard)}>
+                      <div {...stylex.props(thread.changesHead)}>
+                        3 files changed
+                        <span {...stylex.props(thread.diffStat)}>
+                          <span {...stylex.props(thread.statAdd)}>+9</span>
+                          <span {...stylex.props(thread.statDel)}>−3</span>
+                        </span>
+                      </div>
+                      <div {...stylex.props(thread.changesRow)}>
+                        <span {...stylex.props(thread.changesName)}>core/src/tool-result.ts</span>
+                        <span {...stylex.props(thread.statAdd)}>+1</span>
+                        <span {...stylex.props(thread.statDel)}>−1</span>
+                      </div>
+                      <div {...stylex.props(thread.changesRow)}>
+                        <span {...stylex.props(thread.changesName)}>protocol/src/tool.ts</span>
+                        <span {...stylex.props(thread.statAdd)}>+2</span>
+                      </div>
+                      <div {...stylex.props(thread.changesRow)}>
+                        <span {...stylex.props(thread.changesName)}>tui/src/transcript.ts</span>
+                        <span {...stylex.props(thread.statAdd)}>+6</span>
+                        <span {...stylex.props(thread.statDel)}>−2</span>
+                      </div>
+                    </div>
+                    <p {...stylex.props(thread.para)}>
+                      Both hosts now print the captured stream and fall back to the exit code when
+                      it is empty.
+                    </p>
+                  </div>
+
+                  <div {...stylex.props(thread.userPrompt)}>
+                    Add a test for the empty-stderr fallback.
+                  </div>
+
+                  <div {...stylex.props(thread.turn)}>
+                    <div {...stylex.props(thread.working)}>
+                      Writing packages/tui/src/transcript.test.ts
+                      <span {...stylex.props(thread.caret)} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -231,7 +327,7 @@ export function AppShell({
         </section>
       </div>
 
-      {surface !== "none" && surface !== "dialog" && (
+      {surface !== "none" && surface !== "dialog" && surface !== "stacked" && (
         <button
           type="button"
           aria-label="Dismiss"
@@ -281,7 +377,7 @@ export function AppShell({
       </AnimatePresence>
 
       <AnimatePresence initial={false}>
-        {surface === "context" && (
+        {(surface === "context" || surface === "stacked") && (
           <motion.div
             key="context"
             {...SURFACE_MOTION}
@@ -300,11 +396,12 @@ export function AppShell({
               </span>
               Duplicate<span {...stylex.props(menu.key)}>{"\u2318D"}</span>
             </button>
-            <button type="button" {...stylex.props(menu.item)} onClick={close}>
+            <button type="button" {...stylex.props(menu.item, menu.itemSelected)}>
               <span {...stylex.props(menu.check)}>
                 <IconFolderOpen {...ICON} />
               </span>
-              Reveal in Finder
+              Reveal in
+              <span {...stylex.props(menu.chevron)}>{"\u203A"}</span>
             </button>
             <div {...stylex.props(menu.separator)} />
             <button
@@ -321,8 +418,37 @@ export function AppShell({
         )}
       </AnimatePresence>
 
+      {/* The submenu is the second layer: wax on wax, both over the transcript. */}
       <AnimatePresence initial={false}>
-        {surface === "dialog" && (
+        {(surface === "context" || surface === "stacked") && (
+          <motion.div
+            key="submenu"
+            {...SURFACE_MOTION}
+            {...stylex.props(wax.surface, wax.clipped, menu.popup, menu.submenu)}
+            style={{
+              left: anchor.x + 186,
+              top: anchor.y + 52,
+              transformOrigin: "top left",
+            }}
+          >
+            <button type="button" {...stylex.props(menu.item)} onClick={close}>
+              <span {...stylex.props(menu.check)} />
+              Finder
+            </button>
+            <button type="button" {...stylex.props(menu.item)} onClick={close}>
+              <span {...stylex.props(menu.check)} />
+              Terminal
+            </button>
+            <button type="button" {...stylex.props(menu.item)} onClick={close}>
+              <span {...stylex.props(menu.check)} />
+              GitHub
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence initial={false}>
+        {(surface === "dialog" || surface === "stacked") && (
           <motion.div
             key="scrim"
             initial={{ opacity: 0 }}

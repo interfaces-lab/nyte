@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { beat, composer, deadline, press, quit, ready, session, type } from "./drive.ts";
 import type { Scenario, Screen } from "./types.ts";
 
-/** The compact gutter row for a queued follow-up: the queue glyph and the message on one line. */
+/** The compact gutter row for a next-run follow-up: the queue glyph and the message on one line. */
 const gutterRow = (screen: Screen, text: string) =>
   screen.lines.findIndex((line) => line.includes(`↓ ${text}`));
 
@@ -42,14 +42,9 @@ export const queueFollowUps: Scenario = {
             action: { kind: "hold", text: "Queue blocker running" },
           },
           {
-            name: "delivered one",
-            prompt: "follow-up one edited",
-            action: { kind: "reply", text: "Delivered one" },
-          },
-          {
-            name: "delivered three",
+            name: "delivered follow-ups",
             prompt: "follow-up three",
-            action: { kind: "reply", text: "Delivered three" },
+            action: { kind: "reply", text: "Delivered follow-ups" },
           },
         ],
       },
@@ -82,7 +77,7 @@ export const queueFollowUps: Scenario = {
             if (index > 0) assert.equal(row, (rows[index - 1] ?? 0) + 1, "Rows are adjacent");
           }
           const last = screen.lines[rows[3] ?? 0] ?? "";
-          assert.ok(last.includes("queue · ctrl+q pending"), "The last row carries the key");
+          assert.ok(last.includes("next · ctrl+q pending"), "The last row carries the key");
           assert.ok(!screen.text.includes("more ·"), "Nothing is hidden at this height");
           const running = screen.lines.findIndex((line) => line.includes("Queue blocker running"));
           assert.ok(running !== -1 && running < (rows[0] ?? 0), "The gutter sits under the run");
@@ -193,33 +188,40 @@ export const queueFollowUps: Scenario = {
           );
         });
 
-        await beat(
-          "the remaining follow-ups land one at a time, in the queue's order",
-          async () => {
-            provider.release(blocker.id, " Queue blocker finished");
-            await terminal.waitForScreen(
-              (screen) =>
-                screen.text.includes("Delivered three") &&
-                !screen.text.includes("ctrl+q pending") &&
-                ready(screen),
-              deadline(),
-            );
-            const delivered = provider.requests
-              .filter((item) => item.script.startsWith("delivered"))
-              .map((item) => item.prompt);
-            assert.deepEqual(delivered, ["follow-up one edited", "follow-up three"]);
-            assert.ok(
-              !provider.requests.some(
-                (item) => item.prompt === "follow-up two" || item.prompt === "follow-up four",
+        await beat("the remaining follow-ups land together, in inbox order", async () => {
+          provider.release(blocker.id, " Queue blocker finished");
+          await terminal.waitForScreen(
+            (screen) =>
+              screen.text.includes("Delivered follow-ups") &&
+              !screen.text.includes("ctrl+q pending") &&
+              ready(screen),
+            deadline(),
+          );
+          const delivered = provider.requests.find(
+            (item) => item.script === "delivered follow-ups",
+          );
+          assert.ok(delivered !== undefined);
+          assert.deepEqual(
+            delivered.payload.messages
+              .slice(-2)
+              .map((message) =>
+                message.role === "user" && typeof message.content === "string"
+                  ? message.content
+                  : "",
               ),
-              "A removed follow-up is never delivered",
-            );
-            const screen = terminal.screen();
-            const one = screen.lines.findIndex((line) => line.includes("follow-up one edited"));
-            const three = screen.lines.findIndex((line) => line.includes("follow-up three"));
-            assert.ok(one !== -1 && one < three, "Delivered follow-ups read in queue order");
-          },
-        );
+            ["follow-up one edited", "follow-up three"],
+          );
+          assert.ok(
+            !provider.requests.some(
+              (item) => item.prompt === "follow-up two" || item.prompt === "follow-up four",
+            ),
+            "A removed follow-up is never delivered",
+          );
+          const screen = terminal.screen();
+          const one = screen.lines.findIndex((line) => line.includes("follow-up one edited"));
+          const three = screen.lines.findIndex((line) => line.includes("follow-up three"));
+          assert.ok(one !== -1 && one < three, "Delivered follow-ups read in inbox order");
+        });
         await quit(terminal);
       },
     );

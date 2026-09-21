@@ -35,9 +35,9 @@ const styles = stylex.create({
     minWidth: `min(max(${menu.width}, var(--anchor-width)), var(--available-width))`,
     maxWidth: `min(max(320px, var(--anchor-width)), var(--available-width))`,
     maxHeight: "var(--available-height)",
-    padding: 4,
+    padding: menu.padding,
     borderStyle: "none",
-    borderRadius: t.radius2xl,
+    borderRadius: menu.radius,
     outline: "none",
     color: t.textPrimary,
     overflowY: "auto",
@@ -79,11 +79,11 @@ const styles = stylex.create({
     display: "grid",
     gridTemplateColumns: "14px minmax(0, 1fr) auto",
     alignItems: "start",
-    columnGap: 8,
+    columnGap: menu.itemGap,
     minHeight: menu.itemHeight,
-    paddingBlock: 4,
-    paddingInline: 8,
-    borderRadius: t.radiusLg,
+    paddingBlock: menu.itemPaddingBlock,
+    paddingInline: menu.itemPaddingInline,
+    borderRadius: menu.itemRadius,
     outline: "none",
     backgroundColor: {
       default: "transparent",
@@ -595,6 +595,8 @@ export function MenuSwitchItem({
 interface MenuSubmenuProps extends Omit<ItemBodyProps, "meta"> {
   readonly label: string;
   readonly value?: ReactNode;
+  readonly open?: boolean;
+  readonly onOpenChange?: Base.SubmenuRoot.Props["onOpenChange"];
   readonly disabled?: boolean;
   readonly align?: MenuAlign;
   readonly popupStyle?: StyleXStyles;
@@ -604,6 +606,8 @@ interface MenuSubmenuProps extends Omit<ItemBodyProps, "meta"> {
 export function MenuSubmenu({
   label,
   value,
+  open,
+  onOpenChange,
   icon,
   leading,
   size = "default",
@@ -615,7 +619,11 @@ export function MenuSubmenu({
   children,
 }: MenuSubmenuProps): ReactElement {
   return (
-    <Base.SubmenuRoot onOpenChangeComplete={onOpenChangeComplete}>
+    <Base.SubmenuRoot
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={onOpenChangeComplete}
+    >
       <Base.SubmenuTrigger
         disabled={disabled}
         label={label}
@@ -678,14 +686,18 @@ export function MenuSeparator({ inset = false }: { readonly inset?: boolean }): 
 export function ContextMenu({
   label,
   trigger,
+  open,
+  onOpenChange,
   children,
 }: {
   readonly label: string;
   readonly trigger: ReactElement;
+  readonly open?: boolean;
+  readonly onOpenChange?: ContextBase.Root.Props["onOpenChange"];
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <ContextBase.Root>
+    <ContextBase.Root open={open} onOpenChange={onOpenChange}>
       <ContextBase.Trigger render={trigger} />
       <ContextBase.Portal>
         <ContextBase.Positioner

@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
+import { ComposerEditor } from "./composer-editor.tsx";
 import { UserMessageText } from "./message-content.tsx";
 import { ReferenceOpenerProvider } from "./reference-opener.tsx";
 import "../theme/tokens.css";
@@ -23,7 +24,7 @@ export async function run(): Promise<string> {
   const root = createRoot(host);
   let opened = 0;
   let edited = 0;
-  const render = (text: string): void =>
+  const render = (text: string, editable = false): void =>
     flushSync(() =>
       root.render(
         <ReferenceOpenerProvider
@@ -35,8 +36,27 @@ export async function run(): Promise<string> {
             onClick={() => {
               edited += 1;
             }}
+            onKeyDown={() => {
+              edited += 1;
+            }}
           >
-            <UserMessageText text={text} />
+            {editable ? (
+              <ComposerEditor
+                ref={null}
+                document={{ text, selectionStart: 0, selectionEnd: 0 }}
+                files={[]}
+                disabled={false}
+                autoFocus={false}
+                placeholder=""
+                onKeyDown={() => {
+                  edited += 1;
+                }}
+                onReferencesChange={() => {}}
+                onDocumentChange={() => {}}
+              />
+            ) : (
+              <UserMessageText text={text} />
+            )}
           </div>
         </ReferenceOpenerProvider>,
       ),
@@ -67,6 +87,10 @@ export async function run(): Promise<string> {
     const link = host.querySelector("a");
     if (!(link instanceof HTMLAnchorElement)) throw new Error("missing URL link");
     check(link.href === "https://example.com/test", "link destination survives rendering");
+    const linkStyle = getComputedStyle(link);
+    const linkColor = linkStyle.color;
+    check(linkStyle.color !== getComputedStyle(host).color, "URL has a distinct text color");
+    check(linkStyle.backgroundColor !== "rgba(0, 0, 0, 0)", "URL has a highlighted background");
     link.click();
     check(edited === 0, "link does not edit message");
     const links: unknown = Reflect.get(window, "openedLinks");
@@ -87,6 +111,22 @@ export async function run(): Promise<string> {
     check(
       host.textContent === "Message is too long to display",
       "oversized messages avoid mounting Lexical",
+    );
+    for (const editable of [false, true]) {
+      render("https://example.com/shared", editable);
+      await paint();
+      const sharedLink = host.querySelector("a");
+      if (!(sharedLink instanceof HTMLAnchorElement)) throw new Error("missing shared URL");
+      check(getComputedStyle(sharedLink).color === linkColor, "same URL color in both modes");
+      sharedLink.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      sharedLink.click();
+      check(edited === 0, "URL activation does not edit or submit in either mode");
+    }
+    const sharedLinks: unknown = Reflect.get(window, "openedLinks");
+    check(
+      Array.isArray(sharedLinks) &&
+        sharedLinks.slice(1).join(",") === "https://example.com/shared,https://example.com/shared",
+      "both modes open URLs through the host",
     );
     return "passed";
   } finally {

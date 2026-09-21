@@ -109,7 +109,7 @@ test("opening active work does not mark its future completion read", () => {
 test("execution and attention indicators take priority over unread completion", () => {
   const cases = [
     ["working", "Running"],
-    ["waiting", "Waiting"],
+    ["waiting", "Needs attention"],
     ["retry", "Retrying"],
     ["failed", "Failed"],
   ] as const;

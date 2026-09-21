@@ -9,6 +9,8 @@ import type { ToolCallDensity } from "../theme/boot.ts";
 import type { PaneId, SplitDirection } from "./pane-layout.ts";
 
 const DRAFT_LIST_DEBOUNCE_MS = 200;
+/** Sessions whose measured row heights survive a visit; matches the snapshot cache's entry budget. */
+const MEASURED_SESSIONS = 12;
 const strict = { additionalProperties: false };
 
 export interface ComposerViewState {
@@ -251,9 +253,16 @@ export class SessionViewStateStore {
   }
 
   writeSession(sessionId: SessionId, state: SessionViewState): void {
-    const previous = this.#sessions.get(sessionId)?.composer ?? DEFAULT_COMPOSER_VIEW_STATE;
+    const previous = this.#sessions.get(sessionId);
+    const measured =
+      state.transcript.measurements.length > 0 &&
+      previous?.transcript.measurements !== state.transcript.measurements;
+    if (measured) this.#sessions.delete(sessionId);
     this.#sessions.set(sessionId, state);
-    if (composerTextChanged(previous, state.composer)) this.#persist();
+    if (measured) this.#trimMeasurements();
+    if (composerTextChanged(previous?.composer ?? DEFAULT_COMPOSER_VIEW_STATE, state.composer)) {
+      this.#persist();
+    }
   }
 
   updateSession(
@@ -403,6 +412,24 @@ export class SessionViewStateStore {
       id,
       updatedAt: Date.now(),
     };
+  }
+
+  /**
+   * Row heights are the bulk of a session's view state and only speed up the
+   * next visit. Sessions past the recent-measurement budget keep
+   * their draft, scroll, and viewport and start the next visit from estimates.
+   */
+  #trimMeasurements(): void {
+    let measured = 0;
+    for (const [id, state] of [...this.#sessions].toReversed()) {
+      if (state.transcript.measurements.length === 0) continue;
+      measured += 1;
+      if (measured <= MEASURED_SESSIONS) continue;
+      this.#sessions.set(id, {
+        ...state,
+        transcript: { ...state.transcript, measurements: [] },
+      });
+    }
   }
 
   #restore(): void {

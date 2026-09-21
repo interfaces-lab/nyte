@@ -81,8 +81,8 @@ checks availability. Neither proves that a live upstream request succeeds.
   `{"input": ...}` envelope with no other key, and the operation's input schema
   with `additionalProperties: false`. An own `__proto__` key parsed from JSON
   is an extra key and is refused. Operation names are matched with `Object.hasOwn`.
-- `messages.send` and `messages.redeliver`: the lane is in the SDK's landing
-  policy, reported as `invalid_input` at `/lane` before the SDK is called.
+- `messages.send` and `messages.redeliver`: `delivery` is `steer` or `next`,
+  reported as `invalid_input` at `/delivery` before the SDK is called.
 - Every watch: exactly the query keys `sessionId`, and one of `after` (a
   non-negative safe integer) or `live` (`1` or `true`); no repeats, no unknown
   keys.

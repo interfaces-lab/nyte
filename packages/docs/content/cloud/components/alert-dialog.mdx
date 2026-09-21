@@ -13,15 +13,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@nyte-ai/ui";
-import { AlertDialog as AlertDialogPrimitive } from "@nyte-ai/ui/alert-dialog";
+```
+
+The same component is exported unstyled from its own subpath, where `AlertDialog` is the full
+namespace. Both paths export that name, so pick one per file.
+
+```ts title="Unstyled"
+import { AlertDialog } from "@nyte-ai/ui/alert-dialog";
 ```
 
 The [Dialog](/cloud/components/dialog) surface with alert semantics. The two look identical, the
 behavior differs. Reach for it when the user has to answer the question before anything else
 happens.
 
-The root exports give you the styled surface. The `@nyte-ai/ui/alert-dialog` namespace gives you
-every part unstyled, including `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
+The root exports give you the styled surface, trigger and close included. The subpath namespace
+gives you every part unstyled, including `Portal`, `Backdrop`, and `Viewport`.
 
 ## Usage
 
@@ -33,8 +39,8 @@ every part unstyled, including `Portal`, `Backdrop`, `Viewport`, and `createHand
 - The destructive action is the last button and uses `variant="destructive"`.
 - `AlertDialogContent` renders the portal, backdrop, and popup as one unit. Use the namespace
   parts when you need to place them yourself or need a scrollable `Viewport`.
-- To open the dialog from a trigger that sits outside the root, pass one handle from
-  `AlertDialogPrimitive.createHandle()` to both the trigger and the root.
+- To open it from a button that is not the trigger, control it with `open` and `onOpenChange` and
+  drop the trigger.
 
 ## Anatomy
 
@@ -56,19 +62,19 @@ every part unstyled, including `Portal`, `Backdrop`, `Viewport`, and `createHand
 The same tree with the unstyled namespace:
 
 ```tsx
-<AlertDialogPrimitive.Root>
-  <AlertDialogPrimitive.Trigger />
-  <AlertDialogPrimitive.Portal>
-    <AlertDialogPrimitive.Backdrop />
-    <AlertDialogPrimitive.Viewport>
-      <AlertDialogPrimitive.Popup>
-        <AlertDialogPrimitive.Title />
-        <AlertDialogPrimitive.Description />
-        <AlertDialogPrimitive.Close />
-      </AlertDialogPrimitive.Popup>
-    </AlertDialogPrimitive.Viewport>
-  </AlertDialogPrimitive.Portal>
-</AlertDialogPrimitive.Root>
+<AlertDialog.Root>
+  <AlertDialog.Trigger />
+  <AlertDialog.Portal>
+    <AlertDialog.Backdrop />
+    <AlertDialog.Viewport>
+      <AlertDialog.Popup>
+        <AlertDialog.Title />
+        <AlertDialog.Description />
+        <AlertDialog.Close />
+      </AlertDialog.Popup>
+    </AlertDialog.Viewport>
+  </AlertDialog.Portal>
+</AlertDialog.Root>
 ```
 
 ## Examples
@@ -93,16 +99,25 @@ The same tree with the unstyled namespace:
 </AlertDialog>
 ```
 
-A handle links a trigger that lives somewhere else in the tree. Calls on the handle are ignored
-while no root using it is mounted.
+Opening it from somewhere else, a menu item or a keyboard shortcut, is a controlled dialog with no
+trigger.
 
 ```tsx
-const deleteSession = AlertDialogPrimitive.createHandle();
+const [open, setOpen] = useState(false);
 
-<AlertDialogTrigger handle={deleteSession}>Delete session</AlertDialogTrigger>;
+<Button variant="destructive" onClick={() => setOpen(true)}>
+  Delete session
+</Button>
 
-<AlertDialog handle={deleteSession}>
-  <AlertDialogContent>…</AlertDialogContent>
+<AlertDialog open={open} onOpenChange={setOpen}>
+  <AlertDialogContent>
+    <AlertDialogTitle>Delete this session?</AlertDialogTitle>
+    <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+    <AlertDialogFooter>
+      <AlertDialogClose render={<Button variant="ghost" />}>Cancel</AlertDialogClose>
+      <AlertDialogClose render={<Button variant="destructive" />}>Delete</AlertDialogClose>
+    </AlertDialogFooter>
+  </AlertDialogContent>
 </AlertDialog>;
 ```
 
@@ -161,10 +176,10 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The popup has `role="alertdialog"` and `aria-modal="true"`, labelled by the title and described
-  by the description.
-- Outside press does not close. Escape does. To block that, pass an `onOpenChange` that ignores
-  the `escape-key` reason.
+- The popup has `role="alertdialog"`, labelled by `AlertDialogTitle` and described by
+  `AlertDialogDescription`.
+- Outside press does not close. Escape does. To block that, call `details.cancel()` in
+  `onOpenChange` when `details.reason` is `escape-key`.
 - Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
   popup.
 - Content outside the dialog is inert while it is open, and background scroll is locked.

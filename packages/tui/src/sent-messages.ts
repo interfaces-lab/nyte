@@ -105,7 +105,7 @@ export class SentMessages {
     if (mark === "shown") return;
     const item: PendingItem = {
       change: receipt.change,
-      lane: entry.lane,
+      delivery: entry.delivery,
       at: entry.at,
       content: entry.content,
       key: entry.key,

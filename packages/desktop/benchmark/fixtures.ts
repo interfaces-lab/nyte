@@ -137,13 +137,7 @@ function catalogModel(index: number): Model<"openai-responses"> {
   };
 }
 
-async function appendCommit(
-  session: Session,
-  parent: string | null,
-  body: CommitBody,
-  at: number,
-): Promise<string> {
-  const commit = { kind: "commit", parent, body, at } satisfies Commit;
+async function appendCommit(session: Session, commit: Commit): Promise<string> {
   const [oid] = await session.objects.put([commit]);
   if (oid === undefined) throw new Error("SQLite did not return an object id for a commit");
   return oid;
@@ -179,7 +173,13 @@ async function seedSession(
           timestamp: at,
         },
       } satisfies CommitBody;
-      tip = await appendCommit(session, tip, userBody, at);
+      tip = await appendCommit(session, {
+        kind: "commit",
+        parent: tip,
+        body: userBody,
+        start: { kind: "none" },
+        at,
+      });
       const assistantBody = {
         kind: "message",
         message: {
@@ -200,7 +200,14 @@ async function seedSession(
           },
         },
       } satisfies CommitBody;
-      tip = await appendCommit(session, tip, assistantBody, at + 1);
+      tip = await appendCommit(session, {
+        kind: "commit",
+        parent: tip,
+        body: assistantBody,
+        calls: {},
+        outcome: { kind: "ok" },
+        at: at + 1,
+      });
     }
     if (tip === null) throw new Error("A benchmark session must contain at least one turn");
     const outcome = await session.refs.update(

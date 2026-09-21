@@ -18,7 +18,7 @@ import type { Session } from "../../src/kernel/store.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import { createAllTools } from "../../src/tools/index.ts";
-import { assistant, call, landing, message, openSession, user } from "./helpers.ts";
+import { assistant, call, drain, message, openSession, user } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -63,11 +63,12 @@ async function drive(session: Session, streamFn: StreamFn, cwd: string, steps: n
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("go")),
   });
   for (let index = 0; index < steps; index += 1) {
-    await step(session, turn, { head: "main", landing });
+    await step(session, turn, { head: "main", drain });
   }
   const runOid = await session.refs.read(runRef("main"));
   const run = runOid === null ? undefined : await session.objects.get(runOid);
@@ -92,14 +93,16 @@ test("an edit call is stamped as file_edit, and its result as the settled patch"
     4,
   );
   const [, asked, settled] = commits;
-  assert.deepEqual(asked?.calls, { "call-edit": { kind: "file_edit", path: "note.txt" } });
-  const patch = settled?.calls?.["call-edit"];
+  assert.ok(asked !== undefined && "calls" in asked);
+  assert.deepEqual(asked.calls, { "call-edit": { kind: "file_edit", path: "note.txt" } });
+  assert.ok(settled !== undefined && "call" in settled);
+  const patch = settled.call;
   assert.ok(patch?.kind === "file_patch");
   assert.equal(patch.op, "edit");
   assert.equal(patch.path, "note.txt");
   assert.deepEqual([patch.added, patch.removed], [2, 1]);
   assert.match(patch.patch, /^-two\n\+2\n\+2b$/mu);
-  assert.equal(settled?.failure, undefined);
+  assert.equal(settled.tree === null || typeof settled.tree === "string", true);
 });
 
 test("a provider error is classified once, on the commit and on the retry phase", async () => {
@@ -111,8 +114,10 @@ test("a provider error is classified once, on the commit and on the retry phase"
     2,
   );
   const failure = { class: "rate_limit", message: "429 rate limit exceeded" };
-  assert.deepEqual(commits.at(-1)?.failure, failure);
-  assert.equal(commits.at(-1)?.calls, undefined);
+  const failed = commits.at(-1);
+  assert.ok(failed !== undefined && "outcome" in failed);
+  assert.deepEqual(failed.outcome, { kind: "failed", failure });
+  assert.deepEqual(failed.calls, {});
   assert.ok(run?.phase.kind === "retry");
   assert.equal(run.phase.retries, 1);
   assert.deepEqual(run.phase.failure, failure);
@@ -127,9 +132,8 @@ test("an unknown tool is custom under its own name", async () => {
     4,
   );
   const [, asked, settled] = commits;
-  assert.deepEqual(asked?.calls, { "call-x": { kind: "custom", label: "mystery" } });
-  assert.ok(settled?.body.kind === "message" && settled.body.message.role === "toolResult");
-  assert.deepEqual(settled.calls, {
-    "call-x": { kind: "custom", label: "mystery" },
-  });
+  assert.ok(asked !== undefined && "calls" in asked);
+  assert.deepEqual(asked.calls, { "call-x": { kind: "custom", label: "mystery" } });
+  assert.ok(settled !== undefined && "call" in settled);
+  assert.deepEqual(settled.call, { kind: "custom", label: "mystery" });
 });

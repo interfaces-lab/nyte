@@ -5,23 +5,21 @@
  * since a create settles while its subagent keeps working; until the child is
  * listed the tool's own phase stands in and the session id is the name. Every
  * other call on a child (`send`, `await`, `read`, `stop`) is one compact line
- * that links to the same child, never a second card; while the run is blocked
+ * for the same child, never a second card; while the run is blocked
  * on it, the line's place is taken by the card's "Waiting" status. Same law as
  * other tool calls: no status icon, the shimmer is the running state.
  */
-import * as stylex from "@stylexjs/stylex";
-import { Collapsible } from "@nyte-ai/ui/collapsible";
+import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import type { RunConfig, SessionId, ToolClass } from "@nyte-ai/protocol";
-import { Icon } from "../components/icons.tsx";
-import { focus, srOnly } from "../components/ui.tsx";
+import { focus, Hint, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useCatalog } from "../queries.ts";
 import { AGENT_STATE_LABEL, agentState } from "./agent-status.ts";
 import { Countdown } from "./countdown.tsx";
 import { modelDisplayName } from "./model-picker-state.ts";
 import { activityStyles, subagentCallStyles, toolCallStyles } from "./styles.stylex.ts";
-import { useSubagentInspector } from "./subagent-inspector.ts";
+import { useChildSession, useOpenSubagentTray } from "./subagent-sessions.ts";
 import { toolVerb } from "./tool-copy.ts";
 import type { ToolPhase } from "./tool-copy.ts";
 
@@ -45,50 +43,23 @@ function SubagentModel({
   const catalog = useCatalog(session);
   const name = modelDisplayName(catalog.data, model);
   if (name === undefined) return null;
-  return <span {...stylex.props(toolCallStyles.detail)}>{name}</span>;
-}
-
-function useChild(session: SessionId) {
-  return useSubagentInspector()?.children.get(session);
-}
-
-function OpenAgentButton({
-  title,
-  session,
-}: {
-  title: string;
-  session: SessionId;
-}): ReactElement | null {
-  const inspector = useSubagentInspector();
-  if (inspector === undefined) return null;
-  return (
-    <button
-      type="button"
-      aria-label={`Open ${title} in the Agents panel`}
-      title="Open in Agents panel"
-      {...stylex.props(toolCallStyles.openAgent, focus.ring)}
-      onClick={() => inspector.inspect(session)}
-    >
-      <Icon name="expand" size={12} />
-    </button>
-  );
+  return <span {...props(toolCallStyles.detail)}>{name}</span>;
 }
 
 export function SubagentCallView({
   session,
   phase,
-  output,
   density,
   awaited,
 }: {
   session: SessionId;
   phase: ToolPhase;
-  output: string | undefined;
   density: ToolCallDensity;
   /** The run is blocked on this child. */
   awaited: boolean;
 }): ReactElement {
-  const child = useChild(session);
+  const child = useChildSession(session);
+  const openTray = useOpenSubagentTray();
   const title = child?.name ?? session;
   const state = child === undefined ? undefined : agentState(child);
   const blocking = awaited && state !== "completed" && state !== "failed" && state !== "stopped";
@@ -99,21 +70,13 @@ export function SubagentCallView({
     : state === undefined
       ? PHASE_STATUS[phase]
       : AGENT_STATE_LABEL[state];
-  const expandable = output !== undefined;
-  const content = (open: boolean): ReactElement => (
+  const content = (
     <>
-      <span {...stylex.props(subagentCallStyles.head)}>
-        <span {...stylex.props(toolCallStyles.verb)}>{title}</span>
+      <span {...props(subagentCallStyles.head)}>
+        <span {...props(toolCallStyles.verb)}>{title}</span>
         {child !== undefined && <SubagentModel session={session} model={child.config.model} />}
-        {expandable && (
-          <span {...stylex.props(toolCallStyles.chevron, open && toolCallStyles.chevronOpen)}>
-            <Icon name="chevron-right" size={12} />
-          </span>
-        )}
       </span>
-      <span {...stylex.props(subagentCallStyles.status, running && activityStyles.shimmer)}>
-        {status}
-      </span>
+      <span {...props(subagentCallStyles.status, running && activityStyles.shimmer)}>{status}</span>
     </>
   );
   const lineStyles = [
@@ -123,32 +86,18 @@ export function SubagentCallView({
     density === "detailed" && subagentCallStyles.lineDetailed,
     failed && toolCallStyles.failed,
   ];
-  const line = expandable ? (
-    <Collapsible.Trigger
-      {...stylex.props(...lineStyles, focus.ring)}
-      render={(props, state) => <button {...props}>{content(state.open)}</button>}
-    />
-  ) : (
-    <div {...stylex.props(...lineStyles, toolCallStyles.lineStatic)}>{content(false)}</div>
-  );
 
-  return (
-    <Collapsible.Root disabled={!expandable} {...stylex.props(toolCallStyles.root)}>
-      <div {...stylex.props(toolCallStyles.row)}>
-        {line}
-        <OpenAgentButton title={title} session={session} />
-      </div>
-      {output !== undefined && (
-        <Collapsible.Panel
-          role="region"
-          aria-label={`${title} report`}
-          data-nyte-scrollport
-          {...stylex.props(toolCallStyles.output)}
-        >
-          {output}
-        </Collapsible.Panel>
-      )}
-    </Collapsible.Root>
+  return openTray === undefined ? (
+    <div {...props(...lineStyles, toolCallStyles.lineStatic)}>{content}</div>
+  ) : (
+    <button
+      type="button"
+      aria-label={`Open ${title}`}
+      {...props(...lineStyles, focus.ring)}
+      onClick={() => openTray(session)}
+    >
+      {content}
+    </button>
   );
 }
 
@@ -167,36 +116,50 @@ export function SubagentLineView({
 }): ReactElement {
   const session =
     toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
-  const child = useChild(session)?.name ?? session;
+  const child = useChildSession(session)?.name ?? session;
+  const openTray = useOpenSubagentTray();
   const label =
     toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
       ? `${child} +${String(toolClass.target.sessions.length - 1)}`
       : child;
-  return (
-    <div {...stylex.props(toolCallStyles.row)}>
-      <div
-        data-tool-status={phase}
-        {...stylex.props(
-          toolCallStyles.line,
-          density === "detailed" && toolCallStyles.lineDetailed,
-          toolCallStyles.lineStatic,
-          phase === "failed" && toolCallStyles.failed,
-        )}
-      >
-        <span {...stylex.props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
-          {toolVerb(toolClass, phase)}
+  const content = (
+    <>
+      <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
+        {toolVerb(toolClass, phase)}
+      </span>
+      {phase !== "done" && <span {...props(srOnly)}>{PHASE_STATUS[phase]}</span>}
+      <Hint content={label} trigger={<span {...props(toolCallStyles.detail)}>{label}</span>} />
+      {phase === "running" && until !== undefined && (
+        <span {...props(toolCallStyles.detail)}>
+          <Countdown until={until} />
         </span>
-        {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_STATUS[phase]}</span>}
-        <span title={label} {...stylex.props(toolCallStyles.detail)}>
-          {label}
-        </span>
-        {phase === "running" && until !== undefined && (
-          <span {...stylex.props(toolCallStyles.detail)}>
-            <Countdown until={until} />
-          </span>
-        )}
+      )}
+    </>
+  );
+  const lineStyles = [
+    toolCallStyles.line,
+    density === "detailed" && toolCallStyles.lineDetailed,
+    phase === "failed" && toolCallStyles.failed,
+  ];
+  if (openTray === undefined) {
+    return (
+      <div data-tool-status={phase} {...props(...lineStyles, toolCallStyles.lineStatic)}>
+        {content}
       </div>
-      <OpenAgentButton title={label} session={session} />
-    </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-tool-status={phase}
+      {...props(...lineStyles, focus.ring)}
+      onClick={() =>
+        toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
+          ? openTray()
+          : openTray(session)
+      }
+    >
+      {content}
+    </button>
   );
 }

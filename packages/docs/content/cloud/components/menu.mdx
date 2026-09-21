@@ -18,8 +18,8 @@ arrow.
 - Items are actions. To choose one of several values use a `DropdownMenuRadioGroup`. For a
   form-style control use [Select](/cloud/components/select).
 - Put `variant="destructive"` on the last item, after a separator.
-- `inset` on items and labels aligns their text with radio items in the same menu, which reserve a
-  gutter on the left for the indicator.
+- `inset` adds leading padding to an item or label, so its text lines up with rows that start with
+  an icon.
 - `DropdownMenuShortcut` is display only. It does not bind the key.
 - `closeOnClick` controls whether clicking an item closes the menu. It defaults to `true` on
   `Menu.Item` and `false` on `Menu.CheckboxItem`.
@@ -103,18 +103,23 @@ arrow.
       Rename
       <DropdownMenuShortcut>⌘R</DropdownMenuShortcut>
     </DropdownMenuItem>
+    <DropdownMenuItem>Duplicate</DropdownMenuItem>
     <DropdownMenuSeparator />
     <DropdownMenuRadioGroup value={effort} onValueChange={setEffort}>
       <DropdownMenuLabel inset>Effort</DropdownMenuLabel>
       <DropdownMenuRadioItem value="low">Low</DropdownMenuRadioItem>
+      <DropdownMenuRadioItem value="medium">Medium</DropdownMenuRadioItem>
       <DropdownMenuRadioItem value="high">High</DropdownMenuRadioItem>
     </DropdownMenuRadioGroup>
+    <DropdownMenuSeparator />
     <DropdownMenuSub>
       <DropdownMenuSubTrigger>Move to</DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
+        <DropdownMenuItem>Inbox</DropdownMenuItem>
         <DropdownMenuItem>Archive</DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
+    <DropdownMenuSeparator />
     <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
   </DropdownMenuContent>
 </DropdownMenu>
@@ -130,20 +135,20 @@ Open a dialog from an item by controlling the dialog and setting its state in `o
 
 Each styled component wraps a Base UI part.
 
-| Styled                  | Part                                       |
-| ----------------------- | ------------------------------------------ |
-| `DropdownMenu`          | `Menu.Root`                                |
-| `DropdownMenuTrigger`   | `Menu.Trigger`                             |
-| `DropdownMenuContent`   | `Menu.Portal`, `Positioner`, `Popup`       |
-| `DropdownMenuItem`      | `Menu.Item`                                |
-| `DropdownMenuLabel`     | `Menu.GroupLabel`                          |
-| `DropdownMenuSeparator` | `Menu.Separator`                           |
-| `DropdownMenuRadioGroup`| `Menu.RadioGroup`                          |
-| `DropdownMenuRadioItem` | `Menu.RadioItem`, `RadioItemIndicator`     |
-| `DropdownMenuSub`       | `Menu.SubmenuRoot`                         |
-| `DropdownMenuSubTrigger`| `Menu.SubmenuTrigger`                      |
-| `DropdownMenuSubContent`| `DropdownMenuContent` with submenu defaults |
-| `DropdownMenuShortcut`  | a `<span>` pushed to the right of the item |
+| Styled                   | Part                                        |
+| ------------------------ | ------------------------------------------- |
+| `DropdownMenu`           | `Menu.Root`                                 |
+| `DropdownMenuTrigger`    | `Menu.Trigger`                              |
+| `DropdownMenuContent`    | `Menu.Portal`, `Positioner`, `Popup`        |
+| `DropdownMenuItem`       | `Menu.Item`                                 |
+| `DropdownMenuLabel`      | `Menu.GroupLabel`                           |
+| `DropdownMenuSeparator`  | `Menu.Separator`                            |
+| `DropdownMenuRadioGroup` | `Menu.RadioGroup`                           |
+| `DropdownMenuRadioItem`  | `Menu.RadioItem`, `RadioItemIndicator`      |
+| `DropdownMenuSub`        | `Menu.SubmenuRoot`                          |
+| `DropdownMenuSubTrigger` | `Menu.SubmenuTrigger`                       |
+| `DropdownMenuSubContent` | `DropdownMenuContent` with submenu defaults |
+| `DropdownMenuShortcut`   | a `<span>` pushed to the right of the item  |
 
 `DropdownMenuContent` forwards these to the positioner and passes the rest to the popup.
 
@@ -160,10 +165,13 @@ Each styled component wraps a Base UI part.
 `DropdownMenuItem`, `DropdownMenuRadioItem`, `DropdownMenuSubTrigger`, and `DropdownMenuLabel` add
 `inset`. `DropdownMenuItem` also adds `variant`.
 
-| Prop      | Type                         | Default     | Description                             |
-| --------- | ---------------------------- | ----------- | --------------------------------------- |
-| `inset`   | `boolean`                    | `false`     | Left padding to align with radio items. |
-| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color.                      |
+| Prop      | Type                         | Default     | Description                                       |
+| --------- | ---------------------------- | ----------- | ------------------------------------------------- |
+| `inset`   | `boolean`                    | `false`     | Leading padding for rows that start with an icon. |
+| `variant` | `"default" \| "destructive"` | `"default"` | Destructive color.                                |
+
+Every styled export accepts `xstyle` alongside `className` and `style`. See
+[Theming](/cloud/foundations/theming).
 
 The part tables below come from Base UI, MIT, © Material-UI SAS.
 
@@ -194,6 +202,10 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 ### Arrow
 
 <include>../../base-ui-reference/menu/Arrow.md</include>
+
+### Viewport
+
+<include>../../base-ui-reference/menu/Viewport.md</include>
 
 ### Item
 
@@ -254,5 +266,5 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
   the highlight wrapping at the ends.
 - Arrow Right opens a submenu and moves focus into it, Arrow Left closes it. Submenus also open on
   hover.
-- Disabled items are `aria-disabled` and skipped by keyboard navigation.
+- Disabled items are `aria-disabled`. They stay reachable with the arrow keys and do not activate.
 - Separators are `role="separator"`.

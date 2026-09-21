@@ -109,6 +109,7 @@ async function fixture() {
   const sdk = await createNyte({
     store,
     model,
+    drain: "all",
     streamFn,
     env: { cwd: directory },
     models: { getModels: () => [model], getAvailable: async () => [model], getModel: () => model },
@@ -251,6 +252,7 @@ test.each(["auto", "local-search", "off"])(
           sessionId: child.sessionId,
           runId: call.runId,
           callId: call.callId,
+          waitId: call.waitId,
           reply: selectionReply,
         },
       ]);

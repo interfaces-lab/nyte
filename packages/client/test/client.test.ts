@@ -98,11 +98,9 @@ test("a call is one POST with the bearer token, the caller's headers, and an exp
 });
 
 test("an operation without input sends an empty envelope, not an input key", async () => {
-  const { seen, fetchFn } = scripted(() =>
-    json(200, { ok: true, defined: true, value: { lanes: [], drain: "one" } }),
-  );
+  const { seen, fetchFn } = scripted(() => json(200, { ok: true, defined: true, value: [] }));
   const client = createNyteClient({ baseUrl: "http://h.test", fetch: fetchFn });
-  await client.landing();
+  await client.provider.models.list();
   assert.deepEqual(JSON.parse(seen[0]?.body ?? ""), {});
 });
 

@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Host, Picker, Text } from "@expo/ui/swift-ui";
 import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import type { NyteClient } from "@nyte-ai/client";
-import type { SessionId, VcsDiff } from "@nyte-ai/protocol";
+import type { SessionId, VcsDiff, VcsFileKind } from "@nyte-ai/protocol";
 import { parsePatchFacts, type PatchFile } from "@nyte-ai/client";
 import { EmptyState } from "../ui/empty-state.tsx";
 import { GlassButton } from "../ui/glass-button.tsx";
@@ -82,6 +82,25 @@ function fileSection(file: PatchFile, path: string, subtitle: string | undefined
   };
 }
 
+function vcsStatus(kind: VcsFileKind): FileSection["status"] {
+  switch (kind) {
+    case "added":
+    case "untracked":
+      return "A";
+    case "modified":
+    case "conflicted":
+      return "M";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
 export function ChangesScreen({
   client,
   sessionId,
@@ -108,15 +127,16 @@ export function ChangesScreen({
     enabled: source === "mac",
     queryFn: () =>
       client.workspace.vcs.diff({
-        sessionId,
+        target: { kind: "session", sessionId },
         scope: { kind: "worktree" },
         paths: conversationPaths.length === 0 ? undefined : conversationPaths,
+        ignoreWhitespace: false,
       }),
   });
   const snapshotQuery = useQuery({
     queryKey: ["vcs-snapshot", sessionId],
     enabled: source === "uncommitted",
-    queryFn: () => client.workspace.vcs.snapshot({ sessionId }),
+    queryFn: () => client.workspace.vcs.snapshot({ target: { kind: "session", sessionId } }),
   });
   const uncommitted =
     snapshotQuery.data?.kind === "repository"
@@ -154,11 +174,12 @@ export function ChangesScreen({
     if (macDiffsQuery.data === undefined) return [];
     const out: FileSection[] = [];
     for (const diff of macDiffsQuery.data) {
+      if (diff.kind === "binary") continue;
       const facts = parsePatchFacts(diff.patch);
       if (facts === undefined) continue;
       for (const file of facts.files) {
         const path = file.path ?? diff.path;
-        out.push(fileSection(file, path, undefined));
+        out.push({ ...fileSection(file, path, undefined), status: vcsStatus(diff.status) });
       }
     }
     return out;
@@ -209,7 +230,7 @@ export function ChangesScreen({
           uncommitted.map((file) => (
             <html.div key={`${file.where}:${file.path}`} style={styles.fileHeader}>
               <html.div style={styles.badge}>
-                <html.span style={styles.badgeText}>{file.kind[0]?.toUpperCase()}</html.span>
+                <html.span style={styles.badgeText}>{vcsStatus(file.kind)}</html.span>
               </html.div>
               <html.div style={styles.fileHeaderText}>
                 <html.span style={[textStyles.secondary, styles.fileName]}>{file.path}</html.span>

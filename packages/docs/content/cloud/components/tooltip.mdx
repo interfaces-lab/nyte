@@ -10,7 +10,7 @@ import { Tooltip } from "@nyte-ai/ui/tooltip";
 A hint that appears on hover or focus. Reach for it to label an icon-only control in a dense
 interface.
 
-No Nyte styling on this one, you own the visual layer.
+No Nyte styling here.
 
 ## Usage
 
@@ -19,7 +19,7 @@ No Nyte styling on this one, you own the visual layer.
 - Tooltips are disabled on touch devices. Never put information there that a user would miss.
 - If the trigger exists to open the popup, use [Popover](/cloud/components/popover) with
   `openOnHover` instead. If the trigger does something else, it is a tooltip.
-- For contextual feedback after an action, use an anchored [Toast](/cloud/components/toast).
+- For feedback after an action, use [Toast](/cloud/components/toast).
 - The tooltip opens after `delay`, which is 600ms, and closes after `closeDelay`, which is 0.
   Both live on the trigger.
 - Wrap a group in `Tooltip.Provider` to share one delay. Once one tooltip is visible, the next
@@ -51,17 +51,18 @@ No Nyte styling on this one, you own the visual layer.
 
 An icon button with a matching label.
 
+<Preview>
+  <TooltipDemo />
+</Preview>
+
 ```tsx
 <Tooltip.Root>
-  <Tooltip.Trigger aria-label="Copy output">
-    <CopyIcon />
+  <Tooltip.Trigger render={<Button size="icon-sm" variant="ghost" />} aria-label="Copy output">
+    <IconClipboard size={14} />
   </Tooltip.Trigger>
   <Tooltip.Portal>
     <Tooltip.Positioner sideOffset={6}>
-      <Tooltip.Popup>
-        <Tooltip.Arrow />
-        Copy output
-      </Tooltip.Popup>
+      <Tooltip.Popup>Copy output</Tooltip.Popup>
     </Tooltip.Positioner>
   </Tooltip.Portal>
 </Tooltip.Root>

@@ -3,6 +3,7 @@ import { afterAll, afterEach, test, vi } from "vitest";
 import { QueryObserver } from "@tanstack/react-query";
 import { sessionId } from "@nyte-ai/protocol";
 import type {
+  CommitBody,
   SessionEvent,
   SessionInfo,
   SessionMetadata,
@@ -84,19 +85,58 @@ afterAll(() => vi.unstubAllGlobals());
 function commit(
   oid: string,
   parent: string | null,
-  body: CommitEvent["item"]["commit"]["body"],
+  body: Extract<CommitBody, { kind: "message" }>,
   seq: number,
   run = "r1",
 ): CommitEvent {
+  const message = body.message;
+  const stored =
+    message.role === "assistant"
+      ? ({
+          kind: "commit",
+          parent,
+          body: { kind: "message", message },
+          calls: Object.fromEntries(
+            message.content.flatMap((part) =>
+              part.type === "toolCall"
+                ? [[part.id, { kind: "custom", label: part.name }] as const]
+                : [],
+            ),
+          ),
+          outcome: { kind: "ok" },
+          run,
+          at: seq,
+        } satisfies CommitEvent["item"]["commit"])
+      : message.role === "toolResult"
+        ? ({
+            kind: "commit",
+            parent,
+            body: { kind: "message", message },
+            call: { kind: "custom", label: message.toolName },
+            tree: null,
+            run,
+            at: seq,
+          } satisfies CommitEvent["item"]["commit"])
+        : ({
+            kind: "commit",
+            parent,
+            body: { kind: "message", message },
+            start: { kind: "none" },
+            run,
+            at: seq,
+          } satisfies CommitEvent["item"]["commit"]);
   return {
     kind: "commit",
     head: "main",
     seq,
-    item: { oid, commit: { kind: "commit", parent, body, run, at: seq } },
+    item: { oid, commit: stored },
   };
 }
 
-function assistant(content: AssistantMessage["content"]): CommitEvent["item"]["commit"]["body"] {
+function assistant(content: AssistantMessage["content"]): {
+  readonly kind: "message";
+  readonly message: AssistantMessage;
+} {
   return {
     kind: "message",
     message: {
@@ -204,6 +244,19 @@ function running(phase: Extract<SessionEvent, { kind: "run" }>["run"]["phase"], 
       startedAt: 1,
     },
   } satisfies SessionEvent;
+}
+
+function activeSnapshot(events: readonly CommitEvent[], seq: number): SessionSnapshot {
+  const current = snapshot(events, seq);
+  const run = running({ kind: "tools" }, seq).run;
+  return {
+    ...current,
+    run,
+    session: {
+      ...current.session,
+      heads: current.session.heads.map((head) => ({ ...head, run })),
+    },
+  };
 }
 
 function durable(): SessionSnapshot {
@@ -322,7 +375,7 @@ test("queue, name, and run events fold locally and reread only session metadata"
     kind: "queued",
     seq: 1,
     head: "main",
-    item: { change: "queued", lane: "steer", content: "hello", at: 1 },
+    item: { change: "queued", delivery: "steer", content: "hello", at: 1 },
   });
   assert.deepEqual(
     durable().pending.map((item) => item.change),
@@ -341,7 +394,7 @@ test("queue, name, and run events fold locally and reread only session metadata"
 });
 
 test("tool progress does not refetch every delegated child's snapshot", async () => {
-  const view = await open(snapshot([], 0));
+  const view = await open(activeSnapshot([], 0));
   const children = observeRefreshes(keys.children(ID));
   for (let index = 0; index < 100; index += 1) await view.enqueue(progress("c1", String(index)));
   frame();
@@ -506,7 +559,7 @@ test("an assistant commit settles its streamed text and the transcript row in on
 });
 
 test("a commit the transcript cannot append keeps the overlay until the fresh snapshot lands", async () => {
-  const view = await open(snapshot([calls], 1));
+  const view = await open(activeSnapshot([calls], 1));
   const read = Promise.withResolvers<SessionSnapshot>();
   bridge.snapshot.mockReturnValueOnce(read.promise);
   await view.emit(progress("c1", "still working"));
@@ -572,7 +625,7 @@ test("a fold-forced rebase reconciles what its dropped events would have, and bo
 
 test("a failed snapshot keeps the output on screen and is retried until it lands", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  const view = await open(snapshot([calls], 1));
+  const view = await open(activeSnapshot([calls], 1));
   bridge.snapshot.mockRejectedValueOnce(new Error("snapshot unavailable"));
   await view.emit(progress("c1", "still working"));
   const one = result("c1", calls.item.oid, 3);
@@ -701,7 +754,7 @@ test("a fresh session row repairs stale rows in the directory and preview", asyn
 });
 
 test("a same-seq burst publishes once without losing deltas or changing tool/order identities", async () => {
-  const view = await open(snapshot([], 0));
+  const view = await open(activeSnapshot([], 0));
   await view.emit(progress("c1", "working"));
   await view.emit(text("start"));
   const before = view.live.getSnapshot();

@@ -26,9 +26,8 @@ export const trayStyles = create({
     alignItems: "center",
     gap: 12,
     minHeight: tray.headerHeight,
+    paddingBlock: 8,
     paddingInline: tray.paddingInline,
-    paddingTop: 8,
-    paddingBottom: 0,
     flexShrink: 0,
   },
   title: {
@@ -37,6 +36,7 @@ export const trayStyles = create({
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    fontSize: t.fontBase,
     fontWeight: 400,
     lineHeight: "20px",
     color: t.textSecondary,

@@ -1,4 +1,4 @@
-import type { HighlightRequest } from "./syntax-highlighter.worker.ts";
+import type { HighlightCancel, HighlightRequest } from "./syntax-highlighter.worker.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 // Fenced code paints as escaped plain text immediately. Known grammars upgrade
@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
-import { focus } from "../components/ui.tsx";
+import { focus, Hint } from "../components/ui.tsx";
 import { keys } from "../query-keys.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { codeBlockStyles } from "./styles.stylex.ts";
@@ -66,69 +66,182 @@ interface HighlightedCode {
   readonly html: string;
 }
 
+type HighlightResult =
+  | { readonly kind: "highlighted"; readonly value: HighlightedCode }
+  | { readonly kind: "plain" };
+
+const PLAIN_HIGHLIGHT = { kind: "plain" } as const;
 const HIGHLIGHT_CACHE_LIMIT = 64;
+const HIGHLIGHT_CACHE_MAX_BYTES = 8 * 1024 * 1024;
+// Long enough to span a scroll through a stretch of fences, short enough
+// that grammars do not sit resident through an idle session.
+const HIGHLIGHT_WORKER_IDLE_MS = 10_000;
 const highlightCache = new Map<string, HighlightedCode>();
-const pendingHighlights = new Map<number, (html: string) => void>();
+const pendingHighlights = new Map<number, (html: string | undefined) => void>();
 const highlightReply = Type.Object({
   id: Type.Number(),
   html: Type.Union([Type.String(), Type.Null()]),
 });
+let highlightCacheBytes = 0;
 let worker: Worker | undefined;
+let idleRelease: ReturnType<typeof setTimeout> | undefined;
 let nextHighlightId = 0;
+
+function clearIdleRelease(): void {
+  if (idleRelease === undefined) return;
+  clearTimeout(idleRelease);
+  idleRelease = undefined;
+}
+
+function scheduleIdleRelease(): void {
+  clearIdleRelease();
+  if (worker === undefined || pendingHighlights.size > 0) return;
+  idleRelease = setTimeout(() => {
+    idleRelease = undefined;
+    if (worker === undefined || pendingHighlights.size > 0) return;
+    worker.terminate();
+    worker = undefined;
+  }, HIGHLIGHT_WORKER_IDLE_MS);
+}
+
+function finishHighlight(id: number, html: string | undefined): void {
+  const notify = pendingHighlights.get(id);
+  pendingHighlights.delete(id);
+  notify?.(html);
+  scheduleIdleRelease();
+}
+
+function cancelHighlight(id: number): void {
+  if (!pendingHighlights.delete(id)) return;
+  try {
+    worker?.postMessage({ id, cancel: true } satisfies HighlightCancel);
+  } catch {
+    // The worker keeps the stale request; its reply finds no listener.
+  }
+  scheduleIdleRelease();
+}
+
+function failWorker(failed: Worker): void {
+  if (worker !== failed) return;
+  failed.terminate();
+  worker = undefined;
+  clearIdleRelease();
+  const pending = [...pendingHighlights.values()];
+  pendingHighlights.clear();
+  for (const settle of pending) settle(undefined);
+}
 
 function enqueueHighlight(
   code: string,
   language: string,
-  receive: (html: string) => void,
-): () => void {
+  receive: (html: string | undefined) => void,
+): number {
+  clearIdleRelease();
   if (worker === undefined) {
-    worker = new Worker(new URL("./syntax-highlighter.worker.ts", import.meta.url), {
+    const created = new Worker(new URL("./syntax-highlighter.worker.ts", import.meta.url), {
       type: "module",
     });
-    worker.onmessage = (event: MessageEvent<unknown>) => {
-      const { id, html } = Value.Parse(highlightReply, event.data);
-      const notify = pendingHighlights.get(id);
-      pendingHighlights.delete(id);
-      if (html !== null) notify?.(html);
+    worker = created;
+    created.onmessage = (event: MessageEvent<unknown>) => {
+      try {
+        const { id, html } = Value.Parse(highlightReply, event.data);
+        finishHighlight(id, html ?? undefined);
+      } catch {
+        failWorker(created);
+      }
     };
-    worker.onerror = () => {
-      worker?.terminate();
-      worker = undefined;
-      pendingHighlights.clear();
-    };
+    created.onerror = () => failWorker(created);
+    created.onmessageerror = () => failWorker(created);
   }
   const id = ++nextHighlightId;
   pendingHighlights.set(id, receive);
-  worker.postMessage({ id, code, language } satisfies HighlightRequest);
-  return () => {
-    pendingHighlights.delete(id);
-  };
+  try {
+    worker.postMessage({ id, code, language } satisfies HighlightRequest);
+  } catch {
+    failWorker(worker);
+  }
+  return id;
+}
+
+function highlightKey(code: string, language: string): string {
+  let hash = 2_166_136_261;
+  for (const text of [language, code]) {
+    for (let index = 0; index < text.length; index += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(index), 16_777_619);
+    }
+    hash = Math.imul(hash ^ 0, 16_777_619);
+  }
+  return `${String(language.length)}:${String(code.length)}:${String(hash >>> 0)}`;
 }
 
 function cachedHighlight(code: string, language: string): HighlightedCode | undefined {
-  const key = `${String(language.length)}:${language}${code}`;
-  return highlightCache.get(key);
+  const key = highlightKey(code, language);
+  const cached = highlightCache.get(key);
+  if (cached?.code !== code || cached.language !== language) return undefined;
+  highlightCache.delete(key);
+  highlightCache.set(key, cached);
+  return cached;
+}
+
+function highlightBytes(value: HighlightedCode): number {
+  return (value.code.length + value.language.length + value.html.length) * 2;
 }
 
 function rememberHighlight(value: HighlightedCode): void {
-  const key = `${String(value.language.length)}:${value.language}${value.code}`;
+  const bytes = highlightBytes(value);
+  if (bytes > HIGHLIGHT_CACHE_MAX_BYTES) return;
+  const key = highlightKey(value.code, value.language);
+  const previous = highlightCache.get(key);
+  if (previous !== undefined) highlightCacheBytes -= highlightBytes(previous);
   highlightCache.delete(key);
   highlightCache.set(key, value);
-  if (highlightCache.size > HIGHLIGHT_CACHE_LIMIT) {
+  highlightCacheBytes += bytes;
+  while (
+    highlightCache.size > HIGHLIGHT_CACHE_LIMIT ||
+    highlightCacheBytes > HIGHLIGHT_CACHE_MAX_BYTES
+  ) {
     const oldest = highlightCache.keys().next().value;
-    if (oldest !== undefined) highlightCache.delete(oldest);
+    if (oldest === undefined) break;
+    const removed = highlightCache.get(oldest);
+    highlightCache.delete(oldest);
+    if (removed !== undefined) highlightCacheBytes -= highlightBytes(removed);
   }
 }
 
 // The reply also fills the module cache, so a remounted row paints from
-// `cachedHighlight` instead of asking the worker again.
-function requestHighlight(code: string, language: string): Promise<HighlightedCode> {
+// `cachedHighlight` instead of asking the worker again. Leaving early pulls
+// the request out of both queues; nothing waits on a result nobody will show.
+export function requestHighlight(
+  code: string,
+  language: string,
+  signal: AbortSignal,
+): Promise<HighlightResult> {
+  if (signal.aborted) return Promise.resolve(PLAIN_HIGHLIGHT);
   return new Promise((resolve) => {
-    enqueueHighlight(code, language, (html) => {
+    let settled = false;
+    const request = { id: 0, abort: (): void => {} };
+    const settle = (html: string | undefined): void => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", request.abort);
+      if (html === undefined) {
+        resolve(PLAIN_HIGHLIGHT);
+        return;
+      }
       const value = { code, language, html };
       rememberHighlight(value);
-      resolve(value);
-    });
+      resolve({ kind: "highlighted", value });
+    };
+    request.abort = (): void => {
+      cancelHighlight(request.id);
+      settle(undefined);
+    };
+    signal.addEventListener("abort", request.abort, { once: true });
+    try {
+      request.id = enqueueHighlight(code, language, settle);
+    } catch {
+      settle(undefined);
+    }
   });
 }
 
@@ -141,11 +254,12 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
   const cached = cachedHighlight(code, language);
   const { data } = useQuery({
     queryKey: keys.highlight(language, code),
-    queryFn: () => requestHighlight(code, language),
+    queryFn: ({ signal }) => requestHighlight(code, language, signal),
     enabled: nearViewport && HIGHLIGHTABLE.has(language) && cached === undefined,
     staleTime: Infinity,
+    gcTime: 0,
   });
-  const html = data?.html ?? cached?.html;
+  const html = data?.kind === "highlighted" ? data.value.html : cached?.html;
 
   useMountEffect(() => {
     const element = figure.current;
@@ -164,21 +278,25 @@ export function CodeBlock({ code, lang }: { code: string; lang: string }): React
 
   return (
     <figure ref={figure} {...stylex.props(codeBlockStyles.figure)}>
-      <Button
-        unstyled
-        type="button"
-        aria-label={copied ? "Code copied" : "Copy code"}
-        title={copied ? "Copied" : "Copy code"}
-        onClick={() => {
-          navigator.clipboard
-            .writeText(code)
-            .then(() => setCopiedCode(code))
-            .catch(() => undefined);
-        }}
-        {...stylex.props(codeBlockStyles.copy, focus.ringInset)}
-      >
-        <Icon name={copied ? "checkmark" : "copy"} size={13} />
-      </Button>
+      <Hint
+        content={copied ? "Copied" : "Copy code"}
+        trigger={
+          <Button
+            unstyled
+            type="button"
+            aria-label={copied ? "Code copied" : "Copy code"}
+            onClick={() => {
+              navigator.clipboard
+                .writeText(code)
+                .then(() => setCopiedCode(code))
+                .catch(() => undefined);
+            }}
+            {...stylex.props(codeBlockStyles.copy, focus.ringInset)}
+          >
+            <Icon name={copied ? "checkmark" : "copy"} size={13} />
+          </Button>
+        }
+      />
       <div data-nyte-scrollport {...stylex.props(codeBlockStyles.scroll)}>
         {html === undefined ? (
           <pre {...stylex.props(codeBlockStyles.pre)}>

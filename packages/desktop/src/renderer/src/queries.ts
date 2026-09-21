@@ -6,12 +6,13 @@ import {
   queryOptions,
   useMutation,
   useMutationState,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type { MutationState } from "@tanstack/react-query";
 import { projectPreference } from "./preference-projection.ts";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { keys } from "./query-keys.ts";
 import { SessionActions } from "./session-actions.ts";
 import {
@@ -21,6 +22,8 @@ import {
 import type { ConfigureSessionPatch, PendingConfiguration } from "./session-configuration.ts";
 export { keys } from "./query-keys.ts";
 import { toast } from "@nyte-ai/ui/sonner";
+import { sessionId } from "@nyte-ai/protocol";
+import { isTerminalPhase } from "@nyte-ai/client";
 import type { MentionFile } from "@nyte-ai/client";
 import type {
   PluginCatalog,
@@ -28,6 +31,7 @@ import type {
   RunId,
   SessionId,
   SessionInfo,
+  SessionSnapshot,
   SettingInfo,
   VcsDiff,
   VcsLog,
@@ -52,7 +56,9 @@ import { loadSessionDirectory, type SessionPage } from "./session-directory.ts";
 // this cache; neither module touches the other while it evaluates.
 import { readSessionSnapshot, sessionSelection } from "./live.ts";
 import { nyte } from "./nyte.ts";
+import { RunDiffFreshness } from "./run-diff-freshness.ts";
 import { SessionObservations } from "./session-freshness.ts";
+import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
 import { agentState } from "./conversation/agent-status.ts";
 import type { WorkspaceSearchInput } from "../../shared/workspace-editor.ts";
@@ -69,12 +75,18 @@ export const queryClient = new QueryClient({
   },
 });
 
+installSnapshotCacheBudget(queryClient);
+
 const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
 
 function actionsFor(client: QueryClient): SessionActions {
   const existing = sessionActionsByClient.get(client);
   if (existing !== undefined) return existing;
-  const actions = new SessionActions({ client, sessions: nyte.sessions });
+  const actions = new SessionActions({
+    client,
+    sessions: nyte.sessions,
+    releaseResources: (sessionId) => releaseSessionRendererMemory(client, sessionId),
+  });
   sessionActionsByClient.set(client, actions);
   return actions;
 }
@@ -97,6 +109,13 @@ export const SNAPSHOT_WARM_MS = 1_000;
 const readHost = () => nyte.host.state();
 const readWorkspaces = () => nyte.workspace.list();
 const sessionObservations = new SessionObservations();
+const runDiffFreshness = new RunDiffFreshness();
+
+function releaseSessionRendererMemory(client: QueryClient, sessionId: SessionId): void {
+  sessionObservations.release(sessionId);
+  runDiffFreshness.release(sessionId);
+  releaseSessionQueries(client, sessionId);
+}
 
 function freshestSessionInfo(polled: SessionInfo, pollStartedAt: number): SessionInfo {
   return sessionObservations.freshest(
@@ -280,26 +299,26 @@ export function useChildSessions(sessionId: SessionId | undefined) {
   });
 }
 
-export async function refreshVcsSnapshot(): Promise<VcsSnapshot> {
-  const snapshot = await nyte.workspace.vcs.snapshot();
-  queryClient.setQueryData(keys.vcsSnapshot, snapshot);
-  return snapshot;
+const WORKSPACE_TARGET = { kind: "workspace" } as const;
+const readVcsSnapshot = () => nyte.workspace.vcs.snapshot({ target: WORKSPACE_TARGET });
+
+export function refreshVcsSnapshot(): Promise<VcsSnapshot> {
+  return queryClient.fetchQuery({
+    queryKey: keys.vcsSnapshot,
+    queryFn: readVcsSnapshot,
+    staleTime: 0,
+  });
 }
 
 export function useVcsSnapshot(enabled: boolean) {
   return useQuery<VcsSnapshot>({
     queryKey: keys.vcsSnapshot,
-    queryFn: () => nyte.workspace.vcs.snapshot(),
+    queryFn: readVcsSnapshot,
     enabled,
+    staleTime: 5_000,
+    refetchOnMount: true,
     refetchInterval: enabled ? 5_000 : false,
   });
-}
-
-/** One parsed patch's cache identity: which checkout, at which revision, which path. */
-export interface VcsDiffIdentity {
-  readonly root: string;
-  readonly revision: string;
-  readonly path: string;
 }
 
 /**
@@ -319,18 +338,109 @@ export const vcsKeys = {
   runDiff: (sessionId: SessionId, runId: RunId) => ["vcs", "run-diff", sessionId, runId] as const,
 };
 
+function createRunDiffReader(sessionId: SessionId): (runId: RunId) => Promise<RunDiff> {
+  let waiting = new Map<RunId, PromiseWithResolvers<RunDiff>>();
+  let scheduled = false;
+
+  const flush = async (): Promise<void> => {
+    const readers = waiting;
+    waiting = new Map();
+    scheduled = false;
+    const first = readers.keys().next().value;
+    if (first === undefined) return;
+    const runs = [first, ...[...readers.keys()].slice(1)] satisfies readonly [RunId, ...RunId[]];
+    try {
+      const results = await nyte.runs.diff({ sessionId, runs });
+      for (const [runId, reader] of readers) {
+        const result = results.find((candidate) => candidate.run === runId);
+        reader.resolve(result?.diff ?? { kind: "not_found" });
+      }
+    } catch (cause) {
+      for (const reader of readers.values()) reader.reject(cause);
+    }
+  };
+
+  return (runId) => {
+    const pending = waiting.get(runId);
+    if (pending !== undefined) return pending.promise;
+    const reader = Promise.withResolvers<RunDiff>();
+    waiting.set(runId, reader);
+    if (!scheduled) {
+      scheduled = true;
+      queueMicrotask(() => void flush());
+    }
+    return reader.promise;
+  };
+}
+
+function terminalForRunDiff(sessionId: SessionId, runId: RunId): boolean {
+  const current = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId))?.run;
+  return current === undefined || current.runId !== runId || isTerminalPhase(current.phase);
+}
+
+function checkedRunDiff(sessionId: SessionId, runId: RunId, diff: RunDiff): RunDiff {
+  runDiffFreshness.recordCheck(sessionId, runId, terminalForRunDiff(sessionId, runId), diff);
+  return diff;
+}
+
+/** Read several exact run diffs in one operation while caching each run under its own key. */
+export function useRunDiffs(
+  sessionId: SessionId,
+  runIds: readonly RunId[],
+): ReadonlyMap<RunId, RunDiff | undefined> {
+  const unique = [...new Set(runIds)];
+  const current = queryClient.getQueryData<SessionSnapshot>(keys.snapshot(sessionId))?.run;
+  const liveRun =
+    current !== undefined && !isTerminalPhase(current.phase) ? current.runId : undefined;
+  const read = useMemo(() => createRunDiffReader(sessionId), [sessionId]);
+  const results = useQueries({
+    queries: unique.map((runId) => {
+      const terminal = runId !== liveRun;
+      const cached = queryClient.getQueryData<RunDiff>(vcsKeys.runDiff(sessionId, runId));
+      const needsRefresh = runDiffFreshness.needsRefresh(sessionId, runId, terminal, cached);
+      return {
+        queryKey: vcsKeys.runDiff(sessionId, runId),
+        queryFn: async () => checkedRunDiff(sessionId, runId, await read(runId)),
+        staleTime: needsRefresh ? 0 : Infinity,
+        refetchOnMount: needsRefresh,
+      };
+    }),
+  });
+  const diffs = new Map<RunId, RunDiff | undefined>();
+  for (const [index, runId] of unique.entries()) diffs.set(runId, results[index]?.data);
+  return diffs;
+}
+
 /** One run's file diff, exact from its recorded trees when the host has them; refreshed with the VCS state. */
-export function useRunDiff(sessionId: SessionId | undefined, runId: RunId | undefined) {
+export function useRunDiff(
+  sessionId: SessionId | undefined,
+  runId: RunId | undefined,
+  enabled = true,
+) {
+  const terminal =
+    sessionId === undefined || runId === undefined ? true : terminalForRunDiff(sessionId, runId);
+  const cached =
+    sessionId === undefined || runId === undefined
+      ? undefined
+      : queryClient.getQueryData<RunDiff>(vcsKeys.runDiff(sessionId, runId));
+  const needsRefresh =
+    sessionId !== undefined &&
+    runId !== undefined &&
+    runDiffFreshness.needsRefresh(sessionId, runId, terminal, cached);
   return useQuery<RunDiff>({
     queryKey:
       sessionId === undefined || runId === undefined
         ? (["vcs", "run-diff", "unavailable"] as const)
         : vcsKeys.runDiff(sessionId, runId),
-    queryFn: () =>
-      sessionId === undefined || runId === undefined
-        ? Promise.resolve<RunDiff>({ kind: "not_found" })
-        : nyte.runs.diff({ sessionId, runId }),
-    enabled: sessionId !== undefined && runId !== undefined,
+    queryFn: async () => {
+      if (sessionId === undefined || runId === undefined) return { kind: "not_found" };
+      const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
+      const diff = result?.diff ?? { kind: "not_found" };
+      return checkedRunDiff(sessionId, runId, diff);
+    },
+    enabled: enabled && sessionId !== undefined && runId !== undefined,
+    staleTime: needsRefresh ? 0 : Infinity,
+    refetchOnMount: needsRefresh,
   });
 }
 
@@ -359,13 +469,9 @@ function scopeKey(scope: VcsDiffRequest["scope"]): string {
   }
 }
 
-/**
- * One patch per changed file in a diff scope: the whole working tree, either
- * side of the index, or one commit. A commit read still carries the working
- * revision, so a scope switch never paints a diff from a stale snapshot.
- */
 export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
   const request = read?.request;
+  const diffScopeKey = request === undefined ? undefined : scopeKey(request.scope);
   const pathsKey = request?.paths === undefined ? "" : [...request.paths].toSorted().join("\0");
   return useQuery<readonly VcsDiff[]>({
     queryKey:
@@ -373,8 +479,8 @@ export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
         ? vcsKeys.diff("unavailable", "unavailable", "", "", false)
         : vcsKeys.diff(
             read.root,
-            read.revision,
-            scopeKey(read.request.scope),
+            read.request.scope.kind === "commit" ? read.request.scope.oid : read.revision,
+            diffScopeKey ?? "",
             pathsKey,
             read.request.ignoreWhitespace === true,
           ),
@@ -390,7 +496,7 @@ export function useVcsLog(
 ) {
   return useQuery<VcsLog>({
     queryKey: vcsKeys.log(input.limit, input.before ?? null),
-    queryFn: () => nyte.workspace.vcs.log(input),
+    queryFn: () => nyte.workspace.vcs.log({ ...input, target: WORKSPACE_TARGET }),
     enabled,
   });
 }
@@ -399,14 +505,36 @@ export function useVcsLog(
 export function useVcsRefs(enabled: boolean) {
   return useQuery<VcsRefs>({
     queryKey: vcsKeys.refs,
-    queryFn: () => nyte.workspace.vcs.refs(),
+    queryFn: () => nyte.workspace.vcs.refs({ target: WORKSPACE_TARGET }),
     enabled,
   });
 }
 
+function vcsNeedsRefresh({ queryKey }: { readonly queryKey: readonly unknown[] }): boolean {
+  if (queryKey[1] === "run-diff") {
+    const sessionKey = queryKey[2];
+    const runId = queryKey[3];
+    if (typeof sessionKey !== "string" || typeof runId !== "string") return false;
+    const run = queryClient.getQueryData<SessionSnapshot>(
+      keys.snapshot(sessionId(sessionKey)),
+    )?.run;
+    const terminal = run === undefined || run.runId !== runId || isTerminalPhase(run.phase);
+    return runDiffFreshness.needsRefresh(
+      sessionId(sessionKey),
+      runId,
+      terminal,
+      queryClient.getQueryData<RunDiff>(queryKey),
+    );
+  }
+  const scope = queryKey[4];
+  return queryKey[1] !== "diffs" || (typeof scope === "string" && scope.startsWith("branch:"));
+}
+
 export function refreshVcs(): void {
-  // The prefix covers the snapshot, both diff families, the log and the refs.
-  void queryClient.invalidateQueries({ queryKey: ["vcs"] });
+  void queryClient.invalidateQueries({
+    queryKey: ["vcs"],
+    predicate: vcsNeedsRefresh,
+  });
   void queryClient.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
 }
 
@@ -502,7 +630,10 @@ export function useSaveWorkspaceFile() {
           version: outcome.version,
         }),
       );
-      void client.invalidateQueries({ queryKey: ["vcs"] });
+      void client.invalidateQueries({
+        queryKey: ["vcs"],
+        predicate: vcsNeedsRefresh,
+      });
       void client.invalidateQueries({ queryKey: keys.mentionFiles, exact: true });
       void client.invalidateQueries({ queryKey: ["files", "search"] });
       void client.invalidateQueries({ queryKey: ["files", "blame"] });
@@ -546,7 +677,6 @@ export function usageReportOptions(untilDay: string) {
   return queryOptions({
     queryKey: keys.usage(untilDay),
     queryFn: () => readUsage({ sinceDay: null, untilDay }),
-    gcTime: Infinity,
     // The client never refetches on its own, so Usage opts back in on mount.
     // What it does not do is re-read unconditionally: reopening the panel cost
     // seconds for numbers that had not moved. The mount read waits for the same

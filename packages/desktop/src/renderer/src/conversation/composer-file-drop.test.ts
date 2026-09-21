@@ -1,84 +1,43 @@
-import assert from "node:assert/strict";
-import { describe, test } from "vitest";
-import { carriesFiles, dropHandlers } from "./composer-file-drop.ts";
+import { expect, test, vi } from "vitest";
+import { dropHandlers } from "./composer-file-drop.ts";
 
-function file(name: string, type: string): File {
-  return new File(["x"], name, { type });
-}
-
-function dragEvent(args: { readonly types: readonly string[]; readonly files?: readonly File[] }) {
-  let prevented = false;
-  let stopped = false;
-  const transfer = {
-    types: args.types,
-    files: args.files ?? [],
-    dropEffect: "none",
-  };
-  return {
-    dataTransfer: transfer,
-    preventDefault: (): void => {
-      prevented = true;
-    },
-    stopPropagation: (): void => {
-      stopped = true;
-    },
-    prevented: () => prevented,
-    stopped: () => stopped,
-  };
-}
-
-describe("composer file drop", () => {
-  test("carriesFiles is true only when the drag lists Files", () => {
-    assert.equal(carriesFiles(dragEvent({ types: ["Files"] })), true);
-    assert.equal(carriesFiles(dragEvent({ types: ["text/plain"] })), false);
-    assert.equal(
-      carriesFiles({ dataTransfer: null, preventDefault() {}, stopPropagation() {} }),
-      false,
-    );
-  });
-
-  test("dropHandlers suppress the default for tab drags and disabled drops without taking files", () => {
-    const received: string[] = [];
-    const handlers = dropHandlers({
-      onFiles: (files) => {
-        received.push(...files.map((item) => item.name));
-      },
-    });
-    const tab = dragEvent({ types: ["text/plain"] });
-    handlers.onDragOver(tab);
-    handlers.onDrop(tab);
-    assert.equal(tab.prevented(), true);
-    assert.equal(tab.dataTransfer.dropEffect, "none");
-    assert.equal(received.length, 0);
-
-    const disabled = dropHandlers({
+test("rejected drops prevent navigation without attaching files", () => {
+  for (const { disabled, dataTransfer } of [
+    { disabled: false, dataTransfer: null },
+    { disabled: false, dataTransfer: { types: ["text/plain"], files: [], dropEffect: "copy" } },
+    {
       disabled: true,
-      onFiles: (files) => {
-        received.push(...files.map((item) => item.name));
-      },
-    });
-    const blocked = dragEvent({ types: ["Files"], files: [file("a.png", "image/png")] });
-    disabled.onDrop(blocked);
-    assert.equal(blocked.prevented(), true);
-    assert.equal(received.length, 0);
-  });
+      dataTransfer: { types: ["Files"], files: [new File(["x"], "a.png")], dropEffect: "copy" },
+    },
+  ]) {
+    const onFiles = vi.fn();
+    const handlers = dropHandlers({ disabled, onFiles });
+    const over = Object.assign(new Event("dragover", { cancelable: true }), { dataTransfer });
+    handlers.onDragOver(over);
+    expect(over.defaultPrevented).toBe(true);
+    if (dataTransfer !== null) expect(dataTransfer.dropEffect).toBe("none");
 
-  test("dropHandlers prevent navigation and pass every dropped file", () => {
-    const received: string[] = [];
-    const handlers = dropHandlers({
-      onFiles: (files) => {
-        received.push(...files.map((item) => item.name));
-      },
-    });
-    const event = dragEvent({
-      types: ["Files"],
-      files: [file("shot.png", "image/png"), file("clip.mp4", "video/mp4")],
-    });
-    handlers.onDragOver(event);
-    handlers.onDrop(event);
-    assert.equal(event.prevented(), true);
-    assert.equal(event.stopped(), true);
-    assert.equal(event.dataTransfer.dropEffect, "copy");
-    assert.deepEqual(received, ["shot.png", "clip.mp4"]);
-  });
+    const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer });
+    handlers.onDrop(drop);
+    expect(drop.defaultPrevented).toBe(true);
+    expect(drop.cancelBubble).toBe(true);
+    expect(onFiles).not.toHaveBeenCalled();
+  }
+});
+
+test("accepted drops prevent navigation and attach every file once", () => {
+  const files = [new File(["x"], "shot.png"), new File(["x"], "clip.mp4")];
+  const dataTransfer = { types: ["Files"], files, dropEffect: "none" };
+  const onFiles = vi.fn();
+  const handlers = dropHandlers({ onFiles });
+  const over = Object.assign(new Event("dragover", { cancelable: true }), { dataTransfer });
+  handlers.onDragOver(over);
+  expect(over.defaultPrevented).toBe(true);
+  expect(dataTransfer.dropEffect).toBe("copy");
+
+  const drop = Object.assign(new Event("drop", { cancelable: true }), { dataTransfer });
+  handlers.onDrop(drop);
+  expect(drop.defaultPrevented).toBe(true);
+  expect(drop.cancelBubble).toBe(true);
+  expect(onFiles).toHaveBeenCalledExactlyOnceWith(files);
 });

@@ -169,8 +169,9 @@
   --nds-stroke-input: rgba(0, 0, 0, 0.15);
 
   /*
-   * Notion ships only hover and pressed. The two selected steps are DERIVED,
-   * and are what the hover/selected ordering argument rests on.
+   * Ordered hover < selected < pressed < selected-hover. Notion ships only
+   * hover and pressed; both selected steps are DERIVED, and are what the
+   * hover/selected ordering argument rests on.
    */
   --nds-state-hover: rgba(0, 0, 0, 0.04);
   --nds-state-selected: rgba(0, 0, 0, 0.06);

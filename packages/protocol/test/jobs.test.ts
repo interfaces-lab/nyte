@@ -100,7 +100,13 @@ test("completion commits carry a command's or a child's report through the wire"
       head: "main",
       item: {
         oid: "completion",
-        commit: { kind: "commit", parent: null, at: 3, body: { kind: "completion", job } },
+        commit: {
+          kind: "commit",
+          parent: null,
+          at: 3,
+          body: { kind: "completion", job },
+          start: { kind: "none" },
+        },
       },
     };
     assert.ok(Value.Check(schemas.SessionEvent, JSON.parse(JSON.stringify(event))));

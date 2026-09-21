@@ -10,7 +10,7 @@ import { PreviewCard } from "@nyte-ai/ui/preview-card";
 A card that previews where a link goes, shown on hover. Reach for it when a sighted reader
 benefits from seeing the destination before clicking.
 
-No Nyte styling on this one, you own the visual layer.
+No Nyte styling here.
 
 ## Usage
 
@@ -48,15 +48,18 @@ No Nyte styling on this one, you own the visual layer.
 
 A link that previews its destination.
 
+<Preview>
+  <PreviewCardDemo />
+</Preview>
+
 ```tsx
 <PreviewCard.Root>
-  <PreviewCard.Trigger href="https://nyte.ai">Nyte</PreviewCard.Trigger>
+  <PreviewCard.Trigger href="/cloud/components/button">Button</PreviewCard.Trigger>
   <PreviewCard.Portal>
     <PreviewCard.Positioner sideOffset={8}>
       <PreviewCard.Popup>
-        <PreviewCard.Arrow />
-        <img src="/preview.png" alt="" />
-        <p>The agent workspace. Same content as the linked page.</p>
+        <span>Button</span>
+        <p>Variants, sizes, and an unstyled mode.</p>
       </PreviewCard.Popup>
     </PreviewCard.Positioner>
   </PreviewCard.Portal>
@@ -112,8 +115,8 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The popup is not exposed to screen readers and is not reachable by touch or keyboard. It is a
-  visual enhancement for sighted mouse and keyboard users.
+- The popup is not exposed to screen readers, and nothing inside it can be reached by touch or
+  keyboard. It is a visual enhancement for sighted mouse and keyboard users.
 - The link is the accessible interface. Screen reader users read the link text and continue,
   without being walked through the preview.
 - The trigger carries `data-popup-open` while the card is open.

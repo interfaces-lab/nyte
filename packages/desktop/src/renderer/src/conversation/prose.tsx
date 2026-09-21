@@ -12,6 +12,7 @@ import { CachedMarkdown, Streamdown } from "@lobehub/streamdown";
 import type { Components, ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remend from "remend";
+import { Hint } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
 import { useMentionFiles } from "../queries.ts";
 import { CodeBlock } from "./code-block.tsx";
@@ -122,17 +123,28 @@ const markdownComponents = {
     <strong {...elementProps} {...props(proseStyles.strong)} />
   ),
   code: MarkdownCode,
-  a: ({ node: _node, className: _className, onClick: _onClick, href, ...elementProps }) => (
-    <a
-      {...elementProps}
-      href={href}
-      title={href}
-      {...props(proseStyles.link)}
-      onClick={(event) => {
-        if (href === undefined) return;
-        event.preventDefault();
-        void nyte.host.openExternal({ url: href }).catch(() => undefined);
-      }}
+  a: ({
+    node: _node,
+    className: _className,
+    onClick: _onClick,
+    title: _title,
+    href,
+    ...elementProps
+  }) => (
+    <Hint
+      content={href}
+      trigger={
+        <a
+          {...elementProps}
+          href={href}
+          {...props(proseStyles.link)}
+          onClick={(event) => {
+            if (href === undefined) return;
+            event.preventDefault();
+            void nyte.host.openExternal({ url: href }).catch(() => undefined);
+          }}
+        />
+      }
     />
   ),
   ul: ({ node: _node, className: _className, ...elementProps }) => (

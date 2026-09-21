@@ -21,7 +21,7 @@ import { ToolWait, type AgentTool } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
   call,
-  landing,
+  drain,
   lease,
   message,
   openSession,
@@ -72,11 +72,12 @@ async function fixture(ids = ["call"]) {
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("go")),
   });
   const advance = (turn: ReturnType<typeof makeTurn>, owner = held) =>
-    step(session, turn, { head: "main", landing, lease: owner });
+    step(session, turn, { head: "main", drain, lease: owner });
   assert.equal((await advance(bootstrap)).kind, "continue");
   assert.equal((await advance(bootstrap)).kind, "continue");
   const runOid = await session.refs.read(runRef("main"));
@@ -266,7 +267,7 @@ for (const boundary of ["park", "settle", "repark", "wake-settle"] as const) {
 }
 
 test("allowing a pending policy after an earlier fence starts no later intent or executor", async () => {
-  const f = await fixture(["first", "later"]);
+  const f = await fixture(["first", "next"]);
   const release = Promise.withResolvers<void>();
   const lost = Promise.withResolvers<void>();
   const executed: string[] = [];
@@ -284,7 +285,7 @@ test("allowing a pending policy after an earlier fence starts no later intent or
     },
     {
       beforeToolCall: async ({ toolCall }) => {
-        if (toolCall.id === "later") await release.promise;
+        if (toolCall.id === "next") await release.promise;
         return undefined;
       },
       afterToolCall: async () => {
@@ -303,7 +304,7 @@ test("allowing a pending policy after an earlier fence starts no later intent or
     await setImmediate();
     assert.equal(unhandled, 0);
     assert.deepEqual(executed, ["first"]);
-    assert.equal(await f.read("later"), undefined);
+    assert.equal(await f.read("next"), undefined);
     assert.equal((await f.read("first"))?.effect.state, "intent");
     await f.unchanged();
   } finally {

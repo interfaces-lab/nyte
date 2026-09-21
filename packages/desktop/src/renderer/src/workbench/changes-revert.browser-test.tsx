@@ -7,7 +7,7 @@ import { revertScript, TRACKED, UNTRACKED } from "./changes-revert-preload.ts";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { queryClient } from "../queries.ts";
+import { queryClient, refreshVcs } from "../queries.ts";
 import { ChangesPanel } from "./changes-panel.tsx";
 import "../theme/tokens.css";
 
@@ -29,13 +29,20 @@ export async function run(): Promise<string> {
   document.body.append(container);
   const root = createRoot(container);
 
-  const render = (): void =>
+  const render = ({
+    scope = "uncommitted",
+    visible = true,
+  }: {
+    readonly scope?: "uncommitted" | "unstaged";
+    readonly visible?: boolean;
+  } = {}): void =>
     flushSync(() =>
       root.render(
         <QueryClientProvider client={queryClient}>
           <ChangesPanel
+            visible={visible}
             sessionId={undefined}
-            scope={{ kind: "uncommitted" }}
+            scope={{ kind: scope }}
             selectedPath={undefined}
             revealPathRevision={0}
             scrollTop={0}
@@ -51,9 +58,11 @@ export async function run(): Promise<string> {
     );
 
   const rows = (): readonly string[] =>
-    Array.from(container.querySelectorAll('[role="treeitem"]')).map(
-      (row) => row.getAttribute("title") ?? "",
-    );
+    Array.from(
+      container
+        .querySelector("file-tree-container")
+        ?.shadowRoot?.querySelectorAll('[role="treeitem"]') ?? [],
+    ).map((row) => row.getAttribute("data-item-path") ?? "");
   const button = (label: string): HTMLButtonElement => {
     const found = container.querySelector(`button[aria-label="${label}"]`);
     if (!(found instanceof HTMLButtonElement)) throw new Error(`Missing button: ${label}`);
@@ -69,11 +78,11 @@ export async function run(): Promise<string> {
     if (found === undefined) throw new Error(`Missing dialog button: ${label} in ${dialogText()}`);
     return found;
   };
-  const railCheckbox = (path: string): HTMLElement => {
-    const row = Array.from(container.querySelectorAll('[role="treeitem"]')).find(
-      (item) => item.getAttribute("title") === path,
+  const reviewCheckbox = (path: string): HTMLElement => {
+    const header = Array.from(container.querySelectorAll("[data-change-path]")).find(
+      (item) => item.getAttribute("data-change-path") === path,
     );
-    const found = row?.querySelector('[role="checkbox"]');
+    const found = header?.querySelector('[role="checkbox"]');
     if (!(found instanceof HTMLElement)) throw new Error(`Missing review checkbox for ${path}`);
     return found;
   };
@@ -82,10 +91,58 @@ export async function run(): Promise<string> {
     render();
     await until(() => rows().includes(UNTRACKED), "the working tree to load");
 
+    for (const scope of ["unstaged", "uncommitted"] as const) {
+      render({ scope });
+      check(
+        container.querySelectorAll('file-tree-container[aria-label="Changed files"]').length === 1,
+        `Exactly one changes tree after switching to ${scope}`,
+      );
+    }
+
+    await until(() => queryClient.isFetching({ queryKey: ["vcs"] }) === 0, "the diffs to load");
+    const tree = container.querySelector('file-tree-container[aria-label="Changed files"]');
+    const snapshotReads = revertScript.snapshotReads;
+    const diffReads = revertScript.diffReads;
+    refreshVcs();
+    await until(
+      () =>
+        revertScript.snapshotReads > snapshotReads &&
+        queryClient.isFetching({ queryKey: ["vcs"] }) === 0,
+      "the unchanged status refresh",
+    );
+    check(revertScript.diffReads === diffReads, "An unchanged status does not reload diffs");
+    check(
+      container.querySelector('file-tree-container[aria-label="Changed files"]') === tree,
+      "Status refresh preserves the tree",
+    );
+
+    render({ visible: false });
+    const hiddenReads = revertScript.snapshotReads;
+    refreshVcs();
+    await until(
+      () => queryClient.isFetching({ queryKey: ["vcs"] }) === 0,
+      "hidden refresh to settle",
+    );
+    check(
+      revertScript.snapshotReads === hiddenReads,
+      "A hidden changes panel does not read status",
+    );
+    check(revertScript.diffReads === diffReads, "A hidden changes panel does not read diffs");
+    render();
+    await until(() => revertScript.snapshotReads > hiddenReads, "status refresh when shown again");
+    check(
+      container.querySelector('file-tree-container[aria-label="Changed files"]') === tree,
+      "Showing the panel preserves the tree",
+    );
+
+    await until(
+      () => container.querySelector(`button[aria-label="Revert ${TRACKED}"]`) !== null,
+      "the diff actions to render",
+    );
+
     // A tracked file is warned about in terms of the commit it goes back to.
     button(`Revert ${TRACKED}`).click();
     await until(() => dialog() !== null, "the tracked confirmation");
-    check(dialogText().includes("Revert changes?"), `Tracked title: ${dialogText()}`);
     check(dialogText().includes(TRACKED), "The confirmation names the file");
     check(dialogText().includes("can’t be undone"), `Tracked warning: ${dialogText()}`);
     check(revertScript.reverts.length === 0, "Confirming is what reverts, not opening the dialog");
@@ -111,14 +168,13 @@ export async function run(): Promise<string> {
     await until(() => dialog() === null, "the confirmation to close again");
 
     // An untracked file is described as going to the trash, with no undo claim.
-    railCheckbox(UNTRACKED).click();
+    reviewCheckbox(UNTRACKED).click();
     await until(
-      () => railCheckbox(UNTRACKED).getAttribute("aria-checked") === "true",
+      () => reviewCheckbox(UNTRACKED).getAttribute("aria-checked") === "true",
       "the untracked file to be marked viewed",
     );
     button(`Revert ${UNTRACKED}`).click();
     await until(() => dialog() !== null, "the untracked confirmation");
-    check(dialogText().includes("Move to Trash?"), `Untracked title: ${dialogText()}`);
     check(dialogText().includes("moves the file to the trash"), `Untracked copy: ${dialogText()}`);
     check(!dialogText().includes("undone"), "The trash is recoverable, so nothing claims an undo");
 
@@ -144,8 +200,8 @@ export async function run(): Promise<string> {
     await until(() => rows().includes(UNTRACKED), "the file to come back");
     // A surviving mark would read as "changed" here, since the patch is read again.
     check(
-      railCheckbox(UNTRACKED).getAttribute("data-viewed-state") === "unviewed",
-      `A reverted file's review mark is cleared: ${String(railCheckbox(UNTRACKED).getAttribute("data-viewed-state"))}`,
+      reviewCheckbox(UNTRACKED).getAttribute("data-viewed-state") === "unviewed",
+      `A reverted file's review mark is cleared: ${String(reviewCheckbox(UNTRACKED).getAttribute("data-viewed-state"))}`,
     );
 
     return "passed";

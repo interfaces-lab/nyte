@@ -115,17 +115,20 @@ const styles = create({
 
 export function FilesPanel({
   viewKey,
+  visible,
   workspaceActive,
 }: {
   readonly viewKey: WorkbenchViewKey;
+  readonly visible: boolean;
   readonly workspaceActive: boolean;
 }): ReactElement {
-  const files = useMentionFiles(workspaceActive);
+  const shown = workspaceActive && visible;
+  const files = useMentionFiles(shown);
   const fileEntries = useRef(files.data);
   useLayoutEffect(() => {
     fileEntries.current = files.data;
   }, [files.data]);
-  const vcs = useVcsSnapshot(workspaceActive);
+  const vcs = useVcsSnapshot(shown);
   const host = useHostState();
   const tabs = useFileTabs(viewKey);
   const preferences = useFilePreferences();
@@ -420,7 +423,7 @@ export function FilesPanel({
               }}
               viewKey={viewKey}
               file={file}
-              active={workspaceActive && file.path === tabs.activePath}
+              active={shown && file.path === tabs.activePath}
               navigationRevision={file.navigationRevision}
               preferences={{
                 ...preferences,
@@ -460,7 +463,7 @@ export function FilesPanel({
           >
             {searchOpened && (
               <WorkspaceSearch
-                active={workspaceActive && sidebar === "search"}
+                active={shown && sidebar === "search"}
                 drafts={drafts}
                 onOpen={(location) => fileActions.open(viewKey, location)}
               />

@@ -78,6 +78,7 @@ test("independent PostgreSQL stores see canonical objects, chains, refs, and ses
     kind: "commit",
     parent: null,
     body: { kind: "summary", text: "root" },
+    imports: [],
     at: 1,
   };
   const rootOid = hashObject(root);
@@ -85,6 +86,7 @@ test("independent PostgreSQL stores see canonical objects, chains, refs, and ses
     kind: "commit",
     parent: rootOid,
     body: { kind: "summary", text: "child" },
+    imports: [],
     at: 2,
   };
   const childOid = hashObject(child);

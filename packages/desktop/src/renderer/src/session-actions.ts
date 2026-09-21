@@ -48,6 +48,7 @@ export class SessionActions {
   readonly #client: QueryClient;
   readonly #sessions: SessionWrites;
   readonly #toasts: ActionToasts;
+  readonly #releaseResources: ((sessionId: SessionId) => void) | undefined;
   readonly #listeners = new Set<() => void>();
   readonly #queues = new Map<SessionId, Promise<boolean>>();
   readonly #archiveVersions = new Map<SessionId, PendingChange>();
@@ -58,14 +59,17 @@ export class SessionActions {
     client,
     sessions,
     toasts = new ActionToasts(),
+    releaseResources,
   }: {
     client: QueryClient;
     sessions: SessionWrites;
     toasts?: ActionToasts;
+    releaseResources?: (sessionId: SessionId) => void;
   }) {
     this.#client = client;
     this.#sessions = sessions;
     this.#toasts = toasts;
+    this.#releaseResources = releaseResources;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -234,6 +238,14 @@ export class SessionActions {
           this.#client.cancelQueries({ queryKey: keys.snapshot(sessionId), exact: true }),
         ]);
         this.#commit(pending);
+        if (
+          change.kind === "delete" ||
+          (change.kind === "archive" &&
+            change.archived &&
+            this.#archiveVersions.get(sessionId) === pending)
+        ) {
+          this.#releaseResources?.(sessionId);
+        }
         return true;
       } catch {
         const verb =

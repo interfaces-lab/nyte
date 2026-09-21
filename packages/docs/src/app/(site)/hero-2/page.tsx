@@ -98,7 +98,6 @@ const snippet = `const nyte = await createNyte({
   store: new SqliteStore(".nyte/sessions.db"),
   streamFn: (req, ctx, opts) => models.streamSimple(req, ctx, opts),
   models, model,
-  landing: DEFAULT_LANDING,
   plugins: [inlinePlugin(systemPromptPlugin()), inlinePlugin(toolsFsPlugin())],
   env: { cwd },
 });
@@ -383,10 +382,9 @@ export default function HeroTwo() {
               A store, a stream function, a catalog, and plugins go in.
             </h2>
             <p className="mt-5 max-w-[44ch] text-[0.9375rem] leading-[1.6] text-cut-dim">
-              Operations and one event stream come out. Send admits a message into a lane; it does
-              not start a run. The host that called{" "}
-              <span className="cut-mono text-cut-ink">attach()</span> is the process that volunteers
-              to run.
+              Operations and one event stream come out. Sending a message does not start a run. The
+              host that called <span className="cut-mono text-cut-ink">attach()</span> is the
+              process that volunteers to run.
             </p>
             <Link
               href="/docs/sdk"

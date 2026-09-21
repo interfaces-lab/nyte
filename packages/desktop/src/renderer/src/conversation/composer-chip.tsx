@@ -2,7 +2,7 @@ import { props } from "@stylexjs/stylex";
 import type { ReactElement } from "react";
 import { Icon } from "../components/icons.tsx";
 import type { IconName } from "../components/icons.tsx";
-import { focus, HoverPreview } from "../components/ui.tsx";
+import { focus, Hint, HoverPreview } from "../components/ui.tsx";
 import { isFolder, referenceLabel, referenceTitle } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 import { useReferenceOpener } from "./reference-opener.tsx";
@@ -42,7 +42,6 @@ export function ComposerChipView({
       data-composer-chip={reference.kind}
       data-has-remove-button={inEditor}
       data-openable={open !== undefined}
-      title={reference.kind === "clipboard" ? undefined : referenceTitle(reference)}
       role={open === undefined ? undefined : "link"}
       // The editor moves through chips with its own selection; only read-only
       // surfaces need a tab stop.
@@ -75,23 +74,29 @@ export function ComposerChipView({
         <Icon name={referenceIcon(reference)} size={12} />
       </span>
       {onRemove !== undefined && (
-        <button
-          type="button"
-          aria-label={`Remove ${label}`}
-          title={`Remove ${label}`}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            event.stopPropagation();
-            onRemove();
-          }}
-          {...props(composerStyles.mentionChipRemove, focus.ring)}
-        >
-          <Icon name="x" size={11} />
-        </button>
+        <Hint
+          content={`Remove ${label}`}
+          trigger={
+            <button
+              type="button"
+              aria-label={`Remove ${label}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove();
+              }}
+              {...props(composerStyles.mentionChipRemove, focus.ring)}
+            >
+              <Icon name="x" size={11} />
+            </button>
+          }
+        />
       )}
       {label}
     </span>
   );
-  if (reference.kind !== "clipboard") return chip;
+  if (reference.kind !== "clipboard") {
+    return <Hint content={referenceTitle(reference)} trigger={chip} side="top" />;
+  }
   return <HoverPreview content={reference.body} trigger={chip} side="top" />;
 }

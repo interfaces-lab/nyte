@@ -8,12 +8,12 @@
  * response finds the first submission and sends nothing twice. Only the user
  * takes a sending message back.
  */
-import type { Lane, Oid, SendReceipt } from "@nyte-ai/core";
+import type { Delivery, Oid, SendReceipt } from "@nyte-ai/core";
 import type { UserMessage } from "@nyte-ai/schema";
 
 export interface OutboxEntry {
   readonly key: string;
-  readonly lane: Lane;
+  readonly delivery: Delivery;
   readonly content: UserMessage["content"];
   readonly at: number;
   /** Attempts made so far, for the row's own status. */
@@ -28,7 +28,7 @@ type OutboxOutcome =
 interface OutboxDependencies {
   readonly send: (input: {
     readonly key: string;
-    readonly lane: Lane;
+    readonly delivery: Delivery;
     readonly content: UserMessage["content"];
   }) => Promise<SendReceipt>;
   /** Waits before a retry; a test passes one that returns at once. */
@@ -95,14 +95,14 @@ export class Outbox {
    */
   submit(input: {
     readonly content: UserMessage["content"];
-    readonly lane: Lane;
+    readonly delivery: Delivery;
   }): Promise<OutboxOutcome> {
     const key = this.dependencies.mintKey?.() ?? crypto.randomUUID();
     const stop = new AbortController();
     const flight: InFlight = {
       entry: {
         key,
-        lane: input.lane,
+        delivery: input.delivery,
         content: input.content,
         at: this.dependencies.now?.() ?? Date.now(),
         attempts: 0,
@@ -124,14 +124,14 @@ export class Outbox {
   }
 
   private async deliver(flight: InFlight): Promise<OutboxOutcome> {
-    const { key, lane, content } = flight.entry;
+    const { key, delivery, content } = flight.entry;
     const sleep = this.dependencies.sleep ?? defaultSleep;
     for (;;) {
       if (flight.stop.signal.aborted) return this.settle(flight, { kind: "withdrawn", key });
       flight.entry = { ...flight.entry, attempts: flight.entry.attempts + 1 };
       this.changed();
       try {
-        const receipt = await this.dependencies.send({ key, lane, content });
+        const receipt = await this.dependencies.send({ key, delivery, content });
         this.dependencies.onReceipt?.(flight.entry, receipt);
         return this.settle(flight, { kind: "durable", change: receipt.change, key });
       } catch (cause) {

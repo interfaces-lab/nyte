@@ -13,6 +13,10 @@ export class SessionObservations {
     this.#observedAt.set(sessionId, at);
   }
 
+  release(sessionId: SessionId): void {
+    this.#observedAt.delete(sessionId);
+  }
+
   /** The polled row, unless something newer than the poll's start was observed for it. */
   freshest(
     polled: SessionInfo,

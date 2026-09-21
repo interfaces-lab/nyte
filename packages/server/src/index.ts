@@ -139,22 +139,6 @@ function invalid(message: string, issues: readonly Issue[] = []): WireError {
 }
 
 /**
- * The SDK refuses a lane its landing policy lacks by throwing, and a thrown
- * error is reported as `internal`. The server knows the policy, so it names
- * the mistake first, with a fixed message.
- */
-function laneIssue(sdk: Nyte, input: OperationInput<Operation>): WireError | undefined {
-  if (input === undefined || !("lane" in input)) return undefined;
-  const { lane } = input;
-  if (lane === undefined || sdk.landing.lanes.some((policy) => policy.lane === lane)) {
-    return undefined;
-  }
-  return invalid("Lane is not in the landing policy", [
-    { path: "/lane", message: "must be one of the host's lanes" },
-  ]);
-}
-
-/**
  * Only errors the SDK defines are named to the client. Anything else, a
  * `TypeError` from an adapter included, is `internal` with a fixed message;
  * the cause goes to `onError` alone.
@@ -493,8 +477,6 @@ export function createNyteServer(options: NyteServerOptions): NyteServer {
         return refuse({ code: "forbidden", message: "Operation is not allowed" }, cors);
       }
       if (closed) return refuse({ code: "closed", message: "The server is closed" }, cors);
-      const issue = laneIssue(sdk, input);
-      if (issue !== undefined) return refuse(issue, cors);
       const value = await dispatch(sdk, operation, input);
       return jsonResponse(
         200,

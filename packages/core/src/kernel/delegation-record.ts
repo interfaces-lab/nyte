@@ -110,8 +110,11 @@ export async function authorizedContinuation(
   session: Session,
   item: PendingChange,
 ): Promise<AuthorizedContinuation | undefined> {
+  if (item.change.kind !== "answer") return undefined;
   const body = item.change.body;
-  if (body.kind !== "completion" || body.job.kind !== "delegate") return undefined;
+  if (body.kind !== "completion" || body.job.kind !== "delegate") {
+    throw new Error(`Answer change ${item.oid} has no delegate completion`);
+  }
   const prefix = delegationPrefix(body.job.session);
   for (const entry of await session.refs.list(prefix)) {
     const stored = await readDelegation(session, entry, prefix);
@@ -135,26 +138,6 @@ export async function authorizedContinuation(
     };
   }
   return undefined;
-}
-
-export async function hasAuthorizedContinuation(
-  session: Session,
-  item: PendingChange,
-): Promise<boolean> {
-  const body = item.change.body;
-  if (body.kind !== "completion" || body.job.kind !== "delegate") return false;
-  const prefix = delegationPrefix(body.job.session);
-  for (const entry of await session.refs.list(prefix)) {
-    const stored = await readDelegation(session, entry, prefix);
-    if (
-      stored.record.continuation.kind === "authorized" &&
-      stored.record.answer.kind === "ready" &&
-      sameRequest(stored.record.answer.request, body.job.request)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export async function revokeDelegations(

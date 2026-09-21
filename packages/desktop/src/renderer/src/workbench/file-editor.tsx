@@ -17,6 +17,7 @@ import type { WorkspaceFileDocument } from "../../../shared/ipc.ts";
 import { Button } from "../components/ui.tsx";
 import { revealLabel, showContextMenu } from "../components/context-menu.ts";
 import { nyte } from "../nyte.ts";
+import { PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { useHostState, useSaveWorkspaceFile, useWorkspaceFile } from "../queries.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
 import { t } from "../theme/vars.stylex.ts";
@@ -436,28 +437,31 @@ function TextFileEditor({
       onContextMenu={openContextMenu}
       {...props(styles.root, !active && styles.hidden)}
     >
-      <EditProvider createEditor={createEditor}>
-        <CodeView
-          ref={viewer}
-          initialItems={initialItems}
-          editorOptions={{
-            historyMaxEntries: 200,
-            ownsVerticalViewport: true,
-            onAttach: attachEditor,
-          }}
-          options={{
-            theme: { light: "github-light", dark: "github-dark" },
-            themeType: appearance.theme,
-            unsafeCSS: EDITOR_CSS,
-            disableFileHeader: true,
-            disableLineNumbers: !preferences.lineNumbers,
-            overflow: preferences.wordWrap ? "wrap" : "scroll",
-            onLineClick: (event) => setClickedLine({ line: event.lineNumber, navigationRevision }),
-          }}
-          className={props(styles.code).className}
-          onItemEditChange={(event) => buffer.edit(event.file.contents)}
-        />
-      </EditProvider>
+      <PierreWorkerProvider>
+        <EditProvider createEditor={createEditor}>
+          <CodeView
+            ref={viewer}
+            initialItems={initialItems}
+            editorOptions={{
+              historyMaxEntries: 200,
+              ownsVerticalViewport: true,
+              onAttach: attachEditor,
+            }}
+            options={{
+              theme: { light: "github-light", dark: "github-dark" },
+              themeType: appearance.theme,
+              unsafeCSS: EDITOR_CSS,
+              disableFileHeader: true,
+              disableLineNumbers: !preferences.lineNumbers,
+              overflow: preferences.wordWrap ? "wrap" : "scroll",
+              onLineClick: (event) =>
+                setClickedLine({ line: event.lineNumber, navigationRevision }),
+            }}
+            className={props(styles.code).className}
+            onItemEditChange={(event) => buffer.edit(event.file.contents)}
+          />
+        </EditProvider>
+      </PierreWorkerProvider>
       {preferences.gitBlame && (
         <div {...props(styles.status)} title={blameText}>
           <span>Line {line}</span>

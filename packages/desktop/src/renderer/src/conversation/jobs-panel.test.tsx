@@ -28,7 +28,6 @@ function render(jobs?: readonly JobInfo[], open = false) {
       <QueryClientProvider client={client}>
         <BackgroundWork
           sessionId={id}
-          terminalOwner="test"
           open={open}
           onOpenChange={() => {}}
           onOpenTerminal={() => {}}

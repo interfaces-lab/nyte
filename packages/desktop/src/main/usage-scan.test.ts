@@ -20,6 +20,8 @@ function assistant(at: number, output: number): Commit {
     kind: "commit",
     parent: null,
     at,
+    calls: {},
+    outcome: { kind: "ok" },
     body: {
       kind: "message",
       message: {

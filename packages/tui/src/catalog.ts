@@ -19,7 +19,7 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
 
 /**
  * Restore the provider's persisted catalog on top of its baked models. Local
- * disk only: the boot path must work on a plane.
+ * disk only: the boot path must work on a pdelivery.
  */
 export async function loadProviderCatalog(models: Models, providerId: string): Promise<void> {
   await models.refresh({ providers: [providerId], allowNetwork: false });

@@ -14,6 +14,7 @@ export interface UserTurnPart {
   commit: Oid;
   parent: Oid | null;
   content: UserMessage["content"];
+  readonly at: number;
   /** The submission key the landed change carried, when the sender gave one. */
   key?: string;
 }
@@ -21,6 +22,7 @@ export interface UserTurnPart {
 export type ToolTurnPart = {
   readonly kind: "tool";
   readonly callId: string;
+  readonly at: number;
   /** The settled class once the result commit landed, else the call's. */
   readonly class: ToolClass;
   /** Absent while the call has not settled on this branch. */
@@ -34,21 +36,25 @@ export type TurnPart =
       readonly commit: Oid;
       readonly contentIndex: number;
       readonly text: string;
+      readonly at: number;
     }
   | {
       readonly kind: "thinking";
       readonly commit: Oid;
       readonly contentIndex: number;
       readonly text: string;
+      readonly at: number;
     }
   | ToolTurnPart;
+
+export type TurnRun = { readonly kind: "run"; readonly id: RunId } | { readonly kind: "none" };
 
 export type Turn =
   | {
       kind: "turn";
       id: Oid;
-      /** The run that wrote the turn's commits. A turn of only a user message has none yet. */
-      run?: RunId;
+      /** The run that wrote the turn's commits, or none for a seeded or foreign turn. */
+      run: TurnRun;
       parts: TurnPart[];
       /** Why the turn's assistant message stopped, when it stopped with `error` or `aborted`. */
       failure?: Failure;

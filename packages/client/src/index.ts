@@ -272,7 +272,6 @@ export function createNyteClient(options: NyteClientOptions): NyteClient {
 
   return {
     info,
-    landing: operation("landing"),
     sessions: {
       create: operation("sessions.create"),
       get: operation("sessions.get"),
@@ -664,5 +663,5 @@ export {
   type JsonObject,
   type JsonValue,
 } from "./json.ts";
-export { mergeQueuedLanes } from "./queue-order.ts";
+export { mergeByDelivery } from "./queue-order.ts";
 export { isTerminalPhase, type MentionFile } from "@nyte-ai/protocol";

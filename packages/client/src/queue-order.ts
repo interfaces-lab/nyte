@@ -1,29 +1,31 @@
-/** Merge lanes chronologically without re-sorting a lane's chosen delivery order. */
-export function mergeQueuedLanes<T>(
+/** Merge deliveries chronologically without re-sorting either delivery's chosen order. */
+export function mergeByDelivery<T>(
   items: readonly T[],
-  options: { readonly lane: (item: T) => string; readonly compare: (left: T, right: T) => number },
+  options: {
+    readonly delivery: (item: T) => string;
+    readonly compare: (left: T, right: T) => number;
+  },
 ): T[] {
-  // Keep this projection free of store and Node imports so native clients can fold queues.
   const groups = new Map<string, T[]>();
   for (const item of items) {
-    const name = options.lane(item);
-    const lane = groups.get(name);
-    if (lane === undefined) groups.set(name, [item]);
-    else lane.push(item);
+    const name = options.delivery(item);
+    const delivery = groups.get(name);
+    if (delivery === undefined) groups.set(name, [item]);
+    else delivery.push(item);
   }
-  const lanes = [...groups.values()].map((queue) => ({ queue, index: 0 }));
+  const deliveries = [...groups.values()].map((queue) => ({ queue, index: 0 }));
   const ordered: T[] = [];
   for (let count = 0; count < items.length; count += 1) {
-    let best: { readonly lane: (typeof lanes)[number]; readonly item: T } | undefined;
-    for (const lane of lanes) {
-      const item = lane.queue[lane.index];
+    let best: { readonly delivery: (typeof deliveries)[number]; readonly item: T } | undefined;
+    for (const delivery of deliveries) {
+      const item = delivery.queue[delivery.index];
       if (item !== undefined && (best === undefined || options.compare(item, best.item) < 0)) {
-        best = { lane, item };
+        best = { delivery, item };
       }
     }
     if (best === undefined) break;
     ordered.push(best.item);
-    best.lane.index += 1;
+    best.delivery.index += 1;
   }
   return ordered;
 }

@@ -201,7 +201,7 @@ test("reactivate refreshes every blocked session and the prospective catalog", a
   let active = false;
   const plugin = inlinePlugin(
     definePlugin({
-      id: "later",
+      id: "next",
       session(api) {
         api.commands.add((draft) => draft.set("hello", { description: "Hi", run: () => "hi" }));
       },

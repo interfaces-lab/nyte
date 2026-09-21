@@ -2,7 +2,7 @@ import { create, props } from "@stylexjs/stylex";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobInfo, SessionId } from "@nyte-ai/protocol";
 import { Row } from "@nyte-ai/ui/row";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { nyte } from "../nyte.ts";
 import { keys } from "../queries.ts";
 import { Icon } from "../components/icons.tsx";
@@ -11,7 +11,7 @@ import { focus } from "../components/ui.tsx";
 import { trayStyles } from "../theme/tray.stylex.ts";
 import { tray } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import { isJobTerminal, useTerminals } from "../workbench/terminal-store.ts";
+import { useJobTerminals } from "../workbench/terminal-store.ts";
 import { jobActionMessage } from "./jobs-view.ts";
 
 const styles = create({
@@ -115,21 +115,19 @@ const styles = create({
 
 export function BackgroundWork({
   sessionId,
-  terminalOwner,
   open,
   onOpenChange,
   onOpenTerminal,
   viewport,
 }: {
   sessionId: SessionId;
-  terminalOwner: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOpenTerminal: (job: JobInfo) => void;
+  onOpenTerminal: (job: JobInfo, activate: boolean) => void;
   viewport: HTMLElement | null;
 }) {
   const client = useQueryClient();
-  const hasTerminalObserver = useTerminals(terminalOwner).tabs.some(isJobTerminal);
+  const hasTerminalObserver = useJobTerminals(sessionId).length > 0;
   const jobs = useQuery({
     queryKey: keys.jobs(sessionId),
     queryFn: () => nyte.jobs.list({ sessionId }),
@@ -138,6 +136,7 @@ export function BackgroundWork({
   });
   const rootRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLButtonElement>(null);
+  const openedJobIds = useRef(new Set<JobInfo["id"]>());
   const trayId = useId();
   const [stopCandidates, setStopCandidates] = useState<readonly JobInfo["id"][]>();
   const [availableHeight, setAvailableHeight] = useState(260);
@@ -158,6 +157,14 @@ export function BackgroundWork({
   const pendingAction = cancel.isPending || stopAll.isPending;
   const count = String(liveTerminals.length);
   const noun = liveTerminals.length === 1 ? "Terminal" : "Terminals";
+
+  useEffect(() => {
+    for (const job of liveTerminals) {
+      if (openedJobIds.current.has(job.id)) continue;
+      openedJobIds.current.add(job.id);
+      onOpenTerminal(job, false);
+    }
+  }, [liveTerminals, onOpenTerminal]);
 
   useLayoutEffect(() => {
     if (open && !hasTerminals) onOpenChange(false);
@@ -281,7 +288,7 @@ export function BackgroundWork({
                       aria-label={`Open terminal for ${job.command}`}
                       title={job.command}
                       onClick={() => {
-                        onOpenTerminal(job);
+                        onOpenTerminal(job, true);
                         onOpenChange(false);
                       }}
                     />

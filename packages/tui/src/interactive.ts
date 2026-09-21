@@ -29,9 +29,10 @@ import { clampThinkingLevel, getSupportedThinkingLevels } from "@nyte-ai/ai";
 import type { Api, AuthInteraction, Model } from "@nyte-ai/ai";
 import { collectAbandoned, projectTree } from "@nyte-ai/client";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import { DEFAULT_LANDING, MAIN, sessionId, watchPluginDirectories } from "@nyte-ai/core";
+import { MAIN, sessionId, watchPluginDirectories } from "@nyte-ai/core";
 import type {
   CommandInfo,
+  Delivery,
   Oid,
   RunInfo,
   SelectionReply,
@@ -97,13 +98,13 @@ import {
   registerChatLayer,
   registerSelectionKeys,
 } from "./keymap.ts";
-import { laneRoles, nextToSteer } from "./lanes.ts";
-import type { LaneRoles } from "./lanes.ts";
+import { deliveryChoices, nextToSteer } from "./lanes.ts";
+import type { DeliveryChoices } from "./lanes.ts";
 import { Outbox } from "./outbox.ts";
 import { SentMessages } from "./sent-messages.ts";
 import { ModelPicker } from "./model-picker.ts";
 import type { ModelSelection } from "./model-picker.ts";
-import { gutterRows, laneMark, queuedPromptText, rowLane } from "./pending-gutter.ts";
+import { gutterRows, deliveryMark, queuedPromptText, rowDelivery } from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
 import { PluginProvider } from "./plugins.ts";
@@ -356,7 +357,7 @@ export async function runTui(
     : undefined,
 ): Promise<TuiExit> {
   const renderer = suppliedRenderer ?? (await createTuiRenderer());
-  const roles = laneRoles(DEFAULT_LANDING);
+  const roles = deliveryChoices;
   const shell = await mountShell({
     renderer,
     initialTheme: themeForMode(resolveThemeMode("auto", renderer.themeMode)),
@@ -568,7 +569,7 @@ interface InteractiveOptions {
   readonly shell: Shell;
   readonly host: Host;
   readonly runtime: Runtime;
-  readonly roles: LaneRoles;
+  readonly roles: DeliveryChoices;
   readonly settings: ResolvedSettings;
   readonly settingsStore: FileSettingsStore;
   readonly workspace: TrustedWorkspace;
@@ -587,7 +588,7 @@ class Interactive {
   private readonly shell: Shell;
   private readonly host: Host;
   private readonly runtime: Runtime;
-  private readonly roles: LaneRoles;
+  private readonly roles: DeliveryChoices;
   private readonly settingsStore: FileSettingsStore;
   private workspace: TrustedWorkspace;
   private stopPluginWatch: (() => void) | undefined;
@@ -605,7 +606,7 @@ class Interactive {
   private queueSelection: string | undefined;
   private readonly queueEdits = new Map<
     SessionId,
-    { readonly lane: string; readonly draft: ComposerDraft } & (
+    { readonly delivery: Delivery; readonly draft: ComposerDraft } & (
       | { readonly kind: "pending"; readonly change: Oid }
       | { readonly kind: "sending"; readonly content: SessionState["pending"][number]["content"] }
     )
@@ -717,7 +718,7 @@ class Interactive {
         this.queueEdits.has(session.sessionId)
       )
         return;
-      void this.reorder(session, item.change, item.lane, before?.change ?? null).catch(
+      void this.reorder(session, item.change, item.delivery, before?.change ?? null).catch(
         this.reportError,
       );
     };
@@ -928,6 +929,7 @@ class Interactive {
         run: undefined,
         compaction: undefined,
         overlay: [],
+        settledToolCalls: new Set(),
         parked: [],
         context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 0 },
         expectedTip: undefined,
@@ -1302,8 +1304,8 @@ class Interactive {
   private syncGutter(session: FollowedSession): void {
     const rows = sessionRows(session);
     // Enter's messages take the shape of the turns they become; ctrl+enter's wait in the compact rows.
-    const steering = rows.filter((row) => rowLane(row) === this.roles.steer);
-    const queued = rows.filter((row) => rowLane(row) !== this.roles.steer);
+    const steering = rows.filter((row) => rowDelivery(row) === this.roles.steer);
+    const queued = rows.filter((row) => rowDelivery(row) !== this.roles.steer);
     this.shell.pendingTail.sync(steering, { hint: queued.length === 0 });
     this.shell.pendingGutter.sync(queued);
     if (this.queueMenu !== undefined || this.queueSelection !== undefined) {
@@ -1436,7 +1438,7 @@ class Interactive {
       onCommand: (command) => {
         void this.runCommand(
           { name: command.name, argument: "" },
-          { lane: this.composerActions?.primaryLane ?? this.roles.steer },
+          { delivery: this.composerActions?.primaryDelivery ?? this.roles.steer },
         ).catch(this.reportError);
       },
       onFile: (path) => this.composerParts.addFile(path),
@@ -1725,8 +1727,10 @@ class Interactive {
     setInputText(this.shell.input, draft?.text ?? "");
   }
 
-  /** Enter and ctrl+enter both land here; only the lane differs. */
-  private submitComposer(action: Extract<ComposerOperation, { readonly lane: string }>): void {
+  /** Enter and ctrl+enter both land here; only the delivery differs. */
+  private submitComposer(
+    action: Extract<ComposerOperation, { readonly delivery: Delivery }>,
+  ): void {
     const session = this.session;
     if (session === undefined || this.shell.ui.loading !== undefined) {
       notice(this.shell, "Loading session. Your draft is saved here.");
@@ -1781,13 +1785,13 @@ class Interactive {
   }
 
   private async submitReady(
-    action: Extract<ComposerOperation, { readonly lane: string }>,
+    action: Extract<ComposerOperation, { readonly delivery: Delivery }>,
     session: FollowedSession,
     reserved?: SubmissionSlot,
   ): Promise<void> {
-    const lane = action.lane;
+    const delivery = action.delivery;
     if (action.kind === "save-edit") {
-      await this.confirmEdit(session, lane);
+      await this.confirmEdit(session, delivery);
       return;
     }
     const draft = this.shell.input.plainText;
@@ -1809,7 +1813,7 @@ class Interactive {
       return;
     }
     if (submission.kind === "empty") {
-      if (lane !== this.roles.steer) return;
+      if (delivery !== this.roles.steer) return;
       const waiting = this.waiting;
       if (waiting === undefined) this.steerFirstQueued(session);
       else this.askQuestion(session, waiting);
@@ -1836,7 +1840,7 @@ class Interactive {
     // A selection without an "other" answer cannot be answered from the composer; reopen its menu.
     if (
       prompting &&
-      lane === this.roles.steer &&
+      delivery === this.roles.steer &&
       this.waiting !== undefined &&
       this.waiting.selection.other === undefined
     ) {
@@ -1872,7 +1876,7 @@ class Interactive {
     });
     if (preparing === undefined) {
       if (submission.kind === "command" && commandTarget !== undefined) {
-        void this.runCommand(submission.command, { lane, target: commandTarget }).catch(
+        void this.runCommand(submission.command, { delivery, target: commandTarget }).catch(
           this.reportError,
         );
       }
@@ -1891,7 +1895,7 @@ class Interactive {
           });
           return;
         }
-        await this.send(session, prepared.content, lane);
+        await this.send(session, prepared.content, delivery);
       } catch (cause) {
         this.stageHandback(session.sessionId, {
           draft: captured,
@@ -2001,10 +2005,10 @@ class Interactive {
   private async send(
     session: FollowedSession,
     content: SessionState["pending"][number]["content"],
-    lane: string,
+    delivery: Delivery,
   ): Promise<void> {
     const waiting = waitingCall(session.state);
-    if (waiting?.selection.other !== undefined && lane === this.roles.steer) {
+    if (waiting?.selection.other !== undefined && delivery === this.roles.steer) {
       if (!Array.isArray(content)) return this.answer(waiting, { choices: [], other: content });
       notice(
         this.shell,
@@ -2013,7 +2017,7 @@ class Interactive {
       );
     }
     if (this.session === session) this.scrollToEnd();
-    const outcome = await session.outbox.submit({ content, lane });
+    const outcome = await session.outbox.submit({ content, delivery });
     if (outcome.kind === "withdrawn") notice(this.shell, "Message withdrawn");
   }
 
@@ -2031,7 +2035,7 @@ class Interactive {
     const outcome = await this.host.nyte.messages.redeliver({
       sessionId: session.sessionId,
       change,
-      lane: this.roles.steer,
+      delivery: this.roles.steer,
     });
     switch (outcome.kind) {
       case "redelivered":
@@ -2061,7 +2065,7 @@ class Interactive {
     return sessionRows(session).map((row, index) => ({
       id: rowId(row),
       label: queuedPromptText(row.kind === "pending" ? row.item.content : row.entry.content),
-      description: `${String(index + 1)} · ${row.kind === "pending" ? laneMark(row.item.lane, this.roles, this.shell.theme).label : "sending"}`,
+      description: `${String(index + 1)} · ${row.kind === "pending" ? deliveryMark(row.item.delivery, this.roles, this.shell.theme).label : "sending"}`,
     }));
   }
 
@@ -2094,7 +2098,7 @@ class Interactive {
         const outcome = await session.outbox.withdraw(row.entry.key);
         if (outcome === undefined || this.disposed || this.session !== session) return;
         const stash = {
-          lane: row.entry.lane,
+          delivery: row.entry.delivery,
           draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
         };
         this.queueEdits.set(
@@ -2109,7 +2113,7 @@ class Interactive {
       this.queueEdits.set(session.sessionId, {
         kind: "pending",
         change: row.item.change,
-        lane: row.item.lane,
+        delivery: row.item.delivery,
         draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
       });
       this.handBack(row.item.content, "Editing queued message. Enter saves; Esc cancels.");
@@ -2130,14 +2134,14 @@ class Interactive {
     const move = async (id: string, delta: -1 | 1): Promise<void> => {
       const row = rows().find((candidate) => rowId(candidate) === id);
       if (row?.kind !== "pending") return;
-      const lane = session.state.pending.filter((item) => item.lane === row.item.lane);
-      const index = lane.findIndex((item) => item.change === row.item.change);
-      if (index + delta < 0 || index + delta >= lane.length) return;
+      const delivery = session.state.pending.filter((item) => item.delivery === row.item.delivery);
+      const index = delivery.findIndex((item) => item.change === row.item.change);
+      if (index + delta < 0 || index + delta >= delivery.length) return;
       await this.reorder(
         session,
         row.item.change,
-        row.item.lane,
-        lane[index + (delta === -1 ? -1 : 2)]?.change ?? null,
+        row.item.delivery,
+        delivery[index + (delta === -1 ? -1 : 2)]?.change ?? null,
       );
     };
     this.queueMenu = openInlineMenu(
@@ -2168,13 +2172,13 @@ class Interactive {
   private async reorder(
     session: FollowedSession,
     change: Oid,
-    lane: string,
+    delivery: Delivery,
     before: Oid | null,
   ): Promise<void> {
     const outcome = await this.host.nyte.messages.redeliver({
       sessionId: session.sessionId,
       change,
-      lane,
+      delivery,
       before,
     });
     if (outcome.kind === "redelivered") {
@@ -2193,7 +2197,7 @@ class Interactive {
     const editing = this.queueEdits.get(session.sessionId);
     if (editing === undefined) return;
     if (options.restoreSending !== false && editing.kind === "sending")
-      void session.outbox.submit({ content: editing.content, lane: editing.lane });
+      void session.outbox.submit({ content: editing.content, delivery: editing.delivery });
     this.queueEdits.delete(session.sessionId);
     if (this.session !== session) {
       this.drafts.save(session.sessionId, editing.draft.text, editing.draft.parts);
@@ -2204,7 +2208,7 @@ class Interactive {
     this.focusComposer();
   }
 
-  private async confirmEdit(session: FollowedSession, lane: string): Promise<void> {
+  private async confirmEdit(session: FollowedSession, delivery: Delivery): Promise<void> {
     const editing = this.queueEdits.get(session.sessionId);
     if (editing === undefined || this.submitting) return;
     const text = this.shell.input.plainText;
@@ -2219,14 +2223,14 @@ class Interactive {
         expandInlineSkills(value, session.skills),
       );
       if (editing.kind === "sending") {
-        void session.outbox.submit({ content: prepared.content, lane });
+        void session.outbox.submit({ content: prepared.content, delivery });
         this.cancelEdit({ session, restoreSending: false });
         return;
       }
       const original = session.state.pending.find((item) => item.change === editing.change);
       if (
         original !== undefined &&
-        lane === original.lane &&
+        delivery === original.delivery &&
         JSON.stringify(original.content) === JSON.stringify(prepared.content)
       ) {
         this.cancelEdit({ session });
@@ -2235,7 +2239,7 @@ class Interactive {
       const outcome = await this.host.nyte.messages.redeliver({
         sessionId: session.sessionId,
         change: editing.change,
-        lane,
+        delivery,
         content: prepared.content,
       });
       if (outcome.kind === "redelivered" || outcome.kind === "unchanged") {
@@ -2278,10 +2282,10 @@ class Interactive {
           waiting: this.waiting !== undefined || asked !== undefined,
           question: asked?.selection.other !== undefined,
           draft: draft?.kind ?? "empty",
-          editingLane:
+          editingDelivery:
             this.session === undefined
               ? undefined
-              : this.queueEdits.get(this.session.sessionId)?.lane,
+              : this.queueEdits.get(this.session.sessionId)?.delivery,
           followUp: this.settings.followUp,
           completion: this.autocomplete?.visible
             ? { accepting: this.autocomplete.accepting, queueable: this.autocomplete.queueable }
@@ -3718,20 +3722,20 @@ class Interactive {
 
   private async runCommand(
     parsed: ParsedSlashCommand,
-    options: { readonly lane?: string; readonly target?: SlashTarget } = {},
+    options: { readonly delivery?: Delivery; readonly target?: SlashTarget } = {},
   ): Promise<void> {
     const session = this.requireSession();
     if (this.changingDirectory || this.switchingSession)
       throw new Error("Wait for the workspace switch to finish.");
     if (this.authenticating !== undefined)
       throw new Error("Finish signing in or out first. Esc cancels.");
-    const lane = options.lane ?? this.roles.steer;
+    const delivery = options.delivery ?? this.roles.steer;
     const target = options.target ?? this.resolveTarget(session, parsed.name);
     const asMessage = (): Promise<void> =>
       this.send(
         session,
         `/${parsed.name}${parsed.argument === "" ? "" : ` ${parsed.argument}`}`,
-        lane,
+        delivery,
       );
     switch (target.kind) {
       case "plugin": {
@@ -3746,7 +3750,7 @@ class Interactive {
             if (outcome.output !== undefined) notice(this.shell, outcome.output);
             return;
           case "prompt":
-            await this.send(session, outcome.prompt, lane);
+            await this.send(session, outcome.prompt, delivery);
             return;
           case "not_found":
             await asMessage();
@@ -3766,7 +3770,7 @@ class Interactive {
         await this.send(
           session,
           formatSkillInvocation(target.skill, parsed.argument === "" ? undefined : parsed.argument),
-          lane,
+          delivery,
         );
         return;
       }

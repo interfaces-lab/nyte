@@ -10,7 +10,7 @@ import { Popover } from "@nyte-ai/ui/popover";
 A popup anchored to the button that opens it. Reach for it when the content is interactive and
 belongs next to its trigger.
 
-No Nyte styling on this one, you own the visual layer.
+No Nyte styling here.
 
 ## Usage
 
@@ -24,6 +24,8 @@ No Nyte styling on this one, you own the visual layer.
   `Popover.Close` is rendered inside `Popover.Popup`.
 - `Popover.Title` and `Popover.Description` name and describe the popup. Render them rather than
   writing your own ARIA.
+- Pass `open` and `onOpenChange` on `Popover.Root` to drive it from your own state. With no
+  trigger inside the root, point the positioner at an element with `anchor`.
 - `Popover.Viewport` is only needed when one popup serves several triggers and you animate the
   content change.
 - To open from a trigger outside the root, pass one handle from `Popover.createHandle()` to both
@@ -54,27 +56,33 @@ No Nyte styling on this one, you own the visual layer.
 
 A popover that opens on press, offset from its trigger.
 
+<Preview>
+  <PopoverDemo />
+</Preview>
+
 ```tsx
 <Popover.Root>
-  <Popover.Trigger>Notifications</Popover.Trigger>
+  <Popover.Trigger render={<Button variant="outline" />}>Notifications</Popover.Trigger>
   <Popover.Portal>
-    <Popover.Positioner sideOffset={8}>
+    <Popover.Positioner sideOffset={6}>
       <Popover.Popup>
-        <Popover.Arrow />
         <Popover.Title>Notifications</Popover.Title>
         <Popover.Description>You are all caught up.</Popover.Description>
-        <Popover.Close>Close</Popover.Close>
+        <div>
+          <Popover.Close render={<Button size="sm" variant="ghost" />}>Close</Popover.Close>
+        </div>
       </Popover.Popup>
     </Popover.Positioner>
   </Popover.Portal>
 </Popover.Root>
 ```
 
-An infotip opens on hover and stays open while the pointer moves to the popup.
+An infotip opens on hover and stays open while the pointer moves to the popup. The trigger is
+icon-only, so it carries its own label.
 
 ```tsx
-<Popover.Trigger openOnHover delay={200} closeDelay={150}>
-  <InfoIcon />
+<Popover.Trigger openOnHover delay={200} closeDelay={150} aria-label="About rate limits">
+  <IconCircleInfo size={14} />
 </Popover.Trigger>
 ```
 

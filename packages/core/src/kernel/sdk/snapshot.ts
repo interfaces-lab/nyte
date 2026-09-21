@@ -86,31 +86,17 @@ export function runInfo(run: Run, lease?: Lease): RunInfo {
 export function pendingItem(item: PendingChange): PendingItem | undefined {
   const body = item.change.body;
   switch (body.kind) {
-    case "message":
-      switch (body.message.role) {
-        case "user":
-          const pending = {
-            change: item.oid,
-            lane: item.lane,
-            at: item.change.at,
-            content: body.message.content,
-          };
-          const keyed =
-            item.change.key === undefined ? pending : { ...pending, key: item.change.key };
-          return item.change.author === undefined
-            ? keyed
-            : { ...keyed, author: item.change.author };
-        case "assistant":
-        case "toolResult":
-          return undefined;
-        default: {
-          const _exhaustive: never = body.message;
-          return _exhaustive;
-        }
-      }
+    case "message": {
+      const pending = {
+        change: item.oid,
+        delivery: item.delivery,
+        at: item.change.at,
+        content: body.message.content,
+      };
+      const keyed = item.change.key === undefined ? pending : { ...pending, key: item.change.key };
+      return item.change.author === undefined ? keyed : { ...keyed, author: item.change.author };
+    }
     case "completion":
-    case "checkpoint":
-    case "summary":
     case "config":
       return undefined;
     default: {

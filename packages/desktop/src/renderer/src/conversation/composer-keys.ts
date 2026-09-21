@@ -1,27 +1,11 @@
-/**
- * Enter and the lanes it sends to, read from the landing policy the host
- * declared. Core names no lane: the lane that lands at every response boundary
- * is what Enter sends (it steers a live run), and the lane that waits for an
- * idle head is what the modifier sends (it queues a follow-up). Shift+Enter is
- * a newline, and a composition's Enter belongs to the IME.
- */
-import type { Landing, Lane, PendingItem } from "@nyte-ai/protocol";
+import type { Delivery, PendingItem } from "@nyte-ai/protocol";
 
-interface LaneRoles {
-  /** Lands before the next response: what Enter sends. */
-  readonly steer: Lane;
-  /** Lands once the head is idle: what Cmd/Ctrl+Enter sends. */
-  readonly queue: Lane;
+interface DeliveryChoices {
+  readonly steer: Delivery;
+  readonly queue: Delivery;
 }
 
-/** A policy with one lane fills both roles with it, so every keystroke lands somewhere served. */
-export function laneRoles(landing: Landing): LaneRoles {
-  const first = landing.lanes[0];
-  if (first === undefined) throw new Error("The landing policy names no lanes");
-  const boundary = landing.lanes.find((policy) => policy.lands === "boundary") ?? first;
-  const idle = landing.lanes.find((policy) => policy.lands === "idle") ?? boundary;
-  return { steer: boundary.lane, queue: idle.lane };
-}
+export const deliveryChoices: DeliveryChoices = { steer: "steer", queue: "next" };
 
 interface EnterKeyState {
   readonly key: string;
@@ -41,29 +25,23 @@ export function composerEnterAction(event: EnterKeyState): ComposerEnterAction {
   return "submit";
 }
 
-/**
- * The lane a submit lands in. A new message steers on Enter and queues with
- * the modifier; an edited queued item keeps its own lane on Enter and swaps to
- * the other role with the modifier, so editing never silently re-lanes it.
- */
-export function submissionLane(action: SubmitAction, roles: LaneRoles, current?: Lane): Lane {
-  if (current === undefined) return action === "submit" ? roles.steer : roles.queue;
+export function submissionDelivery(
+  action: SubmitAction,
+  choices: DeliveryChoices,
+  current?: Delivery,
+): Delivery {
+  if (current === undefined) return action === "submit" ? choices.queue : choices.steer;
   if (action === "submit") return current;
-  return current === roles.steer ? roles.queue : roles.steer;
+  return current === choices.steer ? choices.queue : choices.steer;
 }
 
 export function modifierKeyLabel(mac: boolean): string {
   return mac ? "⌘" : "Ctrl+";
 }
 
-/**
- * The message Enter on an empty composer sends now: the first pending item
- * that is not already in the boundary lane, since one there is going out at
- * the next step anyway.
- */
 export function nextToSteer(
   items: readonly PendingItem[],
-  roles: LaneRoles,
+  choices: DeliveryChoices,
 ): PendingItem | undefined {
-  return items.find((item) => item.lane !== roles.steer);
+  return items.find((item) => item.delivery !== choices.steer);
 }

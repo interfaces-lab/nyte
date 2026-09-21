@@ -140,9 +140,9 @@ export function commitActionDisabledReason(
     return "Pull requests apply to the working tree";
   if (plan.branch) return undefined;
   const remoteStep = plan.push || plan.pullRequest;
-  if (remoteStep && state.branch?.detached === true)
+  if (remoteStep && state.branch?.kind === "detached")
     return "HEAD is detached, so there is no branch";
-  if (remoteStep && !plan.commit && state.branch?.unborn === true)
+  if (remoteStep && !plan.commit && state.branch?.kind === "unborn")
     return "This branch has no commits yet";
   return undefined;
 }
@@ -415,6 +415,7 @@ export function ChangesCommitBar({
       if (plan.branch && options.skipBranch !== true) {
         const name = options.branchName ?? "";
         const created = await nyte.workspace.vcs.createBranch({
+          target: { kind: "workspace" },
           name,
           checkout: true,
           expect,
@@ -442,8 +443,9 @@ export function ChangesCommitBar({
       }
       if (plan.commit && options.skipCommit !== true) {
         const committed = await nyte.workspace.vcs.commit({
+          target: { kind: "workspace" },
           message,
-          target: commitTargetFor(scope),
+          files: commitTargetFor(scope),
           expect,
         });
         const outcome = commitResultMessage(committed);
@@ -466,6 +468,7 @@ export function ChangesCommitBar({
       }
       if (plan.push) {
         const pushed = await nyte.workspace.vcs.push({
+          target: { kind: "workspace" },
           setUpstream: options.setUpstream === true,
           expect,
         });

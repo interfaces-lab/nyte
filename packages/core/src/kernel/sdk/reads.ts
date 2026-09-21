@@ -5,7 +5,14 @@
  */
 import type { Api, Model } from "@nyte-ai/schema";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { FileDiff, OperationInput, RunDiff, TreeId, TreeOutcome } from "@nyte-ai/protocol";
+import type {
+  FileDiff,
+  OperationInput,
+  OperationOutput,
+  RunDiff,
+  TreeId,
+  TreeOutcome,
+} from "@nyte-ai/protocol";
 import { activeCompaction } from "../compaction.ts";
 import { branch } from "../graph.ts";
 import type { Commit } from "../model.ts";
@@ -288,11 +295,7 @@ export function createReads(input: {
     Map<HeadName, { readonly seq: number; readonly cwd: string; readonly tree: TreeOutcome }>
   >();
 
-  const runTrees = async (input: {
-    readonly sessionId: SessionId;
-    readonly head?: HeadName;
-    readonly runId: string;
-  }) => {
+  const runTrees = async (input: { readonly sessionId: SessionId; readonly head?: HeadName }) => {
     const pooled = await pool.open(input.sessionId);
     const session = pooled.session;
     const storedCwd = await pool.storedCwd(session);
@@ -305,36 +308,43 @@ export function createReads(input: {
       pooled.activationCwd ??
       (activation?.kind === "active" ? activation.env.cwd : null);
     const head = input.head ?? MAIN;
-    const [tip, run] = await Promise.all([
+    const [tip, currentRun] = await Promise.all([
       session.refs.read(headRef(head)),
       pool.currentRun(session, head),
     ]);
-    const commits = (await branch(session.objects, tip))
-      .map((item) => item.commit)
-      .filter((commit) => commit.run === input.runId);
-    const live = run?.runId === input.runId && !isTerminalPhase(run.phase) ? run : undefined;
-    return { commits, live, from: commits[0]?.tree, pooled, cwd, head };
+    const commits = (await branch(session.objects, tip)).map((item) => item.commit);
+    return { commits, currentRun, pooled, cwd, head };
   };
 
-  const lastResultTree = (commits: readonly Commit[]): TreeId | undefined =>
-    commits.findLast(
-      (commit) =>
-        commit.tree !== undefined &&
-        commit.body.kind === "message" &&
-        commit.body.message.role === "toolResult",
-    )?.tree;
+  const treesForRun = (trees: Awaited<ReturnType<typeof runTrees>>, runId: string) => {
+    const commits = trees.commits.filter((commit) => commit.run === runId);
+    const live =
+      trees.currentRun?.runId === runId && !isTerminalPhase(trees.currentRun.phase)
+        ? trees.currentRun
+        : undefined;
+    let from: TreeId | undefined;
+    for (const commit of commits) {
+      if ("start" in commit && commit.start.kind === "run") {
+        from = commit.start.tree ?? undefined;
+        break;
+      }
+    }
+    return { ...trees, commits, live, from };
+  };
 
-  const recordedDiff = (
-    commits: readonly Commit[],
-    paths: readonly string[] | undefined,
-  ): readonly FileDiff[] => {
+  const lastResultTree = (commits: readonly Commit[]): TreeId | undefined => {
+    const commit = commits.findLast((candidate) => "call" in candidate && candidate.tree !== null);
+    return commit !== undefined && "call" in commit ? (commit.tree ?? undefined) : undefined;
+  };
+
+  const recordedDiff = (commits: readonly Commit[]): readonly FileDiff[] => {
     const files: FileDiff[] = [];
     for (const commit of commits) {
       if (commit.body.kind !== "message" || commit.body.message.role !== "toolResult") continue;
       if (commit.body.message.isError) continue;
-      const settled = commit.calls?.[commit.body.message.toolCallId];
-      if (settled?.kind !== "file_patch") continue;
-      if (paths !== undefined && !paths.includes(settled.path)) continue;
+      if (!("call" in commit)) continue;
+      const settled = commit.call;
+      if (settled.kind !== "file_patch") continue;
       files.push({
         path: settled.path,
         kind:
@@ -347,9 +357,11 @@ export function createReads(input: {
     return files;
   };
 
-  const diff = async (input: OperationInput<"runs.diff">): Promise<RunDiff> => {
-    pool.alive();
-    const { commits, live, from, pooled, cwd, head } = await runTrees(input);
+  const diffRun = async (
+    trees: Awaited<ReturnType<typeof runTrees>>,
+    runId: string,
+  ): Promise<RunDiff> => {
+    const { commits, live, from, pooled, cwd, head } = treesForRun(trees, runId);
     if (commits.length === 0) return { kind: "not_found" };
     const vcs = options.workspace?.vcs;
     if (vcs !== undefined && from !== undefined && cwd !== null) {
@@ -368,18 +380,32 @@ export function createReads(input: {
               });
       const to = current?.kind === "tree" ? current.id : lastResultTree(commits);
       if (to !== undefined) {
-        const files = await vcs.diffTrees({ cwd, from, to, paths: input.paths });
+        const files = await vcs.diffTrees({ cwd, from, to });
         return { kind: "tree", from, to, files };
       }
     }
-    return { kind: "recorded", files: recordedDiff(commits, input.paths) };
+    return { kind: "recorded", files: recordedDiff(commits) };
+  };
+
+  const diff = async (
+    input: OperationInput<"runs.diff">,
+  ): Promise<OperationOutput<"runs.diff">> => {
+    pool.alive();
+    const trees = await runTrees(input);
+    return Promise.all(
+      input.runs.map(async (run) => ({
+        run,
+        diff: await diffRun(trees, run),
+      })),
+    );
   };
 
   const revert = async (
     input: OperationInput<"runs.revert"> & { readonly expect: TreeId },
   ): Promise<RunRevertOutcome> => {
     pool.alive();
-    const { commits, live, from, cwd } = await runTrees(input);
+    const trees = await runTrees(input);
+    const { commits, live, from, cwd } = treesForRun(trees, input.runId);
     if (commits.length === 0) return { kind: "not_found" };
     if (live !== undefined) return { kind: "busy", run: live };
     const vcs = options.workspace?.vcs;

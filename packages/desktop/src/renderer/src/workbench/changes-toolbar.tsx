@@ -392,12 +392,23 @@ function CommitScopeItems({
 }
 
 function branchDescription(branch: BranchReadout): string {
-  const parts = [branch.detached ? `Detached at ${branch.label}` : `On branch ${branch.label}`];
-  if (branch.unborn) parts.push("no commits yet");
-  if (branch.upstream !== undefined) parts.push(`tracking ${branch.upstream}`);
-  if (branch.ahead > 0) parts.push(`${String(branch.ahead)} ahead`);
-  if (branch.behind > 0) parts.push(`${String(branch.behind)} behind`);
-  return parts.join(", ");
+  switch (branch.kind) {
+    case "detached":
+      return `Detached at ${branch.label}`;
+    case "unborn":
+      return `On branch ${branch.label}, no commits yet`;
+    case "attached": {
+      const parts = [`On branch ${branch.label}`];
+      if (branch.upstream !== null) parts.push(`tracking ${branch.upstream}`);
+      if (branch.ahead > 0) parts.push(`${String(branch.ahead)} ahead`);
+      if (branch.behind > 0) parts.push(`${String(branch.behind)} behind`);
+      return parts.join(", ");
+    }
+    default: {
+      const _exhaustive: never = branch;
+      return _exhaustive;
+    }
+  }
 }
 
 /** HEAD as it stands. Reading only: no checkout, no fetch, no branch switch. */
@@ -405,16 +416,16 @@ function BranchReadoutChip({ branch }: { readonly branch: BranchReadout }): Reac
   const description = branchDescription(branch);
   return (
     <span aria-label={description} title={description} {...stylex.props(styles.branch)}>
-      <Icon name={branch.detached ? "git" : "git-branch"} size={12} />
+      <Icon name={branch.kind === "detached" ? "git" : "git-branch"} size={12} />
       <span {...stylex.props(styles.branchLabel)}>{branch.label}</span>
-      {branch.detached && <span {...stylex.props(styles.branchTag)}>detached</span>}
-      {branch.unborn && <span {...stylex.props(styles.branchTag)}>no commits</span>}
-      {branch.ahead > 0 && (
+      {branch.kind === "detached" && <span {...stylex.props(styles.branchTag)}>detached</span>}
+      {branch.kind === "unborn" && <span {...stylex.props(styles.branchTag)}>no commits</span>}
+      {branch.kind === "attached" && branch.ahead > 0 && (
         <span aria-hidden="true" {...stylex.props(styles.branchCount)}>
           ↑{String(branch.ahead)}
         </span>
       )}
-      {branch.behind > 0 && (
+      {branch.kind === "attached" && branch.behind > 0 && (
         <span aria-hidden="true" {...stylex.props(styles.branchCount)}>
           ↓{String(branch.behind)}
         </span>

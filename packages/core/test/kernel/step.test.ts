@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import type { AssistantMessage, Message } from "@nyte-ai/schema";
-import { sessionId, type Landing } from "@nyte-ai/protocol";
+import { sessionId } from "@nyte-ai/protocol";
 import { contextMessages } from "@nyte-ai/client";
 import {
   listEffects,
@@ -15,12 +15,12 @@ import {
   signalEffect,
 } from "../../src/kernel/effects.ts";
 import { branch } from "../../src/kernel/graph.ts";
-import type { CommitBody, Run } from "../../src/kernel/model.ts";
+import type { ChangeBody, Run } from "../../src/kernel/model.ts";
 import {
   DELETED_REF,
   delegationRef,
   headRef,
-  queueBaseRef,
+  inboxBaseRef,
   runRef,
 } from "../../src/kernel/names.ts";
 import { pending, pendingIn, submit } from "../../src/kernel/queue.ts";
@@ -33,7 +33,7 @@ import {
   assistant,
   call,
   granted,
-  landing,
+  drain,
   message,
   openSession,
   openStore,
@@ -121,9 +121,9 @@ async function textAt(session: Session, index: number): Promise<string> {
 async function stepMain(
   session: Session,
   turn: Turn,
-  options: Partial<Omit<StepOptions, "head" | "landing">> = {},
+  options: Partial<Omit<StepOptions, "head" | "drain">> = {},
 ): Promise<ReturnType<typeof step>> {
-  return step(session, turn, { head: "main", landing, ...options });
+  return step(session, turn, { head: "main", drain, ...options });
 }
 
 test("a submitted message lands, gets its answer, and the head goes idle", async () => {
@@ -132,13 +132,14 @@ test("a submitted message lands, gets its answer, and the head goes idle", async
   const sent = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hello"),
   });
 
   assert.equal((await stepMain(session, turn)).kind, "continue");
   assert.deepEqual(await branchBodyRoles(session), ["user"]);
-  assert.equal(await session.refs.read(queueBaseRef("main", "now")), sent.change);
+  assert.equal(await session.refs.read(inboxBaseRef("main", "steer")), sent.change);
   assert.equal((await currentRun(session))?.phase.kind, "respond");
   assert.deepEqual(await pending(session, "main"), []);
 
@@ -176,7 +177,8 @@ test("a tool round commits the call, then every result in order, then the answer
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("read both"),
   });
   await stepMain(session, turn);
@@ -206,13 +208,14 @@ test("a tool round commits the call, then every result in order, then the answer
   ]);
 });
 
-test("an agent switch ends the current run with the next landing batch still queued", async () => {
+test("an agent switch ends the current run with the next drain batch still queued", async () => {
   const session = await openSession();
   const turn = new Script([asks("c1"), complete("agent B answered")], [results("c1")]);
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: { kind: "message", message: user("first"), agent: "agent-a" },
   });
   await stepMain(session, turn);
@@ -221,17 +224,19 @@ test("an agent switch ends the current run with the next landing batch still que
   const previous = await currentRun(session);
   assert.ok(previous !== undefined);
   const tip = await session.refs.read(headRef("main"));
-  const base = await session.refs.read(queueBaseRef("main", "now"));
+  const base = await session.refs.read(inboxBaseRef("main", "steer"));
   const config = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "passive",
     body: { kind: "config", thinkingLevel: "high" },
   });
   const sent = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: { kind: "message", message: user("switch"), agent: "agent-b" },
   });
 
@@ -241,9 +246,9 @@ test("an agent switch ends the current run with the next landing batch still que
   assert.equal(ended.run.phase.kind, "done");
   assert.equal(ended.run.config.agent, "agent-a");
   assert.equal(await session.refs.read(headRef("main")), tip);
-  assert.equal(await session.refs.read(queueBaseRef("main", "now")), base);
+  assert.equal(await session.refs.read(inboxBaseRef("main", "steer")), base);
   assert.deepEqual(
-    (await pendingIn(session, { head: "main", lane: "now" })).map((item) => item.oid),
+    (await pendingIn(session, { head: "main", delivery: "steer" })).map((item) => item.oid),
     [config.change, sent.change],
   );
 
@@ -259,14 +264,15 @@ test("an agent switch ends the current run with the next landing batch still que
   assert.equal(await textAt(session, 5), "agent B answered");
 });
 
-test("input that arrives during a run lands after the current answer; the idle lane waits for the end", async () => {
+test("input that arrives during a run lands after the current answer; the idle delivery waits for the end", async () => {
   const session = await openSession();
   const turn = new Script([
     async (input) => {
       await submit(input.session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "now",
+        delivery: "steer",
+        kind: "user",
         body: say("while streaming"),
       });
       return complete("first answer");
@@ -278,20 +284,23 @@ test("input that arrives during a run lands after the current answer; the idle l
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("first"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
+    kind: "user",
     body: say("for later"),
-    lane: "later",
+    delivery: "next",
   });
   await stepMain(session, turn);
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("steer me"),
   });
 
@@ -299,10 +308,10 @@ test("input that arrives during a run lands after the current answer; the idle l
   assert.equal((await stepMain(session, turn)).kind, "finished");
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
   assert.equal(await textAt(session, 1), "first answer");
-  assert.deepEqual((await pending(session, "main")).map((item) => item.lane).toSorted(), [
-    "later",
-    "now",
-    "now",
+  assert.deepEqual((await pending(session, "main")).map((item) => item.delivery).toSorted(), [
+    "next",
+    "steer",
+    "steer",
   ]);
 
   // Steer input lands one message per answer, in arrival order.
@@ -315,11 +324,11 @@ test("input that arrives during a run lands after the current answer; the idle l
   await stepMain(session, turn);
   assert.equal(await textAt(session, 5), "third answer");
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["later"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["next"],
   );
 
-  // Only once nothing is live does the idle lane land.
+  // Only once nothing is live does the idle delivery land.
   assert.equal((await stepMain(session, turn)).kind, "continue");
   assert.equal(await textAt(session, 6), "for later");
   await stepMain(session, turn);
@@ -348,7 +357,8 @@ test("an abort that races the response keeps the response, then ends the run at 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);
@@ -361,7 +371,7 @@ test("an abort that races the response keeps the response, then ends the run at 
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
 });
 
-test("an abort ends the run even with a boundary-lane message waiting; that message starts a new run", async () => {
+test("an abort ends the run even with a boundary-delivery message waiting; that message starts a new run", async () => {
   const session = await openSession();
   const seen: string[] = [];
   const turn = new Script([
@@ -381,7 +391,8 @@ test("an abort ends the run even with a boundary-lane message waiting; that mess
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);
@@ -390,27 +401,29 @@ test("an abort ends the run even with a boundary-lane message waiting; that mess
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("do this instead"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("for later"),
   });
 
   // The abort raced the publish; the interrupted response is kept, and the
-  // boundary ends the run without landing the steer into it.
+  // boundary ends the run without drain the steer into it.
   assert.equal((await stepMain(session, turn)).kind, "continue");
   assert.equal((await stepMain(session, turn)).kind, "finished");
   const stopped = await currentRun(session);
   assert.equal(stopped?.id, run.id);
   assert.equal(stopped?.phase.kind, "aborted");
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
-  assert.deepEqual((await pending(session, "main")).map((item) => item.lane).sort(), [
-    "later",
-    "now",
+  assert.deepEqual((await pending(session, "main")).map((item) => item.delivery).sort(), [
+    "next",
+    "steer",
   ]);
 
   assert.equal((await stepMain(session, turn)).kind, "continue");
@@ -424,8 +437,8 @@ test("an abort ends the run even with a boundary-lane message waiting; that mess
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "user", "assistant"]);
   assert.equal((await currentRun(session))?.phase.kind, "done");
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["later"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["next"],
   );
 });
 
@@ -443,7 +456,8 @@ test("an abort flagged during a tool batch settles the batch, then ends the run;
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);
@@ -457,7 +471,8 @@ test("an abort flagged during a tool batch settles the batch, then ends the run;
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("steer"),
   });
   assert.equal((await stepMain(session, turn)).kind, "finished");
@@ -484,7 +499,8 @@ test("an abort during a retry backoff ends the run without waiting it out", asyn
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn, { now: () => start });
@@ -498,13 +514,10 @@ test("an abort during a retry backoff ends the run without waiting it out", asyn
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
 });
 
-/** The lanes an SDK-like runner serves: user lanes plus a boundary lane for job completions. */
-const withResults: Landing = {
-  lanes: [...landing.lanes, { lane: "results", lands: "boundary" }],
-  drain: "one",
-};
-
-function completion(id: string, state: "completed" | "cancelled" = "completed"): CommitBody {
+function completion(
+  id: string,
+  state: "completed" | "cancelled" = "completed",
+): Extract<ChangeBody, { readonly kind: "completion" }> {
   return {
     kind: "completion",
     job: {
@@ -518,7 +531,7 @@ function completion(id: string, state: "completed" | "cancelled" = "completed"):
 }
 
 async function stepResults(session: Session, turn: Turn): Promise<ReturnType<typeof step>> {
-  return step(session, turn, { head: "main", landing: withResults });
+  return step(session, turn, { head: "main", drain });
 }
 
 test("a completion racing an abort cannot restart the stopped run; it joins the next user message once", async () => {
@@ -532,7 +545,8 @@ test("a completion racing an abort cannot restart the stopped run; it joins the 
       await submit(input.session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "results",
+        delivery: "steer",
+        kind: "report",
         body: completion("job", "cancelled"),
       });
       return {
@@ -549,7 +563,8 @@ test("a completion racing an abort cannot restart the stopped run; it joins the 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepResults(session, turn);
@@ -564,25 +579,23 @@ test("a completion racing an abort cannot restart the stopped run; it joins the 
   assert.equal(stopped?.abortRequested, true);
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant"]);
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["results"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["steer"],
   );
   const settledAt = await session.events.last();
   assert.equal((await stepResults(session, turn)).kind, "idle");
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   assert.equal(await session.events.last(), settledAt);
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("and now?"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const answered = await currentRun(session);
   assert.notEqual(answered?.id, run.id);
   assert.equal(answered?.phase.kind, "done");
@@ -621,7 +634,8 @@ test("a stopped run whose tool batch fails still ends aborted; its failure outpu
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepResults(session, turn);
@@ -634,7 +648,8 @@ test("a stopped run whose tool batch fails still ends aborted; its failure outpu
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("job", "cancelled"),
   });
 
@@ -651,24 +666,22 @@ test("a stopped run whose tool batch fails still ends aborted; its failure outpu
   assert.ok(notices.some((notice) => notice.includes("read blew up")));
 
   const settledAt = await session.events.last();
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   assert.equal(await session.events.last(), settledAt);
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["results"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["steer"],
   );
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("and now?"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const answered = await currentRun(session);
   assert.notEqual(answered?.id, run.id);
   assert.equal(answered?.phase.kind, "done");
@@ -691,7 +704,8 @@ test("a stopped run that cannot run its tools ends aborted, not failed", async (
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);
@@ -743,24 +757,23 @@ test("a flagged run that an older runner left failed is still stopped: completio
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("job"),
   });
 
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   assert.equal(await session.refs.read(runRef("main")), failedOid);
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("go on"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   assert.deepEqual(await branchBodyRoles(session), [
     "user",
     "assistant",
@@ -775,7 +788,8 @@ test("a failed run revokes the delegate continuations it authorized", async () =
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("start"),
   });
   await stepMain(session, new Script());
@@ -809,7 +823,8 @@ test("a failed run revokes the delegate continuations it authorized", async () =
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "answer",
     body: {
       kind: "completion",
       job: {
@@ -822,69 +837,7 @@ test("a failed run revokes the delegate continuations it authorized", async () =
       },
     },
   });
-  assert.equal(
-    (await drive(session, new Script(), { head: "main", landing: withResults })).kind,
-    "idle",
-  );
-});
-
-test("a waiter judges the batch the runner would land: a stray non-user message ahead of user input keeps a stopped head idle under drain one", async () => {
-  const session = await openSession();
-  const turn = new Script([
-    async (input) => {
-      await flagAbort(input.session, input.run);
-      return {
-        kind: "aborted",
-        message: assistant("", { stop: "aborted" }),
-        failure: { class: "aborted", message: "Aborted" },
-      };
-    },
-    complete("answered"),
-  ]);
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    lane: "now",
-    body: say("hi"),
-  });
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "finished");
-  assert.equal((await currentRun(session))?.phase.kind, "aborted");
-  // The kernel accepts any commit body in a lane; only the SDK limits messages to user input.
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    lane: "now",
-    body: message(assistant("stray")),
-  });
-  await submit(session, {
-    preparation: { kind: "none" },
-    head: "main",
-    lane: "now",
-    body: say("go on"),
-  });
-
-  // Drain one takes the lane through the stray message, which is not user
-  // input: the runner lands nothing, and the waiter reads the same batch.
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "idle");
-  assert.deepEqual(await waitForHead(session, { head: "main", drain: "one" }), { kind: "idle" });
-  assert.equal((await pending(session, "main")).length, 2);
-
-  // Drain all takes the whole lane, whose user input starts a run; the waiter
-  // sees that too and rests only once it is answered.
-  const observed = waitForHead(session, { head: "main", drain: "all" });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: { ...landing, drain: "all" } })).kind,
-    "finished",
-  );
-  assert.deepEqual(await observed, { kind: "idle" });
-  assert.deepEqual(await branchBodyRoles(session), [
-    "user",
-    "assistant",
-    "assistant",
-    "user",
-    "assistant",
-  ]);
-  assert.equal(await textAt(session, 4), "answered");
+  assert.equal((await drive(session, new Script(), { head: "main", drain })).kind, "idle");
 });
 
 test("a completion queued behind a stop survives closing the store; after reopening it still waits, then joins the next answer once", async () => {
@@ -904,21 +857,20 @@ test("a completion queued behind a stop survives closing the store; after reopen
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   assert.equal((await currentRun(session))?.phase.kind, "aborted");
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("late"),
   });
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   await store.close();
 
   const reopened = await openStore(path).open("s");
@@ -929,10 +881,7 @@ test("a completion queued behind a stop survives closing the store; after reopen
       return complete("after reopening");
     },
   ]);
-  assert.equal(
-    (await drive(reopened, resumed, { head: "main", landing: withResults })).kind,
-    "idle",
-  );
+  assert.equal((await drive(reopened, resumed, { head: "main", drain })).kind, "idle");
   assert.deepEqual(await waitForHead(reopened, { head: "main" }), { kind: "idle" });
   assert.deepEqual(await branchBodyRoles(reopened), ["user", "assistant"]);
   assert.equal((await pending(reopened, "main")).length, 1);
@@ -940,13 +889,11 @@ test("a completion queued behind a stop survives closing the store; after reopen
   await submit(reopened, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("and now?"),
   });
-  assert.equal(
-    (await drive(reopened, resumed, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(reopened, resumed, { head: "main", drain })).kind, "finished");
   assert.deepEqual(await branchBodyRoles(reopened), [
     "user",
     "assistant",
@@ -959,7 +906,7 @@ test("a completion queued behind a stop survives closing the store; after reopen
   assert.deepEqual(await pending(reopened, "main"), []);
 });
 
-test("configuration after a stop applies without resuming, and the next message uses it from any lane", async () => {
+test("configuration after a stop applies without resuming, and the next message uses it from any delivery", async () => {
   const session = await openSession();
   const turn = new Script([
     async (input) => {
@@ -975,13 +922,11 @@ test("configuration after a stop applies without resuming, and the next message 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const stopped = await currentRun(session);
   assert.equal(stopped?.phase.kind, "aborted");
   const stoppedOid = await session.refs.read(runRef("main"));
@@ -989,35 +934,35 @@ test("configuration after a stop applies without resuming, and the next message 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("job"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "passive",
     body: { kind: "config", thinkingLevel: "high" },
   });
   // Twice: the config still has to land, and the stop must survive it.
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "config"]);
   assert.equal(await session.refs.read(runRef("main")), stoppedOid);
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["results"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["steer"],
   );
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("go on"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const answered = await currentRun(session);
   assert.notEqual(answered?.id, stopped?.id);
   assert.equal(answered?.config.thinkingLevel, "high");
@@ -1049,25 +994,27 @@ test("a repeated abort changes nothing, before or after the run ends", async () 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "finished");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const stopped = await currentRun(session);
   assert.ok(stopped !== undefined);
   assert.equal(stopped.phase.kind, "aborted");
   const before = await session.events.last();
   await flagAbort(session, stopped);
   assert.equal(await session.events.last(), before);
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "user",
     body: say("again"),
   });
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "finished");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   assert.notEqual((await currentRun(session))?.id, stopped.id);
   assert.equal(await textAt(session, 3), "fresh");
 });
@@ -1084,13 +1031,11 @@ const idleHeads: readonly {
       await submit(session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "now",
+        delivery: "steer",
+        kind: "user",
         body: say("hi"),
       });
-      assert.equal(
-        (await drive(session, turn, { head: "main", landing: withResults })).kind,
-        "finished",
-      );
+      assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
       assert.equal((await currentRun(session))?.phase.kind, "done");
     },
   },
@@ -1100,7 +1045,8 @@ const idleHeads: readonly {
       await submit(session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "now",
+        delivery: "steer",
+        kind: "user",
         body: say("hi"),
       });
       // A ceiling of zero fails the run before its first response is asked for.
@@ -1108,7 +1054,7 @@ const idleHeads: readonly {
         (
           await drive(session, new Script(), {
             head: "main",
-            landing: withResults,
+            drain,
             steps: 0,
           })
         ).kind,
@@ -1143,36 +1089,31 @@ for (const { name, settle } of idleHeads) {
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "results",
+      delivery: "steer",
+      kind: "report",
       body: completion("job"),
     });
     const settledAt = await session.events.last();
-    assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
-    assert.equal(
-      (await drive(session, turn, { head: "main", landing: { ...withResults, drain: "all" } }))
-        .kind,
-      "idle",
-    );
+    assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
+    assert.equal((await drive(session, turn, { head: "main", drain: "all" })).kind, "idle");
     assert.equal(await session.events.last(), settledAt);
     assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
     assert.deepEqual((await currentRun(session))?.id, before?.id);
     assert.deepEqual(await branchBodyRoles(session), branchBefore);
     assert.deepEqual(
-      (await pending(session, "main")).map((item) => item.lane),
-      ["results"],
+      (await pending(session, "main")).map((item) => item.delivery),
+      ["steer"],
     );
     assert.equal(seen.length, 0);
 
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "now",
+      delivery: "next",
+      kind: "user",
       body: say("and now?"),
     });
-    assert.equal(
-      (await drive(session, turn, { head: "main", landing: withResults })).kind,
-      "finished",
-    );
+    assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
     const answered = await currentRun(session);
     assert.ok(answered !== undefined);
     assert.notEqual(answered.id, before?.id);
@@ -1195,13 +1136,11 @@ test("configuration after a natural finish applies under the finished run; only 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const finished = await currentRun(session);
   assert.equal(finished?.phase.kind, "done");
   const finishedOid = await session.refs.read(runRef("main"));
@@ -1209,34 +1148,34 @@ test("configuration after a natural finish applies under the finished run; only 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("job"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "later",
+    delivery: "next",
+    kind: "passive",
     body: { kind: "config", thinkingLevel: "high" },
   });
-  assert.equal((await drive(session, turn, { head: "main", landing: withResults })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
   assert.deepEqual(await branchBodyRoles(session), ["user", "assistant", "config"]);
   assert.equal(await session.refs.read(runRef("main")), finishedOid);
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["results"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["steer"],
   );
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "next",
+    kind: "user",
     body: say("go on"),
   });
-  assert.equal(
-    (await drive(session, turn, { head: "main", landing: withResults })).kind,
-    "finished",
-  );
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   const answered = await currentRun(session);
   assert.notEqual(answered?.id, finished?.id);
   assert.equal(answered?.config.thinkingLevel, "high");
@@ -1261,7 +1200,8 @@ test("a checkpoint continues the run that asked for it; a stop during the checkp
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   assert.equal((await stepResults(session, turn)).kind, "continue");
@@ -1281,7 +1221,8 @@ test("a checkpoint continues the run that asked for it; a stop during the checkp
       await submit(input.session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "results",
+        delivery: "steer",
+        kind: "report",
         body: completion("job"),
       });
       return checkpoint("cut short");
@@ -1290,7 +1231,8 @@ test("a checkpoint continues the run that asked for it; a stop during the checkp
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("more"),
   });
   assert.equal((await stepResults(session, stopping)).kind, "continue");
@@ -1305,18 +1247,15 @@ test("a checkpoint continues the run that asked for it; a stop during the checkp
   const stopped = await currentRun(session);
   assert.equal(stopped?.id, second.id);
   assert.equal(stopped?.phase.kind, "aborted");
-  assert.equal(
-    (await drive(session, stopping, { head: "main", landing: withResults })).kind,
-    "idle",
-  );
+  assert.equal((await drive(session, stopping, { head: "main", drain })).kind, "idle");
   assert.deepEqual(await waitForHead(session, { head: "main" }), { kind: "idle" });
   assert.deepEqual(
-    (await pending(session, "main")).map((item) => item.lane),
-    ["results"],
+    (await pending(session, "main")).map((item) => item.delivery),
+    ["steer"],
   );
 });
 
-test("while an input awaits its answer, a lane mixing completions and input contributes only the completions", async () => {
+test("while an input awaits its answer, a delivery mixing completions and input contributes only the completions", async () => {
   const session = await openSession();
   const seen: string[][] = [];
   const turn = new Script([
@@ -1332,20 +1271,23 @@ test("while an input awaits its answer, a lane mixing completions and input cont
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("first"),
   });
   assert.equal((await stepResults(session, turn)).kind, "continue");
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "report",
     body: completion("job"),
   });
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "results",
+    delivery: "steer",
+    kind: "user",
     body: say("second"),
   });
 
@@ -1381,7 +1323,8 @@ test("a head moved under a run ends the run and leaves its answer off the branch
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);
@@ -1406,7 +1349,8 @@ test("a transient failure waits out its backoff durably, then tries again", asyn
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn, { now: () => start });
@@ -1433,7 +1377,8 @@ test("a run stops at its response ceiling, fixed or decided per run", async () =
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("go"),
   });
   await stepMain(session, turn, { steps: 1 });
@@ -1441,7 +1386,8 @@ test("a run stops at its response ceiling, fixed or decided per run", async () =
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("more"),
   });
   await stepMain(session, turn, { steps: 1 });
@@ -1455,7 +1401,8 @@ test("a run stops at its response ceiling, fixed or decided per run", async () =
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("blocked"),
   });
   await stepMain(session, turn, { steps: ceilingByRun });
@@ -1471,7 +1418,8 @@ test("a head held by another runner is busy; a runner that loses its lease publi
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   const holder = granted(await session.leases.acquire(headRef("main"), 30_000));
@@ -1500,10 +1448,11 @@ test("drive runs a head to idle under one lease; a parked run releases the head 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("go"),
   });
-  const outcome = await drive(session, turn, { head: "main", landing });
+  const outcome = await drive(session, turn, { head: "main", drain });
   assert.equal(outcome.kind, "finished");
   assert.deepEqual(await branchBodyRoles(session), [
     "user",
@@ -1512,7 +1461,7 @@ test("drive runs a head to idle under one lease; a parked run releases the head 
     "assistant",
   ]);
   assert.equal(await session.leases.read(headRef("main")), undefined);
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "idle");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "idle");
 
   let runId = "";
   const parked = new Script(
@@ -1538,22 +1487,23 @@ test("drive runs a head to idle under one lease; a parked run releases the head 
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("ask"),
   });
-  assert.equal((await drive(session, parked, { head: "main", landing })).kind, "waiting");
+  assert.equal((await drive(session, parked, { head: "main", drain })).kind, "waiting");
   assert.equal(await session.leases.read(headRef("main")), undefined);
 
   // Polling a parked run without an answer writes nothing.
   const before = await session.events.last();
-  assert.equal((await drive(session, parked, { head: "main", landing })).kind, "waiting");
+  assert.equal((await drive(session, parked, { head: "main", drain })).kind, "waiting");
   assert.equal(await session.events.last(), before);
 
   assert.equal(
     (await signalEffect(session, { runId, callId: "ask", signal: "42" })).kind,
     "signalled",
   );
-  assert.equal((await drive(session, parked, { head: "main", landing })).kind, "finished");
+  assert.equal((await drive(session, parked, { head: "main", drain })).kind, "finished");
   assert.equal(await textAt(session, 6), "out ask");
   assert.equal(await textAt(session, 7), "thanks");
 });
@@ -1582,10 +1532,11 @@ test("a waiting run resumes when every effect already has a result", async () =>
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("ask"),
   });
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "waiting");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "waiting");
 
   const current = await currentRun(session);
   assert.ok(current);
@@ -1605,7 +1556,7 @@ test("a waiting run resumes when every effect already has a result", async () =>
   assert.equal(await session.leases.release(held), true);
 
   const observed = waitForHead(session, { head: "main" });
-  assert.equal((await drive(session, turn, { head: "main", landing })).kind, "finished");
+  assert.equal((await drive(session, turn, { head: "main", drain })).kind, "finished");
   assert.deepEqual(await observed, { kind: "idle" });
   assert.deepEqual(await branchBodyRoles(session), [
     "user",
@@ -1620,7 +1571,8 @@ test("a session marked deleted is left alone", async () => {
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   const [marker] = await session.objects.put([{ kind: "blob", value: { at: 1 } }]);
@@ -1632,21 +1584,30 @@ test("a session marked deleted is left alone", async () => {
   assert.equal(await session.events.last(), before);
 });
 
-test("configuration alone lands already done without a response", async () => {
+test("configuration waits for response-starting input when the head has never run", async () => {
   const session = await openSession();
   const turn = new Script();
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "passive",
     body: { kind: "config", thinkingLevel: "xhigh" },
   });
-  assert.equal((await stepMain(session, turn)).kind, "continue");
-  assert.deepEqual(await branchBodyRoles(session), ["config"]);
-  assert.equal((await currentRun(session))?.phase.kind, "done");
-  assert.deepEqual((await currentRun(session))?.config, { thinkingLevel: "xhigh" });
   assert.equal((await stepMain(session, turn)).kind, "idle");
-  assert.equal((await currentRun(session))?.attempts, 0);
+  assert.deepEqual(await branchBodyRoles(session), []);
+  assert.equal(await currentRun(session), undefined);
+
+  await submit(session, {
+    preparation: { kind: "none" },
+    head: "main",
+    delivery: "steer",
+    kind: "user",
+    body: say("start"),
+  });
+  assert.equal((await stepMain(session, turn)).kind, "continue");
+  assert.deepEqual(await branchBodyRoles(session), ["config", "user"]);
+  assert.deepEqual((await currentRun(session))?.config, { thinkingLevel: "xhigh" });
 });
 
 test("what the turn streams reaches the event stream, in order, before the answer lands", async () => {
@@ -1670,7 +1631,8 @@ test("what the turn streams reaches the event stream, in order, before the answe
   await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: say("hi"),
   });
   await stepMain(session, turn);

@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { contentText } from "@nyte-ai/ai";
-import { isTerminalPhase, type JobEnd, type Landing, type RunPhase } from "@nyte-ai/protocol";
+import { isTerminalPhase, type JobEnd, type RunPhase } from "@nyte-ai/protocol";
 import type { JsonValue } from "@nyte-ai/schema";
 import { definePlugin, inlinePlugin, type LoadedPlugin } from "../../plugins/types.ts";
 import {
@@ -20,7 +20,6 @@ import {
   type SubagentHost,
 } from "../../plugins/builtin/subagents.ts";
 import { transcriptFromCommits } from "@nyte-ai/client";
-import { isUserInput } from "../admission.ts";
 import {
   putDelegationRecord,
   readDelegation,
@@ -104,17 +103,8 @@ export function createDelegation(input: {
   readonly options: NyteOptions;
   readonly pool: SessionPool;
   readonly runners: Runners;
-  /** The host's landing policy: where a child's config and messages go. */
-  readonly landing: Landing;
 }) {
-  const { options, pool, runners, landing } = input;
-  const firstLane = landing.lanes[0]?.lane;
-  if (firstLane === undefined) throw new TypeError("The landing policy has no lane to send to");
-  const boundaryLanes = landing.lanes
-    .filter((policy) => policy.lands === "boundary")
-    .map((policy) => policy.lane);
-  const boundaryLane = boundaryLanes[0] ?? firstLane;
-  const idleLane = landing.lanes.find((policy) => policy.lands === "idle")?.lane ?? firstLane;
+  const { options, pool, runners } = input;
 
   const pluginsFor = (target: {
     readonly id: SessionId;
@@ -166,7 +156,8 @@ export function createDelegation(input: {
         }
         const receipt = await submit(pooled.session, {
           head,
-          lane: "background",
+          kind: "report",
+          delivery: "steer",
           key: `background-${job.id}`,
           body: { kind: "completion", job },
           preparation: { kind: "none" },
@@ -396,7 +387,7 @@ export function createDelegation(input: {
 
   const inputPending = async (parent: Pooled, head: string): Promise<boolean> =>
     (await pending(parent.session, head)).some(
-      (item) => boundaryLanes.includes(item.lane) && isUserInput(item),
+      (item) => item.delivery === "steer" && item.change.kind === "user",
     );
 
   /**
@@ -461,7 +452,8 @@ export function createDelegation(input: {
         continue;
       const receipt = await submit(parent.session, {
         head: ready.head,
-        lane: "background",
+        kind: "answer",
+        delivery: "steer",
         key: `delegate-${childId}-${request.change}`,
         body: { kind: "completion", job: observed.report },
         preparation: { kind: "none" },
@@ -543,7 +535,8 @@ export function createDelegation(input: {
         input.signal?.throwIfAborted();
         await submit(child.session, {
           head: MAIN,
-          lane: firstLane,
+          kind: "passive",
+          delivery: "next",
           body: {
             kind: "config",
             model: { provider: model.provider, id: model.id },
@@ -586,7 +579,8 @@ export function createDelegation(input: {
       };
       await submit(child.pooled.session, {
         head: MAIN,
-        lane: live ? boundaryLane : idleLane,
+        kind: "user",
+        delivery: live ? "steer" : "next",
         body: {
           kind: "message",
           message: { role: "user", content: input.message, timestamp: Date.now() },

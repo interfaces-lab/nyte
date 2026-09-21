@@ -117,15 +117,17 @@ export async function run() {
       commit: String(index),
       contentIndex: 0,
       text: `Work ${String(index)}`,
+      at: index,
     }));
     flushSync(() =>
       root.render(
         <WorkGroupView
           parts={parts}
-          runId={undefined}
+          run={{ kind: "none" }}
           liveTools={new Map()}
           cwd={undefined}
-          durationMs={0}
+          added={0}
+          removed={0}
           running
           density="compact"
         />,
@@ -165,12 +167,14 @@ export async function run() {
       commit: "thought-0",
       contentIndex: 0,
       text: "First thought",
+      at: 0,
     };
     const settledThought: WorkTurnPart = {
       kind: "thinking",
       commit: "thought-1",
       contentIndex: 0,
       text: "Streaming thought",
+      at: 1,
     };
     const liveKey = "run:2:0";
     const streaming = {
@@ -185,10 +189,11 @@ export async function run() {
       root.render(
         <WorkGroupView
           parts={[firstThought]}
-          runId="run"
+          run={{ kind: "run", id: "run" }}
           liveTools={new Map()}
           cwd={undefined}
-          durationMs={0}
+          added={0}
+          removed={0}
           running={false}
           density="detailed"
         />,
@@ -199,11 +204,12 @@ export async function run() {
       root.render(
         <WorkGroupView
           parts={[firstThought]}
-          runId="run"
+          run={{ kind: "run", id: "run" }}
           live={streaming}
           liveTools={streaming.tools}
           cwd={undefined}
-          durationMs={0}
+          added={0}
+          removed={0}
           running
           density="detailed"
         />,
@@ -222,10 +228,11 @@ export async function run() {
       root.render(
         <WorkGroupView
           parts={[firstThought, settledThought]}
-          runId="run"
+          run={{ kind: "run", id: "run" }}
           liveTools={new Map()}
           cwd={undefined}
-          durationMs={0}
+          added={0}
+          removed={0}
           running={false}
           density="detailed"
         />,

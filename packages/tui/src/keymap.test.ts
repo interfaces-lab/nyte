@@ -1,9 +1,8 @@
 import { commandBindings } from "@opentui/keymap/extras";
 import { expect, test } from "bun:test";
-import { DEFAULT_LANDING } from "@nyte-ai/core";
 import { mountShell } from "./app/App.tsx";
 import { readAuthPrompt } from "./auth-prompt.ts";
-import { laneRoles } from "./lanes.ts";
+import { deliveryChoices } from "./lanes.ts";
 import { DARK_THEME } from "./theme.ts";
 import { MouseButton, TextareaRenderable, TextRenderable } from "@opentui/core";
 import { createTestRenderer, ManualClock } from "@opentui/core/testing";
@@ -46,7 +45,7 @@ test("Ctrl+C copies during an auth prompt and cancels only after selection is cl
   const shell = await mountShell({
     renderer: setup.renderer,
     initialTheme: DARK_THEME,
-    roles: laneRoles(DEFAULT_LANDING),
+    roles: deliveryChoices,
     openPath: () => undefined,
   });
   const writes: string[] = [];

@@ -62,7 +62,7 @@ const snapshot = {
   pending: [
     {
       change: "pending-change",
-      lane: "steer",
+      delivery: "steer",
       at: 1,
       content: "Pending prompt",
       key: "live",
@@ -72,7 +72,7 @@ const snapshot = {
     {
       kind: "turn",
       id: "live",
-      run: "settled-run",
+      run: { kind: "run", id: "settled-run" },
       startedAt: 0,
       durationMs: 1_000,
       parts: [
@@ -83,13 +83,15 @@ const snapshot = {
           content: Array.from({ length: 12 }, (_, index) => `Prompt line ${String(index)}`).join(
             "\n",
           ),
+          at: 0,
         },
-        { kind: "thinking", commit: "stable-answer", contentIndex: 0, text: "Stable plan" },
+        { kind: "thinking", commit: "stable-answer", contentIndex: 0, text: "Stable plan", at: 1 },
         {
           kind: "assistant",
           commit: "stable-answer",
           contentIndex: 1,
           text: "Stable answer",
+          at: 1,
         },
       ],
     },
@@ -196,6 +198,7 @@ export async function runTest(): Promise<string> {
           run: activeRun.runId,
           change: "pending-change",
           key: "live",
+          start: { kind: "none" },
           at: 2,
           body: {
             kind: "message",

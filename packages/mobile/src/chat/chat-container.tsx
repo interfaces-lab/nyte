@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Alert, Keyboard } from "react-native";
 import { css, html } from "react-strict-dom";
@@ -17,14 +18,34 @@ import { conversationChanges } from "./turn-changes.ts";
 import { confirmMergeRequest, MERGE_PROMPT } from "./merge-request.ts";
 import { ModelPickerSheet } from "./model-selector.tsx";
 import { ChatScreen } from "./chat-screen.tsx";
+import { indexDelegateNames } from "./delegate-names.ts";
 
 export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
   const { client } = useHost();
   const insets = useSafeAreaInsets();
   const chat = useRemoteChat(client, sessionId);
+  const run = chat.state?.run;
+  const childSessions = useQuery({
+    queryKey: ["child-sessions", sessionId],
+    queryFn: async () => {
+      const first = await client.sessions.list({ parent: sessionId });
+      const children = [...first.items];
+      let cursor = first.next;
+      while (cursor !== undefined) {
+        const page = await client.sessions.list({ parent: sessionId, cursor });
+        children.push(...page.items);
+        cursor = page.next;
+      }
+      return children;
+    },
+    refetchInterval: run !== undefined && !isTerminalPhase(run.phase) ? 2_000 : false,
+  });
+  const delegateNames = useMemo(
+    () => indexDelegateNames(childSessions.data ?? []),
+    [childSessions.data],
+  );
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>();
-  const run = chat.state?.run;
   const finished = run !== undefined && isTerminalPhase(run.phase);
   const waiting = chat.state === undefined ? undefined : waitingCall(chat.state);
   const changes = useMemo(
@@ -149,6 +170,7 @@ export function ChatContainer({ sessionId }: { sessionId: SessionId }) {
           onSend={chat.send}
           onStop={chat.stop}
           onReply={chat.reply}
+          delegateNames={delegateNames}
           changes={review}
           prefill={prefill}
           onAskMerge={() =>

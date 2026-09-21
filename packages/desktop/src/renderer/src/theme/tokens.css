@@ -296,7 +296,20 @@
   --nyte-settings-heading-height: 30px;
   /* One menu row: items, group headings, and the model picker's footer item. */
   --nyte-menu-item-height: 26px;
+  --nyte-menu-padding: 4px;
+  --nyte-menu-radius: var(--nyte-radius-2xl);
+  --nyte-menu-item-radius: var(--nyte-radius-lg);
+  --nyte-menu-item-gap: 8px;
+  --nyte-menu-item-padding-inline: 8px;
+  --nyte-menu-item-padding-block: 4px;
   --nyte-menu-width: 200px;
+  --nyte-dialog-width: 400px;
+  --nyte-dialog-padding: 16px;
+  --nyte-dialog-gap: 16px;
+  --nyte-dialog-radius: var(--nyte-radius-lg);
+  --nyte-suggestion-padding: 6px;
+  --nyte-suggestion-item-height: 28px;
+  --nyte-suggestion-item-gap: 8px;
   --nyte-model-menu-width: 230px;
   --nyte-parameter-menu-width: 220px;
   --nyte-menu-max-height: min(320px, calc(100vh - 32px));
@@ -327,13 +340,18 @@
   --nyte-composer-new-chat-radius: 22px;
   --nyte-composer-expanded-radius: 18px;
   --nyte-workbench-rail-width: 210px;
+  --nyte-workbench-rail-gap: 16px;
+  --nyte-workbench-row-height: 28px;
+  --nyte-workbench-row-gap: 6px;
+  --nyte-workbench-row-padding-inline: 6px;
+  --nyte-workbench-heading-height: 24px;
+  --nyte-prose-paragraph-gap: 16px;
   --nyte-workbench-panel-width: 384px;
   --nyte-workbench-header-height: 35px;
   --nyte-workbench-file-list-width: 200px;
   --nyte-pane-sash-size: 9px;
   --nyte-pane-divider-gap: 5px;
   --nyte-toast-close-gutter: 44px;
-  /** Must equal `STACKED_DIFF_LINE_HEIGHT`, which sizes the stack's estimate. */
   --nyte-diff-line-height: 20px;
   --nyte-diff-preview-max-height: min(480px, 60vh);
   --nyte-clipboard-preview-max-width: 360px;

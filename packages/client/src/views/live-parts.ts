@@ -123,8 +123,17 @@ export function foldLiveParts(parts: LiveParts, event: SessionEvent): LiveParts 
         }
       }
     }
+    case "job": {
+      const job = event.job;
+      const origin = job.origin;
+      if (job.phase.kind === "running" || origin.kind === "user") return parts;
+      return retainParts(
+        parts,
+        (part) =>
+          part.kind !== "tool" || part.runId !== origin.runId || part.callId !== origin.callId,
+      );
+    }
     case "activation_changed":
-    case "job":
     case "synced":
     case "plugins_changed":
     case "notification":

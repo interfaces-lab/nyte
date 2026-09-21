@@ -204,7 +204,7 @@ describe("local bash lifecycle", () => {
       let output = "";
       const execution = operations.exec("sleep 30 & child=$!; echo $child; wait $child", "/tmp", {
         signal: controller.signal,
-        onData: (chunk) => {
+        onData: async (chunk) => {
           output += chunk.toString("utf8");
           const pid = Number.parseInt(output.trim(), 10);
           if (Number.isSafeInteger(pid) && pid > 0) resolvePid?.(pid);

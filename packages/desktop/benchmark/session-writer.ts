@@ -26,11 +26,36 @@ export interface BenchmarkSessionWriter {
 async function putCommit(
   session: Session,
   parent: string | null,
-  body: CommitBody,
+  body: Extract<CommitBody, { kind: "message" }>,
   run?: string,
 ): Promise<string> {
-  const base = { kind: "commit", parent, body, at: Date.now() } satisfies Commit;
-  const commit = run === undefined ? base : ({ ...base, run } satisfies Commit);
+  const common = {
+    kind: "commit",
+    parent,
+    at: Date.now(),
+    ...(run === undefined ? {} : { run }),
+  } as const;
+  const message = body.message;
+  const commit =
+    message.role === "user"
+      ? ({
+          ...common,
+          body: { kind: "message", message },
+          start: { kind: "none" },
+        } satisfies Commit)
+      : message.role === "assistant"
+        ? ({
+            ...common,
+            body: { kind: "message", message },
+            calls: {},
+            outcome: { kind: "ok" },
+          } satisfies Commit)
+        : ({
+            ...common,
+            body: { kind: "message", message },
+            call: { kind: "custom", label: message.toolName },
+            tree: null,
+          } satisfies Commit);
   const [oid] = await session.objects.put([commit]);
   if (oid === undefined) throw new Error("SQLite did not return a commit object id");
   return oid;

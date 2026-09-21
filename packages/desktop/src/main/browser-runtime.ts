@@ -729,11 +729,13 @@ export async function performWait(
 
   if (input.until === "load") {
     await waitForLoad(contents, signal);
+    if (contents.isDestroyed()) return CLOSED;
     return { kind: "ok", state: await takeSnapshot(contents, runtime) };
   }
 
   if (input.until === "time") {
     await sleep(input.seconds * 1000, signal);
+    if (contents.isDestroyed()) return CLOSED;
     return { kind: "ok", state: await takeSnapshot(contents, runtime) };
   }
 
@@ -757,17 +759,25 @@ export async function performWait(
   return { kind: "ok", state: await takeSnapshot(contents, runtime) };
 }
 
+const LOAD_LIMIT_MS = 30_000;
+
+/** Every exit clears the timer and listeners; a view destroyed mid-load fires only `destroyed`. */
 function waitForLoad(contents: WebContents, signal?: AbortSignal): Promise<void> {
-  if (!contents.isLoading()) return Promise.resolve();
+  if (contents.isDestroyed() || !contents.isLoading() || signal?.aborted === true) {
+    return Promise.resolve();
+  }
   return new Promise<void>((resolve) => {
     const done = () => {
+      clearTimeout(timer);
       contents.removeListener("did-stop-loading", done);
+      contents.removeListener("destroyed", done);
       signal?.removeEventListener("abort", done);
       resolve();
     };
+    const timer = setTimeout(done, LOAD_LIMIT_MS);
     contents.on("did-stop-loading", done);
+    contents.on("destroyed", done);
     signal?.addEventListener("abort", done, { once: true });
-    setTimeout(done, 30_000);
   });
 }
 

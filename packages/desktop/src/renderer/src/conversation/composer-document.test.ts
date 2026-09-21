@@ -30,12 +30,7 @@ import {
   ComposerReferenceNode,
   registerComposerReferences,
 } from "./composer-document.ts";
-import {
-  CONVERSATION_MENTION,
-  clipboardReferenceFromPaste,
-  referenceLabel,
-  referenceText,
-} from "./message-references.ts";
+import { CONVERSATION_MENTION, referenceLabel, referenceText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
 const file: MentionFile = {
@@ -382,9 +377,7 @@ describe("composer document", () => {
 
   it("unwraps a restored clipboard chip to its body on submit", () => {
     const body = "one\ntwo\nthree\nfour";
-    const clipboard = clipboardReferenceFromPaste(body);
-    expect(clipboard).toEqual({ kind: "clipboard", body });
-    if (clipboard === undefined) return;
+    const clipboard = { kind: "clipboard", body } as const;
     const token = referenceText(clipboard);
     const { editor, labels, restore } = composer();
     restore(token);

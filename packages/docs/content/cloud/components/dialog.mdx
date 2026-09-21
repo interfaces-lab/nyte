@@ -12,15 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@nyte-ai/ui";
-import { Dialog as DialogPrimitive } from "@nyte-ai/ui/dialog";
+import { Dialog as DialogBase } from "@nyte-ai/ui/dialog";
 ```
 
 A modal that opens on top of the page and takes focus. Reach for it when a task needs the user's
 full attention and can be cancelled.
 
-The root exports give you the styled surface. There is no styled Trigger or Close, so use
-`DialogPrimitive.Trigger` and `DialogPrimitive.Close` with `render={<Button … />}`. The namespace
-also carries `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
+The root exports give you the styled surface. There is no styled Trigger or Close, so those come
+from the `@nyte-ai/ui/dialog` namespace with `render={<Button … />}`. Both paths export the name
+`Dialog`, so a file using both aliases one. The namespace also carries `Portal`, `Backdrop`, and
+`Viewport`.
 
 ## Usage
 
@@ -40,7 +41,7 @@ also carries `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
 
 ```tsx
 <Dialog>
-  <DialogPrimitive.Trigger />
+  <DialogBase.Trigger />
   <DialogContent>
     {/* Portal › Backdrop › Popup, plus Close */}
     <DialogHeader>
@@ -53,22 +54,22 @@ also carries `Portal`, `Backdrop`, `Viewport`, and `createHandle`.
 </Dialog>
 ```
 
-The same tree with the unstyled namespace:
+The same tree with the unstyled namespace, where nothing from the root is in play:
 
 ```tsx
-<DialogPrimitive.Root>
-  <DialogPrimitive.Trigger />
-  <DialogPrimitive.Portal>
-    <DialogPrimitive.Backdrop />
-    <DialogPrimitive.Viewport>
-      <DialogPrimitive.Popup>
-        <DialogPrimitive.Title />
-        <DialogPrimitive.Description />
-        <DialogPrimitive.Close />
-      </DialogPrimitive.Popup>
-    </DialogPrimitive.Viewport>
-  </DialogPrimitive.Portal>
-</DialogPrimitive.Root>
+<Dialog.Root>
+  <Dialog.Trigger />
+  <Dialog.Portal>
+    <Dialog.Backdrop />
+    <Dialog.Viewport>
+      <Dialog.Popup>
+        <Dialog.Title />
+        <Dialog.Description />
+        <Dialog.Close />
+      </Dialog.Popup>
+    </Dialog.Viewport>
+  </Dialog.Portal>
+</Dialog.Root>
 ```
 
 ## Examples
@@ -79,17 +80,15 @@ The same tree with the unstyled namespace:
 
 ```tsx
 <Dialog>
-  <DialogPrimitive.Trigger render={<Button variant="outline" />}>
-    Rename session
-  </DialogPrimitive.Trigger>
+  <DialogBase.Trigger render={<Button variant="outline" />}>Rename session</DialogBase.Trigger>
   <DialogContent>
     <DialogHeader>
       <DialogTitle>Rename session</DialogTitle>
       <DialogDescription>The name shows in the sidebar and in the window title.</DialogDescription>
     </DialogHeader>
     <DialogFooter>
-      <DialogPrimitive.Close render={<Button variant="ghost" />}>Cancel</DialogPrimitive.Close>
-      <DialogPrimitive.Close render={<Button />}>Save</DialogPrimitive.Close>
+      <DialogBase.Close render={<Button variant="ghost" />}>Cancel</DialogBase.Close>
+      <DialogBase.Close render={<Button />}>Save</DialogBase.Close>
     </DialogFooter>
   </DialogContent>
 </Dialog>
@@ -120,14 +119,14 @@ const [open, setOpen] = useState(false);
 
 ## Props
 
-| Export              | Renders                                      | Styling                     |
-| ------------------- | -------------------------------------------- | --------------------------- |
-| `Dialog`            | `Root`                                       | None, it renders no element |
-| `DialogContent`     | `Portal`, `Backdrop`, `Popup`, and `Close`   | Styles land on the popup    |
-| `DialogHeader`      | A `<div>` that stacks title and description  | Layout only                 |
-| `DialogTitle`       | `Title`                                      | Title type scale            |
-| `DialogDescription` | `Description`                                | Muted body type             |
-| `DialogFooter`      | A `<div>` that right-aligns its buttons      | Layout only                 |
+| Export              | Renders                                     | Styling                     |
+| ------------------- | ------------------------------------------- | --------------------------- |
+| `Dialog`            | `Root`                                      | None, it renders no element |
+| `DialogContent`     | `Portal`, `Backdrop`, `Popup`, and `Close`  | Styles land on the popup    |
+| `DialogHeader`      | A `<div>` that stacks title and description | Layout only                 |
+| `DialogTitle`       | `Title`                                     | Title type scale            |
+| `DialogDescription` | `Description`                               | Muted body type             |
+| `DialogFooter`      | A `<div>` that right-aligns its buttons     | Layout only                 |
 
 `DialogContent` adds one prop on top of the popup props.
 
@@ -178,8 +177,7 @@ The part tables below come from Base UI, MIT, © Material-UI SAS.
 
 ## Accessibility
 
-- The popup has `role="dialog"` and `aria-modal="true"`, labelled by `DialogTitle` and described
-  by `DialogDescription`.
+- The popup has `role="dialog"`, labelled by `DialogTitle` and described by `DialogDescription`.
 - Focus moves into the popup on open and returns to the trigger on close. Tab cycles inside the
   popup.
 - Escape closes. Outside press closes unless `disablePointerDismissal` is set on the root.

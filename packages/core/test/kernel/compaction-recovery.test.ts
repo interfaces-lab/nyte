@@ -10,16 +10,7 @@ import { bindTurn } from "../../src/kernel/turn.ts";
 import { projectEvent } from "../../src/kernel/sdk/events.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import type { SessionEvent } from "../../src/kernel/sdk/types.ts";
-import {
-  assistant,
-  landing,
-  lease,
-  message,
-  openStore,
-  seedHead,
-  user,
-  within,
-} from "./helpers.ts";
+import { assistant, drain, lease, message, openStore, seedHead, user, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -191,10 +182,11 @@ test.each(["save", "publish"])(
       await submit(session, {
         preparation: { kind: "none" },
         head: "main",
-        lane: "now",
+        delivery: "steer",
+        kind: "user",
         body: message(user("continue")),
       });
-      await step(session, turn, { head: "main", landing });
+      await step(session, turn, { head: "main", drain });
       const tip = await session.refs.read(headRef("main"));
       const seq = await session.events.last();
       const faulted: Session = {
@@ -233,7 +225,7 @@ test.each(["save", "publish"])(
           },
         },
       };
-      await assert.rejects(step(faulted, turn, { head: "main", landing }), /storage unavailable/);
+      await assert.rejects(step(faulted, turn, { head: "main", drain }), /storage unavailable/);
       assert.equal(await activeCompaction(session, "main"), undefined);
       const events = (
         await Promise.all(
