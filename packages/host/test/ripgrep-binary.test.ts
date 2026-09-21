@@ -250,7 +250,11 @@ describe("resolveRipgrep", () => {
       const digest = createHash("sha256").update(archiveBytes).digest("hex");
       const tools = join(directory, "tools");
       await mkdir(tools);
-      if (!windows) await symlink(archiveTool, join(tools, "tar"));
+      if (!windows) {
+        await symlink(archiveTool, join(tools, "tar"));
+        const gzip = findProgram(["gzip"]);
+        if (gzip !== undefined) await symlink(gzip, join(tools, "gzip"));
+      }
       const expectedUrl = `https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/${root}.${extension}`;
       const script = await harness(
         directory,
