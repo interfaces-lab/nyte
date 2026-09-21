@@ -16,14 +16,7 @@ import type { MessageReference } from "./message-references.ts";
 import { nyte } from "../nyte.ts";
 import { composerStyles } from "./styles.stylex.ts";
 
-type ComposerAutoLinkFollow = {
-  readonly follow: boolean;
-};
-
-export function registerComposerAutoLink(
-  editor: LexicalEditor,
-  options: ComposerAutoLinkFollow,
-): () => void {
+function registerComposerAutoLink(editor: LexicalEditor): () => void {
   const unregisterAutoLink = registerAutoLink(editor, {
     matchers: [autoLinkUrlMatcher],
     changeHandlers: [],
@@ -42,7 +35,6 @@ export function registerComposerAutoLink(
     const link = target.closest("a");
     if (link === null) return;
     event.preventDefault();
-    if (!options.follow) return;
     event.stopPropagation();
     const url = new URL(link.href);
     if (url.protocol === "http:" || url.protocol === "https:") {
@@ -52,11 +44,16 @@ export function registerComposerAutoLink(
   const onAuxClick = (event: MouseEvent): void => {
     if (event.button === 1) intercept(event);
   };
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Enter" && event.target instanceof HTMLAnchorElement) event.stopPropagation();
+  };
   root.addEventListener("click", intercept);
   root.addEventListener("auxclick", onAuxClick);
+  root.addEventListener("keydown", onKeyDown, true);
   return () => {
     root.removeEventListener("click", intercept);
     root.removeEventListener("auxclick", onAuxClick);
+    root.removeEventListener("keydown", onKeyDown, true);
     unregisterAutoLink();
   };
 }
@@ -71,8 +68,7 @@ export function useComposerSurface(editable: boolean) {
       nodes: [ComposerReferenceNode, LinkNode, AutoLinkNode],
       theme: {
         paragraph: props(composerStyles.editorParagraph).className,
-        link: props(editable ? composerStyles.composerUrlPill : composerStyles.messageLink)
-          .className,
+        link: props(composerStyles.composerUrlPill).className,
       },
       onError: (error) => {
         throw error;
@@ -83,7 +79,7 @@ export function useComposerSurface(editable: boolean) {
   useLayoutEffect(() => {
     editor.setRootElement(rootRef.current);
     const plainText = registerPlainText(editor);
-    const links = registerComposerAutoLink(editor, { follow: !editable });
+    const links = registerComposerAutoLink(editor);
     const decorations = editor.registerDecoratorListener<MessageReference>(setDecorators);
     return () => {
       decorations();
@@ -91,7 +87,7 @@ export function useComposerSurface(editable: boolean) {
       plainText();
       editor.setRootElement(null);
     };
-  }, [editor, editable]);
+  }, [editor]);
   return { editor, rootRef, decorators };
 }
 
@@ -140,10 +136,6 @@ export function ComposerReadOnly({ text }: { readonly text: string }) {
         ref={rootRef}
         data-composer-readonly
         contentEditable={false}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && event.target instanceof HTMLAnchorElement)
-            event.stopPropagation();
-        }}
         {...props(composerStyles.readOnly)}
       />
       <ComposerDecorators editor={editor} decorators={decorators} />

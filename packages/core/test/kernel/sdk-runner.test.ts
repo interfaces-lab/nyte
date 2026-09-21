@@ -6,17 +6,19 @@
  * events at the moment the test chooses, so the race is played, not hoped for.
  */
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { createAssistantMessageEventStream, type Api, type Model } from "@nyte-ai/ai";
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { AssistantMessage } from "@nyte-ai/schema";
+import { Type } from "typebox";
 import type { Event, Obj, Run } from "../../src/kernel/model.ts";
 import { runRef } from "../../src/kernel/names.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
-import type { Nyte, SessionId } from "../../src/kernel/sdk/types.ts";
+import type { Nyte, NyteOptions, SessionId } from "../../src/kernel/sdk/types.ts";
 import type { Session, Store } from "../../src/kernel/store.ts";
-import type { StreamFn } from "../../src/kernel/loop/types.ts";
-import { assistant, openStore, usage, within } from "./helpers.ts";
+import { ToolWait, type StreamFn } from "../../src/kernel/loop/types.ts";
+import { definePlugin, inlinePlugin } from "../../src/plugins/index.ts";
+import { assistant, call, openInProcessStore, openStore, usage, within } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "held-model",
@@ -191,7 +193,11 @@ function isRun(object: Obj): object is Run {
   return object.kind === "run";
 }
 
-async function open(store: Store, streamFn: StreamFn): Promise<Nyte> {
+async function open(
+  store: Store,
+  streamFn: StreamFn,
+  plugins: NyteOptions["plugins"] = [],
+): Promise<Nyte> {
   return createNyte({
     store,
     streamFn,
@@ -201,7 +207,7 @@ async function open(store: Store, streamFn: StreamFn): Promise<Nyte> {
       getAvailable: async () => [model],
     },
     model,
-    plugins: [],
+    plugins,
     env: { cwd: "/tmp/nowhere" },
   });
 }
@@ -313,7 +319,7 @@ test("a run-ref read paused across the end of a stopped drive cannot cancel the 
     // run ends. The runner's own event loop is behind the paused read, so an
     // attachment wakes it for the steer, which starts the next run.
     first.end();
-    await nyte.messages.send({ sessionId: id, content: "do this instead", lane: "steer" });
+    await nyte.messages.send({ sessionId: id, content: "do this instead", delivery: "steer" });
     await untilRunEnds(other, stopped.id);
     nyte.attach();
     const second = await provider.nextRequest();
@@ -367,7 +373,7 @@ test("a stopped run's final event, delivered while the next run is asking the pr
     assert.equal(payload.phase.kind, "aborted");
     assert.equal(payload.abortRequested, true);
 
-    await nyte.messages.send({ sessionId: id, content: "do this instead", lane: "steer" });
+    await nyte.messages.send({ sessionId: id, content: "do this instead", delivery: "steer" });
     const second = await provider.nextRequest();
     const fresh = await currentRun(other);
     assert.ok(fresh !== undefined);
@@ -383,5 +389,114 @@ test("a stopped run's final event, delivered while the next run is asking the pr
     gate.releaseAll();
     provider.endAll();
     await nyte.close();
+  }
+});
+
+test("a faulted runner drops its parked deadline before SDK close", async () => {
+  const base = openInProcessStore();
+  const until = Date.now() + 60_000;
+  const waiting = inlinePlugin(
+    definePlugin({
+      id: "deadline",
+      session(api) {
+        api.tools.add((draft) =>
+          draft.set("wait", {
+            name: "wait",
+            description: "Wait",
+            parameters: Type.Object({}),
+            execute: async () => {
+              throw new ToolWait({ until });
+            },
+            wake: async () => ({
+              kind: "settle",
+              result: { content: [{ type: "text", text: "done" }], details: {} },
+            }),
+          }),
+        );
+      },
+    }),
+  );
+  const streamFn: StreamFn = () => {
+    const stream = createAssistantMessageEventStream();
+    queueMicrotask(() =>
+      stream.push({
+        type: "done",
+        reason: "toolUse",
+        message: assistant("", { calls: [call("deadline", "wait")] }),
+      }),
+    );
+    return stream;
+  };
+  const seed = await open(base, streamFn, [waiting]);
+  const { sessionId: id } = await seed.sessions.create();
+  await seed.messages.send({ sessionId: id, content: "wait" });
+  await seed.advance({ sessionId: id });
+  await seed.advance({ sessionId: id });
+  assert.deepEqual(await seed.advance({ sessionId: id }), { kind: "waiting", until });
+  await seed.close();
+
+  const fail = Promise.withResolvers<void>();
+  const faultSession = (session: Session): Session => ({
+    id: session.id,
+    objects: session.objects,
+    refs: session.refs,
+    leases: session.leases,
+    close: () => session.close(),
+    events: {
+      append: (events, options) => session.events.append(events, options),
+      read: (options) => session.events.read(options),
+      last: () => session.events.last(),
+      floor: () => session.events.floor(),
+      trim: (beforeSeq) => session.events.trim(beforeSeq),
+      watch: () => ({
+        [Symbol.asyncIterator]() {
+          return {
+            next: async (): Promise<IteratorResult<Event>> => {
+              await fail.promise;
+              throw new Error("watch failed");
+            },
+          };
+        },
+      }),
+    },
+  });
+  const faultStore: Store = {
+    create: async (options) => faultSession(await base.create(options)),
+    open: async (sessionId) => faultSession(await base.open(sessionId)),
+    list: () => base.list(),
+    delete: (sessionId) => base.delete(sessionId),
+    close: () => base.close(),
+  };
+  const nyte = await open(faultStore, streamFn, [waiting]);
+  const inspection = await base.open(id);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    await nyte.runs.current({ sessionId: id });
+    const timers = vi.getTimerCount();
+    nyte.attach();
+    for (let attempt = 0; attempt < 20 && vi.getTimerCount() === timers; attempt += 1) {
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    assert.equal(vi.getTimerCount(), timers + 1);
+
+    fail.resolve();
+    let faulted = false;
+    for (let attempt = 0; attempt < 20 && !faulted; attempt += 1) {
+      await vi.advanceTimersByTimeAsync(0);
+      faulted = (await inspection.events.read({ afterSeq: 0 })).some(
+        (event) =>
+          event.kind === "notice" && event.owner === "runner" && event.message === "watch failed",
+      );
+    }
+    assert.equal(faulted, true);
+    await vi.advanceTimersByTimeAsync(0);
+    await nyte.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    assert.equal(vi.getTimerCount(), timers);
+  } finally {
+    fail.resolve();
+    vi.useRealTimers();
+    await nyte.close();
+    await inspection.close();
   }
 });

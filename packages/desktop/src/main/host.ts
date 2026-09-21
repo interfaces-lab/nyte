@@ -148,10 +148,20 @@ interface LoginAttempt {
   readonly settled: Promise<void>;
 }
 
+interface WatchLifetime {
+  readonly controller: AbortController;
+  readonly sessionId: SessionId;
+}
+
+interface SessionAttachment {
+  readonly detach: Disposer;
+  generation: number;
+}
+
 interface OpenTargetBase {
   readonly sdk: Nyte;
   readonly store: Store;
-  readonly sessionAttachments: Map<SessionId, Disposer>;
+  readonly sessionAttachments: Map<SessionId, SessionAttachment>;
   /** Stops watching the plugin sources this target resolves from. */
   readonly stopPluginWatch: Disposer;
 }
@@ -280,7 +290,7 @@ export class DesktopHost {
   private readonly sessionOwners = new Map<SessionId, OpenTarget>();
   private lifecycle: Promise<void> = Promise.resolve();
   private readonly mentionRequests = new Map<string, AbortController>();
-  private readonly watches = new Map<string, AbortController>();
+  private readonly watches = new Map<string, WatchLifetime>();
   /**
    * Sign-ins by the renderer's attempt ID, kept until the flow has settled so
    * a cancelled attempt's cleanup can never erase a newer entry and an ID
@@ -529,6 +539,23 @@ export class DesktopHost {
         for (const session of page.items) this.sessionOwners.set(session.sessionId, open);
         return page;
       }
+      case "sessions.setArchived": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const open = await this.owner(decoded.sessionId);
+        await open.sdk.sessions.setArchived(decoded);
+        if (decoded.archived) {
+          await this.releaseSessionIfIdle(open, decoded.sessionId).catch(() => undefined);
+        }
+        return;
+      }
+      case "sessions.delete": {
+        const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
+        const open = await this.owner(decoded.sessionId);
+        await open.sdk.sessions.delete(decoded);
+        this.releaseSessionAttachment(open, decoded.sessionId);
+        this.sessionOwners.delete(decoded.sessionId);
+        return;
+      }
       case "messages.send": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
         const open = await this.owner(decoded.sessionId);
@@ -546,8 +573,7 @@ export class DesktopHost {
       case "workspace.vcs.createBranch":
       case "workspace.vcs.push": {
         const decoded = CALL_INPUT_SCHEMAS[path].Parse(input);
-        const sessionId =
-          decoded !== undefined && "sessionId" in decoded ? decoded.sessionId : undefined;
+        const sessionId = decoded.target.kind === "session" ? decoded.target.sessionId : undefined;
         const open = await this.owner(sessionId);
         if (open.kind === "project") {
           const cwd =
@@ -598,10 +624,12 @@ export class DesktopHost {
         issues: [],
       });
     const stop = new AbortController();
-    this.watches.set(input.watchId, stop);
+    const lifetime = { controller: stop, sessionId: input.sessionId } satisfies WatchLifetime;
+    this.watches.set(input.watchId, lifetime);
     void (async () => {
+      let open: OpenTarget | undefined;
       try {
-        const open = await this.owner(input.sessionId);
+        open = await this.owner(input.sessionId);
         if (stop.signal.aborted) return;
         this.attachSession(open, input.sessionId);
         // Disconnecting the server ends its watches; a request the renderer
@@ -646,19 +674,25 @@ export class DesktopHost {
           });
         }
       } finally {
-        this.watches.delete(input.watchId);
+        if (this.watches.get(input.watchId) === lifetime) this.watches.delete(input.watchId);
+        const stillWatched = [...this.watches.values()].some(
+          (watch) => watch.sessionId === input.sessionId,
+        );
+        if (!stillWatched && open !== undefined) {
+          await this.releaseSessionIfIdle(open, input.sessionId).catch(() => undefined);
+        }
       }
     })();
   }
 
   watchStop(watchId: string): void {
-    this.watches.get(watchId)?.abort();
+    this.watches.get(watchId)?.controller.abort();
     this.watches.delete(watchId);
   }
 
   /** A reloaded renderer never sends its stops; its watches would pump into a dead frame. */
   stopWatches(): void {
-    for (const stop of this.watches.values()) stop.abort();
+    for (const watch of this.watches.values()) watch.controller.abort();
     this.watches.clear();
   }
 
@@ -779,8 +813,93 @@ export class DesktopHost {
 
   /** Volunteer this process as the session's runner. A server runs its own sessions. */
   private attachSession(open: OpenTarget, sessionId: SessionId): void {
-    if (open.kind === "server" || open.sessionAttachments.has(sessionId)) return;
-    open.sessionAttachments.set(sessionId, open.sdk.attach({ sessions: [sessionId] }));
+    if (open.kind === "server") return;
+    const existing = open.sessionAttachments.get(sessionId);
+    if (existing !== undefined) {
+      existing.generation += 1;
+      return;
+    }
+    open.sessionAttachments.set(sessionId, {
+      detach: open.sdk.attach({ sessions: [sessionId] }),
+      generation: 0,
+    });
+  }
+
+  private releaseSessionAttachment(open: OpenTarget, sessionId: SessionId): boolean {
+    if (open.kind === "server") return false;
+    const attachment = open.sessionAttachments.get(sessionId);
+    if (attachment === undefined) return false;
+    open.sessionAttachments.delete(sessionId);
+    attachment.detach();
+    return true;
+  }
+
+  private releaseSessionResources(open: OpenTarget, sessionId: SessionId): void {
+    if (!this.releaseSessionAttachment(open, sessionId)) return;
+    this.dependencies.browser.agent.release({ session: sessionId });
+  }
+
+  private async releaseSessionIfIdle(open: OpenTarget, sessionId: SessionId): Promise<void> {
+    if (open.kind === "server") return;
+    const attachment = open.sessionAttachments.get(sessionId);
+    if (attachment === undefined) return;
+    const generation = attachment.generation;
+    const session = await open.sdk.sessions.get({ sessionId });
+    const descendants = new Set<SessionId>();
+    if (session !== undefined && (await this.sessionTreeHasLiveWork(open, session, descendants))) {
+      return;
+    }
+    if (
+      open.sessionAttachments.get(sessionId) !== attachment ||
+      attachment.generation !== generation
+    ) {
+      return;
+    }
+    this.releaseSessionResources(open, sessionId);
+    for (const childId of descendants) {
+      if (childId !== sessionId && !open.sessionAttachments.has(childId)) {
+        this.dependencies.browser.agent.release({ session: childId });
+      }
+    }
+  }
+
+  private async sessionTreeHasLiveWork(
+    open: OpenLocalTarget,
+    session: SessionInfo,
+    seen: Set<SessionId>,
+  ): Promise<boolean> {
+    if (seen.has(session.sessionId)) return false;
+    seen.add(session.sessionId);
+    if (session.heads.some((head) => head.run !== undefined && !isTerminalPhase(head.run.phase))) {
+      return true;
+    }
+    const activity = await Promise.all(
+      session.heads.map(async (head) => {
+        const input = { sessionId: session.sessionId, head: head.head };
+        const [pending, jobs] = await Promise.all([
+          open.sdk.messages.pending(input),
+          open.sdk.jobs.list(input),
+        ]);
+        return pending.length > 0 || jobs.some((job) => job.phase.kind === "running");
+      }),
+    );
+    if (activity.some(Boolean)) return true;
+    let page = await open.sdk.sessions.list({
+      parent: session.sessionId,
+      includeArchived: true,
+    });
+    for (;;) {
+      for (const child of page.items) {
+        if (await this.sessionTreeHasLiveWork(open, child, seen)) return true;
+      }
+      if (page.next === undefined) break;
+      page = await open.sdk.sessions.list({
+        parent: session.sessionId,
+        includeArchived: true,
+        cursor: page.next,
+      });
+    }
+    return false;
   }
 
   /** The workspace that owns a known session; the selected one for anything else. */
@@ -979,7 +1098,7 @@ export class DesktopHost {
       const base = {
         sdk,
         store,
-        sessionAttachments: new Map<SessionId, Disposer>(),
+        sessionAttachments: new Map<SessionId, SessionAttachment>(),
         stopPluginWatch: () => stopPluginWatch?.(),
       };
       if (target.kind === "home") {
@@ -1004,10 +1123,33 @@ export class DesktopHost {
 
   /** Drop a workspace from the rail. Forgetting the selected one returns the view to Home. */
   private async forgetWorkspace(path: string): Promise<void> {
-    await this.workspaces.forget(path);
-    if (this.open?.kind !== "project") return;
     const target = await realpath(resolve(path)).catch(() => resolve(path));
-    if (this.open.workspace.path === target) await this.closeWorkspace();
+    await this.workspaces.forget(path);
+    if (this.open?.kind === "project" && this.open.workspace.path === target) {
+      await this.closeWorkspace();
+    }
+    await this.serialize(() => this.retireForgottenTarget(target));
+  }
+
+  private async retireForgottenTarget(path: string): Promise<void> {
+    const open = this.openTargets.get(path);
+    if (
+      open === undefined ||
+      open === this.open ||
+      open.sessionAttachments.size > 0 ||
+      this.watches.size > 0 ||
+      this.mobileShare !== undefined ||
+      (await this.updateTaskCount(open)) > 0
+    ) {
+      return;
+    }
+    this.openTargets.delete(path);
+    for (const [sessionId, owner] of this.sessionOwners) {
+      if (owner === open) this.sessionOwners.delete(sessionId);
+    }
+    open.stopPluginWatch();
+    await open.sdk.close().catch(() => undefined);
+    await open.store.close().catch(() => undefined);
   }
 
   private closeWorkspace(): Promise<void> {
@@ -1042,7 +1184,12 @@ export class DesktopHost {
     const local = opens.map(async ({ target, open }): Promise<WorkspaceSessionDirectory> => {
       // Roots only; a subagent child shows inside its parent's task call.
       const { items } = await open.sdk.sessions.list({ parent: null, includeArchived: true });
-      for (const session of items) this.sessionOwners.set(session.sessionId, open);
+      for (const session of items) {
+        this.sessionOwners.set(session.sessionId, open);
+        if (session.archived) {
+          await this.releaseSessionIfIdle(open, session.sessionId).catch(() => undefined);
+        }
+      }
       return {
         environment: "local",
         workspacePath: target.kind === "home" ? null : target.workspace.path,
@@ -1292,9 +1439,6 @@ export class DesktopHost {
       this.sessionOwners.set(sessionId, open);
     };
     return {
-      get landing() {
-        return cursor.open.sdk.landing;
-      },
       sessions: {
         create: async (input) => {
           const open =
@@ -1318,8 +1462,20 @@ export class DesktopHost {
         },
         rename: (input) => sdk(input.sessionId).sessions.rename(input),
         setPinned: (input) => sdk(input.sessionId).sessions.setPinned(input),
-        setArchived: (input) => sdk(input.sessionId).sessions.setArchived(input),
-        delete: (input) => sdk(input.sessionId).sessions.delete(input),
+        setArchived: async (input) => {
+          const open = owner(input.sessionId);
+          await open.sdk.sessions.setArchived(input);
+          if (input.archived) {
+            await this.releaseSessionIfIdle(open, input.sessionId).catch(() => undefined);
+          }
+        },
+        delete: async (input) => {
+          const open = owner(input.sessionId);
+          await open.sdk.sessions.delete(input);
+          this.releaseSessionAttachment(open, input.sessionId);
+          cursor.sessionOwners.delete(input.sessionId);
+          this.sessionOwners.delete(input.sessionId);
+        },
         configure: (input) => sdk(input.sessionId).sessions.configure(input),
       },
       messages: {
@@ -1363,18 +1519,51 @@ export class DesktopHost {
             }),
           ),
         forget: (input) => this.forgetShareWorkspace(cursor, input),
-        files: (input) => sdk(input?.sessionId).workspace.files(input),
+        files: (input) =>
+          sdk(input.target.kind === "session" ? input.target.sessionId : undefined).workspace.files(
+            input,
+          ),
         vcs: {
-          snapshot: async (input) => (await trustedVcs(input?.sessionId)).snapshot(input),
-          diff: async (input) => (await trustedVcs(input.sessionId)).diff(input),
-          contents: async (input) => (await trustedVcs(input.sessionId)).contents(input),
-          log: async (input) => (await trustedVcs(input.sessionId)).log(input),
-          refs: async (input) => (await trustedVcs(input?.sessionId)).refs(input),
-          stage: async (input) => (await trustedVcs(input.sessionId)).stage(input),
-          discard: async (input) => (await trustedVcs(input.sessionId)).discard(input),
-          commit: async (input) => (await trustedVcs(input.sessionId)).commit(input),
-          createBranch: async (input) => (await trustedVcs(input.sessionId)).createBranch(input),
-          push: async (input) => (await trustedVcs(input.sessionId)).push(input),
+          snapshot: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).snapshot(input),
+          diff: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).diff(input),
+          contents: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).contents(input),
+          log: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).log(input),
+          refs: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).refs(input),
+          stage: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).stage(input),
+          discard: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).discard(input),
+          commit: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).commit(input),
+          createBranch: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).createBranch(input),
+          push: async (input) =>
+            (
+              await trustedVcs(input.target.kind === "session" ? input.target.sessionId : undefined)
+            ).push(input),
         },
       },
       provider: {
@@ -1587,12 +1776,12 @@ export class DesktopHost {
     this.open = undefined;
     // The phone's streams end before the SDK they read from closes.
     await this.stopMobileShare();
-    for (const stop of this.watches.values()) stop.abort();
+    for (const watch of this.watches.values()) watch.controller.abort();
     this.watches.clear();
     this.sessionOwners.clear();
     for (const open of this.openTargets.values()) {
       open.stopPluginWatch();
-      for (const detach of open.sessionAttachments.values()) detach();
+      for (const attachment of open.sessionAttachments.values()) attachment.detach();
       open.sessionAttachments.clear();
       await open.sdk.close().catch(() => undefined);
       await open.store.close().catch(() => undefined);

@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { Commit, CommitBody, Failure, Oid, ToolClass } from "@nyte-ai/protocol";
+import type { Commit, CommitOutcome, Failure, Oid, ToolClass } from "@nyte-ai/protocol";
 import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/schema";
 import { changesFromTurns, transcriptFromCommits, type Turn } from "../src/index.ts";
 
@@ -22,7 +22,7 @@ const usage = {
 function assistant(
   calls: readonly { readonly id: string; readonly name: string }[],
   stopReason: AssistantMessage["stopReason"] = "toolUse",
-): CommitBody {
+): { readonly kind: "message"; readonly message: AssistantMessage } {
   return {
     kind: "message",
     message: {
@@ -41,7 +41,7 @@ function assistant(
 function result(
   callId: string,
   options: Partial<Pick<ToolResultMessage, "isError">> = {},
-): CommitBody {
+): { readonly kind: "message"; readonly message: ToolResultMessage } {
   return {
     kind: "message",
     message: {
@@ -55,16 +55,26 @@ function result(
   };
 }
 
+type Entry =
+  | {
+      readonly body: ReturnType<typeof assistant>;
+      readonly calls: Readonly<Record<string, ToolClass>>;
+      readonly outcome: CommitOutcome;
+    }
+  | {
+      readonly body: ReturnType<typeof result>;
+      readonly call: ToolClass;
+      readonly tree: null;
+    };
+
 /** A branch, oldest first, with each commit's stamp given beside its body. */
-function branch(
-  entries: readonly ({ readonly body: CommitBody } & Pick<Commit, "calls" | "failure">)[],
-): Item[] {
+function branch(entries: readonly Entry[]): Item[] {
   let parent: Oid | null = null;
   return entries.map((entry, index) => {
     const oid = `c${String(index)}`;
-    const item = { oid, commit: { kind: "commit", parent, at: index, ...entry } } as const;
+    const commit = { kind: "commit", parent, at: index, ...entry } satisfies Commit;
     parent = oid;
-    return item;
+    return { oid, commit };
   });
 }
 
@@ -82,22 +92,26 @@ const patched: ToolClass = {
   patch: "not parsed by the client",
 };
 
-test("a tool part carries the class its assistant commit stamped, and the result commit's replaces it", () => {
+test("tool parts carry their call and result commit timestamps", () => {
   const items = branch([
     {
       body: assistant([
         { id: "c1", name: "edit" },
         { id: "c2", name: "mystery" },
       ]),
-      calls: { c1: { kind: "file_edit", path: "a.ts" } },
+      calls: {
+        c1: { kind: "file_edit", path: "a.ts" },
+        c2: { kind: "custom", label: "mystery" },
+      },
+      outcome: { kind: "ok" },
     },
-    { body: result("c1"), calls: { c1: patched } },
-    { body: result("c2") },
+    { body: result("c1"), call: patched, tree: null },
+    { body: result("c2"), call: { kind: "custom", label: "mystery" }, tree: null },
   ]);
   const pending = conversation(transcriptFromCommits(items.slice(0, 1))[0]).parts;
   assert.deepEqual(pending, [
-    { kind: "tool", callId: "c1", class: { kind: "file_edit", path: "a.ts" } },
-    { kind: "tool", callId: "c2", class: { kind: "custom", label: "mystery" } },
+    { kind: "tool", callId: "c1", class: { kind: "file_edit", path: "a.ts" }, at: 0 },
+    { kind: "tool", callId: "c2", class: { kind: "custom", label: "mystery" }, at: 0 },
   ]);
   const settled = conversation(transcriptFromCommits(items)[0]).parts;
   assert.deepEqual(settled, [
@@ -106,19 +120,29 @@ test("a tool part carries the class its assistant commit stamped, and the result
       callId: "c1",
       class: patched,
       result: { commit: "c1", output: "ok", isError: false },
+      at: 1,
     },
     {
       kind: "tool",
       callId: "c2",
       class: { kind: "custom", label: "mystery" },
       result: { commit: "c2", output: "ok", isError: false },
+      at: 2,
     },
   ]);
 });
 
 test("a commit's failure is the turn's failure", () => {
   const failure: Failure = { class: "rate_limit", message: "slow down", retryAfterMs: 500 };
-  const turns = transcriptFromCommits(branch([{ body: assistant([], "error"), failure }]));
+  const turns = transcriptFromCommits(
+    branch([
+      {
+        body: assistant([], "error"),
+        calls: {},
+        outcome: { kind: "failed", failure },
+      },
+    ]),
+  );
   const turn = conversation(turns[0]);
   assert.deepEqual(turn.failure, failure);
   assert.deepEqual(turn.parts, []);
@@ -131,9 +155,18 @@ test("file_patch results fold into changes by their stamped counts, without read
         { id: "c1", name: "edit" },
         { id: "c2", name: "edit" },
       ]),
+      calls: {
+        c1: { kind: "custom", label: "edit" },
+        c2: { kind: "custom", label: "edit" },
+      },
+      outcome: { kind: "ok" },
     },
-    { body: result("c1"), calls: { c1: patched } },
-    { body: result("c2", { isError: true }), calls: { c2: { ...patched, path: "b.ts" } } },
+    { body: result("c1"), call: patched, tree: null },
+    {
+      body: result("c2", { isError: true }),
+      call: { ...patched, path: "b.ts" },
+      tree: null,
+    },
   ]);
   assert.deepEqual(changesFromTurns(transcriptFromCommits(items)), [
     { path: "a.ts", added: 3, removed: 1 },

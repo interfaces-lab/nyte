@@ -7,16 +7,15 @@ const EVENT_PAGE_SIZE = 256;
 const DELETE_BATCH_SIZE = 256;
 
 function references(object: Obj): readonly Oid[] {
+  if ("type" in object) return object.previous === null ? [] : [object.previous];
   switch (object.kind) {
     case "commit": {
       const oids: Oid[] = [];
       if (object.parent !== null) oids.push(object.parent);
-      if (object.imports !== undefined) oids.push(...object.imports);
+      if ("imports" in object) oids.push(...object.imports);
       if (object.change !== undefined) oids.push(object.change);
       return oids;
     }
-    case "change":
-      return object.previous === null ? [] : [object.previous];
     case "effect":
       return object.state === "intent" ? [] : [object.intent];
     case "stack":

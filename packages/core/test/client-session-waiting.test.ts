@@ -107,6 +107,46 @@ test("a restored snapshot keeps every parked call; the composer answers the newe
   assert.equal(still.state.parked, state.parked);
 });
 
+test("terminal jobs clear progress and late frames cannot restore it", () => {
+  const state = stateFromSnapshot(snapshot([]));
+  const started = foldEvent(state, { seq: 2, kind: "run", head: MAIN, run: activeRun });
+  assert.ok(started.kind === "state");
+  const progress = foldEvent(started.state, {
+    seq: 3,
+    kind: "tool_progress",
+    runId: "run",
+    callId: "call",
+    progress: { text: "working" },
+  });
+  assert.ok(progress.kind === "state");
+  assert.equal(progress.state.overlay.length, 1);
+  const completed = foldEvent(progress.state, {
+    seq: 4,
+    kind: "job",
+    job: {
+      id: "job",
+      head: MAIN,
+      origin: { kind: "run", runId: "run", callId: "call" },
+      command: "work",
+      output: "done",
+      phase: { kind: "completed" },
+      startedAt: 1,
+      updatedAt: 2,
+    },
+  });
+  assert.ok(completed.kind === "state");
+  assert.deepEqual(completed.state.overlay, []);
+  const late = foldEvent(completed.state, {
+    seq: 5,
+    kind: "tool_progress",
+    runId: "run",
+    callId: "call",
+    progress: { text: "late" },
+  });
+  assert.ok(late.kind === "state");
+  assert.deepEqual(late.state.overlay, []);
+});
+
 test("a waiting effect requests a snapshot only when it asks something", () => {
   const idle = stateFromSnapshot(snapshot(undefined));
   const started = foldEvent(idle, { seq: 2, kind: "run", head: MAIN, run: activeRun });

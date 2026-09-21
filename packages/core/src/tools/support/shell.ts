@@ -269,7 +269,13 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
 
     const armIdleTimer = () => {
       if (postExitTimer) clearTimeout(postExitTimer);
-      postExitTimer = setTimeout(() => finalize(exitCode), EXIT_STDIO_GRACE_MS);
+      postExitTimer = setTimeout(() => {
+        if (child.stdout?.isPaused() || child.stderr?.isPaused()) {
+          armIdleTimer();
+          return;
+        }
+        finalize(exitCode);
+      }, EXIT_STDIO_GRACE_MS);
     };
 
     const onData = () => {

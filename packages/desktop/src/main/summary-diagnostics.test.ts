@@ -112,11 +112,12 @@ async function fixture(active: boolean) {
       {
         kind: "commit",
         parent: from,
-        at: 1_000,
         body: {
           kind: "message",
           message: { role: "user", content: "Summarize me", timestamp: 1_000 },
         },
+        start: { kind: "none" },
+        at: 1_000,
       },
     ]);
     assert.ok(tip);

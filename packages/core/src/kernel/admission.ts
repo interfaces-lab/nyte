@@ -1,110 +1,238 @@
-/**
- * What a head's latest run lets the queue land. Explicit user input starts
- * model work. A delegate answer also starts it when the request record carries
- * an authorization from an un-stopped run; landing consumes that authorization
- * once. `step.ts` applies this rule to each batch it would land;
- * `sdk/wait.ts` applies it to the same batch of each lane to tell a settled
- * head from one the runner still has work on. One policy and one batch rule,
- * read in both places, so a waiter never sits on a head the runner will touch
- * and never spins on one it will not.
- */
-import { isTerminalPhase, type Landing } from "@nyte-ai/protocol";
-import { hasAuthorizedContinuation } from "./delegation-record.ts";
-import type { Run } from "./model.ts";
+import { isTerminalPhase } from "@nyte-ai/protocol";
+import type { RunId, RunOrigin } from "@nyte-ai/protocol";
+import { authorizedContinuation } from "./delegation-record.ts";
+import type { RefUpdate, Run } from "./model.ts";
 import type { PendingChange } from "./queue.ts";
 import type { Session } from "./store.ts";
 
-export type Admission =
-  /** A run is in progress: the next batch joins it at a response boundary. */
-  | { readonly kind: "live" }
-  /** A stop is settling the live run: nothing lands until it ends `aborted`. */
-  | { readonly kind: "settling" }
-  /**
-   * No run, or the last one ended. A batch with user input starts model
-   * work. The first response-starting change may instead be a delegate answer
-   * whose request authorization is consumed by the landing CAS. Configuration
-   * lands without model work; other completed work waits for input.
-   */
-  | { readonly kind: "idle" };
+export type Head =
+  | { readonly kind: "fresh" }
+  | { readonly kind: "idle"; readonly last: Run }
+  | { readonly kind: "live"; readonly run: Run }
+  | { readonly kind: "settling" };
 
-export function admissionFor(run: Run | undefined): Admission {
-  if (run === undefined || isTerminalPhase(run.phase)) return { kind: "idle" };
-  return run.abortRequested === true ? { kind: "settling" } : { kind: "live" };
+export type Lead =
+  | { readonly kind: "none" }
+  | { readonly kind: "user" }
+  | { readonly kind: "passive" }
+  | { readonly kind: "report" }
+  | {
+      readonly kind: "answer";
+      readonly authorization:
+        | {
+            readonly kind: "authorized";
+            readonly root: RunId;
+            readonly consume: RefUpdate;
+            readonly origin: Extract<RunOrigin, { readonly kind: "continuation" }>;
+          }
+        | { readonly kind: "none" };
+    };
+
+export type Decision =
+  | { readonly kind: "wait" }
+  | { readonly kind: "join"; readonly run: Run }
+  | { readonly kind: "handoff"; readonly run: Run }
+  | { readonly kind: "settle"; readonly run: Run }
+  | {
+      readonly kind: "start";
+      readonly origin: RunOrigin;
+      readonly chain:
+        | { readonly kind: "new" }
+        | { readonly kind: "inherit"; readonly root: RunId; readonly consume: RefUpdate };
+    };
+
+export function headFor(run: Run | undefined): Head {
+  if (run === undefined) return { kind: "fresh" };
+  if (isTerminalPhase(run.phase)) return { kind: "idle", last: run };
+  return run.abortRequested === true ? { kind: "settling" } : { kind: "live", run };
 }
 
-export function isUserInput(item: PendingChange): boolean {
-  return item.change.body.kind === "message" && item.change.body.message.role === "user";
-}
-
-/** A landed change the model must answer, as opposed to configuration. */
-export function startsResponse(item: PendingChange): boolean {
-  return item.change.body.kind === "message" || item.change.body.kind === "completion";
-}
-
-export function firstResponse(changes: readonly PendingChange[]): PendingChange | undefined {
-  return changes.find(startsResponse);
-}
-
-/**
- * Whether `changes`, a batch or a lane's pending list, may land now. An idle
- * head admits a batch that carries user input, an authorized delegate answer,
- * or one in which nothing would make the model respond.
- */
-export function admits(
-  admission: Admission,
-  changes: readonly PendingChange[],
-  continuation: boolean,
-): boolean {
-  if (changes.length === 0) return false;
-  switch (admission.kind) {
-    case "live":
-      return true;
+export function decide(head: Head, lead: Lead, agentChanged: boolean): Decision {
+  switch (head.kind) {
     case "settling":
-      return false;
+      switch (lead.kind) {
+        case "none":
+        case "user":
+        case "passive":
+        case "report":
+        case "answer":
+          return { kind: "wait" };
+        default: {
+          const _exhaustive: never = lead;
+          return _exhaustive;
+        }
+      }
+    case "live":
+      switch (lead.kind) {
+        case "none":
+          return { kind: "wait" };
+        case "user":
+        case "passive":
+        case "report":
+        case "answer":
+          return agentChanged
+            ? { kind: "handoff", run: head.run }
+            : { kind: "join", run: head.run };
+        default: {
+          const _exhaustive: never = lead;
+          return _exhaustive;
+        }
+      }
+    case "fresh":
+      switch (lead.kind) {
+        case "none":
+        case "passive":
+        case "report":
+          return { kind: "wait" };
+        case "user":
+          return { kind: "start", origin: { kind: "user" }, chain: { kind: "new" } };
+        case "answer":
+          switch (lead.authorization.kind) {
+            case "none":
+              return { kind: "wait" };
+            case "authorized":
+              return {
+                kind: "start",
+                origin: lead.authorization.origin,
+                chain: {
+                  kind: "inherit",
+                  root: lead.authorization.root,
+                  consume: lead.authorization.consume,
+                },
+              };
+            default: {
+              const _exhaustive: never = lead.authorization;
+              return _exhaustive;
+            }
+          }
+        default: {
+          const _exhaustive: never = lead;
+          return _exhaustive;
+        }
+      }
     case "idle":
-      return continuation || changes.some(isUserInput) || !changes.some(startsResponse);
+      switch (lead.kind) {
+        case "none":
+        case "report":
+          return { kind: "wait" };
+        case "passive":
+          return { kind: "settle", run: head.last };
+        case "user":
+          return { kind: "start", origin: { kind: "user" }, chain: { kind: "new" } };
+        case "answer":
+          switch (lead.authorization.kind) {
+            case "none":
+              return { kind: "wait" };
+            case "authorized":
+              return {
+                kind: "start",
+                origin: lead.authorization.origin,
+                chain: {
+                  kind: "inherit",
+                  root: lead.authorization.root,
+                  consume: lead.authorization.consume,
+                },
+              };
+            default: {
+              const _exhaustive: never = lead.authorization;
+              return _exhaustive;
+            }
+          }
+        default: {
+          const _exhaustive: never = lead;
+          return _exhaustive;
+        }
+      }
     default: {
-      const _exhaustive: never = admission;
+      const _exhaustive: never = head;
       return _exhaustive;
     }
   }
 }
 
-/**
- * The part of a lane one landing takes: through its first message under
- * `"one"`, all of it under `"all"`. Admission is judged on this batch, by the
- * runner and by a waiter alike, so both read the same answer from a lane.
- */
 export function nextBatch(
   changes: readonly PendingChange[],
-  drain: Landing["drain"],
+  drain: "one" | "all",
 ): readonly PendingChange[] {
   if (drain === "all") return changes;
-  const message = changes.findIndex((item) => item.change.body.kind === "message");
+  const message = changes.findIndex((item) => item.change.kind === "user");
   return message === -1 ? changes : changes.slice(0, message + 1);
 }
 
-/**
- * Whether a runner with this `drain` would land some lane of `queued` on a
- * head whose latest run is `run`. Read by observers that must not disagree
- * with the runner. Unauthorized completions are not landable on an idle head;
- * authorized delegate answers are.
- */
+export function boundaryBatch(
+  changes: readonly PendingChange[],
+  drain: "one" | "all",
+  awaitingAnswer: boolean,
+): readonly PendingChange[] {
+  const batch = nextBatch(changes, drain);
+  if (!awaitingAnswer) return batch;
+  const end = batch.findIndex(
+    (item) => item.change.kind !== "answer" && item.change.kind !== "report",
+  );
+  return end === -1 ? batch : batch.slice(0, end);
+}
+
+export async function leadFor(session: Session, changes: readonly PendingChange[]): Promise<Lead> {
+  const first = changes.find((item) => item.change.kind !== "passive");
+  if (first === undefined) return changes.length === 0 ? { kind: "none" } : { kind: "passive" };
+  switch (first.change.kind) {
+    case "user":
+      return { kind: "user" };
+    case "report":
+      return { kind: "report" };
+    case "answer": {
+      const authorization = await authorizedContinuation(session, first);
+      return authorization === undefined
+        ? { kind: "answer", authorization: { kind: "none" } }
+        : {
+            kind: "answer",
+            authorization: {
+              kind: "authorized",
+              root: authorization.root,
+              consume: authorization.consume,
+              origin: {
+                kind: "continuation",
+                session: authorization.session,
+                request: authorization.request,
+              },
+            },
+          };
+    }
+    case "passive":
+      return { kind: "passive" };
+    default: {
+      const _exhaustive: never = first.change.kind;
+      return _exhaustive;
+    }
+  }
+}
+
+export function agentChanged(run: Run | undefined, changes: readonly PendingChange[]): boolean {
+  if (run === undefined) return false;
+  let agent = run.config.agent;
+  for (const { change } of changes) {
+    if (change.body.kind === "message" && change.body.agent !== undefined) {
+      agent = change.body.agent;
+    }
+  }
+  return agent !== run.config.agent;
+}
+
 export async function landsNow(
   session: Session,
   run: Run | undefined,
   queued: readonly PendingChange[],
-  drain: Landing["drain"],
+  drain: "one" | "all",
 ): Promise<boolean> {
-  const admission = admissionFor(run);
-  for (const changes of Map.groupBy(queued, (item) => item.lane).values()) {
-    const batch = nextBatch(changes, drain);
-    const starter = firstResponse(batch);
-    const continuation =
-      admission.kind === "idle" && starter !== undefined
-        ? await hasAuthorizedContinuation(session, starter)
-        : false;
-    if (admits(admission, batch, continuation)) return true;
+  const head = headFor(run);
+  const deliveries = head.kind === "live" ? (["steer"] as const) : (["steer", "next"] as const);
+  for (const delivery of deliveries) {
+    const batch = nextBatch(
+      queued.filter((item) => item.delivery === delivery),
+      drain,
+    );
+    const lead = await leadFor(session, batch);
+    if (decide(head, lead, agentChanged(run, batch)).kind !== "wait") return true;
   }
   return false;
 }

@@ -92,6 +92,9 @@ export const menu = stylex.create({
   itemDanger: { color: t.danger },
   check: { width: 14, color: t.textSecondary },
   key: { marginLeft: "auto", color: t.textQuaternary, fontSize: g.bodyXs },
+  /* A submenu sits on its parent, so the stack is wax over wax over content. */
+  submenu: { zIndex: 61 },
+  chevron: { marginLeft: "auto", color: t.textQuaternary, fontSize: g.bodyXs },
   separator: {
     height: 1,
     marginBlock: 4,

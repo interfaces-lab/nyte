@@ -12,10 +12,10 @@ import { InMemoryTelemetryContext, type TelemetryContext } from "@nyte-ai/teleme
 import { Type } from "typebox";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import {
-  sessionId,
-  type Landing,
+  type Drain,
   type Nyte,
   type SessionEvent,
+  type SessionId,
 } from "../../src/kernel/sdk/types.ts";
 import {
   definePlugin,
@@ -120,7 +120,7 @@ function plugins(): LoadedPlugin[] {
 async function open(
   streamFn: StreamFn = echo(),
   extra: {
-    readonly landing?: Landing;
+    readonly drain?: Drain;
     readonly store?: Store;
     readonly telemetry?: TelemetryContext;
   } = {},
@@ -140,92 +140,65 @@ async function open(
   });
 }
 
-test("the host names the lanes: one lane that lands everything at once, and no other lane is accepted", async () => {
-  const nyte = await open(echo(), {
-    landing: { lanes: [{ lane: "inbox", lands: "boundary" }], drain: "all" },
-  });
+async function transcript(nyte: Nyte, id: SessionId): Promise<string[]> {
+  const turns = await nyte.messages.list({ sessionId: id });
+  return turns.flatMap((turn) =>
+    turn.kind === "turn"
+      ? turn.parts.flatMap((part) =>
+          part.kind === "user"
+            ? [`user:${Array.isArray(part.content) ? "…" : part.content}`]
+            : part.kind === "assistant"
+              ? [`assistant:${part.text}`]
+              : part.kind === "tool"
+                ? ["tool"]
+                : [],
+        )
+      : [],
+  );
+}
+
+async function collect(
+  nyte: Nyte,
+  input: { readonly sessionId: SessionId; readonly afterSeq: number },
+  done: (event: SessionEvent, seen: readonly SessionEvent[]) => boolean,
+): Promise<SessionEvent[]> {
+  const stop = new AbortController();
+  const seen: SessionEvent[] = [];
   try {
+    for await (const event of nyte.watch({ ...input, signal: stop.signal })) {
+      seen.push(event);
+      if (done(event, seen)) return seen;
+    }
+    throw new Error("Watch ended before the expected event");
+  } finally {
+    stop.abort();
+  }
+}
+
+async function waitIdFor(nyte: Nyte, id: SessionId, callId: string): Promise<string> {
+  const snapshot = await nyte.sessions.snapshot({ sessionId: id });
+  const call = snapshot?.parked?.find((candidate) => candidate.callId === callId);
+  if (call === undefined) throw new Error(`Missing parked call ${callId}`);
+  return call.waitId;
+}
+
+test("messages default to next and may steer explicitly", async () => {
+  const nyte = await open();
+  try {
+    const { sessionId } = await nyte.sessions.create();
+    await nyte.messages.send({ sessionId, content: "one" });
+    await nyte.messages.send({ sessionId, delivery: "steer", content: "two" });
     assert.deepEqual(
-      nyte.landing.lanes.map((policy) => policy.lane),
-      ["inbox"],
-    );
-    const { sessionId: id } = await nyte.sessions.create();
-    const first = await nyte.messages.send({ sessionId: id, content: "one" });
-    const second = await nyte.messages.send({ sessionId: id, content: "two" });
-    assert.ok(first.kind === "queued" && second.kind === "queued");
-    assert.deepEqual(
-      (await nyte.messages.pending({ sessionId: id })).map((item) => [item.lane, item.content]),
+      (await nyte.messages.pending({ sessionId })).map((item) => [item.delivery, item.content]),
       [
-        ["inbox", "one"],
-        ["inbox", "two"],
+        ["next", "one"],
+        ["steer", "two"],
       ],
     );
-    await assert.rejects(
-      nyte.messages.send({ sessionId: id, content: "three", lane: "steer" }),
-      TypeError,
-    );
-    await assert.rejects(
-      nyte.messages.redeliver({ sessionId: id, change: first.change, lane: "queue" }),
-      TypeError,
-    );
-
-    nyte.attach();
-    assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
-    // Both landed in one run, so the model saw both before answering once.
-    assert.deepEqual(await transcript(nyte, id), ["user:one", "user:two", "assistant:saw 2"]);
   } finally {
     await nyte.close();
   }
 });
-
-async function transcript(nyte: Nyte, id: ReturnType<typeof sessionId>): Promise<string[]> {
-  const turns = await nyte.messages.list({ sessionId: id });
-  return turns.flatMap((turn) =>
-    turn.kind === "turn"
-      ? turn.parts.map((part) =>
-          part.kind === "user"
-            ? `user:${Array.isArray(part.content) ? "…" : part.content}`
-            : part.kind === "assistant"
-              ? `assistant:${part.text}`
-              : part.kind,
-        )
-      : [turn.kind],
-  );
-}
-
-async function waitIdFor(
-  nyte: Nyte,
-  id: ReturnType<typeof sessionId>,
-  callId: string,
-): Promise<string> {
-  const waiting = (await nyte.sessions.snapshot({ sessionId: id }))?.parked?.find(
-    (call) => call.callId === callId,
-  );
-  assert.ok(waiting);
-  return waiting.waitId;
-}
-
-/** Collect events until `until` says stop, or the timeout. */
-async function collect(
-  nyte: Nyte,
-  input: { readonly sessionId: ReturnType<typeof sessionId>; readonly afterSeq?: number },
-  until: (event: SessionEvent, seen: readonly SessionEvent[]) => boolean,
-): Promise<SessionEvent[]> {
-  const controller = new AbortController();
-  const seen: SessionEvent[] = [];
-  const run = (async () => {
-    for await (const event of nyte.watch({ ...input, signal: controller.signal })) {
-      seen.push(event);
-      if (until(event, seen)) break;
-    }
-  })();
-  try {
-    await within(run, 5_000);
-  } finally {
-    controller.abort();
-  }
-  return seen;
-}
 
 test("three phones send at the same moment; one run answers each, in order, and nobody sees an error", async () => {
   const nyte = await open();
@@ -278,7 +251,7 @@ test("a client that opens from a snapshot and watches from its seq sees synced, 
       events.some((event) => event.kind === "synced"),
       "replay ends with synced",
     );
-    // The choice is announced when queued, before the landing that commits it.
+    // The choice is announced when queued, before the drain that commits it.
     const queuedChoice = events.findIndex(
       (event) => event.kind === "config_queued" && event.change === choice.change,
     );
@@ -321,7 +294,7 @@ test("a stop with a steer waiting ends the run; a new run answers the steer, and
     const first = (await nyte.sessions.snapshot({ sessionId: id }))?.run;
     assert.ok(first !== undefined);
 
-    await nyte.messages.send({ sessionId: id, content: "do this instead", lane: "steer" });
+    await nyte.messages.send({ sessionId: id, content: "do this instead", delivery: "steer" });
     assert.equal((await nyte.runs.abort({ sessionId: id })).kind, "requested");
     // The interrupted answer stays and the stopped run ends. The steer lands as
     // a new run, asked under a fresh signal: the stop did not cancel that call.
@@ -370,7 +343,7 @@ test("a stop with a steer waiting ends the run; a new run answers the steer, and
   }
 });
 
-test("pending messages can be taken back or moved between lanes while a run is live", async () => {
+test("pending messages can be taken back or moved between deliveries while a run is live", async () => {
   let release: (() => void) | undefined;
   const opened = new Promise<void>((resolve) => {
     release = resolve;
@@ -382,7 +355,7 @@ test("pending messages can be taken back or moved between lanes while a run is l
     await nyte.messages.send({ sessionId: id, content: "first" });
     await collect(nyte, { sessionId: id, afterSeq: 0 }, (event) => event.kind === "text_delta");
 
-    const later = await nyte.messages.send({ sessionId: id, content: "later", lane: "queue" });
+    const later = await nyte.messages.send({ sessionId: id, content: "next", delivery: "next" });
     const gone = await nyte.messages.send({ sessionId: id, content: "mistake" });
     assert.ok(later.kind === "queued" && gone.kind === "queued");
     assert.deepEqual(await nyte.messages.cancel({ sessionId: id, change: gone.change }), {
@@ -391,19 +364,19 @@ test("pending messages can be taken back or moved between lanes while a run is l
     const moved = await nyte.messages.redeliver({
       sessionId: id,
       change: later.change,
-      lane: "steer",
+      delivery: "steer",
     });
     assert.equal(moved.kind, "redelivered");
     assert.deepEqual(
-      (await nyte.messages.pending({ sessionId: id })).map((item) => [item.lane, item.content]),
-      [["steer", "later"]],
+      (await nyte.messages.pending({ sessionId: id })).map((item) => [item.delivery, item.content]),
+      [["steer", "next"]],
     );
 
     release?.();
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
     assert.deepEqual(
       (await transcript(nyte, id)).filter((line) => line.startsWith("user:")),
-      ["user:first", "user:later"],
+      ["user:first", "user:next"],
     );
   } finally {
     release?.();
@@ -428,7 +401,7 @@ test("a submission key follows the message from the queue into the record, outsi
     const keyed = await nyte.messages.send({
       sessionId: id,
       content: "keyed",
-      lane: "queue",
+      delivery: "next",
       key: "outbox-1",
     });
     assert.equal(keyed.kind, "queued");
@@ -451,19 +424,19 @@ test("a submission key follows the message from the queue into the record, outsi
     const queued = events.find((event) => event.kind === "queued");
     assert.ok(queued?.kind === "queued");
     assert.deepEqual([queued.item.change, queued.item.key], [keyed.change, "outbox-1"]);
-    const landing = events.find(
+    const drain = events.find(
       (event) => event.kind === "commit" && event.item.commit.change === keyed.change,
     );
-    assert.ok(landing?.kind === "commit");
-    assert.equal(landing.item.commit.key, "outbox-1");
+    assert.ok(drain?.kind === "commit");
+    assert.equal(drain.item.commit.key, "outbox-1");
     // The key is commit metadata: the model's message is untouched.
-    assert.ok(landing.item.commit.body.kind === "message");
-    assert.deepEqual(Object.keys(landing.item.commit.body.message).sort(), [
+    assert.ok(drain.item.commit.body.kind === "message");
+    assert.deepEqual(Object.keys(drain.item.commit.body.message).sort(), [
       "content",
       "role",
       "timestamp",
     ]);
-    assert.equal(landing.item.commit.body.message.content, "keyed");
+    assert.equal(drain.item.commit.body.message.content, "keyed");
 
     assert.deepEqual(await nyte.runs.wait({ sessionId: id }), { kind: "idle" });
     const after = await nyte.sessions.snapshot({ sessionId: id });
@@ -482,7 +455,7 @@ test("a submission key follows the message from the queue into the record, outsi
         ["keyed", "outbox-1"],
       ],
     );
-    assert.equal(userParts[1]?.[0], landing.item.oid);
+    assert.equal(userParts[1]?.[0], drain.item.oid);
     assert.deepEqual(after?.pending, []);
   } finally {
     release?.();

@@ -22,12 +22,14 @@ import type {
   VcsFile,
   VcsFileKind,
   VcsHead,
+  VcsIndexFile,
   VcsLog,
   VcsPathsOutcome,
   VcsPushOutcome,
   VcsRefs,
   VcsScope,
   VcsSnapshot,
+  VcsWorktreeFile,
 } from "@nyte-ai/protocol";
 import { nyteHome } from "./paths.ts";
 import { createTreeSnapshot, sanitizedGitEnv, withFileLeaseLock } from "./tree-snapshot.ts";
@@ -196,78 +198,85 @@ async function validatedWorkspacePath(cwd: string, path: string): Promise<string
 // ---------------------------------------------------------------------------
 
 interface StatusRead {
-  readonly head: Omit<VcsHead, "oid" | "base">;
-  readonly staged: readonly VcsFile[];
-  readonly unstaged: readonly VcsFile[];
+  readonly head:
+    | Exclude<VcsHead, { readonly kind: "attached" }>
+    | Omit<Extract<VcsHead, { readonly kind: "attached" }>, "base">;
+  readonly staged: readonly VcsIndexFile[];
+  readonly unstaged: readonly VcsWorktreeFile[];
   readonly raw: string;
-}
-
-function branchHeader(record: string): StatusRead["head"] {
-  const raw = record
-    .slice(3)
-    .replace(/^No commits yet on /, "")
-    .replace(/^Initial commit on /, "");
-  const divergence = /\[([^\]]*)\]\s*$/.exec(raw);
-  const counts = divergence?.[1] ?? "";
-  const ahead = Number(/ahead (\d+)/.exec(counts)?.[1] ?? 0);
-  const behind = Number(/behind (\d+)/.exec(counts)?.[1] ?? 0);
-  const names = (divergence === null ? raw : raw.slice(0, divergence.index)).trim();
-  if (names === "" || names === "HEAD (no branch)") return { branch: { kind: "detached" } };
-  const [name, upstream] = names.split("...");
-  if (name === undefined || name === "") return { branch: { kind: "detached" } };
-  return {
-    branch: {
-      kind: "named",
-      name,
-      upstream:
-        upstream === undefined || upstream === "" ? null : { name: upstream, ahead, behind },
-    },
-  };
 }
 
 const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 
-/** The index column of a porcelain record, or undefined when the index is clean. */
-function indexKind(code: string): Exclude<VcsFileKind, "untracked" | "conflicted"> | undefined {
-  if (code === "A") return "added";
-  if (code === "D") return "deleted";
-  if (code === "R") return "renamed";
-  if (code === "M" || code === "C" || code === "T") return "modified";
-  return undefined;
-}
-
-/** The worktree column of a porcelain record, or undefined when it matches the index. */
-function worktreeKind(code: string): Exclude<VcsFileKind, "conflicted"> | undefined {
-  if (code === "?") return "untracked";
-  if (code === "A") return "added";
+function indexKind(code: string): Exclude<VcsIndexFile["kind"], "conflicted"> | undefined {
+  if (code === "A" || code === "C") return "added";
   if (code === "D") return "deleted";
   if (code === "R") return "renamed";
   if (code === "M" || code === "T") return "modified";
   return undefined;
 }
 
+function worktreeKind(
+  code: string,
+): Exclude<VcsWorktreeFile["kind"], "untracked" | "conflicted"> | undefined {
+  if (code === "D") return "deleted";
+  if (code === "M" || code === "T") return "modified";
+  return undefined;
+}
+
 function parseStatus(output: string): Omit<StatusRead, "raw"> {
   const records = output.split("\0");
-  const staged: VcsFile[] = [];
-  const unstaged: VcsFile[] = [];
-  let head: StatusRead["head"] = { branch: { kind: "detached" } };
+  const staged: VcsIndexFile[] = [];
+  const unstaged: VcsWorktreeFile[] = [];
+  let oid: string | null = null;
+  let branch = "";
+  let upstream: { readonly name: string; readonly ahead: number; readonly behind: number } | null =
+    null;
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
     if (record === undefined || record === "") continue;
-    if (record.startsWith("## ")) {
-      head = branchHeader(record);
+    if (record.startsWith("# branch.oid ")) {
+      const value = record.slice("# branch.oid ".length);
+      oid = value === "(initial)" ? null : value;
       continue;
     }
-    if (record.length < 4) continue;
-    const code = record.slice(0, 2);
-    const path = record.slice(3);
-    // With -z, rename/copy records carry the old path as the next NUL field.
-    const from = code.includes("R") || code.includes("C") ? (records[index + 1] ?? "") : "";
-    if (from !== "") index += 1;
-    if (CONFLICT_CODES.has(code)) {
+    if (record.startsWith("# branch.head ")) {
+      branch = record.slice("# branch.head ".length);
+      continue;
+    }
+    if (record.startsWith("# branch.upstream ")) {
+      upstream = { name: record.slice("# branch.upstream ".length), ahead: 0, behind: 0 };
+      continue;
+    }
+    if (record.startsWith("# branch.ab ")) {
+      const match = /^# branch\.ab \+(\d+) -(\d+)$/.exec(record);
+      if (match !== null && upstream !== null) {
+        upstream = {
+          name: upstream.name,
+          ahead: Number(match[1]),
+          behind: Number(match[2]),
+        };
+      }
+      continue;
+    }
+    if (record.startsWith("? ")) {
+      unstaged.push({ path: record.slice(2), kind: "untracked" });
+      continue;
+    }
+    const recordKind = record.slice(0, 1);
+    if (recordKind !== "1" && recordKind !== "2" && recordKind !== "u") continue;
+    const fields = record.split(" ");
+    const code = fields[1] ?? "";
+    const pathIndex = recordKind === "1" ? 8 : recordKind === "2" ? 9 : 10;
+    const path = fields.slice(pathIndex).join(" ");
+    if (path === "") continue;
+    if (recordKind === "u" || CONFLICT_CODES.has(code)) {
+      staged.push({ path, kind: "conflicted" });
       unstaged.push({ path, kind: "conflicted" });
       continue;
     }
+    const from = recordKind === "2" ? (records[index + 1] ?? "") : "";
+    if (recordKind === "2" && from !== "") index += 1;
     const indexChange = indexKind(code.slice(0, 1));
     if (indexChange !== undefined) {
       staged.push(
@@ -275,14 +284,14 @@ function parseStatus(output: string): Omit<StatusRead, "raw"> {
       );
     }
     const worktreeChange = worktreeKind(code.slice(1, 2));
-    if (worktreeChange !== undefined) {
-      unstaged.push(
-        worktreeChange === "renamed"
-          ? { path, kind: worktreeChange, from }
-          : { path, kind: worktreeChange },
-      );
-    }
+    if (worktreeChange !== undefined) unstaged.push({ path, kind: worktreeChange });
   }
+  const head: StatusRead["head"] =
+    oid === null
+      ? { kind: "unborn", branch }
+      : branch === "(detached)" || branch === ""
+        ? { kind: "detached", oid }
+        : { kind: "attached", oid, branch, upstream };
   return { head, staged, unstaged };
 }
 
@@ -290,9 +299,8 @@ async function readStatus(cwd: string): Promise<StatusRead | undefined> {
   try {
     const result = await runGit(cwd, [
       "status",
-      "--short",
       "--branch",
-      "--porcelain=v1",
+      "--porcelain=v2",
       "--untracked-files=all",
       "-z",
     ]);
@@ -348,10 +356,9 @@ async function createdFrom(cwd: string, branch: string): Promise<string | undefi
  */
 async function reviewBase(
   cwd: string,
-  branch: StatusRead["head"]["branch"],
-): Promise<VcsHead["base"]> {
-  if (branch.kind === "detached") return null;
-  const origin = await createdFrom(cwd, branch.name);
+  head: Omit<Extract<VcsHead, { readonly kind: "attached" }>, "base">,
+): Promise<Extract<VcsHead, { readonly kind: "attached" }>["base"]> {
+  const origin = await createdFrom(cwd, head.branch);
   if (origin !== undefined) {
     const forkPoint = await gitValue(cwd, [
       "merge-base",
@@ -367,7 +374,7 @@ async function reviewBase(
     "--short",
     "refs/remotes/origin/HEAD",
   ]);
-  if (remoteHead === undefined || remoteHead.split("/").slice(1).join("/") === branch.name)
+  if (remoteHead === undefined || remoteHead.split("/").slice(1).join("/") === head.branch)
     return null;
   return { name: remoteHead, source: "default" };
 }
@@ -376,19 +383,18 @@ async function snapshot(cwd: string): Promise<VcsSnapshot> {
   const read = await readStatus(cwd);
   if (read === undefined) return { kind: "none" };
   const changed = worktreeFiles(read);
-  const [root, oid, index, files, base] = await Promise.all([
+  const [root, index, files, base] = await Promise.all([
     runGit(cwd, ["rev-parse", "--show-toplevel"]),
-    gitValue(cwd, ["rev-parse", "--verify", "HEAD"]),
     runGit(cwd, ["ls-files", "--stage", "-z"]),
     Promise.all(changed.map((file) => fileRevisionPart(cwd, file.path))),
-    reviewBase(cwd, read.head.branch),
+    read.head.kind === "attached" ? reviewBase(cwd, read.head) : Promise.resolve(null),
   ]);
   const revision = createHash("sha256")
     .update(root.stdout)
     .update("\0")
     .update(cwd)
     .update("\0")
-    .update(oid ?? "unborn")
+    .update(read.head.kind === "unborn" ? "unborn" : read.head.oid)
     .update("\0")
     .update(index.stdout)
     .update("\0")
@@ -400,7 +406,7 @@ async function snapshot(cwd: string): Promise<VcsSnapshot> {
     kind: "repository",
     root: root.stdout.trim() || cwd,
     revision,
-    head: { oid: oid ?? null, branch: read.head.branch, base },
+    head: read.head.kind === "attached" ? { ...read.head, base } : read.head,
     staged: read.staged,
     unstaged: read.unstaged,
   };
@@ -586,11 +592,11 @@ async function diff(
   input: {
     readonly scope: VcsScope;
     readonly paths?: readonly string[];
-    readonly ignoreWhitespace?: boolean;
+    readonly ignoreWhitespace: boolean;
   },
 ): Promise<readonly VcsDiff[]> {
   for (const path of input.paths ?? []) await validatedWorkspacePath(cwd, path);
-  const read = await scopeRead(cwd, input.scope, input.ignoreWhitespace === true ? ["-w"] : []);
+  const read = await scopeRead(cwd, input.scope, input.ignoreWhitespace ? ["-w"] : []);
   const wanted = input.paths === undefined ? undefined : new Set(input.paths);
   const files = read.files.filter((file) => wanted === undefined || wanted.has(file.path));
   const diffs = await Promise.all(
@@ -598,13 +604,16 @@ async function diff(
       const patch = await read.patch(file);
       if (patch === "") return undefined;
       const facts = parsePatchFacts(patch);
-      return {
-        path: file.path,
-        kind: file.kind,
-        added: facts?.added ?? 0,
-        removed: facts?.removed ?? 0,
-        patch,
-      };
+      return facts === undefined || /^(?:Binary files .* differ|GIT binary patch)$/m.test(patch)
+        ? { path: file.path, status: file.kind, kind: "binary", patch }
+        : {
+            path: file.path,
+            status: file.kind,
+            kind: "text",
+            added: facts.added,
+            removed: facts.removed,
+            patch,
+          };
     }),
   );
   return diffs.filter((item) => item !== undefined);
@@ -654,7 +663,7 @@ async function readSide(cwd: string, path: string, side: Side): Promise<Buffer |
   }
 }
 
-async function contentSides(cwd: string, scope: VcsScope): Promise<readonly [Side, Side]> {
+function contentSides(scope: VcsScope): readonly [Side, Side] {
   const head: Side = { kind: "revision", spec: "HEAD" };
   const index: Side = { kind: "revision", spec: ":0" };
   const worktree: Side = { kind: "worktree" };
@@ -672,12 +681,8 @@ async function contentSides(cwd: string, scope: VcsScope): Promise<readonly [Sid
         { kind: "revision", spec: oid },
       ];
     }
-    case "branch": {
-      const base = (
-        await runGit(cwd, ["merge-base", checkedRevision(scope.base), "HEAD"])
-      ).stdout.trim();
-      return [{ kind: "revision", spec: base }, worktree];
-    }
+    case "branch":
+      return [{ kind: "revision", spec: checkedRevision(scope.base) }, worktree];
     default: {
       const _exhaustive: never = scope;
       return _exhaustive;
@@ -749,18 +754,30 @@ async function contents(
   input: { readonly scope: VcsScope; readonly path: string },
 ): Promise<VcsContents> {
   await validatedWorkspacePath(cwd, input.path);
-  const [oldSide, newSide] = await contentSides(cwd, input.scope);
+  const scope =
+    input.scope.kind === "branch"
+      ? {
+          kind: "branch" as const,
+          base: (
+            await runGit(cwd, ["merge-base", checkedRevision(input.scope.base), "HEAD"])
+          ).stdout.trim(),
+        }
+      : input.scope;
+  const [oldSide, newSide] = contentSides(scope);
   const [old, current, gitBinary] = await Promise.all([
     readSide(cwd, input.path, oldSide),
     readSide(cwd, input.path, newSide),
-    binaryForScope(cwd, input.path, input.scope),
+    binaryForScope(cwd, input.path, scope),
   ]);
-  const sides = [old, current].filter((side) => side !== null);
-  const binary = gitBinary || sides.some((side) => side.includes(0));
-  const truncated = !binary && sides.some((side) => side.byteLength > MAX_PREVIEW_BYTES);
-  const text = (side: Buffer | null) =>
-    side === null ? null : binary ? "" : side.subarray(0, MAX_PREVIEW_BYTES).toString("utf8");
-  return { path: input.path, old: text(old), new: text(current), binary, truncated };
+  const side = (contents: Buffer | null) => {
+    if (contents === null) return { kind: "absent" } as const;
+    if (gitBinary || contents.includes(0)) return { kind: "binary" } as const;
+    const head = contents.subarray(0, MAX_PREVIEW_BYTES).toString("utf8");
+    return contents.byteLength > MAX_PREVIEW_BYTES
+      ? ({ kind: "truncated", head } as const)
+      : ({ kind: "text", text: head } as const);
+  };
+  return { path: input.path, old: side(old), new: side(current) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,15 +1057,15 @@ async function commit(
   input: {
     readonly message: string;
     readonly expect: { readonly revision: string };
-    readonly target:
+    readonly files:
       | { readonly kind: "staged" }
       | { readonly kind: "all" }
-      | { readonly kind: "paths"; readonly paths: readonly string[] };
+      | { readonly kind: "paths"; readonly paths: readonly [string, ...string[]] };
   },
 ): Promise<VcsCommitOutcome | { readonly kind: "stale" }> {
   if (input.message.trim() === "")
     return { kind: "failed", reason: "Write a commit message first." };
-  const target = input.target;
+  const target = input.files;
   const refused = await checkPaths(cwd, target.kind === "paths" ? target.paths : []);
   if (refused !== undefined) return refused;
   return withMutationLock(cwd, input.expect.revision, async () => {

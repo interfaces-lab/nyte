@@ -149,6 +149,7 @@ export async function grepRipgrep(input: {
       "--engine=default",
       // Disk BOMs are decoded like editor reads; unsaved text keeps its literal BOM.
       input.source.kind === "directory" ? "--encoding=utf-8" : "--encoding=none",
+      ...(input.source.kind === "directory" && input.literal ? ["--binary"] : []),
       "--crlf",
       "--no-mmap",
       ...(input.source.kind === "directory" && input.source.maxFileBytes !== undefined

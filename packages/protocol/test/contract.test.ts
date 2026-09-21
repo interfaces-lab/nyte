@@ -137,6 +137,7 @@ test("a commit event carries the whole message, and a mangled one is refused wit
         kind: "commit",
         parent: null,
         body: { kind: "message", message: { role: "user", content: "hi", timestamp: 1 } },
+        start: { kind: "none" },
         at: 1,
       },
     },
@@ -152,7 +153,7 @@ test("a commit event carries the whole message, and a mangled one is refused wit
 });
 
 test("a submission key rides on the pending item, the commit, and the user part, and stays optional", () => {
-  const pending = { change: "abc", lane: "steer", at: 1, content: "hi" };
+  const pending = { change: "abc", delivery: "steer", at: 1, content: "hi" };
   assert.ok(Value.Check(schemas.PendingItem, pending));
   assert.ok(Value.Check(schemas.PendingItem, { ...pending, key: "outbox-1" }));
   assert.ok(!Value.Check(schemas.PendingItem, { ...pending, key: 7 }));
@@ -162,11 +163,12 @@ test("a submission key rides on the pending item, the commit, and the user part,
     change: "abc",
     key: "outbox-1",
     body: { kind: "message", message: { role: "user", content: "hi", timestamp: 1 } },
+    start: { kind: "none" },
     at: 1,
   };
   assert.ok(Value.Check(schemas.Commit, commit));
   assert.ok(!Value.Check(schemas.Commit, { ...commit, key: null }));
-  const part = { kind: "user", commit: "abc", parent: null, content: "hi" };
+  const part = { kind: "user", commit: "abc", parent: null, content: "hi", at: 1 };
   assert.ok(Value.Check(schemas.UserTurnPart, part));
   assert.ok(Value.Check(schemas.UserTurnPart, { ...part, key: "outbox-1" }));
   assert.ok(!Value.Check(schemas.UserTurnPart, { ...part, key: 7 }));
@@ -303,4 +305,241 @@ test("validation diagnostics are bounded and readable", () => {
   assert.ok(describeIssues(issues).startsWith("/: "));
   assert.equal(describeIssues([]), "value did not match its schema");
   assert.equal(validationIssues(Array.from({ length: 30 }, () => errors).flat()).length, 20);
+});
+
+test("commit provenance belongs only to the body variant that produced it", () => {
+  const assistantMessage = {
+    role: "assistant",
+    content: [],
+    api: "openai-responses",
+    provider: "openai",
+    model: "fixture",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: 1,
+  };
+  const base = { kind: "commit", parent: null, at: 1 };
+  const commits = [
+    {
+      ...base,
+      body: { kind: "message", message: { role: "user", content: "go", timestamp: 1 } },
+      start: { kind: "run", tree: null },
+    },
+    {
+      ...base,
+      body: { kind: "message", message: assistantMessage },
+      calls: {},
+      outcome: { kind: "ok" },
+    },
+    {
+      ...base,
+      body: { kind: "message", message: assistantMessage },
+      calls: {},
+      outcome: { kind: "failed", failure: { class: "provider", message: "offline" } },
+    },
+    {
+      ...base,
+      body: {
+        kind: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: "call",
+          toolName: "bash",
+          content: [],
+          isError: false,
+          timestamp: 1,
+        },
+      },
+      call: { kind: "shell", command: "pnpm test" },
+      tree: null,
+    },
+    {
+      ...base,
+      body: {
+        kind: "completion",
+        job: {
+          kind: "command",
+          id: "job",
+          command: "pnpm test",
+          end: { kind: "completed" },
+          output: "ok",
+        },
+      },
+      start: { kind: "none" },
+    },
+    {
+      ...base,
+      body: { kind: "checkpoint", summary: "so far", retainedTail: [], tokensBefore: 10 },
+    },
+    { ...base, body: { kind: "summary", text: "branch" }, imports: ["source"] },
+    { ...base, body: { kind: "config", thinkingLevel: "high" } },
+  ];
+  for (const commit of commits) assert.ok(Value.Check(schemas.Commit, commit));
+
+  assert.ok(
+    !Value.Check(schemas.Commit, { ...commits[1], failure: { class: "provider", message: "x" } }),
+  );
+  assert.ok(!Value.Check(schemas.Commit, { ...commits[4], outcome: { kind: "ok" } }));
+  assert.ok(!Value.Check(schemas.Commit, { ...commits[0], calls: {} }));
+  assert.ok(!Value.Check(schemas.Commit, { ...commits[3], calls: {} }));
+  assert.ok(!Value.Check(schemas.Commit, { ...commits[6], imports: undefined }));
+});
+
+test("version-control schemas preserve head, side, file-column, and diff variants", () => {
+  for (const head of [
+    { kind: "unborn", branch: "main" },
+    { kind: "detached", oid: "HEAD" },
+    {
+      kind: "attached",
+      oid: "HEAD",
+      branch: "main",
+      upstream: { name: "origin/main", ahead: 2, behind: 1 },
+      base: { name: "origin/main", source: "default" },
+    },
+  ])
+    assert.ok(Value.Check(schemas.VcsHead, head));
+  assert.ok(!Value.Check(schemas.VcsHead, { kind: "unborn", branch: "main", oid: "HEAD" }));
+  assert.ok(
+    !Value.Check(schemas.VcsHead, {
+      kind: "attached",
+      oid: "HEAD",
+      branch: "main",
+      upstream: { name: "origin/main", ahead: -1, behind: 0 },
+      base: null,
+    }),
+  );
+
+  const contents = {
+    path: "file.ts",
+    old: { kind: "absent" },
+    new: { kind: "text", text: "hello" },
+  };
+  assert.ok(Value.Check(schemas.VcsContents, contents));
+  assert.ok(
+    Value.Check(schemas.VcsContents, {
+      path: "file.ts",
+      old: { kind: "truncated", head: "start" },
+      new: { kind: "binary" },
+    }),
+  );
+  assert.ok(!Value.Check(schemas.VcsContents, { ...contents, binary: false }));
+  assert.ok(!Value.Check(schemas.VcsContents, { ...contents, old: { kind: "absent", text: "" } }));
+
+  const snapshot = {
+    kind: "repository",
+    root: "/repo",
+    revision: "revision",
+    head: { kind: "unborn", branch: "main" },
+    staged: [
+      { path: "added", kind: "added" },
+      { path: "renamed", kind: "renamed", from: "old" },
+      { path: "conflict", kind: "conflicted" },
+    ],
+    unstaged: [
+      { path: "working", kind: "modified" },
+      { path: "new", kind: "untracked" },
+      { path: "conflict", kind: "conflicted" },
+    ],
+  };
+  assert.ok(Value.Check(schemas.VcsSnapshot, snapshot));
+  assert.ok(
+    !Value.Check(schemas.VcsSnapshot, { ...snapshot, staged: [{ path: "x", kind: "untracked" }] }),
+  );
+  assert.ok(
+    !Value.Check(schemas.VcsSnapshot, {
+      ...snapshot,
+      unstaged: [{ path: "x", kind: "renamed", from: "y" }],
+    }),
+  );
+
+  assert.ok(
+    Value.Check(schemas.VcsDiff, {
+      path: "file.ts",
+      status: "modified",
+      kind: "text",
+      added: 1,
+      removed: 2,
+      patch: "diff",
+    }),
+  );
+  assert.ok(
+    Value.Check(schemas.VcsDiff, {
+      path: "image.png",
+      status: "added",
+      kind: "binary",
+      patch: "Binary files differ",
+    }),
+  );
+  assert.ok(
+    !Value.Check(schemas.VcsDiff, {
+      path: "image.png",
+      status: "added",
+      kind: "binary",
+      added: 0,
+      removed: 0,
+      patch: "Binary files differ",
+    }),
+  );
+});
+
+test("version-control operations require an explicit target and nonempty mutation paths", () => {
+  const workspace = { target: { kind: "workspace" } };
+  const session = { target: { kind: "session", sessionId: "session" } };
+  assert.ok(Value.Check(OPERATIONS["workspace.vcs.snapshot"].input, workspace));
+  assert.ok(Value.Check(OPERATIONS["workspace.files"].input, { ...session, query: "src" }));
+  assert.ok(!Value.Check(OPERATIONS["workspace.vcs.snapshot"].input, {}));
+  assert.ok(!Value.Check(OPERATIONS["workspace.vcs.snapshot"].input, { sessionId: "session" }));
+  assert.ok(
+    Value.Check(OPERATIONS["workspace.vcs.diff"].input, {
+      ...workspace,
+      scope: { kind: "worktree" },
+      ignoreWhitespace: false,
+    }),
+  );
+  assert.ok(
+    !Value.Check(OPERATIONS["workspace.vcs.diff"].input, {
+      ...workspace,
+      scope: { kind: "worktree" },
+    }),
+  );
+  const expect = { revision: "revision" };
+  assert.ok(
+    Value.Check(OPERATIONS["workspace.vcs.stage"].input, {
+      ...workspace,
+      paths: ["file.ts"],
+      staged: true,
+      expect,
+    }),
+  );
+  assert.ok(
+    !Value.Check(OPERATIONS["workspace.vcs.stage"].input, {
+      ...workspace,
+      paths: [],
+      staged: true,
+      expect,
+    }),
+  );
+  assert.ok(
+    Value.Check(OPERATIONS["workspace.vcs.commit"].input, {
+      ...session,
+      message: "Ship it",
+      files: { kind: "paths", paths: ["file.ts"] },
+      expect,
+    }),
+  );
+  assert.ok(
+    !Value.Check(OPERATIONS["workspace.vcs.commit"].input, {
+      ...session,
+      message: "Ship it",
+      files: { kind: "paths", paths: [] },
+      expect,
+    }),
+  );
 });

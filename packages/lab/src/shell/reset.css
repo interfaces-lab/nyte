@@ -1,0 +1,29 @@
+/*
+ * The viewer's reset, not product CSS. It only removes the user agent's
+ * defaults so the lab page starts from nothing. Zero is not a spacing
+ * decision, so nothing here needs a token.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  block-size: 100%;
+}
+
+body {
+  font-family: "Inter Variable", Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}

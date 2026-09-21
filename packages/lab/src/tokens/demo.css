@@ -1,0 +1,8 @@
+:root {
+  --lab-window-backing: #444444;
+}
+html,
+body,
+#root {
+  background: var(--lab-window-backing, #444444);
+}

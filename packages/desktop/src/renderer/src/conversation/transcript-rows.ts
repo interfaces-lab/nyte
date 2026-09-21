@@ -3,7 +3,7 @@
  * one element the thread screen used to render in flow; keys match the ones
  * those elements carried so React state (edits, folds) survives the move.
  */
-import type { Lane, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
+import type { Delivery, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/client";
 import type { OutboxRow } from "../outbox.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
@@ -66,11 +66,11 @@ export function rendersInTranscript(turn: Turn): turn is RenderedTurn {
 export function conversationMessages({
   snapshot,
   unsent,
-  steerLane,
+  steerDelivery,
 }: {
   readonly snapshot: SessionSnapshot | undefined;
   readonly unsent: readonly OutboxRow[];
-  readonly steerLane: Lane;
+  readonly steerDelivery: Delivery;
 }) {
   const running = snapshot?.run !== undefined && !isTerminalPhase(snapshot.run.phase);
   const represented = new Set<string>();
@@ -89,11 +89,11 @@ export function conversationMessages({
   // Whether a submitted message steers a live run or opens the next turn is
   // read from the snapshot alone, so one coherent read moves each message from
   // the outbox to `pending` to the transcript without a detour through the
-  // composer strip. While a run is live only the boundary lane draws here —
-  // muted until it lands; the lanes that wait for an idle head keep the tray.
+  // composer strip. While a run is live only the boundary delivery draws here —
+  // muted until it lands; the deliverys that wait for an idle head keep the tray.
   const landing: LandingMessage[] = [
     ...pending
-      .filter((item) => !running || item.lane === steerLane)
+      .filter((item) => !running || item.delivery === steerDelivery)
       .map((item) => ({
         // The receipt names the change; the key it carried keeps the same row.
         key: item.key ?? item.change,
@@ -101,15 +101,15 @@ export function conversationMessages({
         pending: running,
       })),
     ...local
-      .filter((row) => row.state.kind !== "failed" && (!running || row.lane === steerLane))
+      .filter((row) => row.state.kind !== "failed" && (!running || row.delivery === steerDelivery))
       .map((row) => ({ key: row.key, content: row.content, pending: running })),
   ];
   return {
     running,
-    landing,
-    queued: running ? pending.filter((item) => item.lane !== steerLane) : [],
+    submitted: landing,
+    queued: running ? pending.filter((item) => item.delivery !== steerDelivery) : [],
     unsent: local.filter(
-      (row) => row.state.kind === "failed" || (running && row.lane !== steerLane),
+      (row) => row.state.kind === "failed" || (running && row.delivery !== steerDelivery),
     ),
   };
 }

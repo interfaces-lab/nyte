@@ -11,7 +11,7 @@ import { step } from "../../src/kernel/step.ts";
 import type { Session } from "../../src/kernel/store.ts";
 import { startSpan } from "../../src/kernel/telemetry.ts";
 import { bindTurn } from "../../src/kernel/turn.ts";
-import { assistant, landing, message, openSession, seedHead, user } from "./helpers.ts";
+import { assistant, drain, message, openSession, seedHead, user } from "./helpers.ts";
 
 const model: Model<Api> = {
   id: "test-model",
@@ -193,10 +193,11 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "now",
+      delivery: "steer",
+      kind: "user",
       body: message(user("continue")),
     });
-    await step(session, turn, { head: "main", landing });
+    await step(session, turn, { head: "main", drain });
     const tip = await session.refs.read(headRef("main"));
     const run = await session.refs.read(runRef("main"));
     const failure = new Error("storage unavailable");
@@ -232,12 +233,12 @@ test("the publish span reports the checkpoint CAS result, and durable state matc
     };
     if (result === "throw") {
       await assert.rejects(
-        step(raced, turn, { head: "main", landing, telemetry }),
+        step(raced, turn, { head: "main", drain, telemetry }),
         (cause) => cause === failure,
       );
     } else {
       assert.equal(
-        (await step(raced, turn, { head: "main", landing, telemetry })).kind,
+        (await step(raced, turn, { head: "main", drain, telemetry })).kind,
         result === "fenced" ? "fenced" : "continue",
       );
     }

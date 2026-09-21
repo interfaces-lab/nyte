@@ -9,7 +9,7 @@ import {
   STACK_PREFIX,
   headRef,
   isHeadName,
-  queuePrefix,
+  inboxPrefix,
   runRef,
   stackRef,
 } from "./names.ts";
@@ -210,7 +210,7 @@ export async function moveHead(
 
 /**
  * Delete every mutable ref a head owns in one compare-and-swap: its tip, stack,
- * every lane's queue refs, and its run. Any head may go; a runner holding the
+ * both inbox deliveries' refs, and its run. Any head may go; a runner holding the
  * head makes this `busy`.
  */
 export async function deleteHead(
@@ -220,11 +220,11 @@ export async function deleteHead(
   validateHead(options.head);
 
   for (;;) {
-    const queueRefs = await session.refs.list(queuePrefix(options.head));
+    const inboxRefs = await session.refs.list(inboxPrefix(options.head));
     const names = [
       headRef(options.head),
       stackRef(options.head),
-      ...queueRefs.map((ref) => ref.name),
+      ...inboxRefs.map((ref) => ref.name),
       runRef(options.head),
     ];
     const current = await Promise.all(names.map((name) => session.refs.read(name)));

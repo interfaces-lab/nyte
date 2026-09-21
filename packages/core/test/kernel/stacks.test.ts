@@ -80,7 +80,8 @@ test("deleting a head drops everything it owns unless a runner holds it", async 
   await submit(session, {
     preparation: { kind: "none" },
     head: "review",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("queued")),
   });
   await session.refs.update([{ name: runRef("review"), from: null, to: tip ?? "" }], {

@@ -4,14 +4,17 @@
  * inherited custom properties on the host, so only rules that must live in
  * the shadow tree go through `unsafeCSS`.
  */
-import * as stylex from "@stylexjs/stylex";
+import { create, props } from "@stylexjs/stylex";
 import type { FileDiffMetadata, FileDiffOptions, PostRenderPhase } from "@pierre/diffs";
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
 import { memo, useMemo } from "react";
 import type { ReactElement } from "react";
 import type { ParsedPatch } from "@nyte-ai/client";
+import { Hint } from "../components/ui.tsx";
+import { PierreWorkerProvider } from "../pierre-worker-provider.tsx";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
+import { patchDigest } from "../workbench/changes-viewed.ts";
 import { diffStyles } from "./styles.stylex.ts";
 import type { DiffFilesLoader } from "./diff-expansion.ts";
 
@@ -212,13 +215,10 @@ function onPostRender(...[node, , phase]: [HTMLElement, unknown, PostRenderPhase
 const PATCH_OPTIONS = {
   onPostRender,
   theme: { light: "github-light", dark: "github-dark" },
-  diffStyle: "unified",
   diffIndicators: "classic",
   disableFileHeader: true,
   hunkSeparators: "line-info-basic",
   lineDiffType: "word",
-  overflow: "scroll",
-  preferredHighlighter: "shiki-js",
   unsafeCSS: SHADOW_CSS,
 } satisfies FileDiffOptions<undefined, undefined>;
 
@@ -230,7 +230,7 @@ const PATCH_OPTIONS = {
  */
 const EXPANSION_LINE_COUNT = 20;
 
-const rawStyles = stylex.create({
+const rawStyles = create({
   raw: {
     margin: 0,
     padding: "8px 12px",
@@ -254,7 +254,7 @@ type RenderablePatch =
  */
 function renderablePatch(patch: string): RenderablePatch {
   try {
-    const files = parsePatchFiles(patch).flatMap((parsed) => parsed.files);
+    const files = parsePatchFiles(patch, patchDigest(patch)).flatMap((parsed) => parsed.files);
     return files.length > 0 ? { kind: "files", files } : { kind: "raw", text: patch };
   } catch {
     return { kind: "raw", text: patch };
@@ -312,28 +312,26 @@ export const DiffView = memo(function DiffView({
 
   return (
     <div
-      {...stylex.props(
+      {...props(
         stacked ? diffStyles.stack : diffStyles.surface,
         stacked ? undefined : headed ? diffStyles.workbench : diffStyles.inline,
       )}
     >
       {headed && (
-        <div {...stylex.props(diffStyles.header)}>
-          <span title={path} {...stylex.props(diffStyles.path)}>
-            {label ?? path}
-          </span>
+        <div {...props(diffStyles.header)}>
+          <Hint content={path} trigger={<span {...props(diffStyles.path)}>{label ?? path}</span>} />
           <span
             aria-label={`${String(diff.added)} added, ${String(diff.removed)} removed`}
-            {...stylex.props(diffStyles.stats)}
+            {...props(diffStyles.stats)}
           >
-            {diff.added > 0 && <span {...stylex.props(diffStyles.added)}>+{diff.added}</span>}
-            {diff.removed > 0 && <span {...stylex.props(diffStyles.removed)}>-{diff.removed}</span>}
+            {diff.added > 0 && <span {...props(diffStyles.added)}>+{diff.added}</span>}
+            {diff.removed > 0 && <span {...props(diffStyles.removed)}>-{diff.removed}</span>}
           </span>
         </div>
       )}
       <div
         {...(!stacked ? { "data-nyte-scrollport": "balanced" } : {})}
-        {...stylex.props(
+        {...props(
           diffStyles.body,
           stacked
             ? diffStyles.bodyStack
@@ -343,18 +341,19 @@ export const DiffView = memo(function DiffView({
         )}
       >
         {renderable.kind === "raw" ? (
-          <pre {...stylex.props(rawStyles.raw)}>{renderable.text}</pre>
+          <pre {...props(rawStyles.raw)}>{renderable.text}</pre>
         ) : (
-          // A path can repeat within one patch, so it cannot key these on its own.
-          renderable.files.map((fileDiff, index) => (
-            <FileDiff
-              key={`${String(index)}:${fileDiff.name ?? path}`}
-              fileDiff={fileDiff}
-              options={options}
-              className={stylex.props(diffStyles.patch).className}
-              disableWorkerPool
-            />
-          ))
+          <PierreWorkerProvider>
+            {/* A path can repeat within one patch, so it cannot key these on its own. */}
+            {renderable.files.map((fileDiff, index) => (
+              <FileDiff
+                key={`${String(index)}:${fileDiff.name ?? path}`}
+                fileDiff={fileDiff}
+                options={options}
+                className={props(diffStyles.patch).className}
+              />
+            ))}
+          </PierreWorkerProvider>
         )}
       </div>
     </div>

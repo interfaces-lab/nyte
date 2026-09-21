@@ -1,9 +1,4 @@
-import {
-  DEFAULT_LANDING,
-  isTerminalPhase,
-  type Landing,
-  type WaitOutcome,
-} from "@nyte-ai/protocol";
+import { isTerminalPhase, type WaitOutcome } from "@nyte-ai/protocol";
 import { landsNow } from "../admission.ts";
 import { listEffects, waitingBatchReady } from "../effects.ts";
 import { headRef, runRef } from "../names.ts";
@@ -39,10 +34,10 @@ export async function waitForHead(
   input: {
     readonly head: string;
     readonly signal?: AbortSignal;
-    readonly drain?: Landing["drain"];
+    readonly drain?: "one" | "all";
   },
 ): Promise<WaitOutcome> {
-  const drain = input.drain ?? DEFAULT_LANDING.drain;
+  const drain = input.drain ?? "one";
   if (input.signal?.aborted) return { kind: "cancelled" };
   const stop = new AbortController();
   const abort = (): void => stop.abort();
@@ -68,8 +63,7 @@ export async function waitForHead(
           settled = { kind: "waiting", runId: run.id };
         } else {
           if (run?.kind === "run" && !isTerminalPhase(run.phase)) return undefined;
-          // The runner lands a lane only when the head admits its next batch. An
-          // idle head keeps completed background work queued until user input.
+          // Completed reports remain pending on an idle head until user input.
           if (await landsNow(session, run?.kind === "run" ? run : undefined, queued, drain)) {
             return undefined;
           }

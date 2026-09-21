@@ -84,6 +84,7 @@ function commitEvent(seq: number, oid: string, parent: string | null): SessionEv
         parent,
         at: seq,
         body: { kind: "message", message: { role: "user", content: `m${seq}`, timestamp: seq } },
+        start: { kind: "none" },
       },
     },
   };

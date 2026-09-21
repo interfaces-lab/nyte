@@ -1,0 +1,170 @@
+---
+title: Slider
+description: "A range input you style yourself, with one thumb or several"
+---
+
+```ts title="Import"
+import { Slider } from "@nyte-ai/ui/slider";
+```
+
+A value picked by dragging along a track. No Nyte styling here.
+
+## Usage
+
+- Name the control. Use `Slider.Label` when the label is visible, or `aria-label` on each
+  `Slider.Thumb` when it is not.
+- `value` with `onValueChange` controls the slider. `defaultValue` leaves it uncontrolled.
+- A range slider takes an array for `value` or `defaultValue` and one `Slider.Thumb` per entry. For
+  server rendering, give each thumb an explicit `index`.
+- `step` snaps the value. `largeStep` sets the jump for Page Up, Page Down, and Shift with an arrow
+  key.
+- Set `orientation="vertical"` on `Slider.Root` for a vertical slider.
+- Render tick marks yourself, positioning each along the track as a percentage of the value range.
+  Pair them with `step` so the thumb lands on each one.
+
+## Anatomy
+
+```tsx
+<Slider.Root>
+  <Slider.Label />
+  <Slider.Value />
+  <Slider.Control>
+    <Slider.Track>
+      <Slider.Indicator />
+      <Slider.Thumb />
+    </Slider.Track>
+  </Slider.Control>
+</Slider.Root>
+```
+
+## Examples
+
+### A labeled slider
+
+<Preview>
+  <SliderDemo />
+</Preview>
+
+```tsx
+<Slider.Root defaultValue={0.7} min={0} max={1} step={0.1}>
+  <div>
+    <Slider.Label>Temperature</Slider.Label>
+    <Slider.Value />
+  </div>
+  <Slider.Control>
+    <Slider.Track>
+      <Slider.Indicator />
+      <Slider.Thumb />
+    </Slider.Track>
+  </Slider.Control>
+</Slider.Root>
+```
+
+Without a visible label, name the thumb instead.
+
+```tsx
+<Slider.Thumb aria-label="Volume" />
+```
+
+### Controlled
+
+```tsx
+const [volume, setVolume] = useState(0.5);
+
+<Slider.Root value={volume} onValueChange={setVolume} min={0} max={1} step={0.1}>
+  <Slider.Label>Volume</Slider.Label>
+  <Slider.Control>
+    <Slider.Track>
+      <Slider.Indicator />
+      <Slider.Thumb />
+    </Slider.Track>
+  </Slider.Control>
+</Slider.Root>;
+```
+
+### A range
+
+`thumbCollisionBehavior` decides what two thumbs do when a drag pushes one into the other. `"push"`
+is the default, `"swap"` trades their places when one is dragged past the other, and `"none"` stops
+them from passing.
+
+```tsx
+<Slider.Root defaultValue={[25, 75]} thumbCollisionBehavior="swap">
+  <Slider.Label>Price range</Slider.Label>
+  <Slider.Control>
+    <Slider.Track>
+      <Slider.Indicator />
+      <Slider.Thumb index={0} aria-label="Minimum price" />
+      <Slider.Thumb index={1} aria-label="Maximum price" />
+    </Slider.Track>
+  </Slider.Control>
+</Slider.Root>
+```
+
+### Thumb alignment
+
+`thumbAlignment="edge"` insets the thumb so its edge lines up with the edge of the control at `min`
+and `max`, instead of overflowing the control the way the default `"center"` does.
+`"edge-client-only"` does the same but renders after hydration, which costs less bundle.
+
+```tsx
+<Slider.Root thumbAlignment="edge" />
+```
+
+### In a form
+
+```tsx
+<Slider.Root name="volume">
+  <Slider.Label>Volume</Slider.Label>
+  <Slider.Control>
+    <Slider.Track>
+      <Slider.Indicator />
+      <Slider.Thumb />
+    </Slider.Track>
+  </Slider.Control>
+</Slider.Root>
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/slider/Root.md</include>
+
+### Label
+
+<include>../../base-ui-reference/slider/Label.md</include>
+
+### Value
+
+<include>../../base-ui-reference/slider/Value.md</include>
+
+### Control
+
+<include>../../base-ui-reference/slider/Control.md</include>
+
+### Track
+
+<include>../../base-ui-reference/slider/Track.md</include>
+
+### Indicator
+
+<include>../../base-ui-reference/slider/Indicator.md</include>
+
+### Thumb
+
+<include>../../base-ui-reference/slider/Thumb.md</include>
+
+## Accessibility
+
+- Each thumb renders a nested `<input type="range">`. Arrow keys move by `step`, and Home and End
+  jump to the ends of the range.
+- Page Up, Page Down, and Shift with an arrow key move by `largeStep`.
+- `Slider.Label` associates itself with the thumbs. A multi-thumb slider still needs `aria-label` on
+  each thumb to tell them apart.
+- `aria-valuetext` on a thumb replaces the announced number. `getAriaValueText` takes precedence
+  over it.
+- `Slider.Value` renders an `<output>` element.
+- The root reflects `data-dragging` and `data-orientation`.

@@ -33,10 +33,10 @@ Nyte core is a durable runtime for agent conversations. Three promises drive eve
 Four scenes are the acceptance tests for the whole design. If a change to the kernel breaks one of
 these, the change is wrong, whatever else it improves.
 
-1. Three phones submit at the same moment into one lane of an idle head. Every submission
-   succeeds. The tip retries form one change chain, the oldest change lands first, and the rest
-   stay pending until later response boundaries. Nobody gets a contention error and nothing is
-   lost.
+1. Three phones submit at the same moment to `next` on an idle head. Every submission
+   succeeds. The tip retries form one change chain and the oldest change starts a run. The rest
+   stay pending until that run ends and the head is idle again. Nobody gets a contention error and
+   nothing is lost.
 2. A run is killed after a tool intent but before a result. Another process acquires the expired
    lease. It runs a `safe` effect again, or settles a `never` effect as interrupted, then carries on
    from refs. The client watching sees a pause and nothing else.
@@ -57,7 +57,7 @@ count down. One per fact, and a new mechanism needs a new fact behind it.
 | The process can die at any moment, or never existed    | Every uncertain tool call moves an effect ref from intent to result             | [Runs](#runs)                           |
 | Any process may be the one that continues a run        | A runner keeps nothing in memory across a step                                  | [Many runners](#many-runners-one-store) |
 | Writers race constantly                                | Multi-ref CAS, internal submission retry, and fenced runner publishes           | [Admission](#admission-is-open)         |
-| Providers cache the context prefix                     | Boundary lanes land at response boundaries; idle lanes wait for an idle head    | [Admission](#admission-is-open)         |
+| Providers cache the context prefix                     | `steer` lands at response boundaries; `next` waits for an idle head             | [Admission](#admission-is-open)         |
 | The outside world will not join a database transaction | Per-effect replay policy instead of impossible exactly-once execution           | [Runs](#runs)                           |
 | A commit id is unknown while its message is streaming  | Deltas key on run, attempt, and content index                                   | [Events and views](#events-and-views)   |
 | Clients may return after retained events have expired  | The event floor rejects the cursor and the client takes a snapshot              | [Events and views](#events-and-views)   |
@@ -101,7 +101,7 @@ borrowed and which were changed on purpose.
 | `update-ref` compare-and-swap | one atomic `refs.update` over any number of refs                                 |
 | lock file                     | a fenced lease over `refs/heads/<head>`                                          |
 | reflog                        | retained `ref` events in the session event stream                                |
-| index                         | one pending change chain per lane, behind queue tip and base refs                |
+| index                         | two pending inbox chains per head, behind delivery tip and base refs             |
 | stack metadata                | `refs/stacks/<head>` pointing to `{ parent, base }`                              |
 | rebase                        | never replay generated text; the model writes a summary commit for carry-forward |
 | worktree                      | none; a client reads any commit and a runner reads refs at every step            |
@@ -137,26 +137,23 @@ change produces a different oid.
 
 There are six object kinds:
 
-| Object   | Meaning                                                                                                   |
-| -------- | --------------------------------------------------------------------------------------------------------- |
-| `commit` | One point in a conversation, with one parent, optional imports, provenance, and a body.                   |
-| `change` | A commit body waiting for a parent, linked to the prior change in the same lane.                          |
-| `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request.  |
-| `effect` | One tool call's durable state: `intent`, `waiting`, `expired`, `signal`, or `result`.                     |
-| `stack`  | The parent head and base commit for a stacked head.                                                       |
-| `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker. |
+| Object   | Meaning                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------- |
+| `commit` | One point in a conversation, with one parent, a body-specific provenance variant, and shared identity fields. |
+| `change` | A commit body waiting for a parent, stamped with its kind and delivery and linked within that delivery.       |
+| `run`    | One head's current run, including its phase, attempts, folded configuration, and optional abort request.      |
+| `effect` | One tool call's durable state: `intent`, `waiting`, `expired`, `signal`, or `result`.                         |
+| `stack`  | The parent head and base commit for a stacked head.                                                           |
+| `blob`   | A small JSON value behind a fact, job record, compaction record, cancellation marker, or deletion marker.     |
 
-A commit's provenance is six optional fields. `change` names the submitted change it landed,
-`key` repeats that change's submission key, and `run` names the run that wrote it. `calls` maps each
-tool call id to its `ToolClass`, stamped by the runner from the tool's own typed arguments when the
-call commits and from its result when it settles, so no reader classifies a call by name. `failure`
-is the `Failure` the `ai` classifier decided when an assistant message stopped with `error` or
-`aborted`, so no reader classifies by error text. `tree` is the workspace tree id the host's VCS
-backend answered, on a run's first commit and on each tool-result commit, so a run's exact file diff
-and its revert come from a tree pair rather than from what its tools declared: provenance, never
-context. None is context, and the model never sees them.
-They exist so a client can ask which files one run touched, or which commit a receipt turned into,
-without guessing from timestamps.
+Every commit can name the submitted `change`, repeat its submission `key`, name the `run` that
+wrote it, and identify its `author`. The body determines the rest. A user message or background
+`completion` has `start`: either no run started there, or it records the workspace tree at the
+start of that run. An assistant message has a complete `calls` map and an `outcome` that is either
+`ok` or carries the classified `Failure`. A tool result has its one settled `call` class and the
+workspace `tree` after the batch. A `summary` alone has `imports`, the commits it summarizes.
+These fields are provenance, never context, and the model never sees them. They let a client ask
+which files one run touched or which commit a receipt became without guessing from timestamps.
 
 A commit body is one of five kinds:
 
@@ -193,8 +190,10 @@ The ref namespace is:
 ```text
 refs/heads/<head>              branch tip; absence means unborn
 refs/stacks/<head>             Stack { parent, base }
-refs/queues/<head>/<lane>/tip  newest submitted Change in the lane
-refs/queues/<head>/<lane>/base last landed Change; pending is (base, tip]
+refs/inbox/<head>/steer/tip  newest Change for the next boundary
+refs/inbox/<head>/steer/base last landed steer Change; pending is (base, tip]
+refs/inbox/<head>/next/tip   newest Change for the next idle head
+refs/inbox/<head>/next/base  last landed next Change; pending is (base, tip]
 refs/runs/<head>               current Run object and phase
 refs/chains/<root>             Blob { attempts } shared by every run in one delegated chain
 refs/compactions/<head>        checkpoint work in flight under the head lease
@@ -207,9 +206,8 @@ refs/cancelled/<change>        Blob tombstone for a withdrawn Change
 refs/deleted                   Blob marking a session being deleted
 ```
 
-Heads and lanes are names, and the kernel privileges none of them. Which lane lands when is the
-runner's landing policy, passed to every step. The default head (`main`) and the default lanes
-(`steer`, `queue`) belong to the SDK, which lists its default head before the head has a ref.
+Head names are open. Inbox delivery is closed: every head has `steer` and `next`. The default head
+(`main`) belongs to the SDK, which lists it before the head has a ref.
 
 ### Leases
 
@@ -288,7 +286,7 @@ therefore needs a stack parent. Moving an unborn head to a commit is what create
 from and moves only heads the session lists, or its default head, so a mistyped name creates
 nothing and answers `unknown_parent` or `not_found`.
 
-Deleting a head removes its head ref, stack, every lane's tip and base refs, and run ref in one
+Deleting a head removes its head ref, stack, both deliveries' tip and base refs, and run ref in one
 CAS. It refuses with `busy` while a live lease exists for that head. The kernel deletes any head.
 The SDK refuses its default head. The objects stay until retention proves them unreachable and old
 enough.
@@ -371,7 +369,7 @@ The phases are:
 
 | Phase     | Meaning                                                                           |
 | --------- | --------------------------------------------------------------------------------- |
-| `respond` | The next step may land a boundary-lane change, then ask the model for an answer.  |
+| `respond` | The next step may land a `steer` change, then ask the model for an answer.        |
 | `tools`   | The assistant message has tool calls to recover or execute.                       |
 | `waiting` | At least one effect is parked until a signal, deadline, or abort arrives.         |
 | `retry`   | A provider attempt failed transiently and may resume at the stored time.          |
@@ -390,15 +388,18 @@ The step first settles any checkpoint work left in `refs/compactions/<head>`, th
 run, and deletion refs. A session being deleted makes every step `idle`. Otherwise the step follows
 this table:
 
-| Run phase        | Pending change        | Step does                                                                                                                                                                            | Publish CAS                                    |
-| ---------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| none or terminal | none                  | return `idle`                                                                                                                                                                        | none                                           |
-| none or terminal | some                  | land from the first policy lane; start a user run from user input, or consume one delegate authorization and start its continuation; otherwise land configuration without model work | head, queue base, run, chain or authorization  |
-| `respond`        | boundary lane pending | land it before the next response, subject to the drain rule below                                                                                                                    | head, lane base                                |
-| `respond`        | nothing landable      | call `turn.respond` over projected branch context                                                                                                                                    | assistant commit at head, next run phase       |
-| `tools`          | any                   | call `turn.tools`, commit settled results, or park                                                                                                                                   | result commits, effect cleanup, next run phase |
-| `waiting`        | any                   | wake on a signal, expiry, completed result batch, deadline, or abort; otherwise return `waiting { until? }`                                                                          | the same publish as `tools` when it wakes      |
-| `retry`          | any                   | return `retry` before `at`; after `at`, act as `respond`                                                                                                                             | none until responding                          |
+| Head / phase       | Lead                                 | Decision and step                                                                           | Publish CAS                                            |
+| ------------------ | ------------------------------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| idle               | none, report, or unauthorized answer | `wait`: return `idle`; keep the batch pending                                               | none                                                   |
+| idle               | user                                 | `start`: land the batch and start a new user run and chain                                  | head, inbox base, run, chain                           |
+| idle               | authorized answer                    | `start`: land the batch, inherit its root, consume authorization, and start a continuation  | head, inbox base, run, authorization                   |
+| idle               | passive                              | `settle` under the terminal run; without a terminal run, `wait`                             | head, inbox base, run assertion                        |
+| live `respond`     | none                                 | `wait`, then call `turn.respond`                                                            | assistant commit, run phase                            |
+| live `respond`     | user, passive, report, or answer     | `join` the batch; if its agent changed, `handoff` ends the run and keeps the batch pending  | head and inbox base for `join`; run only for `handoff` |
+| settling `respond` | any                                  | `wait`, then end the run `aborted`; keep every batch pending                                | run                                                    |
+| `tools`            | any                                  | call `turn.tools`, commit settled results, or park                                          | result commits, effects, run phase                     |
+| `waiting`          | any                                  | wake on a signal, expiry, completed results, deadline, or abort; otherwise return `waiting` | as `tools` when it wakes                               |
+| `retry`            | any                                  | return `retry` before `at`; afterwards act as `respond`                                     | none until responding                                  |
 
 Three small rules sit inside the `respond` row. First, an abort request already on the run stores
 `aborted` without calling the model. Second, if the projected context ends in something other than
@@ -475,7 +476,7 @@ effect signal CAS. Its outcomes are `signalled`, `not_waiting`, and `not_found`.
 On the next acquired step, a `waiting` run calls tools again if any effect has a signal or expiry,
 all effects already hold results, its nearest deadline has passed, or the run has an abort request. Otherwise the step returns
 `waiting` with that nearest deadline so a hot host can schedule another step. Ordinary submitted messages
-stay in their lane while the run waits. A tool reply is a signal, not a conversation message, and
+stay in the inbox while the run waits. A tool reply is a signal, not a conversation message, and
 the two never get confused for each other.
 
 A wait that needs a participant says so. The waiting effect may carry a `selection`: a `Selection`,
@@ -503,7 +504,7 @@ the epoch deadline, including when it exceeds the platform's maximum timer delay
 
 A wait on a child session is the bounded kind. `await`, `task`, and `send` with `waitMs` park with
 `until = now + timeoutMs` and no selection. Delegation signals the effect when the agents it names
-satisfy its mode, or when user input arrives in a boundary lane of the head the wait is holding up;
+satisfy its mode, or when user input arrives with `delivery: "steer"` on the head the wait is holding up;
 the runner expires it at the deadline; an abort wakes it with the flag. Every wake settles: the
 handler answers with a report for each agent whose request ended and a phase for the rest, and
 the parent may wait again. Nothing about the wait is process state: which agents, from the intent's
@@ -517,10 +518,11 @@ the same way tool results do, never from a bigger shape in core.
 ### Retries
 
 A retryable provider failure produces a complete assistant error message and a `retry` outcome.
-The step commits that assistant message with its `failure`, increments `attempts`, and writes the run
-phase as `retry { at, retries, failure }`. `retries` counts consecutive retryable failures and resets
-after a successful response. Before `at`, a step returns the durable deadline. At or after `at`,
-it calls `respond` again. `drive` waits in process. A step-at-a-time host schedules another entry.
+The step commits that assistant message with `outcome: { kind: "failed", failure }`, increments
+`attempts`, and writes the run phase as `retry { at, retries, failure }`. `retries` counts
+consecutive retryable failures and resets after a successful response. Before `at`, a step returns
+the durable deadline. At or after `at`, it calls `respond` again. `drive` waits in process. A
+step-at-a-time host schedules another entry.
 
 Whether a failure is retryable, and any provider-requested minimum delay, are functions of the
 failure's class; the retry policy adds the backoff. Retries are a run phase. They are not timers in runner memory,
@@ -555,61 +557,61 @@ outlives a step. The hot loop is just the step loop with the lease kept warm.
 ## Admission is open
 
 `submit` always creates a pending `Change`. It never appends directly to the conversation head and
-never inspects or acquires the runner lease. The lane is the submitter's choice. The SDK sends to
-the first lane of its landing policy when a client names none, and refuses a lane the policy does
-not list, since no runner would ever land it.
+never inspects or acquires the runner lease. The submitter stamps two closed values: `delivery`
+selects `steer` or `next`, and `kind` classifies the change as `user`, `answer`, `passive`, or
+`report`. Nothing after submission inspects the body to recover either decision.
 
-Submission reads the lane tip, builds a change whose `previous` names that tip, writes the object,
-then compares and moves the tip ref. A tip conflict retries internally, up to a bounded attempt
-limit that no real workload should reach. If the caller supplied a key, the same CAS writes
-`refs/keys/<key>` to the new change. A competing key write returns `duplicate` with the first
-change oid. The only successful outcomes are `queued` and `duplicate`.
+Submission reads the selected inbox tip, builds a change whose `previous` names that tip, writes
+the object, then compares and moves the tip ref. A tip conflict retries internally. If the caller
+supplied a key, the same CAS writes `refs/keys/<key>` to the new change. A competing key write
+returns `duplicate` with the first change oid. The only successful outcomes are `queued` and
+`duplicate`.
 
-### Lanes are chains
+### The inbox
 
-Each head has one independent chain per lane, and a head has whichever lanes its refs name. A lane
-exists so a message can overtake older ones without rewriting their chain. A chain is
-content-addressed with one base pointer, so a runner takes only from its front, and each delivery
-timing needs a front of its own. The runner's landing policy lists the lanes it serves, in
-priority order, and says when each lands:
+Each head has two independent chains. `steer` lands at every response boundary and while idle.
+`next` lands only while idle, after `steer`. Separate fronts let steering input overtake older
+next-run input without rewriting either chain.
 
-| `lands`    | Lands                                                   |
-| ---------- | ------------------------------------------------------- |
-| `boundary` | Before the next assistant response, and on an idle head |
-| `idle`     | Only when the run is absent or terminal                 |
-
-The SDK's default policy is `steer` at boundaries and `queue` when idle. A host may declare other
-lanes, such as one per user in a shared session.
-
-For each lane, `tip` names the newest change and `base` names the last landed change. Pending is
-the half-open chain interval `(base, tip]`, walked through `Change.previous` and presented oldest
+For each delivery, `tip` names the newest change and `base` names the last landed change. Pending
+is the half-open interval `(base, tip]`, walked through `Change.previous` and presented oldest
 first. The store holds no pending array. Concurrent submissions form one chain because every tip
 move compares its predecessor.
 
-The policy's `drain` says how much lands at once. `"one"` lands through the first message in the
-selected lane, including any config changes ahead of it, so the model answers one message
-at a time. `"all"` lands the whole lane. With `"one"`, a boundary lane mid-run waits until the last
-landed message has its answer. Otherwise a steering message could land on top of an unanswered one
-and the model would see two questions for one reply. A response-phase step considers only
-boundary lanes. An idle or terminal head considers every lane in policy order.
+`drain: "one"` lands through the first user change, including passive changes ahead of it.
+`drain: "all"` lands the whole selected delivery. While a live run still owes an answer, the
+boundary drain takes only leading answer and report changes. An idle head considers `steer` and
+then `next`; a live head considers only `steer`.
 
-`pending` walks every chain, drops tombstoned changes, and sorts the visible items by submission
-time and oid. All clients read that store projection and see the same list.
+Admission is one pure decision over the head and the selected batch's lead:
+
+| Head \ Lead | `none` | `user`                           | `passive`                                              | `report` | `answer`                                                                       |
+| ----------- | ------ | -------------------------------- | ------------------------------------------------------ | -------- | ------------------------------------------------------------------------------ |
+| `idle`      | `wait` | `start` a user run and new chain | `settle` under the terminal run; `wait` if none exists | `wait`   | `start` a continuation and inherit its chain when authorized; otherwise `wait` |
+| `live`      | `wait` | `join`                           | `join`                                                 | `join`   | `join`                                                                         |
+| `settling`  | `wait` | `wait`                           | `wait`                                                 | `wait`   | `wait`                                                                         |
+
+For every non-empty live cell, an agent change returns `handoff` instead of `join`: the run ends
+and the batch stays pending. `step`, `runs.wait`, and relocation all use this decision. Only
+building an answer lead reads its authorization record. Landing builds the next run and ref updates
+from the decision, rather than repeating admission conditions.
+
+`pending` walks both chains, drops tombstoned changes, and sorts visible items by submission time
+and oid. All clients read that store projection and see the same list.
 
 ### Cancel and redeliver
 
 Cancel does not rewrite a change or splice a chain. It writes a blob behind
-`refs/cancelled/<change>` and asserts the source lane base in the same CAS. Pending walks skip the
-tombstone. Landing asserts that every change it selected has no tombstone. A cancel racing a land
+`refs/cancelled/<change>` and asserts the source inbox base in the same CAS. Pending walks skip the
+tombstone. Landing asserts that every selected change has no tombstone. A cancel racing landing
 therefore settles as `cancelled` or `landed`, never both.
 
-Redelivery edits a pending item in one atomic update: it may move the item to another lane, change
-its position within a lane through `before`, replace the content of a pending user message, or any
-combination. It tombstones every change from the splice point onward, asserts the source base, and
-rewrites that suffix onto the target chain. A rewritten copy keeps its body, author, and submission
-time, records `supersedes`, and gets a new oid because its predecessor and provenance changed. An
-unchanged prefix keeps its ids. Nothing new, nothing moved, and no content means `unchanged`. No
-intermediate state shows an item in both lanes or in neither.
+Redelivery edits a pending item in one atomic update. It may change `delivery`, move the item with
+`before`, replace a pending user message's content, or combine those changes. It tombstones every
+change from the splice point onward, asserts the source base, and rewrites that suffix onto the
+target chain. A rewritten copy keeps its body, kind, author, and submission time, records
+`supersedes`, and gets a new oid. An unchanged prefix keeps its ids. No intermediate state shows an
+item in both deliveries or in neither.
 
 ### A submitted message is never lost
 
@@ -623,7 +625,7 @@ in the same conversation; it never clears the stopped run's flag.
 
 User input starts model work. So does a delegate's answer to a request an un-stopped run
 authorized. The idle landing CAS consumes that request's authorization once, beside the head,
-queue base, and new run refs. A model send creates its authorization in a CAS that asserts the
+inbox base, and new run refs. A model send creates its authorization in a CAS that asserts the
 exact parent run ref with `to === from`; if Stop moves that ref first, no child change publishes.
 Stop and requester failure rewrite outstanding authorizations to `input`. Command completions,
 participant child requests, and delegate answers whose authorization
@@ -646,7 +648,7 @@ client closes it with an outbox:
    on its pending item, and on the commit that lands it. The receipt and the watch arrive in
    either order; a message the watch already shows draws nothing from its late receipt.
 
-The idempotency ref and queue tip move in one CAS. A retry after a lost response returns the first
+The idempotency ref and inbox tip move in one CAS. A retry after a lost response returns the first
 change and never enqueues the message twice. The key is correlation for the sender, not
 authorization, and stays outside the message the model reads.
 
@@ -871,9 +873,8 @@ A child persists until the parent calls `stop`; it is not a job, and `jobs.list`
 A panel draws a child from its `SessionInfo`: `parent`, `name`, and its `main` head's `run`.
 
 The parent's tools are `task` (create, send, and await in one call), `create`, `send`, `await`,
-`read`, and `stop`. `send` enqueues a user message on the child's `main` head as the parent, in
-the idle lane when the child is idle and the boundary lane when it is live, so the child's landing
-rules decide when it is heard. Before publishing the child change, the parent writes a request
+`read`, and `stop`. `send` enqueues a user message on the child's `main` head as the parent, with
+`delivery: "next"` when the child is idle and `delivery: "steer"` when it is live. Before publishing the child change, the parent writes a request
 record with the owning run, call, head, delivery state, and continuation state. The same CAS
 asserts that the parent run ref still points to the exact run object `send` read. If Stop wins
 that race, `send` abandons the prepared request and the child receives nothing. Model `send` and
@@ -910,10 +911,9 @@ The root contract is:
 
 ```text
 Nyte
-  landing    the landing policy in force: the lanes a client may send to, in priority order
   sessions   create · get · snapshot · metadata · list · rename · setPinned · setArchived · delete · configure
   messages   send · cancel · redeliver · list · pending
-  runs       current · abort · wait · reply · compact · context · changes
+  runs       current · abort · wait · reply · compact · context · diff
   jobs       list · start · background · cancel
   heads      list · create · move · delete · merge
   workspace  list · current · select · forget · files
@@ -932,7 +932,7 @@ Nyte
 ```
 
 `NyteOptions` always supplies `store`, `streamFn`, `models`, and a fallback `model`. It may supply
-`landing` (the lanes this host serves; absent means `steer` and `queue`), `actor`, `thinkingLevel`,
+`drain` (`one` by default or `all`), `actor`, `thinkingLevel`,
 `compaction`, stream options, `telemetry`, `onDiagnostic`, and a workspace backend (registry,
 `@` file discovery, and a `vcs` backend that answers every `workspace.vcs` operation at the
 directory the SDK resolves per call; `@nyte-ai/host` supplies git). Static
@@ -1032,10 +1032,10 @@ Storage and session:
 4. **Superseded.** The object store canonicalizes typed objects directly. `toJsonValue` remains a
    boundary for unknown effect and progress payloads, not every durable write.
 5. **Superseded.** Admission no longer chooses placed or queued by reading a claim. Every submit
-   appends a change to a lane chain without taking a lease.
+   appends a change to one of the two inbox chains without taking a lease.
 6. Concurrent participant writes linearize through ref CAS. A head advances only from its expected
    oid, so concurrent writers do not create an implicit fork.
-7. Submission is idempotent under a caller-supplied key written with the queue tip in one CAS.
+7. Submission is idempotent under a caller-supplied key written with the inbox tip in one CAS.
 
 Leases and runs:
 
@@ -1111,14 +1111,14 @@ Heads and pending input:
     event floor and may be trimmed.
 33. Parent, base, and staleness remain. Summary navigation carries an abandoned path forward with
     one summary commit at the new base and never replays generated text.
-34. **Superseded.** Pending input is not a record kind. It is the visible portion of the lane
+34. **Superseded.** Pending input is not a record kind. It is the visible portion of the inbox
     chains after tombstones are removed.
 
 Kernel CAS, queues, retention, and streaming:
 
 35. Every ref CAS checks all `from` values before any write. `to === from` is an assertion that
     emits no event. Runner publishes **must** assert `refs/deleted` absent.
-36. Each lane is one `Change.previous` chain bounded by base and tip refs. Submitting **must not**
+36. Each delivery is one `Change.previous` chain bounded by base and tip refs. Submitting **must not**
     replace it with an array or a client-owned queue.
 37. Cancellation is a tombstone ref. Landing and cancellation assert the state they race over, so
     a change is cancelled or landed, never both. Redelivery tombstones the original and appends
@@ -1134,9 +1134,8 @@ Kernel CAS, queues, retention, and streaming:
     model context chain.
 42. Objects **must** be put before a ref names them. A failed CAS may leave loose objects and
     **must not** expose a partial ref update.
-43. The kernel **must not** name a head or a lane. Which lanes exist and when each lands is the
-    landing policy a runner passes to every step; the default head and default lanes are the
-    SDK's. A lane a head has never used is created by the first change written to it.
+43. Head names are open, while inbox delivery is the closed pair `steer` and `next`. Every runner
+    uses that timing and receives only the `drain` choice; `main` remains the SDK's default head.
 44. TypeBox is the one schema library. A TypeBox type is the JSON Schema providers and MCP
     exchange, so `Tool.parameters` crosses the wire without conversion, and hosts validate
     their own boundaries with the same library. Only Node-side code imports `typebox/compile`;
@@ -1180,8 +1179,8 @@ enforces one context parent, has no worktree, and retains the reflog instead of 
 forever.
 
 The turn, schema message types, effect sandwich, and replay policies come from pi. Ported files
-keep their `Based on` credit, and `THIRD-PARTY-NOTICES.md` lists upstreams. The SDK's default
-`steer` and `queue` lanes follow OpenCode's admission vocabulary.
+keep their `Based on` credit, and `THIRD-PARTY-NOTICES.md` lists upstreams. The `steer` and `next` deliveries keep the useful part of OpenCode's admission vocabulary while
+making timing a closed protocol choice.
 
 Stack metadata follows Graphite and its open-source fork charcoal: one parent branch and one base
 revision, with staleness as an equality check. The kernel does not copy their commit replay model.
@@ -1189,5 +1188,5 @@ Generated conversation text is not a patch you can reapply safely, and pretendin
 you end up with a transcript the model never said.
 
 The plain-object, one-options-object-per-operation SDK form follows `code.storage`. Nyte keeps that
-wire-friendly shape while exposing kernel oids, run phases, lane names, and the event cursor
+wire-friendly shape while exposing kernel oids, run phases, delivery, and the event cursor
 directly.

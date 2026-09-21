@@ -1,5 +1,4 @@
-import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
-import { create, props } from "@stylexjs/stylex";
+import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import { useRef, useState } from "react";
@@ -15,11 +14,14 @@ import {
   Menu,
   MenuItem,
 } from "../components/menu.tsx";
+import { Spinner } from "../components/spinner.tsx";
 import { focus, IconButton } from "../components/ui.tsx";
 import { nyte } from "../nyte.ts";
+import { agent, glyph } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
 import {
   activeWorkbenchTab,
+  defaultWorkbenchTab,
   workbenchController,
   workbenchTabAvailable,
   workbenchTabLabel,
@@ -27,19 +29,20 @@ import {
 } from "./controller.ts";
 import type {
   WorkbenchScope,
-  WorkbenchTabId,
+  WorkbenchTab,
+  WorkbenchTabKind,
   WorkbenchViewKey,
   WorkbenchViewState,
 } from "./controller.ts";
-import { getTerminals, isShellTerminal, terminalActions, useTerminals } from "./terminal-store.ts";
+import { copyTerminal, clearTerminal } from "./terminal-runtime.ts";
+import { isJobTerminal, terminalActions, useTerminalRuntime } from "./terminal-store.ts";
 import type { TerminalTab } from "./terminal-store.ts";
 import { fileActions, useFileTabs } from "./file-store.ts";
-import type { FileTab } from "./file-store.ts";
 
 const TAB_CONTENT_FADE =
   "linear-gradient(to right, black calc(100% - 36px), transparent calc(100% - 12px))";
 
-const styles = create({
+const styles = stylex.create({
   root: { display: "flex", alignItems: "center", gap: 1, flex: 1, minWidth: 0 },
   tabs: { display: "flex", minWidth: 0, overflowX: "auto", scrollbarWidth: "none" },
   list: { display: "flex", alignItems: "center", gap: 1, minWidth: 0 },
@@ -97,6 +100,7 @@ const styles = create({
     WebkitMaskImage: "var(--_tab-content-mask)",
     maskImage: "var(--_tab-content-mask)",
   },
+  agentTerminal: { color: agent.accent },
   label: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   preview: { fontStyle: "italic" },
   tabIcon: { display: "inline-flex" },
@@ -109,6 +113,12 @@ const styles = create({
     flexShrink: 0,
     borderRadius: "50%",
     backgroundColor: t.textWarning,
+  },
+  running: {
+    display: "inline-flex",
+    width: glyph.box,
+    height: glyph.box,
+    flexShrink: 0,
   },
   close: {
     position: "absolute",
@@ -136,12 +146,12 @@ const styles = create({
 });
 
 const tabIcons = {
+  file: "file",
   files: "file",
   changes: "git-branch",
   browser: "globe",
   terminal: "console",
-  agents: "robot",
-} satisfies Record<WorkbenchTabId, IconName>;
+} satisfies Record<WorkbenchTabKind, IconName>;
 
 const fileIcons = new Map<string, IconName>([
   ["tsx", "react"],
@@ -158,32 +168,25 @@ const fileIcons = new Map<string, IconName>([
   ["yml", "settings"],
 ]);
 
-type StripTab =
-  | { readonly kind: "panel"; readonly panel: Exclude<WorkbenchTabId, "terminal"> }
-  | { readonly kind: "terminal"; readonly terminal: TerminalTab }
-  | { readonly kind: "file"; readonly file: FileTab };
-
 type TerminalCloseState =
   | { readonly kind: "closed" }
   | {
       readonly kind: "confirming";
+      readonly tab: WorkbenchTab;
       readonly terminal: TerminalTab;
       readonly error: string | undefined;
     }
-  | { readonly kind: "closing"; readonly terminal: TerminalTab };
+  | { readonly kind: "closing"; readonly tab: WorkbenchTab; readonly terminal: TerminalTab };
 
-function tabValue(tab: StripTab): string {
-  if (tab.kind === "file") return `file:${encodeURIComponent(tab.file.path)}`;
-  return tab.kind === "panel" ? tab.panel : tab.terminal.id;
+function newTerminal(view: WorkbenchViewKey, workspacePath: string | null): void {
+  const id = workbenchController.actions.openTab({
+    view,
+    tab: { kind: "terminal", owner: { kind: "user" } },
+    activate: true,
+  });
+  void terminalActions.create({ id, workspacePath });
 }
 
-function tabLabel(tab: StripTab): string {
-  if (tab.kind === "file")
-    return tab.file.displayPath.split(/[\\/]/).at(-1) ?? tab.file.displayPath;
-  return tab.kind === "panel" ? workbenchTabLabel(tab.panel) : tab.terminal.title;
-}
-
-/** The only workbench tab strip, rendered in the window titlebar. */
 export function WorkbenchTabStrip({
   viewKey,
   view,
@@ -195,29 +198,15 @@ export function WorkbenchTabStrip({
   readonly scope: WorkbenchScope;
   readonly workspacePath: string | null;
 }): ReactElement {
-  const terminals = useTerminals(viewKey);
+  const terminals = useTerminalRuntime();
   const files = useFileTabs(viewKey);
   const pendingFile = files.tabs.find((file) => file.path === files.pendingClosePath);
   const stripRef = useRef<HTMLDivElement>(null);
   const terminalCloseRef = useRef<HTMLButtonElement>(null);
   const fileCloseRef = useRef<HTMLButtonElement>(null);
   const [terminalClose, setTerminalClose] = useState<TerminalCloseState>({ kind: "closed" });
-  const tabs = view.openTabs.flatMap<StripTab>((tab) => {
-    if (!workbenchTabAvailable(scope, tab)) return [];
-    if (tab === "files" && files.tabs.length > 0) {
-      return files.tabs.map((file) => ({ kind: "file", file }));
-    }
-    return tab === "terminal"
-      ? terminals.tabs.map((terminal) => ({ kind: "terminal", terminal }))
-      : [{ kind: "panel", panel: tab }];
-  });
-  const activePanel = activeWorkbenchTab(view, scope);
-  const activeValue =
-    activePanel === "terminal"
-      ? terminals.activeId
-      : activePanel === "files" && files.activePath !== undefined
-        ? `file:${encodeURIComponent(files.activePath)}`
-        : activePanel;
+  const tabs = view.tabs.filter((tab) => workbenchTabAvailable(scope, tab.kind));
+  const activeValue = activeWorkbenchTab(view, scope)?.id ?? null;
 
   const focusSelectedTab = (): void => {
     requestAnimationFrame(() => {
@@ -226,74 +215,73 @@ export function WorkbenchTabStrip({
       else document.getElementById("workbench-toggle")?.focus();
     });
   };
-  const closeTerminal = async (terminal: TerminalTab): Promise<void> => {
-    setTerminalClose({ kind: "closing", terminal });
+  const closeTerminal = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
+    setTerminalClose({ kind: "closing", tab, terminal });
     try {
       await terminalActions.close(terminal.id);
-      if (getTerminals(viewKey).length === 0)
-        workbenchController.actions.closeTab(viewKey, "terminal");
+      workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
       setTerminalClose({ kind: "closed" });
       focusSelectedTab();
     } catch (cause: unknown) {
-      setTerminalClose({ kind: "confirming", terminal, error: errorMessage(cause) });
+      setTerminalClose({ kind: "confirming", tab, terminal, error: errorMessage(cause) });
     }
   };
-  const requestTerminalClose = async (terminal: TerminalTab): Promise<void> => {
-    // A refused check keeps the confirmation; only a visibly idle prompt skips it.
+  const requestTerminalClose = async (tab: WorkbenchTab, terminal: TerminalTab): Promise<void> => {
+    if (isJobTerminal(terminal)) {
+      await closeTerminal(tab, terminal);
+      return;
+    }
     const idle =
-      isShellTerminal(terminal) && terminal.state.kind === "running"
+      terminal.state.kind === "running"
         ? await nyte.host.terminal.idle({ id: terminal.id }).catch(() => false)
         : true;
-    if (idle) await closeTerminal(terminal);
-    else setTerminalClose({ kind: "confirming", terminal, error: undefined });
+    if (idle) await closeTerminal(tab, terminal);
+    else setTerminalClose({ kind: "confirming", tab, terminal, error: undefined });
   };
-  const closeTab = (tab: StripTab): void => {
+  const closeTab = (tab: WorkbenchTab): void => {
     if (tab.kind === "file") {
-      if (fileActions.close(viewKey, tab.file.path)) focusSelectedTab();
+      if (fileActions.close(viewKey, tab.path)) focusSelectedTab();
       return;
     }
     if (tab.kind === "terminal") {
-      void requestTerminalClose(tab.terminal);
-    } else {
-      workbenchController.actions.closeTab(viewKey, tab.panel);
-      focusSelectedTab();
+      const terminal = terminals.get(tab.id);
+      if (terminal === undefined) {
+        workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
+        focusSelectedTab();
+      } else {
+        void requestTerminalClose(tab, terminal);
+      }
+      return;
     }
+    workbenchController.actions.closeTab({ view: viewKey, id: tab.id });
+    focusSelectedTab();
   };
 
   return (
-    <div ref={stripRef} {...props(styles.root)}>
+    <div ref={stripRef} {...stylex.props(styles.root)}>
       <Tabs.Root
         value={activeValue}
-        {...props(styles.tabs)}
-        onValueChange={(value) => {
-          const next = tabs.find((tab) => tabValue(tab) === value);
-          if (next === undefined) return;
-          if (next.kind === "file") {
-            fileActions.select(viewKey, next.file.path);
-            return;
-          }
-          if (next.kind === "terminal") terminalActions.select(viewKey, next.terminal.id);
-          workbenchController.actions.openTab(
-            viewKey,
-            next.kind === "panel" ? next.panel : "terminal",
-          );
-        }}
+        {...stylex.props(styles.tabs)}
+        onValueChange={(id) => workbenchController.actions.activateTab({ view: viewKey, id })}
       >
-        <Tabs.List aria-label="Workbench tabs" {...props(styles.list)}>
+        <Tabs.List aria-label="Workbench tabs" {...stylex.props(styles.list)}>
           {tabs.map((tab) => {
-            const value = tabValue(tab);
-            const label = tabLabel(tab);
-            const panel =
-              tab.kind === "panel" ? tab.panel : tab.kind === "file" ? "files" : "terminal";
+            const file =
+              tab.kind === "file" ? files.tabs.find((item) => item.id === tab.id) : undefined;
+            const terminal = tab.kind === "terminal" ? terminals.get(tab.id) : undefined;
+            const label =
+              file?.displayPath.split(/[\\/]/).at(-1) ?? terminal?.title ?? workbenchTabLabel(tab);
             const icon =
-              tab.kind === "file"
-                ? (fileIcons.get(tab.file.displayPath.split(".").at(-1) ?? "") ?? "file-text")
-                : tabIcons[panel];
+              file === undefined
+                ? tabIcons[tab.kind]
+                : (fileIcons.get(file.displayPath.split(".").at(-1) ?? "") ?? "file-text");
+            const agentTerminal = terminal !== undefined && isJobTerminal(terminal);
+            const running = agentTerminal && terminal.state.kind === "running";
             const trigger = (
               <div
-                key={value}
+                key={tab.id}
                 role="presentation"
-                {...props(styles.item, activeValue === value && styles.active)}
+                {...stylex.props(styles.item, activeValue === tab.id && styles.active)}
                 onAuxClick={(event) => {
                   if (event.button === 1) {
                     event.preventDefault();
@@ -302,27 +290,23 @@ export function WorkbenchTabStrip({
                 }}
               >
                 <Tabs.Tab
-                  id={`${viewKey}-tab-${value}`}
-                  value={value}
+                  id={`${viewKey}-tab-${tab.id}`}
+                  value={tab.id}
                   title={
-                    tab.kind === "terminal"
-                      ? isShellTerminal(tab.terminal)
-                        ? tab.terminal.cwd
-                        : `${tab.terminal.title} · Agent command, read-only`
-                      : tab.kind === "file"
-                        ? tab.file.displayPath
-                        : label
+                    agentTerminal
+                      ? `${terminal.title} · Agent command · read-only`
+                      : (terminal?.cwd ?? file?.displayPath ?? label)
                   }
                   aria-label={
-                    tab.kind === "file"
-                      ? `${tab.file.displayPath}${tab.file.dirty ? ", unsaved changes" : ""}`
-                      : label
+                    file === undefined
+                      ? label
+                      : `${file.displayPath}${file.dirty ? ", unsaved changes" : ""}`
                   }
                   onDoubleClick={() => {
-                    if (tab.kind === "file") fileActions.pin(viewKey, tab.file.path);
+                    if (file !== undefined) fileActions.pin(viewKey, file.path);
                   }}
-                  aria-controls={`${viewKey}-panel-${panel}`}
-                  {...props(styles.tab, focus.ringInset)}
+                  aria-controls={`${viewKey}-panel-${tab.kind === "file" || tab.kind === "files" ? "files" : tab.id}`}
+                  {...stylex.props(styles.tab, focus.ringInset)}
                   onFocus={(event) =>
                     event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })
                   }
@@ -333,9 +317,12 @@ export function WorkbenchTabStrip({
                     }
                   }}
                 >
-                  <span {...props(styles.content)}>
+                  <span
+                    data-agent-terminal={agentTerminal ? "true" : undefined}
+                    {...stylex.props(styles.content, agentTerminal && styles.agentTerminal)}
+                  >
                     <span
-                      {...props(
+                      {...stylex.props(
                         styles.tabIcon,
                         icon === "react" && styles.reactIcon,
                         icon === "typescript" && styles.typescriptIcon,
@@ -344,16 +331,14 @@ export function WorkbenchTabStrip({
                     >
                       <Icon name={icon} size={16} />
                     </span>
-                    <span
-                      {...props(
-                        styles.label,
-                        tab.kind === "file" && tab.file.preview && styles.preview,
-                      )}
-                    >
+                    <span {...stylex.props(styles.label, file?.preview && styles.preview)}>
                       {label}
                     </span>
-                    {tab.kind === "file" && tab.file.dirty && (
-                      <span aria-hidden="true" {...props(styles.dirty)} />
+                    {file?.dirty && <span aria-hidden="true" {...stylex.props(styles.dirty)} />}
+                    {running && (
+                      <span aria-label="Running" {...stylex.props(styles.running)}>
+                        <Spinner />
+                      </span>
                     )}
                   </span>
                 </Tabs.Tab>
@@ -361,7 +346,7 @@ export function WorkbenchTabStrip({
                   unstyled
                   type="button"
                   ref={
-                    activeValue !== value
+                    activeValue !== tab.id
                       ? undefined
                       : tab.kind === "terminal"
                         ? terminalCloseRef
@@ -369,10 +354,10 @@ export function WorkbenchTabStrip({
                           ? fileCloseRef
                           : undefined
                   }
-                  tabIndex={activeValue === value ? 0 : -1}
+                  tabIndex={activeValue === tab.id ? 0 : -1}
                   aria-label={`Close ${label} tab`}
                   title={`Close ${label} tab`}
-                  {...props(styles.close, focus.ringInset)}
+                  {...stylex.props(styles.close, focus.ringInset)}
                   onClick={(event) => {
                     if (tab.kind === "terminal") terminalCloseRef.current = event.currentTarget;
                     if (tab.kind === "file") fileCloseRef.current = event.currentTarget;
@@ -383,31 +368,20 @@ export function WorkbenchTabStrip({
                 </Button>
               </div>
             );
-            return tab.kind === "terminal" ? (
-              <ContextMenu key={value} label={`${label} actions`} trigger={trigger}>
+            return terminal === undefined ? (
+              trigger
+            ) : (
+              <ContextMenu key={tab.id} label={`${label} actions`} trigger={trigger}>
                 <ContextMenuItem
                   icon="console"
-                  onSelect={() => {
-                    void terminalActions.create(viewKey, workspacePath);
-                    workbenchController.actions.openTab(viewKey, "terminal");
-                  }}
+                  onSelect={() => newTerminal(viewKey, workspacePath)}
                 >
                   New Terminal
                 </ContextMenuItem>
-                <ContextMenuItem
-                  icon="copy"
-                  onSelect={() => {
-                    copyTerminal(tab.terminal.id);
-                  }}
-                >
+                <ContextMenuItem icon="copy" onSelect={() => copyTerminal(terminal.id)}>
                   Copy Selection
                 </ContextMenuItem>
-                <ContextMenuItem
-                  icon="refresh"
-                  onSelect={() => {
-                    clearTerminal(tab.terminal.id);
-                  }}
-                >
+                <ContextMenuItem icon="refresh" onSelect={() => clearTerminal(terminal.id)}>
                   Clear Terminal
                 </ContextMenuItem>
                 <ContextMenuSeparator />
@@ -415,8 +389,6 @@ export function WorkbenchTabStrip({
                   Close Tab
                 </ContextMenuItem>
               </ContextMenu>
-            ) : (
-              trigger
             );
           })}
         </Tabs.List>
@@ -425,18 +397,23 @@ export function WorkbenchTabStrip({
         label="New workbench tab"
         trigger={<IconButton icon="plus" label="New workbench tab" />}
       >
-        {workbenchTabs(scope).map((tab) => (
+        {workbenchTabs(scope).map((kind) => (
           <MenuItem
-            key={tab}
-            icon={tabIcons[tab]}
+            key={kind}
+            icon={tabIcons[kind]}
             onSelect={() => {
-              if (tab === "terminal") {
-                void terminalActions.create(viewKey, workspacePath);
+              if (kind === "terminal") {
+                newTerminal(viewKey, workspacePath);
+                return;
               }
-              workbenchController.actions.openTab(viewKey, tab);
+              workbenchController.actions.openTab({
+                view: viewKey,
+                tab: defaultWorkbenchTab(kind),
+                activate: true,
+              });
             }}
           >
-            {workbenchTabLabel(tab)}
+            {workbenchTabLabel(kind)}
           </MenuItem>
         ))}
       </Menu>
@@ -470,7 +447,9 @@ export function WorkbenchTabStrip({
         pendingLabel="Closing…"
         onOpenChange={() => setTerminalClose({ kind: "closed" })}
         onConfirm={() => {
-          if (terminalClose.kind === "confirming") void closeTerminal(terminalClose.terminal);
+          if (terminalClose.kind === "confirming") {
+            void closeTerminal(terminalClose.tab, terminalClose.terminal);
+          }
         }}
       />
     </div>

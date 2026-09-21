@@ -1,15 +1,14 @@
 import { setTimeout } from "node:timers/promises";
-import { isTerminalPhase, type Landing, type TreeId, type TreeOutcome } from "@nyte-ai/protocol";
-import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
 import {
-  admissionFor,
-  admits,
-  firstResponse,
-  isUserInput,
-  nextBatch,
-  startsResponse,
-} from "./admission.ts";
-import { authorizedContinuation, revokeDelegations } from "./delegation-record.ts";
+  isTerminalPhase,
+  type CommitStart,
+  type Delivery,
+  type TreeId,
+  type TreeOutcome,
+} from "@nyte-ai/protocol";
+import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@nyte-ai/telemetry";
+import { agentChanged, boundaryBatch, decide, headFor, leadFor, nextBatch } from "./admission.ts";
+import { revokeDelegations } from "./delegation-record.ts";
 import { compactionClearUpdates, finishCompaction } from "./compaction.ts";
 import { branchConfig, contextMessages } from "@nyte-ai/client";
 import { listEffects, waitingBatchReady } from "./effects.ts";
@@ -21,9 +20,8 @@ import {
   cancelledRef,
   chainRef,
   headRef,
-  isLaneName,
   newRunId,
-  queueBaseRef,
+  inboxBaseRef,
   runRef,
 } from "./names.ts";
 import { createOutbox } from "./outbox.ts";
@@ -38,7 +36,7 @@ const DEFAULT_TTL_MS = 30_000;
 
 export interface StepOptions {
   readonly head: string;
-  readonly landing: Landing;
+  readonly drain: "one" | "all";
   readonly lease?: Lease;
   readonly ttlMs?: number;
   readonly signal?: AbortSignal;
@@ -85,22 +83,6 @@ interface LandedCommits {
 
 function isRun(object: Obj): object is Run {
   return object.kind === "run";
-}
-
-function validateLanding(landing: Landing): void {
-  const seen = new Set<string>();
-  for (const { lane } of landing.lanes) {
-    if (!isLaneName(lane)) throw new TypeError(`Invalid lane name: ${lane}`);
-    if (seen.has(lane)) throw new TypeError(`Lane listed twice in the landing policy: ${lane}`);
-    seen.add(lane);
-  }
-}
-
-/** The lanes the policy lets land now, in its order: every lane when idle, boundary lanes mid-run. */
-function lanesThatLand(landing: Landing, when: "boundary" | "idle"): readonly string[] {
-  return landing.lanes
-    .filter((policy) => when === "idle" || policy.lands === "boundary")
-    .map((policy) => policy.lane);
 }
 
 /** A failure of the run itself, not of the provider. */
@@ -171,30 +153,49 @@ async function noteOverriddenFailure(context: StepContext, phase: RunPhase): Pro
   );
 }
 
-/** `tree`, when a new run starts here, is stamped on the batch's first commit only. */
+/** Land submitted bodies, stamping the body that starts a new run. */
 function commitsFor(
   changes: readonly PendingChange[],
   parent: string | null,
   runId: string,
   now: () => number,
-  tree?: TreeId,
+  runStart?: Extract<CommitStart, { readonly kind: "run" }>,
 ): LandedCommits {
   const commits: Commit[] = [];
   let previous = parent;
+  let started = false;
   for (const item of changes) {
-    const baseCommit: Commit = {
-      kind: "commit",
+    const body = item.change.body;
+    const common = {
+      kind: "commit" as const,
       parent: previous,
-      body: item.change.body,
       change: item.oid,
       run: runId,
       at: now(),
-      ...(tree === undefined || commits.length > 0 ? {} : { tree }),
+      ...(item.change.key === undefined ? {} : { key: item.change.key }),
+      ...(item.change.author === undefined ? {} : { author: item.change.author }),
     };
-    const keyed: Commit =
-      item.change.key === undefined ? baseCommit : { ...baseCommit, key: item.change.key };
-    const commit: Commit =
-      item.change.author === undefined ? keyed : { ...keyed, author: item.change.author };
+    const start =
+      !started && runStart !== undefined && (body.kind === "message" || body.kind === "completion")
+        ? runStart
+        : { kind: "none" as const };
+    let commit: Commit;
+    switch (body.kind) {
+      case "message":
+        commit = { ...common, body, start };
+        break;
+      case "completion":
+        commit = { ...common, body, start };
+        break;
+      case "config":
+        commit = { ...common, body };
+        break;
+      default: {
+        const _exhaustive: never = body;
+        commit = _exhaustive;
+      }
+    }
+    if (start.kind === "run") started = true;
     previous = hashObject(commit);
     commits.push(commit);
   }
@@ -229,140 +230,135 @@ async function revocationUpdates(session: Session, run: Run): Promise<readonly R
   return run.phase.kind === "failed" ? revokeDelegations(session, run.id) : [];
 }
 
-/** Completed work ahead of the batch's first input: what may join while that input's answer is still due. */
-function leadingCompletions(changes: readonly PendingChange[]): readonly PendingChange[] {
-  const end = changes.findIndex((item) => item.change.body.kind !== "completion");
-  return end === -1 ? changes : changes.slice(0, end);
-}
-
 interface LandingRequest {
-  readonly lane: string;
-  /** The head's current run when it has one: live at a response boundary, or terminal. */
+  readonly delivery: Delivery;
   readonly run: Run | undefined;
-  /** `completions`: the tip still awaits its answer, so only completed work joins ahead of it. */
-  readonly take: "batch" | "completions";
+  readonly boundary: { readonly awaitingAnswer: boolean } | { readonly kind: "idle" };
 }
 
 async function land(
   context: Omit<StepContext, "run">,
   request: LandingRequest,
 ): Promise<StepOutcome> {
-  const { lane, run } = request;
-  const batch = nextBatch(
-    await pendingIn(context.session, { head: context.options.head, lane }),
-    context.options.landing.drain,
+  const queued = await pendingIn(context.session, {
+    head: context.options.head,
+    delivery: request.delivery,
+  });
+  const changes =
+    "awaitingAnswer" in request.boundary
+      ? boundaryBatch(queued, context.options.drain, request.boundary.awaitingAnswer)
+      : nextBatch(queued, context.options.drain);
+  const decision = decide(
+    headFor(request.run),
+    await leadFor(context.session, changes),
+    agentChanged(request.run, changes),
   );
-  const changes = request.take === "completions" ? leadingCompletions(batch) : batch;
-  const admission = admissionFor(run);
-  const starter = firstResponse(changes);
-  const continuation =
-    admission.kind === "idle" && starter !== undefined
-      ? await authorizedContinuation(context.session, starter)
-      : undefined;
-  if (!admits(admission, changes, continuation !== undefined)) return { kind: "idle" };
-
-  const baseName = queueBaseRef(context.options.head, lane);
+  const baseName = inboxBaseRef(context.options.head, request.delivery);
   const base = await context.session.refs.read(baseName);
-  const live = admission.kind === "live" ? run : undefined;
-  if (live !== undefined) {
-    let agent = live.config.agent;
-    for (const { change } of changes) {
-      if (change.body.kind === "message" && change.body.agent !== undefined) {
-        agent = change.body.agent;
-      }
-    }
-    if (agent !== live.config.agent) {
-      // Keep this batch queued. Its selected agent starts a new run after
-      // the current run ends, with its own config and response ceiling.
-      return storeRun(
-        { ...context, run: live },
-        withPhase(live, { kind: "done" }),
-        "agent changed",
-        [
-          { name: headRef(context.options.head), from: context.tip, to: context.tip },
-          { name: baseName, from: base, to: base },
-          ...changes.map((item) => ({ name: cancelledRef(item.oid), from: null, to: null })),
-        ],
-      );
-    }
+
+  if (decision.kind === "wait") return { kind: "idle" };
+  if (decision.kind === "handoff") {
+    return storeRun(
+      { ...context, run: decision.run },
+      withPhase(decision.run, { kind: "done" }),
+      "agent changed",
+      [
+        { name: headRef(context.options.head), from: context.tip, to: context.tip },
+        { name: baseName, from: base, to: base },
+      ],
+    );
   }
-  let nextRun: Run;
-  let landed: ReturnType<typeof commitsFor>;
-  let chainUpdate: RefUpdate | undefined;
-  if (live !== undefined) {
-    // The batch joins the run in progress. The run object is unchanged: a stop
-    // is never consumed by a landing, and a stopping run lands nothing.
-    landed = commitsFor(changes, context.tip, live.id, context.now);
-    nextRun = live;
-  } else if (run !== undefined && !changes.some(startsResponse)) {
-    // Configuration on an idle head applies under the run that ended,
-    // whose phase is history. It does not start model work.
-    landed = commitsFor(changes, context.tip, run.id, context.now);
-    nextRun = run;
-  } else {
-    const id = newRunId();
-    landed = commitsFor(changes, context.tip, id, context.now, await currentTree(context.options));
-    const prior = await branch(context.session.objects, context.tip);
-    const config = branchConfig([...prior.map((entry) => entry.commit), ...landed.commits]);
-    const origin =
-      continuation === undefined
-        ? { kind: "user" as const }
-        : {
-            kind: "continuation" as const,
-            session: continuation.session,
-            request: continuation.request,
-          };
-    const root = continuation?.root ?? id;
-    nextRun = {
-      kind: "run",
-      id,
-      head: context.options.head,
-      origin,
-      root,
-      phase:
-        continuation !== undefined || changes.some(isUserInput)
-          ? { kind: "respond" }
-          : { kind: "done" },
-      startedAt: context.now(),
-      attempts: 0,
-      config: context.options.resolveConfig?.(config) ?? config,
-    };
-    if (continuation === undefined) {
-      const [counter] = await context.session.objects.put([
-        { kind: "blob", value: { attempts: 0 } },
-      ]);
-      if (counter === undefined) throw new Error("Chain counter write returned no object");
-      chainUpdate = { name: chainRef(root), from: null, to: counter };
+
+  let plan: {
+    readonly landed: ReturnType<typeof commitsFor>;
+    readonly run: Run;
+    readonly updates: readonly RefUpdate[];
+  };
+  switch (decision.kind) {
+    case "join":
+    case "settle":
+      plan = {
+        landed: commitsFor(changes, context.tip, decision.run.id, context.now),
+        run: decision.run,
+        updates: [],
+      };
+      break;
+    case "start": {
+      const id = newRunId();
+      const landed = commitsFor(changes, context.tip, id, context.now, {
+        kind: "run",
+        tree: (await currentTree(context.options)) ?? null,
+      });
+      const prior = await branch(context.session.objects, context.tip);
+      const config = branchConfig([...prior.map((entry) => entry.commit), ...landed.commits]);
+      let root: string;
+      let updates: readonly RefUpdate[];
+      switch (decision.chain.kind) {
+        case "new": {
+          root = id;
+          const [counter] = await context.session.objects.put([
+            { kind: "blob", value: { attempts: 0 } },
+          ]);
+          if (counter === undefined) throw new Error("Chain counter write returned no object");
+          updates = [{ name: chainRef(root), from: null, to: counter }];
+          break;
+        }
+        case "inherit":
+          root = decision.chain.root;
+          updates = [decision.chain.consume];
+          break;
+        default: {
+          const _exhaustive: never = decision.chain;
+          root = _exhaustive;
+          updates = _exhaustive;
+        }
+      }
+      plan = {
+        landed,
+        run: {
+          kind: "run",
+          id,
+          head: context.options.head,
+          origin: decision.origin,
+          root,
+          phase: { kind: "respond" },
+          startedAt: context.now(),
+          attempts: 0,
+          config: context.options.resolveConfig?.(config) ?? config,
+        },
+        updates,
+      };
+      break;
+    }
+    default: {
+      const _exhaustive: never = decision;
+      return _exhaustive;
     }
   }
 
-  await context.session.objects.put([...landed.commits, nextRun]);
-  const last = changes[changes.length - 1];
+  await context.session.objects.put([...plan.landed.commits, plan.run]);
+  const last = changes.at(-1);
   if (last === undefined) throw new Error("Landing lost its final change");
-  const updates: RefUpdate[] = [
-    { name: headRef(context.options.head), from: context.tip, to: landed.tip },
-    { name: baseName, from: base, to: last.oid },
-    { name: runRef(context.options.head), from: context.runOid, to: hashObject(nextRun) },
-    ...(chainUpdate === undefined ? [] : [chainUpdate]),
-    ...(continuation === undefined ? [] : [continuation.consume]),
-    ...changes.map((item) => ({ name: cancelledRef(item.oid), from: null, to: null })),
-  ];
   const outcome = await publish(context.session, {
     lease: context.lease,
-    updates,
+    updates: [
+      { name: headRef(context.options.head), from: context.tip, to: plan.landed.tip },
+      { name: baseName, from: base, to: last.oid },
+      { name: runRef(context.options.head), from: context.runOid, to: hashObject(plan.run) },
+      ...plan.updates,
+      ...changes.map((item) => ({ name: cancelledRef(item.oid), from: null, to: null })),
+    ],
     reason: "land",
   });
-  if (outcome === "fenced") return { kind: "fenced" };
-  return { kind: "continue" };
+  return outcome === "fenced" ? { kind: "fenced" } : { kind: "continue" };
 }
 
-/** Land the first lane, in policy order, whose next batch the head admits. */
 async function landOrIdle(
   context: Omit<StepContext, "run">,
-  options: { readonly lanes: readonly string[]; readonly run: Run | undefined },
+  run: Run | undefined,
 ): Promise<StepOutcome> {
-  for (const lane of options.lanes) {
-    const outcome = await land(context, { lane, run: options.run, take: "batch" });
+  for (const delivery of ["steer", "next"] as const) {
+    const outcome = await land(context, { delivery, run, boundary: { kind: "idle" } });
     if (outcome.kind !== "idle") return outcome;
   }
   return { kind: "idle" };
@@ -517,19 +513,22 @@ function responsePhase(
   }
 }
 
-/** What the response's commit records beside its message: its calls, or why it failed. */
+/** What the response's commit records beside its message. */
 function responseProvenance(
   outcome: Exclude<RespondOutcome, { readonly kind: "checkpoint" }>,
-): Pick<Commit, "calls" | "failure"> {
+): Pick<
+  Extract<Commit, { readonly calls: Readonly<Record<string, unknown>> }>,
+  "calls" | "outcome"
+> {
   switch (outcome.kind) {
     case "complete":
-      return {};
+      return { calls: {}, outcome: { kind: "ok" } };
     case "tools":
-      return { calls: outcome.calls };
+      return { calls: outcome.calls, outcome: { kind: "ok" } };
     case "retry":
     case "failed":
     case "aborted":
-      return { failure: outcome.failure };
+      return { calls: {}, outcome: { kind: "failed", failure: outcome.failure } };
     default: {
       const _exhaustive: never = outcome;
       return _exhaustive;
@@ -596,21 +595,15 @@ function isStepCeilingResolver(
 }
 
 async function respond(context: StepContext): Promise<StepOutcome> {
-  // A stop is one-way: the run ends here, and whatever is queued waits for the
-  // terminal run to admit it. Nothing lands into a run that is stopping.
+  const answering = context.options.drain === "one" && (await awaitingAnswer(context));
+  const landed = await land(context, {
+    delivery: "steer",
+    run: context.run,
+    boundary: { awaitingAnswer: answering },
+  });
+  if (landed.kind !== "idle") return landed;
   if (context.run.abortRequested === true) {
     return endRun(context, { kind: "aborted" }, "abort");
-  }
-  // Answer user inputs one at a time, but include completed work at this boundary
-  // even when another user input is waiting ahead of it in the lane policy.
-  const answering = context.options.landing.drain === "one" && (await awaitingAnswer(context));
-  for (const lane of lanesThatLand(context.options.landing, "boundary")) {
-    const outcome = await land(context, {
-      lane,
-      run: context.run,
-      take: answering ? "completions" : "batch",
-    });
-    if (outcome.kind !== "idle") return outcome;
   }
 
   const commits = await contextCommits(context.session.objects, context.tip);
@@ -733,8 +726,8 @@ function toolCommits(
       body: { kind: "message", message },
       run: runId,
       at: now(),
-      ...(settled === undefined ? {} : { calls: { [message.toolCallId]: settled } }),
-      ...(tree === undefined ? {} : { tree }),
+      call: settled ?? { kind: "custom", label: message.toolName },
+      tree: tree ?? null,
     };
     previous = hashObject(commit);
     commits.push(commit);
@@ -898,15 +891,14 @@ async function runStep(
 }
 
 async function advance(base: Omit<StepContext, "run">, run: Run | undefined): Promise<StepOutcome> {
-  const idleLanes = lanesThatLand(base.options.landing, "idle");
-  if (run === undefined) return landOrIdle(base, { lanes: idleLanes, run });
+  if (run === undefined) return landOrIdle(base, run);
   const context: StepContext = { ...base, run };
 
   switch (run.phase.kind) {
     case "done":
     case "failed":
     case "aborted":
-      return landOrIdle(base, { lanes: idleLanes, run });
+      return landOrIdle(base, run);
     case "respond":
       return respond(context);
     case "tools":
@@ -945,7 +937,6 @@ export async function step(
   turn: Turn,
   options: StepOptions,
 ): Promise<StepOutcome> {
-  validateLanding(options.landing);
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   let lease = options.lease;
   let acquiredHere = false;
@@ -998,7 +989,6 @@ export async function drive(
   turn: Turn,
   options: Omit<StepOptions, "lease">,
 ): Promise<StepOutcome> {
-  validateLanding(options.landing);
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const acquired = await session.leases.acquire(headRef(options.head), ttlMs);
   if (!acquired.ok) return { kind: "busy", holder: acquired.holder };

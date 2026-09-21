@@ -43,6 +43,7 @@ function render(turn: RenderedTurn): string {
   return renderToStaticMarkup(
     <TurnView
       turn={turn}
+      runDiff={undefined}
       liveTools={new Map()}
       cwd={undefined}
       onOpenChanges={() => {}}
@@ -55,6 +56,7 @@ function render(turn: RenderedTurn): string {
 const continuation: RenderedTurn = {
   kind: "turn",
   id: "completion",
+  run: { kind: "none" },
   startedAt: 1,
   durationMs: 0,
   parts: [],
@@ -73,7 +75,15 @@ test("a stopped continuation turn reports the stop instead of a blank row", () =
 test("the response attached to a continuation turn renders without a user bubble", () => {
   const html = render({
     ...continuation,
-    parts: [{ kind: "assistant", commit: "answer", contentIndex: 0, text: "Build looks green." }],
+    parts: [
+      {
+        kind: "assistant",
+        commit: "answer",
+        contentIndex: 0,
+        text: "Build looks green.",
+        at: 1,
+      },
+    ],
   });
   expect(html).toContain("Build looks green.");
   expect(html).not.toContain("data-sticky-user-message");

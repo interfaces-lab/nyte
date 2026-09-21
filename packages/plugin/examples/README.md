@@ -1,6 +1,6 @@
 # Plugin examples
 
-These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, fast mode, and web search. The question tool is not preinstalled: it is the extensibility demo, and installing it from a discovered directory is the whole setup. Every client then renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin:
+These plugins demonstrate Nyte's public `@nyte-ai/plugin` contract. Hosts preinstall rename, fast mode, warming, and web search. The question tool is not preinstalled: it is the extensibility demo, and installing it from a discovered directory is the whole setup. Every client then renders it, because what it asks the user to pick travels with the waiting call rather than with the plugin:
 
 ```sh
 mkdir -p ~/.nyte/plugins

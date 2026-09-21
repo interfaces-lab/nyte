@@ -119,14 +119,21 @@ async function call(request: Extract<StoreRequest, { kind: "call" }>): Promise<u
     case "store.delete":
       await store.delete(argument(first, check.string));
       return null;
-    case "store.close":
+    case "store.close": {
       endWatches(undefined);
-      await store.close();
+      try {
+        await store.close();
+      } finally {
+        sessions.clear();
+      }
       return null;
+    }
     case "session.close": {
-      // The closed session stays addressable so later calls fail as the backend's own do.
-      const open = session(request.session);
-      if (request.session !== null) endWatches(request.session);
+      const handle = request.session;
+      if (handle === null) throw new TypeError("store-worker call needs a session handle");
+      const open = session(handle);
+      endWatches(handle);
+      sessions.delete(handle);
       await open.close();
       return null;
     }

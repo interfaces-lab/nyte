@@ -3,10 +3,8 @@
 import { IconCheckmark1Small, IconClipboard } from "central-icons";
 import { useRef, useState } from "react";
 import type { ComponentProps } from "react";
-import type { ShellSkin } from "~/shell.stylex";
 
 export type ShellCodeFrameProps = ComponentProps<"pre"> & {
-  skin: ShellSkin;
   title?: string;
   icon?: unknown;
 };
@@ -17,7 +15,6 @@ export type ShellCodeFrameProps = ComponentProps<"pre"> & {
  * never disagrees with what is on screen.
  */
 export function ShellCodeFrame({
-  skin,
   title: _title,
   icon: _icon,
   children,
@@ -28,14 +25,14 @@ export function ShellCodeFrame({
   const [copied, setCopied] = useState(false);
 
   return (
-    <figure className={`${skin}-code`}>
-      <div className={`${skin}-code-body`}>
+    <figure className="shell-code">
+      <div className="shell-code-body">
         <pre ref={body} className={className} {...props}>
           {children}
         </pre>
         <button
           type="button"
-          className={`${skin}-code-copy`}
+          className="shell-code-copy"
           aria-label={copied ? "Copied" : "Copy code"}
           onClick={async () => {
             await navigator.clipboard.writeText(body.current?.textContent ?? "");

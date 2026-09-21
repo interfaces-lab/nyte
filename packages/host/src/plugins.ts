@@ -22,6 +22,7 @@ import { fastModePlugin } from "@nyte-ai/plugin/examples/fast-mode";
 import { openaiCompactionPlugin } from "@nyte-ai/plugin/openai-compaction";
 import { openaiAstraContextPlugin } from "@nyte-ai/plugin/openai-astra-context";
 import { renamePlugin } from "@nyte-ai/plugin/examples/rename";
+import { warmingPlugin } from "@nyte-ai/plugin/examples/warming";
 import { MCP_PLUGIN_ID, McpServerConfig, McpServers, mcpPlugin } from "@nyte-ai/plugin/mcp";
 import { webSearchCredentialId, webSearchPlugins } from "@nyte-ai/plugin/examples/web-search";
 import type { WebSearchCredentials } from "@nyte-ai/plugin/examples/web-search";
@@ -54,6 +55,7 @@ export async function resolveHostPlugins(
       openaiCompactionPlugin({ models: context.models }),
       openaiAstraContextPlugin(),
       fastModePlugin({ models: context.models, defaultModel: context.model }),
+      warmingPlugin({ models: context.models }),
       ...webSearchPlugins({ credentials: webSearchCredentials() }),
       mcpPlugin({ servers: mcpServers, config: mcp }),
       ...(context.extra ?? []),

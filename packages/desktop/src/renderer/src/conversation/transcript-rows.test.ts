@@ -5,15 +5,16 @@ import { transcriptRows } from "./transcript-rows.ts";
 import type { RenderedTurn } from "./transcript-rows.ts";
 
 function turn(id: string, parts: TurnPart[]): RenderedTurn {
-  return { kind: "turn", id, parts, startedAt: 0, durationMs: 0 };
+  return { kind: "turn", id, run: { kind: "none" }, parts, startedAt: 0, durationMs: 0 };
 }
 
-const user: TurnPart = { kind: "user", commit: "u1", parent: null, content: "hello" };
+const user: TurnPart = { kind: "user", commit: "u1", parent: null, content: "hello", at: 0 };
 const prose = (text: string): TurnPart => ({
   kind: "assistant",
   commit: "a1",
   contentIndex: 0,
   text,
+  at: 0,
 });
 
 describe("transcriptRows", () => {

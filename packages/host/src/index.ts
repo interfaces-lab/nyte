@@ -114,6 +114,7 @@ export async function createHost(options: HostOptions): Promise<Nyte> {
   const shared = {
     ...base,
     models,
+    drain: "all",
     streamFn: (model, context, streamOptions) => models.streamSimple(model, context, streamOptions),
   } satisfies Partial<NyteOptions>;
 

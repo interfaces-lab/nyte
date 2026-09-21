@@ -144,6 +144,7 @@ async function fixture() {
   vi.stubEnv("CODEX_HOME", join(root, "codex"));
   const events: HostEvent[] = [];
   const watchEvents: WatchEnvelope[] = [];
+  const browserReleases: string[] = [];
   const createHost = () => {
     const host = new DesktopHost({
       storeWorker: new URL("../../../core/src/kernel/store-worker.ts", import.meta.url),
@@ -169,13 +170,16 @@ async function fixture() {
         release: () => undefined,
         warm: async () => undefined,
         dispose: () => undefined,
-        agent: unusedBrowserAgent(),
+        agent: {
+          ...unusedBrowserAgent(),
+          release: ({ session }) => browserReleases.push(session),
+        },
       },
     });
     hosts.push(host);
     return host;
   };
-  return { root, events, watchEvents, createHost };
+  return { root, events, watchEvents, browserReleases, createHost };
 }
 
 test("update activity follows running local tasks", async () => {
@@ -365,6 +369,60 @@ test("watch errors preserve cursor metadata and release the watch id for a fresh
     assert.ok(watchEvents.slice(count).some((event) => event.kind === "event")),
   );
   host.watchStop("cursor");
+});
+
+test("stopping the last idle watch releases its session resources", async () => {
+  const { browserReleases, createHost, watchEvents } = await fixture();
+  const host = createHost();
+  const session = await host.call("sessions.create", { name: "Closable watch" });
+  host.watchStart({ watchId: "closable", sessionId: session.sessionId, live: true });
+  await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
+
+  host.watchStop("closable");
+
+  await vi.waitFor(() => assert.deepEqual(browserReleases, [session.sessionId]));
+});
+
+test("archiving waits for delegated work before releasing session resources", async () => {
+  const { browserReleases, createHost, watchEvents } = await fixture();
+  const host = createHost();
+  const parent = await host.call("sessions.create", { name: "Archived parent" });
+  host.watchStart({ watchId: "archived", sessionId: parent.sessionId, live: true });
+  await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
+  const child = await host.call("sessions.create", {
+    name: "Delegated child",
+    parent: { sessionId: parent.sessionId, runId: "run", callId: "call", depth: 1 },
+  });
+  const job = await host.call("jobs.start", {
+    sessionId: child.sessionId,
+    command: "printf ready; sleep 30",
+  });
+
+  await host.call("sessions.setArchived", { sessionId: parent.sessionId, archived: true });
+
+  assert.deepEqual(browserReleases, []);
+  assert.equal(
+    (await host.call("jobs.list", { sessionId: child.sessionId }))[0]?.phase.kind,
+    "running",
+  );
+
+  await host.call("jobs.cancel", { sessionId: child.sessionId, jobId: job.id });
+  await host.call("host.sessionDirectory", undefined);
+  await vi.waitFor(() => assert.deepEqual(browserReleases, [parent.sessionId, child.sessionId]));
+  host.watchStop("archived");
+});
+
+test("deleting a session releases its retained resources", async () => {
+  const { browserReleases, createHost, watchEvents } = await fixture();
+  const host = createHost();
+  const session = await host.call("sessions.create", { name: "Delete resources" });
+  host.watchStart({ watchId: "delete", sessionId: session.sessionId, live: true });
+  await vi.waitFor(() => assert.ok(watchEvents.some((event) => event.kind === "event")));
+
+  await host.call("sessions.delete", { sessionId: session.sessionId });
+
+  assert.ok(browserReleases.includes(session.sessionId));
+  host.watchStop("delete");
 });
 
 test("trustWorkspace reactivates every open target", async () => {

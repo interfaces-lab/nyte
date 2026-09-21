@@ -44,6 +44,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
   const saved = new Map(chats.map((session) => [session.sessionId, session]));
   const writes = Promise.withResolvers<void>();
   const failures = new Set<string>();
+  const releases: SessionInfo["sessionId"][] = [];
   client.setQueryData(keys.sessionDirectory, [{ workspacePath: null, sessions: chats }]);
   client.setQueryData(keys.sessionPreview, { items: chats });
   client.setQueryData(keys.sessionSearch("chat"), { items: chats });
@@ -55,6 +56,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
   const actions = new SessionActions({
     toasts,
     client,
+    releaseResources: (sessionId) => releases.push(sessionId),
     sessions: {
       async setArchived(input) {
         await writes.promise;
@@ -89,7 +91,7 @@ function fixture(chats = [chat("one"), chat("two"), chat("three")]) {
         .getQueryData<readonly WorkspaceSessionDirectory[]>(keys.sessionDirectory)
         ?.flatMap((entry) => entry.sessions) ?? [],
     );
-  return { client, saved, writes, failures, actions, directory, toasts };
+  return { client, saved, writes, failures, releases, actions, directory, toasts };
 }
 
 function notification(title: string) {
@@ -154,6 +156,7 @@ test("polling cannot erase an archive, and success updates every cached projecti
     false,
   );
   assert.equal(f.directory()[0]?.lastActivityAt, 99);
+  assert.deepEqual(f.releases, [id]);
   undo("1 chat archived", f.toasts);
   await vi.waitFor(() =>
     assert.equal(f.client.getQueryData<SessionInfo>(keys.session(id))?.archived, false),
@@ -335,6 +338,7 @@ test.each(["onDismiss", "onAutoClose"] as const)(
       [sessionId("three")],
     );
     assert.equal(f.client.getQueryData(keys.snapshot(sessionId("one"))), undefined);
+    assert.deepEqual(f.releases.toSorted(), [sessionId("one"), sessionId("two")]);
     f.client.clear();
   },
 );

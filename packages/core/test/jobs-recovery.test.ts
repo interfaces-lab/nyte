@@ -42,8 +42,9 @@ async function fixture() {
     const outcome = await submit(session, {
       preparation: { kind: "none" },
       head,
-      lane: "background",
+      delivery: "steer",
       key: `background-${job.kind === "command" ? job.id : job.request.oid}`,
+      kind: "report",
       body: { kind: "completion", job },
     });
     if (outcome.kind === "queued") notifications.push(job);
@@ -173,6 +174,49 @@ test("remote job refs cancel the owner without replacing the notified terminal o
     ).rejects.toThrow("Job already exists");
     expect(work.executions()).toBe(1);
   } finally {
+    await f.close();
+  }
+});
+
+test("cancellation drains only the in-flight and latest pending progress", async () => {
+  const f = await fixture();
+  const owner = f.manager();
+  const work = controlledTool();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const append = f.session.events.append.bind(f.session.events);
+  let progressWrites = 0;
+  vi.spyOn(f.session.events, "append").mockImplementation(async (events, options) => {
+    if (events.some((event) => event.kind === "progress")) {
+      progressWrites += 1;
+      if (progressWrites === 1) {
+        entered.resolve();
+        await release.promise;
+      }
+    }
+    return append(events, options);
+  });
+  try {
+    await expect(
+      owner.wrap(work.tool).execute("call", { command: "work" }, undefined, undefined, f.context),
+    ).rejects.toBeInstanceOf(ToolWait);
+    await within(work.started.promise);
+    work.publish({ ...result, content: [{ type: "text", text: "first" }] });
+    await within(entered.promise);
+    for (let index = 0; index < 100; index += 1) {
+      work.publish({ ...result, content: [{ type: "text", text: `latest-${String(index)}` }] });
+    }
+    const job = only(await owner.list());
+    const cancelling = owner.cancel(job.id);
+    release.resolve();
+    expect(await cancelling).toEqual({ kind: "applied" });
+    expect(progressWrites).toBe(2);
+    expect((await f.stored(job.id)).info).toMatchObject({
+      output: "latest-99",
+      phase: { kind: "cancelled" },
+    });
+  } finally {
+    release.resolve();
     await f.close();
   }
 });

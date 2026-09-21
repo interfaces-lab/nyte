@@ -40,8 +40,8 @@ import type { ContextStatus, FileDiff, Turn } from "./views.ts";
 export type SessionId = string & { readonly __brand: "SessionId" };
 export type RunId = string;
 export type HeadName = string;
-/** A queue lane name. The host's landing policy says which lanes exist and when each lands. */
-export type Lane = string;
+export type Delivery = "steer" | "next";
+export type Drain = "one" | "all";
 
 /** Parse the untrusted string a CLI flag, route, or wire request supplied. */
 export function sessionId(value: string): SessionId {
@@ -52,40 +52,6 @@ export function sessionId(value: string): SessionId {
 
 /** The default head for every operation whose `head` is absent. The kernel has no such head; the SDK does. */
 export const MAIN: HeadName = "main";
-
-// ---------------------------------------------------------------------------
-// Landing
-// ---------------------------------------------------------------------------
-
-/** When a lane's changes may land: at every response boundary, or only when no run is live. */
-export interface LanePolicy {
-  readonly lane: string;
-  readonly lands: "boundary" | "idle";
-}
-
-/**
- * The runner's landing policy. The kernel knows no lane by name: the caller
- * lists the lanes it serves, in priority order, and says how much of a lane
- * lands at once. `"one"` lands through the first message, so the model
- * answers one message at a time; `"all"` lands every pending change.
- */
-export interface Landing {
-  readonly lanes: readonly LanePolicy[];
-  readonly drain: "one" | "all";
-}
-
-/**
- * The landing policy used when a host configures none: `steer` lands at every
- * response boundary, `queue` only once the head is idle, one message at a time.
- * `messages.send` without a lane goes to the first lane of the policy in force.
- */
-export const DEFAULT_LANDING: Landing = {
-  lanes: [
-    { lane: "steer", lands: "boundary" },
-    { lane: "queue", lands: "idle" },
-  ],
-  drain: "one",
-};
 
 /** The client-safe run configuration. Unknown stored thinking levels are omitted. */
 export interface RunConfig {
@@ -209,8 +175,8 @@ export interface SendInput {
   readonly sessionId: SessionId;
   readonly head?: HeadName;
   readonly content: UserMessage["content"];
-  /** One of the lanes in the landing policy; absent means its first lane. Any other lane is refused. */
-  readonly lane?: Lane;
+  /** The next live-run boundary, or the next time the head is idle. */
+  readonly delivery?: Delivery;
   /** Caller-supplied idempotency key. The first submission wins. */
   readonly key?: string;
   readonly agent?: string;
@@ -233,7 +199,7 @@ export type RedeliverOutcome =
 
 export interface PendingItem {
   readonly change: Oid;
-  readonly lane: Lane;
+  readonly delivery: Delivery;
   readonly at: number;
   readonly content: UserMessage["content"];
   readonly author?: Actor;

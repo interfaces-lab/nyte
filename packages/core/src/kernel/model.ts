@@ -10,12 +10,13 @@
  * Messages keep the pi-derived neutral `Message` type from `@nyte-ai/schema`.
  * The kernel stores that type as is: no translation, no second wire.
  */
-import type { JsonValue, ToolResultMessage } from "@nyte-ai/schema";
+import type { JsonValue, ToolResultMessage, UserMessage } from "@nyte-ai/schema";
 import type {
   Actor,
   BranchConfig,
   Commit,
   CommitBody,
+  Delivery,
   Oid,
   RunId,
   RunOrigin,
@@ -48,21 +49,26 @@ export type {
   ToolProgress,
 } from "@nyte-ai/protocol";
 
-/** A full ref name such as `refs/heads/main`. */
 export type RefName = string;
 
 // ---------------------------------------------------------------------------
 // Objects
 // ---------------------------------------------------------------------------
 
+export type ChangeBody =
+  | { readonly kind: "message"; readonly message: UserMessage; readonly agent?: string }
+  | Extract<CommitBody, { readonly kind: "completion" | "config" }>;
+
 /** A submission waiting to land: a commit body without a parent yet. */
 export interface Change {
-  readonly kind: "change";
-  /** The change submitted before this one on the same queue; null starts the queue. */
+  readonly type: "change";
+  readonly kind: "user" | "answer" | "passive" | "report";
+  readonly delivery: Delivery;
+  /** The change submitted before this one in the same delivery; null starts the chain. */
   readonly previous: Oid | null;
-  /** The change this one replaced when it moved lanes. Keeps the copy's id distinct from the original's. */
+  /** The change this one replaced when its delivery changed. Keeps the copy's id distinct from the original's. */
   readonly supersedes?: Oid;
-  readonly body: CommitBody;
+  readonly body: ChangeBody;
   readonly at: number;
   readonly author?: Actor;
   /**

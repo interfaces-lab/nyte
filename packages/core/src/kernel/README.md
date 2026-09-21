@@ -35,13 +35,13 @@ ref. An operation that can be a CAS is a CAS.
 ## Ref layout
 
 ```
-refs/heads/<head>              branch tip (absent = unborn)
-refs/stacks/<head>             Stack { parent, base }: where the branch sits
-refs/queues/<head>/<lane>/tip  newest submitted Change in that lane
-refs/queues/<head>/<lane>/base last landed Change; pending = (base, tip]
-                               a lane is a name the submitter chooses; the
-                               runner's landing policy says when each lands
-refs/runs/<head>               Run: the branch's current run and phase
+refs/heads/<head>                 branch tip (absent = unborn)
+refs/stacks/<head>                Stack { parent, base }: where the branch sits
+refs/inbox/<head>/steer/tip       newest Change delivered at a response boundary
+refs/inbox/<head>/steer/base      last landed steer Change; pending = (base, tip]
+refs/inbox/<head>/next/tip        newest Change delivered when the head is idle
+refs/inbox/<head>/next/base       last landed next Change; pending = (base, tip]
+refs/runs/<head>                  Run: the branch's current run and phase
 refs/chains/<root>             Blob { attempts }: aggregate response budget for one delegated chain
 refs/compactions/<head>        Blob: active checkpoint work fenced by the head lease
 refs/effects/<run>/<call>      Effect: intent -> waiting -> signal/expired -> result
@@ -69,8 +69,8 @@ refs/deleted                   Blob: the session is being deleted
 | `result.ts`   | The outcome helpers the kernel returns instead of throwing.            |
 | `postgres/`  | Shared PostgreSQL storage: session row locks, atomic CAS and events, database-clock leases, cursor polling across hosts. |
 | `graph.ts`    | Walking commits: branch, ancestry, the context cut at a checkpoint. Pages `objects.chain`, never one read per commit. |
-| `queue.ts`    | `submit`, `pending`, `cancel`: one change chain per lane, behind a tip and a base ref. |
-| `admission.ts` | What the head's latest run and the first response-starting change let the queue land: live, settling a stop, or idle. User input starts model work; an authorized delegate answer may also start it once. `step.ts` lands by it; `sdk/wait.ts` and `sdk/relocate.ts` read it. |
+| `queue.ts`    | `submit`, `pending`, `cancel`: the `steer` and `next` inbox chains behind tip and base refs. |
+| `admission.ts` | What the head's latest run and the first non-passive change let the queue land: live, settling a stop, fresh, or idle after a terminal run. User input starts model work; an authorized delegate answer may also start it once. `step.ts` lands by it; `sdk/wait.ts` and `sdk/relocate.ts` read it. |
 | `effects.ts`  | The effect sandwich for one tool call, and recovery.                   |
 | `stacks.ts`   | Branch create, delete, stale check, fast-forward.                      |
 | `step.ts`     | One durable step of a run, and `drive` to loop it under one lease.     |
@@ -135,36 +135,54 @@ model failure answers `failed` and leaves the head where it was.
   internally. Contention exists only on leases, on a runner's publish, and on
   structural operations that refuse a held head (`deleteHead` answers `busy`).
 - A runner keeps nothing in memory across a step. The next step reads refs.
-- The kernel knows no head and no lane by name. A runner hands `step` its
-  landing policy (`Landing`): the lanes it serves, in priority order, each
-  landing at every response boundary or only when the head is idle, and how
-  much of a lane lands at once. The SDK's defaults are the lanes `steer` and
-  `queue` and the head `main`; a host may declare others.
+- The kernel knows no head by name. Every head has two inbox deliveries:
+  `steer` lands at each response boundary and when idle; `next` lands only
+  when idle. A runner gives `step` only `drain`, which chooses one message or
+  the whole selected delivery. The SDK's default head is `main`.
 - Every event a client may need is in the stream; deltas name `(runId,
   attempt, index)`, never an entry id, because a commit's id is its hash and
   does not exist until the message is whole.
+
+## The inbox
+
+Every head has two FIFO change chains. `steer` is considered at each response
+boundary and while idle. `next` is considered only while idle, after `steer`.
+The submitter stamps both when and what the change is: `delivery` is `steer` or
+`next`; `kind` is `user`, `answer`, `passive`, or `report`. Admission never
+reclassifies a body after submission.
+
+Each chain has a `tip` and `base`. Pending is the half-open interval
+`(base, tip]`, walked through `Change.previous` and presented oldest first.
+`drain: "one"` takes through the first user change; `drain: "all"` takes the
+whole selected delivery. When a live run still owes an answer, a boundary drain
+takes only leading answer and report changes.
 
 ## The step
 
 `step(session, turn, options)` settles any live compaction, reads the head, run, and deletion refs, and does one thing:
 
-| Run phase        | Pending change | Step does                                                          | Publish CAS (all in one)                          |
-| ---------------- | -------------- | ------------------------------------------------------------------ | ------------------------------------------------- |
-| none / terminal  | none admitted  | nothing: `idle`                                                    |                                                   |
-| none / terminal  | some admitted  | land the first policy lane whose batch the head admits; a batch with user input starts a user run, while an authorized delegate answer starts one continuation and consumes its authorization; configuration lands under the terminal run, or starts a run already `done` when there is none | head, queue base, run, chain/authorization when starting |
-| `respond`, flagged | any          | end the run `aborted`; nothing lands into a stopping run           | run                                               |
-| `respond`        | some in a boundary lane | land it before the next response; with `drain: "one"` only completed work while the last landed input still awaits its answer | head, queue base, run (asserted) |
-| `respond`        | none           | `turn.respond` over the branch context; the commit carries `calls` (each call's `ToolClass` from its tool's `present`) or `failure` (the `Failure` the `ai` classifier decided) | head (assistant commit), run -> tools / done / retry `{ at, retries, failure }` / failed `{ failure }` / aborted |
-| `tools`          | any            | `turn.tools`: effect sandwich per call; commit results, each with the settled `ToolClass` under `calls` and the workspace `tree` the host's VCS backend answered after the batch | head (result commits), run -> respond / waiting / failed |
-| `waiting`        | any            | after a signal, expiry, completed result batch, or abort: `turn.tools` again; otherwise `waiting` | as `tools`                                        |
-| `retry`          | any            | before `at`: `retry`; after, or once an abort is flagged: as `respond` |                                                   |
+| Head / phase | Lead | Decision and step | Publish CAS |
+| --- | --- | --- | --- |
+| fresh | none, passive, report, or unauthorized answer | `wait`: return `idle`; keep the batch pending | none |
+| fresh | user | `start`: land the batch and start a new user run and chain | head, inbox base, run, chain |
+| fresh | authorized answer | `start`: land the batch, inherit its root, consume its authorization, and start a continuation | head, inbox base, run, authorization |
+| idle after a terminal run | none, report, or unauthorized answer | `wait`: return `idle`; keep the batch pending | none |
+| idle after a terminal run | user | `start`: land the batch and start a new user run and chain | head, inbox base, run, chain |
+| idle after a terminal run | authorized answer | `start`: land the batch, inherit its root, consume its authorization, and start a continuation | head, inbox base, run, authorization |
+| idle after a terminal run | passive | `settle` under the terminal run | head, inbox base, run assertion |
+| live `respond` | none | `wait`, then call `turn.respond` | assistant commit, run phase |
+| live `respond` | user, passive, report, or answer | `join` the batch at the boundary; if its agent changed, `handoff` ends the run and keeps the batch pending | head and inbox base for `join`; run only for `handoff` |
+| settling `respond` | any | `wait`, then end the run `aborted`; keep every batch pending | run |
+| `tools` | any | call `turn.tools`; commit results or park | result commits, effects, run phase |
+| `waiting` | any | wake for a signal, expiry, completed results, deadline, or abort; otherwise remain waiting | as `tools` when it wakes |
+| `retry` | any | return `retry` before `at`; afterwards act as `respond` | none until responding |
 
-`calls`, `failure`, and `tree` are provenance, not context: the runner stamps them once,
-from the tool's typed arguments, the classifier's closed union, and the host's VCS
-backend (`tree` on a run's first commit and on each tool-result commit, so `runs.diff`
-and `runs.revert` answer from a tree pair), and the model never sees them. A tool without `present`, an unknown tool, or arguments
-its parse refuses is `custom` under the tool's label; a failed call keeps its
-call class. A `failed` phase the run itself produced (a tool batch, a step
+Assistant `calls` and `outcome`, tool-result `call` and `tree`, and run-start `start` are
+provenance, not context. The runner stamps them once from the tool's typed arguments, the
+classifier's closed union, and the host's VCS backend. `start.tree` and each tool-result `tree`
+let `runs.diff` and `runs.revert` answer from a tree pair. The model never sees them. A tool without
+`present`, an unknown tool, or arguments its parse refuses is `custom` under the tool's label; a
+failed call keeps its call class. A `failed` phase the run itself produced (a tool batch, a step
 ceiling) carries `class: "runner"`.
 
 A run records its `origin` and `root`. A user run is its own root. A delegate
@@ -191,15 +209,17 @@ through tool batches, parked calls, provider retries, checkpoints, and boundary
 landings until it ends `done`, `failed`, or `aborted`. Background results, job
 recovery, reconnects, ref events, and runner restarts can wake a runner to read
 the refs, but they grant no permission themselves. `admission.ts` reads the
-latest run and, on an idle head, the first response-starting change:
+latest run and the selected batch's stamped lead:
 
-| Latest run                        | Admission | What lands                                                                     |
-| --------------------------------- | --------- | ------------------------------------------------------------------------------ |
-| live                              | live      | the next boundary-lane batch, into that run                                    |
-| live with `abortRequested`        | settling  | nothing, until the run is `aborted`                                            |
-| none, `done`, `failed`, `aborted` | idle      | a batch with user input; a delegate completion with unconsumed authorization; or a batch with nothing to answer |
+| Head \ Lead | `none` | `user` | `passive` | `report` | `answer` |
+| --- | --- | --- | --- | --- | --- |
+| `fresh` | `wait` | `start` a user run and new chain | `wait` | `wait` | `start` a continuation and inherit its chain when authorized; otherwise `wait` |
+| `idle` | `wait` | `start` a user run and new chain | `settle` under the terminal run | `wait` | `start` a continuation and inherit its chain when authorized; otherwise `wait` |
+| `live` | `wait` | `join` | `join` | `join` | `join` |
+| `settling` | `wait` | `wait` | `wait` | `wait` | `wait` |
 
-The three terminal phases are one case. An authorized delegate completion starts
+For every non-empty live cell, an agent change returns `handoff` instead of
+`join`: the run ends and the batch stays pending. The three terminal phases are one case. An authorized delegate completion starts
 a continuation run with the requesting chain's `root`; its `origin` names the
 child session and request. A command completion, a participant's child request,
 and a delegate request whose authorization was revoked or consumed stay queued.
@@ -210,7 +230,7 @@ it; it grants no new admission, and a stop flagged during it still ends that run
 before any response.
 
 `runs.wait` and `relocate` read the same admission, on the batch the runner's
-`drain` would take from each lane. An idle head with an authorized delegate
+`drain` would take from each delivery. An idle head with an authorized delegate
 answer is runnable. One with only command completions or unauthorized delegate
 answers is `idle` and quiet enough to move.
 
@@ -245,12 +265,10 @@ ended while the read was in flight.
 
 ### Configuration on an idle head
 
-Configuration lands without user input, committed under the terminal
-run's id with the run ref only asserted, so the head stays idle and no run is
-created that completed work could then answer into. The next user message reads
-its config from the branch, whichever lane either landed in. In a lane that
-mixes completed work ahead of configuration, the configuration waits for the
-user input with the completion.
+Configuration settles without user input under an existing terminal run, so the
+head stays idle. With no prior run, it waits for response-starting input and
+lands in that batch. The next user run folds configuration that precedes it in
+the same delivery.
 
 ## A submitted message is never lost
 
@@ -276,15 +294,15 @@ client closes it with an outbox:
    row with the change id. A retry after a lost response is a `duplicate`, so
    nothing is sent twice.
 
-The key is `refs/keys/<key>`, written in the same CAS as the queue tip, so the
+The key is `refs/keys/<key>`, written in the same CAS as the inbox tip, so the
 guarantee is the store's, not the client's.
 
 `redeliver` can replace a queued user message's `content` or place it `before`
 another pending change. It appends the changed suffix and cancels the old suffix
 in one CAS, asserting the source and destination bases and the destination tip.
 An edit racing a landing cannot re-admit the landed message. Copies retain their
-original times; `pending` merges lanes chronologically while preserving each
-lane's delivery order. The queue event projection publishes every appended copy.
+original times; `pending` merges deliveries chronologically while preserving
+order within each delivery. The queue event projection publishes every appended copy.
 
 ## Background jobs
 
@@ -321,16 +339,15 @@ job recovery. The wrapper uses `replay: "never"`. Durable output remains readabl
 but durable job metadata is not a promise that a process survives host shutdown.
 
 A terminal background job submits a typed `completion` containing its state and
-output to the originating head. The SDK's private `background` lane lands at
-response boundaries, including before an unanswered user input's response, without
-interrupting streaming or tool execution. Completions join model context but do
+output to the originating head with `kind: "report"` and `delivery: "steer"`.
+It therefore lands at response boundaries, including before an unanswered user
+input's response, without interrupting streaming or tool execution. Completions join model context but do
 not become transcript user messages or editable pending items; in the transcript
 a completion opens its own empty turn, so the response that follows it attaches
 there instead of an earlier request's turn. A command completion never starts a
 run: on an idle head it waits for the next user message (see Who starts model
-work). The lane is not
-part of `DEFAULT_LANDING` or the public `nyte.landing` policy. Delivery first
-changes `owed` to `claimed`, submits with `background-<jobId>` as the admission
+work). Delivery first changes `owed` to `claimed`, submits with
+`background-<jobId>` as the admission
 key, then stores `delivered { change }`. Recovery retries `claimed` delivery
 with the same key after a crash, so it cannot admit a second completion. A quiet
 run abort changes only `owed` to `none`; it does not suppress work already
@@ -347,9 +364,9 @@ A child is a session the parent addresses by `SessionId`, created by `create`
 or `task` at `childIdOf(parent, runId, callId)` with a `parent` fact, the
 parent's directory, the title as its `name` fact, and a config commit naming
 its model. It persists until `stop`: `send` enqueues a user message on its
-`main` head as the parent (`{ clientId: parent, device: "delegate" }`), in the
-first idle-landing lane when the child is idle and the first boundary lane when
-it is live, so the child's own landing rules apply unchanged. Each send writes
+`main` head as the parent (`{ clientId: parent, device: "delegate" }`), with
+`delivery: "next"` when the child is idle and `delivery: "steer"` when it is
+live. Each send writes
 `refs/delegations/<child>/<change>` in the parent session: the owning run and
 call, the head to answer on, a per-request `continuation`, and `delivery` as
 `owed` or `delivered { change }`. A model send writes `authorized { root }` from
@@ -373,13 +390,13 @@ was stopped before landing is delivered `cancelled`, named by
 `{ kind: "change", oid }`; a landed request is named by
 `{ kind: "commit", oid }`. On an idle parent head, an authorized request may
 start one continuation run. Its landing CAS rewrites the request authorization
-to `consumed` beside the head, queue base, and run refs. Other delegate
+to `consumed` beside the head, inbox base, and run refs. Other delegate
 completions wait for user input.
 
 `await` (and `task`, which is create, send, and await in one call; and `send`
 with `waitMs`) parks its effect with `until = now + timeoutMs`. Delegation
 signals the parked call when the agents it names satisfy its mode (`any` or
-`all`) or when user input arrives in a boundary lane of that head; the runner
+`all`) or when user input arrives with `delivery: "steer"` on that head; the runner
 expires it at the deadline. The wake handler always settles: reports for the
 agents whose request ended, `{ phase }` for the rest, and a note when the wait
 ended for input or on the deadline. A report is heard again as its completion.
@@ -417,7 +434,7 @@ directory's plugins and skills, then calls `relocate` before attaching a runner.
 
 The drills every backend and every runner must pass:
 
-- 100 concurrent submitters form one chain per lane with no lost change.
+- 100 concurrent submitters form one chain per delivery with no lost change.
 - An authorized delegate completion on an idle parent starts one continuation run, consumes its request authorization in the landing CAS, and carries the requesting root. The same completion after Stop or requester failure stays queued for user input.
 - A model send asserts the exact parent run ref while writing its authorization. An abort that wins that CAS leaves the child with no request.
 - Command completions, participant child requests, and already-consumed delegate requests never start a run on an idle head.

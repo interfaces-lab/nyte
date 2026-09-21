@@ -169,6 +169,7 @@ async function landCommit(store: SqliteStore, sessionId: SessionId, text: string
         kind: "commit",
         parent: await session.refs.read("refs/heads/main"),
         body: { kind: "message", message: { role: "user", content: text, timestamp: 1 } },
+        start: { kind: "none" },
         at: 1,
       },
     ]);
@@ -251,7 +252,6 @@ test("create, read, list, snapshot, and rename a session through the client", as
   assert.equal(snapshot.tip, null);
   assert.deepEqual(snapshot.transcript, []);
   assert.ok(Number.isInteger(snapshot.seq));
-  assert.deepEqual(await client.landing(), (await fixture()).nyte.landing);
 });
 
 test("workspace.vcs.snapshot dispatches over HTTP against the host's repository", async () => {
@@ -267,16 +267,12 @@ test("workspace.vcs.snapshot dispatches over HTTP against the host's repository"
   };
   const { client } = await fixture({ workspace: { cwd, backend } });
 
-  const snapshot = await client.workspace.vcs.snapshot();
+  const snapshot = await client.workspace.vcs.snapshot({ target: { kind: "workspace" } });
 
   assert.equal(snapshot.kind, "repository");
   if (snapshot.kind !== "repository") return;
   assert.equal(snapshot.root, await realpath(cwd));
-  assert.deepEqual(snapshot.head, {
-    oid: null,
-    branch: { kind: "named", name: "main", upstream: null },
-    base: null,
-  });
+  assert.deepEqual(snapshot.head, { kind: "unborn", branch: "main" });
 });
 
 test("a session id with dots, slashes, and percent signs survives the query string", async () => {
@@ -411,16 +407,6 @@ test("job calls dispatch through HTTP and job events round-trip through SSE", as
     { seq: 3, kind: "job", job },
     { seq: 4, kind: "job", job: { ...job, phase: { kind: "completed" } } },
   ]);
-});
-
-test("a lane outside the landing policy is refused as invalid input before the SDK sees it", async () => {
-  const { client, failures } = await fixture();
-  const { sessionId } = await client.sessions.create();
-  const error = await caught(client.messages.send({ sessionId, content: "x", lane: "nope" }));
-  assert.ok(error instanceof NyteWireError);
-  assert.equal(error.status, 400);
-  assert.ok(error.error.code === "invalid_input" && error.error.issues[0]?.path === "/lane");
-  assert.deepEqual(failures, []);
 });
 
 test("an unknown session is a tagged 404, not an internal error", async () => {

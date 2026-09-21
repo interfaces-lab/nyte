@@ -168,6 +168,7 @@ const styles = stylex.create({
     fontSize: t.fontXs,
     lineHeight: t.leadingXs,
     whiteSpace: "pre-line",
+    overflowWrap: "anywhere",
     transformOrigin: "var(--transform-origin)",
     opacity: { default: 1, "[data-starting-style]": 0, "[data-ending-style]": 0 },
     scale: {

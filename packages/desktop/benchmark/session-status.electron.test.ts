@@ -3,10 +3,45 @@
 import { SqliteStore } from "@nyte-ai/core/store";
 import type { SessionInfo } from "@nyte-ai/core";
 import { sessionId } from "@nyte-ai/protocol";
-import type { CommitBody } from "@nyte-ai/protocol";
+import type { Commit, CommitBody } from "@nyte-ai/protocol";
 import { expect } from "@playwright/test";
 import { test } from "vitest";
 import { launchDesktop, openBenchmarkSession } from "./desktop.ts";
+
+function transcriptCommit(
+  parent: string | null,
+  body: Extract<CommitBody, { kind: "message" }>,
+  at: number,
+): Commit {
+  const message = body.message;
+  if (message.role === "user") {
+    return {
+      kind: "commit",
+      parent,
+      body: { kind: "message", message },
+      start: { kind: "none" },
+      at,
+    };
+  }
+  if (message.role === "assistant") {
+    return {
+      kind: "commit",
+      parent,
+      body: { kind: "message", message },
+      calls: {},
+      outcome: { kind: "ok" },
+      at,
+    };
+  }
+  return {
+    kind: "commit",
+    parent,
+    body: { kind: "message", message },
+    call: { kind: "custom", label: message.toolName },
+    tree: null,
+    at,
+  };
+}
 
 test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
   "thread navigation and work summaries distinguish read state, tool errors, and active work",
@@ -70,7 +105,7 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       } as const;
       const editId = `edit:${path}`;
       const commandId = `test:${path}`;
-      const bodies: CommitBody[] = [
+      const bodies: Extract<CommitBody, { kind: "message" }>[] = [
         { kind: "message", message: { role: "user", content: `Update ${path}`, timestamp } },
         {
           kind: "message",
@@ -124,9 +159,7 @@ test.runIf(process.env["NYTE_DESKTOP_E2E"] === "1")(
       let tip = from;
       // An interrupted command has neither a result nor a final assistant response.
       for (const body of completed ? bodies : bodies.slice(0, -2)) {
-        const [oid] = await session.objects.put([
-          { kind: "commit", parent: tip, body, at: timestamp },
-        ]);
+        const [oid] = await session.objects.put([transcriptCommit(tip, body, timestamp)]);
         if (oid === undefined) throw new Error("Expected a transcript commit");
         tip = oid;
       }

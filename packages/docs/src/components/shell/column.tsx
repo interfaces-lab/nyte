@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import type { ReactNode } from "react";
-import { shell, withShell, type ShellSkin } from "~/shell.stylex";
+import { shell, withShell } from "~/shell.stylex";
 
 export function ShellColumnBody({ children }: { children: ReactNode }) {
   return (
@@ -12,12 +12,12 @@ export function ShellColumnBody({ children }: { children: ReactNode }) {
 }
 
 /*
- * The article column. The skin name only chooses classes; the locked
- * columnWrap + scroll + fade structure is the shell's.
+ * The article column. The locked columnWrap + scroll + fade structure is
+ * the shell's; src/shell.css paints it for both sections.
  */
-export function ShellMain({ skin, children }: { skin: ShellSkin; children: ReactNode }) {
+export function ShellMain({ children }: { children: ReactNode }) {
   return (
-    <main {...withShell(`${skin}-main`, stylex.props(shell.columnWrap))}>
+    <main {...withShell("shell-main", stylex.props(shell.columnWrap))}>
       <ShellColumnBody>{children}</ShellColumnBody>
     </main>
   );

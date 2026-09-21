@@ -8,7 +8,7 @@ import { Tabs } from "@nyte-ai/ui/tabs";
 ```
 
 One list of tabs, one panel visible at a time. Reach for it when the panels are peers and the reader
-only needs one of them at a time. No Nyte styling on this one, you own the visual layer.
+only needs one of them at a time. No Nyte styling here.
 
 ## Usage
 
@@ -18,6 +18,9 @@ only needs one of them at a time. No Nyte styling on this one, you own the visua
   instead.
 - `value` with `onValueChange` controls the root. `value={null}` leaves no tab active.
 - `Tabs.Indicator` is optional. Position it from the `--active-tab-*` CSS variables it publishes.
+- A panel carries `data-starting-style` and `data-ending-style` while it animates.
+  `data-activation-direction` says where the newly active tab sits relative to the previous one, so
+  a panel can slide in from the matching side.
 - A hidden panel unmounts unless you pass `keepMounted`.
 
 ## Anatomy
@@ -36,6 +39,10 @@ only needs one of them at a time. No Nyte styling on this one, you own the visua
 
 ### Basic
 
+<Preview>
+  <TabsDemo />
+</Preview>
+
 ```tsx
 <Tabs.Root defaultValue="overview">
   <Tabs.List>
@@ -43,16 +50,10 @@ only needs one of them at a time. No Nyte styling on this one, you own the visua
     <Tabs.Tab value="activity">Activity</Tabs.Tab>
     <Tabs.Indicator />
   </Tabs.List>
-  <Tabs.Panel value="overview">Overview content</Tabs.Panel>
-  <Tabs.Panel value="activity">Activity content</Tabs.Panel>
+  <Tabs.Panel value="overview">Three heads, two of them running.</Tabs.Panel>
+  <Tabs.Panel value="activity">Last run finished 2 minutes ago.</Tabs.Panel>
 </Tabs.Root>
 ```
-
-### Animated panels
-
-A panel carries `data-starting-style` and `data-ending-style` while it animates.
-`data-activation-direction` says where the newly active tab sits relative to the previous one, so a
-panel can slide in from the matching side.
 
 ### Links
 
@@ -61,7 +62,7 @@ To render a tab as an anchor, pass the element to `render` and set `nativeButton
 ```tsx
 <Tabs.Root>
   <Tabs.List>
-    <Tabs.Tab nativeButton={false} render={<Link href="/overview" />} value="overview">
+    <Tabs.Tab nativeButton={false} render={<a href="/overview" />} value="overview">
       Overview
     </Tabs.Tab>
   </Tabs.List>
@@ -96,6 +97,7 @@ The reference tables below come from Base UI, MIT, © Material-UI SAS.
 
 - The parts render `role="tablist"`, `role="tab"`, and `role="tabpanel"`. The indicator renders
   `role="presentation"`.
+- Label `Tabs.List` with `aria-label` or `aria-labelledby`.
 - Arrow keys move focus along the list. Focus wraps at the end unless you pass `loopFocus={false}`.
 - Enter and Space activate the focused tab, unless `activateOnFocus` activates it on focus.
 - A disabled first tab is skipped and the next enabled tab is selected. Server rendering does not

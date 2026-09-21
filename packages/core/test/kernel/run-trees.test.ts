@@ -100,7 +100,11 @@ function fakeVcs(): VcsBackend & {
     restores,
     snapshot: async () => ({ kind: "none" }),
     diff: async () => [],
-    contents: async ({ path }) => ({ path, old: null, new: null, binary: false, truncated: false }),
+    contents: async ({ path }) => ({
+      path,
+      old: { kind: "absent" },
+      new: { kind: "absent" },
+    }),
     log: async () => ({ commits: [], hasMore: false }),
     refs: async () => ({ local: [], remote: [] }),
     stage: async () => NO_VCS,
@@ -181,7 +185,9 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
         void poll();
       }),
     );
-    const liveDiff = await nyte.runs.diff({ sessionId, runId: run.runId });
+    const [liveResult] = await nyte.runs.diff({ sessionId, runs: [run.runId] });
+    assert.ok(liveResult !== undefined);
+    const liveDiff = liveResult.diff;
     assert.equal(liveDiff.kind, "tree");
     if (liveDiff.kind !== "tree") return;
     assert.equal(liveDiff.from, vcs.trees[0]);
@@ -200,13 +206,16 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
       (item) => item.commit,
     );
     const [request, ask, result, answer] = commits;
-    assert.equal(request?.tree, vcs.trees[0]);
-    assert.equal(ask?.tree, undefined);
-    assert.ok(result?.body.kind === "message" && result.body.message.role === "toolResult");
+    assert.ok(request !== undefined && "start" in request && request.start.kind === "run");
+    assert.equal(request.start.tree, vcs.trees[0]);
+    assert.ok(ask !== undefined && "outcome" in ask);
+    assert.ok(result !== undefined && "call" in result);
     assert.equal(result.tree, vcs.trees[2]);
-    assert.equal(answer?.tree, undefined);
+    assert.ok(answer !== undefined && "outcome" in answer);
 
-    const diff = await nyte.runs.diff({ sessionId, runId: run.runId });
+    const [diffResult] = await nyte.runs.diff({ sessionId, runs: [run.runId] });
+    assert.ok(diffResult !== undefined);
+    const diff = diffResult.diff;
     assert.equal(diff.kind, "tree");
     if (diff.kind !== "tree") return;
     assert.deepEqual(diff, {
@@ -237,7 +246,10 @@ test("a run's first commit and its tool results carry trees, and runs.diff/rever
       { from: vcs.trees[0], expect: vcs.trees[1], paths: diff.files },
       { from: vcs.trees[0], expect: vcs.trees[2], paths: diff.files },
     ]);
-    assert.deepEqual(await nyte.runs.diff({ sessionId, runId: "nope" }), { kind: "not_found" });
+    assert.deepEqual(await nyte.runs.diff({ sessionId, runs: [run.runId, "nope"] }), [
+      { run: run.runId, diff },
+      { run: "nope", diff: { kind: "not_found" } },
+    ]);
   } finally {
     gate.resolve();
     await nyte.close();
@@ -253,17 +265,24 @@ test("without a backend runs.diff answers recorded from file_patch facts and rev
     await nyte.messages.send({ sessionId, content: "go" });
     assert.deepEqual(await nyte.runs.wait({ sessionId }), { kind: "idle" });
     const commits = await branch(session.objects, await session.refs.read(headRef("main")));
-    assert.ok(commits.every((item) => item.commit.tree === undefined));
+    assert.ok(
+      commits.every(({ commit }) => {
+        if ("call" in commit) return commit.tree === null;
+        if ("start" in commit && commit.start.kind === "run") return commit.start.tree === null;
+        return true;
+      }),
+    );
     const runId = commits[0]?.commit.run;
     assert.ok(runId !== undefined);
-    assert.deepEqual(await nyte.runs.diff({ sessionId, runId }), {
-      kind: "recorded",
-      files: [{ path: "made.txt", kind: "added", added: 1, removed: 0, patch }],
-    });
-    assert.deepEqual(await nyte.runs.diff({ sessionId, runId, paths: ["other.txt"] }), {
-      kind: "recorded",
-      files: [],
-    });
+    assert.deepEqual(await nyte.runs.diff({ sessionId, runs: [runId] }), [
+      {
+        run: runId,
+        diff: {
+          kind: "recorded",
+          files: [{ path: "made.txt", kind: "added", added: 1, removed: 0, patch }],
+        },
+      },
+    ]);
     assert.deepEqual(await nyte.runs.revert({ sessionId, runId, expect: treeId("0".repeat(40)) }), {
       kind: "no_tree",
     });

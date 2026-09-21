@@ -10,7 +10,7 @@ import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach } from "vitest";
-import type { Landing } from "@nyte-ai/protocol";
+import type { TreeId } from "@nyte-ai/protocol";
 import type {
   AssistantMessage,
   Message,
@@ -23,9 +23,11 @@ import type {
   Commit,
   CommitBody,
   Event,
+  Failure,
   Lease,
   LeaseOutcome,
   Oid,
+  ToolClass,
 } from "../../src/kernel/model.ts";
 import { headRef } from "../../src/kernel/names.ts";
 import { SqliteStore } from "../../src/kernel/sqlite.ts";
@@ -39,18 +41,7 @@ export async function trustWorkspace(cwd: string): Promise<TrustedWorkspace> {
   return { cwd: await realpath(cwd), [TRUSTED_WORKSPACE]: true };
 }
 
-/**
- * The landing policy these suites run under. The lane names are deliberately
- * not the SDK's: the kernel serves whatever lanes the runner declares.
- * `now` lands at every response boundary; `later` waits for an idle head.
- */
-export const landing: Landing = {
-  lanes: [
-    { lane: "now", lands: "boundary" },
-    { lane: "later", lands: "idle" },
-  ],
-  drain: "one",
-};
+export const drain = "one" as const;
 
 const directories: string[] = [];
 const stores: Store[] = [];
@@ -158,21 +149,160 @@ export function toolResult(
   };
 }
 
+export function message(value: UserMessage): Extract<CommitBody, { readonly message: UserMessage }>;
+export function message(
+  value: AssistantMessage,
+): Extract<CommitBody, { readonly message: AssistantMessage }>;
+export function message(
+  value: ToolResultMessage,
+): Extract<CommitBody, { readonly message: ToolResultMessage }>;
+export function message(value: Message): CommitBody;
 export function message(value: Message): CommitBody {
-  return { kind: "message", message: value };
+  switch (value.role) {
+    case "user":
+      return { kind: "message", message: value };
+    case "assistant":
+      return { kind: "message", message: value };
+    case "toolResult":
+      return { kind: "message", message: value };
+    default: {
+      const _exhaustive: never = value;
+      return _exhaustive;
+    }
+  }
 }
 
-export function commit(
+interface CommitFields {
+  readonly at?: number;
+  readonly run?: string;
+  readonly change?: Oid;
+}
+
+type UserCommitBody = Extract<Commit, { readonly body: { readonly message: UserMessage } }>["body"];
+type AssistantCommitBody = Extract<
+  Commit,
+  { readonly body: { readonly message: AssistantMessage } }
+>["body"];
+type ToolResultCommitBody = Extract<
+  Commit,
+  { readonly body: { readonly message: ToolResultMessage } }
+>["body"];
+
+function commitFields(parent: Oid | null, options: CommitFields) {
+  return {
+    kind: "commit" as const,
+    parent,
+    at: options.at ?? 1_000,
+    ...(options.run === undefined ? {} : { run: options.run }),
+    ...(options.change === undefined ? {} : { change: options.change }),
+  };
+}
+
+export function userCommit(
   parent: Oid | null,
-  body: CommitBody,
-  options: Partial<Pick<Commit, "at" | "run" | "change" | "calls" | "failure">> = {},
+  body: UserCommitBody,
+  options: CommitFields & {
+    readonly start?: { readonly kind: "run"; readonly tree: TreeId | null };
+  } = {},
 ): Commit {
-  let value: Commit = { kind: "commit", parent, body, at: options.at ?? 1_000 };
-  if (options.run !== undefined) value = { ...value, run: options.run };
-  if (options.change !== undefined) value = { ...value, change: options.change };
-  if (options.calls !== undefined) value = { ...value, calls: options.calls };
-  if (options.failure !== undefined) value = { ...value, failure: options.failure };
-  return value;
+  return {
+    ...commitFields(parent, options),
+    body,
+    start: options.start ?? { kind: "none" },
+  };
+}
+
+export function assistantCommit(
+  parent: Oid | null,
+  body: AssistantCommitBody,
+  options: CommitFields & {
+    readonly calls?: Readonly<Record<string, ToolClass>>;
+    readonly failure?: Failure;
+  } = {},
+): Commit {
+  const calls = Object.fromEntries(
+    body.message.content.flatMap((part) =>
+      part.type === "toolCall" ? [[part.id, { kind: "custom", label: part.name }] as const] : [],
+    ),
+  );
+  return {
+    ...commitFields(parent, options),
+    body,
+    calls: { ...calls, ...options.calls },
+    outcome:
+      options.failure === undefined ? { kind: "ok" } : { kind: "failed", failure: options.failure },
+  };
+}
+
+export function toolResultCommit(
+  parent: Oid | null,
+  body: ToolResultCommitBody,
+  options: CommitFields & { readonly call?: ToolClass; readonly tree?: TreeId } = {},
+): Commit {
+  return {
+    ...commitFields(parent, options),
+    body,
+    call: options.call ?? { kind: "custom", label: body.message.toolName },
+    tree: options.tree ?? null,
+  };
+}
+
+export function completionCommit(
+  parent: Oid | null,
+  body: Extract<CommitBody, { readonly kind: "completion" }>,
+  options: CommitFields & {
+    readonly start?: { readonly kind: "run"; readonly tree: TreeId | null };
+  } = {},
+): Commit {
+  return {
+    ...commitFields(parent, options),
+    body,
+    start: options.start ?? { kind: "none" },
+  };
+}
+
+export function summaryCommit(
+  parent: Oid | null,
+  body: Extract<CommitBody, { readonly kind: "summary" }>,
+  options: CommitFields & { readonly imports?: readonly Oid[] } = {},
+): Commit {
+  return { ...commitFields(parent, options), body, imports: options.imports ?? [] };
+}
+
+export function commit(parent: Oid | null, body: CommitBody, options: CommitFields = {}): Commit {
+  switch (body.kind) {
+    case "message":
+      switch (body.message.role) {
+        case "user":
+          return userCommit(
+            parent,
+            "agent" in body && body.agent !== undefined
+              ? { kind: "message", message: body.message, agent: body.agent }
+              : { kind: "message", message: body.message },
+            options,
+          );
+        case "assistant":
+          return assistantCommit(parent, { kind: "message", message: body.message }, options);
+        case "toolResult":
+          return toolResultCommit(parent, { kind: "message", message: body.message }, options);
+        default: {
+          const _exhaustive: never = body.message;
+          return _exhaustive;
+        }
+      }
+    case "completion":
+      return completionCommit(parent, body, options);
+    case "summary":
+      return summaryCommit(parent, body, options);
+    case "checkpoint":
+      return { ...commitFields(parent, options), body };
+    case "config":
+      return { ...commitFields(parent, options), body };
+    default: {
+      const _exhaustive: never = body;
+      return _exhaustive;
+    }
+  }
 }
 
 /** Write a chain of commits, oldest first, on top of `parent`. Returns the oids oldest first. */
@@ -186,7 +316,12 @@ export async function chain(
   let previous = parent;
   let at = options.at ?? 1_000;
   for (const body of bodies) {
-    const [oid] = await session.objects.put([commit(previous, body, { at, run: options.run })]);
+    const [oid] = await session.objects.put([
+      commit(previous, body, {
+        at,
+        ...(options.run === undefined ? {} : { run: options.run }),
+      }),
+    ]);
     if (oid === undefined) assert.fail("put returned no oid");
     oids.push(oid);
     previous = oid;

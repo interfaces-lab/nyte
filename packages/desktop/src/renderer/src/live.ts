@@ -49,16 +49,21 @@ class LiveStore {
   private snapshot: LiveSnapshot = IDLE;
   private projection: { readonly state: SessionState; readonly frame: SessionFrame } | undefined;
   private state: SessionState | undefined;
-  /** The state the snapshot cache holds. */
-  private published: SessionState | undefined;
   private dirty = false;
   private frame: number | undefined;
   private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+      scheduleStoreRelease(this);
+    };
   };
+
+  hasListeners(): boolean {
+    return this.listeners.size !== 0;
+  }
 
   // Reads remain synchronous, but a burst of deltas notifies once at the frame.
   getSnapshot = (): LiveSnapshot => {
@@ -85,11 +90,10 @@ class LiveStore {
 
   /** The durable part reaches the cache now; the overlay wakes its readers at the next frame. */
   update(sessionId: SessionId, state: SessionState): void {
-    const previous = this.published;
+    const previous = this.state;
     this.state = state;
     this.dirty = true;
     if (durableChanged(previous, state)) {
-      this.published = state;
       queryClient.setQueryData(keys.snapshot(sessionId), snapshotOf(state));
       if (previous?.info !== state.info) cacheSessionInfo(state.info);
     }
@@ -105,7 +109,6 @@ class LiveStore {
     this.frame = undefined;
     this.state = undefined;
     this.projection = undefined;
-    this.published = undefined;
     this.snapshot = IDLE;
     this.dirty = false;
     this.notify();
@@ -129,6 +132,16 @@ interface SharedObserver {
 const observers = new Map<SessionId, SharedObserver>();
 const stores = new Map<SessionId, LiveStore>();
 const selectionVersions = new Map<SessionId, number>();
+
+function scheduleStoreRelease(store: LiveStore): void {
+  queueMicrotask(() => {
+    for (const [sessionId, candidate] of stores) {
+      if (candidate !== store) continue;
+      if (!observers.has(sessionId) && !store.hasListeners()) stores.delete(sessionId);
+      return;
+    }
+  });
+}
 
 function storeFor(sessionId: SessionId): LiveStore {
   const existing = stores.get(sessionId);
@@ -289,6 +302,8 @@ export function watchSessionLive(sessionId: SessionId) {
       shared.observer.close();
       for (const settle of Array.from(shared.closing)) settle();
       shared.store.reset();
+      scheduleStoreRelease(shared.store);
+      selectionVersions.delete(sessionId);
     },
   };
 }
@@ -404,7 +419,10 @@ export function sessionSelection(sessionId: SessionId): SessionSelection {
     acknowledge: () => {
       const version = bump();
       const shared = observers.get(sessionId);
-      if (shared === undefined) return Promise.resolve();
+      if (shared === undefined) {
+        selectionVersions.delete(sessionId);
+        return Promise.resolve();
+      }
       return new Promise((resolve) => {
         const settle = (): void => {
           stop();

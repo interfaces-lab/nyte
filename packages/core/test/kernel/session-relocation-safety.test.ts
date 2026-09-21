@@ -152,7 +152,8 @@ test("a cached foreign runner cannot land or execute in its old cwd and plugin o
     await submit(stored, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "steer",
+      delivery: "steer",
+      kind: "user",
       body: { kind: "message", message: { role: "user", content: "after", timestamp: Date.now() } },
     });
     await expect

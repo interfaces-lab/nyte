@@ -5,7 +5,7 @@ import type { Api, Model } from "@nyte-ai/ai";
 import { test } from "vitest";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { type EventBody } from "../../src/kernel/model.ts";
-import { queueTipRef } from "../../src/kernel/names.ts";
+import { inboxTipRef } from "../../src/kernel/names.ts";
 import { createNyte } from "../../src/kernel/sdk/nyte.ts";
 import { watchSession, type NoticeListener } from "../../src/kernel/sdk/watch.ts";
 import {
@@ -255,14 +255,28 @@ test("synced follows all equal-seq queue and commit siblings at the captured cur
   try {
     const before = await f.session.events.last();
     const [first] = await f.session.objects.put([
-      { kind: "change", previous: null, body: message(user("queued-1")), at: 1 },
+      {
+        type: "change",
+        kind: "user",
+        delivery: "next",
+        previous: null,
+        body: message(user("queued-1")),
+        at: 1,
+      },
     ]);
     assert.ok(first);
     const [second] = await f.session.objects.put([
-      { kind: "change", previous: first, body: message(user("queued-2")), at: 2 },
+      {
+        type: "change",
+        kind: "user",
+        delivery: "next",
+        previous: first,
+        body: message(user("queued-2")),
+        at: 2,
+      },
     ]);
     assert.ok(second);
-    await f.session.refs.update([{ name: queueTipRef("main", "queue"), from: null, to: second }], {
+    await f.session.refs.update([{ name: inboxTipRef("main", "next"), from: null, to: second }], {
       reason: "test",
     });
     const commits = await seedHead(f.session, "main", [

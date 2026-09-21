@@ -264,8 +264,8 @@ export class TaskIndex {
     if (this.closed) return;
     // TaskBrowser handles parent changes; this index notifies when children change.
     this.parent = state;
-    if (event?.kind === "commit") {
-      for (const call of Object.values(event.item.commit.calls ?? {})) {
+    if (event?.kind === "commit" && "calls" in event.item.commit) {
+      for (const call of Object.values(event.item.commit.calls)) {
         if (call.kind === "delegate") {
           const sessions =
             call.target.kind === "one" ? [call.target.session] : call.target.sessions;

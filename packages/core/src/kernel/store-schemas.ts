@@ -14,10 +14,31 @@ const NullableString = Type.Union([Type.String(), Type.Null()]);
 export const ObjectSchema = Type.Union([
   schemas.Commit,
   Type.Object({
-    kind: Type.Literal("change"),
+    type: Type.Literal("change"),
+    kind: Type.Union([
+      Type.Literal("user"),
+      Type.Literal("answer"),
+      Type.Literal("passive"),
+      Type.Literal("report"),
+    ]),
+    delivery: Type.Union([Type.Literal("steer"), Type.Literal("next")]),
     previous: NullableString,
     supersedes: Type.Optional(Type.String()),
-    body: schemas.CommitBody,
+    key: Type.Optional(Type.String()),
+    body: Type.Union([
+      Type.Object({
+        kind: Type.Literal("message"),
+        message: schemas.UserMessage,
+        agent: Type.Optional(Type.String()),
+      }),
+      Type.Object({ kind: Type.Literal("completion"), job: schemas.JobReport }),
+      Type.Object({
+        kind: Type.Literal("config"),
+        model: Type.Optional(schemas.ModelRef),
+        thinkingLevel: Type.Optional(Type.String()),
+        agent: Type.Optional(Type.String()),
+      }),
+    ]),
     at: Type.Number(),
     author: Type.Optional(schemas.Actor),
   }),

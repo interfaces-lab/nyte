@@ -71,7 +71,6 @@ import type {
   HeadInfo as HeadInfoType,
   JobInfo as JobInfoType,
   JobReport as JobReportType,
-  Landing as LandingType,
   MoveOutcome as MoveOutcomeType,
   Page,
   ParkedCall as ParkedCallType,
@@ -112,16 +111,19 @@ import type {
   VcsFile as VcsFileType,
   VcsFileKind as VcsFileKindType,
   VcsHead as VcsHeadType,
+  VcsIndexFile as VcsIndexFileType,
   VcsLog as VcsLogType,
   VcsPathsOutcome as VcsPathsOutcomeType,
   VcsPushOutcome as VcsPushOutcomeType,
   VcsRefs as VcsRefsType,
   VcsScope as VcsScopeType,
   VcsSnapshot as VcsSnapshotType,
+  VcsWorktreeFile as VcsWorktreeFileType,
   WorkspaceInfo as WorkspaceInfoType,
   WorkspaceSelectInput as WorkspaceSelectInputType,
   WorkspaceSelectOutcome as WorkspaceSelectOutcomeType,
   WorkspaceSelection as WorkspaceSelectionType,
+  WorkspaceTarget as WorkspaceTargetType,
 } from "./workspace.ts";
 
 // ---------------------------------------------------------------------------
@@ -491,13 +493,27 @@ export const JobReport = typed<JobReportType>()(
   ]),
 );
 
+const UserCommitMessageBody = open({
+  kind: Type.Literal("message"),
+  message: UserMessage,
+  agent: Type.Optional(Type.String()),
+});
+
+const AssistantCommitMessageBody = open({
+  kind: Type.Literal("message"),
+  message: AssistantMessage,
+});
+
+const ToolResultCommitMessageBody = open({
+  kind: Type.Literal("message"),
+  message: ToolResultMessage,
+});
+
 export const CommitBody = typed<CommitBodyType>()(
   Type.Union([
-    open({
-      kind: Type.Literal("message"),
-      message: Message,
-      agent: Type.Optional(Type.String()),
-    }),
+    UserCommitMessageBody,
+    AssistantCommitMessageBody,
+    ToolResultCommitMessageBody,
     open({ kind: Type.Literal("completion"), job: JobReport }),
     CheckpointBody,
     SummaryBody,
@@ -560,21 +576,102 @@ export const ToolClass = typed<ToolClassType>()(
   ]),
 );
 
+const CommitBase = {
+  kind: Type.Literal("commit"),
+  parent: nullable(Oid),
+  change: Type.Optional(Oid),
+  key: Type.Optional(Type.String()),
+  run: Type.Optional(Type.String()),
+  at: Type.Number(),
+  author: Type.Optional(Actor),
+};
+
+const CommitStart = Type.Union([
+  open({ kind: Type.Literal("none") }),
+  open({ kind: Type.Literal("run"), tree: nullable(TreeId) }),
+]);
+
+const CommitOutcome = Type.Union([
+  open({ kind: Type.Literal("ok") }),
+  open({ kind: Type.Literal("failed"), failure: Failure }),
+]);
+
 export const Commit = typed<CommitType>()(
-  open({
-    kind: Type.Literal("commit"),
-    parent: nullable(Oid),
-    imports: Type.Optional(Type.Array(Oid)),
-    change: Type.Optional(Oid),
-    key: Type.Optional(Type.String()),
-    run: Type.Optional(Type.String()),
-    calls: Type.Optional(Type.Record(Type.String(), ToolClass)),
-    failure: Type.Optional(Failure),
-    tree: Type.Optional(TreeId),
-    body: CommitBody,
-    at: Type.Number(),
-    author: Type.Optional(Actor),
-  }),
+  Type.Intersect([
+    open(CommitBase),
+    Type.Union([
+      open({
+        body: UserCommitMessageBody,
+        start: CommitStart,
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: AssistantCommitMessageBody,
+        calls: Type.Record(Type.String(), ToolClass),
+        outcome: CommitOutcome,
+        start: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: ToolResultCommitMessageBody,
+        call: ToolClass,
+        tree: nullable(TreeId),
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: open({ kind: Type.Literal("completion"), job: JobReport }),
+        start: CommitStart,
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: CheckpointBody,
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: SummaryBody,
+        imports: Type.Array(Oid),
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+      }),
+      open({
+        body: ConfigBody,
+        start: Type.Optional(Type.Never()),
+        calls: Type.Optional(Type.Never()),
+        outcome: Type.Optional(Type.Never()),
+        call: Type.Optional(Type.Never()),
+        tree: Type.Optional(Type.Never()),
+        failure: Type.Optional(Type.Never()),
+        imports: Type.Optional(Type.Never()),
+      }),
+    ]),
+  ]),
 );
 
 export const RunPhase = typed<RunPhaseType>()(
@@ -704,7 +801,7 @@ export const SessionPage = typed<Page<SessionInfoType>>()(
 export const PendingItem = typed<PendingItemType>()(
   open({
     change: Oid,
-    lane: Type.String(),
+    delivery: literals(["steer", "next"]),
     at: Type.Number(),
     content: UserContent,
     author: Type.Optional(Actor),
@@ -730,6 +827,7 @@ export const UserTurnPart = typed<UserTurnPartType>()(
     commit: Oid,
     parent: nullable(Oid),
     content: UserContent,
+    at: Type.Number(),
     key: Type.Optional(Type.String()),
   }),
 );
@@ -738,6 +836,7 @@ export const ToolTurnPart = typed<ToolTurnPartType>()(
   open({
     kind: Type.Literal("tool"),
     callId: Type.String(),
+    at: Type.Number(),
     class: ToolClass,
     result: Type.Optional(open({ commit: Oid, output: Type.String(), isError: Type.Boolean() })),
   }),
@@ -751,12 +850,14 @@ export const TurnPart = typed<TurnPartType>()(
       commit: Oid,
       contentIndex: Type.Number(),
       text: Type.String(),
+      at: Type.Number(),
     }),
     open({
       kind: Type.Literal("thinking"),
       commit: Oid,
       contentIndex: Type.Number(),
       text: Type.String(),
+      at: Type.Number(),
     }),
     ToolTurnPart,
   ]),
@@ -767,7 +868,10 @@ export const Turn = typed<TurnType>()(
     open({
       kind: Type.Literal("turn"),
       id: Oid,
-      run: Type.Optional(Type.String()),
+      run: Type.Union([
+        open({ kind: Type.Literal("run"), id: Type.String() }),
+        open({ kind: Type.Literal("none") }),
+      ]),
       parts: Type.Array(TurnPart),
       failure: Type.Optional(Failure),
       startedAt: Type.Number(),
@@ -1059,6 +1163,13 @@ export const WorkspaceSelectOutcome = typed<WorkspaceSelectOutcomeType>()(
   ]),
 );
 
+export const WorkspaceTarget = typed<WorkspaceTargetType>()(
+  Type.Union([
+    strict({ kind: Type.Literal("workspace") }),
+    strict({ kind: Type.Literal("session"), sessionId: SessionId }),
+  ]),
+);
+
 /** A commit-ish a caller names. A leading `-` would read as a git option. */
 export const Revision = Type.String({
   minLength: 1,
@@ -1090,21 +1201,53 @@ export const VcsFile = typed<VcsFileType>()(
   ]),
 );
 
-export const VcsHead = typed<VcsHeadType>()(
+const VcsIndexFile = typed<VcsIndexFileType>()(
+  Type.Union([
+    open({
+      path: Type.String(),
+      kind: literals(["added", "modified", "deleted", "conflicted"]),
+    }),
+    open({ path: Type.String(), kind: Type.Literal("renamed"), from: Type.String() }),
+  ]),
+);
+
+const VcsWorktreeFile = typed<VcsWorktreeFileType>()(
   open({
-    oid: nullable(Type.String()),
-    branch: Type.Union([
-      open({
-        kind: Type.Literal("named"),
-        name: Type.String(),
-        upstream: nullable(
-          open({ name: Type.String(), ahead: Type.Integer(), behind: Type.Integer() }),
-        ),
-      }),
-      open({ kind: Type.Literal("detached") }),
-    ]),
-    base: nullable(open({ name: Type.String(), source: literals(["reflog", "default"]) })),
+    path: Type.String(),
+    kind: literals(["modified", "deleted", "untracked", "conflicted"]),
   }),
+);
+
+export const VcsHead = typed<VcsHeadType>()(
+  Type.Union([
+    open({
+      kind: Type.Literal("unborn"),
+      branch: Type.String(),
+      oid: Type.Optional(Type.Never()),
+      upstream: Type.Optional(Type.Never()),
+      base: Type.Optional(Type.Never()),
+    }),
+    open({
+      kind: Type.Literal("detached"),
+      oid: Revision,
+      branch: Type.Optional(Type.Never()),
+      upstream: Type.Optional(Type.Never()),
+      base: Type.Optional(Type.Never()),
+    }),
+    open({
+      kind: Type.Literal("attached"),
+      oid: Revision,
+      branch: Type.String(),
+      upstream: nullable(
+        open({
+          name: Type.String(),
+          ahead: Type.Integer({ minimum: 0 }),
+          behind: Type.Integer({ minimum: 0 }),
+        }),
+      ),
+      base: nullable(open({ name: Type.String(), source: literals(["reflog", "default"]) })),
+    }),
+  ]),
 );
 
 export const VcsSnapshot = typed<VcsSnapshotType>()(
@@ -1115,29 +1258,64 @@ export const VcsSnapshot = typed<VcsSnapshotType>()(
       root: Type.String(),
       revision: Type.String(),
       head: VcsHead,
-      staged: list(VcsFile),
-      unstaged: list(VcsFile),
+      staged: list(VcsIndexFile),
+      unstaged: list(VcsWorktreeFile),
     }),
   ]),
 );
 
 export const VcsDiff = typed<VcsDiffType>()(
-  open({
-    path: Type.String(),
-    kind: VcsFileKind,
-    added: Type.Integer({ minimum: 0 }),
-    removed: Type.Integer({ minimum: 0 }),
-    patch: Type.String(),
-  }),
+  Type.Intersect([
+    open({ path: Type.String(), status: VcsFileKind }),
+    Type.Union([
+      open({
+        kind: Type.Literal("text"),
+        added: Type.Integer({ minimum: 0 }),
+        removed: Type.Integer({ minimum: 0 }),
+        patch: Type.String(),
+        binary: Type.Optional(Type.Never()),
+      }),
+      open({
+        kind: Type.Literal("binary"),
+        patch: Type.String(),
+        added: Type.Optional(Type.Never()),
+        removed: Type.Optional(Type.Never()),
+        binary: Type.Optional(Type.Never()),
+      }),
+    ]),
+  ]),
 );
+
+const VcsSide = Type.Union([
+  open({
+    kind: Type.Literal("absent"),
+    text: Type.Optional(Type.Never()),
+    head: Type.Optional(Type.Never()),
+  }),
+  open({
+    kind: Type.Literal("text"),
+    text: Type.String(),
+    head: Type.Optional(Type.Never()),
+  }),
+  open({
+    kind: Type.Literal("truncated"),
+    head: Type.String(),
+    text: Type.Optional(Type.Never()),
+  }),
+  open({
+    kind: Type.Literal("binary"),
+    text: Type.Optional(Type.Never()),
+    head: Type.Optional(Type.Never()),
+  }),
+]);
 
 export const VcsContents = typed<VcsContentsType>()(
   open({
     path: Type.String(),
-    old: nullable(Type.String()),
-    new: nullable(Type.String()),
-    binary: Type.Boolean(),
-    truncated: Type.Boolean(),
+    old: VcsSide,
+    new: VcsSide,
+    binary: Type.Optional(Type.Never()),
+    truncated: Type.Optional(Type.Never()),
   }),
 );
 
@@ -1165,7 +1343,9 @@ export const VcsCommitTarget = typed<VcsCommitTargetType>()(
     strict({ kind: Type.Literal("all") }),
     strict({
       kind: Type.Literal("paths"),
-      paths: Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
+      paths: Unsafe<readonly [string, ...string[]]>(
+        Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
+      ),
     }),
   ]),
 );
@@ -1242,12 +1422,6 @@ export const ModelInfo = typed<ModelInfoType>()(
     }),
     thinkingLevels: Type.Array(ThinkingLevel),
   }),
-);
-
-export const LanePolicy = open({ lane: Type.String(), lands: literals(["boundary", "idle"]) });
-
-export const Landing = typed<LandingType>()(
-  open({ lanes: Type.Array(LanePolicy), drain: literals(["one", "all"]) }),
 );
 
 // ---------------------------------------------------------------------------

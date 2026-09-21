@@ -117,7 +117,7 @@ test("a checkpoint replaces history with its summary and tail; a summary joins a
     commit(null, checkpoint("the gist", [tail])),
     commit(null, { kind: "summary", text: "left branch was about x" }),
     commit(null, { kind: "summary", text: "" }),
-    commit(null, message(user("now"))),
+    commit(null, message(user("steer"))),
   ];
   const messages = contextMessages(commits);
   assert.deepEqual(

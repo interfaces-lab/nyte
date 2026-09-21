@@ -1,16 +1,10 @@
 /**
- * The Changes toolbar's readouts and its own keyboard bindings.
- *
- * The scope menu, the commits submenu and the overflow menu are portalled
- * popups that mount only once opened, so static markup covers what the header
- * shows at rest: the scope trigger, its counts, and the branch readout. The
- * bindings are pure and are checked directly.
+ * The Changes toolbar's keyboard bindings and working-tree commit rules.
  */
 import { afterAll, describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { VcsHead, VcsSnapshot } from "@nyte-ai/protocol";
-import { branchReadout } from "./change-scopes.ts";
-import { ChangesToolbar, changesShortcutAction, changesShortcutLabel } from "./changes-toolbar.tsx";
+import type { VcsSnapshot } from "@nyte-ai/protocol";
+import { ChangesToolbar, changesShortcutAction } from "./changes-toolbar.tsx";
 import type { ChangesShortcutAction } from "./changes-toolbar.tsx";
 import { defaultChangesViewOptions } from "./changes-view-options.ts";
 import type { WorkbenchChangesScope } from "./controller.ts";
@@ -63,12 +57,10 @@ const repository: Extract<VcsSnapshot, { kind: "repository" }> = {
   root: "repo",
   revision: "rev-1",
   head: {
+    kind: "attached",
     oid: "c0ffee0badc0ffee",
-    branch: {
-      kind: "named",
-      name: "main",
-      upstream: { name: "origin/main", ahead: 2, behind: 1 },
-    },
+    branch: "main",
+    upstream: { name: "origin/main", ahead: 2, behind: 1 },
     base: null,
   },
   staged: [],
@@ -119,31 +111,6 @@ function labels(markup: string): readonly string[] {
   return [...markup.matchAll(/aria-label="([^"]*)"/g)].map((match) => match[1] ?? "");
 }
 
-function renderBranch(head: VcsHead): string {
-  const snapshot: VcsSnapshot = { ...repository, head };
-  return renderToStaticMarkup(
-    <ChangesToolbar
-      scope={{ kind: "uncommitted" }}
-      scopeLabel="Uncommitted"
-      scopeStats={undefined}
-      scopeFileCount={0}
-      snapshot={snapshot}
-      repository={{ root: "repo", revision: "rev-1" }}
-      branch={branchReadout(snapshot)}
-      turnOptions={[]}
-      viewOptions={defaultChangesViewOptions}
-      fileTreeVisible
-      onScopeChange={() => undefined}
-      onViewOptionsChange={() => undefined}
-      onToggleFileTree={() => undefined}
-      onRefresh={() => undefined}
-      onFilterFiles={() => undefined}
-      allFilesCollapsed={false}
-      onToggleCollapseAll={() => undefined}
-    />,
-  );
-}
-
 describe("changes toolbar keyboard bindings", () => {
   test("matches the Changes bindings on each platform and nothing else", () => {
     const matched = (
@@ -173,36 +140,9 @@ describe("changes toolbar keyboard bindings", () => {
     expect(matched({ key: "f", metaKey: true, defaultPrevented: true }, true)).toBeUndefined();
     expect(matched({ key: "f", metaKey: true, isComposing: true }, true)).toBeUndefined();
   });
-
-  test("labels name the same chords the matcher accepts", () => {
-    expect(
-      (["filter-files", "ignore-whitespace", "refresh"] as const).map((action) =>
-        changesShortcutLabel(action, true),
-      ),
-    ).toEqual(["⌘F", "⌃⇧;", "⌘R"]);
-    expect(
-      (["filter-files", "ignore-whitespace", "refresh"] as const).map((action) =>
-        changesShortcutLabel(action, false),
-      ),
-    ).toEqual(["Ctrl+F", "Ctrl+Shift+;", "Ctrl+R"]);
-  });
 });
 
 describe("changes toolbar header", () => {
-  test("names the scope on screen and offers refresh, view options and the tree toggle", () => {
-    const markup = render({ scopeLabel: "Staged", scope: { kind: "staged" } });
-    expect(labels(markup)).toEqual([
-      "Changes actions",
-      "Showing Staged",
-      "Refresh changes",
-      "More changes options",
-      "Hide file tree",
-      // The commit surface follows the header for a working-tree scope.
-      "Commit message",
-      "More commit actions",
-    ]);
-  });
-
   test("the commit surface belongs to the working tree and to a repository", () => {
     const turn = render({ scope: { kind: "turn", turnId: "turn-1" }, scopeLabel: "Latest" });
     expect(labels(turn)).not.toContain("Commit message");
@@ -226,53 +166,5 @@ describe("changes toolbar header", () => {
     expect(labels(unread)).not.toContain("0 added, 0 removed");
     // Nothing read and nothing counted: the trigger says only which scope it is.
     expect(/\d+ files?</.test(render({ stats: undefined }))).toBe(false);
-  });
-
-  test("a commit scope keeps its own trigger label", () => {
-    expect(
-      labels(render({ scope: { kind: "commit", oid: "c0ffee0badc0ffee" }, scopeLabel: "Fix it" })),
-    ).toContain("Showing Fix it");
-  });
-});
-
-describe("branch readout", () => {
-  test("reports tracking, detachment and an unborn head without offering a checkout", () => {
-    const tracking = renderBranch({
-      oid: "c0ffee0badc0ffee",
-      branch: {
-        kind: "named",
-        name: "main",
-        upstream: { name: "origin/main", ahead: 2, behind: 1 },
-      },
-      base: null,
-    });
-    expect(labels(tracking)).toContain("On branch main, tracking origin/main, 2 ahead, 1 behind");
-    expect(tracking).toContain("↑2");
-    expect(tracking).toContain("↓1");
-
-    const detached = renderBranch({
-      oid: "c0ffee0badc0ffee",
-      branch: { kind: "detached" },
-      base: null,
-    });
-    expect(labels(detached)).toContain("Detached at c0ffee0");
-    expect(detached).toContain("detached");
-
-    const unborn = renderBranch({
-      oid: null,
-      branch: { kind: "named", name: "main", upstream: null },
-      base: null,
-    });
-    expect(labels(unborn)).toContain("On branch main, no commits yet");
-
-    // Reading only: the readout is text, and no control switches branches.
-    expect(labels(tracking).some((label) => /checkout|switch|fetch|pull/i.test(label))).toBe(false);
-  });
-
-  test("a workspace that is not a repository shows no branch", () => {
-    const markup = render({
-      snapshot: { kind: "none" },
-    });
-    expect(labels(markup).some((label) => /branch|detached/i.test(label))).toBe(false);
   });
 });

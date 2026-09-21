@@ -4,11 +4,11 @@ import type {
   VcsBranchOutcome,
   VcsCommitOutcome,
   VcsCommitTarget,
-  VcsFile,
   VcsLog,
   VcsPushOutcome,
   VcsRefs,
   VcsSnapshot,
+  VcsWorktreeFile,
 } from "@nyte-ai/protocol";
 import type { GitHubPullRequestOutcome, NyteBridge } from "../../../shared/ipc.ts";
 import { bridgeError } from "../../../shared/errors.ts";
@@ -17,7 +17,7 @@ export const CHANGED = "src/working.ts";
 
 /** The scripted repository, the answers it gives, and what the bar asked of it. */
 interface CommitScript {
-  files: VcsFile[];
+  files: VcsWorktreeFile[];
   revision: number;
   upstream: string | undefined;
   commits: { readonly message: string; readonly target: VcsCommitTarget }[];
@@ -57,15 +57,13 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => ({
   root: "changes-commit-repo",
   revision: `revision-${String(commitScript.revision)}`,
   head: {
+    kind: "attached",
     oid: "c0ffee0",
-    branch: {
-      kind: "named",
-      name: "main",
-      upstream:
-        commitScript.upstream === undefined
-          ? null
-          : { name: commitScript.upstream, ahead: 1, behind: 0 },
-    },
+    branch: "main",
+    upstream:
+      commitScript.upstream === undefined
+        ? null
+        : { name: commitScript.upstream, ahead: 1, behind: 0 },
     base: null,
   },
   staged: [],
@@ -75,7 +73,8 @@ const vcsSnapshot = async (): Promise<VcsSnapshot> => ({
 const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) =>
   (input.paths ?? commitScript.files.map((file) => file.path)).map((path) => ({
     path,
-    kind: "modified",
+    status: "modified",
+    kind: "text",
     added: 1,
     removed: 0,
     patch: [`--- a/${path}`, `+++ b/${path}`, "@@ -1 +1,2 @@", " old", "+new", ""].join("\n"),
@@ -92,7 +91,7 @@ const commit: NyteBridge["workspace"]["vcs"]["commit"] = async (input) => {
       }),
     );
   }
-  commitScript.commits.push({ message: input.message, target: input.target });
+  commitScript.commits.push({ message: input.message, target: input.files });
   const result = nextAnswer<VcsCommitOutcome>(commitScript.commitResults, {
     kind: "committed",
     oid: "1234567890abcdef",

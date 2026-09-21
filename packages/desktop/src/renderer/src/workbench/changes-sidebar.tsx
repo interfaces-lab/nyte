@@ -1,16 +1,8 @@
-/**
- * The changed-files rail of the Changes panel: a grouped tree, a search field,
- * a status and review filter, and Cursor's per-file viewed checkboxes.
- *
- * The rail owns what only the rail can see — the query, the filter, and which
- * groups are collapsed. Review marks are the panel's, because the digest a
- * mark is filed under is the digest of the patch the panel renders.
- */
-import * as stylex from "@stylexjs/stylex";
-import { useId, useState } from "react";
+import { FileTree, useFileTree } from "@pierre/trees/react";
+import type { FileTreeBatchOperation } from "@pierre/trees";
+import { create, props } from "@stylexjs/stylex";
+import { memo, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
-import { AnimatedNumber } from "../components/animated-number.tsx";
-import { FileTypeIcon } from "../components/file-type-icon";
 import { Icon } from "../components/icons.tsx";
 import {
   Menu,
@@ -22,52 +14,32 @@ import {
 import { focus, IconButton } from "../components/ui";
 import { workbench } from "../theme/schema.stylex.ts";
 import { t } from "../theme/vars.stylex.ts";
-import {
-  changeSelectionSummary,
-  filesChangedLabel,
-  changeFileGroups,
-  filterChangePaths,
-  visibleChangeTreeRows,
-} from "./change-tree.ts";
-import type { ChangeFileTone, ChangeStatus } from "./change-tree.ts";
+import { changeSelectionSummary, filesChangedLabel, filterChangePaths } from "./change-tree.ts";
+import type { ChangeStatus } from "./change-tree.ts";
 import type { ViewedState } from "./changes-viewed.ts";
-import { pretextFitsWidth, pretextNaturalWidth, truncateMiddleText } from "./pretext.ts";
-import { diffMarksWidth, railLabelMaxWidth, railRowWidth } from "./stacked-diff.ts";
-import { useClientBox } from "./use-client-box.ts";
 
-/** One rail row's worth of panel state: what it is, how big, and whether it was reviewed. */
 export interface ChangesSidebarFile {
   readonly path: string;
-  /** Absent for per-turn changes, which have no working-tree status to filter on. */
   readonly status?: ChangeStatus;
-  readonly tone?: ChangeFileTone;
   readonly added: number;
   readonly removed: number;
   readonly viewed: ViewedState;
 }
 
 type ViewedFilterMode = "all" | "viewed" | "not-viewed";
-
 const STATUS_FILTERS: readonly { readonly value: ChangeStatus; readonly label: string }[] = [
   { value: "added", label: "Added" },
   { value: "modified", label: "Modified" },
   { value: "deleted", label: "Deleted" },
   { value: "untracked", label: "Untracked" },
+  { value: "conflicted", label: "Conflicted" },
 ];
-
 const VIEWED_FILTERS: readonly { readonly value: ViewedFilterMode; readonly label: string }[] = [
   { value: "all", label: "All files" },
   { value: "viewed", label: "Viewed" },
   { value: "not-viewed", label: "Not viewed" },
 ];
-
-/** The trailing checkbox and its gap, which the measured label never gets. */
-const REVIEW_SLOT_WIDTH = 20;
-
-/** The revert button and its gap, taken from the label only while the rail offers one. */
-const REVERT_SLOT_WIDTH = 20;
-
-const styles = stylex.create({
+const styles = create({
   rail: {
     order: 1,
     display: "flex",
@@ -115,12 +87,6 @@ const styles = stylex.create({
     fontSize: t.fontSm,
     lineHeight: t.leadingSm,
   },
-  list: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    padding: 4,
-  },
   overviewTitle: {
     display: "flex",
     alignItems: "center",
@@ -133,75 +99,6 @@ const styles = stylex.create({
     fontWeight: 590,
   },
   overviewLabel: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
-  row: {
-    display: "flex",
-    alignItems: "center",
-    width: "100%",
-    height: 24,
-    paddingInlineEnd: 6,
-    borderRadius: t.radiusBase,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-    },
-    color: t.textSecondary,
-  },
-  rowSelected: { backgroundColor: t.fillGhostSelected, color: t.textPrimary },
-  file: {
-    appearance: "none",
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    flex: 1,
-    minWidth: 0,
-    alignSelf: "stretch",
-    paddingInline: 6,
-    borderRadius: t.radiusBase,
-    borderStyle: "none",
-    backgroundColor: "transparent",
-    color: "inherit",
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    textAlign: "left",
-    cursor: "pointer",
-  },
-  folder: { color: t.textTertiary },
-  nameAdded: { color: t.textSuccess },
-  nameDeleted: { color: t.textDanger, textDecoration: "line-through" },
-  nameModified: { color: t.textWarning },
-  glyph: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 16,
-    height: 16,
-    flexShrink: 0,
-    color: t.iconTertiary,
-  },
-  filePath: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    whiteSpace: "nowrap",
-  },
-  fileStat: {
-    display: "inline-flex",
-    gap: 2,
-    flexShrink: 0,
-    fontSize: t.fontXs,
-    fontVariantNumeric: "tabular-nums",
-  },
-  added: { color: t.textSuccess },
-  removed: { color: t.textDanger },
-  pip: {
-    width: 6,
-    height: 6,
-    borderRadius: 1,
-    flexShrink: 0,
-  },
-  pipAdded: { backgroundColor: t.textSuccess },
-  pipDeleted: { backgroundColor: t.textDanger },
-  pipModified: { backgroundColor: t.textWarning },
   checkbox: {
     appearance: "none",
     display: "inline-flex",
@@ -238,21 +135,20 @@ const styles = stylex.create({
     borderRadius: t.radiusFull,
     backgroundColor: "currentColor",
   },
-  revert: {
-    appearance: "none",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 16,
-    height: 16,
-    flexShrink: 0,
-    marginInlineStart: 4,
-    padding: 0,
-    borderStyle: "none",
-    borderRadius: t.radiusSm,
-    backgroundColor: { default: "transparent", ":hover": t.fillGhostHover },
-    color: { default: t.iconTertiary, ":hover": t.iconSecondary },
-    cursor: "pointer",
+  tree: {
+    display: "block",
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+    "--trees-bg-override": t.bgSubtle,
+    "--trees-fg-override": t.textSecondary,
+    "--trees-fg-muted-override": t.textTertiary,
+    "--trees-selected-bg-override": t.fillGhostSelected,
+    "--trees-selected-fg-override": t.textPrimary,
+    "--trees-focus-ring-color-override": t.focusRing,
+    "--trees-font-family-override": t.fontSans,
+    "--trees-font-size-override": t.fontSm,
+    "--trees-scrollbar-thumb-override": t.scrollbarThumb,
   },
   empty: {
     display: "flex",
@@ -286,7 +182,7 @@ export function ReviewCheckbox({
       aria-label={label}
       title={label}
       data-viewed-state={state}
-      {...stylex.props(
+      {...props(
         styles.checkbox,
         focus.ring,
         (state === "viewed" || state === "mixed") && styles.checkboxOn,
@@ -298,330 +194,209 @@ export function ReviewCheckbox({
       }}
     >
       {state === "viewed" && <Icon name="checkmark" size={10} />}
-      {state === "mixed" && <span aria-hidden="true" {...stylex.props(styles.checkboxDash)} />}
-      {state === "changed" && <span aria-hidden="true" {...stylex.props(styles.checkboxDot)} />}
+      {state === "mixed" && <span aria-hidden="true" {...props(styles.checkboxDash)} />}
+      {state === "changed" && <span aria-hidden="true" {...props(styles.checkboxDot)} />}
     </button>
   );
 }
 
-function DiffMarks({
-  added,
-  removed,
-}: {
-  readonly added: number;
-  readonly removed: number;
-}): ReactElement | null {
-  if (added === 0 && removed === 0) return null;
-  return (
-    <span {...stylex.props(styles.fileStat)}>
-      {added > 0 && (
-        <span {...stylex.props(styles.added)}>
-          +<AnimatedNumber value={added} />
-        </span>
-      )}
-      {removed > 0 && (
-        <span {...stylex.props(styles.removed)}>
-          -<AnimatedNumber value={removed} />
-        </span>
-      )}
-    </span>
-  );
-}
-
-function StatusPip({ tone }: { readonly tone: ChangeFileTone | undefined }): ReactElement | null {
-  if (tone === undefined) return null;
-  return (
-    <span
-      aria-hidden="true"
-      {...stylex.props(
-        styles.pip,
-        tone === "added" && styles.pipAdded,
-        tone === "deleted" && styles.pipDeleted,
-        tone === "modified" && styles.pipModified,
-      )}
-    />
-  );
-}
-
-/** The unfiltered total, plus how much of it survives the filter while one is on. */
 export function sidebarCountLabel(total: number, shown: number, filtered: boolean): string {
   if (!filtered || shown === total) return filesChangedLabel(total);
   return `${String(shown)} of ${filesChangedLabel(total)}`;
 }
 
-function viewedLabel(path: string, state: ViewedState): string {
-  if (state === "viewed") return `Mark ${path} not viewed`;
-  if (state === "changed") return `${path} changed since you viewed it`;
-  return `Mark ${path} viewed`;
-}
-
-export function ChangesSidebar({
+export const ChangesSidebar = memo(function ChangesSidebar({
   files,
   visible,
   activePath,
-  statsKey,
-  fonts,
   filterInputRef,
   onRevealPath,
-  onRevertPath,
-  onViewedChange,
   onAllViewedChange,
 }: {
   readonly files: readonly ChangesSidebarFile[];
   readonly visible: boolean;
   readonly activePath: string | undefined;
-  /** Remounts the animated counters when the scope changes rather than tweening across it. */
-  readonly statsKey: string;
-  readonly fonts: { readonly ui: string; readonly xs: string };
-  /** The panel's filter command focuses the rail's field, which is display:none while the rail is hidden. */
   readonly filterInputRef?: RefObject<HTMLInputElement | null>;
   readonly onRevealPath: (path: string) => void;
-  /** Absent outside a working tree, where there is nothing to revert to; the affordance renders disabled. */
-  readonly onRevertPath?: (path: string) => void;
-  readonly onViewedChange: (path: string, viewed: boolean) => void;
   readonly onAllViewedChange: (paths: readonly string[], viewed: boolean) => void;
 }): ReactElement {
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [statuses, setStatuses] = useState<readonly ChangeStatus[]>([]);
   const [viewedMode, setViewedMode] = useState<ViewedFilterMode>("all");
-  const [collapsed, setCollapsed] = useState<readonly string[]>([]);
-  const [attachList, listWidth] = useClientBox();
-
-  const fileByPath = new Map(files.map((file) => [file.path, file]));
-  const filtering = query.trim() !== "" || statuses.length > 0 || viewedMode !== "all";
-  const shownPaths = filterChangePaths(
-    files.map((file) => ({ path: file.path, status: file.status })),
-    {
-      query,
-      statuses,
-      viewed:
-        viewedMode === "all"
-          ? { mode: "all" }
-          : {
-              mode: viewedMode,
-              isViewed: (path) => fileByPath.get(path)?.viewed === "viewed",
-            },
+  const fileByPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files]);
+  const current = useRef({ fileByPath, onRevealPath });
+  useLayoutEffect(() => {
+    current.current = { fileByPath, onRevealPath };
+  }, [fileByPath, onRevealPath]);
+  const syncing = useRef(false);
+  const paths = useRef<ReadonlySet<string>>(new Set());
+  const { model } = useFileTree({
+    paths: [],
+    density: "compact",
+    initialExpansion: "open",
+    onSelectionChange: (selected) => {
+      if (syncing.current) return;
+      const path = selected.findLast((path) => current.current.fileByPath.has(path));
+      if (path !== undefined) current.current.onRevealPath(path);
     },
+    renderRowDecoration: ({ item }) => {
+      const file = current.current.fileByPath.get(item.path);
+      if (file === undefined) return null;
+      return {
+        text: [file.added > 0 ? `+${file.added}` : "", file.removed > 0 ? `-${file.removed}` : ""]
+          .filter(Boolean)
+          .join(" "),
+      };
+    },
+  });
+  const filtering = query.trim() !== "" || statuses.length > 0 || viewedMode !== "all";
+  const shownPaths = useMemo(
+    () =>
+      filterChangePaths(files, {
+        query,
+        statuses,
+        viewed:
+          viewedMode === "all"
+            ? { mode: "all" }
+            : { mode: viewedMode, isViewed: (path) => fileByPath.get(path)?.viewed === "viewed" },
+      }),
+    [files, fileByPath, query, statuses, viewedMode],
   );
-  const groups = changeFileGroups(shownPaths);
-  const treeRows = visibleChangeTreeRows({ groups, collapsed });
-  const groupByPath = new Map(groups.map((group) => [group.path, group]));
+  useLayoutEffect(() => {
+    const next = new Set(
+      shownPaths.flatMap((path) => {
+        const ancestors = [path];
+        for (
+          let index = path.lastIndexOf("/");
+          index > 0;
+          index = path.lastIndexOf("/", index - 1)
+        ) {
+          ancestors.push(path.slice(0, index + 1));
+        }
+        return ancestors;
+      }),
+    );
+    const changes: FileTreeBatchOperation[] = [
+      ...[...paths.current]
+        .filter((path) => !next.has(path))
+        .sort((left, right) => right.length - left.length)
+        .map((path) => ({ type: "remove" as const, path })),
+      ...shownPaths
+        .filter((path) => !paths.current.has(path))
+        .map((path) => ({ type: "add" as const, path })),
+    ];
+    syncing.current = true;
+    if (changes.length > 0) model.batch(changes);
+    paths.current = next;
+    for (const selected of model.getSelectedPaths()) {
+      if (selected !== activePath) model.getItem(selected)?.deselect();
+    }
+    if (activePath !== undefined) model.getItem(activePath)?.select();
+    syncing.current = false;
+  }, [model, shownPaths, activePath]);
+  useLayoutEffect(() => {
+    model.setGitStatus(
+      files.map((file) => {
+        const status =
+          file.status ??
+          (file.added > 0 && file.removed === 0
+            ? "added"
+            : file.removed > 0 && file.added === 0
+              ? "deleted"
+              : "modified");
+        return { path: file.path, status: status === "conflicted" ? "modified" : status };
+      }),
+    );
+  }, [model, files]);
   const summary = changeSelectionSummary(
     shownPaths,
     (path) => fileByPath.get(path)?.viewed === "viewed",
   );
-  const rowWidth = railRowWidth(listWidth);
-
   return (
-    <div {...stylex.props(styles.rail, !visible && styles.railHidden)}>
-      <div {...stylex.props(styles.search)}>
-        <div {...stylex.props(styles.field)}>
-          <Icon name="search" size={12} />
-          <input
-            ref={filterInputRef}
-            id={searchId}
-            type="text"
-            aria-label="Filter changed files"
-            placeholder="Filter files"
-            autoComplete="off"
-            spellCheck={false}
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            {...stylex.props(styles.input)}
-          />
-        </div>
-        <Menu
-          label="Filter changes"
-          trigger={
-            <IconButton
-              icon="filters"
-              label={filtering ? "Filters on" : "Filter changes"}
-              aria-pressed={filtering}
-            />
-          }
-        >
-          {STATUS_FILTERS.map((option) => (
-            <MenuCheckboxItem
-              key={option.value}
-              checked={statuses.includes(option.value)}
-              closeOnClick={false}
-              onCheckedChange={(checked) => {
-                setStatuses((current) =>
-                  checked
-                    ? [...current, option.value]
-                    : current.filter((status) => status !== option.value),
-                );
-              }}
-            >
-              {option.label}
-            </MenuCheckboxItem>
-          ))}
-          <MenuSeparator />
-          <MenuRadioGroup
-            value={viewedMode}
-            onValueChange={(value) => {
-              const found = VIEWED_FILTERS.find((option) => option.value === value);
-              if (found !== undefined) setViewedMode(found.value);
-            }}
-          >
-            {VIEWED_FILTERS.map((option) => (
-              <MenuRadioItem key={option.value} value={option.value}>
-                {option.label}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </Menu>
-      </div>
-      <div
-        ref={attachList}
-        role="tree"
+    <div {...props(styles.rail, !visible && styles.railHidden)}>
+      <FileTree
+        model={model}
         aria-label="Changed files"
-        data-nyte-scrollport
-        {...stylex.props(styles.list)}
-      >
-        <div {...stylex.props(styles.overviewTitle)}>
-          <span {...stylex.props(styles.overviewLabel)}>
-            {sidebarCountLabel(files.length, shownPaths.length, filtering)}
-          </span>
-          <ReviewCheckbox
-            state={summary === "all" ? "viewed" : summary === "some" ? "mixed" : "unviewed"}
-            label={summary === "all" ? "Mark all files not viewed" : "Mark all files viewed"}
-            onChange={(viewed) => {
-              onAllViewedChange(shownPaths, viewed);
-            }}
-          />
-        </div>
-        {treeRows.length === 0 ? (
-          <div role="status" {...stylex.props(styles.empty)}>
-            No files match this filter
-          </div>
-        ) : (
-          treeRows.map((entry) => {
-            const file = fileByPath.get(entry.path);
-            const group = groupByPath.get(entry.path);
-            const expanded = entry.kind === "directory" && !collapsed.includes(entry.path);
-            const marks =
-              group === undefined
-                ? { added: file?.added ?? 0, removed: file?.removed ?? 0 }
-                : group.files.reduce(
-                    (total, path) => {
-                      const member = fileByPath.get(path);
-                      return member === undefined
-                        ? total
-                        : {
-                            added: total.added + member.added,
-                            removed: total.removed + member.removed,
-                          };
-                    },
-                    { added: 0, removed: 0 },
-                  );
-            const statsWidth =
-              rowWidth === 0
-                ? 0
-                : diffMarksWidth({
-                    added: marks.added,
-                    removed: marks.removed,
-                    measure: (text) => pretextNaturalWidth(text, fonts.xs),
-                  });
-            const labelWidth = Math.max(
-              0,
-              railLabelMaxWidth({
-                rowWidth,
-                depth: entry.depth,
-                statsWidth,
-                hasPip: entry.kind === "file",
-              }) -
-                REVIEW_SLOT_WIDTH -
-                (entry.kind === "file" ? REVERT_SLOT_WIDTH : 0),
-            );
-            const label = truncateMiddleText({
-              text: entry.label,
-              maxWidth: labelWidth,
-              fits: (value) =>
-                labelWidth <= 0 ? true : pretextFitsWidth(value, fonts.ui, labelWidth),
-            });
-            const selected = entry.kind === "file" && entry.path === activePath;
-            return (
-              <div
-                key={entry.path}
-                role="treeitem"
-                title={entry.path}
-                aria-expanded={entry.kind === "directory" ? expanded : undefined}
-                aria-selected={entry.kind === "file" ? selected : undefined}
-                {...stylex.props(styles.row, selected && styles.rowSelected)}
+        {...props(styles.tree)}
+        header={
+          <>
+            <div {...props(styles.search)}>
+              <div {...props(styles.field)}>
+                <Icon name="search" size={12} />
+                <input
+                  ref={filterInputRef}
+                  id={searchId}
+                  type="text"
+                  aria-label="Filter changed files"
+                  placeholder="Filter files"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={query}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                  {...props(styles.input)}
+                />
+              </div>
+              <Menu
+                label="Filter changes"
+                trigger={
+                  <IconButton
+                    icon="filters"
+                    label={filtering ? "Filters on" : "Filter changes"}
+                    aria-pressed={filtering}
+                  />
+                }
               >
-                <button
-                  type="button"
-                  {...stylex.props(
-                    styles.file,
-                    focus.ringInset,
-                    entry.kind === "directory" && styles.folder,
-                  )}
-                  onClick={() => {
-                    if (entry.kind === "directory") {
-                      setCollapsed((current) =>
-                        current.includes(entry.path)
-                          ? current.filter((path) => path !== entry.path)
-                          : [...current, entry.path],
+                {STATUS_FILTERS.map((option) => (
+                  <MenuCheckboxItem
+                    key={option.value}
+                    checked={statuses.includes(option.value)}
+                    closeOnClick={false}
+                    onCheckedChange={(checked) => {
+                      setStatuses((current) =>
+                        checked
+                          ? [...current, option.value]
+                          : current.filter((status) => status !== option.value),
                       );
-                      return;
-                    }
-                    onRevealPath(entry.path);
+                    }}
+                  >
+                    {option.label}
+                  </MenuCheckboxItem>
+                ))}
+                <MenuSeparator />
+                <MenuRadioGroup
+                  value={viewedMode}
+                  onValueChange={(value) => {
+                    const found = VIEWED_FILTERS.find((option) => option.value === value);
+                    if (found !== undefined) setViewedMode(found.value);
                   }}
                 >
-                  {entry.depth > 0 && (
-                    <span aria-hidden="true" style={{ flexShrink: 0, width: 10 }} />
-                  )}
-                  {entry.kind === "directory" ? (
-                    <span {...stylex.props(styles.glyph)}>
-                      <Icon name={expanded ? "chevron-down" : "chevron-right"} size={10} />
-                    </span>
-                  ) : (
-                    <FileTypeIcon path={entry.path} />
-                  )}
-                  <span
-                    {...stylex.props(
-                      styles.filePath,
-                      file?.tone === "added" && styles.nameAdded,
-                      file?.tone === "deleted" && styles.nameDeleted,
-                      file?.tone === "modified" && styles.nameModified,
-                    )}
-                  >
-                    {label}
-                  </span>
-                  <DiffMarks key={statsKey} added={marks.added} removed={marks.removed} />
-                  {entry.kind === "file" && <StatusPip tone={file?.tone} />}
-                </button>
-                {entry.kind === "file" && file !== undefined && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label={`Revert ${file.path}`}
-                      title={`Revert ${file.path}`}
-                      disabled={onRevertPath === undefined}
-                      {...stylex.props(styles.revert, focus.ring)}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRevertPath?.(file.path);
-                      }}
-                    >
-                      <Icon name="refresh" size={10} />
-                    </button>
-                    <ReviewCheckbox
-                      state={file.viewed}
-                      label={viewedLabel(file.path, file.viewed)}
-                      onChange={(viewed) => {
-                        onViewedChange(file.path, viewed);
-                      }}
-                    />
-                  </>
-                )}
+                  {VIEWED_FILTERS.map((option) => (
+                    <MenuRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </Menu>
+            </div>
+            <div {...props(styles.overviewTitle)}>
+              <span {...props(styles.overviewLabel)}>
+                {sidebarCountLabel(files.length, shownPaths.length, filtering)}
+              </span>
+              <ReviewCheckbox
+                state={summary === "all" ? "viewed" : summary === "some" ? "mixed" : "unviewed"}
+                label={summary === "all" ? "Mark all files not viewed" : "Mark all files viewed"}
+                onChange={(viewed) => onAllViewedChange(shownPaths, viewed)}
+              />
+            </div>
+            {shownPaths.length === 0 && (
+              <div role="status" {...props(styles.empty)}>
+                No files match this filter
               </div>
-            );
-          })
-        )}
-      </div>
+            )}
+          </>
+        }
+      />
     </div>
   );
-}
+});

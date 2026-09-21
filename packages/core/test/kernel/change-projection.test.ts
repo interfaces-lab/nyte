@@ -4,7 +4,7 @@ import type { FileChange, ToolClass, ToolTurnPart, Turn, TurnPart } from "@nyte-
 import type { CommitBody } from "../../src/kernel/model.ts";
 import { appendTurnChanges, changesFromTurns, EMPTY_CHANGES } from "@nyte-ai/client";
 import { appendTranscriptCommit, EMPTY_TRANSCRIPT, transcriptFromCommits } from "@nyte-ai/client";
-import { assistant, call, commit, message, toolResult, user } from "./helpers.ts";
+import { assistant, call, commit, message, toolResult, toolResultCommit, user } from "./helpers.ts";
 
 function patch(
   path: string,
@@ -16,13 +16,14 @@ function patch(
 }
 
 function turn(...parts: TurnPart[]): Extract<Turn, { kind: "turn" }> {
-  return { kind: "turn", id: "turn", parts, startedAt: 0, durationMs: 0 };
+  return { kind: "turn", id: "turn", run: { kind: "none" }, parts, startedAt: 0, durationMs: 0 };
 }
 
 function settled(commit: string, toolClass: ToolClass, isError = false): ToolTurnPart {
   return {
     kind: "tool",
     callId: commit,
+    at: 0,
     class: toolClass,
     result: { commit, isError, output: "done" },
   };
@@ -63,10 +64,10 @@ test("bulk and incremental totals keep file order, repeated paths, latest commit
 
 test("only settled, successful file_patch results count; other parts and classes do not reserve an OID", () => {
   const ignored = turn(
-    { kind: "user", commit: "user", parent: null, content: "edit" },
-    { kind: "assistant", commit: "assistant", contentIndex: 0, text: "working" },
-    { kind: "thinking", commit: "thinking", contentIndex: 0, text: "plan" },
-    { kind: "tool", callId: "pending", class: { kind: "file_edit", path: "first.txt" } },
+    { kind: "user", commit: "user", parent: null, content: "edit", at: 0 },
+    { kind: "assistant", commit: "assistant", contentIndex: 0, text: "working", at: 0 },
+    { kind: "thinking", commit: "thinking", contentIndex: 0, text: "plan", at: 0 },
+    { kind: "tool", callId: "pending", class: { kind: "file_edit", path: "first.txt" }, at: 0 },
     settled("failed", patch("first.txt", 2, 1), true),
     settled("shell", { kind: "shell", command: "ls" }),
     settled("read", { kind: "file_read", path: "first.txt" }),
@@ -154,14 +155,27 @@ test("user and completion-opened work turns project the same changes during sett
     },
   ];
   const items = bodies.map((entry, index) => {
-    const stamped = "body" in entry ? entry : { body: entry, calls: undefined };
-    return {
-      oid: `commit-${index}`,
-      commit: commit(index === 0 ? null : `commit-${index - 1}`, stamped.body, {
-        at: index * 1000,
-        calls: stamped.calls,
-      }),
-    };
+    const stamped = "body" in entry ? entry : { body: entry };
+    const parent = index === 0 ? null : `commit-${index - 1}`;
+    let value: ReturnType<typeof commit>;
+    if (!("calls" in stamped) || stamped.calls === undefined) {
+      value = commit(parent, stamped.body, { at: index * 1000 });
+    } else {
+      const body = stamped.body;
+      if (body.kind !== "message" || body.message.role !== "toolResult") {
+        assert.fail("tool call classes belong to a tool-result commit");
+      }
+      const callClass = stamped.calls[body.message.toolCallId];
+      value = toolResultCommit(
+        parent,
+        { kind: "message", message: body.message },
+        {
+          at: index * 1000,
+          ...(callClass === undefined ? {} : { call: callClass }),
+        },
+      );
+    }
+    return { oid: `commit-${index}`, commit: value };
   });
   const before = structuredClone(items);
   const turns = transcriptFromCommits(items);

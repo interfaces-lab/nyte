@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DEFAULT_LANDING, MAIN, sessionId } from "@nyte-ai/core";
-import type { RunInfo } from "@nyte-ai/core";
+import { MAIN, sessionId } from "@nyte-ai/core";
+import type { Delivery, RunInfo } from "@nyte-ai/core";
 import type { SessionState } from "@nyte-ai/client";
 import { CliRenderEvents } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
 import type { TestRendererSetup } from "@opentui/core/testing";
 import { mountShell } from "./app/App.tsx";
 import type { Shell } from "./app/ui.ts";
-import { laneRoles } from "./lanes.ts";
+import { deliveryChoices } from "./lanes.ts";
 import type { GutterRow } from "./pending-gutter.ts";
 import { DARK_THEME } from "./theme.ts";
 
@@ -16,7 +16,7 @@ type TranscriptTurn = Extract<
   { readonly kind: "turn" }
 >;
 
-const roles = laneRoles(DEFAULT_LANDING);
+const roles = deliveryChoices;
 const request = "Review the settings panel";
 const answer = "The heading sits too close to the first control.";
 const correction = "Only change the spacing, not the colors.";
@@ -30,9 +30,10 @@ afterEach(() => {
 const reviewTurn: TranscriptTurn = {
   kind: "turn",
   id: "turn-review",
+  run: { kind: "run", id: `run-${String("turn-review")}` },
   parts: [
-    { kind: "user", commit: "user-review", parent: null, content: request },
-    { kind: "assistant", commit: "assistant-review", contentIndex: 0, text: answer },
+    { kind: "user", commit: "user-review", parent: null, content: request, at: 0 },
+    { kind: "assistant", commit: "assistant-review", contentIndex: 0, text: answer, at: 0 },
   ],
   startedAt: 1_000,
   durationMs: 1_100,
@@ -42,7 +43,7 @@ const reviewTurn: TranscriptTurn = {
 const longReviewTurn: TranscriptTurn = {
   ...reviewTurn,
   parts: [
-    { kind: "user", commit: "user-review", parent: null, content: request },
+    { kind: "user", commit: "user-review", parent: null, content: request, at: 0 },
     {
       kind: "assistant",
       commit: "assistant-review",
@@ -51,6 +52,7 @@ const longReviewTurn: TranscriptTurn = {
         { length: 20 },
         (_, index) => `Finding ${String(index + 1)}: ${answer}`,
       ).join("\n\n"),
+      at: 0,
     },
   ],
 };
@@ -60,7 +62,10 @@ function correctionTurn(content: string = correction): TranscriptTurn {
   return {
     kind: "turn",
     id: "turn-correction",
-    parts: [{ kind: "user", commit: "user-correction", parent: "assistant-review", content }],
+    run: { kind: "run", id: `run-${String("turn-correction")}` },
+    parts: [
+      { kind: "user", commit: "user-correction", parent: "assistant-review", content, at: 0 },
+    ],
     startedAt: 3_000,
     durationMs: 0,
   };
@@ -101,6 +106,7 @@ function state(items: readonly TranscriptTurn[], running: RunInfo | undefined): 
     run: running,
     compaction: undefined,
     overlay: [],
+    settledToolCalls: new Set(),
     parked: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 128_000 },
     expectedTip: undefined,
@@ -147,14 +153,14 @@ async function framesOf(setup: TestRendererSetup, act: () => void): Promise<stri
   return frames;
 }
 
-const sending = (key: string, lane: string, content: string): GutterRow => ({
+const sending = (key: string, delivery: Delivery, content: string): GutterRow => ({
   kind: "sending",
-  entry: { key, lane, content, at: 2_000, attempts: 1 },
+  entry: { key, delivery, content, at: 2_000, attempts: 1 },
 });
 
-const pending = (change: string, lane: string, content: string, key?: string): GutterRow => ({
+const pending = (change: string, delivery: Delivery, content: string, key?: string): GutterRow => ({
   kind: "pending",
-  item: { change, lane, content, at: 2_000, ...(key === undefined ? {} : { key }) },
+  item: { change, delivery, content, at: 2_000, ...(key === undefined ? {} : { key }) },
 });
 
 describe("steer messages at the transcript's tail", () => {
@@ -170,7 +176,7 @@ describe("steer messages at the transcript's tail", () => {
     const row = rowsWith(lines(setup), correction);
     expect(row).toHaveLength(1);
     expect(sent.at(-1)?.some((line) => line.includes("… sending · ctrl+q pending"))).toBe(true);
-    // The lane row sits where the turn's activity row will: under the message, above the composer.
+    // The delivery row sits where the turn's activity row will: under the message, above the composer.
     expect(rowsWith(lines(setup), "sending")[0]).toBeGreaterThan(row[0] ?? 0);
     const block = shell.pendingTail.container.getChildren()[0];
 
@@ -228,7 +234,7 @@ describe("steer messages at the transcript's tail", () => {
       shell.view.sync(state([longReviewTurn, correctionTurn()], run(3_000))),
     );
     for (const frame of running) expect(rowsWith(frame, correction)).toEqual(row);
-    // The run's status takes the row the lane word held.
+    // The run's status takes the row the delivery word held.
     expect(rowsWith(lines(setup), "Working")).toEqual(statusRow);
   });
 
@@ -304,7 +310,7 @@ describe("follow-ups in the compact gutter", () => {
     expect(rowsWith(frame, follow(3))).toHaveLength(1);
     expect(rowsWith(frame, follow(4))).toHaveLength(0);
     expect(frame.some((line) => line.includes("+1 more · ctrl+q pending"))).toBe(true);
-    // One row each: the message, its lane, and the hint share the line.
+    // One row each: the message, its delivery, and the hint share the line.
     const third = frame[(rowsWith(frame, follow(3))[0] ?? 1) - 1] ?? "";
     expect(third).toContain(`↓ ${follow(3)}`);
     expect(third).toContain(roles.queue);

@@ -128,6 +128,7 @@ test.each(["success", "fault"])(
         const summary = await session.objects.get(outcome.summary);
         assert.ok(summary?.kind === "commit" && summary.body.kind === "summary");
         assert.equal(summary.parent, null);
+        assert.ok("imports" in summary);
         assert.deepEqual(summary.imports, abandoned);
         assert.ok(summary.body.text.endsWith("navigation summary"));
         assert.deepEqual(summary.body.usage, usage);

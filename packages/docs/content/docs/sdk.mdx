@@ -7,7 +7,7 @@ Compose one `Nyte` over a store, a stream function, a model catalog, and a plugi
 operations on that object and fold its events. The [design record](/docs/design#the-sdk) holds the
 full contract.
 
-`messages.send` admits a message into a lane. It does not start a run. The process that called
+`messages.send` admits a message into the inbox. It does not start a run. The process that called
 `attach()` runs it, and without an attached runner `runs.wait` sits forever on a message the store
 already holds.
 
@@ -15,7 +15,7 @@ already holds.
 
 | Entry                 | Imports                                                                                                                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@nyte-ai/core`       | `createNyte`, the wire data types, `MAIN`, `DEFAULT_LANDING`. The operation table, envelopes, SSE codec, and `CursorExpired` stay in `@nyte-ai/protocol`. The projections live in `@nyte-ai/client`.   |
+| `@nyte-ai/core`       | `createNyte`, the wire data types, and `MAIN`. The operation table, envelopes, SSE codec, and `CursorExpired` stay in `@nyte-ai/protocol`. The projections live in `@nyte-ai/client`.                  |
 | `@nyte-ai/core/store` | `SqliteStore`, `WorkerStore` (the same backend in a worker thread, for hosts that also render), and the `Store` contract a backend implements. Hosts name their storage here. Clients never import it. |
 
 Plugin authoring is `@nyte-ai/core/plugins`. `@nyte-ai/plugin` re-exports it and adds `define` for
@@ -26,7 +26,7 @@ local TUI plugins. `SqliteStore` takes one file path. Nyte's clients share
 ```ts title="host.ts"
 import process from "node:process";
 import { createModels, FileCredentialStore, openaiCodexProvider } from "@nyte-ai/ai";
-import { createNyte, DEFAULT_LANDING, MAIN } from "@nyte-ai/core";
+import { createNyte, MAIN } from "@nyte-ai/core";
 import { inlinePlugin, systemPromptPlugin, toolsFsPlugin } from "@nyte-ai/core/plugins";
 import { SqliteStore } from "@nyte-ai/core/store";
 import { workspaceStorePath } from "@nyte-ai/host";
@@ -43,7 +43,7 @@ const nyte = await createNyte({
   streamFn: (requested, context, options) => models.streamSimple(requested, context, options),
   models,
   model,
-  landing: DEFAULT_LANDING,
+  drain: "one",
   plugins: [inlinePlugin(systemPromptPlugin()), inlinePlugin(toolsFsPlugin())],
   env: { cwd },
 });
@@ -69,7 +69,7 @@ await nyte.close();
 await store.close();
 ```
 
-`landing` is the host's lane policy. Leaving it out means `DEFAULT_LANDING`. The send above could
+`drain` is `"one"` by default; `"all"` lands the whole selected delivery. The send above could
 omit `head` to use `MAIN`. `jobs.list` without a head filter lists jobs across the session's heads.
 
 ## The client loop
@@ -81,8 +81,11 @@ snapshot. A cursor older than the event floor throws `CursorExpired` from `watch
 answer.
 
 ```ts title="follow.ts"
-import { appendTranscriptCommit, CursorExpired } from "@nyte-ai/core";
-import type { Nyte, SessionId, TranscriptState } from "@nyte-ai/core";
+import { appendTranscriptCommit } from "@nyte-ai/client";
+import type { TranscriptState } from "@nyte-ai/client";
+import type { Nyte } from "@nyte-ai/core";
+import { CursorExpired } from "@nyte-ai/protocol";
+import type { SessionId } from "@nyte-ai/protocol";
 
 async function follow(
   sdk: Nyte,
@@ -146,24 +149,26 @@ async function submit(
 }
 ```
 
-## Lanes
+## The inbox
 
-A lane is a name the sender chooses. The host's `landing` says which lanes exist and when each one
-lands, and `nyte.landing` is the policy in force. `DEFAULT_LANDING` holds two.
+Each head has two deliveries with fixed timing.
 
-| Lane    | Lands                                                              |
-| ------- | ------------------------------------------------------------------ |
-| `steer` | At the next response boundary, or at once when the head is idle    |
-| `queue` | Only when the head is idle, one message at a time (`drain: "one"`) |
+| Delivery | Lands                                                   |
+| -------- | ------------------------------------------------------- |
+| `steer`  | At the next response boundary, or when the head is idle |
+| `next`   | Only when the head is idle                              |
 
-`messages.send` without a `lane` goes to the first lane of the policy. A lane the policy does not
-list is refused with a `TypeError`.
+`messages.send` defaults to `delivery: "next"`; use `"steer"` for input that
+should join a live run at its next boundary. The submitter also stamps the
+change as user input. Configuration is passive, delegated answers are answers,
+and command completions are reports. Admission uses those stamps rather than
+inspecting the body later.
 
-`messages.redeliver` moves a still-pending item between lanes. It also accepts `content` to edit the
-message and `before` to reorder it within the target lane. Omit `before` to preserve its position,
-or pass `null` to move it to the end. The changed suffix receives new change IDs in one atomic
-update, and an untouched prefix keeps its IDs. `messages.cancel` withdraws one. A cancel racing a
-landing settles as `cancelled` or `landed`, never both.
+`messages.redeliver` can change a still-pending item's `delivery`. It also accepts `content` to edit
+the message and `before` to reorder it within the target delivery. Omit `before` to preserve its
+position, or pass `null` to move it to the end. The changed suffix receives new change IDs in one
+atomic update, and an untouched prefix keeps its IDs. `messages.cancel` withdraws one. A cancel
+racing landing settles as `cancelled` or `landed`, never both.
 
 ## Runs
 
@@ -246,14 +251,13 @@ recovery marks abandoned work `interrupted` without rerunning it. A terminal bac
 its completion from `owed` to `claimed`, submits its end and output under an idempotency key on the
 originating head, then records `delivered`. Recovery retries `claimed` delivery with the same key.
 `runs.abort` suppresses only a completion still `owed`; one already `claimed` finishes exactly once.
-Completions use core's private `background` lane, and a child's answered request lands on its parent
-the same way. User input starts model work. A delegate's answer can also start one continuation when
+Completions are submitted with `kind: "report"` and `delivery: "steer"`; a child's answered request
+uses `kind: "answer"` and the same delivery. User input starts model work. A delegate's answer can also start one continuation when
 an un-stopped run authorized that request. The send writes its authorization while asserting the
 exact parent run ref in the same CAS, and landing consumes the authorization once. Stop either wins
 that assertion before the child submission or revokes the stored authorization. Command completions,
 participant child requests, and unauthorized delegate answers wait for user input when no run is
-active. Clients do not add that lane to their landing policy or send completion messages
-themselves.
+active. Clients do not submit completion messages themselves.
 
 Children inherit workspace trust and are not offered tools marked
 `availability: "foreground"`.
@@ -332,7 +336,9 @@ progress, not a second history.
 5. Call `attach()` in the process that should run tools.
 6. Supply `workspace.vcs` (`createGitVcs` from `@nyte-ai/host`) so `nyte.workspace.vcs` answers
    snapshot, diff, contents, log, refs, stage, discard, commit, createBranch, and push for the
-   session's directory. Without it, reads answer empty and writes answer `failed`.
+   session's directory. Without it, reads answer empty and writes answer `failed`. Mutation `expect`
+   protects against acting on a moved tree; the revision is a public digest, not proof that the
+   client read that tree.
 
 Trust is not a sandbox and not a per-call approval. After trust, project plugins and unrestricted
 filesystem tools load.
@@ -359,7 +365,7 @@ See [design, Agents](/docs/design#agents).
     icon="IconCodeBrackets"
     title="Admission"
     href="/docs/design#admission-is-open"
-    description="Lanes, chains, and why a send never errors"
+    description="Inbox deliveries, chains, and why a send never errors"
   />
   <DocCard
     icon="IconConsole"

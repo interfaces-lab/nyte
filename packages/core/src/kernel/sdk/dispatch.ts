@@ -18,9 +18,6 @@ type Dispatch = {
 };
 
 const DISPATCH: Dispatch = {
-  // The local SDK holds its landing policy as a value; the wire asks for it.
-  landing: (sdk) =>
-    typeof sdk.landing === "function" ? sdk.landing() : Promise.resolve(sdk.landing),
   "sessions.create": (sdk, input) => sdk.sessions.create(input),
   "sessions.get": (sdk, input) => sdk.sessions.get(input),
   "sessions.snapshot": (sdk, input) => sdk.sessions.snapshot(input),

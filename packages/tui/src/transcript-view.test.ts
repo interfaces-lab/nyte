@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { DEFAULT_LANDING, MAIN, sessionId } from "@nyte-ai/core";
+import { MAIN, sessionId } from "@nyte-ai/core";
 import type { SessionState } from "@nyte-ai/client";
 import {
   BoxRenderable,
@@ -13,7 +13,7 @@ import type { TestRendererSetup } from "@opentui/core/testing";
 import { clearNotice, closePanel, holdSlot, notice, openPanel, releaseSlot } from "./app/ui.ts";
 import { mountShell } from "./app/App.tsx";
 import type { EphemeralPanel, Shell } from "./app/ui.ts";
-import { laneRoles } from "./lanes.ts";
+import { deliveryChoices } from "./lanes.ts";
 import { DARK_THEME } from "./theme.ts";
 
 type TranscriptTurn = Extract<
@@ -35,18 +35,21 @@ function turn(index: number, responseLines = 1): TranscriptTurn {
   return {
     kind: "turn",
     id: `turn-${String(index)}`,
+    run: { kind: "run", id: `run-${String(`turn-${String(index)}`)}` },
     parts: [
       {
         kind: "user",
         commit: `user-${String(index)}`,
         parent: index === 0 ? null : `assistant-${String(index - 1)}`,
         content: request,
+        at: 0,
       },
       {
         kind: "assistant",
         commit: `assistant-${String(index)}`,
         contentIndex: 0,
         text: response,
+        at: 0,
       },
     ],
     startedAt: index * 1_000,
@@ -59,12 +62,14 @@ function richTurn(index: number): TranscriptTurn {
   return {
     kind: "turn",
     id: `rich-turn-${suffix}`,
+    run: { kind: "run", id: `run-${String(`rich-turn-${suffix}`)}` },
     parts: [
       {
         kind: "user",
         commit: `rich-user-${suffix}`,
         parent: index === 0 ? null : `rich-tail-${String(index - 1).padStart(3, "0")}`,
         content: `explain rich fixture ${suffix}`,
+        at: 0,
       },
       {
         kind: "assistant",
@@ -80,6 +85,7 @@ function richTurn(index: number): TranscriptTurn {
           `console.log(unicode_${suffix}.repeat(4));`,
           "```",
         ].join("\n"),
+        at: 0,
       },
       {
         kind: "tool",
@@ -93,12 +99,14 @@ function richTurn(index: number): TranscriptTurn {
           ).join("\n"),
           isError: false,
         },
+        at: 0,
       },
       {
         kind: "assistant",
         commit: `rich-tail-${suffix}`,
         contentIndex: 1,
         text: `RICH-ANCHOR-${suffix} survives Markdown, tool disclosure, and Unicode reflow.`,
+        at: 0,
       },
     ],
     startedAt: index * 1_000,
@@ -163,6 +171,7 @@ function state(
               text: options.liveText,
             },
           ],
+    settledToolCalls: new Set(),
     parked: [],
     context: { estimatedTokens: 0, usageTokens: 0, trailingTokens: 0, contextWindow: 128_000 },
     expectedTip: undefined,
@@ -178,7 +187,7 @@ async function mount(
   const shell = await mountShell({
     renderer: setup.renderer,
     initialTheme: DARK_THEME,
-    roles: laneRoles(DEFAULT_LANDING),
+    roles: deliveryChoices,
     openPath: () => undefined,
   });
   return { setup, shell };

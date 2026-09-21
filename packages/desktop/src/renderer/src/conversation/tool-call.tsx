@@ -16,7 +16,7 @@ import type { ReactElement } from "react";
 import { parsePatchFacts } from "@nyte-ai/client";
 import type { ToolClass, ToolProgress, ToolTurnPart } from "@nyte-ai/protocol";
 import { Icon } from "../components/icons.tsx";
-import { focus, srOnly } from "../components/ui.tsx";
+import { focus, Hint, srOnly } from "../components/ui.tsx";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { DiffView } from "./diff-view.tsx";
 import type { DiffFacts } from "./diff-view.tsx";
@@ -153,7 +153,6 @@ export const ToolCallView = memo(function ToolCallView({
       <SubagentCallView
         session={toolClass.target.session}
         phase={phase}
-        output={body.kind === "output" ? body.text : undefined}
         density={density}
         awaited={waits?.awaited.has(toolClass.target.session) ?? false}
       />
@@ -177,9 +176,10 @@ export const ToolCallView = memo(function ToolCallView({
       </span>
       {phase !== "done" && <span {...stylex.props(srOnly)}>{PHASE_LABEL[phase]}</span>}
       {detail !== undefined && (
-        <span title={detail.title ?? detail.text} {...stylex.props(toolCallStyles.detail)}>
-          {detail.text}
-        </span>
+        <Hint
+          content={detail.title ?? detail.text}
+          trigger={<span {...stylex.props(toolCallStyles.detail)}>{detail.text}</span>}
+        />
       )}
       {toolClass.kind === "file_patch" && (toolClass.added > 0 || toolClass.removed > 0) && (
         <span {...stylex.props(toolCallStyles.stats, editDiff && toolCallStyles.editStats)}>

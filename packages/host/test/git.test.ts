@@ -104,8 +104,11 @@ function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[1]) {
     backend,
     snapshot: () => backend.snapshot({ cwd }),
     repository,
-    diff: (input: Omit<Parameters<typeof backend.diff>[0], "cwd">) =>
-      backend.diff({ cwd, ...input }),
+    diff: (
+      input: Omit<Parameters<typeof backend.diff>[0], "cwd" | "ignoreWhitespace"> & {
+        readonly ignoreWhitespace?: boolean;
+      },
+    ) => backend.diff({ cwd, ignoreWhitespace: input.ignoreWhitespace ?? false, ...input }),
     contents: (input: Omit<Parameters<typeof backend.contents>[0], "cwd">) =>
       backend.contents({ cwd, ...input }),
     log: (input: Omit<Parameters<typeof backend.log>[0], "cwd">) => backend.log({ cwd, ...input }),
@@ -125,6 +128,12 @@ function vcsAt(root: string, options?: Parameters<typeof createGitVcs>[1]) {
 }
 
 const WORKTREE = { kind: "worktree" } as const;
+
+function attachedBranch(snapshot: Extract<VcsSnapshot, { kind: "repository" }>): string {
+  assert.equal(snapshot.head.kind, "attached");
+  if (snapshot.head.kind !== "attached") throw new Error("unreachable");
+  return snapshot.head.branch;
+}
 
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -147,20 +156,22 @@ describe("snapshot", () => {
       { path: "tracked.txt", kind: "modified" },
       { path: "new.txt", kind: "untracked" },
     ]);
-    assert.deepEqual(snapshot.head.branch, { kind: "named", name: "main", upstream: null });
+    assert.equal(snapshot.head.kind, "attached");
+    if (snapshot.head.kind !== "attached") throw new Error("unreachable");
+    assert.equal(snapshot.head.branch, "main");
+    assert.equal(snapshot.head.upstream, null);
     assert.equal(snapshot.head.base, null);
-    assert.match(snapshot.head.oid ?? "", /^[0-9a-f]{40}$/);
+    assert.match(snapshot.head.oid, /^[0-9a-f]{40}$/);
   });
 
-  test("reports a null head oid on an unborn HEAD", async () => {
+  test("reports an unborn HEAD", async () => {
     const root = await emptyRepository();
     await writeFile(join(root, "first.txt"), "hello\n");
     gitIn(root)("add", "first.txt");
 
     const snapshot = await vcsAt(root).repository();
 
-    assert.equal(snapshot.head.oid, null);
-    assert.deepEqual(snapshot.head.branch, { kind: "named", name: "main", upstream: null });
+    assert.deepEqual(snapshot.head, { kind: "unborn", branch: "main" });
     assert.deepEqual(snapshot.staged, [{ path: "first.txt", kind: "added" }]);
     assert.deepEqual(snapshot.unstaged, []);
   });
@@ -196,6 +207,7 @@ describe("snapshot", () => {
 
     const snapshot = await vcsAt(root).repository();
 
+    assert.deepEqual(snapshot.staged, [{ path: "tracked.txt", kind: "conflicted" }]);
     assert.deepEqual(snapshot.unstaged, [{ path: "tracked.txt", kind: "conflicted" }]);
   });
 
@@ -203,7 +215,12 @@ describe("snapshot", () => {
     const root = await repository();
     const git = gitIn(root);
     git("checkout", "-b", "feature");
-    assert.deepEqual((await vcsAt(root).repository()).head.base, {
+    git("branch", "--set-upstream-to=main", "feature");
+    const feature = (await vcsAt(root).repository()).head;
+    assert.equal(feature.kind, "attached");
+    if (feature.kind !== "attached") throw new Error("unreachable");
+    assert.deepEqual(feature.upstream, { name: "main", ahead: 0, behind: 0 });
+    assert.deepEqual(feature.base, {
       name: git("rev-parse", "main").trim(),
       source: "reflog",
     });
@@ -211,13 +228,20 @@ describe("snapshot", () => {
     git("update-ref", "refs/remotes/origin/main", "HEAD");
     git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main");
     git("checkout", "--orphan", "rootless");
-    assert.deepEqual((await vcsAt(root).repository()).head.base, {
+    git("commit", "--allow-empty", "-m", "rootless");
+    const rootless = (await vcsAt(root).repository()).head;
+    assert.equal(rootless.kind, "attached");
+    if (rootless.kind !== "attached") throw new Error("unreachable");
+    assert.deepEqual(rootless.base, {
       name: "origin/main",
       source: "default",
     });
 
     git("checkout", "main");
-    assert.equal((await vcsAt(root).repository()).head.base, null);
+    const main = (await vcsAt(root).repository()).head;
+    assert.equal(main.kind, "attached");
+    if (main.kind !== "attached") throw new Error("unreachable");
+    assert.equal(main.base, null);
   });
 
   test("ignores inherited git repository and index overrides", async () => {
@@ -239,8 +263,9 @@ describe("snapshot", () => {
 
     const snapshot = await vcsAt(root).repository();
 
-    assert.deepEqual(snapshot.head.branch, { kind: "detached" });
-    assert.equal(snapshot.head.base, null);
+    assert.equal(snapshot.head.kind, "detached");
+    if (snapshot.head.kind !== "detached") throw new Error("unreachable");
+    assert.match(snapshot.head.oid, /^[0-9a-f]{40}$/);
   });
 });
 
@@ -253,10 +278,8 @@ describe("contents", () => {
 
     assert.deepEqual(result, {
       path: "tracked.txt",
-      old: "one\ntwo\n",
-      new: "one\ntwo\nthree\n",
-      binary: false,
-      truncated: false,
+      old: { kind: "text", text: "one\ntwo\n" },
+      new: { kind: "text", text: "one\ntwo\nthree\n" },
     });
   });
 
@@ -268,28 +291,28 @@ describe("contents", () => {
 
     const result = await vcsAt(root).contents({ path: "tracked.txt", scope: { kind: "unstaged" } });
 
-    assert.equal(result.old, "staged\n");
-    assert.equal(result.new, "working\n");
+    assert.deepEqual(result.old, { kind: "text", text: "staged\n" });
+    assert.deepEqual(result.new, { kind: "text", text: "working\n" });
   });
 
-  test("reports a missing base blob as a null old side instead of failing", async () => {
+  test("reports a missing base blob as an absent old side instead of failing", async () => {
     const root = await repository();
     await writeFile(join(root, "added.txt"), "new file\n");
 
     const result = await vcsAt(root).contents({ path: "added.txt", scope: WORKTREE });
 
-    assert.equal(result.old, null);
-    assert.equal(result.new, "new file\n");
+    assert.deepEqual(result.old, { kind: "absent" });
+    assert.deepEqual(result.new, { kind: "text", text: "new file\n" });
   });
 
-  test("reports a deleted working-tree file as a null new side", async () => {
+  test("reports a deleted working-tree file as an absent new side", async () => {
     const root = await repository();
     await rm(join(root, "tracked.txt"));
 
     const result = await vcsAt(root).contents({ path: "tracked.txt", scope: WORKTREE });
 
-    assert.equal(result.old, "one\ntwo\n");
-    assert.equal(result.new, null);
+    assert.deepEqual(result.old, { kind: "text", text: "one\ntwo\n" });
+    assert.deepEqual(result.new, { kind: "absent" });
   });
 
   test("flags binary files and withholds their contents", async () => {
@@ -298,9 +321,7 @@ describe("contents", () => {
 
     const result = await vcsAt(root).contents({ path: "image.bin", scope: WORKTREE });
 
-    assert.equal(result.binary, true);
-    assert.equal(result.new, "");
-    assert.equal(result.truncated, false);
+    assert.deepEqual(result.new, { kind: "binary" });
   });
 
   test("uses git numstat attributes to classify binary data without a NUL", async () => {
@@ -310,8 +331,7 @@ describe("contents", () => {
 
     const result = await vcsAt(root).contents({ path: "payload.dat", scope: WORKTREE });
 
-    assert.equal(result.binary, true);
-    assert.equal(result.new, "");
+    assert.deepEqual(result.new, { kind: "binary" });
   });
 
   test("trims a side past the preview cap and flags it truncated", async () => {
@@ -320,8 +340,9 @@ describe("contents", () => {
 
     const result = await vcsAt(root).contents({ path: "big.txt", scope: WORKTREE });
 
-    assert.equal(result.truncated, true);
-    assert.equal(result.new?.length, 2_000_000);
+    assert.equal(result.new.kind, "truncated");
+    if (result.new.kind !== "truncated") throw new Error("unreachable");
+    assert.equal(result.new.head.length, 2_000_000);
   });
 
   test("reads both sides of one commit", async () => {
@@ -335,8 +356,26 @@ describe("contents", () => {
       scope: { kind: "commit", oid },
     });
 
-    assert.equal(result.old, "one\ntwo\n");
-    assert.equal(result.new, "three\n");
+    assert.deepEqual(result.old, { kind: "text", text: "one\ntwo\n" });
+    assert.deepEqual(result.new, { kind: "text", text: "three\n" });
+  });
+
+  test("uses the branch merge base for content and binary classification", async () => {
+    const root = await repository();
+    const git = gitIn(root);
+    git("checkout", "-b", "comparison");
+    await writeFile(join(root, "tracked.txt"), Buffer.from([0x00, 0x01, 0x02]));
+    git("commit", "-am", "binary on comparison");
+    git("checkout", "main");
+    await writeFile(join(root, "tracked.txt"), "one\ntwo\nthree\n");
+
+    const result = await vcsAt(root).contents({
+      path: "tracked.txt",
+      scope: { kind: "branch", base: "comparison" },
+    });
+
+    assert.deepEqual(result.old, { kind: "text", text: "one\ntwo\n" });
+    assert.deepEqual(result.new, { kind: "text", text: "one\ntwo\nthree\n" });
   });
 
   test("rethrows worktree filesystem errors instead of reporting a missing side", async () => {
@@ -406,11 +445,14 @@ describe("diff", () => {
     ]);
 
     assert.equal(staged.length, 1);
-    assert.equal(staged[0]?.kind, "modified");
-    assert.equal(staged[0]?.added, 1);
-    assert.equal(staged[0]?.removed, 0);
-    assert.match(staged[0]?.patch ?? "", /\+staged/);
-    assert.doesNotMatch(staged[0]?.patch ?? "", /\+working/);
+    const stagedDiff = staged[0];
+    assert.equal(stagedDiff?.status, "modified");
+    assert.equal(stagedDiff?.kind, "text");
+    if (stagedDiff?.kind !== "text") throw new Error("unreachable");
+    assert.equal(stagedDiff.added, 1);
+    assert.equal(stagedDiff.removed, 0);
+    assert.match(stagedDiff.patch, /\+staged/);
+    assert.doesNotMatch(stagedDiff.patch, /\+working/);
     assert.match(unstaged[0]?.patch ?? "", /\+working/);
     assert.doesNotMatch(unstaged[0]?.patch ?? "", /\+staged/);
   });
@@ -423,9 +465,31 @@ describe("diff", () => {
 
     const diffs = await vcsAt(root).diff({ scope: WORKTREE });
 
-    assert.equal(diffs[0]?.added, 2);
-    assert.match(diffs[0]?.patch ?? "", /\+staged/);
-    assert.match(diffs[0]?.patch ?? "", /\+working/);
+    const diff = diffs[0];
+    assert.equal(diff?.kind, "text");
+    if (diff?.kind !== "text") throw new Error("unreachable");
+    assert.equal(diff.added, 2);
+    assert.match(diff.patch, /\+staged/);
+    assert.match(diff.patch, /\+working/);
+  });
+
+  test("a binary diff has a patch but no line counts", async () => {
+    const root = await repository();
+    const git = gitIn(root);
+    await writeFile(join(root, "image.bin"), new Uint8Array([0, 1, 2]));
+    git("add", "image.bin");
+    git("commit", "-m", "binary");
+    await writeFile(join(root, "image.bin"), new Uint8Array([0, 3, 4]));
+
+    const diffs = await vcsAt(root).diff({ scope: WORKTREE });
+
+    assert.equal(diffs.length, 1);
+    const diff = diffs[0];
+    assert.equal(diff?.path, "image.bin");
+    assert.equal(diff?.status, "modified");
+    assert.equal(diff?.kind, "binary");
+    if (diff?.kind !== "binary") throw new Error("unreachable");
+    assert.match(diff.patch, /Binary files/);
   });
 
   test("unstaged synthesizes a patch for an untracked file", async () => {
@@ -435,7 +499,7 @@ describe("diff", () => {
     const diffs = await vcsAt(root).diff({ scope: { kind: "unstaged" } });
 
     assert.equal(diffs.length, 1);
-    assert.equal(diffs[0]?.kind, "untracked");
+    assert.equal(diffs[0]?.status, "untracked");
     assert.match(diffs[0]?.patch ?? "", /\+fresh/);
   });
 
@@ -463,7 +527,7 @@ describe("diff", () => {
       paths: ["other.txt"],
     });
 
-    assert.deepEqual(whole.map((diff) => `${diff.path} ${diff.kind}`).toSorted(), [
+    assert.deepEqual(whole.map((diff) => `${diff.path} ${diff.status}`).toSorted(), [
       "moved.txt renamed",
       "other.txt added",
     ]);
@@ -489,7 +553,7 @@ describe("diff", () => {
 
     const diffs = await vcsAt(root).diff({ scope: { kind: "branch", base: "main" } });
 
-    assert.deepEqual(diffs.map((diff) => `${diff.path} ${diff.kind}`).toSorted(), [
+    assert.deepEqual(diffs.map((diff) => `${diff.path} ${diff.status}`).toSorted(), [
       "feature.txt added",
       "scratch.txt untracked",
     ]);
@@ -752,7 +816,7 @@ describe("stage", () => {
     if (snapshot.kind !== "repository") return;
     const input = {
       cwd: root,
-      paths: ["scratch.txt"],
+      paths: ["scratch.txt"] as const,
       staged: true,
       expect: { revision: snapshot.revision },
     };
@@ -799,7 +863,7 @@ describe("commit", () => {
 
     const result = await vcs.commit({
       message: "feat: change it\n\nwith a body",
-      target: { kind: "staged" },
+      files: { kind: "staged" },
     });
 
     assert.equal(result.kind, "committed");
@@ -817,7 +881,7 @@ describe("commit", () => {
 
     const result = await vcs.commit({
       message: "--amend $(touch pwned) `id`",
-      target: { kind: "all" },
+      files: { kind: "all" },
     });
 
     assert.equal(result.kind, "committed");
@@ -831,7 +895,7 @@ describe("commit", () => {
     await writeFile(join(root, "tracked.txt"), "changed\n");
     await writeFile(join(root, "scratch.txt"), "untracked\n");
 
-    const result = await vcsAt(root).commit({ message: "all", target: { kind: "all" } });
+    const result = await vcsAt(root).commit({ message: "all", files: { kind: "all" } });
 
     assert.equal(result.kind, "committed");
     assert.deepEqual((await vcsAt(root).repository()).unstaged, [
@@ -849,7 +913,7 @@ describe("commit", () => {
 
     const result = await vcs.commit({
       message: "only one",
-      target: { kind: "paths", paths: ["tracked.txt"] },
+      files: { kind: "paths", paths: ["tracked.txt"] },
     });
 
     assert.equal(result.kind, "committed");
@@ -866,7 +930,7 @@ describe("commit", () => {
 
     const result = await vcsAt(root).commit({
       message: "move it",
-      target: { kind: "paths", paths: ["moved.txt"] },
+      files: { kind: "paths", paths: ["moved.txt"] },
     });
 
     assert.equal(result.kind, "committed");
@@ -879,7 +943,7 @@ describe("commit", () => {
   test("answers nothing_to_commit on a clean tree", async () => {
     const root = await repository();
 
-    assert.deepEqual(await vcsAt(root).commit({ message: "empty", target: { kind: "staged" } }), {
+    assert.deepEqual(await vcsAt(root).commit({ message: "empty", files: { kind: "staged" } }), {
       kind: "nothing_to_commit",
     });
   });
@@ -891,7 +955,7 @@ describe("commit", () => {
     });
     await writeFile(join(root, "tracked.txt"), "changed\n");
 
-    const result = await vcsAt(root).commit({ message: "blocked", target: { kind: "all" } });
+    const result = await vcsAt(root).commit({ message: "blocked", files: { kind: "all" } });
 
     assert.equal(result.kind, "committed");
     assert.equal((await vcsAt(root).log({ limit: 5 })).commits.length, 2);
@@ -902,7 +966,7 @@ describe("commit", () => {
 
     const result = await vcsAt(root).commit({
       message: "escape",
-      target: { kind: "paths", paths: ["../escape.txt"] },
+      files: { kind: "paths", paths: ["../escape.txt"] },
     });
 
     assert.equal(result.kind, "failed");
@@ -917,21 +981,13 @@ describe("createBranch", () => {
     assert.deepEqual(await vcs.createBranch({ name: "feature/one", checkout: false }), {
       kind: "created",
     });
-    assert.deepEqual((await vcs.repository()).head.branch, {
-      kind: "named",
-      name: "main",
-      upstream: null,
-    });
+    assert.equal(attachedBranch(await vcs.repository()), "main");
     assert.ok((await vcs.refs()).local.includes("feature/one"));
 
     assert.deepEqual(await vcs.createBranch({ name: "feature/two", checkout: true }), {
       kind: "created",
     });
-    assert.deepEqual((await vcs.repository()).head.branch, {
-      kind: "named",
-      name: "feature/two",
-      upstream: null,
-    });
+    assert.equal(attachedBranch(await vcs.repository()), "feature/two");
   });
 
   test("answers exists for a branch that is already there", async () => {
@@ -950,11 +1006,7 @@ describe("createBranch", () => {
       const result = await vcsAt(root).createBranch({ name, checkout: true });
 
       assert.equal(result.kind, "invalid_name");
-      assert.deepEqual((await vcsAt(root).repository()).head.branch, {
-        kind: "named",
-        name: "main",
-        upstream: null,
-      });
+      assert.equal(attachedBranch(await vcsAt(root).repository()), "main");
     },
   );
 });
@@ -1011,11 +1063,11 @@ describe("push", () => {
 
     assert.deepEqual(result, { kind: "pushed", remote: "origin", branch: "main" });
     assert.equal(git("config", "--get", "branch.main.remote").trim(), "origin");
-    assert.deepEqual((await vcsAt(root).repository()).head.branch, {
-      kind: "named",
-      name: "main",
-      upstream: { name: "origin/main", ahead: 0, behind: 0 },
-    });
+    const head = (await vcsAt(root).repository()).head;
+    assert.equal(head.kind, "attached");
+    if (head.kind !== "attached") throw new Error("unreachable");
+    assert.equal(head.branch, "main");
+    assert.deepEqual(head.upstream, { name: "origin/main", ahead: 0, behind: 0 });
   });
 
   test("answers up_to_date when the remote already has the branch tip", async () => {
@@ -1045,7 +1097,7 @@ describe("push", () => {
     otherGit("push");
 
     await writeFile(join(root, "tracked.txt"), "mine\n");
-    await vcsAt(root).commit({ message: "mine", target: { kind: "all" } });
+    await vcsAt(root).commit({ message: "mine", files: { kind: "all" } });
     const result = await vcsAt(root).push({ setUpstream: false });
 
     assert.equal(result.kind, "rejected");

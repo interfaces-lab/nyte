@@ -245,6 +245,18 @@ const styles = stylex.create({
   },
 });
 
+/**
+ * One panel's hold on a surface in main, from the first open until the panel
+ * leaves the surface or its owner. Navigation reuses the hold; a reply that
+ * lands after release, or after a newer request, is dropped so it cannot write
+ * a forgotten surface back into the store.
+ */
+interface SurfaceHold {
+  opened: boolean;
+  url: string | undefined;
+  released: boolean;
+}
+
 /** Release this surface's view holder in main. */
 function releaseSurface(surface: string): void {
   forgetBrowserSurface(surface);
@@ -335,6 +347,8 @@ function usePageFrame(surface: string, url: string, covered: boolean): string | 
     enabled: covered && url !== "",
     // A page re-covered later needs a fresh capture.
     staleTime: 0,
+    // A frame is page-sized pixels; nothing shows one from a url the panel left.
+    gcTime: 0,
   });
   return frame.data;
 }
@@ -343,8 +357,8 @@ interface BrowserPanelProps {
   readonly surface: string;
   readonly visible: boolean;
   readonly historyVisible: boolean;
-  readonly url: string | undefined;
-  readonly onUrlChange: (url: string | undefined) => void;
+  readonly url: string;
+  readonly onUrlChange: (url: string) => void;
   readonly toolbarActions?: ReactNode;
   /** Workspace path for per-workspace cookie jars. Null for home. */
   readonly workspacePath: string | null;
@@ -365,30 +379,60 @@ export function BrowserPanel({
   const { state, refusedDownload, history } = useBrowserSurface(surface);
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [failure, setFailure] = useState<string | undefined>(undefined);
-  const currentUrl = state?.url ?? url ?? "";
+  const stateUrl = state?.url;
+  const currentUrl = stateUrl ?? url;
   const hasPage = state !== undefined && state.url !== "";
   const showSurface = visible && hasPage && state.error === undefined;
 
   const covered = useSurfaceBounds(slotRef, surface, showSurface);
   const pageFrame = usePageFrame(surface, hasPage ? state.url : "", covered);
 
+  const holdRef = useRef<SurfaceHold | undefined>(undefined);
+
+  // The hold lasts as long as the panel shows this surface for this owner.
+  // Navigation never ends it; only leaving does, and that is the one close.
   useEffect(() => {
-    if (url !== undefined) {
-      const owner =
-        workspacePath === null
-          ? ({ kind: "home" } as const)
-          : ({ kind: "project", path: workspacePath } as const);
-      // open() in main retains the view holder for this surface.
-      void nyte.host.browser.open({ surface, url, owner }).then(
-        (openState) => applyBrowserEvent({ kind: "browser_changed", surface, state: openState }),
-        (cause: unknown) => {
-          setFailure(errorMessage(cause));
-        },
-      );
+    const hold: SurfaceHold = { opened: false, url: undefined, released: false };
+    holdRef.current = hold;
+    return () => {
+      hold.released = true;
+      holdRef.current = undefined;
+      releaseSurface(surface);
+    };
+  }, [surface, workspacePath]);
+
+  // The first open retains the view holder in main. Later runs ask for a page
+  // only when the tab url moved away from what the page shows: an address the
+  // user entered, a bookmark, a history entry. A url that arrived from the page
+  // itself (a link, back, forward, a redirect) is already where it points.
+  useEffect(() => {
+    const hold = holdRef.current;
+    if (hold === undefined) return;
+    if (hold.opened && (url === stateUrl || url === hold.url)) {
+      hold.url = url;
+      return;
     }
-    // Release the view holder when the panel unmounts or the surface changes.
-    return () => releaseSurface(surface);
-  }, [surface, url, workspacePath]);
+    hold.opened = true;
+    hold.url = url;
+    let superseded = false;
+    const owner =
+      workspacePath === null
+        ? ({ kind: "home" } as const)
+        : ({ kind: "project", path: workspacePath } as const);
+    void nyte.host.browser.open({ surface, url, owner }).then(
+      (openState) => {
+        if (hold.released || superseded) return;
+        applyBrowserEvent({ kind: "browser_changed", surface, state: openState });
+      },
+      (cause: unknown) => {
+        if (hold.released || superseded) return;
+        setFailure(errorMessage(cause));
+      },
+    );
+    return () => {
+      superseded = true;
+    };
+  }, [surface, url, stateUrl, workspacePath]);
 
   const navigate = (action: BrowserNavigationAction): void => {
     void nyte.host.browser.navigate({ surface, action }).catch(() => undefined);

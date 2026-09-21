@@ -14,7 +14,7 @@ function Cards({ children }: { children?: ReactNode }) {
  */
 export function docsMdxComponents(): MDXComponents {
   return {
-    ...shellMdxComponents("docs"),
+    ...shellMdxComponents(),
     Cards,
     DocCard,
     Mermaid,

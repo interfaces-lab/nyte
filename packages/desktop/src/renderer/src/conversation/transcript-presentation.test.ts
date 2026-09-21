@@ -15,17 +15,31 @@ const assistant = (commit: string, contentIndex: number, text: string): TurnPart
   commit,
   contentIndex,
   text,
+  at: 0,
 });
 const read = (callId: string): ToolTurnPart => ({
   kind: "tool",
   callId,
+  at: 0,
   class: { kind: "file_read", path: "README.md" },
 });
 
 describe("transcript presentation", () => {
   test("an episode holds reasoning and tools; narration stands on its own", () => {
-    const user: TurnPart = { kind: "user", commit: "u", parent: null, content: "Please fix it" };
-    const thought: TurnPart = { kind: "thinking", commit: "a", contentIndex: 0, text: "Looking" };
+    const user: TurnPart = {
+      kind: "user",
+      commit: "u",
+      parent: null,
+      content: "Please fix it",
+      at: 0,
+    };
+    const thought: TurnPart = {
+      kind: "thinking",
+      commit: "a",
+      contentIndex: 0,
+      text: "Looking",
+      at: 0,
+    };
     const commentary = assistant("a", 1, "I am checking the files.");
     const tool = read("read");
     const response = assistant("b", 0, "Fixed it.");
@@ -80,6 +94,7 @@ describe("transcript presentation", () => {
     const tool: TurnPart = {
       kind: "tool",
       callId: "edit",
+      at: 0,
       class: { kind: "file_edit", path: "app.json" },
     };
 
@@ -93,6 +108,7 @@ describe("transcript presentation", () => {
     const spawn: TurnPart = {
       kind: "tool",
       callId: "task",
+      at: 0,
       class: {
         kind: "delegate",
         role: "create",
@@ -102,6 +118,7 @@ describe("transcript presentation", () => {
     const wait: TurnPart = {
       kind: "tool",
       callId: "wait",
+      at: 0,
       class: {
         kind: "delegate",
         role: "await",

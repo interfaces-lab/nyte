@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { workbenchController } from "./controller.ts";
-import type { WorkbenchController, WorkbenchViewKey } from "./controller.ts";
+import type { WorkbenchController, WorkbenchTabId, WorkbenchViewKey } from "./controller.ts";
 import type { FileDocumentSnapshot } from "./file-document.ts";
 
 interface FileLocation {
@@ -15,8 +15,15 @@ interface FileDraft extends Pick<FileDocumentSnapshot, "contents" | "savedConten
   readonly revision: number;
 }
 
+interface FileRuntime extends Omit<FileLocation, "path"> {
+  readonly navigationRevision: number;
+  readonly dirty: boolean;
+  readonly saving: boolean;
+  readonly draft: FileDraft | undefined;
+}
+
 export interface FileTab extends FileLocation {
-  /** Only explicit file/line reveals change this; ordinary tab selection preserves the caret. */
+  readonly id: WorkbenchTabId;
   readonly navigationRevision: number;
   readonly dirty: boolean;
   readonly saving: boolean;
@@ -24,34 +31,50 @@ export interface FileTab extends FileLocation {
   readonly draft: FileDraft | undefined;
 }
 
+interface FileViewRuntime {
+  readonly history: readonly FileLocation[];
+  readonly historyIndex: number;
+  readonly pendingCloseId: WorkbenchTabId | null;
+  readonly navigationRevision: number;
+  readonly revealPath: string | null;
+  readonly revealRevision: number;
+}
+
 interface FileTabs {
   readonly tabs: readonly FileTab[];
+  readonly activeId: WorkbenchTabId | null;
   readonly activePath: string | undefined;
   readonly history: readonly FileLocation[];
   readonly historyIndex: number;
   readonly pendingClosePath: string | undefined;
-  /** Changes on explicit navigation, including a repeated jump to the same line. */
   readonly navigationRevision: number;
-  /** The explorer entry to focus, by workspace-relative path; the revision repeats a reveal. */
   readonly revealPath: string | undefined;
   readonly revealRevision: number;
 }
 
-const EMPTY: FileTabs = {
-  tabs: [],
-  activePath: undefined,
+const EMPTY_VIEW: FileViewRuntime = {
   history: [],
   historyIndex: -1,
-  pendingClosePath: undefined,
+  pendingCloseId: null,
   navigationRevision: 0,
-  revealPath: undefined,
+  revealPath: null,
   revealRevision: 0,
 };
 
+function fallbackRuntime(path: string): FileRuntime {
+  return {
+    displayPath: path,
+    navigationRevision: 0,
+    dirty: false,
+    saving: false,
+    draft: undefined,
+  };
+}
+
 function visit(
-  current: FileTabs,
+  current: FileViewRuntime,
   location: FileLocation,
-): Pick<FileTabs, "history" | "historyIndex"> {
+): Pick<FileViewRuntime, "history" | "historyIndex"> {
   const previous = current.history[current.historyIndex];
   if (
     previous?.path === location.path &&
@@ -73,230 +96,234 @@ function visit(
   return { history, historyIndex: history.length - 1 };
 }
 
-function openFileTabs(
-  current: FileTabs,
-  location: FileLocation & { readonly preview?: boolean },
-): readonly FileTab[] {
-  const existing = current.tabs.find((tab) => tab.path === location.path);
-  if (existing !== undefined) {
-    return current.tabs.map((tab) =>
-      tab === existing
-        ? {
-            ...tab,
-            navigationRevision: current.navigationRevision + 1,
-            displayPath: location.displayPath,
-            line: location.line,
-            column: location.column,
-            length: location.length,
-            preview: tab.preview && location.preview === true,
-          }
-        : tab,
-    );
-  }
-  const tab: FileTab = {
-    navigationRevision: current.navigationRevision + 1,
-    path: location.path,
-    displayPath: location.displayPath,
-    line: location.line,
-    column: location.column,
-    length: location.length,
-    dirty: false,
-    saving: false,
-    preview: location.preview === true,
-    draft: undefined,
-  };
-  const previewIndex = current.tabs.findIndex(
-    (candidate) => candidate.preview && !candidate.dirty && !candidate.saving,
-  );
-  if (tab.preview && previewIndex !== -1) {
-    return current.tabs.map((candidate, index) => (index === previewIndex ? tab : candidate));
-  }
-  return [...current.tabs, tab];
-}
-
-/** In-memory, window-lifetime drafts. Never persist file contents to localStorage. */
 export function createFileTabStore(
-  controller: Pick<WorkbenchController, "actions"> = workbenchController,
+  controller: Pick<WorkbenchController, "actions" | "getView"> = workbenchController,
 ) {
-  const views = new Map<WorkbenchViewKey, FileTabs>();
+  const documents = new Map<WorkbenchTabId, FileRuntime>();
+  const views = new Map<WorkbenchViewKey, FileViewRuntime>();
   const listeners = new Set<() => void>();
-  const getView = (key: WorkbenchViewKey): FileTabs => views.get(key) ?? EMPTY;
-  const publish = (key: WorkbenchViewKey, next: FileTabs): void => {
-    if (getView(key) === next) return;
+  let revision = 0;
+
+  const getRuntimeView = (key: WorkbenchViewKey): FileViewRuntime => views.get(key) ?? EMPTY_VIEW;
+  const publish = (key: WorkbenchViewKey, next: FileViewRuntime): void => {
     views.set(key, next);
+    revision += 1;
     for (const listener of listeners) listener();
   };
+  const fileTabs = (key: WorkbenchViewKey): readonly FileTab[] =>
+    controller.getView(key).tabs.flatMap((tab) => {
+      if (tab.kind !== "file") return [];
+      const runtime = documents.get(tab.id) ?? fallbackRuntime(tab.path);
+      return [{ id: tab.id, path: tab.path, preview: tab.preview, ...runtime }];
+    });
+  const getView = (key: WorkbenchViewKey): FileTabs => {
+    const controllerView = controller.getView(key);
+    const runtime = getRuntimeView(key);
+    const tabs = fileTabs(key);
+    const activeTab = controllerView.tabs.find((tab) => tab.id === controllerView.active);
+    const activeId = activeTab?.kind === "file" ? activeTab.id : null;
+    const activePath = tabs.find((tab) => tab.id === activeId)?.path;
+    const pendingClosePath = tabs.find((tab) => tab.id === runtime.pendingCloseId)?.path;
+    return {
+      tabs,
+      activeId,
+      activePath,
+      history: runtime.history,
+      historyIndex: runtime.historyIndex,
+      pendingClosePath,
+      navigationRevision: runtime.navigationRevision,
+      revealPath: runtime.revealPath ?? undefined,
+      revealRevision: runtime.revealRevision,
+    };
+  };
 
-  const remove = (key: WorkbenchViewKey, path: string): void => {
-    const current = getView(key);
-    const index = current.tabs.findIndex((tab) => tab.path === path);
-    if (index === -1) return;
-    const tabs = current.tabs.filter((tab) => tab.path !== path);
-    const activePath =
-      current.activePath === path ? (tabs[index] ?? tabs[index - 1])?.path : current.activePath;
-    const history = current.history.filter((location) => location.path !== path);
+  const remove = (key: WorkbenchViewKey, id: WorkbenchTabId): void => {
+    const current = getRuntimeView(key);
+    const tab = fileTabs(key).find((candidate) => candidate.id === id);
+    if (tab === undefined) return;
+    controller.actions.closeTab({ view: key, id });
+    documents.delete(id);
+    const history = current.history.filter((location) => location.path !== tab.path);
     const historyIndex =
       current.history
         .slice(0, current.historyIndex + 1)
-        .filter((location) => location.path !== path).length - 1;
-    const next = {
+        .filter((location) => location.path !== tab.path).length - 1;
+    publish(key, {
       ...current,
-      tabs,
-      activePath,
       history,
       historyIndex,
-      pendingClosePath: current.pendingClosePath === path ? undefined : current.pendingClosePath,
-    };
-    const active = tabs.find((tab) => tab.path === activePath);
-    publish(
-      key,
-      active === undefined || current.activePath !== path
-        ? next
-        : { ...next, ...visit(next, active), navigationRevision: current.navigationRevision + 1 },
-    );
+      pendingCloseId: current.pendingCloseId === id ? null : current.pendingCloseId,
+    });
+  };
+
+  const open = (
+    key: WorkbenchViewKey,
+    location: FileLocation & { readonly preview?: boolean },
+    recordHistory: boolean,
+  ): WorkbenchTabId => {
+    const current = getRuntimeView(key);
+    const existing = fileTabs(key).find((tab) => tab.path === location.path);
+    if (existing === undefined && location.preview === true) {
+      const replaceable = fileTabs(key).find((tab) => tab.preview && !tab.dirty && !tab.saving);
+      if (replaceable !== undefined) {
+        controller.actions.closeTab({ view: key, id: replaceable.id });
+        documents.delete(replaceable.id);
+      }
+    }
+    const id = controller.actions.openTab({
+      view: key,
+      tab: { kind: "file", path: location.path, preview: location.preview === true },
+      activate: true,
+    });
+    const previous = documents.get(id) ?? fallbackRuntime(location.path);
+    documents.set(id, {
+      ...previous,
+      displayPath: location.displayPath,
+      line: location.line,
+      column: location.column,
+      length: location.length,
+      navigationRevision: current.navigationRevision + 1,
+    });
+    if (existing !== undefined && location.preview !== true && existing.preview) {
+      controller.actions.updateTab({ view: key, id, kind: "file", patch: { preview: false } });
+    }
+    publish(key, {
+      ...current,
+      ...(recordHistory ? visit(current, location) : {}),
+      navigationRevision: current.navigationRevision + 1,
+    });
+    return id;
   };
 
   const navigate = (key: WorkbenchViewKey, historyIndex: number): void => {
-    const current = getView(key);
+    const current = getRuntimeView(key);
     const location = current.history[historyIndex];
     if (location === undefined) return;
-    publish(key, {
-      ...current,
-      tabs: openFileTabs(current, location),
-      activePath: location.path,
-      historyIndex,
-      navigationRevision: current.navigationRevision + 1,
-    });
-    controller.actions.openTab(key, "files");
+    open(key, location, false);
+    publish(key, { ...getRuntimeView(key), historyIndex });
   };
 
   const actions = {
     open(key: WorkbenchViewKey, location: FileLocation & { readonly preview?: boolean }): void {
-      const current = getView(key);
-      const tabs = openFileTabs(current, location);
-      publish(key, {
-        ...current,
-        tabs,
-        activePath: location.path,
-        ...visit(current, location),
-        navigationRevision: current.navigationRevision + 1,
-      });
-      controller.actions.openTab(key, "files");
+      open(key, location, true);
     },
-    /** Focuses an explorer entry without opening a tab; folders have no tab to open. */
     reveal(key: WorkbenchViewKey, displayPath: string): void {
-      const current = getView(key);
+      const current = getRuntimeView(key);
+      controller.actions.openTab({
+        view: key,
+        tab: { kind: "files" },
+        activate: true,
+      });
       publish(key, {
         ...current,
         revealPath: displayPath,
         revealRevision: current.revealRevision + 1,
       });
-      controller.actions.openTab(key, "files");
     },
     select(key: WorkbenchViewKey, path: string): void {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
       if (tab === undefined) return;
+      controller.actions.activateTab({ view: key, id: tab.id });
       publish(key, {
         ...current,
-        activePath: path,
         ...visit(current, tab),
         navigationRevision: current.navigationRevision + 1,
       });
-      controller.actions.openTab(key, "files");
     },
-    /** Returns false while confirmation is required. The tab and draft remain intact. */
     close(key: WorkbenchViewKey, path: string): boolean {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
-      if (tab?.dirty || tab?.saving) {
-        publish(key, { ...current, pendingClosePath: path });
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
+      if (tab === undefined) return true;
+      if (tab.dirty || tab.saving) {
+        publish(key, { ...current, pendingCloseId: tab.id });
         return false;
       }
-      remove(key, path);
+      remove(key, tab.id);
       return true;
     },
     cancelClose(key: WorkbenchViewKey): void {
-      const current = getView(key);
-      if (current.pendingClosePath === undefined) return;
-      publish(key, { ...current, pendingClosePath: undefined });
+      const current = getRuntimeView(key);
+      if (current.pendingCloseId === null) return;
+      publish(key, { ...current, pendingCloseId: null });
     },
-    /** Only discards the file named by the current confirmation. */
     discardClose(key: WorkbenchViewKey): void {
-      const current = getView(key);
-      const path = current.pendingClosePath;
-      if (path !== undefined && !current.tabs.find((tab) => tab.path === path)?.saving)
-        remove(key, path);
+      const current = getRuntimeView(key);
+      if (current.pendingCloseId === null) return;
+      const tab = documents.get(current.pendingCloseId);
+      if (tab?.saving !== true) remove(key, current.pendingCloseId);
     },
     setSaving(key: WorkbenchViewKey, path: string, saving: boolean): void {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
       if (tab === undefined || tab.saving === saving) return;
-      publish(key, {
-        ...current,
-        tabs: current.tabs.map((candidate) => (candidate === tab ? { ...tab, saving } : candidate)),
-      });
+      documents.set(tab.id, { ...tab, saving });
+      publish(key, current);
     },
     setDirty(key: WorkbenchViewKey, path: string, dirty: boolean): void {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
       if (tab === undefined || tab.dirty === dirty) return;
-      publish(key, {
-        ...current,
-        tabs: current.tabs.map((candidate) =>
-          candidate === tab ? { ...tab, dirty, preview: dirty ? false : tab.preview } : candidate,
-        ),
-      });
+      documents.set(tab.id, { ...tab, dirty });
+      if (dirty && tab.preview) {
+        controller.actions.updateTab({
+          view: key,
+          id: tab.id,
+          kind: "file",
+          patch: { preview: false },
+        });
+      }
+      publish(key, current);
     },
-    /** Call on edit changes, not only editor teardown. Undefined clears a saved/reloaded draft. */
     setDraft(
       key: WorkbenchViewKey,
       path: string,
       draft: Omit<FileDraft, "revision"> | undefined,
     ): void {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
       if (
         tab === undefined ||
         (tab.draft?.contents === draft?.contents &&
           tab.draft?.version === draft?.version &&
           tab.draft?.savedContents === draft?.savedContents &&
           tab.dirty === (draft !== undefined))
-      )
+      ) {
         return;
-      publish(key, {
-        ...current,
-        tabs: current.tabs.map((candidate) =>
-          candidate === tab
-            ? {
-                ...tab,
-                draft:
-                  draft === undefined
-                    ? undefined
-                    : { ...draft, revision: (tab.draft?.revision ?? 0) + 1 },
-                dirty: draft !== undefined,
-                preview: draft === undefined ? tab.preview : false,
-              }
-            : candidate,
-        ),
+      }
+      documents.set(tab.id, {
+        ...tab,
+        draft:
+          draft === undefined ? undefined : { ...draft, revision: (tab.draft?.revision ?? 0) + 1 },
+        dirty: draft !== undefined,
       });
+      if (draft !== undefined && tab.preview) {
+        controller.actions.updateTab({
+          view: key,
+          id: tab.id,
+          kind: "file",
+          patch: { preview: false },
+        });
+      }
+      publish(key, current);
     },
     pin(key: WorkbenchViewKey, path: string): void {
-      const current = getView(key);
-      const tab = current.tabs.find((candidate) => candidate.path === path);
+      const current = getRuntimeView(key);
+      const tab = fileTabs(key).find((candidate) => candidate.path === path);
       if (tab === undefined || !tab.preview) return;
-      publish(key, {
-        ...current,
-        tabs: current.tabs.map((candidate) =>
-          candidate === tab ? { ...tab, preview: false } : candidate,
-        ),
+      controller.actions.updateTab({
+        view: key,
+        id: tab.id,
+        kind: "file",
+        patch: { preview: false },
       });
+      publish(key, current);
     },
     back(key: WorkbenchViewKey): void {
-      navigate(key, getView(key).historyIndex - 1);
+      navigate(key, getRuntimeView(key).historyIndex - 1);
     },
     forward(key: WorkbenchViewKey): void {
-      navigate(key, getView(key).historyIndex + 1);
+      navigate(key, getRuntimeView(key).historyIndex + 1);
     },
   };
 
@@ -304,10 +331,9 @@ export function createFileTabStore(
     getView,
     subscribe: (listener: () => void): (() => void) => {
       listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
+      return () => listeners.delete(listener);
     },
+    getSnapshot: (): number => revision,
     actions,
   };
 }
@@ -316,5 +342,6 @@ const fileStore = createFileTabStore();
 export const fileActions = fileStore.actions;
 
 export function useFileTabs(viewKey: WorkbenchViewKey): FileTabs {
-  return useSyncExternalStore(fileStore.subscribe, () => fileStore.getView(viewKey));
+  useSyncExternalStore(fileStore.subscribe, fileStore.getSnapshot, fileStore.getSnapshot);
+  return fileStore.getView(viewKey);
 }

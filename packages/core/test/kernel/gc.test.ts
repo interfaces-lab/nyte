@@ -64,7 +64,8 @@ test("every object a ref can reach through the graph is kept", async () => {
   const queued = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
-    lane: "now",
+    delivery: "steer",
+    kind: "user",
     body: message(user("pending")),
   });
   const held = await lease(session, "main");

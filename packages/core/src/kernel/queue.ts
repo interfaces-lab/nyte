@@ -1,21 +1,17 @@
-/**
- * The pending change chains behind a head's queue lanes. A lane is a name the
- * submitter chooses; the lanes a head has are the ones its refs name, and which
- * of them lands when is the runner's policy (see `step.ts`), not this file's.
- */
-import { validateHeadName } from "@nyte-ai/protocol";
-import { mergeQueuedLanes } from "@nyte-ai/client";
+/** The two pending chains behind a head's inbox. */
+import { validateHeadName, type Delivery } from "@nyte-ai/protocol";
+import { mergeByDelivery } from "@nyte-ai/client";
 import {
   CANCELLED_PREFIX,
   cancelledRef,
-  isLaneName,
+  isDelivery,
   keyRef,
-  parseQueueRef,
-  queueBaseRef,
-  queuePrefix,
-  queueTipRef,
+  parseInboxRef,
+  inboxBaseRef,
+  inboxPrefix,
+  inboxTipRef,
 } from "./names.ts";
-import type { Actor, Change, CommitBody, Obj, Oid, RefUpdate } from "./model.ts";
+import type { Actor, Change, ChangeBody, Obj, Oid, RefUpdate } from "./model.ts";
 import type { Objects, Session } from "./store.ts";
 import type { UserMessage } from "@nyte-ai/schema";
 
@@ -39,31 +35,31 @@ export type RedeliverOutcome =
 export interface PendingChange {
   readonly oid: Oid;
   readonly change: Change;
-  readonly lane: string;
+  readonly delivery: Delivery;
 }
 
 export interface NextChange extends PendingChange {
   readonly skipped: readonly Oid[];
 }
 
-interface LaneChain {
-  readonly lane: string;
+interface DeliveryChain {
+  readonly delivery: Delivery;
   readonly tip: Oid | null;
   readonly base: Oid | null;
   readonly changes: readonly PendingChange[];
 }
 
 interface LocatedChange {
-  readonly chain: LaneChain;
+  readonly chain: DeliveryChain;
   readonly item: PendingChange;
 }
 
 function isChange(object: Obj): object is Change {
-  return object.kind === "change";
+  return "type" in object && object.type === "change";
 }
 
-function validateLane(lane: string): void {
-  if (!isLaneName(lane)) throw new TypeError(`Invalid lane name: ${lane}`);
+function validateDelivery(delivery: string): void {
+  if (!isDelivery(delivery)) throw new TypeError(`Invalid delivery name: ${delivery}`);
 }
 
 function onlyOid(oids: readonly Oid[]): Oid {
@@ -82,13 +78,13 @@ async function readChange(objects: Objects, oid: Oid): Promise<Change> {
   return object;
 }
 
-async function walkLane(
+async function walkDelivery(
   session: Session,
-  options: { readonly head: string; readonly lane: string },
-): Promise<LaneChain> {
+  options: { readonly head: string; readonly delivery: Delivery },
+): Promise<DeliveryChain> {
   const [base, tip] = await Promise.all([
-    session.refs.read(queueBaseRef(options.head, options.lane)),
-    session.refs.read(queueTipRef(options.head, options.lane)),
+    session.refs.read(inboxBaseRef(options.head, options.delivery)),
+    session.refs.read(inboxTipRef(options.head, options.delivery)),
   ]);
   const newestFirst: PendingChange[] = [];
   const seen = new Set<Oid>();
@@ -98,31 +94,34 @@ async function walkLane(
     if (seen.has(oid)) throw new Error(`Corrupt change chain cycle at ${oid}`);
     seen.add(oid);
     const change = await readChange(session.objects, oid);
-    newestFirst.push({ oid, change, lane: options.lane });
+    if (change.delivery !== options.delivery) {
+      throw new Error(`Change ${oid} is in ${options.delivery} but stamped ${change.delivery}`);
+    }
+    newestFirst.push({ oid, change, delivery: options.delivery });
     oid = change.previous;
   }
 
   newestFirst.reverse();
-  return { lane: options.lane, tip, base, changes: newestFirst };
+  return { delivery: options.delivery, tip, base, changes: newestFirst };
 }
 
-/** The lanes a head has: every lane one of its queue refs names, in name order. */
-export async function listLanes(session: Session, head: string): Promise<readonly string[]> {
-  const refs = await session.refs.list(queuePrefix(head));
-  const lanes = new Set<string>();
+/** The deliveries for which this head has inbox refs. */
+export async function listDeliveries(session: Session, head: string): Promise<readonly Delivery[]> {
+  const refs = await session.refs.list(inboxPrefix(head));
+  const deliveries = new Set<Delivery>();
   for (const ref of refs) {
-    const parts = parseQueueRef(ref.name);
-    if (parts !== undefined && parts.head === head) lanes.add(parts.lane);
+    const parts = parseInboxRef(ref.name);
+    if (parts !== undefined && parts.head === head) deliveries.add(parts.delivery);
   }
-  return [...lanes].sort();
+  return [...deliveries].sort();
 }
 
-async function walkLanes(session: Session, head: string): Promise<readonly LaneChain[]> {
-  const lanes = await listLanes(session, head);
-  return Promise.all(lanes.map((lane) => walkLane(session, { head, lane })));
+async function walkDeliveries(session: Session, head: string): Promise<readonly DeliveryChain[]> {
+  const deliveries = await listDeliveries(session, head);
+  return Promise.all(deliveries.map((delivery) => walkDelivery(session, { head, delivery })));
 }
 
-function locate(chains: readonly LaneChain[], target: Oid): LocatedChange | undefined {
+function locate(chains: readonly DeliveryChain[], target: Oid): LocatedChange | undefined {
   for (const chain of chains) {
     for (const item of chain.changes) {
       if (item.oid === target) return { chain, item };
@@ -131,12 +130,12 @@ function locate(chains: readonly LaneChain[], target: Oid): LocatedChange | unde
   return undefined;
 }
 
-/** The chain of `lane`, or the empty chain a first submission to it would extend. */
-function chainIn(chains: readonly LaneChain[], lane: string): LaneChain {
+/** The chain of `delivery`, or the empty chain a first submission to it would extend. */
+function chainIn(chains: readonly DeliveryChain[], delivery: Delivery): DeliveryChain {
   for (const chain of chains) {
-    if (chain.lane === lane) return chain;
+    if (chain.delivery === delivery) return chain;
   }
-  return { lane, tip: null, base: null, changes: [] };
+  return { delivery, tip: null, base: null, changes: [] };
 }
 
 async function reachableFrom(session: Session, tip: Oid | null, target: Oid): Promise<boolean> {
@@ -155,7 +154,7 @@ async function reachableFrom(session: Session, tip: Oid | null, target: Oid): Pr
 
 async function wasLanded(
   session: Session,
-  chains: readonly LaneChain[],
+  chains: readonly DeliveryChain[],
   target: Oid,
 ): Promise<boolean> {
   const reachable = await Promise.all(
@@ -182,9 +181,9 @@ export async function submit(
   session: Session,
   options: {
     readonly head: string;
-    readonly body: CommitBody;
-    /** The lane the change waits in. The runner's landing policy says when that lane lands. */
-    readonly lane: string;
+    readonly body: ChangeBody;
+    readonly kind: Change["kind"];
+    readonly delivery: Delivery;
     readonly key?: string;
     /** Cross-session metadata published before the change and abandoned unless the change publishes. */
     readonly preparation: SubmissionPreparation;
@@ -192,8 +191,8 @@ export async function submit(
   },
 ): Promise<SubmitOutcome> {
   validateHeadName(options.head);
-  validateLane(options.lane);
-  const tipName = queueTipRef(options.head, options.lane);
+  validateDelivery(options.delivery);
+  const tipName = inboxTipRef(options.head, options.delivery);
   const receiptName = options.key === undefined ? undefined : keyRef(options.key);
 
   if (receiptName !== undefined) {
@@ -204,7 +203,9 @@ export async function submit(
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
     const tip = await session.refs.read(tipName);
     const baseChange: Change = {
-      kind: "change",
+      type: "change",
+      kind: options.kind,
+      delivery: options.delivery,
       previous: tip,
       body: options.body,
       at: Date.now(),
@@ -259,24 +260,30 @@ async function cancelledSet(session: Session): Promise<ReadonlySet<Oid>> {
 
 export async function pendingIn(
   session: Session,
-  options: { readonly head: string; readonly lane: string },
+  options: { readonly head: string; readonly delivery: Delivery },
 ): Promise<readonly PendingChange[]> {
-  validateLane(options.lane);
-  const [chain, cancelled] = await Promise.all([walkLane(session, options), cancelledSet(session)]);
+  validateDelivery(options.delivery);
+  const [chain, cancelled] = await Promise.all([
+    walkDelivery(session, options),
+    cancelledSet(session),
+  ]);
   return chain.changes.filter((item) => !cancelled.has(item.oid));
 }
 
 export async function pending(session: Session, head: string): Promise<readonly PendingChange[]> {
-  const [chains, cancelled] = await Promise.all([walkLanes(session, head), cancelledSet(session)]);
-  return mergeQueuedLanes(
+  const [chains, cancelled] = await Promise.all([
+    walkDeliveries(session, head),
+    cancelledSet(session),
+  ]);
+  return mergeByDelivery(
     chains.flatMap((chain) => chain.changes).filter((item) => !cancelled.has(item.oid)),
-    { lane: (item) => item.lane, compare: comparePending },
+    { delivery: (item) => item.delivery, compare: comparePending },
   );
 }
 
 /**
  * Withdraw a pending change. The tombstone lands in one update with an
- * assertion on its lane's queue base, so a landing that races this cancel
+ * assertion on its delivery's inbox base, so a landing that races this cancel
  * makes the update fail and the outcome is re-read: a change is cancelled or
  * landed, never both.
  */
@@ -287,7 +294,7 @@ export async function cancel(
   validateHeadName(options.head);
   const name = cancelledRef(options.change);
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
-    const chains = await walkLanes(session, options.head);
+    const chains = await walkDeliveries(session, options.head);
     const located = locate(chains, options.change);
     if (located === undefined) {
       return (await wasLanded(session, chains, options.change))
@@ -299,7 +306,7 @@ export async function cancel(
     const tombstone = onlyOid(
       await session.objects.put([{ kind: "blob", value: { at: Date.now() } }]),
     );
-    const baseName = queueBaseRef(options.head, located.chain.lane);
+    const baseName = inboxBaseRef(options.head, located.chain.delivery);
     const updateOptions =
       options.actor === undefined
         ? { reason: "cancel" }
@@ -328,18 +335,18 @@ export async function redeliver(
   options: {
     readonly head: string;
     readonly change: Oid;
-    readonly lane: string;
+    readonly delivery: Delivery;
     readonly content?: UserMessage["content"];
-    /** Omitted preserves position within a lane; null moves to the end. */
+    /** Omitted preserves position within a delivery; null moves to the end. */
     readonly before?: Oid | null;
     readonly actor?: Actor;
   },
 ): Promise<RedeliverOutcome> {
   validateHeadName(options.head);
-  validateLane(options.lane);
+  validateDelivery(options.delivery);
   const tombstoneName = cancelledRef(options.change);
   for (let attempt = 0; attempt < MAX_SUBMIT_ATTEMPTS; attempt += 1) {
-    const chains = await walkLanes(session, options.head);
+    const chains = await walkDeliveries(session, options.head);
     const located = locate(chains, options.change);
     if (located === undefined) {
       return (await wasLanded(session, chains, options.change))
@@ -347,7 +354,7 @@ export async function redeliver(
         : { kind: "not_found" };
     }
     if ((await session.refs.read(tombstoneName)) !== null) return { kind: "not_found" };
-    const target = chainIn(chains, options.lane);
+    const target = chainIn(chains, options.delivery);
     const cancelled = await cancelledSet(session);
     const original = target.changes.filter((item) => !cancelled.has(item.oid));
     const sourceIndex = original.findIndex((item) => item.oid === options.change);
@@ -366,7 +373,7 @@ export async function redeliver(
     if (
       options.content === undefined &&
       index === sourceIndex &&
-      target.lane === located.chain.lane
+      target.delivery === located.chain.delivery
     )
       return { kind: "unchanged" };
     const body = located.item.change.body;
@@ -389,12 +396,18 @@ export async function redeliver(
         body.message.role === "user"
           ? { ...body, message: { ...body.message, content: options.content } }
           : change.body;
-      const copy = { ...change, previous: tip, supersedes: item.oid, body: nextBody };
+      const copy: Change = {
+        ...change,
+        delivery: options.delivery,
+        previous: tip,
+        supersedes: item.oid,
+        body: nextBody,
+      };
       tip = onlyOid(await session.objects.put([copy]));
       if (item.oid === options.change) copied = tip;
     }
-    const sourceBaseName = queueBaseRef(options.head, located.chain.lane);
-    const targetTipName = queueTipRef(options.head, options.lane);
+    const sourceBaseName = inboxBaseRef(options.head, located.chain.delivery);
+    const targetTipName = inboxTipRef(options.head, options.delivery);
     const updateOptions =
       options.actor === undefined
         ? { reason: "redeliver" }
@@ -407,10 +420,14 @@ export async function redeliver(
           from: located.chain.base,
           to: located.chain.base,
         },
-        ...(target.lane === located.chain.lane
+        ...(target.delivery === located.chain.delivery
           ? []
           : [
-              { name: queueBaseRef(options.head, target.lane), from: target.base, to: target.base },
+              {
+                name: inboxBaseRef(options.head, target.delivery),
+                from: target.base,
+                to: target.base,
+              },
             ]),
         { name: targetTipName, from: target.tip, to: tip },
       ],
@@ -421,7 +438,7 @@ export async function redeliver(
     if (
       [...replaced].some((oid) => outcome.name === cancelledRef(oid)) ||
       outcome.name === sourceBaseName ||
-      outcome.name === queueBaseRef(options.head, target.lane) ||
+      outcome.name === inboxBaseRef(options.head, target.delivery) ||
       outcome.name === targetTipName
     ) {
       continue;
@@ -431,15 +448,14 @@ export async function redeliver(
   throw new Error(`Queue redelivery did not settle after ${String(MAX_SUBMIT_ATTEMPTS)} attempts`);
 }
 
-/** The oldest live change in the first of `lanes` (in the caller's order) that has one. */
+/** The oldest live change in the first delivery with one. */
 export async function nextToLand(
   session: Session,
-  options: { readonly head: string; readonly lanes: readonly string[] },
+  options: { readonly head: string; readonly deliveries: readonly Delivery[] },
 ): Promise<NextChange | undefined> {
-  for (const lane of options.lanes) validateLane(lane);
   const cancelled = await cancelledSet(session);
-  for (const lane of options.lanes) {
-    const chain = await walkLane(session, { head: options.head, lane });
+  for (const delivery of options.deliveries) {
+    const chain = await walkDelivery(session, { head: options.head, delivery });
     const skipped: Oid[] = [];
     for (const item of chain.changes) {
       if (cancelled.has(item.oid)) {

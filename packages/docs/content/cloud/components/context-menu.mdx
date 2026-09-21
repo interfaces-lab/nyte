@@ -63,15 +63,20 @@ the visual layer.
 
 ## Examples
 
+<Preview>
+  <ContextMenuDemo />
+</Preview>
+
 ```tsx title="Wrapping an area"
 <ContextMenu.Root>
-  <ContextMenu.Trigger render={<article />}>{card}</ContextMenu.Trigger>
+  <ContextMenu.Trigger>Right click this area</ContextMenu.Trigger>
   <ContextMenu.Portal>
     <ContextMenu.Positioner>
       <ContextMenu.Popup>
-        <ContextMenu.Item onClick={duplicate}>Duplicate</ContextMenu.Item>
+        <ContextMenu.Item>Rename</ContextMenu.Item>
+        <ContextMenu.Item>Duplicate</ContextMenu.Item>
         <ContextMenu.Separator />
-        <ContextMenu.Item onClick={remove}>Delete</ContextMenu.Item>
+        <ContextMenu.Item>Delete</ContextMenu.Item>
       </ContextMenu.Popup>
     </ContextMenu.Positioner>
   </ContextMenu.Portal>

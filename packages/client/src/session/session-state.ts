@@ -17,7 +17,7 @@
  */
 import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { Selection } from "@nyte-ai/protocol";
-import { mergeQueuedLanes } from "../queue-order.ts";
+import { mergeByDelivery } from "../queue-order.ts";
 import type {
   ContextStatus,
   HeadName,
@@ -57,6 +57,8 @@ export interface SessionState {
   readonly compaction: SessionSnapshot["compaction"];
   /** In arrival order, so a live turn draws its parts as they came. */
   readonly overlay: LiveParts;
+  /** Calls settled in the current run, retained so a late progress frame cannot restore them. */
+  readonly settledToolCalls: ReadonlySet<string>;
   /** The parked calls of `run` as the snapshot lists them, in call order: asks and background waits alike. */
   readonly parked: readonly ParkedCall[];
   readonly context: ContextStatus;
@@ -73,6 +75,18 @@ export type FoldOutcome =
   | { readonly kind: "state"; readonly state: SessionState }
   | { readonly kind: "resnapshot" };
 
+const EMPTY_SETTLED_TOOL_CALLS: ReadonlySet<string> = new Set();
+
+function settleToolCall(
+  state: SessionState,
+  runId: string | undefined,
+  callId: string,
+): ReadonlySet<string> {
+  if (runId === undefined || state.run?.runId !== runId) return state.settledToolCalls;
+  if (state.settledToolCalls.has(callId)) return state.settledToolCalls;
+  return new Set([...state.settledToolCalls, callId]);
+}
+
 export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
   return {
     sessionId: snapshot.session.sessionId,
@@ -85,6 +99,7 @@ export function stateFromSnapshot(snapshot: SessionSnapshot): SessionState {
     run: snapshot.run,
     compaction: snapshot.compaction,
     overlay: EMPTY_LIVE_PARTS,
+    settledToolCalls: EMPTY_SETTLED_TOOL_CALLS,
     parked: snapshot.parked ?? [],
     context: snapshot.context,
     expectedTip: undefined,
@@ -150,7 +165,7 @@ export function tipMismatch(state: SessionState): boolean {
   return state.expectedTip !== undefined && state.expectedTip !== state.transcript.tip;
 }
 
-/** Arrival time chooses between lanes; each lane preserves its delivery order. */
+/** Arrival time chooses between deliveries; each chain keeps its chosen order. */
 function comparePending(left: PendingItem, right: PendingItem): number {
   const byTime = left.at - right.at;
   if (byTime !== 0) return byTime;
@@ -159,8 +174,8 @@ function comparePending(left: PendingItem, right: PendingItem): number {
 
 function upsertPending(items: readonly PendingItem[], item: PendingItem): PendingItem[] {
   const rest = items.filter((existing) => existing.change !== item.change);
-  return mergeQueuedLanes([...rest, item], {
-    lane: (entry) => entry.lane,
+  return mergeByDelivery([...rest, item], {
+    delivery: (entry) => entry.delivery,
     compare: comparePending,
   });
 }
@@ -170,9 +185,9 @@ function withoutPending(
   change: Oid | undefined,
 ): readonly PendingItem[] {
   if (change === undefined || !items.some((item) => item.change === change)) return items;
-  return mergeQueuedLanes(
+  return mergeByDelivery(
     items.filter((item) => item.change !== change),
-    { lane: (entry) => entry.lane, compare: comparePending },
+    { delivery: (entry) => entry.delivery, compare: comparePending },
   );
 }
 
@@ -194,7 +209,12 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       const transcript = appendTranscriptCommit(state.transcript, event.item);
       if (transcript === undefined) return { kind: "resnapshot" };
       const reached = state.expectedTip === transcript.tip;
-      // The head and the queue base move in one CAS but arrive as separate
+      const body = event.item.commit.body;
+      const settledToolCalls =
+        body.kind === "message" && body.message.role === "toolResult"
+          ? settleToolCall(state, event.item.commit.run, body.message.toolCallId)
+          : state.settledToolCalls;
+      // The head and the inbox base move in one CAS but arrive as separate
       // frames; the change leaves the queue with the commit that landed it, so
       // no frame shows the message both pending and in the transcript.
       return {
@@ -204,6 +224,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
           transcript,
           pending: withoutPending(state.pending, event.item.commit.change),
           overlay: foldLiveParts(state.overlay, event),
+          settledToolCalls,
           expectedTip: reached ? undefined : state.expectedTip,
         },
       };
@@ -228,6 +249,10 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
           ...base,
           run: event.run,
           overlay,
+          settledToolCalls:
+            terminal || state.run?.runId !== event.run.runId
+              ? EMPTY_SETTLED_TOOL_CALLS
+              : state.settledToolCalls,
           parked: parked.length === state.parked.length ? state.parked : parked,
         },
       };
@@ -300,7 +325,17 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
     }
     case "text_delta":
     case "reasoning_delta":
+      return {
+        kind: "state",
+        state: { ...base, overlay: foldLiveParts(state.overlay, event) },
+      };
     case "tool_progress":
+      if (
+        state.run?.runId !== event.runId ||
+        isTerminalPhase(state.run.phase) ||
+        state.settledToolCalls.has(event.callId)
+      )
+        return { kind: "state", state: base };
       return {
         kind: "state",
         state: { ...base, overlay: foldLiveParts(state.overlay, event) },
@@ -314,10 +349,25 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
           info: typeof event.value === "string" ? { ...state.info, name: event.value } : state.info,
         },
       };
+    case "job": {
+      if (
+        event.job.head !== state.head ||
+        event.job.phase.kind === "running" ||
+        event.job.origin.kind === "user"
+      )
+        return { kind: "state", state: base };
+      return {
+        kind: "state",
+        state: {
+          ...base,
+          overlay: foldLiveParts(state.overlay, event),
+          settledToolCalls: settleToolCall(state, event.job.origin.runId, event.job.origin.callId),
+        },
+      };
+    }
     case "config_queued":
     case "stack":
     case "deleted":
-    case "job":
     case "synced":
     case "diagnostic":
     case "plugins_changed":

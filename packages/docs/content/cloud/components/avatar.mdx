@@ -11,7 +11,7 @@ An image that falls back to initials while it loads or when it fails.
 
 ## Usage
 
-- Always include `AvatarFallback`. It is what a screen reader user and a slow network both get.
+- Always include `AvatarFallback`. It renders until the image loads and again if the image fails.
 - Fallback text is two characters. Nothing longer fits at `xs`.
 - `tone` is for identity, not status. Do not use `green` to mean online.
 - `AvatarImage` needs `alt`. If the avatar sits beside the name it repeats, use `alt=""`.

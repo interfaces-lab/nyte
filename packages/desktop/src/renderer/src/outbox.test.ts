@@ -163,7 +163,7 @@ describe("outbox", () => {
         key: "key-1",
         sessionId: SESSION,
         content: "hello",
-        lane: undefined,
+        delivery: undefined,
         at: 1_000,
         state: { kind: "saving" },
       },

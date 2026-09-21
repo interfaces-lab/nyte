@@ -10,14 +10,14 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { changesFromTurns, turnPartId } from "@nyte-ai/client";
-import type { FileChange, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
+import type { FileChange, RunDiff, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
 import type { ModelThinkingLevel } from "@nyte-ai/schema";
 import type { RenderedTurn } from "./transcript-rows.ts";
 import { filesChangedLabel } from "../workbench/change-tree.ts";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { FileTypeIcon } from "../components/file-type-icon.tsx";
 import { Icon } from "../components/icons.tsx";
-import { focus } from "../components/ui.tsx";
+import { focus, Hint } from "../components/ui.tsx";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
@@ -317,9 +317,14 @@ export function UserMessageView({
         ) : (
           <div aria-busy={edit.saving || undefined} {...stylex.props(turnStyles.userEdit)}>
             {edit.error !== undefined && (
-              <span role="alert" title={edit.error} {...stylex.props(turnStyles.userEditError)}>
-                {edit.error}
-              </span>
+              <Hint
+                content={edit.error}
+                trigger={
+                  <span role="alert" {...stylex.props(turnStyles.userEditError)}>
+                    {edit.error}
+                  </span>
+                }
+              />
             )}
             <ComposerFrame
               surface="follow-up"
@@ -445,48 +450,57 @@ function TurnChangesCard({
     <section aria-label={title} {...stylex.props(turnStyles.changesCard)}>
       <div {...stylex.props(turnStyles.changesHeader)}>
         <span {...stylex.props(turnStyles.changesTitle)}>{title}</span>
-        <BaseButton
-          unstyled
-          type="button"
-          title="Open the Changes panel"
-          onClick={onReview}
-          {...stylex.props(turnStyles.changesReview, focus.ring)}
-        >
-          Review
-        </BaseButton>
+        <Hint
+          content="Open the Changes panel"
+          trigger={
+            <BaseButton
+              unstyled
+              type="button"
+              onClick={onReview}
+              {...stylex.props(turnStyles.changesReview, focus.ring)}
+            >
+              Review
+            </BaseButton>
+          }
+        />
       </div>
       <ul {...stylex.props(turnStyles.changesList)}>
         {files.map((file) => (
           <li key={file.path}>
-            <BaseButton
-              unstyled
-              type="button"
-              title={`Open ${file.path} in Changes`}
-              onClick={() => onOpenFile(file.path)}
-              {...stylex.props(turnStyles.changesFile, focus.ringInset)}
-            >
-              <span {...stylex.props(turnStyles.changesFileIcon)}>
-                <FileTypeIcon path={file.path} />
-              </span>
-              <span {...stylex.props(turnStyles.changesPath)}>
-                {file.path.split("/").at(-1) ?? file.path}
-              </span>
-              <span
-                aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
-                {...stylex.props(turnStyles.changesStats)}
-              >
-                {file.added > 0 && (
-                  <span {...stylex.props(turnStyles.changesAdded)}>
-                    +<AnimatedNumber value={file.added} />
+            <Hint
+              content={`Open ${file.path} in Changes`}
+              trigger={
+                <BaseButton
+                  unstyled
+                  type="button"
+                  aria-label={`Open ${file.path} in Changes`}
+                  onClick={() => onOpenFile(file.path)}
+                  {...stylex.props(turnStyles.changesFile, focus.ringInset)}
+                >
+                  <span {...stylex.props(turnStyles.changesFileIcon)}>
+                    <FileTypeIcon path={file.path} />
                   </span>
-                )}
-                {file.removed > 0 && (
-                  <span {...stylex.props(turnStyles.changesRemoved)}>
-                    -<AnimatedNumber value={file.removed} />
+                  <span {...stylex.props(turnStyles.changesPath)}>
+                    {file.path.split("/").at(-1) ?? file.path}
                   </span>
-                )}
-              </span>
-            </BaseButton>
+                  <span
+                    aria-label={`${String(file.added)} added, ${String(file.removed)} removed`}
+                    {...stylex.props(turnStyles.changesStats)}
+                  >
+                    {file.added > 0 && (
+                      <span {...stylex.props(turnStyles.changesAdded)}>
+                        +<AnimatedNumber value={file.added} />
+                      </span>
+                    )}
+                    {file.removed > 0 && (
+                      <span {...stylex.props(turnStyles.changesRemoved)}>
+                        -<AnimatedNumber value={file.removed} />
+                      </span>
+                    )}
+                  </span>
+                </BaseButton>
+              }
+            />
           </li>
         ))}
       </ul>
@@ -561,8 +575,28 @@ const ResponseView = memo(function ResponseView({
   return markdown === "" ? null : <Prose markdown={markdown} />;
 });
 
+export function changesForTurn(
+  turn: RenderedTurn,
+  runDiff: RunDiff | undefined,
+): readonly FileChange[] {
+  const recorded = changesFromTurns([turn]);
+  if (runDiff === undefined) return recorded;
+  switch (runDiff.kind) {
+    case "tree":
+      return runDiff.files;
+    case "recorded":
+    case "not_found":
+      return recorded;
+    default: {
+      const _exhaustive: never = runDiff;
+      return _exhaustive;
+    }
+  }
+}
+
 export const TurnView = memo(function TurnView({
   turn,
+  runDiff,
   liveTools,
   live,
   cwd,
@@ -573,6 +607,7 @@ export const TurnView = memo(function TurnView({
   waits,
 }: {
   turn: RenderedTurn;
+  runDiff: RunDiff | undefined;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   live?: LiveSnapshot;
   cwd: string | undefined;
@@ -588,7 +623,18 @@ export const TurnView = memo(function TurnView({
   waits: LiveWaits;
 }): ReactElement | null {
   const appearance = useAppearanceSettings();
-  const changes = useMemo(() => changesFromTurns([turn]), [turn]);
+  const changes = useMemo(() => changesForTurn(turn, runDiff), [runDiff, turn]);
+  const changeTotals = useMemo(
+    () =>
+      changes.reduce(
+        (totals, file) => ({
+          added: totals.added + file.added,
+          removed: totals.removed + file.removed,
+        }),
+        { added: 0, removed: 0 },
+      ),
+    [changes],
+  );
   // Progress updates must reuse the settled grouping so summaries can update only live tools.
   const display = useMemo(
     () => (turn.kind === "turn" ? displayTranscriptParts(turn.parts, waits.hidden) : []),
@@ -615,11 +661,12 @@ export const TurnView = memo(function TurnView({
                 <WorkGroupView
                   key={`work:${first === undefined ? turn.id : turnPartId(first)}`}
                   parts={item.parts}
-                  runId={turn.run}
+                  run={turn.run}
                   live={trailing ? live : undefined}
                   liveTools={liveTools}
                   cwd={cwd}
-                  durationMs={turn.durationMs}
+                  added={trailing ? changeTotals.added : 0}
+                  removed={trailing ? changeTotals.removed : 0}
                   running={running && trailing}
                   density={appearance.toolCalls}
                   waits={trailing ? waits : undefined}
@@ -652,11 +699,12 @@ export const TurnView = memo(function TurnView({
           {waits.hidden.size > 0 && display.at(-1)?.kind !== "work" && (
             <WorkGroupView
               parts={[]}
-              runId={turn.run}
+              run={turn.run}
               live={live}
               liveTools={liveTools}
               cwd={cwd}
-              durationMs={turn.durationMs}
+              added={changeTotals.added}
+              removed={changeTotals.removed}
               running={running}
               density={appearance.toolCalls}
               waits={waits}

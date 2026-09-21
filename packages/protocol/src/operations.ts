@@ -4,8 +4,7 @@
  * missing here is refused by both, not silently passed through.
  *
  * The set is the one the desktop already carries over Electron IPC, plus
- * `landing`, `runs.current`, `runs.reply`, `plugins.status.list`, and the
- * share-cursor pair `workspace.current`/`workspace.select`. Omitted
+ * `runs.current`, `runs.reply`, `plugins.status.list`, and the share-cursor pair `workspace.current`/`workspace.select`. Omitted
  * on purpose: `runs.wait` and `runs.compact` take an `AbortSignal` and hold a
  * request open for the length of a model call; a remote client waits by
  * watching `run` events instead, and compaction stays off the wire until
@@ -14,7 +13,7 @@
  * (`messages.list`, `heads.list`, ...) wait for a later revision. Step
  * execution is never remote in this revision.
  */
-import { Type } from "typebox";
+import { Type, Unsafe } from "typebox";
 import type { Static, TSchema } from "typebox";
 import {
   AbortOutcome,
@@ -27,7 +26,6 @@ import {
   JsonValue,
   JobInfo,
   JobActionOutcome,
-  Landing,
   MentionFile,
   ModelInfo,
   MoveOutcome,
@@ -69,6 +67,7 @@ import {
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
+  WorkspaceTarget,
   list,
   optional,
   strict,
@@ -90,13 +89,14 @@ const sessionOnly = strict({ sessionId: SessionId });
 const sessionHead = strict({ sessionId: SessionId, head: Type.Optional(HeadName) });
 const modelRef = strict({ provider: Type.String(), id: Type.String() });
 /** A session's directory, else the host's own workspace. */
-const vcsSession = { sessionId: Type.Optional(SessionId) };
+const workspaceTarget = { target: WorkspaceTarget };
 const vcsExpect = strict({ revision: Type.String() });
-const vcsPaths = Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 });
+const vcsPaths = Unsafe<readonly [string, ...string[]]>(
+  Type.Array(NonEmptyString, { minItems: 1, maxItems: 1000 }),
+);
+const runIds = Unsafe<readonly [string, ...string[]]>(Type.Array(Type.String(), { minItems: 1 }));
 
 export const OPERATIONS = Object.freeze({
-  landing: operation(none, Landing),
-
   "sessions.create": operation(
     optional(
       strict({
@@ -148,7 +148,7 @@ export const OPERATIONS = Object.freeze({
       sessionId: SessionId,
       head: Type.Optional(HeadName),
       content: UserContent,
-      lane: Type.Optional(NonEmptyString),
+      delivery: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("next")])),
       key: Type.Optional(Type.String()),
       agent: Type.Optional(Type.String()),
     }),
@@ -163,7 +163,7 @@ export const OPERATIONS = Object.freeze({
       sessionId: SessionId,
       head: Type.Optional(HeadName),
       change: Oid,
-      lane: NonEmptyString,
+      delivery: Type.Union([Type.Literal("steer"), Type.Literal("next")]),
       content: Type.Optional(UserContent),
       before: Type.Optional(nullable(Oid)),
     }),
@@ -211,10 +211,9 @@ export const OPERATIONS = Object.freeze({
     strict({
       sessionId: SessionId,
       head: Type.Optional(HeadName),
-      runId: Type.String(),
-      paths: Type.Optional(Type.Array(Type.String())),
+      runs: runIds,
     }),
-    RunDiff,
+    list(strict({ run: Type.String(), diff: RunDiff })),
   ),
   "runs.revert": operation(
     strict({
@@ -241,49 +240,49 @@ export const OPERATIONS = Object.freeze({
   "workspace.current": operation(none, WorkspaceSelection),
   "workspace.select": operation(WorkspaceSelectInput, WorkspaceSelectOutcome),
   "workspace.forget": operation(strict({ path: Type.String() }), Type.Void()),
-  "workspace.vcs.snapshot": operation(optional(strict(vcsSession)), VcsSnapshot),
+  "workspace.vcs.snapshot": operation(strict(workspaceTarget), VcsSnapshot),
   "workspace.vcs.diff": operation(
     strict({
-      ...vcsSession,
+      ...workspaceTarget,
       scope: VcsScope,
       paths: Type.Optional(Type.Array(NonEmptyString, { maxItems: 1000 })),
-      ignoreWhitespace: Type.Optional(Type.Boolean()),
+      ignoreWhitespace: Type.Boolean(),
     }),
     list(VcsDiff),
   ),
   "workspace.vcs.contents": operation(
-    strict({ ...vcsSession, scope: VcsScope, path: NonEmptyString }),
+    strict({ ...workspaceTarget, scope: VcsScope, path: NonEmptyString }),
     VcsContents,
   ),
   "workspace.vcs.log": operation(
     strict({
-      ...vcsSession,
+      ...workspaceTarget,
       limit: Type.Integer({ minimum: 1, maximum: 1000 }),
       before: Type.Optional(Revision),
     }),
     VcsLog,
   ),
-  "workspace.vcs.refs": operation(optional(strict(vcsSession)), VcsRefs),
+  "workspace.vcs.refs": operation(strict(workspaceTarget), VcsRefs),
   "workspace.vcs.stage": operation(
-    strict({ ...vcsSession, paths: vcsPaths, staged: Type.Boolean(), expect: vcsExpect }),
+    strict({ ...workspaceTarget, paths: vcsPaths, staged: Type.Boolean(), expect: vcsExpect }),
     VcsPathsOutcome,
   ),
   "workspace.vcs.discard": operation(
-    strict({ ...vcsSession, paths: vcsPaths, expect: vcsExpect }),
+    strict({ ...workspaceTarget, paths: vcsPaths, expect: vcsExpect }),
     VcsDiscardOutcome,
   ),
   "workspace.vcs.commit": operation(
     strict({
-      ...vcsSession,
+      ...workspaceTarget,
       message: Type.String({ minLength: 1, maxLength: 20_000, pattern: "\\S" }),
-      target: VcsCommitTarget,
+      files: VcsCommitTarget,
       expect: vcsExpect,
     }),
     VcsCommitOutcome,
   ),
   "workspace.vcs.createBranch": operation(
     strict({
-      ...vcsSession,
+      ...workspaceTarget,
       name: Type.String({ minLength: 1, maxLength: 255 }),
       checkout: Type.Boolean(),
       expect: vcsExpect,
@@ -291,7 +290,7 @@ export const OPERATIONS = Object.freeze({
     VcsBranchOutcome,
   ),
   "workspace.vcs.push": operation(
-    strict({ ...vcsSession, setUpstream: Type.Boolean(), expect: vcsExpect }),
+    strict({ ...workspaceTarget, setUpstream: Type.Boolean(), expect: vcsExpect }),
     VcsPushOutcome,
   ),
   /**
@@ -301,7 +300,7 @@ export const OPERATIONS = Object.freeze({
    * whole tree is not a payload a phone should receive to show ten rows.
    */
   "workspace.files": operation(
-    optional(strict({ sessionId: Type.Optional(SessionId), query: Type.Optional(Type.String()) })),
+    strict({ ...workspaceTarget, query: Type.Optional(Type.String()) }),
     list(MentionFile),
   ),
 

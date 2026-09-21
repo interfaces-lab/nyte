@@ -5,13 +5,18 @@ description: "Variants, sizes, and an unstyled mode"
 
 ```ts title="Import"
 import { Button } from "@nyte-ai/ui";
-import { Button as ButtonPrimitive } from "@nyte-ai/ui/button";
 ```
 
-`Button` from the package root carries Nyte styling. `ButtonPrimitive` from `@nyte-ai/ui/button` is
-the same component with no styles, for surfaces that own their own visual layer. Use `default` for
-the one primary action on a surface, `outline` for secondary actions beside it, `ghost` for toolbar
-and inline actions, and `destructive` for actions that remove or discard.
+The same name is exported unstyled from its own subpath. Pick one path per file.
+
+```ts title="Unstyled"
+import { Button } from "@nyte-ai/ui/button";
+```
+
+`Button` from the package root carries Nyte styling. Use `default` for the one primary action on a
+surface, `secondary` for a filled action that is not the primary one, `outline` for secondary
+actions beside it, `ghost` for toolbar and inline actions, and `destructive` for actions that
+remove or discard.
 
 ## Usage
 
@@ -35,6 +40,7 @@ and inline actions, and `destructive` for actions that remove or discard.
 
 ```tsx
 <Button>Default</Button>
+<Button variant="secondary">Secondary</Button>
 <Button variant="outline">Outline</Button>
 <Button variant="ghost">Ghost</Button>
 <Button variant="destructive">Destructive</Button>
@@ -70,8 +76,7 @@ and inline actions, and `destructive` for actions that remove or discard.
 ### Rendering as another element
 
 If the element is not a `<button>`, add `nativeButton={false}` so Base UI keeps the keyboard and
-ARIA behavior. The element still has to be one that can take button semantics. `type` is not set
-when `render` is present.
+ARIA behavior. The element still has to be one that can take button semantics.
 
 ```tsx
 <Button render={<div />} nativeButton={false}>
@@ -83,7 +88,7 @@ when `render` is present.
 
 `unstyled` keeps the behavior and drops the StyleX class.
 
-```tsx
+```tsx title="@nyte-ai/ui"
 <Button unstyled xstyle={myStyles.trigger}>
   Product-specific treatment
 </Button>
@@ -91,8 +96,8 @@ when `render` is present.
 
 The subpath export is the same thing without the appearance props.
 
-```tsx
-<ButtonPrimitive className="my-trigger">Product-specific treatment</ButtonPrimitive>
+```tsx title="@nyte-ai/ui/button"
+<Button className="my-trigger">Product-specific treatment</Button>
 ```
 
 ## Props

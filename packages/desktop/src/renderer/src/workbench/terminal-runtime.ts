@@ -288,18 +288,21 @@ async function createView(id: string): Promise<TerminalView | undefined> {
   return view;
 }
 
-/** React owns the mount point; the terminal and scrollback live until the tab closes. */
-export function mountTerminal(id: string, container: HTMLDivElement, focus: boolean): () => void {
+/**
+ * React owns the mount point; the terminal and scrollback live until the tab
+ * closes. A hidden slot keeps its view out of the DOM, so no layout or resize
+ * reaches the PTY until the slot shows again.
+ */
+export function mountTerminal(id: string, container: HTMLDivElement, visible: boolean): () => void {
   let detached = false;
   let element: HTMLDivElement | undefined;
   void createView(id)
     .then((view) => {
-      if (detached || view === undefined) return;
+      if (detached || view === undefined || !visible) return;
       element = view.element;
       container.append(view.element);
       view.fit();
-      if (focus && container.checkVisibility())
-        view.terminal.textarea?.focus({ preventScroll: true });
+      if (container.checkVisibility()) view.terminal.textarea?.focus({ preventScroll: true });
     })
     .catch((cause: unknown) => terminalActions.fail(id, errorMessage(cause)));
   return () => {

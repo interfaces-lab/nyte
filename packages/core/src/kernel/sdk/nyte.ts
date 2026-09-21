@@ -44,7 +44,6 @@ import {
   sessionInfo,
 } from "./snapshot.ts";
 import {
-  DEFAULT_LANDING,
   MAIN,
   NyteClosed,
   UnknownSession,
@@ -70,6 +69,7 @@ import {
   type WaitOutcome,
   type WorkspaceBackend,
   type WorkspaceSelection,
+  type WorkspaceTarget,
 } from "./types.ts";
 
 const NO_VCS = { kind: "failed", reason: "no version control backend" } as const;
@@ -127,22 +127,7 @@ function toModelInfo(model: NyteOptions["model"]): ModelInfo {
 export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const attachments = new Set<Attachment>();
   const detached: unknown[] = [];
-  const landing = options.landing ?? DEFAULT_LANDING;
-
-  /** Where a send with no lane goes: the first lane the runner serves. */
-  const defaultLane = (): string => {
-    const first = landing.lanes[0];
-    if (first === undefined) throw new TypeError("The landing policy has no lane to send to");
-    return first.lane;
-  };
-
-  /** A lane no runner here serves would hold a message forever; refuse it at the door. */
-  const servedLane = (lane: string): string => {
-    if (!landing.lanes.some((policy) => policy.lane === lane)) {
-      throw new TypeError(`Lane ${lane} is not in the landing policy`);
-    }
-    return lane;
-  };
+  const drain = options.drain ?? "one";
 
   const resolveModelRef = (ref: { readonly provider?: string; readonly id: string }) =>
     ref.provider === undefined
@@ -179,13 +164,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   const runners = createRunners({
     options,
     pool,
-    landing: {
-      ...landing,
-      lanes: [
-        ...landing.lanes.filter((lane) => lane.lane !== "background"),
-        { lane: "background", lands: "boundary" as const },
-      ],
-    },
+    drain,
     resolveModel: resolveModelRef,
     jobsFor: (id, pooled) => delegation.jobsFor(id, pooled),
     delegation: {
@@ -198,19 +177,21 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
       detached.push(cause);
     },
   });
-  const delegation = createDelegation({ options, pool, runners, landing });
+  const delegation = createDelegation({ options, pool, runners });
   const relocation = createRelocation({ options, pool, runners, delegation });
 
-  /** One session names its own directory; without one, the folder a new session would start in. */
-  const workspaceCwd = async (sessionId: SessionId | undefined): Promise<string | undefined> => {
+  /** Resolve a protocol target to the directory it names. */
+  const workspaceCwd = async (target: WorkspaceTarget): Promise<string | undefined> => {
     pool.alive();
-    return sessionId === undefined ? pool.cwdForNewSession() : relocation.sessionCwd({ sessionId });
+    return target.kind === "workspace"
+      ? pool.cwdForNewSession()
+      : relocation.sessionCwd({ sessionId: target.sessionId });
   };
   const vcsAt = async (
-    sessionId: SessionId | undefined,
+    target: WorkspaceTarget,
   ): Promise<{ readonly backend: VcsBackend; readonly cwd: string } | undefined> => {
     const backend = options.workspace?.vcs;
-    const cwd = await workspaceCwd(sessionId);
+    const cwd = await workspaceCwd(target);
     return backend === undefined || cwd === undefined ? undefined : { backend, cwd };
   };
   const firstLiveRunAt = async (cwd: string) => {
@@ -235,7 +216,6 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
   }
 
   return {
-    landing,
     advance: runners.advance,
     sessions: {
       async create(input = {}) {
@@ -322,12 +302,16 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
             : { ...withModel, thinkingLevel: input.thinkingLevel };
         const body =
           input.agent === undefined ? withThinking : { ...withThinking, agent: input.agent };
+        const head = input.head ?? MAIN;
+        const current = await pool.readRun(pooled.session, head);
         const outcome = await submit(
           pooled.session,
           attributed(
             {
-              head: input.head ?? MAIN,
-              lane: defaultLane(),
+              head,
+              kind: "passive",
+              delivery:
+                current !== undefined && !isTerminalPhase(current.run.phase) ? "steer" : "next",
               body,
               preparation: { kind: "none" },
             },
@@ -351,7 +335,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const pooled = await pool.open(input.sessionId);
         const { session } = pooled;
         const head = input.head ?? MAIN;
-        const lane = input.lane === undefined ? defaultLane() : servedLane(input.lane);
+        const delivery = input.delivery ?? "next";
         // Clients attach whatever the OS handed them; bound it before it lands.
         const content =
           typeof input.content === "string"
@@ -365,7 +349,8 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         const submission = attributed(
           {
             head,
-            lane,
+            kind: "user",
+            delivery,
             body: input.agent === undefined ? message : { ...message, agent: input.agent },
             ...participantSend,
           },
@@ -403,7 +388,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
             {
               head: input.head ?? MAIN,
               change: input.change,
-              lane: servedLane(input.lane),
+              delivery: input.delivery,
               content,
               before: input.before,
             },
@@ -475,7 +460,7 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
         return waitForHead((await pool.open(input.sessionId)).session, {
           head: input.head ?? MAIN,
           signal: input.signal,
-          drain: landing.drain,
+          drain,
         });
       },
       async reply(input): Promise<ReplyOutcome> {
@@ -672,57 +657,61 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
        */
       async files(input) {
         pool.alive();
-        const cwd = await workspaceCwd(input?.sessionId);
+        const cwd = await workspaceCwd(input.target);
         if (cwd === undefined) return [];
-        return (await options.workspace?.files({ cwd, query: input?.query })) ?? [];
+        return (await options.workspace?.files({ cwd, query: input.query })) ?? [];
       },
       vcs: {
         async snapshot(input) {
-          const at = await vcsAt(input?.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? { kind: "none" } : at.backend.snapshot({ cwd: at.cwd });
         },
         async diff(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? [] : at.backend.diff({ ...input, cwd: at.cwd });
         },
         async contents(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           if (at === undefined) {
-            return { path: input.path, old: null, new: null, binary: false, truncated: false };
+            return {
+              path: input.path,
+              old: { kind: "absent" },
+              new: { kind: "absent" },
+            };
           }
           return at.backend.contents({ ...input, cwd: at.cwd });
         },
         async log(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined
             ? { commits: [], hasMore: false }
             : at.backend.log({ ...input, cwd: at.cwd });
         },
         async refs(input) {
-          const at = await vcsAt(input?.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? { local: [], remote: [] } : at.backend.refs({ cwd: at.cwd });
         },
         async stage(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? NO_VCS : at.backend.stage({ ...input, cwd: at.cwd });
         },
         async discard(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           if (at === undefined) return NO_VCS;
           const run = await firstLiveRunAt(at.cwd);
           if (run !== undefined) return { kind: "busy", run };
           return at.backend.discard({ ...input, cwd: at.cwd });
         },
         async commit(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? NO_VCS : at.backend.commit({ ...input, cwd: at.cwd });
         },
         async createBranch(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? NO_VCS : at.backend.createBranch({ ...input, cwd: at.cwd });
         },
         async push(input) {
-          const at = await vcsAt(input.sessionId);
+          const at = await vcsAt(input.target);
           return at === undefined ? NO_VCS : at.backend.push({ ...input, cwd: at.cwd });
         },
       },

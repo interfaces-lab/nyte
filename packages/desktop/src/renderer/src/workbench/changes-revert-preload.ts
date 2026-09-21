@@ -1,6 +1,12 @@
 // Standalone browser-test preload for the changes panel's revert route.
 // Import before any renderer module reads window.nyte.
-import type { VcsDiscardOutcome, VcsFile, VcsLog, VcsRefs, VcsSnapshot } from "@nyte-ai/protocol";
+import type {
+  VcsDiscardOutcome,
+  VcsLog,
+  VcsRefs,
+  VcsSnapshot,
+  VcsWorktreeFile,
+} from "@nyte-ai/protocol";
 import type { NyteBridge } from "../../../shared/ipc.ts";
 
 export const TRACKED = "src/working.ts";
@@ -11,8 +17,10 @@ const patchOf = (path: string): string =>
 
 /** The scripted working tree, plus what the panel asked of it. */
 interface RevertScript {
-  files: VcsFile[];
+  files: VcsWorktreeFile[];
   revision: number;
+  snapshotReads: number;
+  diffReads: number;
   reverts: { readonly paths: readonly string[] }[];
   /** Answers the next revert with this skip reason instead of reverting. */
   skipReason: string | undefined;
@@ -24,27 +32,41 @@ export const revertScript: RevertScript = {
     { path: UNTRACKED, kind: "untracked" },
   ],
   revision: 1,
+  snapshotReads: 0,
+  diffReads: 0,
   reverts: [],
   skipReason: undefined,
 };
 
-const vcsSnapshot = async (): Promise<VcsSnapshot> => ({
-  kind: "repository",
-  root: "changes-revert-repo",
-  revision: `revision-${String(revertScript.revision)}`,
-  head: { oid: "c0ffee0", branch: { kind: "named", name: "main", upstream: null }, base: null },
-  staged: [],
-  unstaged: revertScript.files,
-});
+const vcsSnapshot = async (): Promise<VcsSnapshot> => {
+  revertScript.snapshotReads += 1;
+  return {
+    kind: "repository",
+    root: "changes-revert-repo",
+    revision: `revision-${String(revertScript.revision)}`,
+    head: {
+      kind: "attached",
+      oid: "c0ffee0",
+      branch: "main",
+      upstream: null,
+      base: null,
+    },
+    staged: [],
+    unstaged: revertScript.files,
+  };
+};
 
-const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) =>
-  (input.paths ?? revertScript.files.map((file) => file.path)).map((path) => ({
+const diff: NyteBridge["workspace"]["vcs"]["diff"] = async (input) => {
+  revertScript.diffReads += 1;
+  return (input.paths ?? revertScript.files.map((file) => file.path)).map((path) => ({
     path,
-    kind: "modified",
+    status: "modified",
+    kind: "text",
     added: 1,
     removed: 0,
     patch: patchOf(path),
   }));
+};
 
 const discard: NyteBridge["workspace"]["vcs"]["discard"] = async (
   input,

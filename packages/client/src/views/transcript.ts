@@ -1,10 +1,12 @@
 import type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
-import type { Commit, CommitBody, Oid } from "@nyte-ai/protocol";
+import type { Commit, CommitBody, Oid, ToolClass } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
 type UserMessage = Extract<MessageBody["message"], { role: "user" }>;
 type AssistantMessage = Extract<MessageBody["message"], { role: "assistant" }>;
 type ToolResultMessage = Extract<MessageBody["message"], { role: "toolResult" }>;
+type AssistantCommit = Extract<Commit, { readonly calls: Readonly<Record<string, ToolClass>> }>;
+type ToolResultCommit = Extract<Commit, { readonly call: ToolClass }>;
 
 /** The turn shapes are wire types: a snapshot carries them. Declared in `@nyte-ai/protocol`. */
 export type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
@@ -90,14 +92,16 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
   if (last?.kind === "turn") {
     const turn = last === builder.sharedTail ? { ...last, parts: [...last.parts] } : last;
     turn.durationMs = Math.max(turn.durationMs, item.commit.at - turn.startedAt);
-    if (turn.run === undefined && item.commit.run !== undefined) turn.run = item.commit.run;
+    if (turn.run.kind === "none" && item.commit.run !== undefined) {
+      turn.run = { kind: "run", id: item.commit.run };
+    }
     builder.items[builder.items.length - 1] = turn;
     return turn;
   }
   const turn: ConversationTurn = {
     kind: "turn",
     id: item.oid,
-    ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
+    run: item.commit.run === undefined ? { kind: "none" } : { kind: "run", id: item.commit.run },
     parts: [],
     startedAt: item.commit.at,
     durationMs: 0,
@@ -113,11 +117,12 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
     commit: item.oid,
     parent: item.commit.parent,
     content: message.content,
+    at: item.commit.at,
   };
   items.push({
     kind: "turn",
     id: item.oid,
-    ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
+    run: item.commit.run === undefined ? { kind: "none" } : { kind: "run", id: item.commit.run },
     startedAt: item.commit.at,
     durationMs: 0,
     parts: [item.commit.key === undefined ? part : { ...part, key: item.commit.key }],
@@ -126,10 +131,10 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
 
 function appendAssistant(
   builder: TranscriptBuilder,
-  item: CommitItem,
+  item: CommitItem & { readonly commit: AssistantCommit },
   message: AssistantMessage,
 ): void {
-  const { failure } = item.commit;
+  const failure = item.commit.outcome.kind === "failed" ? item.commit.outcome.failure : undefined;
   if (!hasVisibleAssistantContent(message) && failure === undefined) return;
   const turn = landingTurn(builder, item);
   if (failure !== undefined) turn.failure = failure;
@@ -137,7 +142,13 @@ function appendAssistant(
     switch (part.type) {
       case "text":
         if (part.text.trim() !== "") {
-          turn.parts.push({ kind: "assistant", commit: item.oid, contentIndex, text: part.text });
+          turn.parts.push({
+            kind: "assistant",
+            commit: item.oid,
+            contentIndex,
+            text: part.text,
+            at: item.commit.at,
+          });
         }
         break;
       case "thinking":
@@ -147,16 +158,22 @@ function appendAssistant(
             commit: item.oid,
             contentIndex,
             text: part.thinking,
+            at: item.commit.at,
           });
         }
         break;
-      case "toolCall":
+      case "toolCall": {
+        const toolClass = item.commit.calls[part.id];
+        if (toolClass === undefined)
+          throw new Error(`Assistant commit has no class for ${part.id}`);
         turn.parts.push({
           kind: "tool",
           callId: part.id,
-          class: item.commit.calls?.[part.id] ?? { kind: "custom", label: part.name },
+          class: toolClass,
+          at: item.commit.at,
         });
         break;
+      }
       default: {
         const _exhaustive: never = part;
         return _exhaustive;
@@ -168,7 +185,7 @@ function appendAssistant(
 /** A result settles the call it answers, or stands alone when the call is not on this branch. */
 function appendToolResult(
   builder: TranscriptBuilder,
-  item: CommitItem,
+  item: CommitItem & { readonly commit: ToolResultCommit },
   message: ToolResultMessage,
 ): void {
   const turn = landingTurn(builder, item);
@@ -177,20 +194,21 @@ function appendToolResult(
     output: toolResultText(message),
     isError: message.isError,
   };
-  const settled = item.commit.calls?.[message.toolCallId];
+  const settled = item.commit.call;
   const index = turn.parts.findIndex(
     (part) => part.kind === "tool" && part.callId === message.toolCallId,
   );
   const call = turn.parts[index];
   if (call?.kind === "tool") {
-    turn.parts[index] = { ...call, class: settled ?? call.class, result };
+    turn.parts[index] = { ...call, class: settled, result, at: item.commit.at };
     return;
   }
   turn.parts.push({
     kind: "tool",
     callId: message.toolCallId,
-    class: settled ?? { kind: "custom", label: message.toolName },
+    class: settled,
     result,
+    at: item.commit.at,
   });
 }
 
@@ -219,19 +237,20 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
   const { body } = item.commit;
   switch (body.kind) {
     case "message": {
-      const { message } = body;
-      switch (message.role) {
-        case "user":
-          appendUser(items, item, message);
-          break;
+      switch (body.message.role) {
         case "assistant":
-          appendAssistant(builder, item, message);
+          if (!("calls" in item.commit)) throw new Error("Assistant commit has no call classes");
+          appendAssistant(builder, { ...item, commit: item.commit }, body.message);
           break;
         case "toolResult":
-          appendToolResult(builder, item, message);
+          if (!("call" in item.commit)) throw new Error("Tool result commit has no call class");
+          appendToolResult(builder, { ...item, commit: item.commit }, body.message);
+          break;
+        case "user":
+          appendUser(items, item, body.message);
           break;
         default: {
-          const _exhaustive: never = message;
+          const _exhaustive: never = body.message;
           return _exhaustive;
         }
       }
@@ -244,7 +263,8 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       items.push({
         kind: "turn",
         id: item.oid,
-        ...(item.commit.run === undefined ? {} : { run: item.commit.run }),
+        run:
+          item.commit.run === undefined ? { kind: "none" } : { kind: "run", id: item.commit.run },
         startedAt: item.commit.at,
         durationMs: 0,
         parts: [],

@@ -100,8 +100,6 @@ export interface RemotePlugins {
 export type RemoteWatchInput = WatchInput & { readonly signal?: AbortSignal };
 
 export interface RemoteNyte {
-  /** The landing policy in force on the host: the lanes `messages.send` may name. */
-  readonly landing: OperationFn<"landing">;
   readonly sessions: RemoteSessions;
   readonly messages: RemoteMessages;
   readonly runs: RemoteRuns;

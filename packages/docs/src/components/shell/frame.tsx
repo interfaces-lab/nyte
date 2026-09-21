@@ -16,9 +16,9 @@ export function ShellFrame({
   children: ReactNode;
 }) {
   return (
-    <div {...withShell(skin, stylex.props(shell.fillLock))}>
-      <div className={`${skin}-frame`}>
-        <ShellSidebar skin={skin} label={label} groups={groups} />
+    <div {...withShell(`shell ${skin}`, stylex.props(shell.fillLock))}>
+      <div className="shell-frame">
+        <ShellSidebar label={label} groups={groups} />
         {children}
       </div>
     </div>

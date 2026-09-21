@@ -48,28 +48,27 @@ const ipc = vi.hoisted(() => {
 import {
   applyTerminalEvent,
   attachTerminalOutput,
-  getActiveTerminal,
-  getJobTerminal,
-  getTerminals,
+  getTerminal,
   isJobTerminal,
   isShellTerminal,
+  openJobTerminal,
+  openSessionJobTerminal,
   terminalActions,
 } from "./terminal-store.ts";
+import { createWorkbenchController, workbenchViewKey } from "./controller.ts";
 import type { TerminalOutput } from "./terminal-store.ts";
 
-let ownerIndex = 0;
-
-function owner(): string {
-  ownerIndex += 1;
-  return `terminal-store-test-${String(ownerIndex)}`;
+let index = 0;
+function tabId(): string {
+  index += 1;
+  return `terminal-tab-${String(index)}`;
 }
 
 const firstSession = sessionId("terminal-session-1");
-const secondSession = sessionId("terminal-session-2");
 
-function command(change: Partial<JobInfo> = {}): JobInfo {
+function command(id: string, change: Partial<JobInfo> = {}): JobInfo {
   return {
-    id: "job-1",
+    id,
     origin: { kind: "run", runId: "run-1", callId: "call-1" },
     head: "main",
     command: "Run tests",
@@ -100,7 +99,6 @@ function sink() {
 
 beforeEach(() => {
   ipc.jobsCancel.mockClear();
-  ipc.jobsCancel.mockResolvedValue({ kind: "applied" });
   ipc.terminalAcknowledge.mockClear();
   ipc.terminalClose.mockClear();
   ipc.terminalCreate.mockClear();
@@ -108,152 +106,141 @@ beforeEach(() => {
   ipc.terminalWrite.mockClear();
 });
 
-describe("job-backed terminal tabs", () => {
-  test("deduplicates an owner/session/job identity and selects the existing tab", () => {
-    const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command());
-    terminalActions.openJob(currentOwner, firstSession, command({ command: "Updated title" }));
+describe("job-backed terminal runtime", () => {
+  test("a job start adds an unfocused agent-owned tab with running runtime state", () => {
+    const controller = createWorkbenchController();
+    const view = workbenchViewKey({ paneKey: tabId(), target: { kind: "home" } });
+    const browser = controller.actions.openTab({
+      view,
+      tab: { kind: "browser", url: "about:blank" },
+      activate: true,
+    });
+    const job = command(`job-${tabId()}`);
 
-    const tabs = getTerminals(currentOwner);
-    assert.equal(tabs.length, 1);
-    assert.equal(tabs[0]?.title, "Updated title");
-    assert.equal(getActiveTerminal(currentOwner)?.id, tabs[0]?.id);
-    assert.equal(getJobTerminal(currentOwner, firstSession, "job-1")?.id, tabs[0]?.id);
+    const id = openJobTerminal({
+      controller,
+      view,
+      sessionId: firstSession,
+      job,
+      activate: false,
+    });
+
+    const tab = controller.getView(view).tabs.find((candidate) => candidate.id === id);
+    assert.deepEqual(tab, {
+      id,
+      kind: "terminal",
+      owner: { kind: "agent", sessionId: firstSession, jobId: job.id },
+    });
+    assert.equal(controller.getView(view).active, browser);
+    const terminal = getTerminal(id);
+    assert.ok(terminal);
+    assert.ok(isJobTerminal(terminal));
+    assert.equal(terminal.state.kind, "running");
   });
 
-  test("isolates matching job IDs by owner and session", () => {
-    const leftOwner = owner();
-    const rightOwner = owner();
-    terminalActions.openJob(leftOwner, firstSession, command());
-    terminalActions.openJob(leftOwner, secondSession, command());
-    terminalActions.openJob(rightOwner, firstSession, command());
+  test("a child job opens in the displayed parent session view", () => {
+    const controller = createWorkbenchController();
+    const parentSession = sessionId("displayed-parent");
+    const childSession = sessionId("tray-child");
+    const job = command(`job-${tabId()}`);
 
-    terminalActions.syncJobs(leftOwner, firstSession, [
-      command({ command: "Only this tab", phase: { kind: "completed" }, output: "done\n" }),
-    ]);
+    const id = openSessionJobTerminal({
+      controller,
+      displayedSessionId: parentSession,
+      jobSessionId: childSession,
+      job,
+      activate: true,
+    });
 
-    assert.equal(getJobTerminal(leftOwner, firstSession, "job-1")?.title, "Only this tab");
-    assert.equal(getJobTerminal(leftOwner, firstSession, "job-1")?.state.kind, "completed");
-    assert.equal(getJobTerminal(leftOwner, secondSession, "job-1")?.title, "Run tests");
-    assert.equal(getJobTerminal(rightOwner, firstSession, "job-1")?.title, "Run tests");
+    const parentView = workbenchViewKey({
+      paneKey: "stage",
+      target: { kind: "session", sessionId: parentSession },
+    });
+    const childView = workbenchViewKey({
+      paneKey: "stage",
+      target: { kind: "session", sessionId: childSession },
+    });
+    assert.equal(controller.getView(parentView).active, id);
+    assert.deepEqual(controller.getView(parentView).tabs[0], {
+      id,
+      kind: "terminal",
+      owner: { kind: "agent", sessionId: childSession, jobId: job.id },
+    });
+    assert.deepEqual(controller.getView(childView).tabs, []);
   });
 
-  test("streams cumulative and bounded snapshots without repeated prefixes", () => {
-    const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command());
-    const tab = getJobTerminal(currentOwner, firstSession, "job-1");
-    assert.ok(tab);
+  test("binds output and job state to the controller tab ID", () => {
+    const id = tabId();
+    const job = command(`job-${id}`);
+    terminalActions.openJob({ id, sessionId: firstSession, job });
     const output = sink();
-    attachTerminalOutput(tab.id, output);
-    assert.equal(output.contents, "starting\n");
+    attachTerminalOutput(id, output);
 
-    terminalActions.syncJobs(currentOwner, firstSession, [
-      command({ output: "starting\nrunning\n" }),
+    terminalActions.syncJobs(firstSession, [
+      { ...job, command: "Updated title", output: "starting\nrunning\n" },
     ]);
-    assert.equal(output.contents, "starting\nrunning\n");
-    terminalActions.syncJobs(currentOwner, firstSession, [
-      command({ output: "starting\nrunning\n" }),
-    ]);
-    assert.equal(output.contents, "starting\nrunning\n");
 
-    const full = "R".repeat(50_000);
-    terminalActions.syncJobs(currentOwner, firstSession, [command({ output: full })]);
-    assert.equal(output.contents, full);
-
-    const bounded = "R".repeat(40_000) + "N".repeat(10_000);
-    terminalActions.syncJobs(currentOwner, firstSession, [command({ output: bounded })]);
-    assert.equal(output.contents, bounded);
-    assert.equal(getJobTerminal(currentOwner, firstSession, "job-1")?.source.output, bounded);
-    terminalActions.syncJobs(currentOwner, firstSession, [command({ output: "Finished\n" })]);
-    assert.equal(output.contents, "Finished\n");
+    const terminal = getTerminal(id);
+    assert.ok(terminal);
+    assert.ok(isJobTerminal(terminal));
+    assert.equal(terminal.title, "Updated title");
+    assert.equal(output.contents, "starting\nrunning\n");
   });
 
-  test("closing and reopening a running job only changes its workbench view", async () => {
-    const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command());
-    const tab = getJobTerminal(currentOwner, firstSession, "job-1");
-    assert.ok(tab);
+  test("closing an agent tab leaves the queried job running", async () => {
+    const id = tabId();
+    const job = command(`job-${id}`);
+    terminalActions.openJob({ id, sessionId: firstSession, job });
 
-    await terminalActions.close(tab.id);
-
-    expect(ipc.jobsCancel).not.toHaveBeenCalled();
-    expect(ipc.terminalCreate).not.toHaveBeenCalled();
-    expect(ipc.terminalClose).not.toHaveBeenCalled();
-    expect(ipc.terminalWrite).not.toHaveBeenCalled();
-    expect(ipc.terminalResize).not.toHaveBeenCalled();
-    expect(ipc.terminalAcknowledge).not.toHaveBeenCalled();
-    assert.equal(getJobTerminal(currentOwner, firstSession, "job-1"), undefined);
-    terminalActions.openJob(currentOwner, firstSession, command({ output: "Still running\n" }));
-    assert.equal(getTerminals(currentOwner).length, 1);
-    assert.equal(
-      getJobTerminal(currentOwner, firstSession, "job-1")?.source.output,
-      "Still running\n",
-    );
-    expect(ipc.jobsCancel).not.toHaveBeenCalled();
-    expect(ipc.terminalCreate).not.toHaveBeenCalled();
-  });
-
-  test("removes completed jobs without cancellation", async () => {
-    const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command({ phase: { kind: "completed" } }));
-    const tab = getJobTerminal(currentOwner, firstSession, "job-1");
-    assert.ok(tab);
-
-    await terminalActions.close(tab.id);
+    await terminalActions.close(id);
 
     expect(ipc.jobsCancel).not.toHaveBeenCalled();
     expect(ipc.terminalClose).not.toHaveBeenCalled();
-    assert.equal(getJobTerminal(currentOwner, firstSession, "job-1"), undefined);
+    assert.equal(job.phase.kind, "running");
+    assert.equal(getTerminal(id), undefined);
   });
 
-  test("keeps renderer failure and retry separate from the running job", () => {
-    const currentOwner = owner();
-    terminalActions.openJob(currentOwner, firstSession, command());
-    const tab = getJobTerminal(currentOwner, firstSession, "job-1");
-    assert.ok(tab);
+  test("keeps renderer failure separate from command state", () => {
+    const id = tabId();
+    terminalActions.openJob({ id, sessionId: firstSession, job: command(`job-${id}`) });
 
-    terminalActions.fail(tab.id, "Canvas rendering is unavailable");
-    const failed = getJobTerminal(currentOwner, firstSession, "job-1");
-    assert.equal(failed?.state.kind, "running");
-    assert.deepEqual(failed?.rendering, {
+    terminalActions.fail(id, "Canvas rendering is unavailable");
+    const terminal = getTerminal(id);
+    assert.ok(terminal);
+    assert.ok(isJobTerminal(terminal));
+    assert.equal(terminal.state.kind, "running");
+    assert.deepEqual(terminal.rendering, {
       kind: "failed",
       message: "Canvas rendering is unavailable",
     });
     expect(ipc.jobsCancel).not.toHaveBeenCalled();
-    expect(ipc.terminalClose).not.toHaveBeenCalled();
-
-    terminalActions.retryRender(tab.id);
-    assert.deepEqual(getJobTerminal(currentOwner, firstSession, "job-1")?.rendering, {
-      kind: "ready",
-    });
   });
 });
 
-describe("shell terminal tabs", () => {
+describe("shell terminal runtime", () => {
   test("keeps host create, queued output, exit, and close behavior", async () => {
-    const currentOwner = owner();
-    await terminalActions.create(currentOwner, "/workspace");
-    const tab = getTerminals(currentOwner)[0];
+    const id = tabId();
+    await terminalActions.create({ id, workspacePath: "/workspace" });
+    const tab = getTerminal(id);
     assert.ok(tab);
     assert.ok(isShellTerminal(tab));
     assert.equal(tab.state.kind, "running");
     assert.equal(tab.title, "zsh");
-    assert.equal(tab.cwd, "/workspace");
-    expect(ipc.terminalCreate).toHaveBeenCalledWith({ id: tab.id, workspacePath: "/workspace" });
+    expect(ipc.terminalCreate).toHaveBeenCalledWith({ id, workspacePath: "/workspace" });
 
-    applyTerminalEvent({ kind: "terminal_data", id: tab.id, data: "shell output" });
+    applyTerminalEvent({ kind: "terminal_data", id, data: "shell output" });
     const output = sink();
-    attachTerminalOutput(tab.id, output);
+    attachTerminalOutput(id, output);
     assert.equal(output.contents, "shell output");
-    applyTerminalEvent({ kind: "terminal_exit", id: tab.id, exitCode: 7 });
-    const exited = getTerminals(currentOwner)[0];
+    applyTerminalEvent({ kind: "terminal_exit", id, exitCode: 7 });
+    const exited = getTerminal(id);
     assert.ok(exited);
     assert.ok(!isJobTerminal(exited));
     assert.deepEqual(exited.state, { kind: "exited", exitCode: 7 });
 
-    await terminalActions.close(tab.id);
-    expect(ipc.terminalClose).toHaveBeenCalledWith({ id: tab.id });
+    await terminalActions.close(id);
+    expect(ipc.terminalClose).toHaveBeenCalledWith({ id });
     expect(ipc.jobsCancel).not.toHaveBeenCalled();
-    assert.equal(getTerminals(currentOwner).length, 0);
+    assert.equal(getTerminal(id), undefined);
   });
 });

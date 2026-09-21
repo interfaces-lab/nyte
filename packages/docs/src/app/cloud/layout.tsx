@@ -2,6 +2,7 @@ import { ThemeProvider } from "next-themes";
 import { SiteNav } from "~/components/site-nav";
 import { ShellFrame } from "~/components/shell/frame";
 import { cloudNavGroups } from "~/lib/cloud-nav";
+import "~/shell.css";
 import "./cloud.css";
 
 /*

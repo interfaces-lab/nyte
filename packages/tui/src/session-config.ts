@@ -13,8 +13,8 @@
  * message was pressed under is dispatched exactly as captured, and later
  * intents wait until that message is admitted or abandoned. This orders
  * admission: the config commit is queued before the message and later config
- * commits after it. Which run a message finally executes under across core's
- * lanes is core's landing policy, not a promise made here.
+ * commits after it. Which run a message finally executes under follows core's
+ * delivery timing, not a promise made here.
  */
 import type { Api, Model } from "@nyte-ai/ai";
 import type { ConfigureOutcome, ThinkingLevel } from "@nyte-ai/core";

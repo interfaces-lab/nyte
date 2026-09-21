@@ -7,7 +7,6 @@
  * Main owns request decoding and reply construction. Preload preserves each
  * path's input/output relationship instead of widening transport payloads.
  */
-import { DEFAULT_LANDING } from "@nyte-ai/core";
 import type { SessionEvent } from "@nyte-ai/core";
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { APP_MENU_COMMAND_CHANNEL, APP_MENU_READY_CHANNEL } from "../shared/app-menu.ts";
@@ -77,8 +76,6 @@ function editorOperation<P extends WorkspaceEditorOperation>(operation: P) {
 }
 
 const bridge = {
-  // The host composes `createNyte` without a landing, so the policy in force is the default.
-  landing: DEFAULT_LANDING,
   sessions: {
     create: object("sessions.create"),
     get: object("sessions.get"),

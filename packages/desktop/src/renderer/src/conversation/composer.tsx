@@ -6,8 +6,8 @@
  * The frame and behavior stay shared.
  *
  * Admission is open (invariant 5): sending while a run is live is not an
- * error. Enter sends to the lane that lands at the next response boundary (it
- * steers), Cmd/Ctrl+Enter to the lane that waits for an idle head (it queues a
+ * error. Enter sends to the delivery that lands at the next response boundary (it
+ * steers), Cmd/Ctrl+Enter to the delivery that waits for an idle head (it queues a
  * follow-up), both read from the landing policy. The toolbar card shows
  * still-pending queue items with edit, cancel, and "send now"
  * (`redeliver`), Enter on an empty composer sends the first of them now, and
@@ -18,7 +18,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Lane, PendingItem, SessionId } from "@nyte-ai/protocol";
+import type { Delivery, PendingItem, SessionId } from "@nyte-ai/protocol";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
@@ -54,10 +54,10 @@ import { attachComposerFiles } from "./composer-files.ts";
 import type { ComposerImageAttachment } from "./composer-files.ts";
 import {
   composerEnterAction,
-  laneRoles,
+  deliveryChoices,
   modifierKeyLabel,
   nextToSteer,
-  submissionLane,
+  submissionDelivery,
 } from "./composer-keys.ts";
 import type { SubmitAction } from "./composer-keys.ts";
 import { composerMessageContent, composerSendInput, composerSendPlan } from "./composer-send.ts";
@@ -168,8 +168,8 @@ const SessionModelChip = memo(function SessionModelChip({
 type ComposerEditing =
   | {
       readonly kind: "queued";
-      /** The queued item's lane: Enter keeps it, the modifier swaps it for the other role. */
-      readonly lane: Lane;
+      /** The queued item's delivery: Enter keeps it, the modifier swaps it for the other role. */
+      readonly delivery: Delivery;
       readonly onCancel: () => void;
     }
   | {
@@ -187,7 +187,7 @@ interface ComposerFrameProps {
   /** The parent clears the exact live document passed here and restores it if the send is refused. */
   onSubmit: (
     submission: ComposerSubmission,
-    lane: Lane,
+    delivery: Delivery,
     document: ComposerDocumentState,
   ) => boolean | Promise<boolean>;
   placeholder: string;
@@ -261,7 +261,7 @@ export function ComposerFrame({
     hasConversationContext,
     references,
   });
-  const roles = useMemo(() => laneRoles(nyte.landing), []);
+  const roles = useMemo(() => deliveryChoices, []);
   const canAttach = onFilesSelected !== undefined;
   const hasInstructionChip = references.some((reference) => reference.kind !== "mention");
   const canSubmit =
@@ -296,7 +296,7 @@ export function ComposerFrame({
           : "Send";
   const sendTitle =
     editing?.kind === "queued"
-      ? editing.lane === roles.steer
+      ? editing.delivery === roles.steer
         ? `Update (Enter) · Queue for later instead (${modifier}Enter)`
         : `Update (Enter) · Send now instead (${modifier}Enter)`
       : editing?.kind === "message"
@@ -351,7 +351,11 @@ export function ComposerFrame({
     return Promise.resolve(
       onSubmit(
         submission,
-        submissionLane(action, roles, editing?.kind === "queued" ? editing.lane : undefined),
+        submissionDelivery(
+          action,
+          roles,
+          editing?.kind === "queued" ? editing.delivery : undefined,
+        ),
         currentDocument,
       ),
     )
@@ -442,9 +446,7 @@ export function ComposerFrame({
           if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
           setDragging(false);
         }}
-        onDrop={(event) => {
-          // The default would navigate the window to the dropped file; a parent
-          // transcript may also bind addFiles, so don't enqueue twice either.
+        onDropCapture={(event) => {
           event.preventDefault();
           event.stopPropagation();
           setDragging(false);
@@ -714,7 +716,7 @@ type PendingRowAction =
 
 interface PendingEdit {
   readonly change: PendingItem["change"];
-  readonly lane: Lane;
+  readonly delivery: Delivery;
   readonly content: PendingItem["content"];
 }
 
@@ -739,7 +741,7 @@ export function Composer({
 }: {
   sessionId: SessionId;
   working: boolean;
-  /** Durable queue items waiting behind a live run, in the lanes the tray shows. */
+  /** Durable queue items waiting behind a live run, in the deliverys the tray shows. */
   pending: readonly PendingItem[];
   /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
   unsent: readonly OutboxRow[];
@@ -774,7 +776,7 @@ export function Composer({
   // A thread always has an open project behind it.
   const workspaceFiles = useMentionFiles(true);
   const mentionFiles = composerSource(workspaceFiles.data, workspaceFiles.isError);
-  const roles = useMemo(() => laneRoles(nyte.landing), []);
+  const roles = useMemo(() => deliveryChoices, []);
   // Sends settle later than the render that started them; they read the draft as it is then.
   const latestViewState = useRef(currentViewState);
 
@@ -869,7 +871,7 @@ export function Composer({
 
   const send = async (
     submission: ComposerSubmission,
-    lane: Lane,
+    delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<boolean> => {
     if (disabled || attachmentReads !== 0) return false;
@@ -878,7 +880,7 @@ export function Composer({
       submission,
       attachments: sentAttachments,
       commands: pluginCatalog.data?.commands ?? [],
-      lane,
+      delivery,
     });
     if (plan.kind === "empty") return false;
     const edit = activePendingEdit;
@@ -901,7 +903,7 @@ export function Composer({
         const outcome = await nyte.messages.redeliver({
           sessionId,
           change: edit.change,
-          lane,
+          delivery,
           content,
         });
         refreshThread(sessionId);
@@ -942,7 +944,7 @@ export function Composer({
             });
             return true;
           case "prompt":
-            await outbox.submit({ sessionId, content: outcome.prompt, lane: plan.lane });
+            await outbox.submit({ sessionId, content: outcome.prompt, delivery: plan.delivery });
             return true;
           case "not_found":
             break;
@@ -965,7 +967,7 @@ export function Composer({
         ? plan.content
         : composerMessageContent(submission.text.trim(), sentAttachments, submission.references);
     try {
-      await outbox.submit(composerSendInput(sessionId, { kind: "message", content, lane }));
+      await outbox.submit(composerSendInput(sessionId, { kind: "message", content, delivery }));
       return true;
     } catch (cause: unknown) {
       refuse(`Couldn't save the message: ${errorMessage(cause)}`, sent);
@@ -1003,7 +1005,7 @@ export function Composer({
       const outcome = await nyte.messages.redeliver({
         sessionId,
         change: item.change,
-        lane: roles.steer,
+        delivery: roles.steer,
       });
       refreshThread(sessionId);
       setRowAction(
@@ -1037,7 +1039,7 @@ export function Composer({
   const beginEdit = (item: PendingItem): void => {
     if (!canBeginEdit) return;
     const text = messageDraftText(userMessageText(item.content));
-    setPendingEdit({ change: item.change, lane: item.lane, content: item.content });
+    setPendingEdit({ change: item.change, delivery: item.delivery, content: item.content });
     setFeedback(undefined);
     setDocument({ text, selectionStart: text.length, selectionEnd: text.length });
     editorRef.current?.focus();
@@ -1064,7 +1066,7 @@ export function Composer({
             const action = rowActions.get(item.change);
             const editingThis = activePendingEdit?.change === item.change;
             const busyRow = action?.kind === "cancelling" || action?.kind === "sending";
-            const steering = item.lane === roles.steer;
+            const steering = item.delivery === roles.steer;
             return (
               <div
                 role="status"
@@ -1228,7 +1230,7 @@ export function Composer({
           editing={
             activePendingEdit === undefined
               ? undefined
-              : { kind: "queued", lane: activePendingEdit.lane, onCancel: cancelEdit }
+              : { kind: "queued", delivery: activePendingEdit.delivery, onCancel: cancelEdit }
           }
         />
       </div>

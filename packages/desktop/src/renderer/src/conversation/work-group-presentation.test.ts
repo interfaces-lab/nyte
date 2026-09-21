@@ -9,6 +9,8 @@ import type { WorkGroupPresentationInput } from "./work-group-presentation.ts";
 const defaults = {
   parts: [],
   durationMs: 1200,
+  added: 0,
+  removed: 0,
   running: false,
   stale: false,
   awaiting: 0,
@@ -31,24 +33,23 @@ const patch: ToolClass = {
 };
 
 function pending(callId: string, toolClass: ToolClass): ToolTurnPart {
-  return { kind: "tool", callId, class: toolClass };
+  return { kind: "tool", callId, class: toolClass, at: 0 };
 }
 
 function settled(callId: string, toolClass: ToolClass, isError = false): ToolTurnPart {
   return { ...pending(callId, toolClass), result: { commit: callId, output: "done", isError } };
 }
 
-test("diff totals are the settled patches' own counts", () => {
+test("diff totals come from the run diff, not the episode's patches", () => {
   const edit = settled("edit", patch);
-  assert.equal(
-    presentWorkGroup({ ...defaults, parts: [edit, settled("read", read)] }).summary.added,
-    2,
-  );
-  assert.equal(presentWorkGroup({ ...defaults, parts: [settled("read", read)] }).summary.added, 0);
-  const refused = settled("refused", { kind: "file_edit", path: "/project/file.txt" }, true);
-  const totals = presentWorkGroup({ ...defaults, parts: [refused, edit] }).summary;
-  assert.equal(totals.added, 2);
-  assert.equal(totals.removed, 1);
+  const totals = presentWorkGroup({
+    ...defaults,
+    parts: [edit, settled("read", read)],
+    added: 7,
+    removed: 4,
+  }).summary;
+  assert.equal(totals.added, 7);
+  assert.equal(totals.removed, 4);
 });
 
 test("a failed command does not turn the enclosing work summary into a failure", () => {

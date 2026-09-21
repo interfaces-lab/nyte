@@ -65,7 +65,7 @@ const storedRecord = Type.Object(
         sessionId: Type.String(),
         head: Type.Optional(Type.String()),
         content: userContent,
-        lane: Type.Optional(Type.String()),
+        delivery: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("next")])),
         agent: Type.Optional(Type.String()),
       },
       strict,

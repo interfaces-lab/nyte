@@ -10,7 +10,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Collapsible } from "@nyte-ai/ui/collapsible";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement } from "react";
-import type { RunId } from "@nyte-ai/protocol";
+import type { RunId, TurnRun } from "@nyte-ai/protocol";
 import { turnPartId } from "@nyte-ai/client";
 import { AnimatedNumber } from "../components/animated-number.tsx";
 import { Icon } from "../components/icons.tsx";
@@ -20,6 +20,7 @@ import { livePartKey } from "../live.ts";
 import type { LiveSnapshot, LiveToolProgress } from "../live.ts";
 import type { ToolCallDensity } from "../theme/boot.ts";
 import { toolGroupStyles } from "./styles.stylex.ts";
+import { useOpenSubagentTray } from "./subagent-sessions.ts";
 import { ToolCallView } from "./tool-call.tsx";
 import { Countdown } from "./countdown.tsx";
 import { Prose } from "./prose.tsx";
@@ -53,7 +54,7 @@ type ThinkingKeyInput =
     }
   | {
       readonly kind: "settled";
-      readonly runId: RunId | undefined;
+      readonly run: TurnRun;
       readonly part: ThinkingPart;
     };
 
@@ -86,13 +87,26 @@ function createThinkingKey(parts: readonly WorkTurnPart[]): (input: ThinkingKeyI
         const durable = workEntryKey(input.part);
         const existing = settled.get(durable);
         if (existing !== undefined) return existing;
-        if (input.runId === undefined) {
+        let runId: RunId | undefined;
+        switch (input.run.kind) {
+          case "none":
+            runId = undefined;
+            break;
+          case "run":
+            runId = input.run.id;
+            break;
+          default: {
+            const _exhaustive: never = input.run;
+            return _exhaustive;
+          }
+        }
+        if (runId === undefined) {
           settled.set(durable, durable);
           return durable;
         }
         const matches = [...pending].filter(
           ([, candidate]) =>
-            candidate.runId === input.runId && candidate.contentIndex === input.part.contentIndex,
+            candidate.runId === runId && candidate.contentIndex === input.part.contentIndex,
         );
         const match = matches.length === 1 ? matches[0] : undefined;
         if (match === undefined) {
@@ -164,21 +178,23 @@ const STALE_AFTER_MS = 15_000;
 
 export function WorkGroupView({
   parts,
-  runId,
+  run,
   live,
   liveTools,
   cwd,
-  durationMs,
+  added,
+  removed,
   running,
   density,
   waits,
 }: {
   parts: readonly WorkTurnPart[];
-  runId: RunId | undefined;
+  run: TurnRun;
   live?: LiveSnapshot;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
-  durationMs: number;
+  added: number;
+  removed: number;
   running: boolean;
   density: ToolCallDensity;
   /** The trailing group carries the run's live waits on its children. */
@@ -198,10 +214,34 @@ export function WorkGroupView({
     [liveOrder, presentationTools],
   );
   const awaiting = waits?.awaited.size ?? 0;
+  const [now] = useState(() => Date.now());
+  const firstPart = parts[0];
+  const durationMs =
+    firstPart === undefined
+      ? 0
+      : Math.max(0, (running ? now : (parts.at(-1)?.at ?? firstPart.at)) - firstPart.at);
   const durablePresentation = useMemo(
-    () => durableWorkGroupPresentation({ parts, durationMs, running }),
-    [durationMs, parts, running],
+    () => durableWorkGroupPresentation({ parts, durationMs, added, removed, running }),
+    [added, durationMs, parts, removed, running],
   );
+  const waitingSessions = useMemo(() => {
+    if (!durablePresentation.active) return [];
+    const sessions = new Set(waits?.awaited ?? []);
+    for (const toolClass of durablePresentation.runningClasses) {
+      if (toolClass.kind !== "delegate") continue;
+      if (toolClass.target.kind === "one") {
+        sessions.add(toolClass.target.session);
+        continue;
+      }
+      for (const session of toolClass.target.sessions) sessions.add(session);
+    }
+    return [...sessions];
+  }, [durablePresentation, waits?.awaited]);
+  const openSubagentTray = useOpenSubagentTray();
+  const openWaitingTray =
+    openSubagentTray === undefined || waitingSessions.length === 0
+      ? undefined
+      : (): void => openSubagentTray(waitingSessions.length === 1 ? waitingSessions[0] : undefined);
   const { active, summary } = useMemo(
     () =>
       liveWorkGroupPresentation({
@@ -240,12 +280,12 @@ export function WorkGroupView({
       parts.map((part): WorkEntry => ({
         key:
           part.kind === "thinking"
-            ? thinkingKey({ kind: "settled", runId, part })
+            ? thinkingKey({ kind: "settled", run, part })
             : workEntryKey(part),
         kind: "part",
         part,
       })),
-    [parts, runId, thinkingKey],
+    [parts, run, thinkingKey],
   );
   const entries = joinEntries(settledEntries, liveThinking);
   // The first settled part names the group; later parts append after it.
@@ -355,15 +395,33 @@ export function WorkGroupView({
   );
 
   if (!hasContent) {
-    return (
+    return openWaitingTray === undefined ? (
       <div
         aria-busy={active || undefined}
         {...stylex.props(toolGroupStyles.root, toolGroupStyles.status)}
       >
         {summaryLine}
       </div>
+    ) : (
+      <div aria-busy={active || undefined} {...stylex.props(toolGroupStyles.root)}>
+        <button
+          type="button"
+          {...stylex.props(toolGroupStyles.toggle, focus.ring)}
+          onClick={openWaitingTray}
+        >
+          {summaryLine}
+        </button>
+      </div>
     );
   }
+
+  const chevron = (
+    <span
+      {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
+    >
+      <Icon name="chevron-right" size={11} />
+    </span>
+  );
 
   return (
     <Collapsible.Root
@@ -372,14 +430,28 @@ export function WorkGroupView({
       aria-busy={active || undefined}
       {...stylex.props(toolGroupStyles.root)}
     >
-      <Collapsible.Trigger {...stylex.props(toolGroupStyles.toggle, focus.ring)}>
-        {summaryLine}
-        <span
-          {...stylex.props(toolGroupStyles.chevron, body === "list" && toolGroupStyles.chevronOpen)}
-        >
-          <Icon name="chevron-right" size={11} />
-        </span>
-      </Collapsible.Trigger>
+      {openWaitingTray === undefined ? (
+        <Collapsible.Trigger {...stylex.props(toolGroupStyles.toggle, focus.ring)}>
+          {summaryLine}
+          {chevron}
+        </Collapsible.Trigger>
+      ) : (
+        <div {...stylex.props(toolGroupStyles.status)}>
+          <button
+            type="button"
+            {...stylex.props(toolGroupStyles.toggle, focus.ring)}
+            onClick={openWaitingTray}
+          >
+            {summaryLine}
+          </button>
+          <Collapsible.Trigger
+            aria-label={body === "list" ? "Hide work details" : "Show work details"}
+            {...stylex.props(toolGroupStyles.toggle, focus.ring)}
+          >
+            {chevron}
+          </Collapsible.Trigger>
+        </div>
+      )}
       <Collapsible.Panel
         ref={viewportRef}
         data-nyte-scrollport={preview || undefined}

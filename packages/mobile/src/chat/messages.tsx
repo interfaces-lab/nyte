@@ -12,7 +12,7 @@ import { SymbolView } from "expo-symbols";
 import { css, html } from "react-strict-dom";
 import remend from "remend";
 import { EnrichedMarkdownText } from "react-native-enriched-markdown";
-import type { Failure, ToolClass, TurnPart } from "@nyte-ai/protocol";
+import type { Failure, SessionId, ToolClass, TurnPart } from "@nyte-ai/protocol";
 import type { SessionState } from "@nyte-ai/client";
 import {
   controls,
@@ -31,6 +31,7 @@ import { useTranscriptFont } from "../settings/preferences.ts";
 import { toast } from "../ui/toast.tsx";
 import { elapsed } from "./sessions.ts";
 import { formatDuration, type ConversationTurn } from "./turn-changes.ts";
+import { delegateTitle } from "./delegate-names.ts";
 
 export type ChatRow =
   | TurnPart
@@ -224,7 +225,11 @@ function EditRow({
   );
 }
 
-function toolTitle(toolClass: ToolClass, settled: boolean): string {
+function toolTitle(
+  toolClass: ToolClass,
+  settled: boolean,
+  delegateNames: ReadonlyMap<SessionId, string>,
+): string {
   switch (toolClass.kind) {
     case "file_read":
       return `${settled ? "Read" : "Reading"} ${toolClass.path}`;
@@ -238,40 +243,13 @@ function toolTitle(toolClass: ToolClass, settled: boolean): string {
       return `${settled ? "Wrote" : "Writing"} ${toolClass.path}`;
     case "file_patch":
       return `${toolClass.op === "edit" ? "Edited" : "Wrote"} ${toolClass.path}`;
-    case "delegate": {
-      const target =
-        toolClass.target.kind === "one"
-          ? toolClass.target.session
-          : toolClass.target.sessions.join(", ");
-      return `${delegateVerb(toolClass.role, settled)} ${target}`;
-    }
+    case "delegate":
+      return delegateTitle(toolClass, settled, delegateNames);
     case "custom":
       return toolClass.label;
     default: {
-      const exhaustive: never = toolClass;
-      return exhaustive;
-    }
-  }
-}
-
-function delegateVerb(
-  role: "create" | "send" | "await" | "read" | "stop",
-  settled: boolean,
-): string {
-  switch (role) {
-    case "create":
-      return "Agent";
-    case "send":
-      return settled ? "Sent to" : "Sending to";
-    case "await":
-      return settled ? "Waited for" : "Waiting for";
-    case "read":
-      return settled ? "Read" : "Reading";
-    case "stop":
-      return settled ? "Stopped" : "Stopping";
-    default: {
-      const exhaustive: never = role;
-      return exhaustive;
+      const _exhaustive: never = toolClass;
+      return _exhaustive;
     }
   }
 }
@@ -296,8 +274,8 @@ function failureLabel(failure: Failure): string {
     case "runner":
       return failure.message.replaceAll(/\s+/gu, " ").trim() || "Failed";
     default: {
-      const exhaustive: never = failure.class;
-      return exhaustive;
+      const _exhaustive: never = failure.class;
+      return _exhaustive;
     }
   }
 }
@@ -307,12 +285,14 @@ function WorkRow({
   parts,
   live,
   layout,
+  delegateNames,
   onOpenFile,
 }: {
   turn: ConversationTurn;
   parts: TurnPart[];
   live: boolean;
   layout: ConversationLayout;
+  delegateNames: ReadonlyMap<SessionId, string>;
   onOpenFile?: (path: string) => void;
 }) {
   const theme = useTheme();
@@ -376,7 +356,7 @@ function WorkRow({
               if (part.kind !== "tool") return null;
               if (part.class.kind === "file_patch" && part.result?.isError === false)
                 return <EditRow key={part.callId} patch={part.class} onOpenFile={onOpenFile} />;
-              const title = `${part.result?.isError === true ? "Failed: " : ""}${toolTitle(part.class, part.result !== undefined)}`;
+              const title = `${part.result?.isError === true ? "Failed: " : ""}${toolTitle(part.class, part.result !== undefined, delegateNames)}`;
               const text = part.result?.output ?? "";
               return <Disclosure key={part.callId} title={title} text={text} layout={layout} />;
             })}
@@ -398,10 +378,12 @@ function Notice({ text, layout }: { text: string; layout: ConversationLayout }) 
 export const MessageRow = memo(function MessageRow({
   item,
   layout,
+  delegateNames,
   onOpenFile,
 }: {
   item: ChatRow;
   layout: ConversationLayout;
+  delegateNames: ReadonlyMap<SessionId, string>;
   onOpenFile?: (path: string) => void;
 }) {
   if ("change" in item)
@@ -420,6 +402,7 @@ export const MessageRow = memo(function MessageRow({
           parts={item.parts}
           live={item.live}
           layout={layout}
+          delegateNames={delegateNames}
           onOpenFile={onOpenFile}
         />
       );
@@ -435,8 +418,8 @@ export const MessageRow = memo(function MessageRow({
     case "thinking":
       return null;
     default: {
-      const exhaustive: never = item;
-      return exhaustive;
+      const _exhaustive: never = item;
+      return _exhaustive;
     }
   }
 });

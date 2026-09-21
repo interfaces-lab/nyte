@@ -72,11 +72,18 @@ export type JobOwner =
     }
   | { readonly kind: "user"; readonly head: string };
 
+interface PendingJobUpdate {
+  readonly output: string;
+  readonly progress?: ReturnType<typeof toolProgress>;
+}
+
 interface LiveJob {
   readonly controller: AbortController;
   readonly lease: Lease;
   done: Promise<void>;
   writes: Promise<void>;
+  pending: PendingJobUpdate | undefined;
+  draining: boolean;
 }
 
 interface Admitted {
@@ -245,11 +252,24 @@ export function createJobs(input: {
     };
   };
 
+  const settleWrites = async (runtime: LiveJob): Promise<void> => {
+    for (;;) {
+      const writes = runtime.writes;
+      await writes;
+      if (runtime.writes === writes && !runtime.draining && runtime.pending === undefined) return;
+    }
+  };
+
   const interrupt = async (
     id: string,
     kind: "cancelled" | "interrupted",
     options?: { readonly lease?: Lease; readonly quiet?: true },
   ) => {
+    const runtime = live.get(id);
+    if (runtime !== undefined) {
+      runtime.controller.abort();
+      await settleWrites(runtime);
+    }
     const next = await update(
       id,
       (record) => {
@@ -444,6 +464,8 @@ export function createJobs(input: {
       lease: acquired.lease,
       done: Promise.resolve(),
       writes: Promise.resolve(),
+      pending: undefined,
+      draining: false,
     };
     live.set(id, runtime);
     try {
@@ -505,6 +527,57 @@ export function createJobs(input: {
       await diagnostic(cause);
     });
     const context = owner.kind === "run" ? { runId: owner.runId, head: owner.head } : undefined;
+    const startWrites = (): void => {
+      if (runtime.draining) return;
+      runtime.draining = true;
+      const writes = (async () => {
+        while (runtime.pending !== undefined) {
+          const pending = runtime.pending;
+          runtime.pending = undefined;
+          try {
+            const stored = await update(
+              id,
+              (current) =>
+                current.info.phase.kind !== "running"
+                  ? current
+                  : {
+                      ...current,
+                      info: {
+                        ...current.info,
+                        output: pending.output,
+                        updatedAt: Date.now(),
+                      },
+                    },
+              acquired.lease,
+            );
+            if (
+              owner.kind === "run" &&
+              stored?.info.phase.kind === "running" &&
+              stored.info.phase.mode === "foreground" &&
+              pending.progress !== undefined
+            ) {
+              await input.session.events.append(
+                [
+                  {
+                    kind: "progress",
+                    runId: owner.runId,
+                    callId,
+                    progress: pending.progress,
+                  },
+                ],
+                { lease: acquired.lease },
+              );
+            }
+          } catch (cause) {
+            await diagnostic(cause);
+          }
+        }
+      })().finally(() => {
+        runtime.draining = false;
+        if (runtime.pending !== undefined) startWrites();
+      });
+      runtime.writes = writes;
+    };
     runtime.done = track(
       (async () => {
         let result: AgentToolResult<unknown>;
@@ -542,44 +615,19 @@ export function createJobs(input: {
                         } catch (cause) {
                           void track(diagnostic(cause));
                         }
-                        runtime.writes = runtime.writes
-                          .then(async () => {
-                            if (owner.kind === "run") {
-                              const progress = toolProgress(partial);
-                              await input.session.events.append(
-                                [
-                                  {
-                                    kind: "progress",
-                                    runId: owner.runId,
-                                    callId,
-                                    progress: {
-                                      ...progress,
-                                      text: progress.text.slice(-OUTPUT_LIMIT),
-                                    },
-                                  },
-                                ],
-                                { lease: acquired.lease },
-                              );
-                            }
-                            await update(
-                              id,
-                              (current) =>
-                                current.info.phase.kind !== "running"
-                                  ? current
-                                  : {
-                                      ...current,
-                                      info: {
-                                        ...current.info,
-                                        output: toolResultText(partial.content).slice(
-                                          -OUTPUT_LIMIT,
-                                        ),
-                                        updatedAt: Date.now(),
-                                      },
-                                    },
-                              acquired.lease,
-                            );
-                          })
-                          .catch(diagnostic);
+                        const progress = toolProgress(partial);
+                        runtime.pending = {
+                          output: toolResultText(partial.content).slice(-OUTPUT_LIMIT),
+                          ...(owner.kind === "user"
+                            ? {}
+                            : {
+                                progress: {
+                                  ...progress,
+                                  text: progress.text.slice(-OUTPUT_LIMIT),
+                                },
+                              }),
+                        };
+                        startWrites();
                       },
                       context,
                     );
@@ -595,7 +643,7 @@ export function createJobs(input: {
           failure = cause instanceof Error ? cause.message : String(cause);
           result = toolErrorResult(cause);
         }
-        await runtime.writes;
+        await settleWrites(runtime);
         const reason = failure;
         await update(
           id,
@@ -669,7 +717,7 @@ export function createJobs(input: {
                     timer.unref();
                   }),
                 ]);
-                await runtime.writes;
+                await settleWrites(runtime);
               }
               // Both modes park first. The runner rechecks jobs after parking, closing the fast-completion race.
               throw new ToolWait();

@@ -59,7 +59,7 @@ function snapshot(
 /** A pending item as core's queue projection returns it: the change, and the key it was sent under. */
 const item = (change: string, key: string, content = "same words"): PendingItem => ({
   change,
-  lane: "steer",
+  delivery: "steer",
   at: 1_000,
   content,
   key,
@@ -82,6 +82,7 @@ function landing(
       key,
       run: "run-1",
       body: { kind: "message", message: { role: "user", content, timestamp: 1_000 } },
+      start: { kind: "none" },
       at: 1_500,
     },
   };
@@ -92,9 +93,10 @@ function landedTurn(oid: string, parent: string | null, key: string, content = "
   return {
     kind: "turn",
     id: oid,
+    run: { kind: "run", id: `run-${String(oid)}` },
     startedAt: 1_500,
     durationMs: 0,
-    parts: [{ kind: "user", commit: oid, parent, content, key }],
+    parts: [{ kind: "user", commit: oid, parent, content, key, at: 0 }],
   };
 }
 
@@ -273,7 +275,7 @@ async function harness(options: { readonly superseded?: "rejects" | "resolves" }
 describe("sent messages", () => {
   test("a receipt ahead of the watch keeps one row, under one key, until the fold shows it", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     expect(rows()).toEqual(["sending:key-1"]);
 
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
@@ -285,7 +287,7 @@ describe("sent messages", () => {
 
   test("the queued frame ahead of the receipt draws once; the late receipt adds nothing", async () => {
     const { outbox, answers, rows, fold, paints } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
     expect(paints()).toBe(1);
     expect(rows()).toEqual(["pending:change-1@key-1"]);
@@ -296,7 +298,7 @@ describe("sent messages", () => {
 
   test("the commit frame ahead of its landed frame moves the message to the record without a pending twin", async () => {
     const { outbox, answers, rows, fold, state, transcriptKeys } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
@@ -315,7 +317,7 @@ describe("sent messages", () => {
 
   test("a receipt after the change landed draws nothing", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     // The watch showed the message and its turn before the store's reply came back.
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
     await fold({ kind: "head_moved", head: MAIN, from: null, to: "commit-1", reason: "land" });
@@ -333,13 +335,13 @@ describe("sent messages", () => {
 
   test("a receipt after the change was cancelled draws nothing, and the next send starts clean", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
     await fold({ kind: "queue_cancelled", change: "change-1" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     expect(rows()).toEqual([]);
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
     expect(rows()).toEqual(["pending:change-2@key-2"]);
@@ -347,7 +349,7 @@ describe("sent messages", () => {
 
   test("a duplicate receipt for a retry draws the message the first attempt made durable", async () => {
     const { outbox, answers, rows } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.reject(new Error("connection reset"));
     await flush();
     expect(rows()).toEqual(["sending:key-1"]);
@@ -358,7 +360,7 @@ describe("sent messages", () => {
 
   test("a duplicate receipt for a change that landed during the retries draws nothing", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.reject(new Error("connection reset"));
     await flush();
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
@@ -376,8 +378,8 @@ describe("sent messages", () => {
 
   test("identical prompts stay apart by change and key, never by content", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
@@ -396,7 +398,7 @@ describe("sent messages", () => {
 
   test("a snapshot taken before the submit applied keeps the message until the resync shows it pending", async () => {
     const { outbox, answers, rows, reads, fold, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await restore(snapshot());
     expect(rows()).toEqual(["sending:key-1"]);
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
@@ -415,7 +417,7 @@ describe("sent messages", () => {
   test("a message the store landed behind the watch stays drawn until the resync shows its turn", async () => {
     const { outbox, answers, rows, reads, restore, transcriptKeys, frames, changes } =
       await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await restore(snapshot());
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
@@ -435,7 +437,7 @@ describe("sent messages", () => {
 
   test("a snapshot taken after the message landed shows the record alone, before and after the receipt", async () => {
     const { outbox, answers, rows, reads, restore, transcriptKeys } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await restore(snapshot({ transcript: [landedTurn("commit-1", null, "key-1")] }));
     expect(transcriptKeys()).toEqual(["key-1"]);
     expect(rows()).toEqual([]);
@@ -445,7 +447,7 @@ describe("sent messages", () => {
     expect(reads).toHaveLength(2);
 
     // The same landing, seen after the receipt: the snapshot places the arriving row and it goes.
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
     expect(rows()).toEqual(["pending:change-2@key-2"]);
@@ -463,7 +465,7 @@ describe("sent messages", () => {
 
   test("a snapshot that holds the message as pending adopts the arriving row", async () => {
     const { outbox, answers, rows, reads, restore } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot({ pending: [item("change-1", "key-1")] }));
@@ -473,10 +475,10 @@ describe("sent messages", () => {
 
   test("a message cancelled before the snapshot leaves once the resync's snapshot was applied without it", async () => {
     const { outbox, answers, rows, reads, restore, changes, frames } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     // Another client cancelled the first; the second was still on its way when the snapshot was read.
     await restore(snapshot());
     expect(rows()).toEqual(["pending:change-1@key-1", "sending:key-2"]);
@@ -504,8 +506,8 @@ describe("sent messages", () => {
 
   test("one resync answers for every receipt the snapshot could not place", async () => {
     const { outbox, answers, rows, reads, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
@@ -521,13 +523,13 @@ describe("sent messages", () => {
 
   test("a resync asked before a receipt cannot erase it: a newer read answers for both", async () => {
     const { outbox, answers, rows, reads, restore, changes, frames } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
     expect(reads).toHaveLength(3);
     // The second receipt lands while the first's resync is still reading; its watch was continuous, so it asks nothing.
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
     expect(rows()).toEqual(["pending:change-1@key-1", "pending:change-2@key-2"]);
@@ -548,8 +550,8 @@ describe("sent messages", () => {
 
   test("a receipt a snapshot spanned during an older resync starts a newer one", async () => {
     const { outbox, answers, rows, reads, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
@@ -571,7 +573,7 @@ describe("sent messages", () => {
 
   test("a resync another rebase superseded keeps the row; that rebase's snapshot asks again", async () => {
     const { outbox, answers, rows, reads, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
@@ -593,7 +595,7 @@ describe("sent messages", () => {
     const { outbox, answers, rows, reads, restore, changes } = await harness({
       superseded: "resolves",
     });
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
@@ -619,12 +621,12 @@ describe("sent messages", () => {
     const { outbox, answers, rows, reads, restore, changes, frames } = await harness({
       superseded: "resolves",
     });
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
     expect(reads).toHaveLength(3);
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[1]?.resolve({ kind: "queued", change: "change-2" });
     await flush();
     const seen = frames.length;
@@ -643,7 +645,7 @@ describe("sent messages", () => {
 
   test("a failed read keeps the row; the observer's retried read answers", async () => {
     const { outbox, answers, rows, reads, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
@@ -660,7 +662,7 @@ describe("sent messages", () => {
 
   test("a closed observer's rejected resync leaves the row alone", async () => {
     const { sent, outbox, answers, rows, reads, restore, changes } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();
     await restore(snapshot());
@@ -674,13 +676,13 @@ describe("sent messages", () => {
 
   test("a redelivered message keeps its key: the copy's queued frame answers the original's receipt", async () => {
     const { outbox, answers, rows, fold } = await harness();
-    void outbox.submit({ content: "same words", lane: "steer" });
+    void outbox.submit({ content: "same words", delivery: "steer" });
     await fold({ kind: "queued", head: MAIN, item: item("change-1", "key-1") });
     await fold({ kind: "queue_cancelled", change: "change-1" });
     await fold({
       kind: "queued",
       head: MAIN,
-      item: { ...item("change-2", "key-1"), lane: "queue" },
+      item: { ...item("change-2", "key-1"), delivery: "next" },
     });
     answers[0]?.resolve({ kind: "queued", change: "change-1" });
     await flush();

@@ -130,8 +130,8 @@ export interface TurnInput {
   readonly attempt: number;
   /** The branch from its newest checkpoint to the tip, oldest first. */
   readonly commits: readonly { readonly oid: Oid; readonly commit: Commit }[];
-  /** Streams deltas and progress into the session's event stream. Never throws. */
-  readonly emit: (event: EventBody) => void;
+  /** Streams deltas and progress into the session's event stream. */
+  readonly emit: (event: EventBody) => Promise<void> | void;
   readonly signal: AbortSignal;
 }
 
@@ -285,6 +285,8 @@ async function respond(options: TurnOptions, input: TurnInput): Promise<RespondO
               kind: "commit",
               parent: input.commits.at(-1)?.oid ?? null,
               body: { kind: "message", message },
+              calls: {},
+              outcome: { kind: "failed", failure },
               run: input.run.id,
               at: Date.now(),
             },
@@ -592,11 +594,11 @@ function agentConfig(
   };
 }
 
-function emitAssistantDelta(input: TurnInput, event: AgentEvent): void {
+function emitAssistantDelta(input: TurnInput, event: AgentEvent): Promise<void> | void {
   if (event.type !== "message_update") return;
   const update = event.assistantMessageEvent;
   if (update.type === "text_delta") {
-    input.emit({
+    return input.emit({
       kind: "delta",
       runId: input.run.id,
       attempt: input.attempt,
@@ -605,7 +607,7 @@ function emitAssistantDelta(input: TurnInput, event: AgentEvent): void {
       delta: update.delta,
     });
   } else if (update.type === "thinking_delta") {
-    input.emit({
+    return input.emit({
       kind: "delta",
       runId: input.run.id,
       attempt: input.attempt,
@@ -616,9 +618,9 @@ function emitAssistantDelta(input: TurnInput, event: AgentEvent): void {
   }
 }
 
-function emitToolProgress(input: TurnInput, event: AgentEvent): void {
+function emitToolProgress(input: TurnInput, event: AgentEvent): Promise<void> | void {
   if (event.type !== "tool_execution_update") return;
-  input.emit({
+  return input.emit({
     kind: "progress",
     runId: input.run.id,
     callId: event.toolCallId,

@@ -1,0 +1,115 @@
+---
+title: Number field
+description: "A numeric input with increment and decrement buttons, and a scrub area"
+---
+
+```ts title="Import"
+import { NumberField } from "@nyte-ai/ui/number-field";
+```
+
+A numeric input that steps with buttons, arrow keys, the mouse wheel, and a drag area. No Nyte
+styling here.
+
+## Usage
+
+- Give the field an accessible name. Point a `<label htmlFor>` at the `id` you set on
+  `NumberField.Input`. A placeholder is not a name.
+- `format` takes `Intl.NumberFormatOptions`, so a currency or a percent field is a format option,
+  not a suffix you render.
+- `step` sets the base increment. Alt steps by `smallStep`, Shift by `largeStep`.
+- `ScrubArea` and `ScrubAreaCursor` are optional. Skip both when the field only needs typing and
+  the two buttons.
+
+## Anatomy
+
+```tsx
+<NumberField.Root>
+  <NumberField.ScrubArea>
+    <NumberField.ScrubAreaCursor />
+  </NumberField.ScrubArea>
+  <NumberField.Group>
+    <NumberField.Decrement />
+    <NumberField.Input />
+    <NumberField.Increment />
+  </NumberField.Group>
+</NumberField.Root>
+```
+
+## Examples
+
+### A bounded field
+
+<Preview>
+  <NumberFieldDemo />
+</Preview>
+
+```tsx
+<NumberField.Root defaultValue={8} min={1} max={64} step={1}>
+  <label htmlFor="parallel-jobs">Parallel jobs</label>
+  <NumberField.Group>
+    <NumberField.Decrement aria-label="Decrease">
+      <IconMinusSmall size={14} />
+    </NumberField.Decrement>
+    <NumberField.Input id="parallel-jobs" />
+    <NumberField.Increment aria-label="Increase">
+      <IconPlusSmall size={14} />
+    </NumberField.Increment>
+  </NumberField.Group>
+</NumberField.Root>
+```
+
+### Scrubbing
+
+```tsx
+<NumberField.Root allowWheelScrub>
+  <NumberField.ScrubArea direction="horizontal" pixelSensitivity={2}>
+    <span>Width</span>
+    <NumberField.ScrubAreaCursor />
+  </NumberField.ScrubArea>
+  <NumberField.Group>
+    <NumberField.Input />
+  </NumberField.Group>
+</NumberField.Root>
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/number-field/Root.md</include>
+
+### Group
+
+<include>../../base-ui-reference/number-field/Group.md</include>
+
+### Input
+
+<include>../../base-ui-reference/number-field/Input.md</include>
+
+### Decrement
+
+<include>../../base-ui-reference/number-field/Decrement.md</include>
+
+### Increment
+
+<include>../../base-ui-reference/number-field/Increment.md</include>
+
+### ScrubArea
+
+<include>../../base-ui-reference/number-field/ScrubArea.md</include>
+
+### ScrubAreaCursor
+
+<include>../../base-ui-reference/number-field/ScrubAreaCursor.md</include>
+
+## Accessibility
+
+- Arrow Up and Arrow Down step the value. Home and End jump to `min` and `max`, when those bounds
+  are set.
+- Alt with an arrow key steps by `smallStep`, Shift by `largeStep`.
+- The input carries `aria-roledescription="Number field"` by default. That is a role description,
+  not a name, so still label the control.
+- Wheel scrubbing is off unless you set `allowWheelScrub`, and it only applies while the input is
+  focused and hovered.

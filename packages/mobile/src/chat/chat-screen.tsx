@@ -12,7 +12,7 @@ import {
 } from "@legendapp/list/keyboard";
 import type { LegendListRef } from "@legendapp/list/react-native";
 import { isTerminalPhase } from "@nyte-ai/protocol";
-import type { ReplyOutcome, SelectionReply } from "@nyte-ai/protocol";
+import type { ReplyOutcome, SelectionReply, SessionId } from "@nyte-ai/protocol";
 import { waitingCall, type SessionState } from "@nyte-ai/client";
 import type { FileChange } from "@nyte-ai/client";
 import type { UserContent } from "./remote-chat.ts";
@@ -34,6 +34,7 @@ type ChatScreenProps = {
   onSend: (content: UserContent) => Promise<boolean>;
   onStop: () => void;
   onReply: (reply: SelectionReply) => Promise<ReplyOutcome | undefined>;
+  delegateNames: ReadonlyMap<SessionId, string>;
   changes: readonly FileChange[] | undefined;
   onAskMerge: () => void;
   onOpenReview: () => void;
@@ -48,6 +49,7 @@ export function ChatScreen({
   onSend,
   onStop,
   onReply,
+  delegateNames,
   changes,
   onAskMerge,
   onOpenReview,
@@ -151,7 +153,12 @@ export function ChatScreen({
           data={rows}
           extraData={layout}
           renderItem={({ item }) => (
-            <MessageRow item={item} layout={layout} onOpenFile={openFile} />
+            <MessageRow
+              item={item}
+              layout={layout}
+              delegateNames={delegateNames}
+              onOpenFile={openFile}
+            />
           )}
           keyExtractor={(item) =>
             "change" in item

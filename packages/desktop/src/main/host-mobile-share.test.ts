@@ -384,7 +384,10 @@ test("phone workspace.select retargets the share and leaves Mac selection alone"
     listed.items.some((session) => session.sessionId === projectChat.sessionId),
     true,
   );
-  const files = await phone.workspace.files({ query: "share-target-marker" });
+  const files = await phone.workspace.files({
+    target: { kind: "workspace" },
+    query: "share-target-marker",
+  });
   assert.equal(
     files.some((file) => file.label === "share-target-marker.txt"),
     true,
@@ -405,9 +408,12 @@ test("phone workspace.select retargets the share and leaves Mac selection alone"
     true,
   );
   assert.equal(
-    (await phone.workspace.files({ query: "share-target-marker" })).some(
-      (file) => file.label === "share-target-marker.txt",
-    ),
+    (
+      await phone.workspace.files({
+        target: { kind: "workspace" },
+        query: "share-target-marker",
+      })
+    ).some((file) => file.label === "share-target-marker.txt"),
     false,
   );
 });

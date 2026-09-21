@@ -121,7 +121,6 @@ class Bridge {
   private nextId = 1;
   private failure: Error | undefined;
   private closing = false;
-  private readonly closedSessions = new Set<number>();
   readonly ready: Promise<void>;
 
   constructor(options: WorkerStoreOptions) {
@@ -240,7 +239,7 @@ class Bridge {
   ): AsyncIterable<Event> {
     await this.ready;
     if (this.failure !== undefined) throw this.failure;
-    if (signal?.aborted || this.closing || this.closedSessions.has(session)) return;
+    if (signal?.aborted || this.closing) return;
     const id = this.nextId++;
     const queue: Event[] = [];
     let finished: { cause?: Error } | undefined;
@@ -300,7 +299,6 @@ class Bridge {
   /** Closing ends watches before the worker answers, as the backend ends its own iterators. */
   endWatches(session: number | undefined): void {
     if (session === undefined) this.closing = true;
-    else this.closedSessions.add(session);
     for (const [id, watch] of this.watches) {
       if (session !== undefined && watch.session !== session) continue;
       this.watches.delete(id);
@@ -325,13 +323,21 @@ class WorkerSession implements Session {
   readonly events: Events;
   private readonly bridge: Bridge;
   private readonly handle: number;
+  private readonly closedController = new AbortController();
+  private closing: Promise<void> | undefined;
 
   constructor(bridge: Bridge, handle: number, id: string) {
     this.bridge = bridge;
     this.handle = handle;
     this.id = id;
-    const call = <T>(method: StoreMethod, args: readonly unknown[], validate: Validator<T>) =>
-      bridge.call(handle, method, args, validate);
+    const call = async <T>(
+      method: StoreMethod,
+      args: readonly unknown[],
+      validate: Validator<T>,
+    ): Promise<T> => {
+      this.assertOpen();
+      return bridge.call(handle, method, args, validate);
+    };
     this.objects = {
       put: (objects: readonly Obj[]) => call("objects.put", [objects], result.oids),
       get: async (oid: Oid) => (await call("objects.get", [oid], result.object)) ?? undefined,
@@ -370,16 +376,30 @@ class WorkerSession implements Session {
       trim: async (beforeSeq: Seq) => {
         await call("events.trim", [beforeSeq], result.null);
       },
-      watch: (options: { readonly afterSeq: Seq; readonly signal?: AbortSignal }) =>
-        bridge.watch(handle, options.afterSeq, options.signal),
+      watch: (options: { readonly afterSeq: Seq; readonly signal?: AbortSignal }) => {
+        this.assertOpen();
+        const signal =
+          options.signal === undefined
+            ? this.closedController.signal
+            : AbortSignal.any([options.signal, this.closedController.signal]);
+        return bridge.watch(handle, options.afterSeq, signal);
+      },
     };
   }
 
-  async close(): Promise<void> {
+  close(): Promise<void> {
+    if (this.closing !== undefined) return this.closing;
+    this.closedController.abort();
     this.bridge.endWatches(this.handle);
-    // A session of a closed store is closed with it.
-    if (this.bridge.closed) return;
-    await this.bridge.call(this.handle, "session.close", [], result.null);
+    const closing = this.bridge.closed
+      ? Promise.resolve()
+      : this.bridge.call(this.handle, "session.close", [], result.null).then(() => undefined);
+    this.closing = closing;
+    return closing;
+  }
+
+  private assertOpen(): void {
+    if (this.closing !== undefined) throw new Error(`Session is closed: ${this.id}`);
   }
 }
 

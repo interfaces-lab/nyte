@@ -3,7 +3,7 @@
  * the session and its children must be quiet, the head leases are held through
  * plugin activation, and only then is the saved directory replaced.
  */
-import { DEFAULT_LANDING, isTerminalPhase } from "@nyte-ai/protocol";
+import { isTerminalPhase } from "@nyte-ai/protocol";
 import type { LoadedPlugin } from "../../plugins/types.ts";
 import { landsNow } from "../admission.ts";
 import { withLeaseRenewal } from "../lease.ts";
@@ -35,7 +35,7 @@ export function createRelocation(input: {
 }) {
   const { options, pool, runners } = input;
   const { jobsFor, pluginsFor } = input.delegation;
-  const drain = (options.landing ?? DEFAULT_LANDING).drain;
+  const drain = options.drain ?? "one";
   /** Queued work the runner would land now. A completion waiting for user input is not. */
   const queuedWork = async (
     session: Session,

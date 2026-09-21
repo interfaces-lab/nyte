@@ -1,0 +1,106 @@
+---
+title: Switch
+description: "A control that turns a setting on or off"
+---
+
+```ts title="Import"
+import { Switch } from "@nyte-ai/ui/switch";
+```
+
+A setting that applies the moment it changes. No Nyte styling on this one, you own the visual
+layer.
+
+## Usage
+
+- Give the switch an accessible name. A wrapping `<label>` is the simplest pattern.
+- `Switch.Root` renders a `<span>` by default, so an enclosing label works. Render a native
+  `<button>` when you use a sibling label with `htmlFor` and `id`.
+- A switch commits on change. If the setting needs a save step, use a checkbox instead.
+- The `on` value is submitted by default. Set `value` to change it, and `uncheckedValue` to submit
+  something when the switch is off.
+
+## Anatomy
+
+```tsx
+<Switch.Root>
+  <Switch.Thumb />
+</Switch.Root>
+```
+
+## Examples
+
+### A wrapping label
+
+<Preview>
+  <SwitchDemo />
+</Preview>
+
+```tsx
+<label>
+  <Switch.Root defaultChecked>
+    <Switch.Thumb />
+  </Switch.Root>
+  Notifications
+</label>
+```
+
+### A sibling label
+
+With `htmlFor` and `id`, render the root as a native button and tell Base UI about it.
+
+```tsx
+<div>
+  <label htmlFor="notifications-switch">Notifications</label>
+  <Switch.Root id="notifications-switch" nativeButton render={<button />}>
+    <Switch.Thumb />
+  </Switch.Root>
+</div>
+```
+
+### A native button inside a label
+
+A `<button>` inside a `<label>` is invalid HTML, so the render callback places the hidden input
+outside the label.
+
+```tsx
+<Switch.Root
+  nativeButton
+  render={(buttonProps) => (
+    <label>
+      <button {...buttonProps} />
+      Notifications
+    </label>
+  )}
+/>
+```
+
+### Controlled
+
+```tsx
+const [enabled, setEnabled] = useState(false);
+
+<Switch.Root checked={enabled} onCheckedChange={setEnabled}>
+  <Switch.Thumb />
+</Switch.Root>;
+```
+
+## Props
+
+The reference tables below come from Base UI, MIT, © Material-UI SAS.
+
+### Root
+
+<include>../../base-ui-reference/switch/Root.md</include>
+
+### Thumb
+
+<include>../../base-ui-reference/switch/Thumb.md</include>
+
+## Accessibility
+
+- The root carries `role="switch"` and `aria-checked`. Space and Enter toggle it.
+- `id` lands on the hidden input, or on the root when `nativeButton` is `true`.
+- `readOnly` keeps the switch focusable and blocks the change. `disabled` removes it from the tab
+  order.
+- Both parts reflect `data-checked`, `data-unchecked`, `data-disabled`, `data-readonly`, and
+  `data-required`, so the thumb can animate from CSS alone.

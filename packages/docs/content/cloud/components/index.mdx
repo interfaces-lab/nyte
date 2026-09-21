@@ -5,8 +5,7 @@ description: "Every component @nyte-ai/ui exports, and the import path for each"
 
 `@nyte-ai/ui` is one component set. The package root exports the components we style with StyleX
 and `--nyte-*` tokens. The subpaths re-export a Base UI namespace unstyled, so Base UI owns the
-interaction model and you own every class, StyleX style, and layout decision. A component with
-both gives you the styled version at the root and the raw parts on the subpath.
+interaction model and you own every class, StyleX style, and layout decision.
 
 ```ts
 import "@nyte-ai/ui/styles.css";
@@ -50,8 +49,3 @@ styling.
 Import a Base UI namespace from its subpath rather than from `@base-ui/react`, so the Base UI
 version stays behind the shared package. When `render` produces something other than a `<button>`,
 pass `nativeButton={false}` so Base UI keeps button semantics.
-
-## Not wrapped
-
-Base UI parts with no subpath yet: Checkbox, CheckboxGroup, Radio, RadioGroup, Field, Fieldset,
-Form, Progress, Meter, Separator, ScrollArea, Accordion, Combobox, NavigationMenu, Toast.

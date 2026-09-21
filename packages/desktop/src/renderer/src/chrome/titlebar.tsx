@@ -1,3 +1,4 @@
+import { titlebarStyles } from "./titlebar.stylex.ts";
 /**
  * Permanent window chrome. The sidebar toggle stays on the rail side; chat
  * actions and the stage-level workbench entry stay at the trailing edge.
@@ -18,8 +19,6 @@ import {
 import { activePane } from "../layout/pane-layout.ts";
 import { macPlatform } from "../platform.ts";
 import { useHostState, useSession } from "../queries.ts";
-import { layer, shell, sidebar } from "../theme/schema.stylex.ts";
-import { t } from "../theme/vars.stylex.ts";
 import {
   WORKBENCH_STAGE_PANE_KEY,
   activeWorkbenchTab,
@@ -29,7 +28,7 @@ import {
   useWorkbenchSnapshot,
 } from "../workbench/controller.ts";
 import type { WorkbenchTarget } from "../workbench/controller.ts";
-import { terminalActions, useTerminals } from "../workbench/terminal-store.ts";
+import { terminalActions } from "../workbench/terminal-store.ts";
 import { shellActions, useShellState } from "./shell-state.ts";
 import {
   clientActionAriaShortcut,
@@ -40,119 +39,25 @@ import {
 
 import { WorkbenchTabStrip } from "../workbench/tab-strip.tsx";
 
-const styles = stylex.create({
-  bar: {
-    position: "relative",
-    zIndex: layer.chrome,
-    display: "flex",
-    alignItems: "center",
-    height: shell.titlebarHeight,
-    paddingInlineEnd: 10,
-    paddingInlineStart: 10,
-    flexShrink: 0,
-    WebkitAppRegion: "drag",
-  },
-  contentFill: {
-    position: "absolute",
-    insetBlock: 0,
-    insetInlineStart: `calc(${sidebar.width} - 1px)`,
-    insetInlineEnd: 0,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.strokeQuaternary,
-    backgroundClip: "padding-box",
-    backgroundColor: t.bgBase,
-    pointerEvents: "none",
-  },
-  contentFillSidebarHidden: { insetInlineStart: 0, borderInlineStartWidth: 0 },
-  workbenchTrack: {
-    position: "absolute",
-    zIndex: 3,
-    insetBlock: 0,
-    insetInlineEnd: 0,
-    display: "flex",
-    alignItems: "center",
-    gap: 2,
-    width: "var(--nyte-active-workbench-width, 500px)",
-    minWidth: 0,
-    paddingInlineStart: 6,
-    paddingInlineEnd: 10,
-    borderInlineStartWidth: 1,
-    borderInlineStartStyle: "solid",
-    borderInlineStartColor: t.strokeTertiary,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: t.strokeTertiary,
-    backgroundColor: t.bgBase,
-    WebkitAppRegion: "no-drag",
-  },
-  workbenchTrackSidebarHiddenMac: { maxWidth: "calc(100% - 112px)" },
-  workbenchTrackSidebarHidden: { maxWidth: "calc(100% - 38px)" },
-  workbenchReservation: {
-    width: "calc(var(--nyte-active-workbench-width, 500px) - 10px)",
-    flexShrink: 0,
-  },
-  titleSlotWorkbenchOpen: {
-    insetInlineEnd: "calc(var(--nyte-active-workbench-width, 500px) + 44px)",
-  },
-  // macOS reserves a traffic-light lane at the leading edge.
-  barMac: { paddingInlineStart: shell.trafficLightInset },
-  actionTrack: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 28,
-    height: 28,
-    flexShrink: 0,
-    position: "relative",
-    zIndex: 1,
-    WebkitAppRegion: "no-drag",
-  },
-  navigationTrack: {
-    position: "absolute",
-    zIndex: 2,
-    insetInlineStart: `calc(${sidebar.width} - 64px)`,
-    insetBlock: 0,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 2,
-    WebkitAppRegion: "no-drag",
-  },
-  spacer: { flex: 1, minWidth: 0 },
-  titleSlot: {
-    position: "absolute",
-    zIndex: 1,
-    insetBlock: 0,
-    insetInlineStart: `calc(${sidebar.width} + 12px)`,
-    insetInlineEnd: 96,
-    display: "flex",
-    alignItems: "center",
-    minWidth: 0,
-    pointerEvents: "none",
-  },
-  // 72px of traffic lights, the 28px toggle, then a 12px title gap on macOS;
-  // elsewhere the toggle alone.
-  titleSlotSidebarHiddenMac: { insetInlineStart: 112 },
-  titleSlotSidebarHidden: { insetInlineStart: 38 },
-  sessionTitle: {
-    maxWidth: "min(420px, 50vw)",
-    overflow: "hidden",
-    color: t.textSecondary,
-    fontSize: t.fontSm,
-    lineHeight: t.leadingSm,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-});
-
 function SessionTitle({ sessionId }: { sessionId: SessionId }): ReactElement {
   const session = useSession(sessionId);
+  const panes = usePaneActions();
+  const parentSessionId = session.data?.parent?.sessionId;
+  const title = session.data?.name ?? session.data?.preview ?? "New chat";
   return (
-    <span
-      title={session.data?.name ?? session.data?.preview}
-      {...stylex.props(styles.sessionTitle)}
-    >
-      {session.data?.name ?? session.data?.preview ?? "New chat"}
+    <span {...stylex.props(titlebarStyles.sessionTitleGroup)}>
+      {parentSessionId !== undefined && (
+        <span {...stylex.props(titlebarStyles.sessionBack)}>
+          <IconButton
+            icon="arrow-left"
+            label="Back to parent chat"
+            onClick={() => panes.openSession(parentSessionId)}
+          />
+        </span>
+      )}
+      <span title={title} {...stylex.props(titlebarStyles.sessionTitle)}>
+        {title}
+      </span>
     </span>
   );
 }
@@ -176,14 +81,16 @@ export function Titlebar(): ReactElement {
         : { kind: "workspace", workspacePath };
   const viewKey = workbenchViewKey({ paneKey: WORKBENCH_STAGE_PANE_KEY, target });
   const view = workbench.views.get(viewKey) ?? workbenchController.getView(viewKey);
-  const terminalCount = useTerminals(viewKey).tabs.length;
+  const userTerminals = view.tabs.filter(
+    (tab) => tab.kind === "terminal" && tab.owner.kind === "user",
+  );
   const terminalWorkspacePath = target.kind === "home" ? null : (workspacePath ?? null);
   const scope = workbenchScopeForTarget(target, workspacePath);
+  const activeTab = activeWorkbenchTab(view, scope);
   const settingsMatch = useMatch({ from: "/settings/$section", shouldThrow: false });
   const settingsOpen = settingsMatch !== undefined;
   const workspaceVisible = !settingsOpen && stage.kind === "workspace";
-  const workbenchOpen =
-    workspaceVisible && view.expanded && activeWorkbenchTab(view, scope) !== null;
+  const workbenchOpen = workspaceVisible && view.expanded && activeTab !== null;
   const canGoBack = stage.kind === "customize" || settingsOpen || shellRouter.history.canGoBack();
   const historyIndex = shellRouter.history.location.state.__TSR_index;
   const canGoForward = historyIndex < shellRouter.history.length - 1;
@@ -194,19 +101,23 @@ export function Titlebar(): ReactElement {
       const action = resolveClientAction(event, mac, "workspace");
       if (action?.id === "terminal" || action?.id === "new-terminal") {
         event.preventDefault();
-        if (action.id === "terminal" && workbenchOpen && view.activeTab === "terminal") {
-          workbenchController.actions.toggle(viewKey);
+        if (action.id === "terminal" && workbenchOpen && activeTab?.kind === "terminal") {
+          workbenchController.actions.toggle({ view: viewKey });
+        } else if (action.id === "terminal" && userTerminals[0] !== undefined) {
+          workbenchController.actions.activateTab({ view: viewKey, id: userTerminals[0].id });
         } else {
-          if (action.id === "new-terminal" || terminalCount === 0) {
-            void terminalActions.create(viewKey, terminalWorkspacePath);
-          }
-          workbenchController.actions.openTab(viewKey, "terminal");
+          const id = workbenchController.actions.openTab({
+            view: viewKey,
+            tab: { kind: "terminal", owner: { kind: "user" } },
+            activate: true,
+          });
+          void terminalActions.create({ id, workspacePath: terminalWorkspacePath });
         }
         return;
       }
       if (action?.id !== "workbench") return;
       event.preventDefault();
-      workbenchController.actions.toggleWorkbench(viewKey, scope);
+      workbenchController.actions.toggleWorkbench({ view: viewKey, scope });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -215,27 +126,30 @@ export function Titlebar(): ReactElement {
     workspaceVisible,
     viewKey,
     workbenchOpen,
-    view.activeTab,
-    terminalCount,
+    activeTab,
+    userTerminals,
     terminalWorkspacePath,
     scope,
   ]);
 
   if (settingsOpen) {
     return (
-      <header {...stylex.props(styles.bar, mac && styles.barMac)}>
-        <span aria-hidden="true" {...stylex.props(styles.contentFill)} />
+      <header {...stylex.props(titlebarStyles.bar, mac && titlebarStyles.barMac)}>
+        <span aria-hidden="true" {...stylex.props(titlebarStyles.contentFill)} />
       </header>
     );
   }
 
   return (
-    <header {...stylex.props(styles.bar, mac && styles.barMac)}>
+    <header {...stylex.props(titlebarStyles.bar, mac && titlebarStyles.barMac)}>
       <span
         aria-hidden="true"
-        {...stylex.props(styles.contentFill, !sidebarVisible && styles.contentFillSidebarHidden)}
+        {...stylex.props(
+          titlebarStyles.contentFill,
+          !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
+        )}
       />
-      <span {...stylex.props(styles.actionTrack)}>
+      <span {...stylex.props(titlebarStyles.actionTrack)}>
         <HintToggleIconButton
           icon={<PanelToggleIcon side="left" visible={sidebarVisible} />}
           label={sidebarVisible ? "Hide sidebar" : "Show sidebar"}
@@ -246,7 +160,7 @@ export function Titlebar(): ReactElement {
         />
       </span>
       {sidebarVisible && (
-        <span {...stylex.props(styles.navigationTrack)}>
+        <span {...stylex.props(titlebarStyles.navigationTrack)}>
           <HintIconButton
             icon="arrow-left"
             label="Go back"
@@ -277,18 +191,20 @@ export function Titlebar(): ReactElement {
       {workspaceVisible && selection.kind === "session" && (
         <span
           {...stylex.props(
-            styles.titleSlot,
-            workbenchOpen && styles.titleSlotWorkbenchOpen,
+            titlebarStyles.titleSlot,
+            workbenchOpen && titlebarStyles.titleSlotWorkbenchOpen,
             !sidebarVisible &&
-              (mac ? styles.titleSlotSidebarHiddenMac : styles.titleSlotSidebarHidden),
+              (mac
+                ? titlebarStyles.titleSlotSidebarHiddenMac
+                : titlebarStyles.titleSlotSidebarHidden),
           )}
         >
           <SessionTitle sessionId={selection.sessionId} />
         </span>
       )}
-      <span {...stylex.props(styles.spacer)} />
+      <span {...stylex.props(titlebarStyles.spacer)} />
       {workspaceVisible && layout.kind === "single" && !(workbenchOpen && view.maximized) && (
-        <span {...stylex.props(styles.actionTrack)}>
+        <span {...stylex.props(titlebarStyles.actionTrack)}>
           <Menu
             label="Chat actions"
             align="end"
@@ -313,14 +229,18 @@ export function Titlebar(): ReactElement {
           </Menu>
         </span>
       )}
-      {workbenchOpen && <span aria-hidden="true" {...stylex.props(styles.workbenchReservation)} />}
+      {workbenchOpen && (
+        <span aria-hidden="true" {...stylex.props(titlebarStyles.workbenchReservation)} />
+      )}
       {workspaceVisible && (
         <div
           {...stylex.props(
-            workbenchOpen ? styles.workbenchTrack : styles.actionTrack,
+            workbenchOpen ? titlebarStyles.workbenchTrack : titlebarStyles.actionTrack,
             workbenchOpen &&
               !sidebarVisible &&
-              (mac ? styles.workbenchTrackSidebarHiddenMac : styles.workbenchTrackSidebarHidden),
+              (mac
+                ? titlebarStyles.workbenchTrackSidebarHiddenMac
+                : titlebarStyles.workbenchTrackSidebarHidden),
           )}
         >
           {workbenchOpen && (
@@ -337,7 +257,9 @@ export function Titlebar(): ReactElement {
                 label={view.maximized ? "Restore workbench width" : "Expand workbench"}
                 hint={view.maximized ? "Restore Workbench Width" : "Expand Workbench"}
                 pressed={view.maximized}
-                onPressedChange={() => workbenchController.actions.toggleMaximized(viewKey)}
+                onPressedChange={() =>
+                  workbenchController.actions.toggleMaximized({ view: viewKey })
+                }
               />
             </>
           )}
@@ -348,7 +270,9 @@ export function Titlebar(): ReactElement {
             hint={`${workbenchOpen ? "Hide Workbench" : "Show Workbench"} ${clientActionShortcut(clientActions.workbench, mac)}`}
             pressed={workbenchOpen}
             aria-keyshortcuts={clientActionAriaShortcut(clientActions.workbench, mac)}
-            onPressedChange={() => workbenchController.actions.toggleWorkbench(viewKey, scope)}
+            onPressedChange={() =>
+              workbenchController.actions.toggleWorkbench({ view: viewKey, scope })
+            }
           />
         </div>
       )}

@@ -10,7 +10,7 @@ import type { Event, Oid, RefName, Run, RunConfig } from "../model.ts";
 import { TASK_TOOL, taskModelParameters } from "../../plugins/builtin/subagents.ts";
 import { revokeDelegations } from "../delegation-record.ts";
 import { failedAssistant } from "./requests.ts";
-import { parseHeadRef, isHeadName, parseQueueRef, runRef } from "../names.ts";
+import { parseHeadRef, isHeadName, parseInboxRef, runRef } from "../names.ts";
 import type { Session } from "../store.ts";
 import { drive, type StepOptions } from "../step.ts";
 import { advanceStep } from "./advance.ts";
@@ -27,7 +27,6 @@ import {
   MAIN,
   type Disposer,
   type HeadName,
-  type Landing,
   type Nyte,
   type NyteOptions,
   type SessionId,
@@ -52,8 +51,8 @@ export function headFromRunRef(name: RefName): HeadName | undefined {
   return isHeadName(head) ? head : undefined;
 }
 
-function queueHead(name: RefName): HeadName | undefined {
-  return parseQueueRef(name)?.head;
+function inboxHead(name: RefName): HeadName | undefined {
+  return parseInboxRef(name)?.head;
 }
 
 function effectRunId(name: RefName): string | undefined {
@@ -81,8 +80,7 @@ async function headForRun(session: Session, runId: string): Promise<HeadName | u
 export function createRunners(input: {
   readonly options: NyteOptions;
   readonly pool: SessionPool;
-  /** The landing policy a runner drives with: the host's lanes plus the private `background` lane. */
-  readonly landing: Landing;
+  readonly drain: "one" | "all";
   readonly resolveModel: (ref: {
     readonly provider?: string;
     readonly id: string;
@@ -240,11 +238,10 @@ export function createRunners(input: {
     };
 
     const optionsFor = (head: HeadName, signal: AbortSignal): StepOptions => {
-      const executionLanding = { ...input.landing };
       const vcs = options.workspace?.vcs;
       return {
         head,
-        landing: executionLanding,
+        drain: input.drain,
         telemetry: options.telemetry,
         signal,
         ...(vcs === undefined || cwd === undefined ? {} : { tree: () => vcs.tree({ cwd }) }),
@@ -259,7 +256,6 @@ export function createRunners(input: {
           if ((await pooled.session.refs.read(JOBS_CANCELLED_REF)) !== null) {
             // A cancelled child may still have a completion in flight.
             // Settle its active run, but never land more delegated work.
-            executionLanding.lanes = [];
             await requestAbortAtRef(pooled, runRef(head));
           }
         },
@@ -330,6 +326,7 @@ export function createRunners(input: {
     const tasks = new Set<Promise<void>>();
     const prepared = prepareExecution(id, pooled, activation);
     let stopped = false;
+    let loopEnded = false;
 
     const stateFor = (head: HeadName): DriveState => {
       const found = states.get(head);
@@ -345,7 +342,7 @@ export function createRunners(input: {
     };
 
     const wake = (head: HeadName): void => {
-      if (stopped || pooled.retired || pooled.relocating) return;
+      if (loopEnded || stopped || pooled.retired || pooled.relocating) return;
       const state = stateFor(head);
       clearTimeout(state.deadline);
       state.deadline = undefined;
@@ -394,9 +391,14 @@ export function createRunners(input: {
 
     /** A parked deadline is durable; this timer only makes this host the one that notices it. */
     const driveAt = (head: HeadName, until: number): void => {
+      if (loopEnded || stopped || pooled.retired || pooled.relocating) return;
       const state = stateFor(head);
       clearTimeout(state.deadline);
       const check = (): void => {
+        if (loopEnded || stopped || pooled.retired || pooled.relocating) {
+          state.deadline = undefined;
+          return;
+        }
         const remaining = until - Date.now();
         if (remaining > 0) {
           state.deadline = setTimeout(check, Math.min(remaining, MAX_TIMER_DELAY_MS));
@@ -436,7 +438,7 @@ export function createRunners(input: {
           .childRunChanged(id, pooled)
           .catch((cause: unknown) => emitRunnerDiagnostic(pooled.session, cause));
       }
-      const inputHead = queueHead(event.name);
+      const inputHead = inboxHead(event.name);
       if (inputHead !== undefined && pooled.parent === undefined) {
         await input.delegation
           .yieldToInput(id, pooled, inputHead)
@@ -464,9 +466,15 @@ export function createRunners(input: {
           if (event.kind === "ref") await handleRef(event);
         }
       } catch (error) {
+        loopEnded = true;
         if (!stopped && !pooled.retired) await emitRunnerDiagnostic(pooled.session, error);
       } finally {
-        for (const state of states.values()) state.controller?.abort();
+        loopEnded = true;
+        for (const state of states.values()) {
+          state.controller?.abort();
+          clearTimeout(state.deadline);
+          state.deadline = undefined;
+        }
         await Promise.all([...tasks].map((task) => task.catch(() => undefined)));
         if (pooled.drives === states) pooled.drives = undefined;
       }
@@ -485,6 +493,7 @@ export function createRunners(input: {
       for (const state of states.values()) {
         state.controller?.abort();
         clearTimeout(state.deadline);
+        state.deadline = undefined;
       }
     };
     runnerDone.set(dispose, done);

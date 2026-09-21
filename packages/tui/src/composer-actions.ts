@@ -1,9 +1,10 @@
+import type { Delivery } from "@nyte-ai/core";
 import { commandBindings, formatCommandBindings } from "@opentui/keymap/extras";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { CHAT_KEYBINDS } from "./constants.ts";
 import { openDiagnosticReport } from "./diagnostic-report.ts";
-import type { LaneRoles } from "./lanes.ts";
+import type { DeliveryChoices } from "./lanes.ts";
 import { notice, selectChoice } from "./app/ui.ts";
 import type { Shell } from "./app/ui.ts";
 import { slashCommandLabel } from "./slash.ts";
@@ -11,7 +12,7 @@ import type { SlashCommand } from "./slash.ts";
 import { displayWidth } from "./width.ts";
 
 export type ComposerOperation =
-  | { readonly kind: "submit" | "save-edit"; readonly lane: string }
+  | { readonly kind: "submit" | "save-edit"; readonly delivery: Delivery }
   | { readonly kind: "cancel-edit" | "stop" | "tree" | "clear" | "quit" };
 
 interface ComposerActionState {
@@ -22,7 +23,7 @@ interface ComposerActionState {
   readonly waiting: boolean;
   readonly question: boolean;
   readonly draft: "empty" | "blank" | "message";
-  readonly editingLane: string | undefined;
+  readonly editingDelivery: Delivery | undefined;
   readonly followUp: "steer" | "queue";
   readonly blocked: string | undefined;
   readonly completion: { readonly accepting: boolean; readonly queueable: boolean } | undefined;
@@ -45,7 +46,7 @@ interface ComposerAction {
 
 /** Every composer action for one state, so a key, a hint row, and help agree. */
 interface ComposerActionSet {
-  readonly primaryLane: string;
+  readonly primaryDelivery: Delivery;
   readonly actions: Readonly<Record<ComposerActionName, ComposerAction>>;
 }
 
@@ -57,7 +58,7 @@ function sameActionState(left: ComposerActionState, right: ComposerActionState):
     left.waiting === right.waiting &&
     left.question === right.question &&
     left.draft === right.draft &&
-    left.editingLane === right.editingLane &&
+    left.editingDelivery === right.editingDelivery &&
     left.followUp === right.followUp &&
     left.blocked === right.blocked &&
     left.completion?.accepting === right.completion?.accepting &&
@@ -78,16 +79,23 @@ function completionReason(
 }
 
 /** Pure: reads nothing but its arguments, so it runs once per state, not once per getter. */
-function projectComposerActions(state: ComposerActionState, roles: LaneRoles): ComposerActionSet {
-  const primaryLane =
-    state.editingLane ?? (state.busy && !state.waiting ? roles[state.followUp] : roles.steer);
-  const submission = state.editingLane === undefined ? "submit" : "save-edit";
+function projectComposerActions(
+  state: ComposerActionState,
+  roles: DeliveryChoices,
+): ComposerActionSet {
+  const primaryDelivery =
+    state.editingDelivery ??
+    (state.waiting ? roles.steer : state.busy ? roles[state.followUp] : roles.queue);
+  const submission = state.editingDelivery === undefined ? "submit" : "save-edit";
   const alternate =
-    state.editingLane !== undefined || (state.busy && !state.waiting && state.followUp === "queue")
+    state.editingDelivery !== undefined ||
+    !state.busy ||
+    state.waiting ||
+    state.followUp === "queue"
       ? roles.steer
       : roles.queue;
   const interrupt: ComposerAction =
-    state.editingLane !== undefined
+    state.editingDelivery !== undefined
       ? {
           label: "cancel edit",
           reason: completionReason(state, "chat.interrupt"),
@@ -107,11 +115,11 @@ function projectComposerActions(state: ComposerActionState, roles: LaneRoles): C
             operation: { kind: "tree" },
           };
   return {
-    primaryLane,
+    primaryDelivery,
     actions: {
       "chat.submit": {
         label:
-          state.editingLane !== undefined
+          state.editingDelivery !== undefined
             ? "save"
             : state.shellInput !== undefined
               ? state.shellInput === "include"
@@ -120,17 +128,17 @@ function projectComposerActions(state: ComposerActionState, roles: LaneRoles): C
               : state.question
                 ? "answer"
                 : state.busy
-                  ? primaryLane
+                  ? primaryDelivery
                   : "send",
         reason: completionReason(state, "chat.submit"),
-        operation: { kind: submission, lane: primaryLane },
+        operation: { kind: submission, delivery: primaryDelivery },
       },
       "chat.queue.submit": {
         label: alternate,
         reason:
           completionReason(state, "chat.queue.submit") ??
           (state.draft === "message" ? undefined : "Enter a message first"),
-        operation: { kind: submission, lane: alternate },
+        operation: { kind: submission, delivery: alternate },
       },
       "chat.interrupt": interrupt,
       "chat.quit": {
@@ -149,7 +157,7 @@ function projectComposerActions(state: ComposerActionState, roles: LaneRoles): C
  */
 export class ComposerActions {
   private readonly read: () => ComposerActionState;
-  private readonly roles: LaneRoles;
+  private readonly roles: DeliveryChoices;
   private readonly disposeLayer: () => void;
   private last:
     | { readonly state: ComposerActionState; readonly set: ComposerActionSet }
@@ -157,7 +165,7 @@ export class ComposerActions {
 
   constructor(
     shell: Shell,
-    roles: LaneRoles,
+    roles: DeliveryChoices,
     read: () => ComposerActionState,
     invoke: (operation: ComposerOperation) => void,
   ) {
@@ -208,8 +216,8 @@ export class ComposerActions {
     return set;
   }
 
-  get primaryLane(): string {
-    return this.current().primaryLane;
+  get primaryDelivery(): Delivery {
+    return this.current().primaryDelivery;
   }
 
   dispose(): void {

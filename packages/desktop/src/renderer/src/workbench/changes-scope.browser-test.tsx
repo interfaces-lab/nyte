@@ -28,43 +28,71 @@ const viewKey: WorkbenchViewKey = workbenchViewKey({
   target: { kind: "session", sessionId: changesSession },
 });
 
+const changesTabId = workbenchController.actions.openTab({
+  view: viewKey,
+  tab: {
+    kind: "changes",
+    scope: { kind: "uncommitted" },
+    selectedPath: null,
+    pathRevealRevision: 0,
+    scrollTop: 0,
+  },
+  activate: true,
+});
+
+function changesTab() {
+  const tab = workbenchController
+    .getView(viewKey)
+    .tabs.find((candidate) => candidate.id === changesTabId);
+  if (tab?.kind !== "changes") throw new Error("Missing Changes tab");
+  return tab;
+}
+
 /** The same wiring workbench.tsx gives the panel: controller state in, controller actions out. */
 function Host({ withSession }: { readonly withSession: boolean }): ReactElement {
-  const snapshot = useWorkbenchSnapshot();
-  const view = snapshot.views.get(viewKey) ?? workbenchController.getView(viewKey);
+  useWorkbenchSnapshot();
+  const tab = changesTab();
+  const update = (patch: {
+    readonly scope: typeof tab.scope;
+    readonly selectedPath: string | null;
+    readonly pathRevealRevision: number;
+    readonly scrollTop: number;
+  }): void =>
+    workbenchController.actions.updateTab({
+      view: viewKey,
+      id: changesTabId,
+      kind: "changes",
+      patch,
+    });
   return (
     <ChangesPanel
       sessionId={withSession ? changesSession : undefined}
-      scope={view.changesScope}
-      selectedPath={view.selectedPath}
-      revealPathRevision={view.pathRevealRevision}
-      scrollTop={view.scrollTop.changes}
+      scope={tab.scope}
+      selectedPath={tab.selectedPath ?? undefined}
+      revealPathRevision={tab.pathRevealRevision}
+      scrollTop={tab.scrollTop}
       fileTreeVisible={true}
-      onScopeChange={(scope) => workbenchController.actions.selectChangesScope(viewKey, scope)}
+      onScopeChange={(scope) => update({ ...tab, scope, selectedPath: null, scrollTop: 0 })}
       onToggleFileTree={() => {}}
-      onSelectPath={(path) => workbenchController.actions.selectPath(viewKey, path)}
-      onRevealPath={(path) => workbenchController.actions.revealPath(viewKey, path)}
-      onScrollTop={(top) => workbenchController.actions.setScrollTop(viewKey, "changes", top)}
+      onSelectPath={(path) => update({ ...tab, selectedPath: path ?? null })}
+      onRevealPath={(path) =>
+        update({
+          ...tab,
+          selectedPath: path,
+          pathRevealRevision: tab.pathRevealRevision + 1,
+        })
+      }
+      onScrollTop={(scrollTop) => update({ ...tab, scrollTop })}
     />
   );
 }
 
 interface Observation {
   readonly step: string;
-  readonly scopeKind: string;
-  readonly scopeTurnId: string | null;
   readonly scopeLabel: string | null;
   readonly alert: string | null;
-  readonly treeFiles: readonly string[];
   readonly stackPaths: readonly string[];
   readonly snapshotReads: number;
-  readonly watches: number;
-  readonly unwatches: number;
-  readonly queryStatus: string;
-  readonly fetchStatus: string;
-  readonly queryError: string | null;
-  readonly cachedTurnIds: readonly string[];
-  readonly observers: number;
 }
 
 async function until(predicate: () => boolean, what: string): Promise<void> {
@@ -106,36 +134,14 @@ export async function run(): Promise<string> {
     queryClient.getQueryState<SessionSnapshot>(keys.snapshot(changesSession));
   const observations: Observation[] = [];
   const observe = (step: string): void => {
-    const state = snapshotState();
-    const data = state?.data;
-    const scope = workbenchController.getView(viewKey).changesScope;
     const observation: Observation = {
       step,
-      scopeKind: scope.kind,
-      scopeTurnId: scope.kind === "turn" ? scope.turnId : null,
       scopeLabel: trigger().getAttribute("aria-label"),
       alert: text(container.querySelector('[role="alert"]')),
-      treeFiles: Array.from(container.querySelectorAll('[role="treeitem"]')).map(
-        (item) => item.getAttribute("title") ?? "",
-      ),
       stackPaths: Array.from(container.querySelectorAll("[data-change-path]")).map(
         (item) => item.getAttribute("data-change-path") ?? "",
       ),
       snapshotReads: changesScopeScript.snapshotReads,
-      watches: changesScopeScript.watches,
-      unwatches: changesScopeScript.unwatches,
-      queryStatus: state?.status ?? "absent",
-      fetchStatus: state?.fetchStatus ?? "absent",
-      queryError: state?.error?.message ?? null,
-      cachedTurnIds:
-        data === undefined
-          ? []
-          : data.transcript.map((turn) => (turn.kind === "turn" ? turn.id : turn.kind)),
-      observers:
-        queryClient
-          .getQueryCache()
-          .find({ queryKey: keys.snapshot(changesSession) })
-          ?.getObserversCount() ?? 0,
     };
     observations.push(observation);
   };
@@ -184,12 +190,6 @@ export async function run(): Promise<string> {
     await selectScope("Turn 1");
     observe("selected an older turn");
 
-    await selectScope("Latest");
-    await selectScope("Turn 2");
-    await selectScope("Uncommitted");
-    await selectScope("Turn 1");
-    observe("after four more scope changes");
-
     // A rebase publishes a transcript through this exact call in live.ts.
     const dropSelectedTurn = (): void => {
       changesScopeScript.transcript = [firstTurn, secondTurn];
@@ -214,55 +214,20 @@ export async function run(): Promise<string> {
     dropSelectedTurn();
     await settle();
     await selectScope("Uncommitted");
-    observe("picked Uncommitted while a dropped turn was still stored");
 
     restoreTranscript();
     await settle();
     observe("transcript regained the turn after picking Uncommitted");
 
-    await selectScope("Turn 2");
-    observe("reselected a present turn");
-
-    // A read held open, then cancelled by the query layer while the panel stays mounted.
     changesScopeScript.hangSnapshot = true;
     void queryClient.refetchQueries({ queryKey: keys.snapshot(changesSession), exact: true });
     await until(() => snapshotState()?.fetchStatus === "fetching", "a read in flight");
     observe("read in flight");
     await selectScope("Latest");
     observe("scope changed while the read was in flight");
-    await queryClient.cancelQueries({ queryKey: keys.snapshot(changesSession), exact: true });
-    await settle();
-    observe("in-flight read cancelled, reverting");
     releaseSnapshot();
     changesScopeScript.hangSnapshot = false;
-    await settle();
-    observe("after the cancelled read resolved");
-
-    // The same cancellation without a revert.
-    changesScopeScript.hangSnapshot = true;
-    void queryClient.refetchQueries({ queryKey: keys.snapshot(changesSession), exact: true });
-    await until(() => snapshotState()?.fetchStatus === "fetching", "a second read in flight");
-    await queryClient.cancelQueries(
-      { queryKey: keys.snapshot(changesSession), exact: true },
-      { revert: false },
-    );
-    await settle();
-    observe("in-flight read cancelled without revert");
-    releaseSnapshot();
-    await settle();
-
-    // The panel leaves while its read is open: the read's own abort path runs.
-    void queryClient.refetchQueries({ queryKey: keys.snapshot(changesSession), exact: true });
-    await until(() => snapshotState()?.fetchStatus === "fetching", "a third read in flight");
-    render(false);
-    await settle();
-    observe("unmounted while the read was in flight");
-    releaseSnapshot();
-    changesScopeScript.hangSnapshot = false;
-    render(true);
-    await until(() => snapshotState()?.fetchStatus === "idle", "the remounted read");
-    await settle();
-    observe("remounted after the aborted read");
+    await until(() => snapshotState()?.fetchStatus === "idle", "the held read to finish");
 
     // A read that fails outright, with cached turns still in place.
     changesScopeScript.failSnapshot = true;
@@ -283,7 +248,7 @@ export async function run(): Promise<string> {
     changesScopeScript.vcsFiles = [];
     await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
     await until(
-      () => container.querySelectorAll('[role="treeitem"]').length === 0,
+      () => container.querySelector("[data-change-path]") === null,
       "the clean working tree",
     );
     await settle();

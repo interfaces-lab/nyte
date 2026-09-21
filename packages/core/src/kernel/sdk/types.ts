@@ -20,6 +20,7 @@ import type {
   AbortOutcome,
   Operation,
   OperationInput,
+  OperationOutput,
   ApplyOutcome,
   CancelOutcome,
   CommandInfo,
@@ -33,8 +34,8 @@ import type {
   HeadInfo,
   HeadName,
   RemoteJobs,
-  Lane,
-  Landing,
+  Delivery,
+  Drain,
   MentionFile,
   MergeOutcome,
   ModelInfo,
@@ -45,7 +46,6 @@ import type {
   PluginCatalog,
   RedeliverOutcome,
   ReplyOutcome,
-  RunDiff,
   RunInfo,
   RunRevert,
   SendInput,
@@ -76,6 +76,7 @@ import type {
   WorkspaceSelectInput,
   WorkspaceSelectOutcome,
   WorkspaceSelection,
+  WorkspaceTarget,
 } from "@nyte-ai/protocol";
 import type {
   Disposer,
@@ -91,7 +92,6 @@ import type { StepOutcome } from "../step.ts";
 import type { Store } from "../store.ts";
 
 export {
-  DEFAULT_LANDING,
   MAIN,
   sessionId,
   type ActivationRequirement,
@@ -114,9 +114,8 @@ export {
   type HeadName,
   type JobInfo,
   type JobActionOutcome,
-  type Lane,
-  type Landing,
-  type LanePolicy,
+  type Delivery,
+  type Drain,
   type MentionFile,
   type MergeOutcome,
   type ModelInfo,
@@ -171,6 +170,7 @@ export {
   type WorkspaceSelectInput,
   type WorkspaceSelectOutcome,
   type WorkspaceSelection,
+  type WorkspaceTarget,
 } from "@nyte-ai/protocol";
 
 export const TRUSTED_WORKSPACE: unique symbol = Symbol("TrustedWorkspace");
@@ -236,7 +236,7 @@ export interface Messages {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
     readonly change: Oid;
-    readonly lane: Lane;
+    readonly delivery: Delivery;
     readonly content?: SendInput["content"];
     /** Keep position when omitted; move before this pending item, or to the end with null. */
     readonly before?: Oid | null;
@@ -281,7 +281,7 @@ export interface Runs {
     readonly sessionId: SessionId;
     readonly head?: HeadName;
   }): Promise<ContextStatus>;
-  diff(input: OperationInput<"runs.diff">): Promise<RunDiff>;
+  diff(input: OperationInput<"runs.diff">): Promise<OperationOutput<"runs.diff">>;
   revert(
     input: OperationInput<"runs.revert"> & { readonly expect: TreeId },
   ): Promise<RunRevertOutcome>;
@@ -324,7 +324,7 @@ export interface Heads {
 // ---------------------------------------------------------------------------
 
 /** One operation's input with the directory the host resolved for it. */
-type InWorkspace<V extends Operation> = Omit<OperationInput<V>, "sessionId"> & {
+type InWorkspace<V extends Operation> = Omit<OperationInput<V>, "target"> & {
   readonly cwd: string;
 };
 
@@ -405,8 +405,8 @@ export interface Workspace {
    * session's directory; without one the directory a new session would start in
    * answers. The host caps how many come back.
    */
-  files(input?: {
-    readonly sessionId?: SessionId;
+  files(input: {
+    readonly target: WorkspaceTarget;
     readonly query?: string;
   }): Promise<readonly MentionFile[]>;
   /**
@@ -414,11 +414,11 @@ export interface Workspace {
    * Without a backend, reads answer empty and writes answer `failed`.
    */
   vcs: {
-    snapshot(input?: OperationInput<"workspace.vcs.snapshot">): Promise<VcsSnapshot>;
+    snapshot(input: OperationInput<"workspace.vcs.snapshot">): Promise<VcsSnapshot>;
     diff(input: OperationInput<"workspace.vcs.diff">): Promise<readonly VcsDiff[]>;
     contents(input: OperationInput<"workspace.vcs.contents">): Promise<VcsContents>;
     log(input: OperationInput<"workspace.vcs.log">): Promise<VcsLog>;
-    refs(input?: OperationInput<"workspace.vcs.refs">): Promise<VcsRefs>;
+    refs(input: OperationInput<"workspace.vcs.refs">): Promise<VcsRefs>;
     stage(
       input: OperationInput<"workspace.vcs.stage"> & {
         readonly expect: { readonly revision: string };
@@ -534,8 +534,8 @@ interface NyteBaseOptions {
   readonly streamFn: StreamFn;
   readonly models: ModelCatalog;
   readonly model: Model<Api>;
-  /** The lanes this host serves and when each lands. Absent means `DEFAULT_LANDING`. */
-  readonly landing?: Landing;
+  /** How much of an inbox chain each step lands. */
+  readonly drain?: Drain;
   readonly actor?: Actor;
   readonly thinkingLevel?: ThinkingLevel;
   readonly compaction?: CompactionSettings;
@@ -580,8 +580,6 @@ export type NyteOptions = StaticNyteOptions | LazyNyteOptions;
 export type ModelCatalog = Pick<Models, "getModels" | "getModel" | "getAvailable">;
 
 export interface Nyte {
-  /** The landing policy in force: the lanes a client may send to, in the runner's priority order. */
-  readonly landing: Landing;
   readonly sessions: Sessions;
   readonly messages: Messages;
   readonly runs: Runs;

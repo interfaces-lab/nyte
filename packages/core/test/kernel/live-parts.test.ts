@@ -76,6 +76,31 @@ test("tool updates replace progress and move only that call to its latest arriva
   assert.deepEqual(before.map(livePartKey), ["tool:c1", "text:r1:1:0", "tool:c2"]);
 });
 
+test("a terminal command job clears its tool progress", () => {
+  const progress = foldLiveParts(EMPTY_LIVE_PARTS, {
+    seq: 1,
+    kind: "tool_progress",
+    runId: "run",
+    callId: "call",
+    progress: { text: "working" },
+  });
+  const settled = foldLiveParts(progress, {
+    seq: 2,
+    kind: "job",
+    job: {
+      id: "job",
+      head: "main",
+      origin: { kind: "run", runId: "run", callId: "call" },
+      command: "work",
+      output: "done",
+      phase: { kind: "completed" },
+      startedAt: 1,
+      updatedAt: 2,
+    },
+  });
+  assert.deepEqual(settled, EMPTY_LIVE_PARTS);
+});
+
 test("retry and terminal phases clear only their run", () => {
   const events: SessionEvent[] = [
     text,

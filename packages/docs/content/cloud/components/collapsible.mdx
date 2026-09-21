@@ -8,7 +8,7 @@ import { Collapsible } from "@nyte-ai/ui/collapsible";
 ```
 
 One trigger, one panel. Reach for it when a section of a surface is worth hiding until the reader
-asks for it. No Nyte styling on this one, you own the visual layer.
+asks for it. No Nyte styling here.
 
 ## Usage
 
@@ -31,11 +31,33 @@ asks for it. No Nyte styling on this one, you own the visual layer.
 
 ### Basic
 
+<Preview>
+  <CollapsibleDemo />
+</Preview>
+
 ```tsx
 <Collapsible.Root>
-  <Collapsible.Trigger>Shipping details</Collapsible.Trigger>
-  <Collapsible.Panel>Standard shipping takes 3 to 5 business days.</Collapsible.Panel>
+  <Collapsible.Trigger>
+    <IconChevronRightSmall size={12} />
+    Advanced settings
+  </Collapsible.Trigger>
+  <Collapsible.Panel>
+    <div>Tools run without a confirmation prompt while this session is trusted.</div>
+  </Collapsible.Panel>
 </Collapsible.Root>
+```
+
+### Controlled
+
+```tsx
+const [open, setOpen] = useState(false);
+
+<Collapsible.Root open={open} onOpenChange={setOpen}>
+  <Collapsible.Trigger>Advanced settings</Collapsible.Trigger>
+  <Collapsible.Panel>
+    <div>Tools run without a confirmation prompt while this session is trusted.</div>
+  </Collapsible.Panel>
+</Collapsible.Root>;
 ```
 
 ### Hidden until found
@@ -48,10 +70,8 @@ trigger opens it, and find-in-page skips it.
 
 ```tsx
 <Collapsible.Root>
-  <Collapsible.Trigger>Shipping details</Collapsible.Trigger>
-  <Collapsible.Panel hiddenUntilFound>
-    Standard shipping takes 3 to 5 business days.
-  </Collapsible.Panel>
+  <Collapsible.Trigger>Environment variables</Collapsible.Trigger>
+  <Collapsible.Panel hiddenUntilFound>NYTE_BIN_DIR, NYTE_INSTALL_DIR</Collapsible.Panel>
 </Collapsible.Root>
 ```
 

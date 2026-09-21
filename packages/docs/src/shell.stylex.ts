@@ -81,8 +81,8 @@ export function withShell(className: string, props: ReturnType<typeof stylex.pro
 }
 
 /*
- * The doc sections are one shell with two skins. Components derive their
- * element classes from the skin name (`${skin}-side`, `${skin}-code`), so a
- * section's stylesheet is the only thing that distinguishes it.
+ * The doc sections are one shell with two skins. Every element takes the
+ * `shell-*` classes src/shell.css paints; the skin names the root class and
+ * the table wrapper, which is all cloud.css and docs.css still own.
  */
 export type ShellSkin = "docs" | "cloud";

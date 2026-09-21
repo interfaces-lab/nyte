@@ -3,7 +3,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { shell, withShell, type ShellSkin } from "~/shell.stylex";
+import { shell, withShell } from "~/shell.stylex";
 import { ShellColumnBody } from "./column";
 
 export interface TocEntry {
@@ -17,7 +17,7 @@ export interface TocEntry {
  * crossed the top third of the viewport, so the mark moves as you read, not
  * only when a heading enters view.
  */
-export function ShellToc({ skin, entries }: { skin: ShellSkin; entries: TocEntry[] }) {
+export function ShellToc({ entries }: { entries: TocEntry[] }) {
   const [current, setCurrent] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,16 +45,16 @@ export function ShellToc({ skin, entries }: { skin: ShellSkin; entries: TocEntry
 
   if (entries.length === 0) {
     return (
-      <div {...withShell(`${skin}-toc`, stylex.props(shell.columnWrap))}>
+      <div {...withShell("shell-toc", stylex.props(shell.columnWrap))}>
         <ShellColumnBody>{null}</ShellColumnBody>
       </div>
     );
   }
 
   return (
-    <aside {...withShell(`${skin}-toc`, stylex.props(shell.columnWrap))} aria-label="On this page">
+    <aside {...withShell("shell-toc", stylex.props(shell.columnWrap))} aria-label="On this page">
       <ShellColumnBody>
-        <span className={`${skin}-eyebrow`}>On this page</span>
+        <span className="shell-eyebrow">On this page</span>
         <ol>
           {entries.map((entry) => (
             <li key={entry.url}>

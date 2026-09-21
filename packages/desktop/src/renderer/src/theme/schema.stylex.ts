@@ -17,6 +17,7 @@ export const shell = stylex.defineConsts({
 export const conversation = stylex.defineConsts({
   measure: "var(--nyte-conversation-measure)",
   proseMeasure: "var(--nyte-prose-measure)",
+  paragraphGap: "var(--nyte-prose-paragraph-gap)",
   gutter: "var(--nyte-conversation-gutter)",
   headerHeight: "var(--nyte-conversation-header-height)",
   turnGap: "var(--nyte-conversation-turn-gap)",
@@ -74,8 +75,17 @@ export const settings = stylex.defineConsts({
   headingHeight: "var(--nyte-settings-heading-height)",
 });
 
+export const agent = stylex.defineConsts({
+  accent: "var(--nyte-purple)",
+});
+
 export const workbench = stylex.defineConsts({
   railWidth: "var(--nyte-workbench-rail-width)",
+  railGap: "var(--nyte-workbench-rail-gap)",
+  rowHeight: "var(--nyte-workbench-row-height)",
+  rowGap: "var(--nyte-workbench-row-gap)",
+  rowPaddingInline: "var(--nyte-workbench-row-padding-inline)",
+  headingHeight: "var(--nyte-workbench-heading-height)",
   panelWidth: "var(--nyte-workbench-panel-width)",
   headerHeight: "var(--nyte-workbench-header-height)",
   fileListWidth: "var(--nyte-workbench-file-list-width)",
@@ -137,6 +147,12 @@ export const control = stylex.defineConsts({
  */
 export const menu = stylex.defineConsts({
   itemHeight: "var(--nyte-menu-item-height)",
+  padding: "var(--nyte-menu-padding)",
+  radius: "var(--nyte-menu-radius)",
+  itemRadius: "var(--nyte-menu-item-radius)",
+  itemGap: "var(--nyte-menu-item-gap)",
+  itemPaddingInline: "var(--nyte-menu-item-padding-inline)",
+  itemPaddingBlock: "var(--nyte-menu-item-padding-block)",
   width: "var(--nyte-menu-width)",
   modelWidth: "var(--nyte-model-menu-width)",
   parameterWidth: "var(--nyte-parameter-menu-width)",

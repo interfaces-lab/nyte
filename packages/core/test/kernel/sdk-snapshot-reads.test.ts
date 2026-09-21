@@ -139,13 +139,15 @@ for (const checkpoints of [0, 2]) {
         await submit(f.session, {
           preparation: { kind: "none" },
           head: "main",
-          lane: "queue",
+          delivery: "next",
+          kind: "passive",
           body: { kind: "config", thinkingLevel: "xhigh" },
         });
         await submit(f.session, {
           preparation: { kind: "none" },
           head,
-          lane: "queue",
+          delivery: "next",
+          kind: "user",
           body: message(user("still pending")),
         });
         const reachable = new Set([...shared, ...main, ...(head === "side" ? side : [])]);

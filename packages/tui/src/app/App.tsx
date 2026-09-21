@@ -24,7 +24,7 @@ import {
 import { createScrollAcceleration } from "../scrolling.ts";
 import { createChatKeymap } from "../keymap.ts";
 import { LabelSyntax } from "../label-syntax.ts";
-import type { LaneRoles } from "../lanes.ts";
+import type { DeliveryChoices } from "../lanes.ts";
 import { PendingGutter } from "../pending-gutter.ts";
 import { PendingTail } from "../pending-tail.ts";
 import type { ActiveCliTheme, CliTheme } from "../theme.ts";
@@ -95,7 +95,7 @@ function adopt(host: BoxRenderable, child: () => BoxRenderable | undefined): voi
 interface AppProps {
   readonly renderer: CliRenderer;
   readonly initialTheme: CliTheme;
-  readonly roles: LaneRoles;
+  readonly roles: DeliveryChoices;
   readonly openPath: (path: string) => void;
   readonly onShell: (shell: Shell) => void;
 }

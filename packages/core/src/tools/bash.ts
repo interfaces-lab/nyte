@@ -79,7 +79,7 @@ export interface BashOperations {
     command: string,
     cwd: string,
     options: {
-      onData: (data: Buffer) => void;
+      onData: (data: Buffer) => Promise<void>;
       signal?: AbortSignal;
       timeout?: number;
       env?: NodeJS.ProcessEnv;
@@ -125,8 +125,34 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
       }
       let timedOut = false;
       let timeoutHandle: NodeJS.Timeout | undefined;
+      let pendingOutputChunks = 0;
+      let outputDelivery = Promise.resolve();
+      let outputFailure: Error | undefined;
       const onAbort = () => {
         if (child.pid) killProcessTree(child.pid);
+      };
+      const handleOutput = (data: Buffer) => {
+        if (outputFailure) return;
+        child.stdout?.pause();
+        child.stderr?.pause();
+        pendingOutputChunks++;
+        outputDelivery = outputDelivery.then(async () => {
+          if (!outputFailure) {
+            try {
+              await onData(data);
+            } catch (error) {
+              outputFailure = error instanceof Error ? error : new Error(String(error));
+              if (child.pid) killProcessTree(child.pid);
+              child.stdout?.resume();
+              child.stderr?.resume();
+            }
+          }
+          pendingOutputChunks--;
+          if (pendingOutputChunks === 0 && !outputFailure) {
+            child.stdout?.resume();
+            child.stderr?.resume();
+          }
+        });
       };
 
       try {
@@ -137,9 +163,8 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
             if (child.pid) killProcessTree(child.pid);
           }, timeoutMs);
         }
-        // Stream stdout and stderr.
-        child.stdout?.on("data", onData);
-        child.stderr?.on("data", onData);
+        child.stdout?.on("data", handleOutput);
+        child.stderr?.on("data", handleOutput);
         // Handle abort signal by killing the entire process tree.
         if (signal) {
           if (signal.aborted) onAbort();
@@ -148,6 +173,8 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
         // Handle shell spawn errors and wait for the process to terminate without hanging
         // on inherited stdio handles held by detached descendants.
         const exitCode = await waitForChildProcess(child);
+        while (pendingOutputChunks > 0) await outputDelivery;
+        if (outputFailure) throw outputFailure;
         if (signal?.aborted) {
           throw new Error("aborted");
         }
@@ -156,6 +183,8 @@ export function createLocalBashOperations(options?: { shellPath?: string }): Bas
         }
         return { exitCode };
       } finally {
+        child.stdout?.removeListener("data", handleOutput);
+        child.stderr?.removeListener("data", handleOutput);
         if (timeoutHandle) clearTimeout(timeoutHandle);
         if (signal) signal.removeEventListener("abort", onAbort);
       }
@@ -225,7 +254,7 @@ export function createBashTool(
         if (!onUpdate || !updateDirty) return;
         updateDirty = false;
         lastUpdateAt = Date.now();
-        const snapshot = output.snapshot({ persistIfTruncated: true });
+        const snapshot = output.snapshot();
         onUpdate({
           content: toolResultContent(sanitizeBinaryOutput(snapshot.content) || ""),
           title: command,
@@ -262,18 +291,18 @@ export function createBashTool(
         onUpdate({ content: [], details: undefined, title: command });
       }
 
-      const handleData = (data: Buffer) => {
+      const handleData = async (data: Buffer) => {
         if (!acceptingOutput) return;
-        output.append(data);
+        await output.append(data);
         scheduleOutputUpdate();
       };
 
       const finishOutput = async () => {
         acceptingOutput = false;
-        output.finish();
+        await output.finish();
         clearUpdateTimer();
         emitOutputUpdate();
-        const snapshot = output.snapshot({ persistIfTruncated: true });
+        const snapshot = output.snapshot();
         await output.closeTempFile();
         return snapshot;
       };
@@ -307,12 +336,21 @@ export function createBashTool(
       try {
         let exitCode: number | null;
         try {
-          const result = await ops.exec(spawnContext.command, spawnContext.cwd, {
+          const outputAbortController = new AbortController();
+          const operationSignal = signal
+            ? AbortSignal.any([signal, outputAbortController.signal])
+            : outputAbortController.signal;
+          const execution = ops.exec(spawnContext.command, spawnContext.cwd, {
             onData: handleData,
-            signal,
+            signal: operationSignal,
             timeout,
             env: spawnContext.env,
           });
+          const tempFileFailure = output.waitForTempFileError().then((error) => {
+            outputAbortController.abort();
+            throw error;
+          });
+          const result = await Promise.race([execution, tempFileFailure]);
           exitCode = result.exitCode;
         } catch (err) {
           const snapshot = await finishOutput();

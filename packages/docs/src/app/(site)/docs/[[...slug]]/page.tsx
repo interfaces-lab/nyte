@@ -5,6 +5,7 @@ import { docsMdxComponents } from "~/components/mdx";
 import { ShellMain } from "~/components/shell/column";
 import { ShellHead } from "~/components/shell/head";
 import { ShellPager } from "~/components/shell/pager";
+import { ShellToc } from "~/components/shell/toc";
 import { docsSectionFor } from "~/lib/docs-nav";
 import { docsRoute } from "~/lib/shared";
 import { getPageImageUrl, source } from "~/lib/source";
@@ -20,20 +21,18 @@ export default async function Page(props: PageProps<"/docs/[[...slug]]">) {
   const { previous, next } = findNeighbour(source.getPageTree(), page.url);
 
   return (
-    <ShellMain skin="docs">
-      <article className="docs-article">
-        <ShellHead
-          skin="docs"
-          eyebrow={section}
-          title={page.data.title}
-          lede={page.data.description}
-        />
-        <div className="docs-prose">
-          <MDX components={docsMdxComponents()} />
-        </div>
-        <ShellPager skin="docs" previous={previous} next={next} />
-      </article>
-    </ShellMain>
+    <>
+      <ShellMain>
+        <article className="shell-article">
+          <ShellHead eyebrow={section} title={page.data.title} lede={page.data.description} />
+          <div className="shell-prose">
+            <MDX components={docsMdxComponents()} />
+          </div>
+          <ShellPager previous={previous} next={next} />
+        </article>
+      </ShellMain>
+      <ShellToc entries={page.data.toc.filter((entry) => entry.depth <= 3)} />
+    </>
   );
 }
 

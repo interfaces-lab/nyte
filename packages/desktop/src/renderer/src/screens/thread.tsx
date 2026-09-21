@@ -1,7 +1,8 @@
+import { threadStyles } from "./thread.stylex.ts";
 /**
  * The persistent desktop stage. Pane hosts are keyed only by PaneId, so a
  * pane's chrome, size and view-state owner survive a selection change. The
- * conversation inside is keyed by SessionId instead: the transcript plane and
+ * conversation inside is keyed by SessionId instead: the virtualized transcript and
  * the composer share one scrollport, and a chat's absolutely positioned rows
  * only leave that scrollport when the surface holding them is replaced.
  */
@@ -19,10 +20,10 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
+import type { RunDiff, SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { toast } from "@nyte-ai/ui/sonner";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
-import type { Lane } from "@nyte-ai/protocol";
+import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
 import { attachComposerFiles } from "../conversation/composer-files.ts";
 import type { ComposerImageAttachment } from "../conversation/composer-files.ts";
@@ -34,7 +35,7 @@ import type {
 } from "../conversation/composer-document.ts";
 import type { ComposerEditorHandle } from "../conversation/composer-editor.tsx";
 import { composerSendInput, composerSendPlan } from "../conversation/composer-send.ts";
-import { laneRoles } from "../conversation/composer-keys.ts";
+import { deliveryChoices } from "../conversation/composer-keys.ts";
 import type {
   BranchModelChoice,
   BranchModelPicker,
@@ -78,6 +79,7 @@ import {
   usePluginCatalog,
   usePluginSettings,
   useRenameSession,
+  useRunDiffs,
   useSession,
   useSessionSnapshot,
   useVcsSnapshot,
@@ -86,9 +88,7 @@ import {
 import { useSessionRemoval } from "../layout/use-session-removal.ts";
 import { macPlatform } from "../platform.ts";
 import { outbox, useOutboxRows } from "../use-outbox.ts";
-import { conversation, layer, pane } from "../theme/schema.stylex.ts";
 import { useAppearanceSettings } from "../theme/use-appearance.ts";
-import { t } from "../theme/vars.stylex.ts";
 import { nyte } from "../nyte.ts";
 import type { DesktopModelOption } from "../nyte.ts";
 import { sessionReadState } from "../session-read-state.ts";
@@ -96,7 +96,7 @@ import { sessionReadState } from "../session-read-state.ts";
 import { BackgroundWork } from "../conversation/jobs-panel.tsx";
 import { LiveTurn, liveTurnStyles } from "../conversation/live-turn.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
-import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
+import { changesForTurn, TurnView, UserMessageView } from "../conversation/turn-view.tsx";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { Selections } from "../conversation/selection.tsx";
 import { parkedSelections } from "../conversation/selection.ts";
@@ -130,230 +130,12 @@ import {
 import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
-import { terminalActions } from "../workbench/terminal-store.ts";
-import { agentActions } from "../workbench/agents-store.ts";
-import { SubagentInspectorProvider } from "../conversation/subagent-inspector.ts";
+import { openSessionJobTerminal } from "../workbench/terminal-store.ts";
+import { SubagentTray, type SubagentTrayView } from "../conversation/subagent-tray.tsx";
+import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { focusTerminal } from "../workbench/terminal-runtime.ts";
 import { clientActions, clientActionShortcut } from "../../../shared/client-actions.ts";
 import { errorMessage } from "../../../shared/errors.ts";
-
-const styles = stylex.create({
-  stage: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    overflow: "hidden",
-  },
-  panes: {
-    position: "relative",
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    minHeight: 0,
-    overflow: "hidden",
-  },
-  splitRight: { flexDirection: "row" },
-  splitDown: { flexDirection: "column" },
-  pane: {
-    position: "relative",
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    minHeight: 0,
-    overflow: "hidden",
-    backgroundColor: t.bgBase,
-  },
-  paneSingle: { flex: 1 },
-  paneLeading: (ratio: number) => ({
-    flexGrow: 0,
-    flexShrink: 0,
-    flexBasis: `${String(ratio * 100)}%`,
-  }),
-  paneTrailing: { flex: 1 },
-  screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    height: conversation.headerHeight,
-    paddingInline: 12,
-    flexShrink: 0,
-  },
-  title: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    fontSize: t.fontBase,
-    fontWeight: 600,
-    color: t.textPrimary,
-  },
-  headerActions: { display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 },
-  renameInput: {
-    flex: 1,
-    minWidth: 0,
-    height: 24,
-    paddingInline: 6,
-    borderRadius: t.radiusSm,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: { default: t.strokeSecondary, ":focus-visible": t.strokeFocused },
-    backgroundColor: t.bgElevated,
-    color: t.textPrimary,
-    fontSize: t.fontBase,
-    fontWeight: 600,
-    outline: "none",
-  },
-  body: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
-  conversation: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  // Rows dissolve at the top edge the way they do at the composer, over the
-  // same distance. A stuck prompt covers that edge with its own opaque inset
-  // and turns the mask off: masking the scrollport would make the strip
-  // translucent again and let rows surface above the prompt.
-  //
-  // Rows resize under the virtualizer's own corrections, so the browser's
-  // anchoring stays out.
-  scroll: {
-    display: "flex",
-    flexDirection: "column",
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    overflowAnchor: "none",
-    maskImage: {
-      default: null,
-      "[data-top-fade='true']": `linear-gradient(to bottom, transparent, black ${conversation.edgeFade})`,
-    },
-  },
-  // The plane's height is the virtualizer's total; rows sit inside it at
-  // their measured offsets. Top and bottom padding live in the virtualizer
-  // (`paddingStart`/`paddingEnd`), the turn gap on each row.
-  transcript: {
-    position: "relative",
-    flexGrow: 1,
-    flexShrink: 0,
-    width: `min(${conversation.measure}, 100%)`,
-    marginInline: "auto",
-  },
-  // `top` rather than a transform: the prompt inside is `position: sticky`,
-  // and a transformed ancestor would pin it to the row instead of the
-  // scrollport. A row that renders nothing drops its gap like a missing flex
-  // item would.
-  row: {
-    position: "absolute",
-    insetInline: 0,
-    paddingInline: conversation.gutter,
-    paddingTop: { default: conversation.turnGap, ":empty": 0 },
-    contain: "layout",
-  },
-  rowFirst: { paddingTop: 0 },
-  banner: {
-    width: "fit-content",
-    padding: "4px 10px",
-    borderRadius: t.radiusLg,
-    backgroundColor: t.fillWarningSubtle,
-    color: t.textWarning,
-    fontSize: t.fontSm,
-  },
-  bannerAction: {
-    padding: 0,
-    borderStyle: "none",
-    backgroundColor: "transparent",
-    color: "inherit",
-    fontSize: "inherit",
-    textDecorationLine: "underline",
-    cursor: "pointer",
-  },
-  blank: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    flex: 1,
-    minHeight: 0,
-  },
-  blankColumn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    width: "min(608px, calc(100% - 40px))",
-  },
-  greeting: { paddingInlineStart: 4, color: t.textTertiary, fontSize: t.fontLg },
-  workspaceContext: {
-    display: "flex",
-    alignItems: "center",
-    gap: 4,
-    minWidth: 0,
-    paddingInline: 4,
-    color: t.textSecondary,
-    fontSize: t.fontBase,
-  },
-  workspaceContextItem: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    minWidth: 0,
-  },
-  workspaceContextButton: {
-    height: 26,
-    paddingInline: 4,
-    borderStyle: "none",
-    borderRadius: t.radiusBase,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-      "[data-popup-open]": t.fillGhostSelected,
-    },
-    color: "inherit",
-    cursor: "pointer",
-  },
-  workspaceContextPath: { maxWidth: 280 },
-  workspaceContextStatic: { height: 26, paddingInline: 4 },
-  workspaceContextText: {
-    minWidth: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  blankHint: { paddingInlineStart: 4, color: t.textTertiary, fontSize: t.fontBase },
-  blankActions: { display: "flex", gap: 8, paddingInlineStart: 4 },
-  error: { paddingInlineStart: 4, color: t.textDanger, fontSize: t.fontBase },
-  sash: {
-    position: "relative",
-    display: "grid",
-    placeItems: "center",
-    flexShrink: 0,
-    zIndex: 4,
-    touchAction: "none",
-    outlineStyle: { default: "none", ":focus-visible": "solid" },
-    outlineWidth: 2,
-    outlineColor: t.focusRing,
-    outlineOffset: -2,
-  },
-  sashRight: { width: pane.sashSize, cursor: "col-resize" },
-  sashDown: { height: pane.sashSize, cursor: "row-resize" },
-  sashLine: { backgroundColor: t.strokeTertiary, pointerEvents: "none" },
-  sashLineRight: { width: 1, height: "100%" },
-  sashLineDown: { width: "100%", height: 1 },
-  dropPreviewLayer: {
-    position: "absolute",
-    inset: 2,
-    zIndex: layer.dragPreview,
-    overflow: "hidden",
-    pointerEvents: "none",
-  },
-  dropPreview: {
-    position: "absolute",
-    borderRadius: t.radiusSm,
-    borderWidth: 2,
-    borderStyle: "solid",
-    borderColor: t.fillAccent,
-    backgroundColor: `color-mix(in srgb, ${t.fillAccent} 8%, transparent)`,
-    pointerEvents: "none",
-  },
-});
 
 const EMPTY_TURNS: readonly Turn[] = [];
 const EMPTY_MODEL_OPTIONS: readonly DesktopModelOption[] = [];
@@ -413,7 +195,7 @@ function syncStickyUserMessage(scroll: HTMLDivElement, virtualizer: TranscriptVi
  * visit builds a virtualizer seeded from that session's last measurements
  * and offset rather than from whatever the previous chat left on screen.
  */
-const TranscriptPlane = memo(function TranscriptPlane({
+const VirtualizedTranscript = memo(function VirtualizedTranscript({
   paneId,
   sessionId,
   ready,
@@ -456,7 +238,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
       }),
     };
   });
-  // The slack under the last row scales with the scrollport, so the plane
+  // The slack under the last row scales with the scrollport, so the container
   // follows it. What the last visit measured carries the first paint until
   // the observer below reports this one.
   const [viewportHeight, setViewportHeight] = useState(restore.rect.height);
@@ -469,7 +251,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
     getScrollElement: () => scroll,
     estimateSize: (index) => estimateRowSize(rows[index], density),
     getItemKey,
-    // The virtualizer owns the plane height and row tops, so a scroll tick
+    // The virtualizer owns the container height and row tops, so a scroll tick
     // rerenders only when the visible range changes. `position` keeps `top`
     // so the sticky prompt pins to the scrollport, not to a transformed row.
     directDomUpdates: true,
@@ -510,11 +292,11 @@ const TranscriptPlane = memo(function TranscriptPlane({
   );
 
   useLayoutEffect(() => {
-    // The plane is the scrollport's first child; the composer dock is its last.
-    const plane = scroll?.firstElementChild;
-    if (scroll === null || !(plane instanceof HTMLElement)) return undefined;
+    // The container is the scrollport's first child; the composer dock is its last.
+    const container = scroll?.firstElementChild;
+    if (scroll === null || !(container instanceof HTMLElement)) return undefined;
     const last = scroll.lastElementChild;
-    const dock = last instanceof HTMLElement ? last : undefined;
+    const dock = last instanceof HTMLElement && last !== container ? last : undefined;
     dockHeight.current = dock?.offsetHeight ?? 0;
     const restored = viewStore.readSession(sessionId, paneId).scroll;
     // Restoration must go through the virtualizer so its scroll target moves
@@ -541,7 +323,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
       sync();
     });
     observer.observe(scroll);
-    observer.observe(plane);
+    observer.observe(container);
     if (dock !== undefined) observer.observe(dock);
     scroll.addEventListener("scroll", sync, { passive: true });
     return () => {
@@ -557,7 +339,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
   }, [rows, scroll, virtualizer]);
 
   return (
-    <div ref={virtualizer.containerRef} {...stylex.props(styles.transcript)}>
+    <div ref={virtualizer.containerRef} {...stylex.props(threadStyles.transcript)}>
       {virtualizer.getVirtualItems().map((item) => {
         const row = rows[item.index];
         if (row === undefined) return null;
@@ -566,7 +348,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
             key={row.key}
             ref={virtualizer.measureElement}
             data-index={item.index}
-            {...stylex.props(styles.row, item.index === 0 && styles.rowFirst)}
+            {...stylex.props(threadStyles.row, item.index === 0 && threadStyles.rowFirst)}
           >
             {renderRow(row)}
           </div>
@@ -578,8 +360,7 @@ const TranscriptPlane = memo(function TranscriptPlane({
 
 function repositoryBranch(snapshot: VcsSnapshot | undefined): string | undefined {
   if (snapshot === undefined || snapshot.kind === "none") return undefined;
-  const { branch } = snapshot.head;
-  return branch.kind === "named" ? branch.name : undefined;
+  return snapshot.head.kind === "attached" ? snapshot.head.branch : undefined;
 }
 
 function displayWorkspacePath(path: string): string {
@@ -630,9 +411,9 @@ function PaneHeader({
   const mac = macPlatform(host.data?.platform);
 
   return (
-    <div {...stylex.props(styles.header)}>
-      <span {...stylex.props(styles.title)}>{title}</span>
-      <span {...stylex.props(styles.headerActions)}>
+    <div {...stylex.props(threadStyles.header)}>
+      <span {...stylex.props(threadStyles.title)}>{title}</span>
+      <span {...stylex.props(threadStyles.headerActions)}>
         <Menu
           label="Pane actions"
           align="end"
@@ -745,12 +526,14 @@ type EditUserMessage = (
 
 const SettledTurnView = memo(function SettledTurnView({
   turn,
+  runDiff,
   cwd,
   onEditUser,
   branchModel,
   onOpenChanges,
 }: {
   turn: RenderedTurn;
+  runDiff: RunDiff | undefined;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -759,6 +542,7 @@ const SettledTurnView = memo(function SettledTurnView({
   return (
     <TurnView
       turn={turn}
+      runDiff={runDiff}
       liveTools={NO_LIVE_TOOLS}
       cwd={cwd}
       onEditUser={onEditUser}
@@ -773,6 +557,7 @@ const SettledTurnView = memo(function SettledTurnView({
 const TrailingTurnView = memo(function TrailingTurnView({
   sessionId,
   turn,
+  runDiff,
   cwd,
   onEditUser,
   branchModel,
@@ -782,6 +567,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
 }: {
   sessionId: SessionId;
   turn: RenderedTurn;
+  runDiff: RunDiff | undefined;
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
@@ -793,6 +579,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   return (
     <TurnView
       turn={turn}
+      runDiff={runDiff}
       liveTools={live.tools}
       live={live}
       cwd={cwd}
@@ -820,16 +607,26 @@ const SessionLiveTurn = memo(function SessionLiveTurn({
   return <LiveTurn live={live} working={working} settledWork={settledWork} cwd={cwd} />;
 });
 
-function SessionConversation({
-  paneId,
-  sessionId,
-  inputRef,
-}: {
-  paneId: PaneId;
-  sessionId: SessionId;
-  inputRef: (element: ComposerEditorHandle | null) => void;
-}): ReactElement {
+type SessionConversationProps =
+  | {
+      readonly presentation: "full";
+      readonly paneId: PaneId;
+      readonly sessionId: SessionId;
+      readonly workbenchSessionId: SessionId;
+      readonly inputRef: (element: ComposerEditorHandle | null) => void;
+    }
+  | {
+      readonly presentation: "tray";
+      readonly paneId: PaneId;
+      readonly sessionId: SessionId;
+      readonly workbenchSessionId: SessionId;
+      readonly onOpenSubagentTray: (sessionId?: SessionId) => void;
+    };
+
+function SessionConversation(props: SessionConversationProps): ReactElement {
+  const { paneId, presentation, sessionId } = props;
   const host = useHostState();
+  const paneActions = usePaneActions();
   const { layout } = usePaneControllerSnapshot();
   const session = useSession(sessionId);
   const catalog = useCatalog(sessionId);
@@ -840,7 +637,11 @@ function SessionConversation({
   const [draftName, setDraftName] = useState<string | undefined>();
   const [deletion, setDeletion] = useState<SessionDeletionState>({ kind: "closed" });
   const [navigating, setNavigating] = useState(false);
-  const [backgroundWork, setBackgroundWork] = useState(false);
+  const [trayView, setTrayView] = useState<SubagentTrayView | { readonly kind: "terminals" }>({
+    kind: "closed",
+  });
+  const subagentTray: SubagentTrayView =
+    trayView.kind === "terminals" ? { kind: "closed" } : trayView;
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = useSessionSnapshot(sessionId);
   const snapshotSession = snapshot.data?.session;
@@ -850,6 +651,14 @@ function SessionConversation({
     if (snapshotSession !== undefined) sessionReadState.markRead(snapshotSession);
   }, [session.data, snapshotSession]);
   const turns = snapshot.data?.transcript ?? EMPTY_TURNS;
+  const runIds = useMemo(
+    () =>
+      turns.flatMap((turn) =>
+        turn.kind === "turn" && turn.run.kind === "run" ? [turn.run.id] : [],
+      ),
+    [turns],
+  );
+  const runDiffs = useRunDiffs(sessionId, runIds);
   const live = useSessionLive(sessionId);
   const viewStore = usePaneViewStateStore();
   const unsent = useOutboxRows(sessionId);
@@ -858,12 +667,12 @@ function SessionConversation({
       conversationMessages({
         snapshot: snapshot.data,
         unsent,
-        steerLane: laneRoles(nyte.landing).steer,
+        steerDelivery: deliveryChoices.steer,
       }),
     [snapshot.data, unsent],
   );
   const working =
-    navigating || live.runState !== "idle" || messages.running || messages.landing.length > 0;
+    navigating || live.runState !== "idle" || messages.running || messages.submitted.length > 0;
   const cwd = host.data?.workspace?.path;
   // The scrollport arrives as state so everything below it re-runs on the
   // commit that creates the node, not one commit late.
@@ -914,17 +723,12 @@ function SessionConversation({
   // settled without changes, which is most follow-ups.
   const latestChangedTurn = useMemo(
     () =>
-      turns.findLast(
-        (turn) =>
-          turn.kind === "turn" &&
-          turn.parts.some(
-            (part) =>
-              part.kind === "tool" &&
-              part.class.kind === "file_patch" &&
-              part.result?.isError === false,
-          ),
-      ),
-    [turns],
+      turns.findLast((turn) => {
+        if (turn.kind !== "turn") return false;
+        const runDiff = turn.run.kind === "run" ? runDiffs.get(turn.run.id) : undefined;
+        return changesForTurn(turn, runDiff).length > 0;
+      }),
+    [runDiffs, turns],
   );
   // A turn that ends in a work group already draws the run's indicator there,
   // as does one whose live wait on its children is drawn as status. One that
@@ -950,12 +754,20 @@ function SessionConversation({
         loading: snapshot.isLoading,
         failed: snapshot.isError,
         turns,
-        landing: messages.landing,
+        landing: messages.submitted,
         retrying,
         working,
         selections,
       }),
-    [snapshot.isLoading, snapshot.isError, turns, messages.landing, retrying, working, selections],
+    [
+      snapshot.isLoading,
+      snapshot.isError,
+      turns,
+      messages.submitted,
+      retrying,
+      working,
+      selections,
+    ],
   );
 
   const title =
@@ -995,20 +807,18 @@ function SessionConversation({
       ),
     [children.data],
   );
-  const subagentInspector = useMemo(
-    () => ({
-      sessionId,
-      children: childBySession,
-      inspect: (child: SessionId): void => {
-        const viewKey = workbenchViewKey({
-          paneKey: WORKBENCH_STAGE_PANE_KEY,
-          target: { kind: "session", sessionId },
-        });
-        agentActions.select(viewKey, child);
-        workbenchController.actions.openTab(viewKey, "agents");
-      },
-    }),
-    [childBySession, sessionId],
+  const openLocalSubagentTray = useCallback((childSessionId?: SessionId): void => {
+    setTrayView(
+      childSessionId === undefined
+        ? { kind: "list" }
+        : { kind: "detail", sessionId: childSessionId },
+    );
+  }, []);
+  const openSubagentTray =
+    presentation === "tray" ? props.onOpenSubagentTray : openLocalSubagentTray;
+  const subagentSessions = useMemo(
+    () => ({ children: childBySession, open: openSubagentTray }),
+    [childBySession, openSubagentTray],
   );
   const openChanges = useCallback(
     (target: TurnChangesTarget): void => {
@@ -1016,14 +826,33 @@ function SessionConversation({
         paneKey: WORKBENCH_STAGE_PANE_KEY,
         target: { kind: "session", sessionId },
       });
-      workbenchController.actions.selectChangesScope(viewKey, {
-        kind: "turn",
-        turnId: target.turnId,
+      const id = workbenchController.actions.openTab({
+        view: viewKey,
+        tab: {
+          kind: "changes",
+          scope: { kind: "uncommitted" },
+          selectedPath: null,
+          pathRevealRevision: 0,
+          scrollTop: 0,
+        },
+        activate: true,
       });
-      if (target.kind === "file") {
-        workbenchController.actions.revealPath(viewKey, target.path);
-      }
-      workbenchController.actions.openTab(viewKey, "changes");
+      const tab = workbenchController
+        .getView(viewKey)
+        .tabs.find((candidate) => candidate.id === id);
+      if (tab?.kind !== "changes") return;
+      workbenchController.actions.updateTab({
+        view: viewKey,
+        id,
+        kind: "changes",
+        patch: {
+          scope: { kind: "turn", turnId: target.turnId },
+          selectedPath: target.kind === "file" ? target.path : null,
+          pathRevealRevision:
+            target.kind === "file" ? tab.pathRevealRevision + 1 : tab.pathRevealRevision,
+          scrollTop: 0,
+        },
+      });
     },
     [sessionId],
   );
@@ -1036,11 +865,11 @@ function SessionConversation({
           return <TranscriptSkeleton />;
         case "error":
           return (
-            <div role="alert" {...stylex.props(styles.banner)}>
+            <div role="alert" {...stylex.props(threadStyles.banner)}>
               Couldn&rsquo;t load this chat.{" "}
               <button
                 type="button"
-                {...stylex.props(styles.bannerAction, focus.ring)}
+                {...stylex.props(threadStyles.bannerAction, focus.ring)}
                 onClick={() => void refetchSnapshot()}
               >
                 Try again
@@ -1048,6 +877,10 @@ function SessionConversation({
             </div>
           );
         case "turn": {
+          const runDiff =
+            row.turn.kind === "turn" && row.turn.run.kind === "run"
+              ? runDiffs.get(row.turn.run.id)
+              : undefined;
           const onOpenChanges =
             !working && row.turn === latestChangedTurn ? openChanges : undefined;
           if (row.trailing && working) {
@@ -1055,6 +888,7 @@ function SessionConversation({
               <TrailingTurnView
                 sessionId={sessionId}
                 turn={row.turn}
+                runDiff={runDiff}
                 cwd={cwd}
                 onEditUser={editUserMessage}
                 branchModel={branchModel}
@@ -1067,6 +901,7 @@ function SessionConversation({
           return (
             <SettledTurnView
               turn={row.turn}
+              runDiff={runDiff}
               cwd={cwd}
               onEditUser={editUserMessage}
               branchModel={branchModel}
@@ -1086,7 +921,7 @@ function SessionConversation({
           );
         case "retry":
           return (
-            <div role="status" title={row.message} {...stylex.props(styles.banner)}>
+            <div role="status" title={row.message} {...stylex.props(threadStyles.banner)}>
               Retrying…
             </div>
           );
@@ -1122,6 +957,7 @@ function SessionConversation({
       navigating,
       openChanges,
       parked,
+      runDiffs,
       sessionId,
       settledWork,
       snapshotError,
@@ -1131,9 +967,15 @@ function SessionConversation({
   );
 
   return (
-    <SubagentInspectorProvider value={subagentInspector}>
-      <div {...stylex.props(styles.screen)} aria-busy={snapshot.isLoading}>
-        {layout.kind === "split" && (
+    <SubagentSessionsProvider value={subagentSessions}>
+      <div
+        {...stylex.props(
+          threadStyles.screen,
+          presentation === "tray" && threadStyles.embeddedScreen,
+        )}
+        aria-busy={snapshot.isLoading}
+      >
+        {presentation === "full" && layout.kind === "split" && (
           <PaneHeader
             paneId={paneId}
             menuTriggerRef={paneMenuTrigger}
@@ -1144,7 +986,7 @@ function SessionConversation({
                 <input
                   aria-label="Chat name"
                   autoFocus
-                  {...stylex.props(styles.renameInput)}
+                  {...stylex.props(threadStyles.renameInput)}
                   value={draftName}
                   onChange={(event) => setDraftName(event.target.value)}
                   onBlur={commitRename}
@@ -1170,12 +1012,12 @@ function SessionConversation({
           />
         )}
 
-        <div {...stylex.props(styles.body)}>
-          <div {...stylex.props(styles.conversation)}>
+        <div {...stylex.props(threadStyles.body)}>
+          <div {...stylex.props(threadStyles.conversation)}>
             <div
               ref={setScroll}
               data-nyte-scrollport="balanced"
-              {...stylex.props(styles.scroll)}
+              {...stylex.props(threadStyles.scroll)}
               onScroll={(event) => {
                 const element = event.currentTarget;
                 const nextBottomPinned = isBottomPinned(element);
@@ -1186,7 +1028,7 @@ function SessionConversation({
                 }));
               }}
             >
-              <TranscriptPlane
+              <VirtualizedTranscript
                 paneId={paneId}
                 sessionId={sessionId}
                 ready={ready}
@@ -1195,65 +1037,91 @@ function SessionConversation({
                 renderRow={renderRow}
               />
 
-              <Composer
-                sessionId={sessionId}
-                backgroundWork={{
-                  content: (
-                    <BackgroundWork
-                      sessionId={sessionId}
-                      terminalOwner={workbenchViewKey({
-                        paneKey: WORKBENCH_STAGE_PANE_KEY,
-                        target: { kind: "session", sessionId },
-                      })}
-                      open={backgroundWork}
-                      onOpenChange={setBackgroundWork}
-                      onOpenTerminal={(job) => {
-                        const viewKey = workbenchViewKey({
-                          paneKey: WORKBENCH_STAGE_PANE_KEY,
-                          target: { kind: "session", sessionId },
-                        });
-                        const terminalId = terminalActions.openJob(viewKey, sessionId, job);
-                        workbenchController.actions.openTab(viewKey, "terminal");
-                        focusTerminal(terminalId);
-                      }}
-                      viewport={scroll}
-                    />
-                  ),
-                  onEscape: () => {
-                    if (!backgroundWork) return false;
-                    setBackgroundWork(false);
-                    return true;
-                  },
-                }}
-                working={working}
-                // The boundary lane draws in the transcript; the tray keeps the rest.
-                pending={messages.queued}
-                unsent={messages.unsent}
-                disabled={snapshot.data === undefined || snapshot.isError}
-                fileDropRoot={scroll}
-                initialViewState={viewStore.readSession(sessionId, paneId).composer}
-                onViewStateChange={(composer) =>
-                  viewStore.updateSession(sessionId, paneId, (current) => ({
-                    ...current,
-                    composer,
-                  }))
-                }
-                inputRef={inputRef}
-                autoFocus={false}
-                onScrollToBottom={
-                  !bottomPinned
-                    ? () => {
-                        if (scroll === null) return;
-                        scroll.scrollTo({ top: scroll.scrollHeight });
-                        setBottomPinned(true);
-                      }
-                    : undefined
-                }
-              />
+              {presentation === "full" && (
+                <Composer
+                  sessionId={sessionId}
+                  backgroundWork={{
+                    content: (
+                      <>
+                        <SubagentTray
+                          parentSessionId={sessionId}
+                          agents={children.data ?? []}
+                          view={subagentTray}
+                          onViewChange={setTrayView}
+                          onExpand={(childSessionId) => {
+                            setTrayView({ kind: "closed" });
+                            paneActions.openSessionInPane(paneId, childSessionId);
+                          }}
+                          viewport={scroll}
+                          detail={
+                            subagentTray.kind === "detail" ? (
+                              <SessionConversation
+                                key={subagentTray.sessionId}
+                                presentation="tray"
+                                paneId={paneId}
+                                sessionId={subagentTray.sessionId}
+                                workbenchSessionId={props.workbenchSessionId}
+                                onOpenSubagentTray={openSubagentTray}
+                              />
+                            ) : null
+                          }
+                        />
+                        <BackgroundWork
+                          sessionId={sessionId}
+                          open={trayView.kind === "terminals"}
+                          onOpenChange={(open) =>
+                            setTrayView({ kind: open ? "terminals" : "closed" })
+                          }
+                          onOpenTerminal={(job, activate) => {
+                            const terminalId = openSessionJobTerminal({
+                              controller: workbenchController,
+                              displayedSessionId: props.workbenchSessionId,
+                              jobSessionId: sessionId,
+                              job,
+                              activate,
+                            });
+                            if (activate) focusTerminal(terminalId);
+                          }}
+                          viewport={scroll}
+                        />
+                      </>
+                    ),
+                    onEscape: () => {
+                      if (trayView.kind === "closed") return false;
+                      setTrayView({ kind: "closed" });
+                      return true;
+                    },
+                  }}
+                  working={working}
+                  // The boundary delivery draws in the transcript; the tray keeps the rest.
+                  pending={messages.queued}
+                  unsent={messages.unsent}
+                  disabled={snapshot.data === undefined || snapshot.isError}
+                  fileDropRoot={scroll}
+                  initialViewState={viewStore.readSession(sessionId, paneId).composer}
+                  onViewStateChange={(composer) =>
+                    viewStore.updateSession(sessionId, paneId, (current) => ({
+                      ...current,
+                      composer,
+                    }))
+                  }
+                  inputRef={props.inputRef}
+                  autoFocus={false}
+                  onScrollToBottom={
+                    !bottomPinned
+                      ? () => {
+                          if (scroll === null) return;
+                          scroll.scrollTo({ top: scroll.scrollHeight });
+                          setBottomPinned(true);
+                        }
+                      : undefined
+                  }
+                />
+              )}
             </div>
           </div>
         </div>
-        {deletion.kind === "open" && (
+        {presentation === "full" && deletion.kind === "open" && (
           <ConfirmDialog
             open
             pending={false}
@@ -1272,7 +1140,7 @@ function SessionConversation({
           />
         )}
       </div>
-    </SubagentInspectorProvider>
+    </SubagentSessionsProvider>
   );
 }
 
@@ -1331,12 +1199,12 @@ function BlankConversation({
 
   const start = async (
     submission: ComposerSubmission,
-    lane: Lane,
+    delivery: Delivery,
     document: ComposerDocumentState,
   ): Promise<boolean> => {
     if (sending || attachmentReads !== 0) return false;
     // A new chat has no plugin commands active yet; its first message is always a message.
-    const plan = composerSendPlan({ submission, attachments, commands: [], lane });
+    const plan = composerSendPlan({ submission, attachments, commands: [], delivery });
     if (plan.kind !== "message") return false;
     setSending(true);
     setStartFailure(undefined);
@@ -1415,12 +1283,12 @@ function BlankConversation({
   }, [addFiles, dropDisabled]);
 
   return (
-    <div {...stylex.props(styles.screen)}>
+    <div {...stylex.props(threadStyles.screen)}>
       {layout.kind === "split" && <PaneHeader paneId={paneId} title="New chat" />}
-      <div ref={blankRef} {...stylex.props(styles.blank)}>
-        <div {...stylex.props(styles.blankColumn)}>
+      <div ref={blankRef} {...stylex.props(threadStyles.blank)}>
+        <div {...stylex.props(threadStyles.blankColumn)}>
           {host.data !== undefined && (
-            <div {...stylex.props(styles.workspaceContext)}>
+            <div {...stylex.props(threadStyles.workspaceContext)}>
               <Menu
                 label="Select workspace"
                 align="start"
@@ -1429,13 +1297,13 @@ function BlankConversation({
                     type="button"
                     title={workspace?.path ?? "Home"}
                     {...stylex.props(
-                      styles.workspaceContextItem,
-                      styles.workspaceContextButton,
-                      styles.workspaceContextPath,
+                      threadStyles.workspaceContextItem,
+                      threadStyles.workspaceContextButton,
+                      threadStyles.workspaceContextPath,
                       focus.ring,
                     )}
                   >
-                    <span {...stylex.props(styles.workspaceContextText)}>
+                    <span {...stylex.props(threadStyles.workspaceContextText)}>
                       {workspace === undefined ? "Home" : displayWorkspacePath(workspace.path)}
                     </span>
                     <Icon name="chevron-down" size={10} />
@@ -1474,17 +1342,23 @@ function BlankConversation({
               {branch !== undefined && (
                 <span
                   title={`Branch: ${branch}`}
-                  {...stylex.props(styles.workspaceContextItem, styles.workspaceContextStatic)}
+                  {...stylex.props(
+                    threadStyles.workspaceContextItem,
+                    threadStyles.workspaceContextStatic,
+                  )}
                 >
-                  <span {...stylex.props(styles.workspaceContextText)}>{branch}</span>
+                  <span {...stylex.props(threadStyles.workspaceContextText)}>{branch}</span>
                 </span>
               )}
               <span
                 title="This Mac"
-                {...stylex.props(styles.workspaceContextItem, styles.workspaceContextStatic)}
+                {...stylex.props(
+                  threadStyles.workspaceContextItem,
+                  threadStyles.workspaceContextStatic,
+                )}
               >
                 <Icon name="computer" size={13} />
-                <span {...stylex.props(styles.workspaceContextText)}>This Mac</span>
+                <span {...stylex.props(threadStyles.workspaceContextText)}>This Mac</span>
               </span>
             </div>
           )}
@@ -1547,7 +1421,7 @@ function BlankConversation({
             }
           />
           {startFailure !== undefined && (
-            <div role="alert" title={startFailure} {...stylex.props(styles.error)}>
+            <div role="alert" title={startFailure} {...stylex.props(threadStyles.error)}>
               Couldn&rsquo;t start the chat. Try again.
             </div>
           )}
@@ -1611,10 +1485,10 @@ function DropPreview({
   readonly target: SessionDropTarget;
 }): ReactElement {
   return (
-    <div aria-hidden="true" {...stylex.props(styles.dropPreviewLayer)}>
+    <div aria-hidden="true" {...stylex.props(threadStyles.dropPreviewLayer)}>
       <div
         data-nyte-drop-preview=""
-        {...stylex.props(styles.dropPreview)}
+        {...stylex.props(threadStyles.dropPreview)}
         style={dropPreviewRect(layout, target)}
       />
     </div>
@@ -1672,10 +1546,10 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
       aria-label={`${activePane(layout).id === pane.id ? "Active " : ""}chat pane`}
       data-nyte-pane-id={pane.id}
       {...stylex.props(
-        styles.pane,
-        position.kind === "single" && styles.paneSingle,
-        position.kind === "leading" && styles.paneLeading(position.ratio),
-        position.kind === "trailing" && styles.paneTrailing,
+        threadStyles.pane,
+        position.kind === "single" && threadStyles.paneSingle,
+        position.kind === "leading" && threadStyles.paneLeading(position.ratio),
+        position.kind === "trailing" && threadStyles.paneTrailing,
       )}
       onPointerDown={() => actions.focus(pane.id)}
       onFocusCapture={() => actions.focus(pane.id)}
@@ -1684,8 +1558,10 @@ function PaneHost({ pane, position }: { pane: PaneState; position: PanePosition 
         {pane.selection.kind === "session" ? (
           <SessionConversation
             key={pane.selection.sessionId}
+            presentation="full"
             paneId={pane.id}
             sessionId={pane.selection.sessionId}
+            workbenchSessionId={pane.selection.sessionId}
             inputRef={attachInput}
           />
         ) : (
@@ -1743,7 +1619,10 @@ function SplitSash({
       aria-valuemin={20}
       aria-valuemax={80}
       aria-valuenow={Math.round(ratio * 100)}
-      {...stylex.props(styles.sash, direction === "right" ? styles.sashRight : styles.sashDown)}
+      {...stylex.props(
+        threadStyles.sash,
+        direction === "right" ? threadStyles.sashRight : threadStyles.sashDown,
+      )}
       onPointerDown={(event) => {
         const nextRatio = ratioFromPointer(event);
         if (nextRatio === undefined) return;
@@ -1776,8 +1655,8 @@ function SplitSash({
     >
       <span
         {...stylex.props(
-          styles.sashLine,
-          direction === "right" ? styles.sashLineRight : styles.sashLineDown,
+          threadStyles.sashLine,
+          direction === "right" ? threadStyles.sashLineRight : threadStyles.sashLineDown,
         )}
       />
     </div>
@@ -1823,14 +1702,14 @@ export function ThreadScreen({
   }, [actions, routeSessionId]);
 
   return (
-    <div {...stylex.props(styles.stage)}>
+    <div {...stylex.props(threadStyles.stage)}>
       <FileTypeIconSprite />
       <div
         ref={containerRef}
         {...stylex.props(
-          styles.panes,
+          threadStyles.panes,
           layout.kind === "split" &&
-            (layout.direction === "right" ? styles.splitRight : styles.splitDown),
+            (layout.direction === "right" ? threadStyles.splitRight : threadStyles.splitDown),
         )}
       >
         <PaneHost

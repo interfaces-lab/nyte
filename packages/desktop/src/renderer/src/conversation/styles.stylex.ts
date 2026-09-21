@@ -41,13 +41,13 @@ export const proseStyles = stylex.create({
   paragraph: {
     marginInline: 0,
     marginBlockStart: {
-      default: 16,
+      default: conversation.paragraphGap,
       ":is(h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p)": 4,
       ":is(li > p)": 0,
       ":first-child": 0,
     },
     marginBlockEnd: {
-      default: 16,
+      default: conversation.paragraphGap,
       ":has(+ ul, + ol)": 8,
       ":has(+ figure, + blockquote, + [data-prose-table])": 12,
       ":is(li > p)": 0,
@@ -541,11 +541,6 @@ export const composerStyles = stylex.create({
   },
   editorHost: { position: "relative", flex: 1, minWidth: 64 },
   editorParagraph: { margin: 0 },
-  messageLink: {
-    color: "inherit",
-    textDecorationLine: { default: "none", ":hover": "underline" },
-    cursor: "pointer",
-  },
   composerUrlPill: {
     color: t.textCyan,
     backgroundColor: t.bgSubtle,
@@ -772,8 +767,8 @@ export const composerStyles = stylex.create({
     width: "min(var(--anchor-width), calc(100dvw - 16px))",
     maxWidth: "min(var(--anchor-width), calc(100dvw - 16px))",
     maxHeight: "min(280px, var(--available-height))",
-    paddingBlock: 6,
-    paddingInline: 6,
+    paddingBlock: "var(--nyte-suggestion-padding)",
+    paddingInline: "var(--nyte-suggestion-padding)",
     borderStyle: "none",
     borderRadius: t.radiusXl,
     outline: "none",
@@ -805,8 +800,8 @@ export const composerStyles = stylex.create({
     gridTemplateColumns: "12px minmax(0, 1fr) auto",
     boxSizing: "border-box",
     alignItems: "center",
-    columnGap: 8,
-    minHeight: 28,
+    columnGap: "var(--nyte-suggestion-item-gap)",
+    minHeight: "var(--nyte-suggestion-item-height)",
     marginBlockEnd: 1,
     paddingBlock: 4,
     paddingInline: 8,
@@ -1270,28 +1265,6 @@ export const toolCallStyles = stylex.create({
   editStats: { marginInlineStart: 4 },
   added: { color: t.textSuccess },
   removed: { color: t.textDanger },
-  row: { display: "flex", alignItems: "center", gap: 2, minWidth: 0, maxWidth: "100%" },
-  // The line stays the collapsible trigger; the agent opener is its sibling so buttons never nest.
-  openAgent: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    width: 20,
-    height: 20,
-    padding: 0,
-    borderStyle: "none",
-    borderRadius: t.radiusSm,
-    backgroundColor: {
-      default: "transparent",
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.fillGhostHover },
-    },
-    color: {
-      default: t.iconTertiary,
-      ":hover": { "@media (hover: hover) and (pointer: fine)": t.iconPrimary },
-    },
-    cursor: "pointer",
-  },
   chevron: {
     display: "inline-flex",
     alignItems: "center",

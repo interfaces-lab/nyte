@@ -14,7 +14,7 @@
 import { BoxRenderable, fg, StyledText, TextRenderable } from "@opentui/core";
 import type { PendingItem } from "@nyte-ai/core";
 import { pendingHint, SPACING } from "./constants.ts";
-import type { LaneRoles } from "./lanes.ts";
+import type { DeliveryChoices } from "./lanes.ts";
 import { rowContent, rowMark } from "./pending-gutter.ts";
 import type { GutterRow, RowMark } from "./pending-gutter.ts";
 import type { CliTheme } from "./theme.ts";
@@ -49,13 +49,13 @@ export class PendingTail {
   onOpen: ((row: GutterRow) => void) | undefined;
   onReorder: ((item: PendingItem, before: PendingItem | null) => void) | undefined;
   private readonly transcript: Transcript;
-  private roles: LaneRoles;
+  private roles: DeliveryChoices;
   private items: readonly GutterRow[] = [];
   private hint = true;
   private readonly blocks: PendingBlock[] = [];
   private drag: { readonly item: PendingItem; readonly index: number; moving: boolean } | undefined;
 
-  constructor(transcript: Transcript, roles: LaneRoles) {
+  constructor(transcript: Transcript, roles: DeliveryChoices) {
     this.transcript = transcript;
     this.roles = roles;
     this.container = new BoxRenderable(transcript.renderer, {
@@ -72,7 +72,7 @@ export class PendingTail {
     this.repaint();
   }
 
-  setRoles(roles: LaneRoles): void {
+  setRoles(roles: DeliveryChoices): void {
     this.roles = roles;
     this.repaint();
   }
@@ -166,7 +166,7 @@ export class PendingTail {
         (block) => event.y >= block.root.y && event.y < block.root.y + block.root.height,
       );
       const target = this.items[index];
-      if (target?.kind === "pending" && target.item.lane !== drag.item.lane) return;
+      if (target?.kind === "pending" && target.item.delivery !== drag.item.delivery) return;
       if (index === drag.index) return;
       this.onReorder?.(drag.item, target?.kind === "pending" ? target.item : null);
       event.preventDefault();

@@ -6,8 +6,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { createTestRenderer, type TestRendererSetup } from "@opentui/core/testing";
-import { DEFAULT_LANDING } from "@nyte-ai/core";
-import { laneRoles } from "../lanes.ts";
+import { deliveryChoices } from "../lanes.ts";
 import { DARK_THEME, LIGHT_THEME } from "../theme.ts";
 import { mountShell } from "./App.tsx";
 import {
@@ -32,7 +31,7 @@ async function mount(): Promise<{ readonly setup: TestRendererSetup; readonly sh
   const shell = await mountShell({
     renderer: setup.renderer,
     initialTheme: DARK_THEME,
-    roles: laneRoles(DEFAULT_LANDING),
+    roles: deliveryChoices,
     openPath: () => undefined,
   });
   return { setup, shell };

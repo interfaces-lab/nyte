@@ -17,7 +17,7 @@ import { projectUsage } from "@nyte-ai/client";
 import type { StreamFn } from "../../src/kernel/loop/types.ts";
 import {
   assistant,
-  landing,
+  drain,
   message,
   openStore,
   seedHead,
@@ -206,10 +206,11 @@ test.each([false, true])(
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "now",
+      delivery: "steer",
+      kind: "user",
       body: message(user("continue")),
     });
-    const options = { head: "main", landing, signal: controller.signal };
+    const options = { head: "main", drain, signal: controller.signal };
     await step(session, turn, options);
     const outcome = await step(session, turn, options);
     assert.ok(outcome.kind === "finished");
@@ -335,10 +336,11 @@ test.each([false, true])(
     await submit(session, {
       preparation: { kind: "none" },
       head: "main",
-      lane: "now",
+      delivery: "steer",
+      kind: "user",
       body: message(user("continue")),
     });
-    const options = { head: "main", landing };
+    const options = { head: "main", drain };
     await step(session, turn, options);
     assert.equal((await step(session, turn, options)).kind, "continue");
     if (conflict) {

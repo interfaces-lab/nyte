@@ -6,6 +6,8 @@ import type { WorkTurnPart } from "./transcript-presentation.ts";
 export interface WorkGroupPresentationInput {
   readonly parts: readonly WorkTurnPart[];
   readonly durationMs: number;
+  readonly added: number;
+  readonly removed: number;
   readonly running: boolean;
   readonly live?: Pick<LiveSnapshot, "order" | "tools">;
   readonly stale: boolean;
@@ -59,20 +61,16 @@ function activityLabel(running: readonly ToolClass[], awaiting: number): string 
 export function durableWorkGroupPresentation({
   parts,
   durationMs,
+  added,
+  removed,
   running,
 }: Pick<
   WorkGroupPresentationInput,
-  "parts" | "durationMs" | "running"
+  "parts" | "durationMs" | "added" | "removed" | "running"
 >): DurableWorkGroupPresentation {
-  let added = 0;
-  let removed = 0;
   const runningClasses: ToolClass[] = [];
   for (const part of parts) {
     if (part.kind !== "tool") continue;
-    if (part.class.kind === "file_patch") {
-      added += part.class.added;
-      removed += part.class.removed;
-    }
     if (toolPhase(part, running) === "running") runningClasses.push(part.class);
   }
   if (!running) {

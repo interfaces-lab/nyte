@@ -216,7 +216,7 @@ export function branchConfig(commits: readonly Pick<Commit, "body">[]): BranchCo
         if (body.agent !== undefined) agent = body.agent;
         break;
       case "message":
-        if (body.agent !== undefined) agent = body.agent;
+        if ("agent" in body && body.agent !== undefined) agent = body.agent;
         break;
       case "completion":
       case "checkpoint":

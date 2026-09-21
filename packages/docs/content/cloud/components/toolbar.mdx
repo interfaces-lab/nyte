@@ -8,12 +8,12 @@ import { Toolbar } from "@nyte-ai/ui/toolbar";
 ```
 
 Groups a set of controls and moves focus between them with the arrow keys, so the whole toolbar is
-one stop in the tab order. No Nyte styling on this one, you own the visual layer.
+one stop in the tab order. No Nyte styling here.
 
 ## Usage
 
-- Arrow keys move focus inside a toolbar. In a horizontal toolbar they also move the text cursor
-  inside an input, so use at most one `Toolbar.Input` and put it last.
+- Arrow keys move focus inside a toolbar. Inside a `Toolbar.Input` they move the text cursor first,
+  and move focus once the cursor sits at the end of the text.
 - Toolbar items stay focusable while disabled by default, which keeps the arrow key order stable.
   Pass `focusableWhenDisabled={false}` to drop an item out of it.
 - A popup trigger goes through `Toolbar.Button` with `render`, so the item stays part of the
@@ -36,6 +36,32 @@ one stop in the tab order. No Nyte styling on this one, you own the visual layer
 ```
 
 ## Examples
+
+### A group, a separator, and two buttons
+
+<Preview>
+  <ToolbarDemo />
+</Preview>
+
+```tsx
+<Toolbar.Root aria-label="Formatting">
+  <Toolbar.Group aria-label="Text style">
+    <Toolbar.Button render={<Toggle defaultPressed />} aria-label="Bold">
+      <IconBold size={14} />
+    </Toolbar.Button>
+    <Toolbar.Button render={<Toggle />} aria-label="Italic">
+      <IconItalic size={14} />
+    </Toolbar.Button>
+  </Toolbar.Group>
+  <Toolbar.Separator />
+  <Toolbar.Button aria-label="Undo">
+    <IconArrowUndoUp size={14} />
+  </Toolbar.Button>
+  <Toolbar.Button disabled aria-label="Delete">
+    <IconTrashCanSimple size={14} />
+  </Toolbar.Button>
+</Toolbar.Root>
+```
 
 ### With a menu
 

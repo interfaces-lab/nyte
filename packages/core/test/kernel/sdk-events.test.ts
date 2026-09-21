@@ -12,8 +12,8 @@ import {
   factRef,
   headRef,
   keyRef,
-  queueBaseRef,
-  queueTipRef,
+  inboxBaseRef,
+  inboxTipRef,
   runRef,
   stackRef,
   DELETED_REF,
@@ -95,12 +95,21 @@ test("a head advance is one move plus one commit event per new commit, oldest fi
   assert.deepEqual(kinds(born), ["head_moved", "commit"]);
 });
 
-test("queue refs become pending items, landings, and cancellations", async () => {
+test("queue refs become pending items, drains, and cancellations", async () => {
   const objects = new MemoryObjects();
-  const first: Change = { kind: "change", previous: null, body: message(user("hi")), at: 5 };
+  const first: Change = {
+    type: "change",
+    kind: "user",
+    delivery: "steer",
+    previous: null,
+    body: message(user("hi")),
+    at: 5,
+  };
   const firstOid = objects.put(first);
   const second: Change = {
-    kind: "change",
+    type: "change",
+    kind: "passive",
+    delivery: "steer",
     previous: firstOid,
     body: { kind: "config", agent: "x" },
     at: 6,
@@ -108,7 +117,7 @@ test("queue refs become pending items, landings, and cancellations", async () =>
   const secondOid = objects.put(second);
 
   const queued = await projectEvent(
-    ref(queueTipRef("main", "queue"), null, firstOid, "submit"),
+    ref(inboxTipRef("main", "steer"), null, firstOid, "submit"),
     objects.read,
   );
   assert.deepEqual(queued, [
@@ -116,20 +125,20 @@ test("queue refs become pending items, landings, and cancellations", async () =>
       seq: 7,
       kind: "queued",
       head: "main",
-      item: { change: firstOid, lane: "queue", at: 5, content: "hi" },
+      item: { change: firstOid, delivery: "steer", at: 5, content: "hi" },
     },
   ]);
   // A queued choice is no pending item, but it moved the selected inputs.
   assert.deepEqual(
     await projectEvent(
-      ref(queueTipRef("main", "steer"), firstOid, secondOid, "submit"),
+      ref(inboxTipRef("main", "steer"), firstOid, secondOid, "submit"),
       objects.read,
     ),
     [{ seq: 7, kind: "config_queued", head: "main", change: secondOid }],
   );
 
   const landed = await projectEvent(
-    ref(queueBaseRef("main", "steer"), null, secondOid, "land"),
+    ref(inboxBaseRef("main", "steer"), null, secondOid, "land"),
     objects.read,
   );
   assert.deepEqual(landed, [
@@ -346,16 +355,30 @@ test("a session's row folds its facts, its branch config, and its newest message
   const items = pendingItems([
     {
       oid: "x",
-      lane: "steer",
-      change: { kind: "change", previous: null, body: message(user("m")), at: 3 },
+      delivery: "steer",
+      change: {
+        type: "change",
+        kind: "user",
+        delivery: "steer",
+        previous: null,
+        body: message(user("m")),
+        at: 3,
+      },
     },
     {
       oid: "y",
-      lane: "queue",
-      change: { kind: "change", previous: null, body: { kind: "config" }, at: 4 },
+      delivery: "next",
+      change: {
+        type: "change",
+        kind: "passive",
+        delivery: "next",
+        previous: null,
+        body: { kind: "config" },
+        at: 4,
+      },
     },
   ]);
-  assert.deepEqual(items, [{ change: "x", lane: "steer", at: 3, content: "m" }]);
+  assert.deepEqual(items, [{ change: "x", delivery: "steer", at: 3, content: "m" }]);
 });
 
 test("session rows omit unknown thinking levels at the SDK boundary", () => {
@@ -410,7 +433,7 @@ test("legacy agent responses reveal their model until another agent is selected"
   );
 });
 
-test("a choice landing during a snapshot cannot overwrite a newer branch choice", () => {
+test("a choice drain during a snapshot cannot overwrite a newer branch choice", () => {
   const info = sessionInfo({
     id: "s1",
     activation: { kind: "active" },
@@ -424,9 +447,11 @@ test("a choice landing during a snapshot cannot overwrite a newer branch choice"
     pendingChanges: [
       {
         oid: "landed",
-        lane: "steer",
+        delivery: "steer",
         change: {
-          kind: "change",
+          type: "change",
+          kind: "passive",
+          delivery: "steer",
           previous: null,
           body: { kind: "config", thinkingLevel: "low" },
           at: 1,

@@ -155,7 +155,7 @@ export function useCompletions(
       // aborted delay ends before the request fires — debounce without a timer.
       await delay(FILE_DEBOUNCE_MS, signal);
       const found = await client.workspace.files({
-        ...(sessionId === undefined ? {} : { sessionId }),
+        target: sessionId === undefined ? { kind: "workspace" } : { kind: "session", sessionId },
         query,
       });
       return found.map((file): Suggestion => ({

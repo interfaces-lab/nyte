@@ -1,5 +1,5 @@
 /**
- * The client fold's queue: a landing publishes the head and the queue base in
+ * The client fold's queue: a drain publishes the head and the queue base in
  * one CAS, but the watch delivers them as separate frames. The commit that
  * landed a change must take it out of `pending` itself, so no frame shows a
  * message both queued and in the transcript.
@@ -42,13 +42,13 @@ function snapshot(pending: readonly PendingItem[]): SessionSnapshot {
 
 const item = (change: string, at: number): PendingItem => ({
   change,
-  lane: "steer",
+  delivery: "steer",
   at,
   content: `message ${change}`,
   key: `key-${change}`,
 });
 
-function landing(oid: string, parent: string | null, change: string): SessionEvent {
+function drain(oid: string, parent: string | null, change: string): SessionEvent {
   return {
     seq: 2,
     kind: "commit",
@@ -64,6 +64,7 @@ function landing(oid: string, parent: string | null, change: string): SessionEve
           kind: "message",
           message: { role: "user", content: `message ${change}`, timestamp: 1 },
         },
+        start: { kind: "none" },
         at: 2,
       },
     },
@@ -87,7 +88,7 @@ function userParts(state: SessionState): readonly (string | undefined)[][] {
 
 test("the commit that lands a change removes it from pending; its landed frame then changes nothing", () => {
   const start = stateFromSnapshot(snapshot([item("a", 1), item("b", 2)]));
-  const committed = applied(start, landing("c1", null, "a"));
+  const committed = applied(start, drain("c1", null, "a"));
   assert.deepEqual(userParts(committed), [["c1", "key-a"]]);
   assert.deepEqual(
     committed.pending.map((entry) => entry.change),
@@ -110,7 +111,7 @@ test("a commit that landed no change, or one this fold never queued, leaves pend
     },
   });
   assert.deepEqual(configured.pending, start.pending);
-  const elsewhere = applied(configured, landing("c2", "n1", "z"));
+  const elsewhere = applied(configured, drain("c2", "n1", "z"));
   assert.deepEqual(elsewhere.pending, start.pending);
   assert.deepEqual(userParts(elsewhere), [["c2", "key-z"]]);
 });

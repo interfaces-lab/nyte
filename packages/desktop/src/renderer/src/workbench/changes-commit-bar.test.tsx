@@ -1,6 +1,5 @@
 /**
- * The commit surface's decisions, checked without a renderer: which steps an
- * action runs, which actions cannot apply, and the sentence each outcome gets.
+ * The commit surface's rules that are not covered by its renderer fixture.
  */
 import { afterAll, describe, expect, test, vi } from "vitest";
 
@@ -27,27 +26,20 @@ afterAll(() => vi.unstubAllGlobals());
 
 import {
   actionFailureMessage,
-  COMMIT_ACTIONS,
   commitActionDisabledReason,
-  commitActionLabel,
-  commitActionPlan,
   commitTargetFor,
   commitResultMessage,
   createBranchResultMessage,
-  DEFAULT_COMMIT_ACTION,
   isWorkingTreeScope,
   pullRequestResultMessage,
   pullRequestTitle,
-  pushResultMessage,
 } from "./changes-commit-bar.tsx";
 import type { CommitBarState } from "./changes-commit-bar.tsx";
-import { bridgeError } from "../../../shared/errors.ts";
 import type { BranchReadout } from "./change-scopes.ts";
 
 const tracking: BranchReadout = {
+  kind: "attached",
   label: "main",
-  detached: false,
-  unborn: false,
   upstream: "origin/main",
   ahead: 1,
   behind: 0,
@@ -64,41 +56,6 @@ function state(overrides: Partial<CommitBarState> = {}): CommitBarState {
 }
 
 describe("commit actions", () => {
-  test("the menu offers every action, and the default one is Commit and push", () => {
-    expect(COMMIT_ACTIONS.map(commitActionLabel)).toEqual([
-      "Create branch and commit",
-      "Create branch, commit and push",
-      "Create branch",
-      "Commit",
-      "Commit and push",
-      "Commit and create pull request",
-      "Push",
-      "Create pull request",
-    ]);
-    expect(commitActionLabel(DEFAULT_COMMIT_ACTION)).toBe("Commit and push");
-  });
-
-  test("each action runs the steps its label names", () => {
-    expect(commitActionPlan("branch-commit-push")).toEqual({
-      branch: true,
-      commit: true,
-      push: true,
-      pullRequest: false,
-    });
-    expect(commitActionPlan("commit-pull-request")).toEqual({
-      branch: false,
-      commit: true,
-      push: false,
-      pullRequest: true,
-    });
-    expect(commitActionPlan("push")).toEqual({
-      branch: false,
-      commit: false,
-      push: true,
-      pullRequest: false,
-    });
-  });
-
   test("a staged scope commits the index; every other working scope commits tracked changes", () => {
     expect(commitTargetFor({ kind: "staged" })).toEqual({ kind: "staged" });
     expect(commitTargetFor({ kind: "uncommitted" })).toEqual({ kind: "all" });
@@ -127,7 +84,7 @@ describe("what cannot apply", () => {
   });
 
   test("a detached HEAD has no branch to push or open a pull request from", () => {
-    const detached = state({ branch: { ...tracking, detached: true, upstream: undefined } });
+    const detached = state({ branch: { kind: "detached", label: "c0ffee0" } });
     expect(commitActionDisabledReason("push", detached)).toBe(
       "HEAD is detached, so there is no branch",
     );
@@ -143,7 +100,7 @@ describe("what cannot apply", () => {
   });
 
   test("an unborn branch can be committed to, but has nothing to push yet", () => {
-    const unborn = state({ branch: { ...tracking, unborn: true, upstream: undefined } });
+    const unborn = state({ branch: { kind: "unborn", label: "main" } });
     expect(commitActionDisabledReason("push", unborn)).toBe("This branch has no commits yet");
     expect(commitActionDisabledReason("commit-push", unborn)).toBeUndefined();
   });
@@ -162,17 +119,7 @@ describe("what cannot apply", () => {
 });
 
 describe("what each outcome says", () => {
-  test("a commit reports its oid, an empty tree, and git's own failure", () => {
-    expect(
-      commitResultMessage({
-        kind: "committed",
-        oid: "1234567890",
-        summary: "fix a thing",
-      }),
-    ).toEqual({ tone: "success", text: "Committed 1234567: fix a thing" });
-    expect(commitResultMessage({ kind: "nothing_to_commit" }).text).toBe(
-      "Nothing to commit. The working tree matches the last commit.",
-    );
+  test("a commit failure keeps git's own words", () => {
     const failed = commitResultMessage({
       kind: "failed",
       reason: "pre-commit hook refused the commit",
@@ -181,28 +128,7 @@ describe("what each outcome says", () => {
     expect(failed.detail).toBe("pre-commit hook refused the commit");
   });
 
-  test("a push offers publishing, asks for a pull, and never offers a force", () => {
-    expect(pushResultMessage({ kind: "pushed", remote: "origin", branch: "main" })).toEqual({
-      tone: "success",
-      text: "Pushed main to origin.",
-    });
-    expect(pushResultMessage({ kind: "up_to_date" }).tone).toBe("success");
-    const noUpstream = pushResultMessage({ kind: "no_upstream", branch: "feature" });
-    expect(noUpstream.offerPublish).toBe(true);
-    expect(noUpstream.text).toContain("feature tracks no remote branch yet");
-    const rejected = pushResultMessage({ kind: "rejected", reason: "non-fast-forward" });
-    expect(rejected.text).toBe(
-      "The remote has commits this branch doesn’t. Pull them, then push again.",
-    );
-    expect(rejected.detail).toBe("non-fast-forward");
-    for (const result of [noUpstream, rejected]) expect(result.text).not.toMatch(/force/i);
-  });
-
-  test("a branch reports a taken name and an invalid one without losing the reason", () => {
-    expect(createBranchResultMessage({ kind: "created" }, "feature/x").tone).toBe("success");
-    expect(createBranchResultMessage({ kind: "exists" }, "feature/x").text).toBe(
-      "Branch feature/x already exists. Pick another name.",
-    );
+  test("an invalid branch name keeps git's reason", () => {
     const invalid = createBranchResultMessage(
       { kind: "invalid_name", reason: "is not a valid branch name" },
       "feature x",
@@ -232,9 +158,6 @@ describe("what each outcome says", () => {
     });
     expect(exists.text).toContain("#7 Add the commit bar");
     expect(exists.url).toBe("https://github.com/nyte/nyte/pull/7");
-    expect(pullRequestResultMessage({ kind: "cli_missing" }).text).toBe(
-      "Pull requests need the GitHub CLI. Install gh, then try again.",
-    );
     expect(pullRequestResultMessage({ kind: "signed_out" }).text).toContain("gh auth login");
     expect(pullRequestResultMessage({ kind: "no_remote" }).text).toContain("no GitHub remote");
     expect(pullRequestResultMessage({ kind: "failed", message: "gh exited with 1" }).detail).toBe(
@@ -242,13 +165,8 @@ describe("what each outcome says", () => {
     );
   });
 
-  test("a trust refusal is about trust; any other failure keeps the host's words", () => {
-    const refused = actionFailureMessage(
-      bridgeError({ code: "forbidden", message: "Workspace trust is required." }),
-    );
-    expect(refused.tone).toBe("error");
-    expect(refused.text).toContain("needs trust for this workspace");
-    const other = actionFailureMessage(new Error("The host operation failed."));
-    expect(other.detail).toBe("The host operation failed.");
+  test("an unexpected failure keeps the host's words", () => {
+    const failure = actionFailureMessage(new Error("The host operation failed."));
+    expect(failure.detail).toBe("The host operation failed.");
   });
 });
