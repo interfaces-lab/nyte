@@ -224,11 +224,7 @@ export function UserMessageView({
 
   const save = async (submission: ComposerSubmission): Promise<boolean> => {
     if (edit === undefined || edit.saving || onEdit === undefined) return false;
-    const next = composerMessageContent(
-      submission.text.trim(),
-      edit.attachments,
-      submission.references,
-    );
+    const next = composerMessageContent(submission.text.trim(), edit.attachments);
     if (Array.isArray(next) ? next.length === 0 : next.trim() === "") {
       setEdit({ ...edit, error: "A message cannot be empty." });
       return false;
@@ -534,9 +530,9 @@ function TurnPartView({
     case "user":
       return (
         <UserMessageView
-          content={part.content}
+          content={part.source?.label ?? part.content}
           onEdit={
-            onEditUser === undefined
+            onEditUser === undefined || part.source?.kind === "action"
               ? undefined
               : (content, choice) => onEditUser(part, content, choice)
           }

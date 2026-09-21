@@ -1,9 +1,10 @@
-import { sessionMark } from "@nyte-ai/client";
-import type { SessionInfo } from "@nyte-ai/protocol";
+import type { SessionId, SessionInfo } from "@nyte-ai/protocol";
+import { sessionActivityMark } from "../session-activity.ts";
 import { EMPTY_READ_SESSIONS, sessionHasUnreadCompletion } from "../session-read-state.ts";
 import type { ReadSessions } from "../session-read-state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
+const NO_OPTIMISTIC_SESSIONS: ReadonlySet<SessionId> = new Set();
 
 export const GROUPINGS = ["repository", "workspace", "updated", "status", "environment"] as const;
 export const ORDERINGS = ["updated", "status"] as const;
@@ -82,8 +83,12 @@ export function sessionIsDraft(session: SessionInfo): boolean {
   return session.name === undefined && session.preview === undefined;
 }
 
-function statusOf(session: SessionInfo, read: ReadSessions): SessionStatus {
-  const mark = sessionMark(session);
+function statusOf(
+  session: SessionInfo,
+  read: ReadSessions,
+  optimistic: ReadonlySet<SessionId>,
+): SessionStatus {
+  const mark = sessionActivityMark(session, optimistic.has(session.sessionId));
   switch (mark) {
     // `sessionMark` reports `waiting` only for a run parked on a reply; one
     // parked on background work arrives here as `working`.
@@ -120,10 +125,16 @@ const STATUS_ORDER: Readonly<Record<SessionStatus, number>> = {
   done: 4,
 };
 
-function compareStatus(left: SessionInfo, right: SessionInfo, read: ReadSessions): number {
+function compareStatus(
+  left: SessionInfo,
+  right: SessionInfo,
+  read: ReadSessions,
+  optimistic: ReadonlySet<SessionId>,
+): number {
   return (
     Number(right.pinned) - Number(left.pinned) ||
-    STATUS_ORDER[statusOf(left, read)] - STATUS_ORDER[statusOf(right, read)] ||
+    STATUS_ORDER[statusOf(left, read, optimistic)] -
+      STATUS_ORDER[statusOf(right, read, optimistic)] ||
     compareUpdated(left, right)
   );
 }
@@ -134,6 +145,7 @@ function groupSessions(
   environment: SessionEnvironment,
   now: number,
   read: ReadSessions,
+  optimistic: ReadonlySet<SessionId>,
 ): readonly SessionViewGroup[] {
   switch (grouping) {
     case "repository":
@@ -152,7 +164,9 @@ function groupSessions(
         done: "Done",
       };
       return STATUSES.flatMap((status) => {
-        const members = sessions.filter((session) => statusOf(session, read) === status);
+        const members = sessions.filter(
+          (session) => statusOf(session, read, optimistic) === status,
+        );
         return members.length === 0
           ? []
           : [{ key: status, label: labels[status], sessions: members }];
@@ -198,10 +212,11 @@ export function sessionsForView(
   environment: SessionEnvironment = "local",
   now = Date.now(),
   read: ReadSessions = EMPTY_READ_SESSIONS,
+  optimistic: ReadonlySet<SessionId> = NO_OPTIMISTIC_SESSIONS,
 ): readonly SessionViewGroup[] {
   const filtered = sessionsForNavigation(sessions, settings.archived).filter(
     (session) =>
-      settings.statuses.includes(statusOf(session, read)) &&
+      settings.statuses.includes(statusOf(session, read, optimistic)) &&
       settings.pullRequests.includes("none") &&
       settings.environments.includes(environment) &&
       settings.sources.includes("desktop"),
@@ -209,9 +224,9 @@ export function sessionsForView(
   const ordered = filtered.toSorted(
     settings.ordering === "updated"
       ? compareUpdated
-      : (left, right) => compareStatus(left, right, read),
+      : (left, right) => compareStatus(left, right, read, optimistic),
   );
-  return groupSessions(ordered, settings.grouping, environment, now, read);
+  return groupSessions(ordered, settings.grouping, environment, now, read, optimistic);
 }
 
 function sameSelection<T extends string>(selected: readonly T[], all: readonly T[]): boolean {

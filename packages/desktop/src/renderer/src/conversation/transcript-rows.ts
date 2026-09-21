@@ -5,7 +5,7 @@
  */
 import type { Delivery, SessionSnapshot, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import { isTerminalPhase } from "@nyte-ai/client";
-import type { OutboxRow } from "../outbox.ts";
+import type { OutboxRow } from "@nyte-ai/client";
 import type { ToolCallDensity } from "../theme/boot.ts";
 
 interface LandingMessage {
@@ -97,19 +97,26 @@ export function conversationMessages({
       .map((item) => ({
         // The receipt names the change; the key it carried keeps the same row.
         key: item.key ?? item.change,
-        content: item.content,
+        content: item.source?.label ?? item.content,
         pending: running,
       })),
     ...local
-      .filter((row) => row.state.kind !== "failed" && (!running || row.delivery === steerDelivery))
-      .map((row) => ({ key: row.key, content: row.content, pending: running })),
+      .filter(
+        (row) =>
+          row.state.kind !== "retrying" && (!running || row.input.delivery === steerDelivery),
+      )
+      .map((row) => ({
+        key: row.key,
+        content: row.input.source?.label ?? row.input.content,
+        pending: running,
+      })),
   ];
   return {
     running,
     submitted: landing,
     queued: running ? pending.filter((item) => item.delivery !== steerDelivery) : [],
     unsent: local.filter(
-      (row) => row.state.kind === "failed" || (running && row.delivery !== steerDelivery),
+      (row) => row.state.kind === "retrying" || (running && row.input.delivery !== steerDelivery),
     ),
   };
 }

@@ -107,13 +107,31 @@ Watching again from the last seq you saw is not a lossless resume after an
 arbitrary disconnect, because several events can share one seq. The
 snapshot's seq is the cursor the SDK guarantees.
 
+## Sending
+
+`createOutbox` closes the gap between Enter and a receipt (kernel README, "A
+submitted message is never lost"). `submit` mints one idempotency key, draws
+the message as a row, and retries the same key with backoff until the store
+answers or `withdraw` takes it back. A receipt makes the row durable rather
+than dropping it: feed every `SessionObserver` update to `observe`, and the row
+leaves once the fold draws the same key or withdraws the same change, so a
+message is never drawn twice and never blinks out between the two channels.
+Pass a `storage` to survive a reload; `activate` reloads it.
+
+```ts
+const outbox = createOutbox({ send: (input) => nyte.messages.send(input) });
+observer.subscribe((update) => outbox.observe(update));
+await outbox.submit({ sessionId, content: "hello", delivery: "next" });
+render([...state.pending, ...outbox.rows()]);
+```
+
 ## Limitations
 
 - The operation set is the desktop's SDK subset plus `landing`, `runs.current`,
   `runs.reply`, `plugins.status.list`, `jobs.*`, and the workspace share pair;
   see the protocol README. `runs.wait` and `runs.compact` are not available
   remotely.
-- No reconnect logic, no backoff, no queueing while offline. The caller owns
-  those.
+- The transport itself never retries and has no reconnect logic; only the
+  outbox retries, and only sends.
 - One token for everything; the client has no notion of which sessions the
   token may name.

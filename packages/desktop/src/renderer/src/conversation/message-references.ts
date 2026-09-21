@@ -4,9 +4,9 @@
  * A draft is plain text: every chip owns an exact token in it (`@file://…`,
  * `[$skill](path)`, `@current-conversation`, `@clipboard/<n>:…`), so a draft
  * string restores its chips without a second document. A sent message keeps
- * the provider contract (text and images): skill chips become the instruction
- * sentences at its head, clipboard chips unwrap to their body, and those
- * sentences read back as chips.
+ * the provider contract (text and images): skill chips become instruction
+ * sentences where they were inserted, clipboard chips unwrap to their body,
+ * and those sentences read back as chips.
  */
 import type { MentionFile } from "@nyte-ai/client";
 
@@ -45,7 +45,7 @@ const DRAFT_TOKEN_PATTERN = new RegExp(
   ].join("|"),
   "gu",
 );
-const SKILL_INSTRUCTION_PATTERN = /^Use the (?<name>\S+) skill\.(?=\n\n|$)/u;
+const SKILL_INSTRUCTION_PATTERN = /Use the (?<instructionName>\S+) skill\./gu;
 
 export function skillInstruction(name: string): string {
   return `Use the ${name} skill.`;
@@ -158,29 +158,14 @@ export function referenceTitle(reference: MessageReference): string {
   }
 }
 
-/** The sentence a sent message carries for the reference; only skills contribute one. */
-export function referenceInstruction(reference: MessageReference): string | undefined {
-  switch (reference.kind) {
-    case "skill":
-      return skillInstruction(reference.name);
-    case "file":
-    case "mention":
-    case "clipboard":
-      return undefined;
-    default: {
-      const exhaustive: never = reference;
-      return exhaustive;
-    }
-  }
-}
-
 export function referencePromptText(reference: MessageReference): string {
   switch (reference.kind) {
     case "file":
       return referenceText(reference);
+    case "skill":
+      return skillInstruction(reference.name);
     case "clipboard":
       return reference.body;
-    case "skill":
     case "mention":
       return "";
     default: {
@@ -331,45 +316,28 @@ function draftParts(text: string, options: DraftParseOptions): readonly MessageP
   return parts;
 }
 
-/** The instruction sentences a composer put at the head of a message, in order. */
-function leadingInstructions(text: string): { parts: MessagePart[]; cursor: number } {
-  const parts: MessagePart[] = [];
-  let cursor = 0;
-  for (;;) {
-    const rest = text.slice(cursor);
-    const skill = SKILL_INSTRUCTION_PATTERN.exec(rest);
-    const name = skill?.groups?.["name"];
-    if (skill === null || name === undefined) return { parts, cursor };
-    const length = skill[0].length;
-    const separator = rest.startsWith("\n\n", length) ? 2 : 0;
-    parts.push({
-      kind: "reference",
-      reference: { kind: "skill", name, path: "" },
-      source: rest.slice(0, length + separator),
-    });
-    cursor += length + separator;
-  }
-}
-
 /**
  * Split text into plain runs and references. A draft yields its chips back; a
- * sent message yields the skill chips its head sentences stand for, the file
- * mentions in its body, and any persisted skill link.
+ * sent message yields the skill chips its instruction sentences stand for,
+ * the file mentions in its body, and any persisted skill link.
  */
 export function messageParts(
   text: string,
   options: MessageParseOptionsUnion,
 ): readonly MessagePart[] {
   if (options.form === "draft") return draftParts(text, options);
-  const head = leadingInstructions(text);
-  const body = text.slice(head.cursor);
-  const bodyParts: MessagePart[] = [];
+  const parts: MessagePart[] = [];
   let cursor = 0;
-  const bodyPattern = new RegExp(
-    `${FILE_URL_PATTERN.source}|${SKILL_LINK_PATTERN.source}|${SKILL_INVOCATION_PATTERN.source}`,
+  const pattern = new RegExp(
+    [
+      FILE_URL_PATTERN.source,
+      SKILL_LINK_PATTERN.source,
+      SKILL_INVOCATION_PATTERN.source,
+      SKILL_INSTRUCTION_PATTERN.source,
+    ].join("|"),
     "gu",
   );
-  for (const match of body.matchAll(bodyPattern)) {
+  for (const match of text.matchAll(pattern)) {
     const groups = match.groups ?? {};
     let reference: MessageReference | undefined;
     if (match[0].startsWith("@file://")) {
@@ -383,27 +351,22 @@ export function messageParts(
       };
     } else if (groups["name"] !== undefined) {
       reference = { kind: "skill", name: groups["name"], path: groups["path"] ?? "" };
+    } else if (groups["instructionName"] !== undefined) {
+      reference = { kind: "skill", name: groups["instructionName"], path: "" };
     }
     if (reference === undefined) continue;
-    if (match.index > cursor)
-      bodyParts.push({ kind: "text", text: body.slice(cursor, match.index) });
-    bodyParts.push({ kind: "reference", reference, source: match[0] });
+    if (match.index > cursor) parts.push({ kind: "text", text: text.slice(cursor, match.index) });
+    parts.push({ kind: "reference", reference, source: match[0] });
     cursor = match.index + match[0].length;
   }
-  if (cursor < body.length) bodyParts.push({ kind: "text", text: body.slice(cursor) });
-  return [...head.parts, ...bodyParts];
+  if (cursor < text.length) parts.push({ kind: "text", text: text.slice(cursor) });
+  return parts;
 }
 
-/** The draft that edits a sent message: head sentences become their tokens, the body stays. */
+/** The draft that edits a sent message. */
 export function messageDraftText(text: string): string {
   return messageParts(text, { form: "message" })
-    .map((part) => {
-      if (part.kind === "text") return part.text;
-      // Head sentences end in a paragraph break; their tokens read better with one space.
-      return part.source.endsWith("\n\n")
-        ? `${referenceText(part.reference)} `
-        : referenceText(part.reference);
-    })
+    .map((part) => (part.kind === "text" ? part.text : referenceText(part.reference)))
     .join("");
 }
 

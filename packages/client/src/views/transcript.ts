@@ -1,5 +1,5 @@
 import type { ToolTurnPart, Turn, TurnPart, UserTurnPart } from "@nyte-ai/protocol";
-import type { Commit, CommitBody, Oid, ToolClass } from "@nyte-ai/protocol";
+import type { Commit, CommitBody, MessageSource, Oid, ToolClass } from "@nyte-ai/protocol";
 
 type MessageBody = Extract<CommitBody, { kind: "message" }>;
 type UserMessage = Extract<MessageBody["message"], { role: "user" }>;
@@ -111,7 +111,12 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
 }
 
 /** A request opens a turn whatever the commits before it were doing. */
-function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void {
+function appendUser(
+  items: Turn[],
+  item: CommitItem,
+  message: UserMessage,
+  source: MessageSource | undefined,
+): void {
   const part: UserTurnPart = {
     kind: "user",
     commit: item.oid,
@@ -119,13 +124,15 @@ function appendUser(items: Turn[], item: CommitItem, message: UserMessage): void
     content: message.content,
     at: item.commit.at,
   };
+  const sourced = source === undefined ? part : { ...part, source };
+  const keyed = item.commit.key === undefined ? sourced : { ...sourced, key: item.commit.key };
   items.push({
     kind: "turn",
     id: item.oid,
     run: item.commit.run === undefined ? { kind: "none" } : { kind: "run", id: item.commit.run },
     startedAt: item.commit.at,
     durationMs: 0,
-    parts: [item.commit.key === undefined ? part : { ...part, key: item.commit.key }],
+    parts: [keyed],
   });
 }
 
@@ -247,7 +254,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
           appendToolResult(builder, { ...item, commit: item.commit }, body.message);
           break;
         case "user":
-          appendUser(items, item, body.message);
+          appendUser(items, item, body.message, "source" in body ? body.source : undefined);
           break;
         default: {
           const _exhaustive: never = body.message;

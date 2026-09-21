@@ -17,6 +17,7 @@ import type {
   Commit,
   CommitBody,
   Delivery,
+  MessageSource,
   Oid,
   RunId,
   RunOrigin,
@@ -56,7 +57,12 @@ export type RefName = string;
 // ---------------------------------------------------------------------------
 
 export type ChangeBody =
-  | { readonly kind: "message"; readonly message: UserMessage; readonly agent?: string }
+  | {
+      readonly kind: "message";
+      readonly message: UserMessage;
+      readonly agent?: string;
+      readonly source?: MessageSource;
+    }
   | Extract<CommitBody, { readonly kind: "completion" | "config" }>;
 
 /** A submission waiting to land: a commit body without a parent yet. */

@@ -1,4 +1,3 @@
-import { sessionMark } from "@nyte-ai/client";
 import { Tabs } from "@nyte-ai/ui/tabs";
 import * as stylex from "@stylexjs/stylex";
 import { useEffect, useId, useRef, useState } from "react";
@@ -8,6 +7,8 @@ import { CommandMenu, MenuItem } from "../components/menu.tsx";
 import { Icon, type IconName } from "../components/icons.tsx";
 import { focus, formatTimeAgo, Kbd, srOnly, StatusDot } from "../components/ui.tsx";
 import { macPlatform } from "../platform.ts";
+import { sessionActivityMark } from "../session-activity.ts";
+import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { isOption, sessionsForNavigation } from "./sidebar-view.ts";
 import { useSessionPreview, useSessionSearch } from "../queries.ts";
 import { searchPaletteStyles as styles } from "./search-palette.stylex.ts";
@@ -99,6 +100,7 @@ export function SearchPalette({
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsID = useId();
   const readSessions = useReadSessions();
+  const optimisticSessions = useOptimisticSessionIds();
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<PaletteTab>("all");
   const includesAgents = tab === "all" || tab === "agents";
@@ -233,7 +235,7 @@ export function SearchPalette({
             itemStyle={styles.result}
             leading={
               <StatusDot
-                mark={sessionMark(session)}
+                mark={sessionActivityMark(session, optimisticSessions.has(session.sessionId))}
                 unread={sessionHasUnreadCompletion(session, readSessions)}
               />
             }

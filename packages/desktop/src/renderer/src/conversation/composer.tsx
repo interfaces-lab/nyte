@@ -18,7 +18,8 @@ import * as stylex from "@stylexjs/stylex";
 import { Button } from "@nyte-ai/ui";
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { Delivery, PendingItem, SessionId } from "@nyte-ai/protocol";
+import type { Delivery, PendingItem, RunId, RunInfo, SessionId } from "@nyte-ai/protocol";
+import { isTerminalPhase } from "@nyte-ai/client";
 import { errorMessage } from "../../../shared/errors.ts";
 import { Icon } from "../components/icons.tsx";
 import { Menu, MenuItem, MenuSeparator } from "../components/menu.tsx";
@@ -37,7 +38,7 @@ import {
   useSessionSnapshot,
 } from "../queries.ts";
 import { nyte } from "../nyte.ts";
-import type { OutboxRow, OutboxRowState } from "../outbox.ts";
+import type { OutboxRow, OutboxRowState } from "@nyte-ai/client";
 import { outbox } from "../use-outbox.ts";
 import { macPlatform } from "../platform.ts";
 import { DEFAULT_COMPOSER_VIEW_STATE } from "../layout/session-view-state.ts";
@@ -195,6 +196,8 @@ interface ComposerFrameProps {
   disabled?: boolean;
   /** A run is live: empty-input Esc and the idle button both request an abort. */
   busy?: boolean;
+  /** The abort is asked and not yet settled; Stop draws but takes no second request. */
+  stopping?: boolean;
   onAbort?: () => void;
   /** An open composer tray handles Escape before the empty-input abort shortcut. */
   onDismissTray?: () => boolean;
@@ -226,6 +229,7 @@ export function ComposerFrame({
   autoFocus = false,
   disabled = false,
   busy = false,
+  stopping = false,
   onAbort,
   onDismissTray,
   onEmptySubmit,
@@ -551,6 +555,7 @@ export function ComposerFrame({
                 }
                 if (
                   busy &&
+                  !stopping &&
                   document.text.trim() === "" &&
                   attachments.length === 0 &&
                   references.length === 0 &&
@@ -631,9 +636,9 @@ export function ComposerFrame({
               <Button
                 unstyled
                 type="button"
-                aria-label="Stop"
-                title="Stop (Esc)"
-                disabled={disabled}
+                aria-label={stopping ? "Stopping" : "Stop"}
+                title={stopping ? "Stopping…" : "Stop (Esc)"}
+                disabled={disabled || stopping}
                 onClick={onAbort}
                 {...stylex.props(
                   composerStyles.send,
@@ -692,11 +697,11 @@ function QueuedMessageContent({
 
 function unsentStateText(state: OutboxRowState): string {
   switch (state.kind) {
-    case "saving":
-      return "Saving…";
+    case "storing":
     case "sending":
+    case "durable":
       return "Sending…";
-    case "failed":
+    case "retrying":
       return `Couldn't send: ${state.reason}. Retrying…`;
     default: {
       const _exhaustive: never = state;
@@ -732,6 +737,7 @@ function draftWith(document: ComposerDocumentState, text: string): ComposerDocum
 export function Composer({
   sessionId,
   working,
+  run,
   pending,
   unsent,
   disabled = false,
@@ -745,6 +751,8 @@ export function Composer({
 }: {
   sessionId: SessionId;
   working: boolean;
+  /** The head's run as the fold holds it; Stop names it and follows its abort flag. */
+  run: RunInfo | undefined;
   /** Durable queue items waiting behind a live run, in the deliverys the tray shows. */
   pending: readonly PendingItem[];
   /** Outbox rows the strip shows; rows landing as the next turn belong to the transcript. */
@@ -769,6 +777,11 @@ export function Composer({
   const [attachmentError, setAttachmentError] = useState<string>();
   const [feedback, setFeedback] = useState<ComposerFeedback>();
   const [rowActions, setRowActions] = useState<ReadonlyMap<string, PendingRowAction>>(new Map());
+  const [stopRequested, setStopRequested] = useState<RunId>();
+  const stopping =
+    run !== undefined &&
+    !isTerminalPhase(run.phase) &&
+    (run.abortRequested === true || stopRequested === run.runId);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit>();
   const activePendingEdit =
     pendingEdit !== undefined && pending.some((item) => item.change === pendingEdit.change)
@@ -829,11 +842,13 @@ export function Composer({
     });
   }, [addFiles, disabled, fileDropRoot]);
 
-  const setRowAction = (change: string, action: PendingRowAction | undefined): void => {
+  // An action stays on its change until the watch takes the row away: a
+  // cancelled change leaves the queue, a redelivered one is a new change.
+  const setRowAction = (change: string, action: PendingRowAction): void => {
     setRowActions((current) => {
-      const next = new Map(current);
-      if (action === undefined) next.delete(change);
-      else next.set(change, action);
+      const shown = new Set(pending.map((item) => item.change));
+      const next = new Map([...current].filter(([held]) => shown.has(held)));
+      next.set(change, action);
       return next;
     });
   };
@@ -898,11 +913,10 @@ export function Composer({
     setFeedback(undefined);
     setPendingEdit(undefined);
     if (edit !== undefined) {
-      const content = composerMessageContent(
-        submission.text.trim(),
-        [...messageImages(edit.content).map((image) => ({ content: image })), ...sentAttachments],
-        submission.references,
-      );
+      const content = composerMessageContent(submission.text.trim(), [
+        ...messageImages(edit.content).map((image) => ({ content: image })),
+        ...sentAttachments,
+      ]);
       try {
         const outcome = await nyte.messages.redeliver({
           sessionId,
@@ -910,7 +924,6 @@ export function Composer({
           delivery,
           content,
         });
-        refreshThread(sessionId);
         switch (outcome.kind) {
           case "redelivered":
           case "unchanged":
@@ -969,7 +982,7 @@ export function Composer({
     const content =
       plan.kind === "message"
         ? plan.content
-        : composerMessageContent(submission.text.trim(), sentAttachments, submission.references);
+        : composerMessageContent(submission.text.trim(), sentAttachments);
     try {
       await outbox.submit(composerSendInput(sessionId, { kind: "message", content, delivery }));
       return true;
@@ -980,21 +993,18 @@ export function Composer({
   };
 
   const abort = (): void => {
-    if (disabled) return;
-    void nyte.runs.abort({ sessionId });
+    if (disabled || run === undefined || stopping) return;
+    setStopRequested(run.runId);
+    nyte.runs.abort({ sessionId, runId: run.runId }).catch(() => setStopRequested(undefined));
   };
 
+  // The watch settles every outcome but a failed request: a cancelled or
+  // redelivered change leaves the tray with its event, and a landed one
+  // reaches the transcript. Only a request that never arrived needs a word.
   const cancelPending = async (item: PendingItem): Promise<void> => {
     setRowAction(item.change, { kind: "cancelling" });
     try {
-      const outcome = await nyte.messages.cancel({ sessionId, change: item.change });
-      refreshThread(sessionId);
-      setRowAction(
-        item.change,
-        outcome.kind === "landed"
-          ? { kind: "failed", message: "Already sent; it is in the conversation." }
-          : undefined,
-      );
+      await nyte.messages.cancel({ sessionId, change: item.change });
     } catch (cause: unknown) {
       setRowAction(item.change, {
         kind: "failed",
@@ -1006,18 +1016,7 @@ export function Composer({
   const sendPendingNow = async (item: PendingItem): Promise<void> => {
     setRowAction(item.change, { kind: "sending" });
     try {
-      const outcome = await nyte.messages.redeliver({
-        sessionId,
-        change: item.change,
-        delivery: roles.steer,
-      });
-      refreshThread(sessionId);
-      setRowAction(
-        item.change,
-        outcome.kind === "landed"
-          ? { kind: "failed", message: "Already sent; it is in the conversation." }
-          : undefined,
-      );
+      await nyte.messages.redeliver({ sessionId, change: item.change, delivery: roles.steer });
     } catch (cause: unknown) {
       setRowAction(item.change, {
         kind: "failed",
@@ -1041,7 +1040,7 @@ export function Composer({
 
   const canBeginEdit = currentViewState.draft === "" && attachments.length === 0 && !disabled;
   const beginEdit = (item: PendingItem): void => {
-    if (!canBeginEdit) return;
+    if (!canBeginEdit || item.source?.kind === "action") return;
     const text = messageDraftText(userMessageText(item.content));
     setPendingEdit({ change: item.change, delivery: item.delivery, content: item.content });
     setFeedback(undefined);
@@ -1085,7 +1084,7 @@ export function Composer({
                 {...stylex.props(composerStyles.queueRow)}
               >
                 <div {...stylex.props(composerStyles.queueMessage)}>
-                  <QueuedMessageContent content={item.content} />
+                  <QueuedMessageContent content={item.source?.label ?? item.content} />
                   {action?.kind === "cancelling" && (
                     <span {...stylex.props(composerStyles.queuedState)}>Cancelling…</span>
                   )}
@@ -1103,16 +1102,18 @@ export function Composer({
                 </div>
                 {!busyRow && !editingThis && (
                   <div {...stylex.props(composerStyles.queueActions)}>
-                    <IconButton
-                      icon="pencil"
-                      label={
-                        canBeginEdit
-                          ? "Edit queued message"
-                          : "Send or clear your draft to edit this"
-                      }
-                      disabled={!canBeginEdit}
-                      onClick={() => beginEdit(item)}
-                    />
+                    {item.source?.kind !== "action" && (
+                      <IconButton
+                        icon="pencil"
+                        label={
+                          canBeginEdit
+                            ? "Edit queued message"
+                            : "Send or clear your draft to edit this"
+                        }
+                        disabled={!canBeginEdit}
+                        onClick={() => beginEdit(item)}
+                      />
+                    )}
                     {!steering && (
                       <IconButton
                         icon="arrow-up"
@@ -1140,15 +1141,15 @@ export function Composer({
             <div
               role="status"
               key={row.key}
-              data-error={row.state.kind === "failed"}
+              data-error={row.state.kind === "retrying"}
               {...stylex.props(composerStyles.queueRow)}
             >
               <div {...stylex.props(composerStyles.queueMessage)}>
-                <QueuedMessageContent content={row.content} />
+                <QueuedMessageContent content={row.input.source?.label ?? row.input.content} />
                 <span
                   {...stylex.props(
                     composerStyles.queuedState,
-                    row.state.kind === "failed" && composerStyles.queuedError,
+                    row.state.kind === "retrying" && composerStyles.queuedError,
                   )}
                 >
                   {unsentStateText(row.state)}
@@ -1160,7 +1161,7 @@ export function Composer({
                   label="Remove unsent message"
                   onClick={(event) => {
                     releaseFocus(event.currentTarget);
-                    outbox.cancel(row.key);
+                    void outbox.withdraw(row.key);
                   }}
                 />
               </div>
@@ -1228,6 +1229,7 @@ export function Composer({
           autoFocus={autoFocus}
           disabled={disabled}
           busy={working}
+          stopping={stopping}
           onAbort={abort}
           onDismissTray={backgroundWork?.onEscape}
           onEmptySubmit={sendNextQueued}

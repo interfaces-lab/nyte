@@ -84,8 +84,9 @@ function run(startedAt: number): RunInfo {
   };
 }
 
+const id = sessionId("steer-handoff");
+
 function state(items: readonly TranscriptTurn[], running: RunInfo | undefined): SessionState {
-  const id = sessionId("steer-handoff");
   return {
     sessionId: id,
     head: MAIN,
@@ -155,7 +156,12 @@ async function framesOf(setup: TestRendererSetup, act: () => void): Promise<stri
 
 const sending = (key: string, delivery: Delivery, content: string): GutterRow => ({
   kind: "sending",
-  entry: { key, delivery, content, at: 2_000, attempts: 1 },
+  row: {
+    key,
+    input: { sessionId: id, content, delivery },
+    at: 2_000,
+    state: { kind: "sending", attempts: 1 },
+  },
 });
 
 const pending = (change: string, delivery: Delivery, content: string, key?: string): GutterRow => ({

@@ -23,7 +23,7 @@ import type { Transcript } from "./transcript.ts";
 
 /** Every name a row answers to; a pending item also answers to the key it was submitted under. */
 function rowIds(row: GutterRow): readonly string[] {
-  if (row.kind === "sending") return [`key:${row.entry.key}`];
+  if (row.kind === "sending") return [`key:${row.row.key}`];
   const ids = [`change:${row.item.change}`];
   if (row.item.key !== undefined) ids.push(`key:${row.item.key}`);
   return ids;

@@ -571,6 +571,18 @@ export {
   type SessionUpdate,
 } from "./session/session-follow.ts";
 export { sessionMark, type SessionMark } from "./session/session-status.ts";
+export {
+  createOutbox,
+  retryDelayMs,
+  type Outbox,
+  type OutboxOptions,
+  type OutboxOutcome,
+  type OutboxRecord,
+  type OutboxRow,
+  type OutboxRowState,
+  type OutboxStorage,
+  type OutboxSubmission,
+} from "./outbox.ts";
 
 // ---------------------------------------------------------------------------
 // Projections

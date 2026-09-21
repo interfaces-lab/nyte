@@ -1,4 +1,3 @@
-import { sessionMark } from "@nyte-ai/client";
 /**
  * The rail: new chat, search, customize, and cloud on top, then a persistent
  * workspace collection. Every folder expands independently over its cached
@@ -69,6 +68,8 @@ import {
   useReadSessions,
 } from "../session-read-state.ts";
 import { useDebouncedValue } from "../use-debounced-value.ts";
+import { sessionActivityMark } from "../session-activity.ts";
+import { useOptimisticSessionIds } from "../use-outbox.ts";
 import { useMountEffect } from "../use-mount-effect.ts";
 import { sidebarStyles as styles } from "./sidebar.stylex.ts";
 import { useGitHubAccount } from "./github-account.ts";
@@ -323,6 +324,7 @@ export function Sidebar(): ReactElement {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [view, setSessionView] = useState<SessionViewSettings>(DEFAULT_SESSION_VIEW);
   const readSessions = useReadSessions();
+  const optimisticSessions = useOptimisticSessionIds();
   const selection = activePane(layout).selection;
   const activeSessionId = selection.kind === "session" ? selection.sessionId : undefined;
   const activeDraftId =
@@ -345,6 +347,7 @@ export function Sidebar(): ReactElement {
       "local",
       Date.now(),
       readSessions,
+      optimisticSessions,
     ).flatMap((group) => group.sessions);
     const index = ordered.findIndex((session) => session.sessionId === activeSessionId);
     if (index === -1) return;
@@ -355,7 +358,7 @@ export function Sidebar(): ReactElement {
           params: { sessionId: neighbour.sessionId },
         });
     }
-  }, [activeSessionId, activeWorkspaceSessions, readSessions, router, view]);
+  }, [activeSessionId, activeWorkspaceSessions, optimisticSessions, readSessions, router, view]);
   // One fixed, name-ordered column: a click expands a row in place instead of
   // moving the opened workspace to the top.
   const entries: readonly ({ kind: "home" } | ({ kind: "project" } & WorkspaceInfo))[] = [
@@ -429,7 +432,7 @@ export function Sidebar(): ReactElement {
     const sessionGroups =
       sessions === undefined
         ? []
-        : sessionsForView(sessions, view, place.kind, undefined, readSessions);
+        : sessionsForView(sessions, view, place.kind, undefined, readSessions, optimisticSessions);
     const displayedSessionCount = sessionGroups.reduce(
       (count, group) => count + group.sessions.length,
       drafts.length,
@@ -513,6 +516,7 @@ export function Sidebar(): ReactElement {
                 previewContext={previewContext}
                 selected={session.sessionId === activeSessionId}
                 unread={sessionHasUnreadCompletion(session, readSessions)}
+                optimistic={optimisticSessions.has(session.sessionId)}
                 layoutEnabled={
                   sidebarVisible && settings === undefined && collectionExpanded && !collapsed
                 }
@@ -1157,6 +1161,7 @@ interface SessionRowProps {
   previewContext: SessionPreviewContext;
   selected: boolean;
   unread: boolean;
+  optimistic: boolean;
   layoutEnabled: boolean;
   showUpdated: boolean;
   onOpen: () => void;
@@ -1174,6 +1179,7 @@ function SessionRow({
   previewContext,
   selected,
   unread,
+  optimistic,
   layoutEnabled,
   showUpdated,
   onOpen,
@@ -1185,7 +1191,7 @@ function SessionRow({
   onDelete,
 }: SessionRowProps): ReactElement {
   const warmTimer = useRef<number | undefined>(undefined);
-  const mark = sessionMark(session);
+  const mark = sessionActivityMark(session, optimistic);
   const title = sessionTitle(session);
   const [draftName, setDraftName] = useState<string | undefined>();
   const { isDragging, listeners, setNodeRef } = useSessionDraggable(

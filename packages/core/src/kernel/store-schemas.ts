@@ -30,6 +30,7 @@ export const ObjectSchema = Type.Union([
         kind: Type.Literal("message"),
         message: schemas.UserMessage,
         agent: Type.Optional(Type.String()),
+        source: Type.Optional(schemas.MessageSource),
       }),
       Type.Object({ kind: Type.Literal("completion"), job: schemas.JobReport }),
       Type.Object({

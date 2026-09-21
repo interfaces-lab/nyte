@@ -6,7 +6,13 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { Commit, CommitOutcome, Failure, Oid, ToolClass } from "@nyte-ai/protocol";
 import type { AssistantMessage, ToolResultMessage } from "@nyte-ai/schema";
-import { changesFromTurns, transcriptFromCommits, type Turn } from "../src/index.ts";
+import {
+  appendTranscriptCommit,
+  changesFromTurns,
+  EMPTY_TRANSCRIPT,
+  transcriptFromCommits,
+  type Turn,
+} from "../src/index.ts";
 
 type Item = { readonly oid: Oid; readonly commit: Commit };
 
@@ -91,6 +97,39 @@ const patched: ToolClass = {
   removed: 1,
   patch: "not parsed by the client",
 };
+
+test("action source survives full and incremental transcript projection", () => {
+  const source = { kind: "action", label: "Commit changes" } as const;
+  const item = {
+    oid: "action",
+    commit: {
+      kind: "commit",
+      parent: null,
+      at: 1,
+      body: {
+        kind: "message",
+        message: { role: "user", content: "Commit the current changes", timestamp: 1 },
+        source,
+      },
+      start: { kind: "none" },
+    } satisfies Commit,
+  };
+
+  const full = transcriptFromCommits([item]);
+  const incremental = appendTranscriptCommit(EMPTY_TRANSCRIPT, item);
+  assert.ok(incremental !== undefined);
+  assert.deepEqual(incremental.items, full);
+  assert.deepEqual(conversation(full[0]).parts, [
+    {
+      kind: "user",
+      commit: "action",
+      parent: null,
+      content: "Commit the current changes",
+      at: 1,
+      source,
+    },
+  ]);
+});
 
 test("tool parts carry their call and result commit timestamps", () => {
   const items = branch([

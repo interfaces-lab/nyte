@@ -62,15 +62,6 @@ describe("composer send", () => {
       }),
       { kind: "empty" },
     );
-    assert.equal(
-      composerSendPlan({
-        submission: { text: "", references: [skill] },
-        attachments: [],
-        commands: [],
-        delivery: roles.steer,
-      }).kind,
-      "message",
-    );
   });
 
   test("a plugin command's line runs the command in the chosen delivery; a chip or image makes it a message", () => {

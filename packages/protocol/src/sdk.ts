@@ -13,6 +13,7 @@ import type {
   Actor,
   Commit,
   DelegateRequest,
+  MessageSource,
   ModelRef,
   Oid,
   RunOrigin,
@@ -180,6 +181,7 @@ export interface SendInput {
   /** Caller-supplied idempotency key. The first submission wins. */
   readonly key?: string;
   readonly agent?: string;
+  readonly source?: MessageSource;
 }
 
 export type SendReceipt =
@@ -205,6 +207,7 @@ export interface PendingItem {
   readonly author?: Actor;
   /** The submission key `send` carried, so the sender can match the item to its own outbox by identity. */
   readonly key?: string;
+  readonly source?: MessageSource;
 }
 
 // ---------------------------------------------------------------------------

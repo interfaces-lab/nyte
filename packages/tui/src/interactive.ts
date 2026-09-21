@@ -100,11 +100,15 @@ import {
 } from "./keymap.ts";
 import { deliveryChoices, nextToSteer } from "./lanes.ts";
 import type { DeliveryChoices } from "./lanes.ts";
-import { Outbox } from "./outbox.ts";
-import { SentMessages } from "./sent-messages.ts";
 import { ModelPicker } from "./model-picker.ts";
 import type { ModelSelection } from "./model-picker.ts";
-import { gutterRows, deliveryMark, queuedPromptText, rowDelivery } from "./pending-gutter.ts";
+import {
+  gutterRows,
+  deliveryMark,
+  queuedPromptText,
+  rowContent,
+  rowDelivery,
+} from "./pending-gutter.ts";
 import { PickerCancelled } from "./picker.ts";
 import type { Choice, InlineMenu } from "./picker.ts";
 import { PluginProvider } from "./plugins.ts";
@@ -121,9 +125,9 @@ import type { Runtime } from "./run.ts";
 import { TUI_RENDERER_CONFIG } from "./rendering.ts";
 import { SessionConfigurator } from "./session-config.ts";
 import type { ConfigPatch, RunChoice, SubmissionSlot } from "./session-config.ts";
-import { SessionObserver, waitingCall } from "@nyte-ai/client";
+import { createOutbox, SessionObserver, waitingCall } from "@nyte-ai/client";
 import { TaskBrowser } from "./task-browser.ts";
-import type { SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/client";
+import type { Outbox, SessionState, SessionUpdate, WaitingCall } from "@nyte-ai/client";
 import { FileSettingsStore } from "./settings.ts";
 import type { ResolvedSettings, SettingsPatch } from "./settings.ts";
 import { mountShell } from "./app/App.tsx";
@@ -329,14 +333,13 @@ type Handback = (
 
 /**
  * Everything the shell knows about the followed session, rebuilt on a switch.
- * The observer publishes state; the outbox publishes what is still sending;
- * `sent` bridges the two by identity.
+ * The observer publishes state; the outbox publishes what is still sending and
+ * hears the observer to reconcile the two by identity.
  */
 interface FollowedSession {
   readonly sessionId: SessionId;
   readonly observer: SessionObserver;
   readonly outbox: Outbox;
-  readonly sent: SentMessages;
   /** What the user asked the next run to use, ahead of core's acknowledgement. */
   readonly config: SessionConfigurator;
   state: SessionState;
@@ -851,14 +854,9 @@ class Interactive {
       this.attachments.set(info.sessionId, this.host.attach(info.sessionId));
     }
     let current: FollowedSession | undefined;
-    const outbox = new Outbox({
-      send: (input) => this.host.nyte.messages.send({ sessionId: info.sessionId, ...input }),
-      onReceipt: (entry, receipt) => current?.sent.receipt(entry, receipt),
-      onChange: (entries) => {
-        if (current === undefined) return;
-        current.sent.sending(entries);
-        if (this.session === current) this.syncGutter(current);
-      },
+    const outbox = createOutbox({ send: (input) => this.host.nyte.messages.send(input) });
+    outbox.subscribe(() => {
+      if (current !== undefined && this.session === current) this.syncGutter(current);
     });
     const observer = new SessionObserver(this.host.nyte, {
       sessionId: info.sessionId,
@@ -871,6 +869,7 @@ class Interactive {
       retryMs: 500,
     });
     observer.subscribe((update) => {
+      outbox.observe(update);
       const { state, selectedVersion } = update;
       if (current === undefined || this.session !== current) return;
       const previous = current.state;
@@ -910,13 +909,6 @@ class Interactive {
       sessionId: info.sessionId,
       observer,
       outbox,
-      sent: new SentMessages({
-        // The same observer `render` hears: its snapshot reaches `sent.snapshot` before the promise settles.
-        resync: () => observer.resync(),
-        onChange: () => {
-          if (current !== undefined && this.session === current) this.syncGutter(current);
-        },
-      }),
       config,
       state: {
         sessionId: info.sessionId,
@@ -1006,7 +998,6 @@ class Interactive {
     const { state } = session;
     const event = update.kind === "event" ? update.event : undefined;
     const snapshot = update.kind === "snapshot";
-    if (snapshot) session.sent.snapshot(state.pending, state.transcript.items);
     // Fold and react to every event, but reconcile only the latest visual state
     // before a frame. A resnapshot must still reset even if deltas follow it.
     this.pendingVisual = {
@@ -1022,7 +1013,6 @@ class Interactive {
     this.tasks.update(state, event);
     if (event === undefined) return;
     this.tuiPlugins.emit(event);
-    if (session.sent.event(event, state.head)) this.syncGutter(session);
     switch (event.kind) {
       case "activation_changed":
         return;
@@ -2017,8 +2007,7 @@ class Interactive {
       );
     }
     if (this.session === session) this.scrollToEnd();
-    const outcome = await session.outbox.submit({ content, delivery });
-    if (outcome.kind === "withdrawn") notice(this.shell, "Message withdrawn");
+    await session.outbox.submit({ sessionId: session.sessionId, content, delivery });
   }
 
   private scrollToEnd(): void {
@@ -2064,7 +2053,7 @@ class Interactive {
     if (session === undefined) return [];
     return sessionRows(session).map((row, index) => ({
       id: rowId(row),
-      label: queuedPromptText(row.kind === "pending" ? row.item.content : row.entry.content),
+      label: queuedPromptText(rowContent(row)),
       description: `${String(index + 1)} · ${row.kind === "pending" ? deliveryMark(row.item.delivery, this.roles, this.shell.theme).label : "sending"}`,
     }));
   }
@@ -2095,19 +2084,19 @@ class Interactive {
         return;
       }
       if (row.kind === "sending") {
-        const outcome = await session.outbox.withdraw(row.entry.key);
+        const outcome = await session.outbox.withdraw(row.row.key);
         if (outcome === undefined || this.disposed || this.session !== session) return;
         const stash = {
-          delivery: row.entry.delivery,
+          delivery: row.row.input.delivery ?? this.roles.queue,
           draft: { text: this.shell.input.plainText, parts: this.composerParts.current },
         };
         this.queueEdits.set(
           session.sessionId,
           outcome.kind === "durable"
             ? { ...stash, kind: "pending", change: outcome.change }
-            : { ...stash, kind: "sending", content: row.entry.content },
+            : { ...stash, kind: "sending", content: row.row.input.content },
         );
-        this.handBack(row.entry.content, "Back in the composer.");
+        this.handBack(row.row.input.content, "Back in the composer.");
         return;
       }
       this.queueEdits.set(session.sessionId, {
@@ -2122,7 +2111,7 @@ class Interactive {
       const row = rows().find((candidate) => rowId(candidate) === id);
       if (row === undefined) return;
       const withdrawn =
-        row.kind === "sending" ? await session.outbox.withdraw(row.entry.key) : undefined;
+        row.kind === "sending" ? await session.outbox.withdraw(row.row.key) : undefined;
       const removed =
         row.kind === "pending"
           ? await this.cancelPending(session, row.item.change)
@@ -2197,7 +2186,11 @@ class Interactive {
     const editing = this.queueEdits.get(session.sessionId);
     if (editing === undefined) return;
     if (options.restoreSending !== false && editing.kind === "sending")
-      void session.outbox.submit({ content: editing.content, delivery: editing.delivery });
+      void session.outbox.submit({
+        sessionId: session.sessionId,
+        content: editing.content,
+        delivery: editing.delivery,
+      });
     this.queueEdits.delete(session.sessionId);
     if (this.session !== session) {
       this.drafts.save(session.sessionId, editing.draft.text, editing.draft.parts);
@@ -2223,7 +2216,11 @@ class Interactive {
         expandInlineSkills(value, session.skills),
       );
       if (editing.kind === "sending") {
-        void session.outbox.submit({ content: prepared.content, delivery });
+        void session.outbox.submit({
+          sessionId: session.sessionId,
+          content: prepared.content,
+          delivery,
+        });
         this.cancelEdit({ session, restoreSending: false });
         return;
       }
@@ -2808,7 +2805,7 @@ class Interactive {
     if (this.switchingSession || this.changingDirectory)
       throw new Error("A chat switch is already in progress.");
     const session = this.requireSession();
-    if (session.outbox.entries.length > 0 || session.state.pending.length > 0)
+    if (session.outbox.rows().length > 0 || session.state.pending.length > 0)
       throw new Error("Wait for queued messages before changing directories.");
     this.changingDirectory = true;
     try {
@@ -3968,10 +3965,10 @@ type SlashTarget =
   | { readonly kind: "message" };
 
 function rowId(row: ReturnType<typeof gutterRows>[number]): string {
-  return row.kind === "pending" ? `pending:${row.item.change}` : `sending:${row.entry.key}`;
+  return row.kind === "pending" ? `pending:${row.item.change}` : `sending:${row.row.key}`;
 }
 
-/** The fold's pending items, then receipts the fold has not caught up with, then what is still sending. */
+/** The fold's pending items, then what the outbox still holds. */
 function sessionRows(session: FollowedSession): ReturnType<typeof gutterRows> {
-  return session.sent.rows(session.state.pending, session.outbox.entries);
+  return gutterRows(session.state.pending, session.outbox.rows());
 }

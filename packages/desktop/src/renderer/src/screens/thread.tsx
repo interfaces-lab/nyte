@@ -20,8 +20,7 @@ import {
 import type { CSSProperties, PointerEvent, ReactElement, ReactNode, RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import type { RunDiff, SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
-import { toast } from "@nyte-ai/ui/sonner";
+import type { Oid, RunDiff, SessionId, SessionInfo, Turn, UserTurnPart } from "@nyte-ai/protocol";
 import type { VcsSnapshot } from "@nyte-ai/protocol";
 import type { Delivery } from "@nyte-ai/protocol";
 import { Composer, ComposerFrame } from "../conversation/composer.tsx";
@@ -65,7 +64,7 @@ import type { PaneId, PaneLayout, PaneState, SplitDirection } from "../layout/pa
 import { useSessionDropTarget, useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import type { SessionDropTarget } from "../layout/session-dnd.tsx";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import { loadThread, useChildrenLive, useSessionLive } from "../live.ts";
+import { useChildrenLive, useSessionLive } from "../live.ts";
 import type { LiveToolProgress } from "../live-fold.ts";
 import {
   keys,
@@ -455,17 +454,20 @@ function PaneHeader({
 async function applyMessageEdit({
   sessionId,
   part,
+  tip,
   content,
   choice,
   fastEnabled,
 }: {
   readonly sessionId: SessionId;
   readonly part: UserTurnPart;
+  /** The tip the edit was offered against; a branch that moved since is not rewound. */
+  readonly tip: Oid | null;
   readonly content: UserTurnPart["content"];
   readonly choice: BranchModelChoice;
   readonly fastEnabled: ReadonlySet<string>;
 }): Promise<void> {
-  const outcome = await nyte.heads.move({ sessionId, to: part.commit });
+  const outcome = await nyte.heads.move({ sessionId, to: part.commit, expect: tip });
   switch (outcome.kind) {
     case "moved":
       if (outcome.restored?.commit !== part.commit) {
@@ -502,13 +504,13 @@ async function applyMessageEdit({
         }
       }
       await outbox.submit({ sessionId, content });
-      await loadThread(sessionId);
       void queryClient.invalidateQueries({ queryKey: keys.sessions });
       void queryClient.invalidateQueries({ queryKey: keys.pluginSettings(sessionId) });
       return;
     case "busy":
       throw new Error("Wait for the current response before editing this message.");
     case "moved_since":
+      throw new Error("The conversation moved on; review it before editing this message.");
     case "not_found":
       throw new Error("The selected message is no longer in this branch.");
     case "failed":
@@ -792,11 +794,16 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       choice: BranchModelChoice,
     ): Promise<void> => {
       setNavigating(true);
-      return applyMessageEdit({ sessionId, part, content, choice, fastEnabled }).finally(() =>
-        setNavigating(false),
-      );
+      return applyMessageEdit({
+        sessionId,
+        part,
+        tip: snapshot.data?.tip ?? null,
+        content,
+        choice,
+        fastEnabled,
+      }).finally(() => setNavigating(false));
     },
-    [fastEnabled, sessionId],
+    [fastEnabled, sessionId, snapshot.data?.tip],
   );
   const childBySession = useMemo(
     () =>
@@ -1099,6 +1106,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                     },
                   }}
                   working={working}
+                  run={snapshot.data?.run}
                   // The boundary delivery draws in the transcript; the tray keeps the rest.
                   pending={messages.queued}
                   unsent={messages.unsent}
@@ -1226,20 +1234,11 @@ function BlankConversation({
         option.provider === submittedConfiguration?.model.provider &&
         option.id === submittedConfiguration.model.id,
     );
-    let session: SessionInfo | undefined;
     try {
-      session = await nyte.sessions.create();
-      await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
-      // The pane switches as soon as the chat exists; its configuration and
-      // first message finish behind the transcript instead of holding Home.
-      void queryClient.invalidateQueries({ queryKey: keys.sessions });
-      void loadThread(session.sessionId).catch(() => undefined);
-      const configuring =
-        submittedConfiguration === undefined
-          ? undefined
-          : configureSession(session.sessionId, submittedConfiguration);
-      actions.openSessionInPane(paneId, session.sessionId);
-      await configuring;
+      const session = await nyte.sessions.create();
+      if (submittedConfiguration !== undefined) {
+        await configureSession(session.sessionId, submittedConfiguration);
+      }
       if (
         submittedModel?.fastMode.kind === "available" &&
         submitted.fastSettings.has(submittedModel.fastMode.settingId)
@@ -1247,19 +1246,15 @@ function BlankConversation({
         await enableFastMode(session.sessionId, submittedModel.fastMode.settingId);
       }
       await outbox.submit(composerSendInput(session.sessionId, plan));
+      await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
       setAttachments([]);
       setAttachmentError(undefined);
+      actions.openSessionInPane(paneId, session.sessionId);
       return true;
     } catch (cause: unknown) {
       viewStore.restoreBlank(paneId, submitted);
       setSending(false);
       setStartFailure(errorMessage(cause));
-      // Past the pane switch this composer is gone; the draft stays on Home.
-      if (session !== undefined) {
-        toast.error("Couldn't send the first message. Your draft is still on Home.", {
-          id: "new-chat-start-error",
-        });
-      }
       return false;
     }
   };

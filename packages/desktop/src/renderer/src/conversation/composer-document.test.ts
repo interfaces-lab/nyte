@@ -30,7 +30,7 @@ import {
   ComposerReferenceNode,
   registerComposerReferences,
 } from "./composer-document.ts";
-import { CONVERSATION_MENTION, referenceLabel, referenceText } from "./message-references.ts";
+import { referenceLabel, referenceText } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
 const file: MentionFile = {
@@ -204,16 +204,6 @@ describe("composer document", () => {
       tag: PASTE_TAG,
     });
     expect(labels()).toEqual(["src/", "x.ts"]);
-  });
-
-  it("reads a submission whose text keeps file tokens and drops instruction tokens", () => {
-    const { editor, restore } = composer();
-    restore(`fix @${file.url} with [$review](${skillReference.path}) @current-conversation`);
-    editor.getEditorState().read(() => {
-      const submission = $composerSubmission();
-      expect(submission.text).toBe(`fix @${file.url} with  `);
-      expect(submission.references).toEqual([fileReference, skillReference, CONVERSATION_MENTION]);
-    });
   });
 
   it("copies a selected mention as its URL and removes it atomically with Backspace", () => {
@@ -407,13 +397,12 @@ describe("composer document", () => {
     editor.getEditorState().read(() => expect($composerCompletion()).toBeUndefined());
   });
 
-  it("removes a skill chip with the replaced range and keeps its instruction only while present", () => {
+  it("removes a skill chip with the replaced range", () => {
     const { editor, text, labels, restore } = composer();
     restore("Please today");
     editor.update(() => $insertComposerReference(skillReference, 7, 7), { discrete: true });
     expect(text()).toBe(`Please [$review](${skillReference.path}) today`);
     expect(labels()).toEqual(["/review"]);
-    editor.getEditorState().read(() => expect($composerSubmission().text).toBe("Please  today"));
     editor.update(() => $replaceComposerText(0, text().length, "replacement"), { discrete: true });
     expect(text()).toBe("replacement");
     expect(labels()).toEqual([]);

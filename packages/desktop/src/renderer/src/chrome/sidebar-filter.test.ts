@@ -301,6 +301,26 @@ describe("sidebar session ordering and grouping", () => {
 });
 
 describe("session marks", () => {
+  test("local submissions project idle and failed sessions as working", () => {
+    const idle = session({ id: "idle", updatedAt: NOW });
+    const failed = session({ id: "failed", updatedAt: NOW - 1, status: "failed" });
+    const optimistic = new Set([idle.sessionId, failed.sessionId]);
+
+    assert.deepEqual(
+      ids(
+        sessionsForView(
+          [idle, failed],
+          view({ statuses: ["working"] }),
+          "local",
+          NOW,
+          undefined,
+          optimistic,
+        ),
+      ),
+      ["idle", "failed"],
+    );
+  });
+
   test("untitled chats without a preview are drafts", () => {
     assert.equal(sessionIsDraft(session({ id: "draft", updatedAt: NOW, status: "draft" })), true);
     assert.equal(sessionIsDraft(session({ id: "done", updatedAt: NOW, status: "done" })), false);

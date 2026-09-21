@@ -64,7 +64,8 @@ const snapshot = {
       change: "pending-change",
       delivery: "steer",
       at: 1,
-      content: "Pending prompt",
+      content: "Instructions for the selected Git action.",
+      source: { kind: "action", label: "Pending prompt" },
       key: "live",
     },
   ],
@@ -202,7 +203,12 @@ export async function runTest(): Promise<string> {
           at: 2,
           body: {
             kind: "message",
-            message: { role: "user", content: "Pending prompt", timestamp: 2 },
+            message: {
+              role: "user",
+              content: "Instructions for the selected Git action.",
+              timestamp: 2,
+            },
+            source: { kind: "action", label: "Pending prompt" },
           },
         },
       },
@@ -214,6 +220,18 @@ export async function runTest(): Promise<string> {
     check(
       textNode(container, "Pending prompt")?.closest("[data-index]") === pending,
       "The landed message replaced its transcript row",
+    );
+    check(
+      container.querySelector('button[aria-label="Edit message: Pending prompt"]') === null,
+      "Action messages must remain read-only after landing",
+    );
+    check(
+      container.querySelector('button[aria-label^="Edit message: Prompt line"]') !== null,
+      "Ordinary user messages must remain editable",
+    );
+    check(
+      !container.textContent?.includes("Instructions for the selected Git action."),
+      "Action instructions must display their compact label",
     );
 
     const completedRun = {

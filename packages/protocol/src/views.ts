@@ -4,7 +4,7 @@
  * reads them, so their shapes live here.
  */
 import type { Message } from "@nyte-ai/schema";
-import type { CommitBody, Failure, Oid, ToolClass } from "./kernel.ts";
+import type { CommitBody, Failure, MessageSource, Oid, ToolClass } from "./kernel.ts";
 import type { RunId } from "./sdk.ts";
 
 type UserMessage = Extract<Message, { role: "user" }>;
@@ -17,6 +17,7 @@ export interface UserTurnPart {
   readonly at: number;
   /** The submission key the landed change carried, when the sender gave one. */
   key?: string;
+  readonly source?: MessageSource;
 }
 
 export type ToolTurnPart = {

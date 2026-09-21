@@ -19,6 +19,7 @@ import { cacheSessionInfo, keys, queryClient, refreshVcs, SNAPSHOT_WARM_MS } fro
 import type { SessionSelection } from "./session-configuration.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { sessionClient } from "./nyte.ts";
+import { outbox } from "./use-outbox.ts";
 
 export { livePartKey } from "./live-fold.ts";
 export type { LivePartRef, LiveRunState, LiveSnapshot, LiveToolProgress } from "./live-fold.ts";
@@ -165,7 +166,7 @@ function storeFor(sessionId: SessionId): LiveStore {
  */
 function react(sessionId: SessionId, state: SessionState, event: SessionEvent | undefined): void {
   const rebase = event === undefined;
-  if (rebase || event.kind === "activation_changed") requestTrust(state.info.activation);
+  if (event?.kind === "activation_changed") requestTrust(state.info.activation);
   if (rebase || event.kind === "job" || event.kind === "synced") {
     void queryClient.invalidateQueries({ queryKey: keys.jobs(sessionId) });
   }
@@ -217,6 +218,8 @@ function observe(sessionId: SessionId): SharedObserver {
   let reacted: Seq | undefined;
   observer.subscribe((update) => {
     store.update(sessionId, update.state);
+    outbox.observe(update);
+    if (update.kind === "snapshot") requestTrust(update.state.info.activation);
     const seen = reacted;
     reacted = update.state.seq;
     if (update.kind === "event") {

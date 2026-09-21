@@ -21,7 +21,7 @@ export interface LiveToolProgress {
 export type LiveRunState = LiveSnapshot["runState"];
 
 type LiveRun =
-  | { readonly runState: "idle" | "working"; readonly retry?: never }
+  | { readonly runState: "idle" | "working" | "stopping"; readonly retry?: never }
   | {
       readonly runState: "retrying";
       readonly retry: { readonly at: number; readonly message: string };
@@ -50,19 +50,22 @@ export function livePartKey(runId: RunId, attempt: number, index: number): strin
   return `${runId}:${String(attempt)}:${String(index)}`;
 }
 
-/** Streaming or calling tools is work; a retry waits out its delay; anything else leaves the overlay idle. */
+/** Streaming or calling tools is work; a retry waits out its delay; a flagged stop is settling; anything else leaves the overlay idle. */
 export function liveRun(run: RunInfo | undefined): LiveRun {
   if (run === undefined) return { runState: "idle" };
   switch (run.phase.kind) {
     case "respond":
     case "tools":
-      return { runState: "working" };
+      return { runState: run.abortRequested === true ? "stopping" : "working" };
     case "retry":
-      return {
-        runState: "retrying",
-        retry: { at: run.phase.at, message: run.phase.failure.message },
-      };
+      return run.abortRequested === true
+        ? { runState: "stopping" }
+        : {
+            runState: "retrying",
+            retry: { at: run.phase.at, message: run.phase.failure.message },
+          };
     case "waiting":
+      return { runState: run.abortRequested === true ? "stopping" : "idle" };
     case "done":
     case "aborted":
     case "failed":

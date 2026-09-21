@@ -152,17 +152,29 @@ test("a commit event carries the whole message, and a mangled one is refused wit
   assert.ok(issues.some((issue) => issue.path.startsWith("/item/commit/body")));
 });
 
-test("a submission key rides on the pending item, the commit, and the user part, and stays optional", () => {
+test("submission metadata rides on pending items, commits, and user parts, and stays optional", () => {
+  const source = { kind: "action", label: "Commit changes" } as const;
+  assert.ok(Value.Check(schemas.MessageSource, source));
+  assert.ok(!Value.Check(schemas.MessageSource, { ...source, extra: true }));
+  assert.ok(!Value.Check(schemas.MessageSource, { kind: "action" }));
+  const sendInput = OPERATIONS["messages.send"].input;
+  assert.ok(Value.Check(sendInput, { sessionId: "s", content: "hi", source }));
+  assert.ok(!Value.Check(sendInput, { sessionId: "s", content: "hi", source: { kind: "git" } }));
+
   const pending = { change: "abc", delivery: "steer", at: 1, content: "hi" };
   assert.ok(Value.Check(schemas.PendingItem, pending));
-  assert.ok(Value.Check(schemas.PendingItem, { ...pending, key: "outbox-1" }));
+  assert.ok(Value.Check(schemas.PendingItem, { ...pending, key: "outbox-1", source }));
   assert.ok(!Value.Check(schemas.PendingItem, { ...pending, key: 7 }));
   const commit = {
     kind: "commit",
     parent: null,
     change: "abc",
     key: "outbox-1",
-    body: { kind: "message", message: { role: "user", content: "hi", timestamp: 1 } },
+    body: {
+      kind: "message",
+      message: { role: "user", content: "hi", timestamp: 1 },
+      source,
+    },
     start: { kind: "none" },
     at: 1,
   };
@@ -170,7 +182,7 @@ test("a submission key rides on the pending item, the commit, and the user part,
   assert.ok(!Value.Check(schemas.Commit, { ...commit, key: null }));
   const part = { kind: "user", commit: "abc", parent: null, content: "hi", at: 1 };
   assert.ok(Value.Check(schemas.UserTurnPart, part));
-  assert.ok(Value.Check(schemas.UserTurnPart, { ...part, key: "outbox-1" }));
+  assert.ok(Value.Check(schemas.UserTurnPart, { ...part, key: "outbox-1", source }));
   assert.ok(!Value.Check(schemas.UserTurnPart, { ...part, key: 7 }));
 });
 

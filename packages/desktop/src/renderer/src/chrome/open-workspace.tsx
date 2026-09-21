@@ -1,7 +1,7 @@
 /**
- * Trust is requested when a session reports it: the watch replays the
- * session's activation and every receipt re-reads it. Folder selection
- * failures appear as a dismissible toast, leaving the current chat usable.
+ * Trust is requested when a session reports it through an observer snapshot
+ * or activation event. Folder selection failures appear as a dismissible
+ * toast, leaving the current chat usable.
  */
 import { Dialog } from "@nyte-ai/ui/dialog";
 import { toast } from "@nyte-ai/ui/sonner";

@@ -1,38 +1,22 @@
 /**
  * From an editor read to the provider message. The contract stays text and
- * images: mode and skill chips become the instruction sentences at the head of
- * the text, file chips stay as their `@file://` spelling in the body, and the
- * conversation mention is context the host already has.
+ * images: skill chips become instruction sentences in place, file chips stay
+ * as their `@file://` spelling, and the conversation mention is context the
+ * host already has.
  */
 import type { CommandInfo, Delivery, SendInput, SessionId } from "@nyte-ai/protocol";
 import type { ImageContent, TextContent, UserMessage } from "@nyte-ai/schema";
 import type { ComposerSubmission } from "./composer-document.ts";
-import { referenceInstruction, sameReference } from "./message-references.ts";
-import type { MessageReference } from "./message-references.ts";
 import { parsePluginCommand } from "./plugin-command.ts";
 import type { ParsedPluginCommand } from "./plugin-command.ts";
-
-export function composerPromptText(text: string, references: readonly MessageReference[]): string {
-  const instructions: string[] = [];
-  const seen: MessageReference[] = [];
-  for (const reference of references) {
-    if (seen.some((candidate) => sameReference(candidate, reference))) continue;
-    seen.push(reference);
-    const instruction = referenceInstruction(reference);
-    if (instruction !== undefined) instructions.push(instruction);
-  }
-  return [...instructions, text].filter((part) => part !== "").join("\n\n");
-}
 
 export function composerMessageContent(
   text: string,
   attachments: readonly { readonly content: ImageContent }[],
-  references: readonly MessageReference[],
 ): UserMessage["content"] {
-  const prompt = composerPromptText(text, references);
-  if (attachments.length === 0) return prompt;
+  if (attachments.length === 0) return text;
   const parts: (TextContent | ImageContent)[] = [];
-  if (prompt !== "") parts.push({ type: "text", text: prompt });
+  if (text !== "") parts.push({ type: "text", text });
   for (const attachment of attachments) parts.push(attachment.content);
   return parts;
 }
@@ -58,8 +42,7 @@ export function composerSendPlan(input: {
 }): ComposerSendPlan {
   const text = input.submission.text.trim();
   const references = input.submission.references;
-  const prompt = composerPromptText(text, references);
-  if (prompt === "" && input.attachments.length === 0) return { kind: "empty" };
+  if (text === "" && input.attachments.length === 0) return { kind: "empty" };
   const command =
     references.every((reference) => reference.kind === "file") && input.attachments.length === 0
       ? parsePluginCommand(text, input.commands)
@@ -67,7 +50,7 @@ export function composerSendPlan(input: {
   if (command !== undefined) return { kind: "command", command, delivery: input.delivery };
   return {
     kind: "message",
-    content: composerMessageContent(text, input.attachments, references),
+    content: composerMessageContent(text, input.attachments),
     delivery: input.delivery,
   };
 }

@@ -345,13 +345,14 @@ export async function createNyte(options: NyteOptions): Promise<Nyte> {
           kind: "message",
           message: { role: "user", content, timestamp: Date.now() },
         } satisfies CommitBody;
+        const sourced = input.source === undefined ? message : { ...message, source: input.source };
         const participantSend = await delegation.participantSend(input.sessionId, pooled);
         const submission = attributed(
           {
             head,
             kind: "user",
             delivery,
-            body: input.agent === undefined ? message : { ...message, agent: input.agent },
+            body: input.agent === undefined ? sourced : { ...sourced, agent: input.agent },
             ...participantSend,
           },
           options.actor,

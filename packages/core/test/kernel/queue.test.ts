@@ -171,14 +171,15 @@ test("a retried submission with the same key is the first one, not a second mess
   assert.equal(await session.events.last(), before);
 });
 
-test("a change carries its submission key, and a redelivered copy keeps it under a new id", async () => {
+test("a change carries submission metadata, and a redelivered copy keeps it under a new id", async () => {
   const session = await openSession();
+  const source = { kind: "action", label: "Commit changes" } as const;
   const keyed = await submit(session, {
     preparation: { kind: "none" },
     head: "main",
     delivery: "steer",
     kind: "user",
-    body: say("hi"),
+    body: { ...say("hi"), source },
     key: "k1",
   });
   const bare = await submit(session, {
@@ -193,15 +194,27 @@ test("a change carries its submission key, and a redelivered copy keeps it under
   assert.equal(await keyOf(keyed.change), "k1");
   assert.equal(await keyOf(bare.change), undefined);
 
-  const moved = await redeliver(session, { head: "main", change: keyed.change, delivery: "next" });
+  const moved = await redeliver(session, {
+    head: "main",
+    change: keyed.change,
+    delivery: "next",
+    content: "edited",
+  });
   assert.equal(moved.kind, "redelivered");
   if (moved.kind !== "redelivered") return;
   assert.notEqual(moved.change, keyed.change);
   const items = await pending(session, "main");
   const byDelivery = (delivery: PendingChange["delivery"]) =>
-    items.filter((item) => item.delivery === delivery).map((item) => [item.oid, item.change.key]);
-  assert.deepEqual(byDelivery("next"), [[moved.change, "k1"]]);
-  assert.deepEqual(byDelivery("steer"), [[bare.change, undefined]]);
+    items
+      .filter((item) => item.delivery === delivery)
+      .map((item) => [
+        item.oid,
+        item.change.key,
+        item.change.body.kind === "message" ? item.change.body.source : undefined,
+        item.change.body.kind === "message" ? item.change.body.message.content : undefined,
+      ]);
+  assert.deepEqual(byDelivery("next"), [[moved.change, "k1", source, "edited"]]);
+  assert.deepEqual(byDelivery("steer"), [[bare.change, undefined, undefined, "hi"]]);
   assert.equal(items.length, 2);
   // The receipt ref still answers the key with the original submission.
   assert.deepEqual(

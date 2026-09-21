@@ -1,29 +1,17 @@
+/**
+ * The outbox's IndexedDB storage, partitioned by workspace: a row is stored
+ * under the workspace it was written in and loaded only while that workspace
+ * is open, because its session lives in that workspace's host.
+ */
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { schemas, sessionId } from "@nyte-ai/protocol";
+import type { OutboxRecord, OutboxStorage } from "@nyte-ai/client";
 import { userContent } from "../../shared/schemas.ts";
-import type { OutboxSubmission, WorkspacePartition } from "./outbox.ts";
-import { workspacePartitionFromStorage } from "./outbox.ts";
-import { sessionId } from "@nyte-ai/protocol";
 
 const DATABASE_NAME = "nyte-renderer";
 const DATABASE_VERSION = 1;
 const STORE_NAME = "outbox";
-
-export interface PersistedOutboxRecordV1 {
-  readonly version: 1;
-  readonly workspace: WorkspacePartition;
-  readonly key: string;
-  readonly input: OutboxSubmission;
-  readonly createdAt: number;
-  readonly failures: number;
-  readonly nextAttemptAt: number;
-}
-
-export interface OutboxStorage {
-  readonly load: () => Promise<readonly PersistedOutboxRecordV1[]>;
-  readonly put: (record: PersistedOutboxRecordV1) => Promise<void>;
-  readonly remove: (key: string) => Promise<void>;
-}
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -57,45 +45,24 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 const strict = { additionalProperties: false };
 const storedRecord = Type.Object(
   {
-    version: Type.Literal(1),
-    workspace: Type.String(),
+    /** The workspace path, or null for the home host. */
+    workspace: Type.Union([Type.String(), Type.Null()]),
     key: Type.String(),
     input: Type.Object(
       {
         sessionId: Type.String(),
         head: Type.Optional(Type.String()),
         content: userContent,
+        source: Type.Optional(schemas.MessageSource),
         delivery: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("next")])),
         agent: Type.Optional(Type.String()),
       },
       strict,
     ),
-    createdAt: Type.Number(),
-    failures: Type.Integer({ minimum: 0 }),
-    nextAttemptAt: Type.Number(),
+    at: Type.Number(),
   },
   strict,
 );
-
-function decodeRecord(value: unknown): PersistedOutboxRecordV1 | undefined {
-  if (!Value.Check(storedRecord, value)) return undefined;
-  try {
-    return {
-      version: 1,
-      workspace: workspacePartitionFromStorage(value.workspace),
-      key: value.key,
-      input: {
-        ...value.input,
-        sessionId: sessionId(value.input.sessionId),
-      },
-      createdAt: value.createdAt,
-      failures: value.failures,
-      nextAttemptAt: value.nextAttemptAt,
-    };
-  } catch {
-    return undefined;
-  }
-}
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -118,27 +85,48 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-export function createIndexedDbOutboxStorage(): OutboxStorage {
-  const database = openDatabase();
+export interface WorkspaceOutboxStorage extends OutboxStorage {
+  /** Rows written from now on belong to this workspace, and `load` answers only its rows. */
+  readonly select: (workspace: string | null) => void;
+}
+
+export function createIndexedDbOutboxStorage(): WorkspaceOutboxStorage {
+  // Opened on first use, so importing the outbox costs nothing where IndexedDB is absent.
+  let database: Promise<IDBDatabase> | undefined;
+  const open = (): Promise<IDBDatabase> => (database ??= openDatabase());
+  let workspace: string | null = null;
   return {
+    select: (selected) => {
+      workspace = selected;
+    },
     load: async () => {
-      const db = await database;
+      const db = await open();
       const transaction = db.transaction(STORE_NAME, "readonly");
       const values = await requestResult(transaction.objectStore(STORE_NAME).getAll());
       await transactionDone(transaction);
-      return values.flatMap((value) => {
-        const record = decodeRecord(value);
-        return record === undefined ? [] : [record];
-      });
+      const records: OutboxRecord[] = [];
+      for (const value of values) {
+        if (!Value.Check(storedRecord, value) || value.workspace !== workspace) continue;
+        try {
+          records.push({
+            key: value.key,
+            input: { ...value.input, sessionId: sessionId(value.input.sessionId) },
+            at: value.at,
+          });
+        } catch {
+          // A malformed session id names nothing this host can send to.
+        }
+      }
+      return records;
     },
     put: async (record) => {
-      const db = await database;
+      const db = await open();
       const transaction = db.transaction(STORE_NAME, "readwrite");
-      transaction.objectStore(STORE_NAME).put(record);
+      transaction.objectStore(STORE_NAME).put({ workspace, ...record });
       await transactionDone(transaction);
     },
     remove: async (key) => {
-      const db = await database;
+      const db = await open();
       const transaction = db.transaction(STORE_NAME, "readwrite");
       transaction.objectStore(STORE_NAME).delete(key);
       await transactionDone(transaction);

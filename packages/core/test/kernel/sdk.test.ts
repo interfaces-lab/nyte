@@ -384,7 +384,7 @@ test("pending messages can be taken back or moved between deliveries while a run
   }
 });
 
-test("a submission key follows the message from the queue into the record, outside its content", async () => {
+test("submission metadata follows a message from the queue into the record, outside its content", async () => {
   let release: (() => void) | undefined;
   const opened = new Promise<void>((resolve) => {
     release = resolve;
@@ -398,21 +398,23 @@ test("a submission key follows the message from the queue into the record, outsi
     const before = await nyte.sessions.snapshot({ sessionId: id });
     assert.ok(before !== undefined);
 
+    const source = { kind: "action", label: "Commit changes" } as const;
     const keyed = await nyte.messages.send({
       sessionId: id,
       content: "keyed",
       delivery: "next",
       key: "outbox-1",
+      source,
     });
     assert.equal(keyed.kind, "queued");
     const queuedItem = (await nyte.messages.pending({ sessionId: id })).find(
       (item) => item.change === keyed.change,
     );
-    assert.equal(queuedItem?.key, "outbox-1");
+    assert.deepEqual(queuedItem?.source, source);
     const held = await nyte.sessions.snapshot({ sessionId: id });
     assert.deepEqual(
-      held?.pending.map((item) => [item.change, item.key]),
-      [[keyed.change, "outbox-1"]],
+      held?.pending.map((item) => [item.change, item.key, item.source]),
+      [[keyed.change, "outbox-1", source]],
     );
 
     release?.();
@@ -423,7 +425,10 @@ test("a submission key follows the message from the queue into the record, outsi
     );
     const queued = events.find((event) => event.kind === "queued");
     assert.ok(queued?.kind === "queued");
-    assert.deepEqual([queued.item.change, queued.item.key], [keyed.change, "outbox-1"]);
+    assert.deepEqual(
+      [queued.item.change, queued.item.key, queued.item.source],
+      [keyed.change, "outbox-1", source],
+    );
     const drain = events.find(
       (event) => event.kind === "commit" && event.item.commit.change === keyed.change,
     );
@@ -431,6 +436,10 @@ test("a submission key follows the message from the queue into the record, outsi
     assert.equal(drain.item.commit.key, "outbox-1");
     // The key is commit metadata: the model's message is untouched.
     assert.ok(drain.item.commit.body.kind === "message");
+    assert.deepEqual(
+      "source" in drain.item.commit.body ? drain.item.commit.body.source : undefined,
+      source,
+    );
     assert.deepEqual(Object.keys(drain.item.commit.body.message).sort(), [
       "content",
       "role",
@@ -444,15 +453,15 @@ test("a submission key follows the message from the queue into the record, outsi
       after?.transcript.flatMap((turn) =>
         turn.kind === "turn"
           ? turn.parts.flatMap((part) =>
-              part.kind === "user" ? [[part.commit, part.content, part.key]] : [],
+              part.kind === "user" ? [[part.commit, part.content, part.key, part.source]] : [],
             )
           : [],
       ) ?? [];
     assert.deepEqual(
-      userParts.map(([, content, key]) => [content, key]),
+      userParts.map(([, content, key, partSource]) => [content, key, partSource]),
       [
-        ["first", undefined],
-        ["keyed", "outbox-1"],
+        ["first", undefined, undefined],
+        ["keyed", "outbox-1", source],
       ],
     );
     assert.equal(userParts[1]?.[0], drain.item.oid);

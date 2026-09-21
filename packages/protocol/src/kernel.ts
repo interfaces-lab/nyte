@@ -56,6 +56,11 @@ export interface ModelRef {
   readonly id: string;
 }
 
+export type MessageSource = {
+  readonly kind: "action";
+  readonly label: string;
+};
+
 /**
  * What a tool call is, stamped by the runner from the tool's own typed
  * arguments when the call commits, and again from its result when it settles.
@@ -127,6 +132,7 @@ export type Commit = CommitBase &
           readonly kind: "message";
           readonly message: UserMessage;
           readonly agent?: string;
+          readonly source?: MessageSource;
         };
         readonly start: CommitStart;
       }
@@ -179,6 +185,7 @@ export type CommitBody =
       readonly message: UserMessage;
       /** Agent selection travels with a submitted user message. */
       readonly agent?: string;
+      readonly source?: MessageSource;
     }
   | { readonly kind: "message"; readonly message: AssistantMessage }
   | { readonly kind: "message"; readonly message: ToolResultMessage }

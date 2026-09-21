@@ -46,6 +46,7 @@ import type {
   Actor as ActorType,
   Commit as CommitType,
   CommitBody as CommitBodyType,
+  MessageSource as MessageSourceType,
   ModelRef as ModelRefType,
   RunOrigin as RunOriginType,
   RunPhase as RunPhaseType,
@@ -410,6 +411,10 @@ export const ModelRef = typed<ModelRefType>()(
   open({ provider: Type.Optional(Type.String()), id: Type.String() }),
 );
 
+export const MessageSource = typed<MessageSourceType>()(
+  strict({ kind: Type.Literal("action"), label: Type.String() }),
+);
+
 const CheckpointBody = open({
   kind: Type.Literal("checkpoint"),
   summary: Type.String(),
@@ -497,6 +502,7 @@ const UserCommitMessageBody = open({
   kind: Type.Literal("message"),
   message: UserMessage,
   agent: Type.Optional(Type.String()),
+  source: Type.Optional(MessageSource),
 });
 
 const AssistantCommitMessageBody = open({
@@ -812,6 +818,7 @@ export const PendingItem = typed<PendingItemType>()(
     content: UserContent,
     author: Type.Optional(Actor),
     key: Type.Optional(Type.String()),
+    source: Type.Optional(MessageSource),
   }),
 );
 
@@ -835,6 +842,7 @@ export const UserTurnPart = typed<UserTurnPartType>()(
     content: UserContent,
     at: Type.Number(),
     key: Type.Optional(Type.String()),
+    source: Type.Optional(MessageSource),
   }),
 );
 

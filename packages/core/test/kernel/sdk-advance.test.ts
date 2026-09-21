@@ -89,7 +89,8 @@ test("an unattached host lands one step, responds in the next, and preserves the
   });
   const sdk = await open(streamFn, { store: openStore(path) });
   const { sessionId } = await sdk.sessions.create();
-  await sdk.messages.send({ sessionId, content: "Please answer" });
+  const source = { kind: "action", label: "Commit changes" } as const;
+  await sdk.messages.send({ sessionId, content: "Please answer", source });
   assert.equal(await sdk.runs.current({ sessionId }), undefined);
   assert.deepEqual(await sdk.advance({ sessionId }), { kind: "continue" });
   assert.equal(calls, 0);
@@ -104,6 +105,11 @@ test("an unattached host lands one step, responds in the next, and preserves the
 
   const reopened = await open(streamFn, { store: openStore(path) });
   const transcript = await reopened.messages.list({ sessionId });
+  const actionPart = transcript
+    .flatMap((turn) => (turn.kind === "turn" ? turn.parts : []))
+    .find((part) => part.kind === "user" && part.content === "Please answer");
+  assert.ok(actionPart?.kind === "user");
+  assert.deepEqual(actionPart.source, source);
   assert.ok(
     transcript.some(
       (turn) =>

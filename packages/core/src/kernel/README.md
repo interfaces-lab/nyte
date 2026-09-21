@@ -284,7 +284,7 @@ cancel. Nothing else touches it:
   by the core.
 
 The gap the core cannot cover is the request between Enter and the receipt. A
-client closes it with an outbox:
+client closes it with an outbox (`createOutbox` in `@nyte-ai/client`):
 
 1. On Enter, mint a key (a uuid), keep the message locally as `sending`, and
    draw it in the pending gutter at once.

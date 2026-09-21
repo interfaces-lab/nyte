@@ -1,17 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
-import { composerMessageContent, composerPromptText } from "./composer-send.ts";
 import {
   CONVERSATION_MENTION,
   clipboardReferenceFromPaste,
   draftPreviewText,
   fileFromUrl,
   inlineCodeReference,
-  messageDraftText,
   messageParts,
   referenceLabel,
   referenceText,
-  skillInstruction,
 } from "./message-references.ts";
 import type { MessageReference } from "./message-references.ts";
 
@@ -61,57 +58,6 @@ describe("message references", () => {
     assert.deepEqual(messageParts("/review now", { form: "draft" }), [
       { kind: "text", text: "/review now" },
     ]);
-  });
-
-  test("a sent message reads its head sentences back as chips and keeps its body exact", () => {
-    const text = `${skillInstruction("review")}\n\n${skillInstruction("audit")}\n\nfix @file:///p/a.ts please`;
-    const parts = messageParts(text, { form: "message" });
-    assert.deepEqual(
-      parts.map((part) => (part.kind === "text" ? part.text : part.reference)),
-      [
-        { kind: "skill", name: "review", path: "" },
-        { kind: "skill", name: "audit", path: "" },
-        "fix ",
-        { kind: "file", file: fileFromUrl("file:///p/a.ts") },
-        " please",
-      ],
-    );
-    assert.equal(
-      parts.map((part) => (part.kind === "text" ? part.text : part.source)).join(""),
-      text,
-    );
-    // A sentence in the body is prose, not a chip.
-    const body = messageParts(`Hello.\n\n${skillInstruction("review")}`, { form: "message" });
-    assert.deepEqual(body, [{ kind: "text", text: `Hello.\n\n${skillInstruction("review")}` }]);
-  });
-
-  test("editing a sent message round-trips exactly through the draft and back", () => {
-    const sent = `${skillInstruction("review")}\n\nfix @file:///p/a.ts`;
-    const draft = messageDraftText(sent);
-    assert.equal(draft, "[$review]() fix @file:///p/a.ts");
-    const parts = messageParts(draft, { form: "draft" });
-    const references = parts.flatMap((part) => (part.kind === "reference" ? [part.reference] : []));
-    const submissionText = parts
-      .map((part) =>
-        part.kind === "text" ? part.text : part.reference.kind === "file" ? part.source : "",
-      )
-      .join("");
-    assert.equal(composerPromptText(submissionText.trim(), references), sent);
-  });
-
-  test("the message content prepends one instruction per distinct chip and carries images after", () => {
-    const references: MessageReference[] = [skill, skill, CONVERSATION_MENTION];
-    assert.equal(
-      composerPromptText("fix it", references),
-      `${skillInstruction("review")}\n\nfix it`,
-    );
-    const image = { content: { type: "image" as const, data: "AA==", mimeType: "image/png" } };
-    assert.deepEqual(composerMessageContent("", [image], []), [image.content]);
-    assert.deepEqual(composerMessageContent("hi", [image], [skill]), [
-      { type: "text", text: `${skillInstruction("review")}\n\nhi` },
-      image.content,
-    ]);
-    assert.equal(referenceText(skill), "[$review](/skills/review/SKILL.md)");
   });
 });
 

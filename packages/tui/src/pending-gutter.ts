@@ -21,7 +21,7 @@ import { extractFileAttachments } from "./composer.ts";
 import { basename } from "node:path";
 import { userText } from "./format.ts";
 import type { DeliveryChoices } from "./lanes.ts";
-import type { OutboxEntry } from "./outbox.ts";
+import type { OutboxRow } from "@nyte-ai/client";
 import type { CliTheme } from "./theme.ts";
 import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
 
@@ -32,25 +32,25 @@ import { displayWidth, padDisplay, truncateDisplay } from "./width.ts";
  */
 export type GutterRow =
   | { readonly kind: "pending"; readonly item: PendingItem }
-  | { readonly kind: "sending"; readonly entry: OutboxEntry };
+  | { readonly kind: "sending"; readonly row: OutboxRow };
 
 /** Durable first, oldest first; then what is still on its way. */
 export function gutterRows(
   pending: readonly PendingItem[],
-  sending: readonly OutboxEntry[],
+  sending: readonly OutboxRow[],
 ): GutterRow[] {
   return [
     ...pending.map((item): GutterRow => ({ kind: "pending", item })),
-    ...sending.map((entry): GutterRow => ({ kind: "sending", entry })),
+    ...sending.map((row): GutterRow => ({ kind: "sending", row })),
   ];
 }
 
-export function rowDelivery(row: GutterRow): Delivery {
-  return row.kind === "pending" ? row.item.delivery : row.entry.delivery;
+export function rowDelivery(row: GutterRow): Delivery | undefined {
+  return row.kind === "pending" ? row.item.delivery : row.row.input.delivery;
 }
 
 export function rowContent(row: GutterRow): UserMessage["content"] {
-  return row.kind === "pending" ? row.item.content : row.entry.content;
+  return row.kind === "pending" ? row.item.content : row.row.input.content;
 }
 
 /** The gutter never takes more than this share of the terminal. */
@@ -97,7 +97,8 @@ export function rowMark(row: GutterRow, roles: DeliveryChoices, theme: CliTheme)
     case "pending":
       return deliveryMark(row.item.delivery, roles, theme);
     case "sending": {
-      const attempts = row.entry.attempts;
+      const { state } = row.row;
+      const attempts = "attempts" in state ? state.attempts : 1;
       return {
         glyph: GLYPHS.sending,
         label: attempts > 1 ? `sending (retry ${String(attempts - 1)})` : "sending",

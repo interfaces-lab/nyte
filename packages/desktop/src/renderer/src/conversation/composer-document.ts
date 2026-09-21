@@ -120,7 +120,7 @@ export function sameComposerDocument(
 }
 
 export interface ComposerSubmission {
-  /** The draft without the tokens that become instructions; file tokens stay. */
+  /** Provider text: file tokens stay, skill chips become instructions in place, and context mentions drop. */
   readonly text: string;
   readonly references: readonly MessageReference[];
 }

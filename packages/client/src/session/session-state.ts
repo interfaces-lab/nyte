@@ -165,6 +165,11 @@ export function tipMismatch(state: SessionState): boolean {
   return state.expectedTip !== undefined && state.expectedTip !== state.transcript.tip;
 }
 
+/** A stop is flagged one CAS after it is asked; frames already in flight for that run are not drawn. */
+function stopping(state: SessionState, runId: string): boolean {
+  return state.run?.runId === runId && state.run.abortRequested === true;
+}
+
 /** Arrival time chooses between deliveries; each chain keeps its chosen order. */
 function comparePending(left: PendingItem, right: PendingItem): number {
   const byTime = left.at - right.at;
@@ -325,6 +330,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
     }
     case "text_delta":
     case "reasoning_delta":
+      if (stopping(state, event.runId)) return { kind: "state", state: base };
       return {
         kind: "state",
         state: { ...base, overlay: foldLiveParts(state.overlay, event) },
@@ -333,6 +339,7 @@ export function foldEvent(state: SessionState, event: SessionEvent): FoldOutcome
       if (
         state.run?.runId !== event.runId ||
         isTerminalPhase(state.run.phase) ||
+        state.run.abortRequested === true ||
         state.settledToolCalls.has(event.callId)
       )
         return { kind: "state", state: base };

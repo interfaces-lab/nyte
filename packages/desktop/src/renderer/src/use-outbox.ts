@@ -1,38 +1,32 @@
 /**
- * The renderer's one outbox over the bridge. A receipt is followed by one
- * coherent snapshot read, so the durable pending row is on screen before the
- * local row leaves and the gutter never blinks.
+ * The renderer's one outbox over the bridge, stored per workspace. A row leaves
+ * once the observer draws the durable message under the same key.
  */
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { SessionId } from "@nyte-ai/protocol";
-import {
-  createOutbox,
-  HOME_WORKSPACE_PARTITION,
-  type OutboxRow,
-  workspacePartition,
-} from "./outbox.ts";
+import { createOutbox, type OutboxRow } from "@nyte-ai/client";
 import { createIndexedDbOutboxStorage } from "./outbox-storage.ts";
-import { loadThread } from "./live.ts";
-import { requestTrust } from "./chrome/open-workspace.tsx";
+import { optimisticSessionIds } from "./session-activity.ts";
 import { nyte } from "./nyte.ts";
 
-export const outbox = createOutbox({
-  storage: createIndexedDbOutboxStorage(),
-  send: (input) => nyte.messages.send(input),
-  settled: async (sessionId) => {
-    // The message is durable; if the folder is untrusted it waits there, so ask now.
-    const snapshot = await loadThread(sessionId);
-    requestTrust(snapshot.session.activation);
-  },
-});
+const storage = createIndexedDbOutboxStorage();
+
+export const outbox = createOutbox({ storage, send: (input) => nyte.messages.send(input) });
 
 export function activateOutbox(workspacePath: string | undefined): Promise<void> {
-  return outbox.activate(
-    workspacePath === undefined ? HOME_WORKSPACE_PARTITION : workspacePartition(workspacePath),
-  );
+  storage.select(workspacePath ?? null);
+  return outbox.activate();
+}
+
+function useOutboxSnapshot(): readonly OutboxRow[] {
+  return useSyncExternalStore(outbox.subscribe, outbox.rows);
 }
 
 export function useOutboxRows(sessionId: SessionId): readonly OutboxRow[] {
-  const rows = useSyncExternalStore(outbox.subscribe, outbox.rows);
-  return rows.filter((row) => row.sessionId === sessionId);
+  return useOutboxSnapshot().filter((row) => row.input.sessionId === sessionId);
+}
+
+export function useOptimisticSessionIds(): ReadonlySet<SessionId> {
+  const rows = useOutboxSnapshot();
+  return useMemo(() => optimisticSessionIds(rows), [rows]);
 }
