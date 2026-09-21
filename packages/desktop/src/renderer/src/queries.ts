@@ -39,7 +39,6 @@ import type {
   VcsSnapshot,
   WorkspaceInfo,
 } from "@nyte-ai/protocol";
-import { localSessions } from "../../shared/ipc.ts";
 import type {
   DesktopCatalog,
   HostState,
@@ -203,6 +202,7 @@ export function useWorkspaceSessionDirectory() {
   return useQuery({
     queryKey: keys.sessionDirectory,
     queryFn: readSessionDirectory,
+    refetchOnMount: true,
     select: (directories) =>
       directories.map((directory) => ({
         ...directory,
@@ -491,6 +491,7 @@ export function useVcsDiff(read: VcsDiffRead | undefined, enabled: boolean) {
           ),
     queryFn: () => (request === undefined ? [] : nyte.workspace.vcs.diff(request)),
     enabled: enabled && request !== undefined,
+    gcTime: request?.scope.kind === "commit" ? undefined : 0,
   });
 }
 
@@ -772,11 +773,11 @@ export function commitHostWorkspace(workspace: WorkspaceInfo | undefined): void 
 /** Refill workspace caches after a host transition, committing host state last. */
 export async function loadLocalResources(): Promise<void> {
   const version = ++localLoadVersion;
-  const [host, workspaces, catalog, sessionDirectory] = await Promise.all([
+  const [host, workspaces, catalog, sessionPreview] = await Promise.all([
     readHost(),
     readWorkspaces(),
     readCatalog(),
-    readSessionDirectory(),
+    readSessionPreview(),
   ]);
   if (version !== localLoadVersion) return;
 
@@ -787,22 +788,23 @@ export async function loadLocalResources(): Promise<void> {
   queryClient.removeQueries({ queryKey: ["sessions", "search"] });
   queryClient.setQueryData(keys.workspaces, workspaces);
   queryClient.setQueryData(keys.catalog, catalog);
-  queryClient.setQueryData(keys.sessionDirectory, sessionDirectory);
-  queryClient.setQueryData(keys.sessionPreview, {
-    items: localSessions(sessionDirectory, host.workspace?.path ?? null) ?? [],
-  } satisfies SessionPage);
-  for (const directory of sessionDirectory) {
-    for (const session of directory.sessions)
-      queryClient.setQueryData(keys.session(session.sessionId), session);
-  }
-  // Commit host last. Home and projects both find their local session cache filled.
+  const workspacePath = host.workspace?.path ?? null;
+  queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(
+    keys.sessionDirectory,
+    (directories = []) => [
+      ...directories.filter(
+        (directory) =>
+          directory.environment === "cloud" || directory.workspacePath !== workspacePath,
+      ),
+      { environment: "local", workspacePath, sessions: sessionPreview.items },
+    ],
+  );
+  queryClient.setQueryData(keys.sessionPreview, sessionPreview);
+  for (const session of sessionPreview.items)
+    queryClient.setQueryData(keys.session(session.sessionId), session);
   queryClient.setQueryData(keys.host, host);
-  // The plugin catalog activates the folder's plugins on first read; that
-  // work fills the composer's suggestions behind the mounted screen rather
-  // than holding it, and one malformed plugin cannot keep the shell from loading.
-  void queryClient
-    .prefetchQuery({ queryKey: keys.pluginCatalog, queryFn: readPluginCatalog })
-    .catch(() => undefined);
+  void queryClient.invalidateQueries({ queryKey: keys.sessionDirectory, exact: true });
+  void queryClient.invalidateQueries({ queryKey: keys.pluginCatalog, exact: true });
 }
 
 /**

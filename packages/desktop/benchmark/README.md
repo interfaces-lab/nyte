@@ -1,8 +1,10 @@
 # Desktop benchmarks
 
-These 10 serial Playwright scenarios run the built Electron app against isolated HOME, NYTE_HOME, workspace, SQLite, and model-catalog fixtures. They make no provider requests.
+These serial Playwright scenarios run the built Electron app against isolated HOME, NYTE_HOME, workspace, SQLite, model-catalog, shell, and server-setting fixtures. They make no provider requests. The delayed-server fixture binds loopback and never answers requests.
 
-The scenarios port observable behavior from OpenCode v2 commit `8f4d7066473ea07d26c5dfc35e46cd9a94e3e292`: cold startup, first navigation, streaming stability, catalog retention, hidden terminal output, terminal teardown, terminal tab switching, five-session cycling, watch reconnection, and completed Markdown disposal. Each spec links to its exact upstream source.
+The startup cases cover empty Home, 50 saved workspaces, a restored 160-turn transcript, a remembered project with a two-second login shell, and a configured loopback server that does not respond. Other scenarios cover navigation, streaming, catalog retention, terminal lifetime, session cycling, watch reconnection, and completed Markdown disposal.
+
+The restored-chat case first opens Settings in an unmeasured process to persist the startup preference. Its measured launch uses a fresh process with that existing profile, not an empty profile.
 
 ## Run
 
@@ -12,26 +14,41 @@ From the repository root:
 pnpm bench:desktop
 ```
 
-For comparison runs, build once and repeat the scenarios serially:
+For comparison runs, freeze each `packages/desktop/out` directory and point the benchmark at it. The build root must contain `main/index.js` and its sibling renderer output.
 
 ```sh
-pnpm --dir packages/desktop build
+NYTE_DESKTOP_BENCHMARK_BUILD_ROOT=/absolute/path/to/baseline/out \
+NYTE_DESKTOP_BENCHMARK_OUTPUT=packages/desktop/benchmark/results/baseline \
+NYTE_DESKTOP_BENCHMARK_RUN_ID=baseline \
 pnpm --dir packages/desktop exec playwright test \
   --config benchmark/playwright.config.ts \
-  --repeat-each=20 --retries=0
+  benchmark/startup.spec.ts \
+  --repeat-each=20 --workers=1 --retries=0
+
+NYTE_DESKTOP_BENCHMARK_BUILD_ROOT=/absolute/path/to/candidate/out \
+NYTE_DESKTOP_BENCHMARK_OUTPUT=packages/desktop/benchmark/results/candidate \
+NYTE_DESKTOP_BENCHMARK_RUN_ID=candidate \
+pnpm --dir packages/desktop exec playwright test \
+  --config benchmark/playwright.config.ts \
+  benchmark/startup.spec.ts \
+  --repeat-each=20 --workers=1 --retries=0
 ```
 
-Keep the Mac on power, close unrelated busy apps, and compare frozen builds on the same machine. Do not treat a single run as a baseline.
+Keep the Mac on power, close unrelated busy apps, and run baseline and candidate on the same machine. Do not treat one run as a baseline.
 
-Results are written to `packages/desktop/benchmark/results/desktop-benchmark.jsonl`. Override the directory with `NYTE_DESKTOP_BENCHMARK_OUTPUT` and attach a run ID with `NYTE_DESKTOP_BENCHMARK_RUN_ID`.
+Results are written to `<output>/desktop-benchmark.jsonl`. Without an output override, the path is `packages/desktop/benchmark/results/desktop-benchmark.jsonl`.
 
 ## Measurements
+
+Startup records wall time before Electron launches through connection, first window, visible shell readiness, and each scenario's useful screen. The 50-workspace case also joins a complete directory read before recording `settledScreenMs` and sampling idle resources. This keeps deferred directory work out of the idle comparison without hiding it from the startup timings. Other startup cases sample immediately after their useful screen is ready.
+
+Renderer metrics include navigation milestones, first paint, first contentful paint, and Nyte performance marks and measures. Collection uses browser timing APIs after readiness and does not enable tracing or CPU profiling. Startup CPU before readiness is not sampled.
 
 Every measured action and post-settle window records:
 
 - duration for the user-visible operation
 - CPU across the full Nyte process tree on macOS
-- Electron idle wakeups per second, which catch timer and wakeup spin
+- Electron idle wakeups per second
 - RSS and process count for Electron and descendants, including terminal PTYs
 - Electron process details
 - macOS `top` POWER for the full process tree

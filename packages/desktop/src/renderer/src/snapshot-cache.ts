@@ -17,13 +17,11 @@ export function installSnapshotCacheBudget(
   client: QueryClient,
   policy = { maxEntries: SNAPSHOT_CACHE_MAX_ENTRIES, maxBytes: SNAPSHOT_CACHE_MAX_BYTES },
 ): () => void {
-  const sizes = new Map<string, { readonly updatedAt: number; readonly bytes: number }>();
-  let scheduled = false;
-  let installed = true;
+  const sizes = new Map<string, number>();
+  let cancelEnforcement: (() => void) | undefined;
 
   const enforce = (): void => {
-    scheduled = false;
-    if (!installed) return;
+    cancelEnforcement = undefined;
     const cached = client
       .getQueryCache()
       .getAll()
@@ -31,13 +29,9 @@ export function installSnapshotCacheBudget(
       .flatMap((query) => {
         const snapshot = client.getQueryData<SessionSnapshot>(query.queryKey);
         if (snapshot === undefined) return [];
-        const previous = sizes.get(query.queryHash);
-        const current =
-          previous?.updatedAt === query.state.dataUpdatedAt
-            ? previous
-            : { updatedAt: query.state.dataUpdatedAt, bytes: JSON.stringify(snapshot).length * 2 };
-        sizes.set(query.queryHash, current);
-        return [{ query, ...current }];
+        const bytes = sizes.get(query.queryHash) ?? JSON.stringify(snapshot).length * 2;
+        sizes.set(query.queryHash, bytes);
+        return [{ query, bytes, updatedAt: query.state.dataUpdatedAt }];
       })
       .toSorted((left, right) => left.updatedAt - right.updatedAt);
 
@@ -46,20 +40,42 @@ export function installSnapshotCacheBudget(
     for (const entry of cached) {
       if (entries <= policy.maxEntries && bytes <= policy.maxBytes) break;
       client.getQueryCache().remove(entry.query);
-      sizes.delete(entry.query.queryHash);
       entries -= 1;
       bytes -= entry.bytes;
     }
   };
 
+  const scheduleEnforcement = (): void => {
+    if (cancelEnforcement !== undefined) return;
+    if (typeof requestIdleCallback === "function") {
+      const idle = requestIdleCallback(enforce, { timeout: 1_000 });
+      cancelEnforcement = () => cancelIdleCallback(idle);
+      return;
+    }
+    const timeout = setTimeout(enforce);
+    cancelEnforcement = () => clearTimeout(timeout);
+  };
+
   const unsubscribe = client.getQueryCache().subscribe((event) => {
-    if (event.type === "removed") sizes.delete(event.query.queryHash);
-    if (!isSnapshotKey(event.query.queryKey) || scheduled) return;
-    scheduled = true;
-    queueMicrotask(enforce);
+    if (event.type === "removed") {
+      sizes.delete(event.query.queryHash);
+      return;
+    }
+    if (!isSnapshotKey(event.query.queryKey)) return;
+    const dataChanged =
+      event.type === "added" ||
+      (event.type === "updated" &&
+        (event.action.type === "success" ||
+          (event.action.type === "setState" && "data" in event.action.state)));
+    if (dataChanged) sizes.delete(event.query.queryHash);
+    if (event.query.getObserversCount() !== 0) return;
+    if ((event.type !== "observerRemoved" && !dataChanged) || event.query.state.data === undefined)
+      return;
+    scheduleEnforcement();
   });
   return () => {
-    installed = false;
+    cancelEnforcement?.();
+    cancelEnforcement = undefined;
     sizes.clear();
     unsubscribe();
   };

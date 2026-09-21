@@ -2,7 +2,7 @@
 import { create, props } from "@stylexjs/stylex";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
-import type { FileChange, SessionId, Turn, VcsFile, VcsFileKind } from "@nyte-ai/protocol";
+import type { SessionId, Turn, VcsFileKind } from "@nyte-ai/protocol";
 import { FileTypeIconSprite } from "../components/file-type-icon";
 import { ConfirmDialog } from "../components/confirm-dialog.tsx";
 import { createDiffFilesLoader } from "../conversation/diff-expansion.ts";
@@ -22,7 +22,7 @@ import {
   changesScopeValue,
   diffRequestForScope,
   scopeFiles,
-  transcriptChanges,
+  turnChangeOptions,
   turnScopeOption,
   workingTreeScopeOptions,
 } from "./change-scopes.ts";
@@ -42,13 +42,10 @@ import {
   type UncommittedPatch,
 } from "./stacked-diff.ts";
 
-/** A file the working tree or the index reports, folded with what turns declared. */
 interface WorkingChangeRow {
   readonly source: "working";
   readonly path: string;
   readonly status: VcsFileKind;
-  readonly inWorkingTree: boolean;
-  readonly change: FileChange | undefined;
 }
 
 /** A file whose patch is the record: a turn's edit, or one commit's diff. */
@@ -102,37 +99,13 @@ function queryError(error: Error | null): string | undefined {
 }
 
 function uncommittedPatchState(
-  row: WorkingChangeRow,
   patch: string | undefined,
   diffs: { readonly isLoading: boolean; readonly isError: boolean },
 ): UncommittedPatch {
-  if (!row.inWorkingTree) return { kind: "absent" };
   if (patch !== undefined && patch.trim() !== "") return { kind: "ready", patch };
   if (diffs.isError) return { kind: "failed" };
   if (diffs.isLoading) return { kind: "pending" };
   return { kind: "empty" };
-}
-
-function changeRows(
-  files: readonly VcsFile[] | undefined,
-  declared: readonly FileChange[],
-): readonly WorkingChangeRow[] {
-  const remaining = new Map(declared.map((change) => [change.path, change]));
-  const rows = (files ?? []).map((file): WorkingChangeRow => {
-    const change = remaining.get(file.path);
-    remaining.delete(file.path);
-    return { source: "working", path: file.path, status: file.kind, inWorkingTree: true, change };
-  });
-  for (const change of remaining.values()) {
-    rows.push({
-      source: "working",
-      path: change.path,
-      status: "modified",
-      inWorkingTree: false,
-      change,
-    });
-  }
-  return rows.sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function emptyScopeText(scope: WorkbenchChangesScope): string {
@@ -239,9 +212,7 @@ function ChangesPanelView({
   turns,
   turnsError,
 }: ChangesPanelViewProps): ReactElement {
-  const transcriptProjection = useMemo(() => transcriptChanges(turns), [turns]);
-  const declared = transcriptProjection.declared;
-  const turnOptions = transcriptProjection.options;
+  const turnOptions = useMemo(() => turnChangeOptions(turns), [turns]);
   const snapshot = useVcsSnapshot(visible);
   const filterInput = useRef<HTMLInputElement>(null);
   // The affordance that opened the confirmation, so closing it returns focus there.
@@ -294,15 +265,18 @@ function ChangesPanelView({
   );
   const workingRows = useMemo(
     () =>
-      workingScope
-        ? changeRows(statusFiles, activeScope.kind === "uncommitted" ? declared : [])
-        : EMPTY_ROWS,
-    [activeScope.kind, declared, statusFiles, workingScope],
+      statusFiles === undefined
+        ? EMPTY_ROWS
+        : statusFiles
+            .map((file): WorkingChangeRow => ({
+              source: "working",
+              path: file.path,
+              status: file.kind,
+            }))
+            .sort((left, right) => left.path.localeCompare(right.path)),
+    [statusFiles],
   );
-  const workingPaths = useMemo(
-    () => workingRows.filter((row) => row.inWorkingTree).map((row) => row.path),
-    [workingRows],
-  );
+  const workingPaths = useMemo(() => workingRows.map((row) => row.path), [workingRows]);
   const diffRequest = diffRequestForScope(activeScope, {
     paths: workingScope ? workingPaths : undefined,
     ignoreWhitespace: options.ignoreWhitespace,
@@ -388,15 +362,15 @@ function ChangesPanelView({
         }
         const section = uncommittedStackSection({
           path,
-          state: uncommittedPatchState(row, diff?.patch, {
+          state: uncommittedPatchState(diff?.patch, {
             isLoading: diffsLoading,
             isError: diffsError,
           }),
         });
         return {
           ...section,
-          added: row.change?.added ?? diff?.added ?? 0,
-          removed: row.change?.removed ?? diff?.removed ?? 0,
+          added: diff?.added ?? 0,
+          removed: diff?.removed ?? 0,
         };
       }),
     [rows, diffByPath, diffsLoading, diffsError],
@@ -420,9 +394,8 @@ function ChangesPanelView({
   const vcsError = queryError(snapshot.error);
   const transcriptError = queryError(turnsError);
   // Each scope blames its own source first and falls back to the other, so no
-  // failure is ever dropped. A turn diff is built from the transcript alone, so
-  // the Git advice never explains a missing turn. Working-tree rows come from the
-  // repository, folded with the changes turns declare, so both reads matter.
+  // failure is ever dropped. Turn options depend on the transcript; working-tree
+  // rows depend on Git status.
   const vcsFailure =
     vcsError === undefined
       ? undefined

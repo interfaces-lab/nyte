@@ -3,7 +3,7 @@ import { describe, test } from "vitest";
 import { parsePatchFacts } from "@nyte-ai/client";
 import type { Turn } from "@nyte-ai/protocol";
 import { testRenderer } from "../../../../test/renderer.ts";
-import { transcriptChanges, turnChangeOptions, visibleTurnOptions } from "./change-scopes.ts";
+import { turnChangeOptions, visibleTurnOptions } from "./change-scopes.ts";
 
 type ConversationTurn = Extract<Turn, { kind: "turn" }>;
 
@@ -43,7 +43,7 @@ const editA = ["--- a/src/a.ts", "+++ b/src/a.ts", "@@ -2 +2 @@", "-first", "+se
 const addB = ["--- a/src/b.ts", "+++ b/src/b.ts", "@@ -0,0 +1 @@", "+new", ""].join("\n");
 
 describe("turn change options", () => {
-  test("projects totals and per-turn options in one transcript fold", () => {
+  test("projects per-turn totals and patches in one transcript fold", () => {
     const unchanged: ConversationTurn = {
       kind: "turn",
       id: "turn-2",
@@ -52,16 +52,10 @@ describe("turn change options", () => {
       durationMs: 0,
       parts: [],
     };
-    const projection = transcriptChanges([
+    const options = turnChangeOptions([
       changedTurn("turn-1", [addA, editA]),
       unchanged,
       changedTurn("turn-3", [addB]),
-    ]);
-    const options = projection.options;
-
-    assert.deepEqual(projection.declared, [
-      { path: "src/a.ts", added: 2, removed: 1 },
-      { path: "src/b.ts", added: 1, removed: 0 },
     ]);
 
     assert.deepEqual(

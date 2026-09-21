@@ -34,12 +34,13 @@ test(
   { timeout: 120_000 },
   async () => {
     const at = await observations();
-    assert.deepEqual(at("mounted on uncommitted").stackPaths, [
+    assert.deepEqual(at("mounted on uncommitted").stackPaths, ["src/working.ts"]);
+    assert.deepEqual(at("conversation file changed again").stackPaths, [
       "src/first.ts",
-      "src/second.ts",
-      "src/third.ts",
       "src/working.ts",
     ]);
+    assert.deepEqual(at("conversation file reverted").stackPaths, ["src/working.ts"]);
+    assert.deepEqual(at("all conversation files reverted").stackPaths, []);
     const newest = at("selected the newest turn");
     const older = at("selected an older turn");
     assert.equal(newest.scopeLabel, "Showing Latest");
@@ -64,7 +65,7 @@ test(
     const dropped = at("selected turn dropped from the transcript");
     assert.equal(dropped.scopeLabel, "Showing Uncommitted");
     assert.equal(dropped.alert, null);
-    assert.deepEqual(dropped.stackPaths, ["src/second.ts", "src/working.ts"]);
+    assert.deepEqual(dropped.stackPaths, ["src/working.ts"]);
     const regained = at("transcript regained the dropped turn");
     assert.equal(regained.scopeLabel, "Showing Turn 1");
     assert.deepEqual(regained.stackPaths, ["src/first.ts"]);

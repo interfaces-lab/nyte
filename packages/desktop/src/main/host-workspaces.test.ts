@@ -22,6 +22,7 @@ import { localDay } from "./usage.ts";
 import { callIpc } from "./ipc-call.ts";
 import { ipcDiagnostics } from "./errors.ts";
 import { keys, loadLocalResources, queryClient } from "../renderer/src/queries.ts";
+import type { SessionsBridge } from "../shared/ipc.ts";
 
 interface RendererHostFixture {
   current: DesktopHost | undefined;
@@ -42,6 +43,9 @@ const renderer = vi.hoisted(() => {
         catalog: () => host().call("host.catalog", undefined),
       },
       workspace: { list: () => host().call("workspace.list", undefined) },
+      sessions: {
+        list: (input: Parameters<SessionsBridge["list"]>[0]) => host().call("sessions.list", input),
+      },
       plugins: { catalog: () => host().call("plugins.catalog", undefined) },
     },
   });
@@ -667,6 +671,7 @@ test("searching the same term after switching workspaces returns the selected fo
   await host.call("host.openWorkspace", { path: first });
   const firstSession = await host.call("sessions.create", { name: "Shared topic in first" });
   await loadLocalResources();
+  assert.deepEqual(queryClient.getQueryData(keys.session(firstSession.sessionId)), firstSession);
   const search = () =>
     queryClient.fetchQuery({
       queryKey: keys.sessionSearch("Shared"),
@@ -680,6 +685,8 @@ test("searching the same term after switching workspaces returns the selected fo
   await host.call("host.openWorkspace", { path: second });
   const secondSession = await host.call("sessions.create", { name: "Shared topic in second" });
   await loadLocalResources();
+  assert.deepEqual(queryClient.getQueryData(keys.session(secondSession.sessionId)), secondSession);
+  assert.deepEqual(queryClient.getQueryData(keys.session(firstSession.sessionId)), firstSession);
   assert.deepEqual(
     (await search()).items.map((session) => session.sessionId),
     [secondSession.sessionId],

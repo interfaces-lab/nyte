@@ -43,6 +43,15 @@ describe("changes CodeView items", () => {
     assert.notEqual(refreshed.version, expanded.version);
     assert.notStrictEqual(refreshed.fileDiff, first.fileDiff);
     assert.match(refreshed.fileDiff.additionLines.join(""), /newer/);
+
+    const empty = store([], []);
+    assert.deepEqual(empty.items, []);
+    assert.equal(empty.sourceById.size, 0);
+    const returned = store([diffItem(patch.replace("+new", "+newer"))], []).items[0];
+    assert.ok(returned);
+    assert.equal(returned.type, "diff");
+    assert.notStrictEqual(returned, refreshed);
+    assert.notStrictEqual(returned.fileDiff, refreshed.fileDiff);
   });
 
   test("keeps every file entry when one patch repeats a path", () => {

@@ -279,6 +279,7 @@ export class DesktopHost {
   private readonly usageScan: UsageScanReader;
   private readonly otel: ReturnType<typeof createOtelExport>;
   private modelsPromise: Promise<MutableModels> | undefined;
+  private catalogPromise: Promise<ResolvedCatalog> | undefined;
   private target: WorkspaceTarget = { kind: "home" };
   private open: OpenLocalTarget | undefined;
   private readonly openTargets = new Map<string | null, OpenLocalTarget>();
@@ -476,7 +477,7 @@ export class DesktopHost {
           }
           await this.requireTrust(cwd);
         }
-        const terminals = await this.terminals();
+        const [terminals] = await Promise.all([this.terminals(), ensureShellEnvironment()]);
         if (this.closed || generation !== this.terminalGeneration)
           throw new ExpectedHostError({ code: "closed", message: "Terminal window closed" });
         return terminals.create({ id: decoded.id, cwd });
@@ -917,10 +918,19 @@ export class DesktopHost {
     return this.modelsPromise;
   }
 
-  private async catalog(): Promise<ResolvedCatalog> {
-    const models = await this.models();
-    const preferences = await this.preferences.read();
-    return readCatalog(models, preferences);
+  private catalog(): Promise<ResolvedCatalog> {
+    if (this.catalogPromise !== undefined) return this.catalogPromise;
+    const reading = this.models()
+      .then(async (models) => readCatalog(models, await this.preferences.read()))
+      .finally(() => {
+        if (this.catalogPromise === reading) this.catalogPromise = undefined;
+      });
+    this.catalogPromise = reading;
+    return reading;
+  }
+
+  private invalidateCatalog(): void {
+    this.catalogPromise = undefined;
   }
 
   /** Serialize workspace lifecycle so a double-click cannot compose twice. */
@@ -1019,13 +1029,14 @@ export class DesktopHost {
       worker: this.dependencies.storeWorker,
     });
     await store.ready();
-    // Git spawns read the repaired PATH; the repair is one shared attempt per process.
-    if (projectCwd !== undefined) await ensureShellEnvironment();
     const trashPath = this.dependencies.trashPath;
     const vcs =
       projectCwd === undefined
         ? undefined
-        : createGitVcs(projectCwd, trashPath === undefined ? {} : { discard: trashPath });
+        : createGitVcs(projectCwd, {
+            beforeCommand: ensureShellEnvironment,
+            ...(trashPath === undefined ? {} : { discard: trashPath }),
+          });
     let sdk: Nyte | undefined;
     let stopPluginWatch: Disposer | undefined;
     try {
@@ -1086,6 +1097,7 @@ export class DesktopHost {
             resolve: async () => {
               const resolved = await this.pluginTarget(target);
               if (resolved.kind === "home" || resolved.kind === "project") {
+                await ensureShellEnvironment();
                 watchPluginSources(resolved);
               }
               return resolved;
@@ -1836,7 +1848,10 @@ export class DesktopHost {
       if (this.loginAttempts.get(attempt) === entry) this.loginAttempts.delete(attempt);
     });
     const outcome = await running;
-    if (outcome.kind === "connected") this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+    if (outcome.kind === "connected") {
+      this.invalidateCatalog();
+      this.dependencies.emitHostEvent({ kind: "catalog_changed" });
+    }
     return outcome;
   }
 
@@ -1866,11 +1881,13 @@ export class DesktopHost {
     // A sign-in mid-approval must not save a credential after this delete.
     await this.settleLogins(provider);
     await (await this.models()).logout(provider);
+    this.invalidateCatalog();
     this.dependencies.emitHostEvent({ kind: "catalog_changed" });
   }
 
   private async setPreference(change: PreferenceChange): Promise<DesktopCatalog> {
     await this.preferences.update(change);
+    this.invalidateCatalog();
     this.dependencies.emitHostEvent({ kind: "catalog_changed" });
     return (await this.catalog()).catalog;
   }

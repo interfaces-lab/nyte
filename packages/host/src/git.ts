@@ -1218,6 +1218,8 @@ async function push(
 }
 
 export interface GitVcsOptions {
+  /** Finishes host environment setup before Git can spawn. */
+  readonly beforeCommand?: () => Promise<void>;
   /**
    * Where a discarded untracked file goes. The desktop hands this to the OS
    * trash; without one the file moves under the shadow repository's trash, as
@@ -1234,22 +1236,28 @@ export interface GitVcsOptions {
 export function createGitVcs(cwd: string, options: GitVcsOptions = {}): VcsBackend {
   safeWorkspacePath(cwd, ".");
   const snapshots = createTreeSnapshot(options);
+  const run = async <Output>(operation: () => Promise<Output>): Promise<Output> => {
+    await options.beforeCommand?.();
+    return operation();
+  };
   return {
-    tree: snapshots.tree,
-    diffTrees: snapshots.diffTrees,
-    restoreTree: snapshots.restoreTree,
-    snapshot: (input) => snapshot(input.cwd),
-    diff: (input) => diff(input.cwd, input),
-    contents: (input) => contents(input.cwd, input),
-    log: (input) => log(input.cwd, input),
-    refs: (input) => refs(input.cwd),
-    stage: (input) => stage(input.cwd, input),
+    tree: (input) => run(() => snapshots.tree(input)),
+    diffTrees: (input) => run(() => snapshots.diffTrees(input)),
+    restoreTree: (input) => run(() => snapshots.restoreTree(input)),
+    snapshot: (input) => run(() => snapshot(input.cwd)),
+    diff: (input) => run(() => diff(input.cwd, input)),
+    contents: (input) => run(() => contents(input.cwd, input)),
+    log: (input) => run(() => log(input.cwd, input)),
+    refs: (input) => run(() => refs(input.cwd)),
+    stage: (input) => run(() => stage(input.cwd, input)),
     discard: (input) =>
-      discard(input.cwd, input, (absolutePath) =>
-        snapshots.discard({ cwd: input.cwd, absolutePath }),
+      run(() =>
+        discard(input.cwd, input, (absolutePath) =>
+          snapshots.discard({ cwd: input.cwd, absolutePath }),
+        ),
       ),
-    commit: (input) => commit(input.cwd, input),
-    createBranch: (input) => createBranch(input.cwd, input),
-    push: (input) => push(input.cwd, input),
+    commit: (input) => run(() => commit(input.cwd, input)),
+    createBranch: (input) => run(() => createBranch(input.cwd, input)),
+    push: (input) => run(() => push(input.cwd, input)),
   };
 }

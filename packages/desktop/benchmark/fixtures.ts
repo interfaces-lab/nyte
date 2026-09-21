@@ -1,4 +1,6 @@
-import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import process from "node:process";
@@ -43,6 +45,10 @@ export interface DesktopBenchmarkFixtureOptions {
   readonly turnsPerSession?: number;
   readonly assistantMarkdown?: string;
   readonly catalogModelCount?: number;
+  readonly workspaceCount?: number;
+  readonly rememberWorkspace?: boolean;
+  readonly loginShellDelayMs?: number;
+  readonly server?: "delayed-loopback";
   /** A new isolated fixture directory is created below this directory. */
   readonly parentDirectory?: string;
 }
@@ -82,12 +88,17 @@ export interface DesktopBenchmarkMetadata {
   readonly totalCommits: number;
   readonly assistantCharacters: number;
   readonly catalogModelCount: number;
+  readonly workspaceCount: number;
+  readonly rememberedWorkspace: boolean;
+  readonly loginShellDelayMs: number;
+  readonly server: "none" | "delayed-loopback";
 }
 
 export interface DesktopBenchmarkFixture {
   readonly env: {
     readonly HOME: string;
     readonly NYTE_HOME: string;
+    readonly SHELL?: string;
   };
   readonly paths: DesktopBenchmarkPaths;
   readonly sessions: readonly DesktopBenchmarkSession[];
@@ -107,6 +118,12 @@ function restoreEnvironment(snapshot: EnvironmentSnapshot): void {
   else process.env.HOME = snapshot.home;
   if (snapshot.nyteHome === undefined) delete process.env.NYTE_HOME;
   else process.env.NYTE_HOME = snapshot.nyteHome;
+}
+
+async function closeServer(server: Server | undefined): Promise<void> {
+  if (server?.listening !== true) return;
+  server.closeAllConnections();
+  await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
 }
 
 function integer(value: number | undefined, fallback: number, name: string, minimum = 1): number {
@@ -236,6 +253,12 @@ export async function createDesktopBenchmarkFixture(
   const sessionCount = integer(options.sessionCount, 24, "sessionCount", 0);
   const turnsPerSession = integer(options.turnsPerSession, 12, "turnsPerSession");
   const catalogModelCount = integer(options.catalogModelCount, 1, "catalogModelCount");
+  const workspaceCount = integer(options.workspaceCount, 1, "workspaceCount", 0);
+  const loginShellDelayMs = integer(options.loginShellDelayMs, 0, "loginShellDelayMs", 0);
+  const rememberSelectedWorkspace = options.rememberWorkspace ?? workspaceCount > 0;
+  if (workspaceCount === 0 && (sessionCount > 0 || rememberSelectedWorkspace)) {
+    throw new RangeError("workspaceCount must be positive when seeding or remembering a workspace");
+  }
   const assistantMarkdown = options.assistantMarkdown ?? DEFAULT_ASSISTANT_MARKDOWN;
   if (typeof assistantMarkdown !== "string" || assistantMarkdown.trim() === "") {
     throw new RangeError("assistantMarkdown must be a non-empty string");
@@ -256,8 +279,13 @@ export async function createDesktopBenchmarkFixture(
   const home = join(root, "home");
   const nyteHome = join(root, "nyte-home");
   const workspaceDirectory = join(root, "workspace");
+  const workspaceDirectories = Array.from({ length: workspaceCount }, (_, index) =>
+    index === 0 ? workspaceDirectory : join(root, `workspace-${numbered(index)}`),
+  );
   await Promise.all(
-    [home, nyteHome, workspaceDirectory].map((path) => mkdir(path, { recursive: true })),
+    [home, nyteHome, workspaceDirectory, ...workspaceDirectories].map((path) =>
+      mkdir(path, { recursive: true }),
+    ),
   );
 
   const previousEnvironment: EnvironmentSnapshot = {
@@ -268,12 +296,17 @@ export async function createDesktopBenchmarkFixture(
   process.env.NYTE_HOME = nyteHome;
 
   let store: SqliteStore | undefined;
+  let delayedServer: Server | undefined;
   try {
     const workspaces = createWorkspaceStore();
-    const trustedWorkspace = await workspaces.trust(workspaceDirectory);
-    const workspace = trustedWorkspace.cwd;
-    await workspaces.touch(workspace, DESKTOP_BENCHMARK_EPOCH_MS);
-    await rememberWorkspace(workspace);
+    for (const [index, directory] of workspaceDirectories.entries()) {
+      await workspaces.trust(directory);
+      await workspaces.touch(directory, DESKTOP_BENCHMARK_EPOCH_MS - index);
+      const emptyStore = new SqliteStore(await workspaceStorePath(directory));
+      await emptyStore.close();
+    }
+    const workspace = workspaceDirectory;
+    await rememberWorkspace(rememberSelectedWorkspace ? workspace : null);
 
     const modelCatalog = join(nyteHome, "models-store.json");
     const models = Array.from({ length: catalogModelCount }, (_, index) => catalogModel(index));
@@ -295,9 +328,53 @@ export async function createDesktopBenchmarkFixture(
     await store.close();
     store = undefined;
 
+    const serverSettings = join(nyteHome, "server.json");
+    if (options.server === "delayed-loopback") {
+      delayedServer = createServer(() => undefined);
+      const server = delayedServer;
+      await new Promise<void>((resolveListen, rejectListen) => {
+        const failed = (error: Error): void => rejectListen(error);
+        server.once("error", failed);
+        server.listen(0, "127.0.0.1", () => {
+          server.off("error", failed);
+          resolveListen();
+        });
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Delayed benchmark server did not bind a TCP port");
+      }
+      await writeFile(
+        serverSettings,
+        `${JSON.stringify(
+          {
+            baseUrl: `http://127.0.0.1:${String(address.port)}`,
+            token: "desktop-benchmark",
+          },
+          null,
+          2,
+        )}\n`,
+        { mode: 0o600 },
+      );
+    }
+
+    const env: { HOME: string; NYTE_HOME: string; SHELL?: string } = {
+      HOME: home,
+      NYTE_HOME: nyteHome,
+    };
+    if (loginShellDelayMs > 0) {
+      const loginShell = join(root, "login-shell.sh");
+      await writeFile(
+        loginShell,
+        `#!/bin/sh\nsleep ${String(loginShellDelayMs / 1_000)}\nexec /bin/sh "$@"\n`,
+        { mode: 0o700 },
+      );
+      env.SHELL = loginShell;
+    }
+
     let cleaned = false;
     const fixture: DesktopBenchmarkFixture = {
-      env: { HOME: home, NYTE_HOME: nyteHome },
+      env,
       paths: {
         root,
         home,
@@ -326,12 +403,20 @@ export async function createDesktopBenchmarkFixture(
         totalCommits,
         assistantCharacters: assistantMarkdown.length,
         catalogModelCount,
+        workspaceCount,
+        rememberedWorkspace: rememberSelectedWorkspace,
+        loginShellDelayMs,
+        server: options.server ?? "none",
       },
       cleanup: async () => {
         if (cleaned) return;
         cleaned = true;
         try {
-          await rm(root, { recursive: true, force: true });
+          try {
+            await closeServer(delayedServer);
+          } finally {
+            await rm(root, { recursive: true, force: true });
+          }
         } finally {
           restoreEnvironment(previousEnvironment);
         }
@@ -340,6 +425,7 @@ export async function createDesktopBenchmarkFixture(
     return fixture;
   } catch (error) {
     if (store !== undefined) await store.close().catch(() => undefined);
+    await closeServer(delayedServer).catch(() => undefined);
     restoreEnvironment(previousEnvironment);
     await rm(root, { recursive: true, force: true }).catch(() => undefined);
     throw error;

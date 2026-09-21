@@ -43,11 +43,6 @@ export interface TurnChangeOption {
   readonly files: readonly { readonly change: FileChange; readonly patch: string }[];
 }
 
-export interface TranscriptChangesProjection {
-  readonly declared: readonly FileChange[];
-  readonly options: readonly TurnChangeOption[];
-}
-
 function addChange(changes: Map<string, FileChange>, change: FileChange): void {
   const previous = changes.get(change.path);
   changes.set(change.path, {
@@ -58,11 +53,9 @@ function addChange(changes: Map<string, FileChange>, change: FileChange): void {
 }
 
 /** Newest first; each file carries the exact patches that produced its counts, in order. */
-export function transcriptChanges(turns: readonly Turn[]): TranscriptChangesProjection {
+export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOption[] {
   const turnCount = turns.reduce((count, turn) => (turn.kind === "turn" ? count + 1 : count), 0);
   const options: TurnChangeOption[] = [];
-  const declared = new Map<string, FileChange>();
-  const declaredCommits = new Set<string>();
   let ordinal = 0;
   for (const turn of turns) {
     if (turn.kind !== "turn") continue;
@@ -80,10 +73,6 @@ export function transcriptChanges(turns: readonly Turn[]): TranscriptChangesProj
       if (previous === undefined) patches.set(path, [patch]);
       else previous.push(patch);
       addChange(turnChanges, { path, added, removed });
-      if (!declaredCommits.has(part.result.commit)) {
-        declaredCommits.add(part.result.commit);
-        addChange(declared, { path, added, removed });
-      }
     }
     const files = [...turnChanges.values()].map((change) => ({
       change,
@@ -103,11 +92,7 @@ export function transcriptChanges(turns: readonly Turn[]): TranscriptChangesProj
       files,
     });
   }
-  return { declared: [...declared.values()], options: options.reverse() };
-}
-
-export function turnChangeOptions(turns: readonly Turn[]): readonly TurnChangeOption[] {
-  return transcriptChanges(turns).options;
+  return options.reverse();
 }
 
 export function turnHasChanges(option: TurnChangeOption): boolean {

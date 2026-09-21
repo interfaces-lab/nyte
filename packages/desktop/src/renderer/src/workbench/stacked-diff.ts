@@ -1,5 +1,3 @@
-export const MISSING_WORKING_TREE =
-  "This file changed during the conversation but is no longer different in the working tree.";
 const FAILED_PATCH = "The patch could not be read.";
 export const EMPTY_PATCH = "No text diff is available for this file.";
 
@@ -10,7 +8,6 @@ export type ChangeStackSection =
   | { readonly kind: "pending"; readonly path: string };
 
 export type UncommittedPatch =
-  | { readonly kind: "absent" }
   | { readonly kind: "pending" }
   | { readonly kind: "failed" }
   | { readonly kind: "empty" }
@@ -24,8 +21,6 @@ export function uncommittedStackSection({
   readonly state: UncommittedPatch;
 }): ChangeStackSection {
   switch (state.kind) {
-    case "absent":
-      return { kind: "notice", path, text: MISSING_WORKING_TREE };
     case "pending":
       return { kind: "pending", path };
     case "failed":

@@ -30,8 +30,7 @@ function snapshot(id: string, name = id): SessionSnapshot {
 }
 
 async function enforce(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve));
 }
 
 test("inactive transcripts stay within the entry and byte budgets", async () => {
@@ -46,6 +45,8 @@ test("inactive transcripts stay within the entry and byte budgets", async () => 
   client.setQueryData(keys.snapshot(sessionId("three")), snapshot("three", "small"), {
     updatedAt: 3,
   });
+  await Promise.resolve();
+  assert.ok(client.getQueryData(keys.snapshot(sessionId("one"))));
   await enforce();
   const retained = client
     .getQueryCache()
@@ -56,6 +57,13 @@ test("inactive transcripts stay within the entry and byte budgets", async () => 
     client.getQueryData<SessionSnapshot>(keys.snapshot(sessionId("three")))?.session.name,
     "small",
   );
+  client.setQueryData(
+    keys.snapshot(sessionId("three")),
+    snapshot("three", "changed".repeat(1_000)),
+    { updatedAt: 3 },
+  );
+  await enforce();
+  assert.equal(client.getQueryData(keys.snapshot(sessionId("three"))), undefined);
   unsubscribe();
   client.clear();
 });
@@ -95,6 +103,11 @@ test("the budget never evicts a transcript that still has a reader", async () =>
   assert.equal(client.getQueryData(keys.snapshot(id)), value);
   assert.equal(client.getQueryData(keys.snapshot(sessionId("closed"))), undefined);
   unsubscribeObserver();
+  await enforce();
+  assert.equal(client.getQueryData(keys.snapshot(id)), undefined);
+  client.setQueryData(keys.snapshot(id), value);
   unsubscribeBudget();
+  await enforce();
+  assert.equal(client.getQueryData(keys.snapshot(id)), value);
   client.clear();
 });

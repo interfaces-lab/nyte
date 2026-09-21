@@ -181,9 +181,57 @@ export async function run(): Promise<string> {
     render();
     await until(() => snapshotState()?.status === "success", "the first transcript read");
     await until(() => queryClient.getQueryData(keys.vcsSnapshot) !== undefined, "the VCS read");
+    await until(
+      () => container.querySelector('[data-change-path="src/working.ts"]') !== null,
+      "the working-tree diff to render",
+    );
     await settle();
     observe("mounted on uncommitted");
 
+    changesScopeScript.vcsFiles = [
+      { path: "src/first.ts", kind: "modified" },
+      { path: "src/working.ts", kind: "modified" },
+    ];
+    await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
+    await until(
+      () => container.querySelector('[data-change-path="src/first.ts"]') !== null,
+      "a conversation file becoming dirty again",
+    );
+    await settle();
+    observe("conversation file changed again");
+
+    changesScopeScript.vcsFiles = [{ path: "src/working.ts", kind: "modified" }];
+    await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
+    await until(
+      () =>
+        container.querySelector('[data-change-path="src/first.ts"]') === null &&
+        container
+          .querySelector("file-tree-container")
+          ?.shadowRoot?.querySelector('[data-item-path="src/first.ts"]') === null,
+      "the reverted file leaving the stack and sidebar",
+    );
+    await settle();
+    observe("conversation file reverted");
+
+    changesScopeScript.vcsFiles = [];
+    await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
+    await until(
+      () => container.textContent?.includes("Working tree is clean") === true,
+      "a clean working tree despite recorded edits",
+    );
+    await until(
+      () =>
+        queryClient
+          .getQueryCache()
+          .findAll({ queryKey: ["vcs", "diffs"] })
+          .every((query) => query.state.data === undefined),
+      "unused working-tree patches leaving the cache",
+    );
+    observe("all conversation files reverted");
+
+    changesScopeScript.vcsFiles = [{ path: "src/working.ts", kind: "modified" }];
+    await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
+    await settle();
     await selectScope("Latest");
     observe("selected the newest turn");
 
@@ -259,6 +307,10 @@ export async function run(): Promise<string> {
     await queryClient.invalidateQueries({ queryKey: keys.vcsSnapshot, exact: true });
     await queryClient.refetchQueries({ queryKey: keys.snapshot(changesSession), exact: true });
     await until(() => snapshotState()?.status === "success", "recovery");
+    await until(
+      () => container.querySelector('[data-change-path="src/third.ts"]') !== null,
+      "the recovered turn to render",
+    );
     await settle();
     observe("recovered");
 
