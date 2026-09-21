@@ -146,20 +146,25 @@ export function useHostState() {
   return useQuery({ queryKey: keys.host, queryFn: readHost });
 }
 
-export function useServerState() {
+export function useServerState(active: boolean) {
   return useQuery({
     queryKey: keys.server,
     queryFn: (): Promise<ServerState> => nyte.host.server.state(),
-    refetchInterval: 15_000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: "always",
+    staleTime: active ? 0 : Infinity,
+    refetchInterval: active ? 15_000 : false,
+    refetchOnWindowFocus: active ? "always" : false,
+    refetchOnMount: active ? "always" : false,
   });
 }
 
-export function useMobileShareState() {
+export function useMobileShareState(active: boolean) {
   return useQuery({
     queryKey: keys.mobileShare,
     queryFn: (): Promise<MobileShareState> => nyte.host.mobile.state(),
+    enabled: active,
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
+    refetchOnMount: "always",
   });
 }
 

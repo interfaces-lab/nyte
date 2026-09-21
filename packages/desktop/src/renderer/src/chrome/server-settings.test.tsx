@@ -27,7 +27,7 @@ function render(state: ServerState): string {
   client.setQueryData(keys.server, state);
   const markup = renderToStaticMarkup(
     <QueryClientProvider client={client}>
-      <CloudServerSettings />
+      <CloudServerSettings active={false} />
     </QueryClientProvider>,
   );
   client.clear();

@@ -9,6 +9,7 @@ import "./theme/focus-modality.ts";
 import "./theme/global.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { focusManager } from "@tanstack/react-query";
 import { App } from "./app.tsx";
 import { startRendererStartup } from "./startup.ts";
 
@@ -21,6 +22,21 @@ import { clientActionAvailable, clientActions } from "../../shared/client-action
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("Missing #root");
+
+focusManager.setEventListener((setFocused) => {
+  const update = (): void => {
+    setFocused(document.visibilityState !== "hidden" && document.hasFocus());
+  };
+  window.addEventListener("focus", update);
+  window.addEventListener("blur", update);
+  document.addEventListener("visibilitychange", update);
+  update();
+  return () => {
+    window.removeEventListener("focus", update);
+    window.removeEventListener("blur", update);
+    document.removeEventListener("visibilitychange", update);
+  };
+});
 
 // The startup shell in index.html owns the window until the first complete frame.
 const startupShell = document.getElementById("startup");

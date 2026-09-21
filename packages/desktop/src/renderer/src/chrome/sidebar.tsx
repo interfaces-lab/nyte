@@ -264,7 +264,7 @@ export function Sidebar(): ReactElement {
   const workspacePath = open?.path;
   const workspaces = useWorkspaces();
   const sessionDirectory = useWorkspaceSessionDirectory();
-  const server = useServerState();
+  const server = useServerState(false);
   const cloudDirectory = sessionDirectory.data?.find(
     (directory) => directory.environment === "cloud",
   );

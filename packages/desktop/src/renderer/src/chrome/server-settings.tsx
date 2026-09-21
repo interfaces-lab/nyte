@@ -7,10 +7,10 @@
  */
 import { Input } from "@nyte-ai/ui";
 import * as stylex from "@stylexjs/stylex";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { focusManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { Transition } from "motion/react";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ReactElement } from "react";
 import { toast } from "@nyte-ai/ui/sonner";
 import { errorMessage } from "../../../shared/errors.ts";
@@ -155,9 +155,9 @@ function serverDetail(state: Exclude<ServerState, { kind: "none" }>): string {
   return `${host.capabilities.workspace ? "Workspace tools available." : "Chat only."} ${persistence}`;
 }
 
-export function CloudServerSettings(): ReactElement {
+export function CloudServerSettings({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
-  const server = useServerState();
+  const server = useServerState(active);
   const [editing, setEditing] = useState(false);
   const connect = useMutation({
     mutationFn: (input: { baseUrl: string; token: string }) => nyte.host.server.connect(input),
@@ -387,9 +387,9 @@ function tailnetDetail(tailnet: TailnetAvailability): string {
   return `Reachable at ${tailnet.name ?? tailnet.ip} from your signed-in devices, on any network.`;
 }
 
-function MobileShareSettings(): ReactElement {
+function MobileShareSettings({ active }: { readonly active: boolean }): ReactElement {
   const client = useQueryClient();
-  const share = useMobileShareState();
+  const share = useMobileShareState(active);
   const start = useMutation({
     mutationFn: (reach: MobileShareReach) => nyte.host.mobile.start({ reach }),
     onError: (cause) =>
@@ -471,11 +471,15 @@ function MobileShareSettings(): ReactElement {
   );
 }
 
+const subscribeToWindowFocus = (notify: () => void): (() => void) => focusManager.subscribe(notify);
+const readWindowFocus = (): boolean => focusManager.isFocused();
+
 export function ServerSettings(): ReactElement {
+  const active = useSyncExternalStore(subscribeToWindowFocus, readWindowFocus, readWindowFocus);
   return (
     <>
-      <CloudServerSettings />
-      <MobileShareSettings />
+      <CloudServerSettings active={active} />
+      <MobileShareSettings active={active} />
     </>
   );
 }
