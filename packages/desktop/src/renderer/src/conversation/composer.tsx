@@ -344,6 +344,9 @@ export function ComposerFrame({
     if (area === null) return;
     const submission = area.read();
     const currentDocument = area.readDocument();
+    if (frameRef.current?.contains(window.document.activeElement)) {
+      area.focus({ preventScroll: true });
+    }
     setSubmitting(true);
     // `onSubmit` may answer synchronously; `Promise.resolve` covers both, and the
     // chain avoids a `try`/`finally` that would cost this component its
@@ -570,6 +573,7 @@ export function ComposerFrame({
             <Menu
               label="Add agents, context, tools"
               popupStyle={composerStyles.addMenu}
+              finalFocus={() => areaRef.current?.element}
               trigger={
                 <Button
                   unstyled
@@ -1049,6 +1053,11 @@ export function Composer({
     setDocument({ text: "", selectionStart: 0, selectionEnd: 0 });
   };
 
+  /** A row action that holds focus hands it to the editor before its button goes away. */
+  const releaseFocus = (button: Element): void => {
+    if (button === document.activeElement) editorRef.current?.focus({ preventScroll: true });
+  };
+
   const queuedMessageCount = pending.length + unsent.length;
   const queuedMessages =
     queuedMessageCount === 0 ? undefined : (
@@ -1108,13 +1117,19 @@ export function Composer({
                       <IconButton
                         icon="arrow-up"
                         label="Send now"
-                        onClick={() => void sendPendingNow(item)}
+                        onClick={(event) => {
+                          releaseFocus(event.currentTarget);
+                          void sendPendingNow(item);
+                        }}
                       />
                     )}
                     <IconButton
                       icon="trash"
                       label="Remove queued message"
-                      onClick={() => void cancelPending(item)}
+                      onClick={(event) => {
+                        releaseFocus(event.currentTarget);
+                        void cancelPending(item);
+                      }}
                     />
                   </div>
                 )}
@@ -1143,7 +1158,10 @@ export function Composer({
                 <IconButton
                   icon="trash"
                   label="Remove unsent message"
-                  onClick={() => outbox.cancel(row.key)}
+                  onClick={(event) => {
+                    releaseFocus(event.currentTarget);
+                    outbox.cancel(row.key);
+                  }}
                 />
               </div>
             </div>

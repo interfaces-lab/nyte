@@ -265,6 +265,8 @@ interface MenuProps {
   readonly modal?: boolean;
   readonly loopFocus?: boolean;
   readonly highlightItemOnHover?: boolean;
+  /** Where focus goes when the menu closes; `false` leaves it where the item put it. */
+  readonly finalFocus?: Base.Popup.Props["finalFocus"];
   readonly onOpenChange?: (open: boolean) => void;
   readonly onOpenChangeComplete?: (open: boolean) => void;
   readonly children: ReactNode;
@@ -285,6 +287,7 @@ export function Menu({
   modal,
   loopFocus,
   highlightItemOnHover,
+  finalFocus,
   onOpenChange,
   onOpenChangeComplete,
   children,
@@ -315,6 +318,7 @@ export function Menu({
             ref={overlayRef}
             id={id}
             aria-label={label}
+            finalFocus={finalFocus}
             {...stylex.props(
               floatingSurfaceStyles.popup,
               styles.popup,

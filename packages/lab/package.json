@@ -14,6 +14,8 @@
     "@nyte-ai/ui": "workspace:*",
     "@stylexjs/stylex": "0.19.0",
     "central-icons": "npm:@central-icons-react/round-outlined-radius-2-stroke-1.5@^1.1.319",
+    "dialkit": "2.0.2",
+    "motion": "13.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

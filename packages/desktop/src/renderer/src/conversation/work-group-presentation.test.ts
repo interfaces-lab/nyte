@@ -21,6 +21,7 @@ const shell: ToolClass = { kind: "shell", command: "pwd" };
 const spawn: ToolClass = {
   kind: "delegate",
   role: "create",
+  title: "Child",
   target: { kind: "one", session: sessionId("child") },
 };
 const patch: ToolClass = {

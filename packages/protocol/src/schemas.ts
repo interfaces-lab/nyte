@@ -560,7 +560,13 @@ export const ToolClass = typed<ToolClassType>()(
     open({ kind: Type.Literal("shell"), command: Type.String() }),
     open({
       kind: Type.Literal("delegate"),
-      role: literals(["create", "send", "await", "read", "stop"]),
+      role: Type.Literal("create"),
+      title: Type.String(),
+      target: open({ kind: Type.Literal("one"), session: SessionId }),
+    }),
+    open({
+      kind: Type.Literal("delegate"),
+      role: literals(["send", "await", "read", "stop"]),
       target: Type.Union([
         open({ kind: Type.Literal("one"), session: SessionId }),
         open({

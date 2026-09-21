@@ -124,7 +124,7 @@ test("completion commits carry a command's or a child's report through the wire"
 
 test("delegation tool classes name one child or an await set", () => {
   for (const valid of [
-    { kind: "delegate", role: "create", target: { kind: "one", session: "child" } },
+    { kind: "delegate", role: "create", title: "Child", target: { kind: "one", session: "child" } },
     { kind: "delegate", role: "send", target: { kind: "one", session: "child" } },
     {
       kind: "delegate",

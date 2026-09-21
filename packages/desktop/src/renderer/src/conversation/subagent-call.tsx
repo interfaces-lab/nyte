@@ -1,10 +1,10 @@
 /**
  * One delegation. A `create` is the subagent's card from its first frame:
- * the child's name over its status, with the model beside the name once the
- * child session is listed. The status comes from the chat's child sessions,
- * since a create settles while its subagent keeps working; until the child is
- * listed the tool's own phase stands in and the session id is the name. Every
- * other call on a child (`send`, `await`, `read`, `stop`) is one compact line
+ * the title the call named over the child's status, with the model beside the
+ * title once the child session is listed. The status comes from the chat's
+ * child sessions, since a create settles while its subagent keeps working;
+ * until the child is listed the card says nothing about it, except that a
+ * failed create failed. Every other call on a child (`send`, `await`, `read`, `stop`) is one compact line
  * for the same child, never a second card; while the run is blocked
  * on it, the line's place is taken by the card's "Waiting" status. Same law as
  * other tool calls: no status icon, the shimmer is the running state.
@@ -48,11 +48,13 @@ function SubagentModel({
 
 export function SubagentCallView({
   session,
+  title,
   phase,
   density,
   awaited,
 }: {
   session: SessionId;
+  title: string;
   phase: ToolPhase;
   density: ToolCallDensity;
   /** The run is blocked on this child. */
@@ -60,23 +62,28 @@ export function SubagentCallView({
 }): ReactElement {
   const child = useChildSession(session);
   const openTray = useOpenSubagentTray();
-  const title = child?.name ?? session;
   const state = child === undefined ? undefined : agentState(child);
   const blocking = awaited && state !== "completed" && state !== "failed" && state !== "stopped";
-  const running = blocking || (state === undefined ? phase === "running" : state === "working");
   const failed = state === undefined ? phase === "failed" : state === "failed";
   const status = blocking
     ? "Waiting"
     : state === undefined
-      ? PHASE_STATUS[phase]
+      ? phase === "failed"
+        ? PHASE_STATUS.failed
+        : undefined
       : AGENT_STATE_LABEL[state];
+  const running = blocking || state === "working";
   const content = (
     <>
       <span {...props(subagentCallStyles.head)}>
         <span {...props(toolCallStyles.verb)}>{title}</span>
         {child !== undefined && <SubagentModel session={session} model={child.config.model} />}
       </span>
-      <span {...props(subagentCallStyles.status, running && activityStyles.shimmer)}>{status}</span>
+      {status !== undefined && (
+        <span {...props(subagentCallStyles.status, running && activityStyles.shimmer)}>
+          {status}
+        </span>
+      )}
     </>
   );
   const lineStyles = [
@@ -101,7 +108,7 @@ export function SubagentCallView({
   );
 }
 
-/** A call on a child: the verb, then the child's name, or its id until the child is listed. */
+/** A call on a child: the verb, then the child's name once the child is listed. */
 export function SubagentLineView({
   toolClass,
   phase,
@@ -116,19 +123,20 @@ export function SubagentLineView({
 }): ReactElement {
   const session =
     toolClass.target.kind === "one" ? toolClass.target.session : toolClass.target.sessions[0];
-  const child = useChildSession(session)?.name ?? session;
+  const child = useChildSession(session)?.name;
   const openTray = useOpenSubagentTray();
+  const others = toolClass.target.kind === "many" ? toolClass.target.sessions.length - 1 : 0;
   const label =
-    toolClass.target.kind === "many" && toolClass.target.sessions.length > 1
-      ? `${child} +${String(toolClass.target.sessions.length - 1)}`
-      : child;
+    child === undefined ? undefined : others > 0 ? `${child} +${String(others)}` : child;
   const content = (
     <>
       <span {...props(toolCallStyles.verb, phase === "running" && activityStyles.shimmer)}>
         {toolVerb(toolClass, phase)}
       </span>
       {phase !== "done" && <span {...props(srOnly)}>{PHASE_STATUS[phase]}</span>}
-      <Hint content={label} trigger={<span {...props(toolCallStyles.detail)}>{label}</span>} />
+      {label !== undefined && (
+        <Hint content={label} trigger={<span {...props(toolCallStyles.detail)}>{label}</span>} />
+      )}
       {phase === "running" && until !== undefined && (
         <span {...props(toolCallStyles.detail)}>
           <Countdown until={until} />

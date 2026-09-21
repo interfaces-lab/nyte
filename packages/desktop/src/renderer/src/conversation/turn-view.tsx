@@ -435,7 +435,6 @@ function Notice({ text, tone }: { text: string; tone: "neutral" | "danger" }): R
   );
 }
 
-/** Review is available once the latest turn that wrote files has settled. */
 function TurnChangesCard({
   files,
   onReview,
@@ -575,10 +574,7 @@ const ResponseView = memo(function ResponseView({
   return markdown === "" ? null : <Prose markdown={markdown} />;
 });
 
-export function changesForTurn(
-  turn: RenderedTurn,
-  runDiff: RunDiff | undefined,
-): readonly FileChange[] {
+function changesForTurn(turn: RenderedTurn, runDiff: RunDiff | undefined): readonly FileChange[] {
   const recorded = changesFromTurns([turn]);
   if (runDiff === undefined) return recorded;
   switch (runDiff.kind) {
@@ -617,8 +613,7 @@ export const TurnView = memo(function TurnView({
     choice: BranchModelChoice,
   ) => Promise<void>;
   branchModel?: BranchModelPicker;
-  /** Absent in read-only views, which then omit the changes card. */
-  onOpenChanges?: (target: TurnChangesTarget) => void;
+  onOpenChanges: (target: TurnChangesTarget) => void;
   running: boolean;
   waits: LiveWaits;
 }): ReactElement | null {
@@ -711,7 +706,7 @@ export const TurnView = memo(function TurnView({
             />
           )}
           {turn.failure !== undefined && <Notice {...failureNotice(turn.failure)} />}
-          {!running && changes.length > 0 && onOpenChanges !== undefined && (
+          {!running && changes.length > 0 && (
             <TurnChangesCard
               files={changes}
               onReview={() => onOpenChanges({ kind: "turn", turnId: turn.id })}

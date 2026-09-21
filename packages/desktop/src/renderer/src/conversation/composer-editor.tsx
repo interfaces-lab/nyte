@@ -25,9 +25,6 @@ import { createEmptyHistoryState, registerHistory } from "@lexical/history";
 import {
   $addUpdateTag,
   $getNodeByKey,
-  $getRoot,
-  $getSelection,
-  $setSelection,
   CLEAR_HISTORY_COMMAND,
   COMMAND_PRIORITY_HIGH,
   HISTORY_MERGE_TAG,
@@ -184,24 +181,20 @@ export function ComposerEditor({
   const lastReferences = useRef<readonly MessageReference[]>([]);
   const referencesDirty = useRef(true);
 
+  // Lexical's focus marks the selection dirty and commits it; the tag keeps
+  // that commit from scrolling the caret into view.
   const focusEditor = useCallback(
     (options?: FocusOptions): void => {
-      const root = rootRef.current;
-      if (root === null || !editor.isEditable()) return;
+      if (!editor.isEditable()) return;
       editor.update(
         () => {
-          const selection = $getSelection();
-          if (selection === null) $getRoot().selectEnd();
-          else $setSelection(selection.clone());
-          $addUpdateTag(HISTORY_MERGE_TAG);
           if (options?.preventScroll === true) $addUpdateTag(SKIP_SCROLL_INTO_VIEW_TAG);
+          editor.focus();
         },
         { discrete: true },
       );
-      // Lexical focuses the root while it commits a selection; a selection that already matched the DOM commits nothing.
-      if (root.ownerDocument.activeElement !== root) root.focus(options);
     },
-    [editor, rootRef],
+    [editor],
   );
 
   const handle = useMemo<ComposerEditorHandle>(

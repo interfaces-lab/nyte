@@ -1,7 +1,7 @@
 /**
  * A create and the later wait on it are two calls on one child. The
  * transcript draws the child once: the create is the agent card, the await a
- * compact line for the same child. While the wait is live it is run
+ * compact line inside the work around it. While the wait is live it is run
  * status, not a row: the cards say "Waiting" and the header counts down.
  */
 import { afterAll, expect, test, vi } from "vitest";
@@ -81,7 +81,12 @@ const turn: RenderedTurn = {
       kind: "tool",
       callId: "task",
       at: 1,
-      class: { kind: "delegate", role: "create", target: { kind: "one", session: child } },
+      class: {
+        kind: "delegate",
+        role: "create",
+        title: "Map the workbench",
+        target: { kind: "one", session: child },
+      },
       result: { commit: "created", output: "Started Map the workbench", isError: false },
     },
     {
@@ -98,7 +103,7 @@ const turn: RenderedTurn = {
   ],
 };
 
-test("a create and its await draw one agent card and one compact line", () => {
+test("a create draws one agent card; its settled await folds into the work", () => {
   const client = new QueryClient();
   client.setQueryData(["sessions", "children", parent], [childSession]);
   const html = renderToStaticMarkup(
@@ -111,6 +116,7 @@ test("a create and its await draw one agent card and one compact line", () => {
           runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
+          onOpenChanges={() => {}}
           running={false}
           waits={NO_WAITS}
         />
@@ -118,10 +124,11 @@ test("a create and its await draw one agent card and one compact line", () => {
     </QueryClientProvider>,
   );
   client.clear();
-  // The card is the only place the child's state is spelled out.
+  // The card is the only place the child is named and its state spelled out;
+  // the await is a step inside the settled work that followed.
   expect(html.match(/>Completed</g)?.length).toBe(1);
-  expect(html.match(/>Map the workbench</g)?.length).toBe(2);
-  expect(html).toContain(">Waited for<");
+  expect(html.match(/>Map the workbench</g)?.length).toBe(1);
+  expect(html).toContain(">Worked<");
 });
 
 const agents = [
@@ -134,7 +141,12 @@ const createAgent = (session: (typeof agents)[number]): ToolTurnPart => ({
   kind: "tool",
   callId: `create:${session}`,
   at: 1,
-  class: { kind: "delegate", role: "create", target: { kind: "one", session } },
+  class: {
+    kind: "delegate",
+    role: "create",
+    title: `Agent ${session}`,
+    target: { kind: "one", session },
+  },
   result: { commit: `created:${session}`, output: `Started ${session}`, isError: false },
 });
 const awaitAll: ToolTurnPart = {
@@ -200,6 +212,7 @@ function render(
           runDiff={undefined}
           liveTools={new Map()}
           cwd={undefined}
+          onOpenChanges={() => {}}
           running={options.running}
           waits={liveWaits(parts, options.parked, options.running)}
         />

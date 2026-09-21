@@ -65,10 +65,11 @@ import type { PaneId, PaneLayout, PaneState, SplitDirection } from "../layout/pa
 import { useSessionDropTarget, useSessionPaneDropTarget } from "../layout/session-dnd.tsx";
 import type { SessionDropTarget } from "../layout/session-dnd.tsx";
 import type { BlankViewState, ChatDraft } from "../layout/session-view-state.ts";
-import { loadThread, useSessionLive } from "../live.ts";
+import { loadThread, useChildrenLive, useSessionLive } from "../live.ts";
 import type { LiveToolProgress } from "../live-fold.ts";
 import {
   keys,
+  cacheCreatedSession,
   configureSession,
   queryClient,
   useCatalog,
@@ -96,7 +97,7 @@ import { sessionReadState } from "../session-read-state.ts";
 import { BackgroundWork } from "../conversation/jobs-panel.tsx";
 import { LiveTurn, liveTurnStyles } from "../conversation/live-turn.tsx";
 import { ReferenceOpenerProvider } from "../conversation/reference-opener.tsx";
-import { changesForTurn, TurnView, UserMessageView } from "../conversation/turn-view.tsx";
+import { TurnView, UserMessageView } from "../conversation/turn-view.tsx";
 import { TranscriptSkeleton } from "./transcript-skeleton.tsx";
 import { Selections } from "../conversation/selection.tsx";
 import { parkedSelections } from "../conversation/selection.ts";
@@ -131,6 +132,7 @@ import type { WorkbenchTarget } from "../workbench/controller.ts";
 import { Workbench } from "../workbench/workbench.tsx";
 import { workbenchReferenceOpener } from "../workbench/open-reference.ts";
 import { openSessionJobTerminal } from "../workbench/terminal-store.ts";
+import { subagentTrayState } from "../conversation/agent-status.ts";
 import { SubagentTray, type SubagentTrayView } from "../conversation/subagent-tray.tsx";
 import { SubagentSessionsProvider } from "../conversation/subagent-sessions.ts";
 import { focusTerminal } from "../workbench/terminal-runtime.ts";
@@ -537,7 +539,7 @@ const SettledTurnView = memo(function SettledTurnView({
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
-  onOpenChanges: ((target: TurnChangesTarget) => void) | undefined;
+  onOpenChanges: (target: TurnChangesTarget) => void;
 }): ReactElement | null {
   return (
     <TurnView
@@ -562,7 +564,6 @@ const TrailingTurnView = memo(function TrailingTurnView({
   onEditUser,
   branchModel,
   onOpenChanges,
-  running,
   waits,
 }: {
   sessionId: SessionId;
@@ -571,8 +572,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
   cwd: string | undefined;
   onEditUser: EditUserMessage;
   branchModel: BranchModelPicker;
-  onOpenChanges: ((target: TurnChangesTarget) => void) | undefined;
-  running: boolean;
+  onOpenChanges: (target: TurnChangesTarget) => void;
   waits: LiveWaits;
 }): ReactElement | null {
   const live = useSessionLive(sessionId);
@@ -586,7 +586,7 @@ const TrailingTurnView = memo(function TrailingTurnView({
       onEditUser={onEditUser}
       branchModel={branchModel}
       onOpenChanges={onOpenChanges}
-      running={running}
+      running={true}
       waits={waits}
     />
   );
@@ -631,6 +631,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   const session = useSession(sessionId);
   const catalog = useCatalog(sessionId);
   const children = useChildSessions(sessionId);
+  useChildrenLive(children.data);
   const renameSession = useRenameSession();
   const sessionActions = useSessionActions();
   const removeSession = useSessionRemoval();
@@ -643,6 +644,15 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   const subagentTray: SubagentTrayView =
     trayView.kind === "terminals" ? { kind: "closed" } : trayView;
   const paneMenuTrigger = useRef<HTMLButtonElement>(null);
+  const composerRef = useRef<ComposerEditorHandle | null>(null);
+  const inputRef = presentation === "full" ? props.inputRef : undefined;
+  const attachComposer = useCallback(
+    (handle: ComposerEditorHandle | null): void => {
+      composerRef.current = handle;
+      inputRef?.(handle);
+    },
+    [inputRef],
+  );
   const snapshot = useSessionSnapshot(sessionId);
   const snapshotSession = snapshot.data?.session;
   useLayoutEffect(() => {
@@ -718,18 +728,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
   // The indicator belongs under the last turn the transcript draws, which is
   // not always the last turn in the snapshot.
   const lastTurn = useMemo(() => turns.findLast(rendersInTranscript), [turns]);
-  // The card belongs to the newest turn that actually wrote files. Keying it
-  // to the newest turn instead took the review away whenever the next message
-  // settled without changes, which is most follow-ups.
-  const latestChangedTurn = useMemo(
-    () =>
-      turns.findLast((turn) => {
-        if (turn.kind !== "turn") return false;
-        const runDiff = turn.run.kind === "run" ? runDiffs.get(turn.run.id) : undefined;
-        return changesForTurn(turn, runDiff).length > 0;
-      }),
-    [runDiffs, turns],
-  );
   // A turn that ends in a work group already draws the run's indicator there,
   // as does one whose live wait on its children is drawn as status. One that
   // ends in prose needs it below the prose, or the model looks idle while it
@@ -807,15 +805,26 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       ),
     [children.data],
   );
-  const openLocalSubagentTray = useCallback((childSessionId?: SessionId): void => {
-    setTrayView(
-      childSessionId === undefined
-        ? { kind: "list" }
-        : { kind: "detail", sessionId: childSessionId },
-    );
-  }, []);
-  const openSubagentTray =
-    presentation === "tray" ? props.onOpenSubagentTray : openLocalSubagentTray;
+  const forwardSubagentTray = presentation === "tray" ? props.onOpenSubagentTray : undefined;
+  const openSubagentTray = useCallback(
+    (childSessionId?: SessionId): void => {
+      const child = childSessionId === undefined ? undefined : childBySession.get(childSessionId);
+      if (child !== undefined && subagentTrayState(child) === "inactive") {
+        paneActions.openSessionInPane(paneId, child.sessionId);
+        return;
+      }
+      if (forwardSubagentTray !== undefined) {
+        forwardSubagentTray(childSessionId);
+        return;
+      }
+      setTrayView(
+        childSessionId === undefined
+          ? { kind: "list" }
+          : { kind: "detail", sessionId: childSessionId },
+      );
+    },
+    [childBySession, forwardSubagentTray, paneActions, paneId],
+  );
   const subagentSessions = useMemo(
     () => ({ children: childBySession, open: openSubagentTray }),
     [childBySession, openSubagentTray],
@@ -881,8 +890,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
             row.turn.kind === "turn" && row.turn.run.kind === "run"
               ? runDiffs.get(row.turn.run.id)
               : undefined;
-          const onOpenChanges =
-            !working && row.turn === latestChangedTurn ? openChanges : undefined;
           if (row.trailing && working) {
             return (
               <TrailingTurnView
@@ -892,8 +899,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                 cwd={cwd}
                 onEditUser={editUserMessage}
                 branchModel={branchModel}
-                onOpenChanges={onOpenChanges}
-                running={working}
+                onOpenChanges={openChanges}
                 waits={lastWaits}
               />
             );
@@ -905,7 +911,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
               cwd={cwd}
               onEditUser={editUserMessage}
               branchModel={branchModel}
-              onOpenChanges={onOpenChanges}
+              onOpenChanges={openChanges}
             />
           );
         }
@@ -953,7 +959,6 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
       cwd,
       editUserMessage,
       lastWaits,
-      latestChangedTurn,
       navigating,
       openChanges,
       parked,
@@ -1052,6 +1057,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                             setTrayView({ kind: "closed" });
                             paneActions.openSessionInPane(paneId, childSessionId);
                           }}
+                          onRelease={() => composerRef.current?.focus({ preventScroll: true })}
                           viewport={scroll}
                           detail={
                             subagentTray.kind === "detail" ? (
@@ -1105,7 +1111,7 @@ function SessionConversation(props: SessionConversationProps): ReactElement {
                       composer,
                     }))
                   }
-                  inputRef={props.inputRef}
+                  inputRef={attachComposer}
                   autoFocus={false}
                   onScrollToBottom={
                     !bottomPinned
@@ -1220,9 +1226,10 @@ function BlankConversation({
         option.provider === submittedConfiguration?.model.provider &&
         option.id === submittedConfiguration.model.id,
     );
-    let session: { readonly sessionId: SessionId } | undefined;
+    let session: SessionInfo | undefined;
     try {
       session = await nyte.sessions.create();
+      await cacheCreatedSession({ session, workspacePath: workspace?.path ?? null });
       // The pane switches as soon as the chat exists; its configuration and
       // first message finish behind the transcript instead of holding Home.
       void queryClient.invalidateQueries({ queryKey: keys.sessions });

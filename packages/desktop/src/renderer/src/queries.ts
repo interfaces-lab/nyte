@@ -60,7 +60,6 @@ import { RunDiffFreshness } from "./run-diff-freshness.ts";
 import { SessionObservations } from "./session-freshness.ts";
 import { installSnapshotCacheBudget, releaseSessionQueries } from "./snapshot-cache.ts";
 import { USAGE_STALE_AFTER_MS } from "./chrome/usage-view.ts";
-import { agentState } from "./conversation/agent-status.ts";
 import type { WorkspaceSearchInput } from "../../shared/workspace-editor.ts";
 
 export const queryClient = new QueryClient({
@@ -277,12 +276,13 @@ export function useSessionSnapshot(sessionId: SessionId) {
   });
 }
 
-/** The child sessions one chat delegated to. Parent commits invalidate this; the poll follows a working child. */
+/** The child sessions one chat delegated to. Parent commits invalidate this; an observed child updates its own row. */
 export function useChildSessions(sessionId: SessionId | undefined) {
   return useQuery({
     queryKey: keys.childSessions(sessionId),
     queryFn: async (): Promise<readonly SessionInfo[]> => {
       if (sessionId === undefined) return [];
+      const startedAt = performance.now();
       const first = await nyte.sessions.list({ parent: sessionId });
       const children = [...first.items];
       let cursor = first.next;
@@ -291,11 +291,9 @@ export function useChildSessions(sessionId: SessionId | undefined) {
         children.push(...page.items);
         cursor = page.next;
       }
-      return children;
+      return children.map((child) => freshestSessionInfo(child, startedAt));
     },
     enabled: sessionId !== undefined,
-    refetchInterval: (query) =>
-      query.state.data?.some((child) => agentState(child) === "working") === true ? 2_000 : false,
   });
 }
 
@@ -378,8 +376,14 @@ function terminalForRunDiff(sessionId: SessionId, runId: RunId): boolean {
   return current === undefined || current.runId !== runId || isTerminalPhase(current.phase);
 }
 
-function checkedRunDiff(sessionId: SessionId, runId: RunId, diff: RunDiff): RunDiff {
-  runDiffFreshness.recordCheck(sessionId, runId, terminalForRunDiff(sessionId, runId), diff);
+async function checkedRunDiff(
+  sessionId: SessionId,
+  runId: RunId,
+  read: () => Promise<RunDiff>,
+): Promise<RunDiff> {
+  const terminal = terminalForRunDiff(sessionId, runId);
+  const diff = await read();
+  runDiffFreshness.recordCheck(sessionId, runId, terminal);
   return diff;
 }
 
@@ -400,7 +404,7 @@ export function useRunDiffs(
       const needsRefresh = runDiffFreshness.needsRefresh(sessionId, runId, terminal, cached);
       return {
         queryKey: vcsKeys.runDiff(sessionId, runId),
-        queryFn: async () => checkedRunDiff(sessionId, runId, await read(runId)),
+        queryFn: () => checkedRunDiff(sessionId, runId, () => read(runId)),
         staleTime: needsRefresh ? 0 : Infinity,
         refetchOnMount: needsRefresh,
       };
@@ -434,9 +438,10 @@ export function useRunDiff(
         : vcsKeys.runDiff(sessionId, runId),
     queryFn: async () => {
       if (sessionId === undefined || runId === undefined) return { kind: "not_found" };
-      const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
-      const diff = result?.diff ?? { kind: "not_found" };
-      return checkedRunDiff(sessionId, runId, diff);
+      return checkedRunDiff(sessionId, runId, async () => {
+        const [result] = await nyte.runs.diff({ sessionId, runs: [runId] });
+        return result?.diff ?? { kind: "not_found" };
+      });
     },
     enabled: enabled && sessionId !== undefined && runId !== undefined,
     staleTime: needsRefresh ? 0 : Infinity,
@@ -818,6 +823,44 @@ export function cacheSessionInfo(session: SessionInfo): void {
     keys.sessionDirectory,
     (directories) =>
       directories?.map((directory) => ({ ...directory, sessions: replace(directory.sessions) })),
+  );
+  if (session.parent !== undefined) {
+    queryClient.setQueryData<readonly SessionInfo[]>(
+      keys.childSessions(session.parent.sessionId),
+      (children) => (children === undefined ? children : replace(children)),
+    );
+  }
+}
+
+export async function cacheCreatedSession({
+  session,
+  workspacePath,
+}: {
+  readonly session: SessionInfo;
+  readonly workspacePath: string | null;
+}): Promise<void> {
+  await Promise.all([
+    queryClient.cancelQueries({ queryKey: keys.sessionDirectory, exact: true }),
+    queryClient.cancelQueries({ queryKey: keys.sessionPreview, exact: true }),
+  ]);
+  const insert = (sessions: readonly SessionInfo[]) => [
+    session,
+    ...sessions.filter((candidate) => candidate.sessionId !== session.sessionId),
+  ];
+  sessionObservations.observe(session.sessionId, performance.now());
+  queryClient.setQueryData(keys.session(session.sessionId), session);
+  queryClient.setQueryData<SessionPage>(keys.sessionPreview, (preview) => ({
+    ...preview,
+    items: insert(preview?.items ?? []),
+  }));
+  queryClient.setQueryData<readonly WorkspaceSessionDirectory[]>(
+    keys.sessionDirectory,
+    (directories) =>
+      directories?.map((directory) =>
+        directory.environment === "local" && directory.workspacePath === workspacePath
+          ? { ...directory, sessions: insert(directory.sessions) }
+          : directory,
+      ),
   );
 }
 

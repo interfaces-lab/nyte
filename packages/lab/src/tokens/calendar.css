@@ -1,4 +1,4 @@
-:root[data-lab-tokens="calendar"] {
+:root[data-lab-reference="calendar"] {
   --nyte-base: var(--text-primary);
   --nyte-chrome-base: var(--surface-page);
   --nyte-editor-base: var(--surface-page);
@@ -18,7 +18,6 @@
   --nyte-font-family-sans:
     ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI",
     Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif;
-  --nyte-sidebar-width: 264px;
   --nyte-sidebar-row-padding-inline: 8px;
   --nyte-sidebar-row-gap: 8px;
   --nyte-titlebar-height: 44px;

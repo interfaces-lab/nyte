@@ -27,12 +27,16 @@ function snapshot() {
 function Demo() {
   const revision = useSyncExternalStore(subscribe, snapshot);
   const root = document.documentElement;
+  const revealValue = Number(
+    root.dataset.labSidebarReveal ?? (root.dataset.labSidebar === "false" ? "0" : "1"),
+  );
+  const reveal = Number.isFinite(revealValue) ? Math.max(0, Math.min(1, revealValue)) : 1;
   return (
     <Tooltip.Provider delay={400}>
       <DesktopDemo
-        sidebarVisible={root.dataset.labSidebar !== "false"}
+        sidebarVisible={reveal > 0}
         onSidebar={() => {
-          root.dataset.labSidebar = root.dataset.labSidebar === "false" ? "true" : "false";
+          root.dataset.labSidebar = reveal > 0 ? "false" : "true";
         }}
         surface={auditSurface(root.dataset.labSurface)}
         onSurface={(surface) => {

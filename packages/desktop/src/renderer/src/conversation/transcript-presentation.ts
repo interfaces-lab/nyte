@@ -12,9 +12,9 @@ type TranscriptDisplayPart =
   | { readonly kind: "response"; readonly parts: readonly AssistantTurnPart[] };
 
 function isWorkPart(part: TurnPart): part is WorkTurnPart {
-  // A delegation owns a child session and outlives the call, so it is not a
-  // step inside someone else's episode.
-  if (part.kind === "tool") return part.class.kind !== "delegate";
+  // A create owns a child session and outlives the call, so it is not a step
+  // inside someone else's episode; the bookkeeping on that child is.
+  if (part.kind === "tool") return part.class.kind !== "delegate" || part.class.role !== "create";
   return part.kind === "thinking";
 }
 
@@ -64,7 +64,7 @@ export function liveWaits(
   let until: number | undefined;
   for (const part of parts) {
     if (part.kind !== "tool" || part.class.kind !== "delegate") continue;
-    if (part.class.role === "create" && part.class.target.kind === "one") {
+    if (part.class.role === "create") {
       created.add(part.class.target.session);
       continue;
     }
@@ -91,9 +91,9 @@ export function toolPhase(part: ToolTurnPart, running: boolean): ToolPhase {
 }
 
 /**
- * Reasoning and tool calls form one work episode. A subagent call stands on its
- * own row instead, splitting the episode around it: it is a delegation with its
- * own session and status, not a step inside someone else's work.
+ * Reasoning and tool calls form one work episode. A subagent's create stands
+ * on its own row instead, splitting the episode around it: it is a delegation
+ * with its own session and status, not a step inside someone else's work.
  *
  * Assistant text is never part of an episode. It is the only content the reader
  * is actually reading, and a turn streams, so any rule that placed it by length,

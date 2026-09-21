@@ -333,9 +333,10 @@ function awaitResult(statuses: readonly AgentStatus[], end: WaitEnd): WaitOutcom
 
 /** Installed only in root sessions. */
 export function subagentsPlugin(host: SubagentHost) {
-  const presentChild = (_input: unknown, context: ToolPresentContext): ToolClass => ({
+  const presentChild = (title: string, context: ToolPresentContext): ToolClass => ({
     kind: "delegate",
     role: "create",
+    title,
     target: {
       kind: "one",
       session: host.childOf(context.head, context.runId, context.callId),
@@ -385,7 +386,7 @@ Returns the report when the agent finishes in time; otherwise returns the agent'
 If the user sends something while you wait, this returns early so you can answer them. Never poll, sleep, or relaunch a task to check progress.`,
     parameters: taskParameters,
     replay: "never",
-    present: presentChild,
+    present: (input, context) => presentChild(taskTitle(input), context),
     prepareArguments(value) {
       if (!Value.Check(taskParameters, value)) {
         throw new Error(
@@ -432,7 +433,7 @@ If the user sends something while you wait, this returns early so you can answer
     description: `Creates a persistent agent in a fresh session and returns its id at once, without sending it anything. Defaults to ${DEFAULT_TASK_MODEL} with ${DEFAULT_TASK_THINKING_LEVEL} thinking. Use send to give it work, await or read to follow it, and stop when you are done with it; it persists until stop.`,
     parameters: createParameters,
     replay: "never",
-    present: presentChild,
+    present: (input, context) => presentChild(input.title, context),
     prepareArguments(value) {
       if (!Value.Check(createParameters, value)) {
         throw new Error(

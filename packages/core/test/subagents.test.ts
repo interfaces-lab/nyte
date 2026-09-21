@@ -341,6 +341,7 @@ for (const selected of [opus, astra]) {
       assert.deepEqual(tool.class, {
         kind: "delegate",
         role: "create",
+        title: child.name,
         target: { kind: "one", session: child.sessionId },
       });
     } finally {

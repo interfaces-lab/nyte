@@ -104,7 +104,7 @@ describe("transcript presentation", () => {
     ]);
   });
 
-  test("a delegation splits the episode around it", () => {
+  test("a create splits the episode; the later calls on the child are work", () => {
     const spawn: TurnPart = {
       kind: "tool",
       callId: "task",
@@ -112,6 +112,7 @@ describe("transcript presentation", () => {
       class: {
         kind: "delegate",
         role: "create",
+        title: "Child",
         target: { kind: "one", session: sessionId("child") },
       },
     };
@@ -128,8 +129,7 @@ describe("transcript presentation", () => {
     assert.deepEqual(displayTranscriptParts([read("a"), spawn, read("b"), wait]), [
       { kind: "work", parts: [read("a")] },
       { kind: "part", part: spawn },
-      { kind: "work", parts: [read("b")] },
-      { kind: "part", part: wait },
+      { kind: "work", parts: [read("b"), wait] },
     ]);
   });
 

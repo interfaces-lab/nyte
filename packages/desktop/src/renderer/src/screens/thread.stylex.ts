@@ -37,7 +37,12 @@ export const threadStyles = create({
   }),
   paneTrailing: { flex: 1 },
   screen: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 },
-  embeddedScreen: { width: "100%", minWidth: 0, overflow: "hidden" },
+  embeddedScreen: {
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    backgroundColor: "transparent",
+  },
   header: {
     display: "flex",
     alignItems: "center",

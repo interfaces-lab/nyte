@@ -11,7 +11,8 @@ export const gridOverlay = create({
     inset: 0,
     overflow: "hidden",
     pointerEvents: "none",
-    color: "rgb(64 155 255 / var(--lab-guide-opacity, 0.45))",
+    color:
+      "color-mix(in srgb, var(--lab-guide-color, #409bff) calc(var(--lab-guide-opacity, 0.45) * 100%), transparent)",
   },
   base: { zIndex: 50 },
   hairline: (width: number) => ({ "--lab-guide-width": `${width}px` }),

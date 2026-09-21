@@ -412,6 +412,7 @@ test("create makes a persistent child session the parent names; it is not a job"
     expect(part.class).toEqual({
       kind: "delegate",
       role: "create",
+      title: "helper",
       target: { kind: "one", session: child.sessionId },
     });
     expect(said).toContain(`Created agent helper as ${child.sessionId}`);
@@ -965,6 +966,7 @@ test("a task whose child outlasts waitMs continues when its report arrives", asy
     expect(part.class).toEqual({
       kind: "delegate",
       role: "create",
+      title: "Investigate the build",
       target: { kind: "one", session: child.sessionId },
     });
     expect(said).toContain(`Agent Investigate the build (${child.sessionId}) is respond`);

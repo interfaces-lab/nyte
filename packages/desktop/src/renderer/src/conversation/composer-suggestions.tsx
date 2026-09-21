@@ -402,9 +402,6 @@ export function useComposerSuggestions({
       if (option === null) return;
       revealSuggestion(listRef.current, option);
       previewHandle.open(optionId);
-      // The editor owns the combobox. PreviewCard associates its popup with
-      // a result trigger, but that result must never become the typing target.
-      editorRef.current?.focus({ preventScroll: true });
     });
   };
   const show = (next: SuggestionMenuState | undefined): void => {
@@ -457,7 +454,6 @@ export function useComposerSuggestions({
     const start = current.selectionStart;
     const leadingSpace = start > 0 && !/\s/.test(current.text[start - 1] ?? "") ? " " : "";
     editor.replaceText(start, current.selectionEnd, `${leadingSpace}${trigger}`);
-    requestAnimationFrame(() => editorRef.current?.focus());
   };
 
   const onKeyDown = (event: KeyboardEvent): boolean => {

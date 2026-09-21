@@ -1,8 +1,12 @@
 import { create, props } from "@stylexjs/stylex";
+import { useDialKitController } from "dialkit";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Page, Strip } from "./shell/chrome";
 import type { Appearance, BackdropKind, TokenSet } from "./shell/chrome";
-import { SidebarTokens } from "./shell/sidebar-tokens";
+import { TokenDials } from "./shell/token-dials";
+import { readTokenBaselines } from "./shell/token-catalog";
+import type { TokenBaselines } from "./shell/token-catalog";
+import { previewConfig } from "./shell/preview-controls";
 import { auditSurface } from "./shell/audit-state";
 import type { AuditSurface } from "./shell/audit-state";
 
@@ -14,50 +18,72 @@ export function App() {
   const [appearance, setAppearance] = useState<Appearance>("dark");
   const [tokens, setTokens] = useState<TokenSet>("nyte");
   const [backdrop, setBackdrop] = useState<BackdropKind>("flat");
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [columns, setColumns] = useState(true);
-  const [rows, setRows] = useState(true);
   const [surface, setSurface] = useState<AuditSurface>("none");
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [preview, setPreview] = useState<Document | null>(null);
-  const [sets, setSets] = useState<Record<TokenSet, Record<string, string>>>({
-    nyte: {},
-    calendar: {},
+  const [baselines, setBaselines] = useState<TokenBaselines | null>(null);
+  const controls = useDialKitController("Preview", previewConfig, {
+    id: "nyte-lab-preview-v1",
+    persist: true,
   });
-  const applied = useRef<string[]>([]);
+  const { sidebar, guides } = controls.values;
+  const setPreviewValues = controls.setValues;
+  const requestedReveal = sidebar.scrub.enabled
+    ? sidebar.scrub.position / 100
+    : sidebar.expanded
+      ? 1
+      : 0;
+  const reveal = Number.isFinite(requestedReveal) ? Math.max(0, Math.min(1, requestedReveal)) : 1;
   const iframe = useRef<HTMLIFrameElement>(null);
-  const overrides = sets[tokens];
-  const revision = JSON.stringify({ appearance, tokens, overrides, sidebarVisible });
 
   useLayoutEffect(() => {
     const root = iframe.current?.contentDocument?.documentElement;
     if (root == null) return;
-    for (const name of applied.current) if (!(name in overrides)) root.style.removeProperty(name);
-    for (const [name, value] of Object.entries(overrides)) root.style.setProperty(name, value);
-    applied.current = Object.keys(overrides);
+    root.style.removeProperty("--nyte-sidebar-width");
+    root.style.setProperty("--lab-sidebar-reveal", String(reveal));
+    if (!sidebar.animate || sidebar.scrub.enabled)
+      root.style.setProperty("--lab-sidebar-duration", "0ms");
+    else if (sidebar.duration.override)
+      root.style.setProperty("--lab-sidebar-duration", `${sidebar.duration.value}ms`);
+    else root.style.removeProperty("--lab-sidebar-duration");
+    if (sidebar.easing.override && CSS.supports("transition-timing-function", sidebar.easing.value))
+      root.style.setProperty("--lab-sidebar-easing", sidebar.easing.value);
+    else root.style.removeProperty("--lab-sidebar-easing");
+    if (guides.opacity.override)
+      root.style.setProperty("--lab-guide-opacity", String(guides.opacity.value));
+    else root.style.removeProperty("--lab-guide-opacity");
+    if (guides.color.override && CSS.supports("color", guides.color.value))
+      root.style.setProperty("--lab-guide-color", guides.color.value);
+    else root.style.removeProperty("--lab-guide-color");
     root.dataset.theme = appearance;
     root.dataset.appearance = appearance;
     root.dataset.labTokens = tokens;
-    root.dataset.labSidebar = String(sidebarVisible);
-    root.dataset.labColumns = String(columns);
-    root.dataset.labRows = String(rows);
+    if (root.dataset.labSidebar !== String(sidebar.expanded))
+      root.dataset.labSidebar = String(sidebar.expanded);
+    root.dataset.labSidebarReveal = String(reveal);
+    root.dataset.labColumns = String(guides.columns);
+    root.dataset.labRows = String(guides.rows);
     if (root.dataset.labSurface !== surface) root.dataset.labSurface = surface;
-  }, [preview, appearance, tokens, overrides, sidebarVisible, columns, rows, surface]);
+  }, [preview, appearance, tokens, sidebar, guides, reveal, surface]);
 
   useLayoutEffect(() => {
     if (preview === null) return;
     const root = preview.documentElement;
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
       setSurface(auditSurface(root.dataset.labSurface));
       setTokens(root.dataset.labTokens === "calendar" ? "calendar" : "nyte");
-      setSidebarVisible(root.dataset.labSidebar !== "false");
+      if (records.some((record) => record.attributeName === "data-lab-sidebar")) {
+        setPreviewValues({
+          sidebar: { expanded: root.dataset.labSidebar !== "false", scrub: { enabled: false } },
+        });
+      }
     });
     observer.observe(root, {
       attributes: true,
       attributeFilter: ["data-lab-surface", "data-lab-sidebar", "data-lab-tokens"],
     });
     return () => observer.disconnect();
-  }, [preview]);
+  }, [preview, setPreviewValues]);
 
   useEffect(() => {
     const switchSet = (event: KeyboardEvent) => {
@@ -100,8 +126,11 @@ export function App() {
           src="./demo.html"
           {...props(styles.frame)}
           onLoad={(event) => {
-            applied.current = [];
-            setPreview(event.currentTarget.contentDocument);
+            const document = event.currentTarget.contentDocument;
+            if (document !== null) {
+              setBaselines(readTokenBaselines(document, appearance));
+              setPreview(document);
+            }
           }}
         />
       </Page>
@@ -109,30 +138,34 @@ export function App() {
         appearance={appearance}
         tokens={tokens}
         backdrop={backdrop}
-        sidebarVisible={sidebarVisible}
-        columns={columns}
-        rows={rows}
+        sidebarVisible={reveal > 0}
+        columns={guides.columns}
+        rows={guides.rows}
         tokensOpen={panelOpen}
         surface={surface}
         onSurface={showSurface}
-        onAppearance={setAppearance}
         onTokenSet={setTokens}
         onBackdrop={setBackdrop}
-        onSidebar={() => setSidebarVisible(!sidebarVisible)}
-        onColumns={() => setColumns(!columns)}
-        onRows={() => setRows(!rows)}
+        onAppearance={(value) => {
+          if (preview !== null) setBaselines(readTokenBaselines(preview, value));
+          setAppearance(value);
+        }}
+        onSidebar={() =>
+          setPreviewValues({ sidebar: { expanded: reveal === 0, scrub: { enabled: false } } })
+        }
+        onColumns={() => setPreviewValues({ guides: { columns: !guides.columns } })}
+        onRows={() => setPreviewValues({ guides: { rows: !guides.rows } })}
         onTokens={() => setPanelOpen(!panelOpen)}
       />
-      {panelOpen && (
-        <SidebarTokens
-          revision={revision}
+      {preview !== null && baselines !== null && (
+        <TokenDials
+          key={appearance}
           preview={preview}
-          tokenSet={tokens}
-          onClose={() => setPanelOpen(false)}
-          onReset={() => setSets((current) => ({ ...current, [tokens]: {} }))}
-          onChange={(name, value) =>
-            setSets((current) => ({ ...current, [tokens]: { ...current[tokens], [name]: value } }))
-          }
+          baselines={baselines}
+          active={tokens}
+          onActive={setTokens}
+          appearance={appearance}
+          open={panelOpen}
         />
       )}
     </>

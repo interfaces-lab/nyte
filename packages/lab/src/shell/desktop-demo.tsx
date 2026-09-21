@@ -48,6 +48,58 @@ const fixture = create({
   transcript: { paddingBlockStart: 16, paddingBlockEnd: 8 },
   flowRow: { position: "relative" },
   hidden: { display: "none" },
+  sidebarSeat: {
+    display: "flex",
+    flexShrink: 0,
+    minHeight: 0,
+    width: "calc(var(--nyte-sidebar-width) * var(--lab-sidebar-reveal, 1))",
+    overflow: "hidden",
+    transitionProperty: "width",
+    transitionDuration: {
+      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+  },
+  sidebarSlide: {
+    minWidth: "var(--nyte-sidebar-width)",
+    transform: "translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * var(--nyte-sidebar-width)))",
+    transitionProperty: "transform",
+    transitionDuration: {
+      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+  },
+  titleSlide: {
+    insetInlineStart:
+      "calc(112px + (var(--nyte-sidebar-width) - 100px) * var(--lab-sidebar-reveal, 1))",
+    transitionProperty: "inset-inline-start",
+    transitionDuration: {
+      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+  },
+  fillSlide: {
+    insetInlineStart: "calc((var(--nyte-sidebar-width) - 1px) * var(--lab-sidebar-reveal, 1))",
+    transitionProperty: "inset-inline-start",
+    transitionDuration: {
+      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+  },
+  historySlide: {
+    opacity: "var(--lab-sidebar-reveal, 1)",
+    transform: "translateX(calc((var(--lab-sidebar-reveal, 1) - 1) * var(--nyte-sidebar-width)))",
+    transitionProperty: "transform, opacity",
+    transitionDuration: {
+      default: "var(--lab-sidebar-duration, var(--nyte-duration-normal))",
+      "@media (prefers-reduced-motion: reduce)": "0s",
+    },
+    transitionTimingFunction: "var(--lab-sidebar-easing, var(--nyte-easing-out-quint))",
+  },
   sidebar: {
     position: "relative",
     "::after": {
@@ -126,6 +178,7 @@ export function DesktopDemo({
           {...props(
             titlebarStyles.contentFill,
             !sidebarVisible && titlebarStyles.contentFillSidebarHidden,
+            fixture.fillSlide,
           )}
         />
         <span aria-hidden="true" {...props(fixture.lights)}>
@@ -140,16 +193,18 @@ export function DesktopDemo({
             icon={<PanelToggleIcon side="left" visible={sidebarVisible} />}
           />
         </span>
-        {sidebarVisible && (
-          <span {...props(titlebarStyles.navigationTrack)}>
-            <IconButton icon="arrow-left" label="Back" />
-            <IconButton icon="arrow-right" label="Forward" disabled />
-          </span>
-        )}
+        <span
+          inert={!sidebarVisible}
+          {...props(titlebarStyles.navigationTrack, fixture.historySlide)}
+        >
+          <IconButton icon="arrow-left" label="Back" />
+          <IconButton icon="arrow-right" label="Forward" disabled />
+        </span>
         <span
           {...props(
             titlebarStyles.titleSlot,
             !sidebarVisible && titlebarStyles.titleSlotSidebarHiddenMac,
+            fixture.titleSlide,
           )}
         >
           <span {...props(titlebarStyles.sessionTitleGroup)}>
@@ -178,181 +233,190 @@ export function DesktopDemo({
         </span>
       </header>
       <div {...props(threadStyles.body)}>
-        <aside
-          aria-label="Sessions and workspaces"
-          data-lab-sidebar=""
-          hidden={!sidebarVisible}
-          {...props(sidebarStyles.rail, fixture.sidebar, !sidebarVisible && fixture.hidden)}
+        <div
+          data-sidebar-seat=""
+          aria-hidden={!sidebarVisible}
+          inert={!sidebarVisible}
+          {...props(fixture.sidebarSeat)}
         >
-          <div {...props(sidebarStyles.primaryActions)}>
-            <button
-              type="button"
-              {...props(sidebarStyles.navRow)}
-              onClick={() => {
-                setSessions((current) => [
-                  "New chat",
-                  ...current.filter((title) => title !== "New chat"),
-                ]);
-                setSelected("New chat");
-              }}
-            >
-              <span {...props(sidebarStyles.navIcon)}>
-                <Icon name="new-chat" size={14} />
-              </span>
-              <span {...props(sidebarStyles.navLabel)}>New Chat</span>
-              <span {...props(sidebarStyles.shortcutSlot, sidebarStyles.shortcutPersistent)}>
-                <Kbd keys={["⌘", "N"]} />
-              </span>
-            </button>
-            <button type="button" {...props(sidebarStyles.navRow)}>
-              <span {...props(sidebarStyles.navIcon)}>
-                <Icon name="search" size={14} />
-              </span>
-              <span {...props(sidebarStyles.navLabel)}>Search</span>
-            </button>
-            <button type="button" {...props(sidebarStyles.navRow)}>
-              <span {...props(sidebarStyles.navIcon)}>
-                <Icon name="customize" size={14} />
-              </span>
-              <span {...props(sidebarStyles.navLabel)}>Customize</span>
-            </button>
-          </div>
-          <div {...props(sidebarStyles.scroll)} data-grid-scroll="">
-            <section {...props(sidebarStyles.section)}>
-              <div {...props(sidebarStyles.sectionHeader)}>
-                <span {...props(sidebarStyles.sectionToggle)}>Workspaces</span>
-                <button
-                  type="button"
-                  aria-label="Filter workspaces"
-                  {...props(sidebarStyles.action)}
-                >
-                  <Icon name="filters" size={14} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Add workspace"
-                  {...props(sidebarStyles.workspaceCreateAction)}
-                >
-                  <Icon name="folder-add" size={14} />
-                </button>
-              </div>
-              <Row xstyle={[sidebarStyles.rowSurface, sidebarStyles.workspaceRow]}>
-                <Row.Leading xstyle={sidebarStyles.rowIcon}>
-                  <Icon name="folder" size={14} />
-                </Row.Leading>
-                <Row.Label>nyte</Row.Label>
-              </Row>
-              <SessionContext
-                surface={surface}
-                onSurface={onSurface}
-                pinned={pinned.has(selected)}
-                onPin={() => togglePin(selected)}
-                onArchive={() => archive(selected)}
-                trigger={
-                  <div {...props(sidebarStyles.sessionList)}>
-                    {sessions.map((title, index) => (
-                      <Row
-                        key={title}
-                        data-grid-row="session"
-                        data-demo-context-target={title === selected ? "" : undefined}
-                        onContextMenu={() => setSelected(title)}
-                        revealActions
-                        xstyle={[
-                          sidebarStyles.rowSurface,
-                          sidebarStyles.sessionRow,
-                          title === selected && sidebarStyles.rowSelected,
-                        ]}
-                      >
-                        {title === selected && (
-                          <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />
-                        )}
-                        <Row.Primary
-                          render={<button type="button" onClick={() => setSelected(title)} />}
-                        >
-                          <Row.Leading
-                            data-grid-column="sidebar.icons"
-                            xstyle={[sidebarStyles.rowIcon, index < 2 && fixture.activity]}
-                          >
-                            {index < 2 ? (
-                              <Spinner />
-                            ) : pinned.has(title) ? (
-                              <Icon name="pin" size={14} />
-                            ) : null}
-                          </Row.Leading>
-                          <Row.Label
-                            data-grid-text=""
-                            data-grid-column="sidebar.labels"
-                            xstyle={sidebarStyles.sessionLabel}
-                          >
-                            {title}
-                          </Row.Label>
-                          <Row.Meta data-grid-column="sidebar.time" xstyle={sidebarStyles.rowMeta}>
-                            {index < 3 ? "now" : index === 3 ? "34m" : `${index}h`}
-                          </Row.Meta>
-                        </Row.Primary>
-                        <Row.Actions
-                          placement="overlay"
-                          xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
-                        >
-                          <button
-                            type="button"
-                            aria-label={`${pinned.has(title) ? "Unpin" : "Pin"} ${title}`}
-                            onClick={() => togglePin(title)}
-                            {...props(
-                              sidebarStyles.action,
-                              sidebarStyles.sessionAction,
-                              focus.ringInset,
-                            )}
-                          >
-                            <Icon name="pin" size={12} />
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`Archive ${title}`}
-                            onClick={() => archive(title)}
-                            {...props(
-                              sidebarStyles.action,
-                              sidebarStyles.sessionAction,
-                              focus.ringInset,
-                            )}
-                          >
-                            <span {...props(sidebarStyles.actionGlyphArchive)}>
-                              <Icon name="archive" size={12} />
-                            </span>
-                          </button>
-                        </Row.Actions>
-                      </Row>
-                    ))}
-                  </div>
-                }
-              />
-            </section>
-          </div>
-          <div {...props(sidebarStyles.footer)}>
-            <div {...props(sidebarStyles.footerRow)}>
-              <button type="button" {...props(sidebarStyles.navRow, sidebarStyles.accountButton)}>
+          <aside
+            aria-label="Sessions and workspaces"
+            data-lab-sidebar=""
+            {...props(sidebarStyles.rail, fixture.sidebar, fixture.sidebarSlide)}
+          >
+            <div {...props(sidebarStyles.primaryActions)}>
+              <button
+                type="button"
+                {...props(sidebarStyles.navRow)}
+                onClick={() => {
+                  setSessions((current) => [
+                    "New chat",
+                    ...current.filter((title) => title !== "New chat"),
+                  ]);
+                  setSelected("New chat");
+                }}
+              >
                 <span {...props(sidebarStyles.navIcon)}>
-                  <Icon name="user" size={14} />
+                  <Icon name="new-chat" size={14} />
                 </span>
-                <span {...props(sidebarStyles.navLabel)}>Itsnotaka</span>
+                <span {...props(sidebarStyles.navLabel)}>New Chat</span>
+                <span {...props(sidebarStyles.shortcutSlot, sidebarStyles.shortcutPersistent)}>
+                  <Kbd keys={["⌘", "N"]} />
+                </span>
               </button>
-              <Hint
-                content="Settings"
-                side="top"
-                trigger={
+              <button type="button" {...props(sidebarStyles.navRow)}>
+                <span {...props(sidebarStyles.navIcon)}>
+                  <Icon name="search" size={14} />
+                </span>
+                <span {...props(sidebarStyles.navLabel)}>Search</span>
+              </button>
+              <button type="button" {...props(sidebarStyles.navRow)}>
+                <span {...props(sidebarStyles.navIcon)}>
+                  <Icon name="customize" size={14} />
+                </span>
+                <span {...props(sidebarStyles.navLabel)}>Customize</span>
+              </button>
+            </div>
+            <div {...props(sidebarStyles.scroll)} data-grid-scroll="">
+              <section {...props(sidebarStyles.section)}>
+                <div {...props(sidebarStyles.sectionHeader)}>
+                  <span {...props(sidebarStyles.sectionToggle)}>Workspaces</span>
                   <button
                     type="button"
-                    aria-label="Settings"
-                    {...props(sidebarStyles.footerSettings)}
-                    onClick={() => onSurface("menu")}
+                    aria-label="Filter workspaces"
+                    {...props(sidebarStyles.action)}
                   >
-                    <Icon name="settings" size={14} />
+                    <Icon name="filters" size={14} />
                   </button>
-                }
-              />
+                  <button
+                    type="button"
+                    aria-label="Add workspace"
+                    {...props(sidebarStyles.workspaceCreateAction)}
+                  >
+                    <Icon name="folder-add" size={14} />
+                  </button>
+                </div>
+                <Row xstyle={[sidebarStyles.rowSurface, sidebarStyles.workspaceRow]}>
+                  <Row.Leading xstyle={sidebarStyles.rowIcon}>
+                    <Icon name="folder" size={14} />
+                  </Row.Leading>
+                  <Row.Label>nyte</Row.Label>
+                </Row>
+                <SessionContext
+                  surface={surface}
+                  onSurface={onSurface}
+                  pinned={pinned.has(selected)}
+                  onPin={() => togglePin(selected)}
+                  onArchive={() => archive(selected)}
+                  trigger={
+                    <div {...props(sidebarStyles.sessionList)}>
+                      {sessions.map((title, index) => (
+                        <Row
+                          key={title}
+                          data-grid-row="session"
+                          data-demo-context-target={title === selected ? "" : undefined}
+                          onContextMenu={() => setSelected(title)}
+                          revealActions
+                          xstyle={[
+                            sidebarStyles.rowSurface,
+                            sidebarStyles.sessionRow,
+                            title === selected && sidebarStyles.rowSelected,
+                          ]}
+                        >
+                          {title === selected && (
+                            <Row.Backdrop xstyle={sidebarStyles.sessionSelection} />
+                          )}
+                          <Row.Primary
+                            render={<button type="button" onClick={() => setSelected(title)} />}
+                          >
+                            <Row.Leading
+                              data-grid-column="sidebar.icons"
+                              xstyle={[sidebarStyles.rowIcon, index < 2 && fixture.activity]}
+                            >
+                              {index < 2 ? (
+                                <Spinner />
+                              ) : pinned.has(title) ? (
+                                <Icon name="pin" size={14} />
+                              ) : null}
+                            </Row.Leading>
+                            <Row.Label
+                              data-grid-text=""
+                              data-grid-column="sidebar.labels"
+                              xstyle={sidebarStyles.sessionLabel}
+                            >
+                              {title}
+                            </Row.Label>
+                            <Row.Meta
+                              data-grid-column="sidebar.time"
+                              xstyle={sidebarStyles.rowMeta}
+                            >
+                              {index < 3 ? "now" : index === 3 ? "34m" : `${index}h`}
+                            </Row.Meta>
+                          </Row.Primary>
+                          <Row.Actions
+                            placement="overlay"
+                            xstyle={[sidebarStyles.rowActions, sidebarStyles.rowActionsBesideMeta]}
+                          >
+                            <button
+                              type="button"
+                              aria-label={`${pinned.has(title) ? "Unpin" : "Pin"} ${title}`}
+                              onClick={() => togglePin(title)}
+                              {...props(
+                                sidebarStyles.action,
+                                sidebarStyles.sessionAction,
+                                focus.ringInset,
+                              )}
+                            >
+                              <Icon name="pin" size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Archive ${title}`}
+                              onClick={() => archive(title)}
+                              {...props(
+                                sidebarStyles.action,
+                                sidebarStyles.sessionAction,
+                                focus.ringInset,
+                              )}
+                            >
+                              <span {...props(sidebarStyles.actionGlyphArchive)}>
+                                <Icon name="archive" size={12} />
+                              </span>
+                            </button>
+                          </Row.Actions>
+                        </Row>
+                      ))}
+                    </div>
+                  }
+                />
+              </section>
             </div>
-          </div>
-        </aside>
+            <div {...props(sidebarStyles.footer)}>
+              <div {...props(sidebarStyles.footerRow)}>
+                <button type="button" {...props(sidebarStyles.navRow, sidebarStyles.accountButton)}>
+                  <span {...props(sidebarStyles.navIcon)}>
+                    <Icon name="user" size={14} />
+                  </span>
+                  <span {...props(sidebarStyles.navLabel)}>Itsnotaka</span>
+                </button>
+                <Hint
+                  content="Settings"
+                  side="top"
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label="Settings"
+                      {...props(sidebarStyles.footerSettings)}
+                      onClick={() => onSurface("menu")}
+                    >
+                      <Icon name="settings" size={14} />
+                    </button>
+                  }
+                />
+              </div>
+            </div>
+          </aside>
+        </div>
         <main {...props(threadStyles.conversation, fixture.main)}>
           <div data-grid-scroll="" {...props(threadStyles.scroll)}>
             <div {...props(threadStyles.transcript, fixture.transcript)}>

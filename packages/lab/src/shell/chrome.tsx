@@ -176,7 +176,7 @@ export function Strip(props: StripProps) {
         onClick={props.onTokens}
         {...stylex.props(chrome.segment, props.tokensOpen && chrome.segmentOn)}
       >
-        Token values
+        DialKit
       </button>
       <Segmented
         legend="Backdrop"

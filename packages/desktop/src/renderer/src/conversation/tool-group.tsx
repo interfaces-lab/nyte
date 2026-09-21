@@ -132,12 +132,14 @@ function WorkEntryView({
   cwd,
   active,
   density,
+  waits,
 }: {
   entry: WorkEntry;
   liveTools: ReadonlyMap<string, LiveToolProgress>;
   cwd: string | undefined;
   active: boolean;
   density: ToolCallDensity;
+  waits: LiveWaits | undefined;
 }): ReactElement {
   if (entry.kind === "live-thinking") {
     return (
@@ -164,6 +166,7 @@ function WorkEntryView({
           cwd={cwd}
           active={active}
           density={density}
+          waits={waits}
         />
       );
     default: {
@@ -479,6 +482,7 @@ export function WorkGroupView({
                 cwd={cwd}
                 active={active}
                 density={density}
+                waits={waits}
               />
             )}
           />

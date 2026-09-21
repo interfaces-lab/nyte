@@ -21,7 +21,7 @@ test("a verb names the class and its phase", () => {
   assert.equal(toolVerb({ kind: "custom", label: "Web search" }, "failed"), "Web search failed");
   assert.equal(
     toolVerb(
-      { kind: "delegate", role: "create", target: { kind: "one", session: child } },
+      { kind: "delegate", role: "create", title: "Child", target: { kind: "one", session: child } },
       "running",
     ),
     "Creating",

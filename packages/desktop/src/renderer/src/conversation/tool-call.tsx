@@ -149,9 +149,10 @@ export const ToolCallView = memo(function ToolCallView({
         : { kind: "output", text };
   // One card per child: its create. Every other call on it is a line.
   if (toolClass.kind === "delegate") {
-    return toolClass.role === "create" && toolClass.target.kind === "one" ? (
+    return toolClass.role === "create" ? (
       <SubagentCallView
         session={toolClass.target.session}
+        title={toolClass.title}
         phase={phase}
         density={density}
         awaited={waits?.awaited.has(toolClass.target.session) ?? false}
