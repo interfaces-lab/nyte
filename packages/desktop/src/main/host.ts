@@ -8,7 +8,7 @@
  * Electron specifics (windows, dialogs, shell) are injected, so this class
  * tests headless under Vitest.
  */
-import { realpath } from "node:fs/promises";
+import { access, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { MutableModels } from "@nyte-ai/ai";
@@ -1209,10 +1209,18 @@ export class DesktopHost {
   }
 
   private async readClosedDirectory(target: WorkspaceTarget): Promise<readonly SessionInfo[]> {
+    const path = await storePath(target);
+
+    try {
+      await access(path);
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return [];
+      throw cause;
+    }
     const models = await this.models();
     const { defaultModel } = await this.catalog();
     const store = new WorkerStore({
-      path: await storePath(target),
+      path,
       worker: this.dependencies.storeWorker,
     });
     let sdk: Nyte | undefined;

@@ -28,6 +28,7 @@ import type { SessionSelection } from "./session-configuration.ts";
 import { requestTrust } from "./chrome/open-workspace.tsx";
 import { nyte, sessionClient } from "./nyte.ts";
 import { outbox } from "./use-outbox.ts";
+import { watchSessionInfo } from "./session-info-watch.ts";
 
 export { livePartKey } from "./live-fold.ts";
 export type { LivePartRef, LiveRunState, LiveSnapshot, LiveToolProgress } from "./live-fold.ts";
@@ -327,19 +328,23 @@ export function useSessionLive(sessionId: SessionId): LiveSnapshot {
   return useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 }
 
-/**
- * Each listed child is followed through its own observer while its parent is
- * open, so its row in the parent's child list moves with its run instead of a
- * poll. A settled child is watched too: a later send lands on it, and the run
- * that answers would otherwise start unseen.
- */
 export function useChildrenLive(children: readonly SessionInfo[] | undefined): void {
   const listed = (children ?? []).map((child) => child.sessionId).join("\n");
   useEffect(() => {
     if (listed === "") return undefined;
-    const watches = listed.split("\n").map((id) => watchSessionLive(sessionId(id)));
+
+    const watches = listed.split("\n").map((id) =>
+      watchSessionInfo({
+        client: nyte,
+        sessionId: sessionId(id),
+        onUpdate: (session) => {
+          if (session !== undefined) cacheSessionInfo(session);
+          else void queryClient.invalidateQueries({ queryKey: ["sessions", "children"] });
+        },
+      }),
+    );
     return () => {
-      for (const watch of watches) watch.dispose();
+      for (const stop of watches) stop();
     };
   }, [listed]);
 }
@@ -437,7 +442,7 @@ export async function warmThread(sessionId: SessionId): Promise<void> {
     return;
   }
   await Promise.all([
-    queryClient.prefetchQuery({
+    queryClient.fetchQuery({
       queryKey: keys.snapshot(sessionId),
       queryFn: async (): Promise<SessionSnapshot> => {
         const snapshot = await sessionClient.sessions.snapshot({ sessionId });

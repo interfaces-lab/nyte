@@ -5,7 +5,6 @@ import { startRendererStartup } from "./startup.ts";
 test("the interface mounts once, after the caches, the initial route, and its screen are ready", async () => {
   const resources = Promise.withResolvers<void>();
   const route = Promise.withResolvers<void>();
-  const warm = Promise.withResolvers<void>();
   const ready = Promise.withResolvers<void>();
   const steps: string[] = [];
   let mounts = 0;
@@ -23,10 +22,6 @@ test("the interface mounts once, after the caches, the initial route, and its sc
       steps.push("route");
       await route.promise;
     },
-    warmInitialScreen: async () => {
-      steps.push("warm");
-      await warm.promise;
-    },
     showError: () => steps.push("error"),
     onReady: () => ready.resolve(),
   });
@@ -36,25 +31,9 @@ test("the interface mounts once, after the caches, the initial route, and its sc
   await Promise.resolve();
   assert.equal(mounts, 0);
   route.resolve();
-  await Promise.resolve();
-  assert.equal(mounts, 0);
-  warm.resolve();
   await ready.promise;
   assert.equal(mounts, 1);
-  assert.deepEqual(steps, ["resources", "route", "warm", "mount"]);
-});
-
-test("a screen warm that fails or stalls does not hold the interface", async () => {
-  const ready = Promise.withResolvers<void>();
-  startRendererStartup({
-    mountShell: () => undefined,
-    loadResources: async () => undefined,
-    loadRouter: async () => undefined,
-    warmInitialScreen: () => Promise.reject(new Error("chat unreadable")),
-    showError: () => assert.fail("a warm failure is not a startup failure"),
-    onReady: () => ready.resolve(),
-  });
-  await ready.promise;
+  assert.deepEqual(steps, ["resources", "route", "mount"]);
 });
 
 for (const failure of ["resources", "route"] as const) {

@@ -14,8 +14,7 @@ import { App } from "./app.tsx";
 import { startRendererStartup } from "./startup.ts";
 
 import { loadLocalResources } from "./queries.ts";
-import { currentRouteSession, router } from "./router.tsx";
-import { warmThread } from "./live.ts";
+import { router } from "./router.tsx";
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("Missing #root");
@@ -49,18 +48,13 @@ startRendererStartup({
       </StrictMode>,
     );
   },
-  loadResources: loadLocalResources,
-  loadRouter: () => router.load(),
-  // The last chat is the initial route; its snapshot is in the cache before the transcript mounts.
-  warmInitialScreen: () => {
-    const sessionId = currentRouteSession();
-    const thread = sessionId === undefined ? Promise.resolve() : warmThread(sessionId);
-    const fonts = Promise.all([
+  loadResources: () =>
+    Promise.all([
+      loadLocalResources(),
       document.fonts.load('13px "Inter Variable"'),
       document.fonts.load('12px "JetBrains Mono Variable"'),
-    ]);
-    return Promise.all([thread, fonts]).then(() => undefined);
-  },
+    ]).then(() => undefined),
+  loadRouter: () => router.load(),
   showError: (retry) => {
     startupShell?.setAttribute("data-state", "error");
     if (startupMessage !== null) startupMessage.textContent = "Couldn\u2019t open your workspace.";

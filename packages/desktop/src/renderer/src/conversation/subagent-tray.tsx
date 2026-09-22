@@ -408,9 +408,15 @@ export function SubagentTray({
                               <button
                                 type="button"
                                 aria-label={`Open ${agentTitle(agent, agent.sessionId)}`}
-                                onPointerEnter={() => void warmThread(agent.sessionId)}
-                                onFocus={() => void warmThread(agent.sessionId)}
-                                onPointerDown={() => void warmThread(agent.sessionId)}
+                                onPointerEnter={() =>
+                                  void warmThread(agent.sessionId).catch(() => undefined)
+                                }
+                                onFocus={() =>
+                                  void warmThread(agent.sessionId).catch(() => undefined)
+                                }
+                                onPointerDown={() =>
+                                  void warmThread(agent.sessionId).catch(() => undefined)
+                                }
                                 onClick={() => {
                                   setStopCandidates(undefined);
                                   onViewChange({ kind: "detail", sessionId: agent.sessionId });

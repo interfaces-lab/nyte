@@ -47,7 +47,7 @@ import type {
   WorkspaceFileDocument,
   WorkspaceSessionDirectory,
 } from "../../shared/ipc.ts";
-import { loadSessionDirectory, type SessionPage } from "./session-directory.ts";
+import type { SessionPage } from "./session-directory.ts";
 // The query layer reads sessions through the observer and the observer writes
 // this cache; neither module touches the other while it evaluates.
 import { readSessionSnapshot, sessionSelection } from "./live.ts";
@@ -70,6 +70,7 @@ export const queryClient = new QueryClient({
   },
 });
 
+queryClient.setQueryDefaults(["snapshot"], { structuralSharing: false });
 installSnapshotCacheBudget(queryClient);
 
 const sessionActionsByClient = new WeakMap<QueryClient, SessionActions>();
@@ -119,11 +120,6 @@ function freshestSessionInfo(polled: SessionInfo, pollStartedAt: number): Sessio
   );
 }
 
-const readSessionPreview = async (): Promise<SessionPage> => {
-  const startedAt = performance.now();
-  const page = await loadSessionDirectory((input) => nyte.sessions.list(input));
-  return { ...page, items: page.items.map((item) => freshestSessionInfo(item, startedAt)) };
-};
 const readSessionDirectory = async (): Promise<readonly WorkspaceSessionDirectory[]> => {
   const startedAt = performance.now();
   const directories = await nyte.host.sessionDirectory();
@@ -214,13 +210,14 @@ export function useWorkspaceSessionDirectory() {
 
 export function useSessionPreview(enabled = true) {
   const projection = useSessionProjection();
+  const host = useHostState();
   return useQuery({
-    queryKey: keys.sessionPreview,
-    queryFn: readSessionPreview,
-    select: (page) => ({ ...page, items: projection.list(page.items) }),
+    queryKey: keys.sessionDirectory,
+    queryFn: readSessionDirectory,
+    select: (directories) => ({
+      items: projection.list(localSessions(directories, host.data?.workspace?.path ?? null) ?? []),
+    }),
     enabled,
-    // No directory watch operation yet; a slow tick keeps liveness honest.
-    refetchInterval: enabled ? 5_000 : false,
   });
 }
 
