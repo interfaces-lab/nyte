@@ -13,7 +13,8 @@ import { CorruptObject, UnknownSession } from "./store.ts";
 import { SqliteStore } from "./sqlite.ts";
 import { EventBodySchema, LeaseSchema, ObjectSchema, RefUpdateSchema } from "./store-schemas.ts";
 import {
-  checkRequest,
+  checkRequests,
+  STORE_BATCH_SIZE,
   type StoreRequest,
   type StoreResponse,
   type WireError,
@@ -225,8 +226,20 @@ function wireError(cause: unknown): WireError {
   return { name: "Error", message: String(cause) };
 }
 
+let responses: StoreResponse[] = [];
+
 function send(response: StoreResponse): void {
-  port?.postMessage(response);
+  responses.push(response);
+
+  if (responses.length !== 1) return;
+  queueMicrotask(() => {
+    const batch = responses;
+    responses = [];
+
+    for (let index = 0; index < batch.length; index += STORE_BATCH_SIZE) {
+      port?.postMessage(batch.slice(index, index + STORE_BATCH_SIZE));
+    }
+  });
 }
 
 async function watch(request: Extract<StoreRequest, { kind: "watch" }>): Promise<void> {
@@ -271,38 +284,46 @@ async function watch(request: Extract<StoreRequest, { kind: "watch" }>): Promise
   }
 }
 
-port.on("message", (message: unknown) => {
-  if (!checkRequest.Check(message)) {
+port.on("message", (messages) => {
+  if (!checkRequests.Check(messages)) {
     throw new TypeError("store-worker received a malformed request");
   }
-  switch (message.kind) {
-    case "call":
-      void call(message).then(
-        (value) => send({ kind: "ok", id: message.id, value }),
-        (cause: unknown) => send({ kind: "error", id: message.id, error: wireError(cause) }),
-      );
-      return;
-    case "watch":
-      void watch(message);
-      return;
-    case "credit": {
-      const entry = watches.get(message.id);
-      if (entry === undefined) return;
-      entry.credit += message.credit;
-      entry.wake?.();
-      return;
-    }
-    case "unwatch": {
-      const entry = watches.get(message.id);
-      if (entry === undefined) return;
-      watches.delete(message.id);
-      entry.controller.abort();
-      entry.wake?.();
-      return;
-    }
-    default: {
-      const _exhaustive: never = message;
-      return _exhaustive;
+
+  for (const message of messages) {
+    switch (message.kind) {
+      case "call":
+        void call(message).then(
+          (value) => send({ kind: "ok", id: message.id, value }),
+          (cause: unknown) => send({ kind: "error", id: message.id, error: wireError(cause) }),
+        );
+        break;
+      case "watch":
+        void watch(message);
+        break;
+      case "credit": {
+        const entry = watches.get(message.id);
+
+        if (entry === undefined) break;
+        entry.credit += message.credit;
+        entry.wake?.();
+        break;
+      }
+
+      case "unwatch": {
+        const entry = watches.get(message.id);
+
+        if (entry === undefined) break;
+        watches.delete(message.id);
+        entry.controller.abort();
+        entry.wake?.();
+        break;
+      }
+
+      default: {
+        const _exhaustive: never = message;
+
+        return _exhaustive;
+      }
     }
   }
 });

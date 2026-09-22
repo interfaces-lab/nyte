@@ -5,10 +5,6 @@ import { keys } from "./query-keys.ts";
 const SNAPSHOT_CACHE_MAX_ENTRIES = 12;
 const SNAPSHOT_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
-function isSnapshotKey(queryKey: readonly unknown[]): boolean {
-  return queryKey.length === 2 && queryKey[0] === "snapshot" && typeof queryKey[1] === "string";
-}
-
 /**
  * Keeps unobserved transcripts within an entry and byte budget, oldest write
  * first. A transcript a pane still reads is never evicted.
@@ -24,24 +20,31 @@ export function installSnapshotCacheBudget(
     cancelEnforcement = undefined;
     const cached = client
       .getQueryCache()
-      .getAll()
-      .filter((query) => isSnapshotKey(query.queryKey) && query.getObserversCount() === 0)
-      .flatMap((query) => {
-        const snapshot = client.getQueryData<SessionSnapshot>(query.queryKey);
-        if (snapshot === undefined) return [];
-        const bytes = sizes.get(query.queryHash) ?? JSON.stringify(snapshot).length * 2;
-        sizes.set(query.queryHash, bytes);
-        return [{ query, bytes, updatedAt: query.state.dataUpdatedAt }];
+      .findAll({
+        queryKey: ["snapshot"],
+        predicate: (query) => query.queryKey.length === 2 && query.getObserversCount() === 0,
       })
-      .toSorted((left, right) => left.updatedAt - right.updatedAt);
+      .toSorted((left, right) => left.state.dataUpdatedAt - right.state.dataUpdatedAt);
 
-    let bytes = cached.reduce((total, entry) => total + entry.bytes, 0);
-    let entries = cached.length;
-    for (const entry of cached) {
-      if (entries <= policy.maxEntries && bytes <= policy.maxBytes) break;
-      client.getQueryCache().remove(entry.query);
-      entries -= 1;
-      bytes -= entry.bytes;
+    let bytes = 0;
+    let entries = 0;
+
+    for (const query of cached.toReversed()) {
+      const snapshot = client.getQueryData<SessionSnapshot>(query.queryKey);
+
+      if (snapshot === undefined) continue;
+
+      if (entries + 1 > policy.maxEntries || bytes > policy.maxBytes) {
+        client.getQueryCache().remove(query);
+        continue;
+      }
+
+      const size = sizes.get(query.queryHash) ?? JSON.stringify(snapshot).length * 2;
+      sizes.set(query.queryHash, size);
+      entries += 1;
+      bytes += size;
+
+      if (bytes > policy.maxBytes) client.getQueryCache().remove(query);
     }
   };
 
@@ -61,7 +64,8 @@ export function installSnapshotCacheBudget(
       sizes.delete(event.query.queryHash);
       return;
     }
-    if (!isSnapshotKey(event.query.queryKey)) return;
+
+    if (event.query.queryKey.length !== 2 || event.query.queryKey[0] !== "snapshot") return;
     const dataChanged =
       event.type === "added" ||
       (event.type === "updated" &&

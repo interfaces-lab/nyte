@@ -7,6 +7,8 @@ import { Type, type Static } from "typebox";
 import { Compile } from "typebox/compile";
 import { EventSchema } from "./store-schemas.ts";
 
+export const STORE_BATCH_SIZE = 64;
+
 const StoreMethodSchema = Type.Union([
   Type.Literal("store.create"),
   Type.Literal("store.open"),
@@ -76,8 +78,9 @@ const ResponseSchema = Type.Union([
 ]);
 export type StoreResponse = Static<typeof ResponseSchema>;
 
-export const checkRequest = Compile(RequestSchema);
-export const checkResponse = Compile(ResponseSchema);
+export const checkRequests = Compile(Type.Array(RequestSchema, { maxItems: STORE_BATCH_SIZE }));
+
+export const checkResponses = Compile(Type.Array(ResponseSchema, { maxItems: STORE_BATCH_SIZE }));
 
 /** A handle plus the id it opened, so the client can name the session without a round trip. */
 export const SessionHandleSchema = Type.Object({ handle: Type.Number(), id: Type.String() });

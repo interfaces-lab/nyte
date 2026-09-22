@@ -1,6 +1,6 @@
 /**
  * The `Store` contract served by a `SqliteStore` running in a worker thread.
- * Every call is one message and one reply; a watch is one subscription whose
+ * Concurrent calls travel in bounded batches; a watch is one subscription whose
  * events arrive as messages until it is aborted. The calling thread never
  * waits on SQLite, so a client can keep painting while the kernel writes.
  */
@@ -41,7 +41,8 @@ import {
   StoreSessionInfoSchema,
 } from "./store-schemas.ts";
 import {
-  checkResponse,
+  checkResponses,
+  STORE_BATCH_SIZE,
   SessionHandleSchema,
   type StoreMethod,
   type StoreRequest,
@@ -118,6 +119,7 @@ class Bridge {
   private readonly worker: Worker;
   private readonly pending = new Map<number, Pending>();
   private readonly watches = new Map<number, WatchSubscription>();
+  private outgoing: StoreRequest[] = [];
   private nextId = 1;
   private failure: Error | undefined;
   private closing = false;
@@ -134,7 +136,10 @@ class Bridge {
     });
     this.ready = new Promise<void>((resolve, reject) => {
       const onReady = (message: unknown): void => {
-        if (checkResponse.Check(message) && message.kind === "ready") {
+        if (
+          checkResponses.Check(message) &&
+          message.some((response) => response.kind === "ready")
+        ) {
           this.worker.off("message", onReady);
           this.worker.on("message", (next: unknown) => this.receive(next));
           resolve();
@@ -160,6 +165,7 @@ class Bridge {
   private fail(cause: Error): void {
     if (this.failure !== undefined) return;
     this.failure = cause;
+    this.outgoing.length = 0;
     for (const call of this.pending.values()) call.reject(cause);
     this.pending.clear();
     // A closed store ends its watches; only a crashed worker fails them.
@@ -168,49 +174,74 @@ class Bridge {
   }
 
   private receive(message: unknown): void {
-    if (!checkResponse.Check(message)) {
+    if (!checkResponses.Check(message)) {
       this.fail(new TypeError("Store worker sent a malformed response"));
       return;
     }
-    switch (message.kind) {
-      case "ready":
-        return;
-      case "ok": {
-        const call = this.pending.get(message.id);
-        this.pending.delete(message.id);
-        call?.resolve(message.value);
-        return;
-      }
-      case "error": {
-        const call = this.pending.get(message.id);
-        if (call !== undefined) {
-          this.pending.delete(message.id);
-          call.reject(toError(message.error));
-          return;
+
+    for (const response of message) {
+      switch (response.kind) {
+        case "ready":
+          break;
+        case "ok": {
+          const call = this.pending.get(response.id);
+          this.pending.delete(response.id);
+          call?.resolve(response.value);
+          break;
         }
-        const watch = this.watches.get(message.id);
-        this.watches.delete(message.id);
-        watch?.end(toError(message.error));
-        return;
-      }
-      case "events":
-        this.watches.get(message.id)?.push(message.events);
-        return;
-      case "end": {
-        const watch = this.watches.get(message.id);
-        this.watches.delete(message.id);
-        watch?.end();
-        return;
-      }
-      default: {
-        const _exhaustive: never = message;
-        return _exhaustive;
+
+        case "error": {
+          const call = this.pending.get(response.id);
+
+          if (call !== undefined) {
+            this.pending.delete(response.id);
+            call.reject(toError(response.error));
+            break;
+          }
+
+          const watch = this.watches.get(response.id);
+          this.watches.delete(response.id);
+          watch?.end(toError(response.error));
+          break;
+        }
+
+        case "events":
+          this.watches.get(response.id)?.push(response.events);
+          break;
+        case "end": {
+          const watch = this.watches.get(response.id);
+          this.watches.delete(response.id);
+          watch?.end();
+          break;
+        }
+
+        default: {
+          const _exhaustive: never = response;
+
+          return _exhaustive;
+        }
       }
     }
   }
 
   private send(request: StoreRequest): void {
-    this.worker.postMessage(request);
+    this.outgoing.push(request);
+
+    if (this.outgoing.length !== 1) return;
+    queueMicrotask(() => {
+      const requests = this.outgoing;
+      this.outgoing = [];
+
+      if (requests.length === 0) return;
+
+      try {
+        for (let index = 0; index < requests.length; index += STORE_BATCH_SIZE) {
+          this.worker.postMessage(requests.slice(index, index + STORE_BATCH_SIZE));
+        }
+      } catch (cause) {
+        this.fail(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+    });
   }
 
   async call<T>(

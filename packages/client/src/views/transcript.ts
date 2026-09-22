@@ -17,6 +17,7 @@ type CommitItem = { readonly oid: Oid; readonly commit: Commit };
 interface TranscriptBuilder {
   readonly items: Turn[];
   readonly sharedTail?: Turn;
+  readonly toolCalls?: Map<string, number>;
 }
 
 /** Stable semantic identity for one part, independent of any renderer. */
@@ -106,6 +107,8 @@ function landingTurn(builder: TranscriptBuilder, item: CommitItem): Conversation
     startedAt: item.commit.at,
     durationMs: 0,
   };
+
+  builder.toolCalls?.clear();
   builder.items.push(turn);
   return turn;
 }
@@ -173,6 +176,8 @@ function appendAssistant(
         const toolClass = item.commit.calls[part.id];
         if (toolClass === undefined)
           throw new Error(`Assistant commit has no class for ${part.id}`);
+
+        if (!builder.toolCalls?.has(part.id)) builder.toolCalls?.set(part.id, turn.parts.length);
         turn.parts.push({
           kind: "tool",
           callId: part.id,
@@ -202,14 +207,18 @@ function appendToolResult(
     isError: message.isError,
   };
   const settled = item.commit.call;
-  const index = turn.parts.findIndex(
-    (part) => part.kind === "tool" && part.callId === message.toolCallId,
-  );
+
+  const index =
+    builder.toolCalls === undefined
+      ? turn.parts.findIndex((part) => part.kind === "tool" && part.callId === message.toolCallId)
+      : (builder.toolCalls.get(message.toolCallId) ?? -1);
   const call = turn.parts[index];
   if (call?.kind === "tool") {
     turn.parts[index] = { ...call, class: settled, result, at: item.commit.at };
     return;
   }
+
+  builder.toolCalls?.set(message.toolCallId, turn.parts.length);
   turn.parts.push({
     kind: "tool",
     callId: message.toolCallId,
@@ -254,6 +263,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
           appendToolResult(builder, { ...item, commit: item.commit }, body.message);
           break;
         case "user":
+          builder.toolCalls?.clear();
           appendUser(items, item, body.message, "source" in body ? body.source : undefined);
           break;
         default: {
@@ -264,6 +274,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
       break;
     }
     case "completion":
+      builder.toolCalls?.clear();
       // A background result answers the model, not the user. It opens its own
       // turn, with nothing to draw, so the response it triggers does not graft
       // onto an earlier request's turn or stretch that turn's duration.
@@ -297,7 +308,7 @@ function appendTranscriptItem(builder: TranscriptBuilder, item: CommitItem): voi
 export function transcriptFromCommits(
   commits: readonly { readonly oid: Oid; readonly commit: Commit }[],
 ): Turn[] {
-  const builder: TranscriptBuilder = { items: [] };
+  const builder: TranscriptBuilder = { items: [], toolCalls: new Map() };
   let tip: Oid | null = null;
   for (const item of commits) {
     if (item.oid === tip) continue;
