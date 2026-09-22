@@ -363,6 +363,11 @@ function createPluginSources(watchSource: (file: string) => Promise<void>) {
     dispose: () => {
       sources.clear();
     },
+    retain: (entrypoints: ReadonlySet<string>) => {
+      for (const entrypoint of sources.keys()) {
+        if (!entrypoints.has(entrypoint)) sources.delete(entrypoint);
+      }
+    },
   };
 }
 
@@ -485,6 +490,14 @@ export class PluginProvider {
         ),
       );
       const entries = await discoverTuiPlugins({ kind: "project", workspace: this.workspace });
+      const entrypoints = new Set(entries);
+      this.sources.retain(entrypoints);
+
+      for (const retained of [this.failures, this.attempts]) {
+        for (const target of retained.keys()) {
+          if (!entrypoints.has(target)) retained.delete(target);
+        }
+      }
       const disabled = new Set(
         (await readManifest({ kind: "project", workspace: this.workspace })).plugins?.flatMap(
           (entry) =>
@@ -513,6 +526,7 @@ export class PluginProvider {
         if (desired.has(id)) continue;
         await this.deactivate(previous);
         this.registrations.delete(id);
+        this.memories.delete(id);
         this.attempts.delete(previous.target);
       }
       for (const [id, desiredPlugin] of desired) {
@@ -592,6 +606,8 @@ export class PluginProvider {
     this.registrations.clear();
     this.sources.dispose();
     this.memories.clear();
+    this.failures.clear();
+    this.attempts.clear();
     this.shell.renderer.off(CliRenderEvents.RENDER_ERROR, this.onRenderError);
     this.container.destroyRecursively();
   }

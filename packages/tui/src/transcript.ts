@@ -2531,7 +2531,6 @@ export class TranscriptView {
       transcript.renderer.root.off(LayoutEvents.LAYOUT_CHANGED, this.restoreAnchor);
       transcript.renderer.off(CliRenderEvents.FRAME, this.scheduleLayout);
       transcript.renderer.off(CliRenderEvents.SELECTION, this.scheduleLayout);
-      this.heights.clear();
       this.clear();
       this.navigationSpacer.destroy();
     });
@@ -2591,8 +2590,8 @@ export class TranscriptView {
   }
 
   /** The turns and shell jobs in start order; a job goes before the first item that started after it. */
-  private entries(source: readonly Turn[]): (Turn | ShellEntry)[] {
-    if (this.shellEntries.size === 0) return [...source];
+  private entries(source: readonly Turn[]): readonly (Turn | ShellEntry)[] {
+    if (this.shellEntries.size === 0) return source;
     const jobs = [...this.shellEntries.values()].toSorted(
       (left, right) =>
         left.execution.startedAt - right.execution.startedAt ||
@@ -2629,7 +2628,11 @@ export class TranscriptView {
     this.state = state;
     if (changed || reset) {
       this.pendingAnchor ??= this.anchor();
-      const old = new Map(this.items.map((item) => [item.key, item]));
+
+      const old =
+        this.shellEntries.size === 0
+          ? undefined
+          : new Map(this.items.map((item) => [item.key, item]));
       const next: TranscriptItem[] = [];
       for (const item of this.entries(source)) {
         const preceding = next.at(-1);
@@ -2640,7 +2643,8 @@ export class TranscriptView {
             : item;
         if (merged !== item) next.pop();
         const key = item.kind === "shell" ? `shell:${item.execution.id}` : itemKey(item);
-        const existing = old.get(key);
+        const candidate = old === undefined ? this.items[next.length] : old.get(key);
+        const existing = candidate?.key === key ? candidate : undefined;
         next.push(
           existing?.source === item
             ? existing
@@ -2774,6 +2778,7 @@ export class TranscriptView {
       mounted.root.destroyRecursively();
     }
     this.mounted.clear();
+    this.heights.clear();
     for (const spacer of this.spacers.splice(0)) {
       spacer.parent?.remove(spacer);
       spacer.destroy();
