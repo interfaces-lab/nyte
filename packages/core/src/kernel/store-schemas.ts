@@ -10,7 +10,8 @@ import { schemas } from "@nyte-ai/protocol";
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { hashCanonicalJson } from "./hash.ts";
-import type { EventBody, Obj } from "./model.ts";
+import type { EventBody, Obj, Oid } from "./model.ts";
+import { CorruptObject } from "./store.ts";
 
 const NullableString = Type.Union([Type.String(), Type.Null()]);
 
@@ -179,6 +180,16 @@ export const StoreSessionInfoSchema = Type.Object({ id: Type.String(), createdAt
 
 export const checkObject = Compile(ObjectSchema);
 export const checkEventBody = Compile(EventBodySchema);
+
+export function parseStoredObject(body: string, oid: Oid) {
+  const value: unknown = JSON.parse(body);
+
+  if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
+
+  if (hashCanonicalJson(body) !== oid) throw new CorruptObject(oid, "does not match its hash");
+
+  return value;
+}
 
 export function serializeObject(object: Obj) {
   const body = canonicalJson(object);

@@ -4,7 +4,7 @@
  * Nothing here instantiates plugins; `runs.revert` moves files, never a ref.
  */
 import type { Api, Model } from "@nyte-ai/schema";
-import { isTerminalPhase } from "@nyte-ai/protocol";
+import { CursorExpired, isTerminalPhase } from "@nyte-ai/protocol";
 import type {
   FileDiff,
   OperationInput,
@@ -105,17 +105,27 @@ export function createReads(input: {
     };
   };
 
-  /**
-   * The session's directory row. Building it reads the whole main branch,
-   * which a directory poll would otherwise repeat for every session on every
-   * tick; the row is kept until a write moves the session's event cursor or
-   * the host's activation answer is replaced.
-   */
   const listedInfo = async (pooled: Pooled, id: SessionId): Promise<SessionInfo> => {
     const seq = await pooled.session.events.last();
     const listed = pooled.listed;
-    if (listed !== undefined && listed.seq === seq && listed.activation === pooled.activationState)
-      return listed.info;
+
+    if (listed !== undefined && listed.activation === pooled.activationState) {
+      if (listed.seq === seq) return listed.info;
+
+      if (seq - listed.seq <= 256) {
+        try {
+          const events = await pooled.session.events.read({ afterSeq: listed.seq, limit: 256 });
+
+          if (events.every((event) => event.kind !== "ref")) {
+            pooled.listed = { ...listed, seq };
+
+            return listed.info;
+          }
+        } catch (cause) {
+          if (!(cause instanceof CursorExpired)) throw cause;
+        }
+      }
+    }
     const facts = await pool.readFacts(pooled.session);
     const info = sessionInfo(await pool.readSession(id, pooled, { facts }));
     pooled.listed = { seq, activation: pooled.activationState, info };

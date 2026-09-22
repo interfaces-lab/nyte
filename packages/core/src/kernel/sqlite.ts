@@ -2,17 +2,16 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { hashObject } from "./hash.ts";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { isRefName, newOwnerId } from "./names.ts";
 import { sql, sqlList, type SqliteConnection, type SqlRow } from "./sql.ts";
 import {
   checkEventBody,
-  checkObject,
+  parseStoredObject,
   serializeEventBody,
   serializeObject,
 } from "./store-schemas.ts";
-import { CorruptObject, UnknownSession } from "./store.ts";
+import { UnknownSession } from "./store.ts";
 import type {
   Commit,
   Event,
@@ -197,14 +196,6 @@ function numberColumn(row: SqlRow, name: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) {
     throw new TypeError(`SQLite column ${name} is not a safe integer`);
   }
-  return value;
-}
-
-/** Validate the stored shape before checking its content-addressed identity. */
-function parseObject(raw: string, oid: Oid): Obj {
-  const value: unknown = JSON.parse(raw);
-  if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
-  if (hashObject(value) !== oid) throw new CorruptObject(oid, "does not match its hash");
   return value;
 }
 
@@ -486,7 +477,8 @@ class SqliteObjects implements Objects {
     this.state.assertOpen();
     const row = sql`SELECT body FROM objects
       WHERE session_id = ${this.state.id} AND oid = ${oid}`.get(this.state.db);
-    return row === undefined ? undefined : parseObject(stringColumn(row, "body"), oid);
+
+    return row === undefined ? undefined : parseStoredObject(stringColumn(row, "body"), oid);
   }
 
   async chain(
@@ -510,7 +502,8 @@ class SqliteObjects implements Objects {
       SELECT oid, body FROM chain ORDER BY depth`.all(this.state.db);
     return rows.map((row) => {
       const oid = stringColumn(row, "oid");
-      return { oid, object: parseObject(stringColumn(row, "body"), oid) };
+
+      return { oid, object: parseStoredObject(stringColumn(row, "body"), oid) };
     });
   }
 
@@ -528,7 +521,7 @@ class SqliteObjects implements Objects {
       WHERE session_id = ${this.state.id} AND kind = 'commit'`.all(this.state.db);
     for (const row of rows) {
       const oid = stringColumn(row, "oid");
-      const object = parseObject(stringColumn(row, "body"), oid);
+      const object = parseStoredObject(stringColumn(row, "body"), oid);
       if (object.kind === "commit") commits.push({ oid, commit: object });
     }
     return commits.sort(

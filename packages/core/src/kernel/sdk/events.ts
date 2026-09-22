@@ -1,15 +1,4 @@
-import type {
-  Blob,
-  Change,
-  Commit,
-  Effect,
-  Event,
-  Obj,
-  Oid,
-  RefName,
-  Run,
-  Stack,
-} from "../model.ts";
+import type { Change, Commit, Effect, Event, Oid, RefName } from "../model.ts";
 import { compactionInfoFromObject } from "../compaction.ts";
 import { history } from "../graph.ts";
 import type { Objects } from "../store.ts";
@@ -39,26 +28,6 @@ type CommitItem = { readonly oid: Oid; readonly commit: Commit };
 type ChangeItem = { readonly oid: Oid; readonly change: Change };
 type EffectIntent = Extract<Effect, { readonly state: "intent" }>;
 
-function isChange(object: Obj | undefined): object is Change {
-  return object !== undefined && "type" in object && object.type === "change";
-}
-
-function isEffect(object: Obj | undefined): object is Effect {
-  return object?.kind === "effect";
-}
-
-function isRun(object: Obj | undefined): object is Run {
-  return object?.kind === "run";
-}
-
-function isStack(object: Obj | undefined): object is Stack {
-  return object?.kind === "stack";
-}
-
-function isBlob(object: Obj | undefined): object is Blob {
-  return object?.kind === "blob";
-}
-
 function suffix(name: RefName, prefix: string): string | undefined {
   if (!name.startsWith(prefix)) return undefined;
   const value = name.slice(prefix.length);
@@ -74,7 +43,10 @@ function hasEffectParts(name: RefName): boolean {
 
 async function readChange(read: ReadObject, oid: Oid): Promise<Change> {
   const object = await read.get(oid);
-  if (!isChange(object)) throw new Error(`Corrupt queue ref at ${oid}`);
+
+  if (object === undefined || !("type" in object) || object.type !== "change") {
+    throw new Error(`Corrupt queue ref at ${oid}`);
+  }
   return object;
 }
 
@@ -84,12 +56,25 @@ async function commitsBetween(
   from: Oid | null,
   to: Oid | null,
 ): Promise<readonly CommitItem[] | undefined> {
-  const newestFirst: CommitItem[] = [];
-  let oid = to;
-  for await (const entry of history(read, to, { limit: MAX_WALK })) {
-    if (oid === from) break;
+  if (to === from) return [];
+
+  if (to === null) return undefined;
+  const commit = await read.get(to);
+
+  if (commit?.kind !== "commit") {
+    throw new Error(`Corrupt commit graph at ${to}: missing or non-commit object`);
+  }
+
+  const newestFirst: CommitItem[] = [{ oid: to, commit }];
+  let oid = commit.parent;
+
+  if (oid === from) return newestFirst;
+
+  for await (const entry of history(read, oid, { limit: MAX_WALK - 1 })) {
     newestFirst.push(entry);
     oid = entry.commit.parent;
+
+    if (oid === from) break;
   }
   if (oid !== from) return undefined;
   newestFirst.reverse();
@@ -127,7 +112,8 @@ async function effectIntent(read: ReadObject, oid: Oid, effect: Effect): Promise
     case "signal":
     case "result": {
       const intent = await read.get(effect.intent);
-      if (!isEffect(intent) || intent.state !== "intent") {
+
+      if (intent?.kind !== "effect" || intent.state !== "intent") {
         throw new Error(`Corrupt effect intent at ${effect.intent} from ${oid}`);
       }
       return intent;
@@ -205,7 +191,8 @@ async function projectEffectRef(
 ): Promise<readonly SessionEvent[]> {
   if (event.to === null) return [];
   const effect = await read.get(event.to);
-  if (!isEffect(effect)) throw new Error(`Corrupt effect ref at ${event.to}`);
+
+  if (effect?.kind !== "effect") throw new Error(`Corrupt effect ref at ${event.to}`);
   const intent = await effectIntent(read, event.to, effect);
   const base = {
     seq: event.seq,
@@ -228,7 +215,8 @@ async function projectRef(
 ): Promise<readonly SessionEvent[]> {
   if (event.name.startsWith(JOB_PREFIX) && event.to !== null) {
     const blob = await read.get(event.to);
-    if (!isBlob(blob)) throw new Error(`Corrupt job ref at ${event.to}`);
+
+    if (blob?.kind !== "blob") throw new Error(`Corrupt job ref at ${event.to}`);
     return [{ seq: event.seq, kind: "job", job: parseJobRecord(blob.value).info }];
   }
   const head = suffix(event.name, HEAD_PREFIX);
@@ -248,7 +236,8 @@ async function projectRef(
   if (runHead !== undefined && !runHead.includes("/")) {
     if (event.to === null) return [];
     const run = await read.get(event.to);
-    if (!isRun(run)) throw new Error(`Corrupt run ref at ${event.to}`);
+
+    if (run?.kind !== "run") throw new Error(`Corrupt run ref at ${event.to}`);
     return [{ seq: event.seq, kind: "run", head: runHead, run: runInfo(run) }];
   }
 
@@ -269,7 +258,8 @@ async function projectRef(
   if (stackHead !== undefined && !stackHead.includes("/")) {
     if (event.to === null) return [];
     const stack = await read.get(event.to);
-    if (!isStack(stack)) throw new Error(`Corrupt stack ref at ${event.to}`);
+
+    if (stack?.kind !== "stack") throw new Error(`Corrupt stack ref at ${event.to}`);
     return [
       {
         seq: event.seq,
@@ -289,7 +279,8 @@ async function projectRef(
       return [{ seq: event.seq, kind: "fact", key, value: undefined }];
     }
     const fact = await read.get(event.to);
-    if (!isBlob(fact)) throw new Error(`Corrupt fact ref at ${event.to}`);
+
+    if (fact?.kind !== "blob") throw new Error(`Corrupt fact ref at ${event.to}`);
     return [{ seq: event.seq, kind: "fact", key, value: fact.value }];
   }
 

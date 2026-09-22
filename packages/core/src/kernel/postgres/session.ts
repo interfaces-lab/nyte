@@ -1,16 +1,14 @@
 import { setTimeout } from "node:timers/promises";
-import { hashObject } from "../hash.ts";
 import { CursorExpired } from "@nyte-ai/protocol";
 import { type Commit, type Event, type EventBody, type Lease, type Obj } from "../model.ts";
 import { isRefName, newOwnerId } from "../names.ts";
 import {
   checkEventBody,
-  checkObject,
+  parseStoredObject,
   serializeEventBody,
   serializeObject,
 } from "../store-schemas.ts";
 import {
-  CorruptObject,
   UnknownSession,
   type Session,
   type RefUpdateOptions,
@@ -37,12 +35,10 @@ function validateLimit(limit: number | undefined): void {
   }
 }
 
-function parseObject(row: PostgresRow): { readonly oid: string; readonly object: Obj } {
+function parseObject(row: PostgresRow) {
   const oid = stringColumn(row, "oid");
-  const value: unknown = JSON.parse(stringColumn(row, "body"));
-  if (!checkObject.Check(value)) throw new CorruptObject(oid, "is not a known object");
-  if (hashObject(value) !== oid) throw new CorruptObject(oid, "does not match its hash");
-  return { oid, object: value };
+
+  return { oid, object: parseStoredObject(stringColumn(row, "body"), oid) };
 }
 
 function parseEvent(row: PostgresRow): Event {
